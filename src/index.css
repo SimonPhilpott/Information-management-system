@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#000105] text-slate-100 overflow-hidden antialiased;
+    font-family: 'Outfit', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    background-image: 
+      radial-gradient(circle at 50% 50%, rgba(0, 242, 255, 0.08) 0%, transparent 60%),
+      linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 100% 100%, 60px 60px, 60px 60px;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-2xl shadow-2xl;
+  }
+  
+  .cyber-button {
+    @apply px-4 py-2 bg-brand-cyan/10 border border-brand-cyan/40 text-brand-cyan 
+           hover:bg-brand-cyan hover:text-black hover:shadow-[0_0_40px_rgba(0,242,255,0.4)]
+           transition-all duration-300 
+           uppercase text-[10px] font-black tracking-[0.25em] rounded-sm italic;
+  }
+  
+  .cyber-input {
+    @apply w-full bg-slate-950/60 border border-white/5 rounded-xl p-4 text-sm 
+           focus:border-brand-cyan/30 focus:ring-1 focus:ring-brand-cyan/20 outline-none 
+           transition-all duration-300 text-slate-200 placeholder:text-white/5;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-brand-cyan/20 rounded-full hover:bg-brand-cyan/40;
+  }
+}
+
+.intelligence-popup {
+  filter: drop-shadow(0 20px 40px rgba(0,0,0,0.5));
+  background: linear-gradient(135deg, rgba(8,10,15,0.98), rgba(20,25,40,0.98));
+  border: 1px solid rgba(0, 242, 255, 0.1);
+}
+
+@keyframes pulse {
+  0% { stroke-dashoffset: 100; opacity: 0; }
+  20% { opacity: 0.8; }
+  80% { opacity: 0.8; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+.connection-pulse {
+  stroke-dasharray: 10, 90;
+  animation: pulse 3s linear infinite;
+  stroke-width: 3;
+}
+
+/* Navigator Aesthetics */
+[drag] {
+  touch-action: none;
+}
