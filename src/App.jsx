@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { ENTITY_TYPES, SCHEMAS } from './data/nodes';
-import MESH_JSON_AUTHORITY from './data/mesh_authority.json';
+import { MESHES } from './data/mesh_authority.js';
+
+const MESH_JSON_AUTHORITY = MESHES;
 import { MeshCanvas } from './components/KnowledgeMesh/MeshCanvas';
 import { OrbitalNav } from './components/Navigation/OrbitalNav';
 import { StatusSidebars } from './components/Dashboard/StatusSidebars';
@@ -26,8 +28,8 @@ export default function App() {
   }, []);
 
   const [nodes, setNodes] = useState(() => {
-    // VERSIONED STORAGE KEY: hive_mesh_v2_json
-    const saved = localStorage.getItem('hive_mesh_v2_json');
+    // VERSIONED STORAGE KEY: hive_mesh_v13_corporate_hierarchy
+    const saved = localStorage.getItem('hive_mesh_v13_corporate_hierarchy');
     return saved ? JSON.parse(saved) : MESH_JSON_AUTHORITY;
   });
 
@@ -45,8 +47,8 @@ export default function App() {
       const data = saved ? JSON.parse(saved) : null;
       if (!data || typeof data !== 'object') throw new Error('Invalid config');
       return { 
-         childGap: data.childGap ?? 10,
-         parentDistance: data.parentDistance ?? 200,
+         childGap: data.childGap ?? 50,
+         parentDistance: data.parentDistance ?? 400,
          connectionTension: data.connectionTension ?? 60,
          layoutStyle: data.layoutStyle ?? 'radial',
          directionalLocking: data.directionalLocking ?? true,
@@ -54,7 +56,7 @@ export default function App() {
       };
     } catch {
       return { 
-         childGap: 10, parentDistance: 200, connectionTension: 60,
+         childGap: 50, parentDistance: 400, connectionTension: 60,
          layoutStyle: 'radial', directionalLocking: true, unifiedSyncPoints: true
       };
     }
@@ -65,7 +67,7 @@ export default function App() {
   }, [layoutRules]);
 
   useEffect(() => {
-    try { localStorage.setItem('hive_mesh_v2_json', JSON.stringify(nodes)); } catch (e) { console.error(e); }
+    try { localStorage.setItem('hive_mesh_v13_corporate_hierarchy', JSON.stringify(nodes)); } catch (e) { console.error(e); }
   }, [nodes]);
 
   useEffect(() => {
@@ -109,6 +111,7 @@ export default function App() {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isAppearanceOpen, setIsAppearanceOpen] = useState(false);
+  const [movingNodeId, setMovingNodeId] = useState(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   
   const [editingNode, setEditingNode] = useState(null);
@@ -215,7 +218,62 @@ export default function App() {
     setSelectedNode(node);
   };
 
+  const handleApplyAIProposal = (proposal) => {
+    setNodes(prevNodes => {
+      let updated = [...prevNodes];
+      
+      if (proposal.type === 'update') {
+          updated = updated.map(n => {
+            if (n.id === proposal.targetId) {
+                return { ...n, content: { ...n.content, [proposal.field]: proposal.newValue } };
+            }
+            return n;
+          });
+      } else if (proposal.type === 'new_node') {
+          const parent = prevNodes.find(n => n.id === proposal.parentId);
+          const newNode = {
+            id: proposal.id || `ai_${Date.now()}`,
+            parentId: proposal.parentId,
+            title: proposal.title,
+            type: proposal.nodeType,
+            content: { Summary: proposal.reason },
+            x: parent ? parent.x + 300 : 2000,
+            y: parent ? parent.y : 2000,
+            ox: parent ? parent.x + 300 : 2000,
+            oy: parent ? parent.y : 2000,
+            secondaryLinks: []
+          };
+          updated.push(newNode);
+      } else if (proposal.type === 'connection') {
+          updated = updated.map(n => {
+            if (n.id === proposal.fromId) {
+                const links = n.secondaryLinks || [];
+                if (!links.includes(proposal.toId)) {
+                   return { ...n, secondaryLinks: [...links, proposal.toId] };
+                }
+            }
+            return n;
+          });
+      }
+
+      return updated;
+    });
+
+    if (proposal.type === 'new_node' || proposal.type === 'connection') {
+        setTimeout(() => applyLayout(layoutRules), 100);
+    }
+  };
+
   useEffect(() => {
+    // STATE INTEGRITY CHECK: Purge any accidental NaN values from storage
+    setNodes(prev => prev.map(n => ({
+      ...n,
+      x: isNaN(n.x) ? 2000 : n.x,
+      y: isNaN(n.y) ? 2000 : n.y,
+      ox: isNaN(n.ox) ? 2000 : n.ox,
+      oy: isNaN(n.oy) ? 2000 : n.oy
+    })));
+
     // MANDATORY INITIAL LAYOUT: Ensure authoritative spacing on cold boot
     applyLayout(layoutRules);
 
@@ -234,35 +292,24 @@ export default function App() {
       const hSpacing = 224 + siblingGap;
       const expansionJump = rules.parentDistance ?? 200;
 
-      const layoutQuadrant = (nodeId, dir, depth, offX, offY, visited = new Set()) => {
-         if (visited.has(nodeId) || depth > 50) return 0;
-         visited.add(nodeId);
-         const node = newNodes.find(n => n.id === nodeId);
-         if (!node) return 0;
-         const children = newNodes.filter(n => n.parentId === nodeId);
-         
-         let span = 0;
-         if (children.length === 0) span = 1; else children.forEach(child => {
-             if (dir === 'Right' || dir === 'Left') span += layoutQuadrant(child.id, dir, depth + 1, offX, offY + span * vSpacing, visited);
-             else span += layoutQuadrant(child.id, dir, depth + 1, offX + span * hSpacing, offY, visited);
-         });
-
-         if (dir === 'Right') { node.x = offX + (depth * (224 + expansionJump)); node.y = children.length > 0 ? offY + ((span - 1) * vSpacing) / 2 : offY; }
-         else if (dir === 'Left') { node.x = offX - (depth * (224 + expansionJump)); node.y = children.length > 0 ? offY + ((span - 1) * vSpacing) / 2 : offY; }
-         else if (dir === 'Down') { node.x = children.length > 0 ? offX + ((span - 1) * hSpacing) / 2 : offX; node.y = offY + (depth * (100 + expansionJump)); }
-         else if (dir === 'Up') { node.x = children.length > 0 ? offX + ((span - 1) * hSpacing) / 2 : offX; node.y = offY - (depth * (100 + expansionJump)); }
-
-         node.branchDir = dir; node.ox = node.x; node.oy = node.y;
-         return span || 1;
-      };
-
       roots.forEach(root => {
          root.x = 2000; root.y = 2000; root.ox = 2000; root.oy = 2000;
-         if (rules.layoutStyle === 'horizontal_lr') { layoutQuadrant(root.id, 'Right', 0, 2000, 2000); return; }
+         if (rules.layoutStyle === 'horizontal_lr') { 
+            const walkLR = (nid, depth, ox, oy, seen = new Set()) => {
+               if (seen.has(nid) || seen.size > 1000) return 0; seen.add(nid);
+               const n = newNodes.find(no => no.id === nid);
+               if (!n) return 0;
+               const children = newNodes.filter(no => no.parentId === nid);
+               let s = 0; if (children.length === 0) s = 1; else children.forEach(child => { s += walkLR(child.id, depth + 1, ox, oy + s * vSpacing, seen); });
+               n.x = ox + (depth * (224 + expansionJump)); n.y = children.length > 0 ? oy + ((s - 1) * vSpacing) / 2 : oy;
+               n.ox = n.x; n.oy = n.y; n.branchDir = 'Right'; return s;
+            };
+            walkLR(root.id, 0, 2000, 2000); return; 
+         }
 
          const chs = newNodes.filter(n => n.parentId === root.id);
          const topChs = chs.filter(c => c.title.includes('Regions'));
-         const leftChs = chs.filter(c => c.title.includes('Business'));
+         const leftChs = chs.filter(c => c.title.includes('Business') || c.title.includes('Operations'));
          const rightChs = chs.filter(c => c.title.includes('Capabilities'));
          const botChs = chs.filter(c => !topChs.includes(c) && !leftChs.includes(c) && !rightChs.includes(c));
 
@@ -270,7 +317,7 @@ export default function App() {
             let total = 0;
             list.forEach(c => {
                const walk = (nid, seen = new Set()) => {
-                  if (seen.has(nid) || seen.size > 50) return 0; seen.add(nid);
+                  if (seen.has(nid) || seen.size > 1000) return 0; seen.add(nid);
                   const cc = newNodes.filter(n => n.parentId === nid);
                   if (cc.length === 0) return 1;
                   let s = 0; cc.forEach(ch => { s += walk(ch.id, seen); });
@@ -286,8 +333,10 @@ export default function App() {
 
          const project = (d, dist, list, span) => {
             const coords = new Map();
+            // INCREASED SPACING FOR QUADRANT ISOLATION
+            const quadrantDist = dist * 1.2; 
             const run = (nid, dt, dep, ox, oy, seen = new Set()) => {
-               if (seen.has(nid) || seen.size > 50) return 0; seen.add(nid);
+               if (seen.has(nid) || seen.size > 1000) return 0; seen.add(nid);
                const n = newNodes.find(node => node.id === nid);
                if (!n) return 0;
                const cc = newNodes.filter(node => node.parentId === nid);
@@ -297,20 +346,33 @@ export default function App() {
                   else s += run(ch.id, dt, dep + 1, ox + s * hSpacing, oy, seen);
                });
                let nx, ny;
-               if (dt === 'Right') { nx = ox + (dep * (224 + dist)); ny = cc.length > 0 ? oy + ((s - 1) * vSpacing) / 2 : oy; }
-               else if (dt === 'Left') { nx = ox - (dep * (224 + dist)); ny = cc.length > 0 ? oy + ((s - 1) * vSpacing) / 2 : oy; }
-               else if (dt === 'Down') { nx = cc.length > 0 ? ox + ((s - 1) * hSpacing) / 2 : ox; ny = oy + (dep * (100 + dist)); }
-               else if (dt === 'Up') { nx = cc.length > 0 ? ox + ((s - 1) * hSpacing) / 2 : ox; ny = oy - (dep * (100 + dist)); }
+               if (dt === 'Right') { nx = ox + (dep * (224 + quadrantDist)); ny = cc.length > 0 ? oy + ((s - 1) * vSpacing) / 2 : oy; }
+               else if (dt === 'Left') { nx = ox - (dep * (224 + quadrantDist)); ny = cc.length > 0 ? oy + ((s - 1) * vSpacing) / 2 : oy; }
+               else if (dt === 'Down') { nx = cc.length > 0 ? ox + ((s - 1) * hSpacing) / 2 : ox; ny = oy + (dep * (100 + quadrantDist)); }
+               else if (dt === 'Up') { nx = cc.length > 0 ? ox + ((s - 1) * hSpacing) / 2 : ox; ny = oy - (dep * (100 + quadrantDist)); }
+               
+               if (isNaN(nx)) nx = ox; if (isNaN(ny)) ny = oy;
                coords.set(nid, { x: nx, y: ny }); return s;
             };
-            let cx = root.x - Math.max(0, (span - 1) * hSpacing / 2);
-            let cy = root.y - Math.max(0, (span - 1) * vSpacing / 2);
-            if (d === 'Up' || d === 'Down') list.forEach(c => { cx += run(c.id, d, 1, cx, root.y) * hSpacing; });
-            else list.forEach(c => { cy += run(c.id, d, 1, root.x, cy) * vSpacing; });
+            
+            let safeSpan = Math.max(1, span);
+            // ADDED PADDING BETWEEN QUADRANT STARTS
+            let cx = root.x - ((safeSpan - 1) * hSpacing / 2);
+            let cy = root.y - ((safeSpan - 1) * vSpacing / 2);
+            
+            list.forEach(c => {
+               if (d === 'Up' || d === 'Down') {
+                 const step = run(c.id, d, 1, cx, root.y);
+                 cx += step * hSpacing;
+               } else {
+                 const step = run(c.id, d, 1, root.x, cy);
+                 cy += step * vSpacing;
+               }
+            });
             return coords;
          };
 
-         newNodes.forEach(n => { if (n.id !== root.id) { n.x = 0; n.y = 0; } });
+         newNodes.forEach(n => { if (n.id !== root.id) { n.x = 2000; n.y = 2000; } }); // Default to root origin rather than zero
          const resolve = (d, list, s) => {
             const p = project(d, expansionJump, list, s);
             p.forEach((pos, id) => { const n = newNodes.find(no => no.id === id); if (n) { n.x = pos.x; n.y = pos.y; n.ox = pos.x; n.oy = pos.y; n.branchDir = d; } });
@@ -353,7 +415,7 @@ export default function App() {
     return { ...v, x: resX, y: resY };
   };
 
-  const animate = () => {
+  const animateLoop = () => {
     const { x: sx, y: sy, active: isStickActive } = stickRef.current;
     
     if (isStickActive && (Math.abs(sx) > 1 || Math.abs(sy) > 1)) {
@@ -369,7 +431,7 @@ export default function App() {
 
     if (Math.abs(vx) > 0.005 || Math.abs(vy) > 0.005) {
       const v = viewRef.current;
-      const meshWidth = 2000;
+      const meshWidth = 2500;
       const speed = (12 + meshWidth / 1000) / v.scale;
       const nv = constrainView({ 
         ...v, 
@@ -382,7 +444,7 @@ export default function App() {
         meshRef.current.style.transform = `translate3d(${nv.x}px, ${nv.y}px, 0) scale(${nv.scale})`;
       }
     }
-    requestRef.current = requestAnimationFrame(animate);
+    requestRef.current = requestAnimationFrame(animateLoop);
   };
 
   // Sync state back on idle to ensure UI (like minimap) is accurate
@@ -399,7 +461,7 @@ export default function App() {
   }, []);
 
   useEffect(() => { stickRef.current = stickPos; }, [stickPos]);
-  useEffect(() => { requestRef.current = requestAnimationFrame(animate); return () => cancelAnimationFrame(requestRef.current); }, []);
+  useEffect(() => { requestRef.current = requestAnimationFrame(animateLoop); return () => cancelAnimationFrame(requestRef.current); }, []);
 
   const handleWheel = (e) => {
     e.preventDefault();
@@ -503,7 +565,12 @@ export default function App() {
                    }}>
                  <div className="flex items-center gap-2 mb-4"><Activity size={12} className="text-brand-cyan" /><span className="text-[10px] font-bold tracking-[0.1em] text-brand-cyan uppercase">Information Summary</span></div>
                  <h4 className="text-white font-bold text-base mb-2 italic tracking-tight">{nodes.find(n => n.id === hoveredNodeId)?.title}</h4>
-                 <p className="text-[13px] text-slate-300 leading-relaxed italic mb-5 border-b border-white/5 pb-5">{nodes.find(n => n.id === hoveredNodeId)?.content?.Summary || 'No summary available.'}</p>
+                 <p className="text-[13px] text-slate-300 leading-relaxed italic mb-5 border-b border-white/5 pb-5">
+                    {(() => {
+                        const n = nodes.find(n => n.id === hoveredNodeId);
+                        return n?.content?.['Definition Summary'] || n?.content?.Summary || 'No summary available.';
+                    })()}
+                 </p>
                  <div className="flex flex-col gap-3 min-h-0">
                     <span className="text-[10px] font-bold text-slate-500 tracking-wider block">Connected Nodes</span>
                     <div className="flex flex-col gap-2 pr-2 overflow-y-auto max-h-[60vh] custom-scrollbar pointer-events-auto">
@@ -585,7 +652,7 @@ export default function App() {
               className="absolute top-8 left-8 z-[100] flex flex-col gap-3 pointer-events-auto" 
               onMouseDown={e => e.stopPropagation()}
             >
-               <div className="flex flex-col gap-1 p-3 bg-black/60 backdrop-blur-xl rounded-[16px] border border-white/10 shadow-3xl w-64 relative">
+               <div className="flex flex-col gap-1.5 p-3 bg-black/60 backdrop-blur-xl rounded-[16px] border border-white/10 shadow-3xl w-64 relative">
                   <button 
                     onClick={() => setIsAppearanceOpen(false)}
                     className="absolute top-3 right-3 p-1 hover:bg-white/5 rounded-full transition-colors text-slate-500 hover:text-white"
@@ -616,11 +683,21 @@ export default function App() {
            nodes={nodes} view={view} layoutRules={layoutRules} hoveredNodeId={hoveredNodeId} setHoveredNodeId={handleHoverNode}
            hoveredLinkId={hoveredLinkId} setHoveredLinkId={setHoveredLinkId} setHoveredLinkData={setHoveredLinkData} 
            isMovingMesh={!!dragType} isSidebarOpen={isAdminOpen || isEditorOpen}
-           onSelectNode={(n) => { setSelectedNode(n); setIsEditorOpen(true); setEditingNode(n); setCurrentType(n.type); setFormData({ title: n.title, content: n.content || {} }); }} 
-           onAddOffshoot={(id) => { setActiveParentId(id); setIsEditorOpen(true); setEditingNode(null); setCurrentType(''); setFormData({ title: '[NEW_ENTITY_SPEC]', content: {} }); }} 
+           movingNodeId={movingNodeId}
+           onSelectNode={(n) => { 
+              if (movingNodeId) {
+                 if (n.id === movingNodeId) { setMovingNodeId(null); return; }
+                 setNodes(prev => prev.map(node => node.id === movingNodeId ? { ...node, parentId: n.id } : node));
+                 setMovingNodeId(null);
+                 applyLayout(layoutRules);
+                 return;
+              }
+              setSelectedNode(n); setIsEditorOpen(true); setEditingNode(n); setCurrentType(n.type); setFormData({ title: n.title, content: n.content || {} }); 
+           }} 
+           onAddOffshoot={(id) => { setActiveParentId(id); setIsEditorOpen(true); setEditingNode(null); setCurrentType('CONCEPT'); setFormData({ title: '[NEW_ENTITY_SPEC]', content: {} }); }} 
            onNodeDrag={(id, dx, dy) => setNodes(prev => prev.map(n => n.id === id ? { ...n, x: n.x + dx, y: n.y + dy } : n))}
            onNodeDragEnd={(id) => setNodes(prev => prev.map(n => n.id === id ? { ...n, ox: n.x, oy: n.y } : n))}
-           onResetPosition={(id) => setNodes(prev => prev.map(n => n.id === id ? { ...n, x: n.ox, y: n.oy } : n))}
+           onStartReparent={(id) => setMovingNodeId(id)}
            onLinkClick={(cid, pid) => { 
              setHoveredLinkId(null); 
              const targetId = (selectedNode?.id === cid) ? pid : cid;
@@ -636,15 +713,15 @@ export default function App() {
              initial={{ opacity: 0 }} animate={{ opacity: 0 }} exit={{ opacity: 0 }}
              className="fixed inset-0 z-[65000] bg-transparent cursor-default select-none pointer-events-auto"
              onMouseDown={e => {
-                const isR = e.clientX > window.innerWidth - (isAdminOpen ? 500 : 750);
+                const isR = e.clientX > window.innerWidth - (window.innerWidth * 0.66);
                 if (isR) e.stopPropagation();
                 else {
                    setIsEditorOpen(false);
                    setIsAdminOpen(false);
-                }
+                 }
              }}
              onPointerDown={e => {
-                const isR = e.clientX > window.innerWidth - (isAdminOpen ? 500 : 750);
+                const isR = e.clientX > window.innerWidth - (window.innerWidth * 0.66);
                 if (isR) e.stopPropagation();
              }}
            />
@@ -707,6 +784,7 @@ export default function App() {
              layoutRules={layoutRules} 
              setLayoutRules={setLayoutRules} 
              applyLayout={applyLayout} 
+             onApplyAIProposal={handleApplyAIProposal}
            />
          )}
        </AnimatePresence>

@@ -1,4 +1,4 @@
-[
+export const MESHES = [
   { "id": "tt_group", "type": "CONCEPT", "title": "Turner & Townsend Group", "content": { "Definition Summary": "Global professional services firm specialising in programme, project and cost management." } },
 
   // --- OUR BUSINESS (CONCEPT - Left) ---
@@ -83,7 +83,7 @@
   { "id": "enr_oil", "type": "PATTERN", "title": "Conventional Energy (Oil & Gas)", "parentId": "seg_enr" },
 
   // --- PROCEDURES & SCENARIOS ---
-  { "id": "prc_riba3", "type": "PROCEDURE", "title": "RIBA Stage 3 Cost Planning", "parentId": "uki_ccm", "secondaryLinks": ["re_health"] },
+  { "id": "prc_riba3", "type": "PROCEDURE", "title": "RIStage 3 Cost Planning", "parentId": "uki_ccm", "secondaryLinks": ["re_health"] },
   { "id": "prc_rail_est", "type": "PROCEDURE", "title": "Rail Network Estimating", "parentId": "inf_tra", "secondaryLinks": ["uki_ccm"] },
   { "id": "scn_delay", "type": "SCENARIO", "title": "Supply Chain Disruption Mitigation", "parentId": "srv_psc", "secondaryLinks": ["uki_pm", "inf_tra"] }
-]
+];

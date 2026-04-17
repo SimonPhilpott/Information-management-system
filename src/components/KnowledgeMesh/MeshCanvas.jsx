@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ENTITY_TYPES } from '../../data/nodes';
-import { Network, Plus, RotateCcw, Activity } from 'lucide-react';
+import { Network, Plus, RotateCcw, Activity, GitPullRequest } from 'lucide-react';
 
 export const MeshCanvas = ({ 
   meshRef,
@@ -17,10 +17,11 @@ export const MeshCanvas = ({
   onAddOffshoot, 
   onNodeDrag, 
   onNodeDragEnd, 
-  onResetPosition, 
+  onStartReparent, 
   onLinkClick,
   isMovingMesh,
-  isSidebarOpen // Passed from App to know if we should block
+  isSidebarOpen,
+  movingNodeId
 }) => {
   const NODE_W = 224;
   const NODE_H = 100;
@@ -31,6 +32,7 @@ export const MeshCanvas = ({
 
   // Connection Engine: Generates premium spline paths with dynamic tension
   const getPath = (start, end, node) => {
+    if (!start || !end || isNaN(start.x) || isNaN(start.y) || isNaN(end.x) || isNaN(end.y)) return '';
     const sx = start.x + NODE_W / 2;
     const sy = start.y + NODE_H / 2;
     const tx = end.x + NODE_W / 2;
@@ -41,6 +43,9 @@ export const MeshCanvas = ({
 
     const tensionScalar = (layoutRules.connectionTension ?? 65) / 100;
     const BASE_TENSION = tensionScalar; 
+
+    // Safety for zero distance
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return `M ${sx} ${sy} L ${tx} ${ty}`;
 
     const useVertical = node.branchDir === 'Up' || node.branchDir === 'Down' || layoutRules.layoutStyle === 'vertical_tb';
 
@@ -65,12 +70,15 @@ export const MeshCanvas = ({
 
   const handlePointerMove = (e, id) => {
     if (draggedNodeId !== id) return;
+    //Repositioning logic temporarily suspended via Spatial Interaction Lock
+    /*
     const dx = (e.clientX - dragStartPos.x) / view.scale;
     const dy = (e.clientY - dragStartPos.y) / view.scale;
     
     if (Math.abs(dx) > 2 || Math.abs(dy) > 2) setHasMovedDuringDrag(true);
     onNodeDrag(id, dx, dy);
     setDragStartPos({ x: e.clientX, y: e.clientY });
+    */
   };
 
   const handlePointerUp = (e, node) => {
@@ -157,6 +165,7 @@ export const MeshCanvas = ({
                        <path d={pathData} fill="none" stroke="transparent" strokeWidth={30} 
                           onMouseEnter={() => { 
                             if (!isMovingMesh) {
+                                const config = ENTITY_TYPES[node.type?.toUpperCase()] || ENTITY_TYPES.TAXONOMY || { color: '#ffffff' };
                                 setHoveredLinkId(lid); 
                                 setHoveredLinkData({ 
                                     from: node.title, to: target.title, 
@@ -213,9 +222,14 @@ export const MeshCanvas = ({
                 backfaceVisibility: 'hidden'
             }}
           >
-            <div className="relative glass-panel overflow-hidden border-t-2 group-hover:shadow-[0_0_30px_rgba(255,255,255,0.05)] transition-all duration-500 rounded-xl"
+            <div className={`relative glass-panel overflow-hidden border-t-2 group-hover:shadow-[0_0_30px_rgba(255,255,255,0.05)] transition-all duration-500 rounded-xl ${movingNodeId === node.id ? 'ring-2 ring-brand-cyan ring-offset-4 ring-offset-black animate-pulse shadow-[0_0_30px_rgba(0,240,255,0.4)]' : ''}`}
                  style={{ borderTopColor: color, backgroundColor: 'rgba(10, 15, 20, 0.8)' }}>
               
+              {movingNodeId === node.id && (
+                <div className="absolute top-0 left-0 right-0 py-1 bg-brand-cyan text-black text-[7px] font-black uppercase tracking-widest text-center">
+                   Select New Parent Node
+                </div>
+              )}
               <div className="p-4 relative z-10">
                 <div className="flex justify-between items-start mb-2">
                    <div className="flex items-center gap-1.5 overflow-hidden">
@@ -235,8 +249,12 @@ export const MeshCanvas = ({
                 <button className="p-1 hover:bg-white/20 rounded cursor-pointer bg-white/5 border border-white/10" onClick={(e) => { e.stopPropagation(); onAddOffshoot(node.id); }}>
                   <Plus size={10} className="text-white" />
                 </button>
-                <button className="p-1 hover:bg-white/20 rounded cursor-pointer bg-white/5 border border-white/10" onClick={(e) => { e.stopPropagation(); onResetPosition(node.id); }}>
-                  <RotateCcw size={10} className="text-white" />
+                <button 
+                  className={`p-1 rounded cursor-pointer border transition-all ${movingNodeId === node.id ? 'bg-brand-cyan border-brand-cyan text-black' : 'hover:bg-white/20 bg-white/5 border-white/10 text-white'}`} 
+                  onClick={(e) => { e.stopPropagation(); onStartReparent(node.id); }}
+                  title="Move/Reparent Node"
+                >
+                  <GitPullRequest size={10} />
                 </button>
               </div>
             </div>

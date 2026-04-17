@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ChevronRight, ChevronDown, Search, Database, RefreshCw, Layers, Trash2, RotateCcw, Box, Palette, Info } from 'lucide-react';
+import { X, ChevronRight, ChevronDown, Search, Database, RefreshCw, Layers, Trash2, RotateCcw, Box, Palette, Info, Zap, Link2 } from 'lucide-react';
 import { ENTITY_TYPES } from '../../data/nodes';
 import { useTheme, THEMES } from '../../ThemeContext';
+import { ImportManager } from './ImportManager';
+import { URLMapper } from './URLMapper';
 
 const TreeItem = ({ node, nodes, level = 0, onSelect }) => {
   const [isOpen, setIsOpen] = useState(level < 1);
@@ -43,14 +45,27 @@ const TreeItem = ({ node, nodes, level = 0, onSelect }) => {
   );
 };
 
-export const AdminPanel = ({ nodes, deletedNodes = [], isOpen, onClose, onFocusNode, onRestoreNode, onReset, onBackup, layoutRules, setLayoutRules, applyLayout }) => {
+export const AdminPanel = ({ 
+  nodes, 
+  deletedNodes = [], 
+  isOpen, 
+  onClose, 
+  onFocusNode, 
+  onRestoreNode, 
+  onReset, 
+  onBackup, 
+  layoutRules, 
+  setLayoutRules, 
+  applyLayout,
+  onApplyAIProposal
+}) => {
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [backupStatus, setBackupStatus] = useState(null); // 'success' | 'error' | null
   const [hoveredFeature, setHoveredFeature] = useState(null);
 
   const { theme, setTheme } = useTheme();
   const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState('tree'); // 'tree' or 'bin'
+  const [activeTab, setActiveTab] = useState('tree'); // 'tree' | 'bin' | 'defs' | 'ingest' | 'map'
   const rootNodes = nodes.filter(n => !n.parentId);
 
   const filteredNodes = search 
@@ -61,7 +76,7 @@ export const AdminPanel = ({ nodes, deletedNodes = [], isOpen, onClose, onFocusN
     <motion.div 
       initial={{ x: '100%' }} animate={{ x: isOpen ? 0 : '100%' }}
       transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-      className="fixed top-0 right-0 h-full w-[500px] backdrop-blur-3xl border-l border-white/10 z-[70000] flex flex-col"
+      className="fixed top-0 right-0 h-full w-[66vw] backdrop-blur-3xl border-l border-white/10 z-[70000] flex flex-col"
       onMouseDown={e => e.stopPropagation()}
       onPointerDown={e => e.stopPropagation()}
       onClick={e => e.stopPropagation()}
@@ -102,111 +117,135 @@ export const AdminPanel = ({ nodes, deletedNodes = [], isOpen, onClose, onFocusN
         </div>
 
         {/* Tab Selector */}
-        <div className="px-8 pt-6 flex gap-6 border-b border-white/5 bg-white/1">
+        <div className="px-8 pt-6 flex gap-6 border-b border-white/5 bg-white/1 overflow-x-auto no-scrollbar">
            <button 
              onClick={() => setActiveTab('tree')}
-             className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${activeTab === 'tree' ? 'text-brand-cyan' : 'text-slate-600 hover:text-slate-400'}`}
+             className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all relative shrink-0 ${activeTab === 'tree' ? 'text-brand-cyan' : 'text-slate-600 hover:text-slate-400'}`}
            >
              Hierarchy
              {activeTab === 'tree' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-cyan" />}
            </button>
            <button 
-             onClick={() => setActiveTab('defs')}
-             className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${activeTab === 'defs' ? 'text-brand-cyan' : 'text-slate-600 hover:text-slate-400'}`}
+             onClick={() => setActiveTab('map')}
+             className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all relative shrink-0 ${activeTab === 'map' ? 'text-brand-cyan' : 'text-slate-600 hover:text-slate-400'}`}
            >
-             Usage Guidance
+             Map URLs
+             {activeTab === 'map' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-cyan" />}
+           </button>
+           <button 
+             onClick={() => setActiveTab('ingest')}
+             className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all relative shrink-0 flex items-center gap-2 ${activeTab === 'ingest' ? 'text-brand-cyan' : 'text-slate-600 hover:text-slate-400'}`}
+           >
+             Ingest
+             <Zap size={10} className={activeTab === 'ingest' ? 'text-brand-cyan' : 'text-slate-600'} />
+             {activeTab === 'ingest' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-cyan" />}
+           </button>
+           <button 
+             onClick={() => setActiveTab('defs')}
+             className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all relative shrink-0 ${activeTab === 'defs' ? 'text-brand-cyan' : 'text-slate-600 hover:text-slate-400'}`}
+           >
+             Node Definitions
              {activeTab === 'defs' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-cyan" />}
            </button>
            <button 
              onClick={() => setActiveTab('bin')}
-             className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all relative flex items-center gap-2 ${activeTab === 'bin' ? 'text-red-500' : 'text-slate-600 hover:text-slate-400'}`}
+             className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all relative shrink-0 flex items-center gap-2 ${activeTab === 'bin' ? 'text-red-500' : 'text-slate-600 hover:text-slate-400'}`}
            >
-             Deleted Nodes
-             {deletedNodes.length > 0 && <span className="bg-red-500 text-white px-1.5 py-0.5 rounded-full text-[8px]">{deletedNodes.length}</span>}
+             Deleted
              {activeTab === 'bin' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-500" />}
            </button>
         </div>
 
-        <div className="p-6 space-y-4">
-            <div className="relative">
-                <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input 
-                    className="w-full bg-black/40 border border-white/5 rounded-xl py-4 pl-12 pr-4 text-xs focus:border-brand-cyan/40 outline-none transition-all placeholder:text-slate-700 text-white"
-                    placeholder={activeTab === 'tree' ? "Search node index..." : "Search deleted items..."}
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                />
-            </div>
-            {activeTab === 'tree' && (
-              <div className="flex flex-col gap-2">
-                <button 
-                    disabled={isBackingUp}
-                    onClick={async () => {
-                        setIsBackingUp(true);
-                        setBackupStatus(null);
-                        try {
-                            await onBackup();
-                            setBackupStatus('success');
-                            setTimeout(() => setBackupStatus(null), 3000);
-                        } catch (e) {
-                            setBackupStatus('error');
-                            setTimeout(() => setBackupStatus(null), 3000);
-                        } finally {
-                            setIsBackingUp(false);
-                        }
-                    }}
-                    className={`w-full py-4 rounded-xl flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all border ${
-                        backupStatus === 'success' ? 'bg-green-500/20 border-green-500/50 text-green-400' :
-                        backupStatus === 'error' ? 'bg-red-500/20 border-red-500/50 text-red-100' :
-                        'bg-brand-purple/10 border-brand-purple/20 text-brand-purple hover:bg-brand-purple/20 hover:border-brand-purple/40 shadow-[0_0_20px_rgba(191,0,255,0.1)]'
-                    }`}
-                >
-                    {isBackingUp ? (
-                        <RefreshCw size={12} className="animate-spin" />
-                    ) : backupStatus === 'success' ? (
-                        <X size={12} className="rotate-45" /> 
-                    ) : (
-                        <Database size={12} />
-                    )}
-                    {isBackingUp ? 'Processing Archival...' : 
-                     backupStatus === 'success' ? 'Snapshot Secured' : 
-                     backupStatus === 'error' ? 'Archival Failed' : 
-                     'Save Stable Recovery Point'}
-                </button>
-
-                <div className="grid grid-cols-2 gap-2">
-                   <button 
-                      onClick={onReset}
-                      className="py-3 rounded-xl border border-white/5 hover:border-red-500/30 bg-white/2 hover:bg-red-500/10 text-[9px] font-bold text-slate-500 hover:text-red-400 uppercase tracking-widest transition-all flex items-center justify-center gap-2"
-                   >
-                      <RotateCcw size={12} />
-                      Reset Layout
-                   </button>
-                   <button 
-                      onClick={() => {
-                        if (window.confirm('Sync with Source File? This will inject missing nodes from the source.')) {
-                            onReset();
-                        }
-                      }}
-                      className="py-3 rounded-xl border border-white/5 hover:border-brand-cyan/30 bg-white/2 hover:bg-brand-cyan/10 text-[9px] font-bold text-slate-500 hover:text-brand-cyan uppercase tracking-widest transition-all flex items-center justify-center gap-2"
-                   >
-                      <RefreshCw size={12} />
-                      Sync Source
-                   </button>
+        {(activeTab === 'tree' || activeTab === 'bin') && (
+            <div className="p-6 space-y-4">
+                <div className="relative">
+                    <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <input 
+                        className="w-full bg-black/40 border border-white/5 rounded-xl py-4 pl-12 pr-4 text-xs focus:border-brand-cyan/40 outline-none transition-all placeholder:text-slate-700 text-white"
+                        placeholder={activeTab === 'tree' ? "Search node index..." : "Search deleted items..."}
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
                 </div>
-              </div>
-            )}
+                {activeTab === 'tree' && (
+                <div className="flex flex-col gap-2">
+                    <button 
+                        disabled={isBackingUp}
+                        onClick={async () => {
+                            setIsBackingUp(true);
+                            setBackupStatus(null);
+                            try {
+                                await onBackup();
+                                setBackupStatus('success');
+                                setTimeout(() => setBackupStatus(null), 3000);
+                            } catch (e) {
+                                setBackupStatus('error');
+                                setTimeout(() => setBackupStatus(null), 3000);
+                            } finally {
+                                setIsBackingUp(false);
+                            }
+                        }}
+                        className={`w-full py-4 rounded-xl flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all border ${
+                            backupStatus === 'success' ? 'bg-green-500/20 border-green-500/50 text-green-400' :
+                            backupStatus === 'error' ? 'bg-red-500/20 border-red-500/50 text-red-100' :
+                            'bg-brand-purple/10 border-brand-purple/20 text-brand-purple hover:bg-brand-purple/20 hover:border-brand-purple/40 shadow-[0_0_20px_rgba(191,0,255,0.1)]'
+                        }`}
+                    >
+                        {isBackingUp ? (
+                            <RefreshCw size={12} className="animate-spin" />
+                        ) : backupStatus === 'success' ? (
+                            <CheckCircle2 size={12} /> 
+                        ) : (
+                            <Database size={12} />
+                        )}
+                        {isBackingUp ? 'Processing Archival...' : 
+                        backupStatus === 'success' ? 'Snapshot Secured' : 
+                        backupStatus === 'error' ? 'Archival Failed' : 
+                        'Save Stable Recovery Point'}
+                    </button>
 
-            <div className="flex items-center justify-between px-2 py-1 bg-brand-cyan/5 rounded-[8px] border border-brand-cyan/10 mt-2">
-               <span className="text-[8px] font-black text-brand-cyan/60 uppercase">Total Entities</span>
-               <span className="text-[10px] font-mono font-bold text-brand-cyan">{nodes.length} Items</span>
+                    <div className="grid grid-cols-2 gap-2">
+                    <button 
+                        onClick={onReset}
+                        className="py-3 rounded-xl border border-white/5 hover:border-red-500/30 bg-white/2 hover:bg-red-500/10 text-[9px] font-bold text-slate-500 hover:text-red-400 uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                    >
+                        <RotateCcw size={12} />
+                        Reset Layout
+                    </button>
+                    <button 
+                        onClick={() => {
+                            if (window.confirm('Sync with Source File? This will inject missing nodes from the source.')) {
+                                onReset();
+                            }
+                        }}
+                        className="py-3 rounded-xl border border-white/5 hover:border-brand-cyan/30 bg-white/2 hover:bg-brand-cyan/10 text-[9px] font-bold text-slate-500 hover:text-brand-cyan uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                    >
+                        <RefreshCw size={12} />
+                        Sync Source
+                    </button>
+                    </div>
+                </div>
+                )}
+
+                <div className="flex items-center justify-between px-2 py-1 bg-brand-cyan/5 rounded-[8px] border border-brand-cyan/10 mt-2">
+                <span className="text-[8px] font-black text-brand-cyan/60 uppercase">Total Entities</span>
+                <span className="text-[10px] font-mono font-bold text-brand-cyan">{nodes.length} Items</span>
+                </div>
+
             </div>
-
-        </div>
+        )}
 
         <div className="flex-1 overflow-auto custom-scrollbar p-6 space-y-8">
             <AnimatePresence mode="wait">
-              {activeTab === 'defs' ? (
+              {activeTab === 'ingest' ? (
+                 <motion.div key="ingest-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                    <ImportManager nodes={nodes} onApplyChanges={onApplyAIProposal} />
+                 </motion.div>
+              ) : activeTab === 'map' ? (
+                 <motion.div key="map-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                    <URLMapper nodes={nodes} onApplyAIProposal={onApplyAIProposal} />
+                 </motion.div>
+              ) : activeTab === 'defs' ? (
                 <motion.div key="defs-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6 pb-32">
                    <div className="p-4 bg-brand-cyan/10 border border-brand-cyan/20 rounded-xl mb-4">
                       <div className="flex items-center gap-2 text-brand-cyan mb-1">
@@ -239,9 +278,9 @@ export const AdminPanel = ({ nodes, deletedNodes = [], isOpen, onClose, onFocusN
                         <textarea 
                            className="w-full bg-black/40 border border-white/5 rounded-xl p-4 text-[11px] text-slate-300 min-h-[100px] outline-none focus:border-brand-cyan/30 transition-all placeholder:text-slate-700 placeholder:italic"
                            placeholder={config.examples || "Enter custom protocol..."}
-                           defaultValue={""} // Removed text from box, moved to placeholder
+                           defaultValue={""} 
                            onBlur={(e) => {
-                              console.log(`Updated ${key} definition:`, e.target.value);
+                               console.log(`Updated ${key} definition:`, e.target.value);
                            }}
                         />
                      </div>
@@ -359,7 +398,7 @@ export const AdminPanel = ({ nodes, deletedNodes = [], isOpen, onClose, onFocusN
                                      <span className="text-[11px] font-bold text-slate-300 group-hover:text-white transition-colors">{n.title}</span>
                                      <span className="text-[8px] uppercase tracking-widest text-slate-600 font-black">{ENTITY_TYPES[n.type]?.label}</span>
                                   </div>
-                               </div>
+                                </div>
                                <button 
                                  onClick={() => onRestoreNode(n.id)}
                                  className="p-2.5 bg-brand-cyan/10 text-brand-cyan hover:bg-brand-cyan hover:text-black transition-all rounded-lg flex items-center gap-2 text-[8px] font-black uppercase"
