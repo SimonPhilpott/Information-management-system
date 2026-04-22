@@ -3,7 +3,7 @@ import { motion, useMotionValue, useSpring } from 'framer-motion';
 import { Compass, Map as MapIcon, Settings, Palette, RefreshCw } from 'lucide-react';
 import { ENTITY_TYPES } from '../../data/nodes';
 
-export const OrbitalNav = ({ nodes, view, setView, stickPos, setStickPos, onOpenAdmin, onOpenAppearance, onResetLayout, onMinimapJump }) => {
+export const OrbitalNav = ({ nodes, view, setView, stickPos, setStickPos, onOpenAdmin, onOpenAppearance, onResetLayout, onMinimapJump, projectionMode = '2d' }) => {
   const mapRef = useRef(null);
   
   const tickRef = useRef(null);
@@ -62,7 +62,7 @@ export const OrbitalNav = ({ nodes, view, setView, stickPos, setStickPos, onOpen
   };
 
   return (
-    <div className="absolute top-10 right-10 flex gap-6 items-start z-[1000]">
+    <div className={`absolute top-10 right-10 flex gap-6 items-start z-[1000] transition-all duration-700 ${projectionMode === '3d' ? '[transform:perspective(1000px)_rotateX(20deg)_rotateY(-10deg)]' : ''}`}>
       <div className="flex flex-col gap-3">
         <button 
            onClick={onOpenAdmin}
@@ -86,13 +86,13 @@ export const OrbitalNav = ({ nodes, view, setView, stickPos, setStickPos, onOpen
         ref={mapRef}
         onMouseDown={handleMapAction}
         onMouseMove={handleDrag}
-        className="w-48 h-36 glass-panel border-white/10 overflow-hidden relative cursor-crosshair group shadow-2xl p-1"
+        className={`w-48 h-36 glass-panel border-white/10 overflow-hidden relative cursor-crosshair group shadow-2xl p-1 transition-all duration-700 ${projectionMode === '3d' ? 'rounded-tl-[40px] rounded-br-[40px] shadow-brand-cyan/20' : ''}`}
       >
         <div className="absolute inset-0 bg-brand-cyan/5 -z-10" />
         <div 
-            className="relative w-full h-full origin-top-left pointer-events-none"
+            className={`relative w-full h-full origin-top-left pointer-events-none transition-transform duration-700 ${projectionMode === '3d' ? 'scale-[0.8] [transform:perspective(500px)_rotateX(30deg)]' : ''}`}
             style={{ 
-                transform: `scale(${mapScale}) translate(${-bounds.minX + padding/4}px, ${-bounds.minY + padding/4}px)` 
+                transform: projectionMode === '3d' ? undefined : `scale(${mapScale}) translate(${-bounds.minX + padding/4}px, ${-bounds.minY + padding/4}px)` 
             }}
         >
             {nodes.map(n => {
@@ -117,7 +117,7 @@ export const OrbitalNav = ({ nodes, view, setView, stickPos, setStickPos, onOpen
       </div>
 
       <div className="flex flex-col items-center gap-4">
-        <div className="relative w-28 h-28 rounded-full border border-white/10 flex items-center justify-center bg-black/60 shadow-inner group">
+        <div className={`relative w-28 h-28 rounded-full border border-white/10 flex items-center justify-center bg-black/60 shadow-inner group transition-all duration-700 ${projectionMode === '3d' ? 'shadow-[0_20px_50px_rgba(0,0,0,0.5)] [transform:rotateX(30deg)]' : ''}`}>
            <div className="absolute inset-0 rounded-full border border-brand-cyan/5 group-hover:scale-110 transition-transform animate-pulse" />
            <motion.div 
              style={{ x: smoothX, y: smoothY }}

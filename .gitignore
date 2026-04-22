@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# PDF Knowledge Base
+pdf-knowledge-base/server/data
+pdf-knowledge-base/client/dist
+pdf-knowledge-base/node_modules
+pdf-knowledge-base/client/node_modules
+pdf-knowledge-base/.env

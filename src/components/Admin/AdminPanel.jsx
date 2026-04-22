@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ChevronRight, ChevronDown, Search, Database, RefreshCw, Layers, Trash2, RotateCcw, Box, Palette, Info, Zap, Link2 } from 'lucide-react';
+import { X, ChevronRight, ChevronDown, Search, Database, RefreshCw, Layers, Trash2, RotateCcw, Box, Palette, Info, Zap, Link2, CheckCircle2 } from 'lucide-react';
 import { ENTITY_TYPES } from '../../data/nodes';
 import { useTheme, THEMES } from '../../ThemeContext';
 import { ImportManager } from './ImportManager';
@@ -154,6 +154,20 @@ export const AdminPanel = ({
              Deleted
              {activeTab === 'bin' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-500" />}
            </button>
+           <button 
+             onClick={() => setActiveTab('system')}
+             className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all relative shrink-0 flex items-center gap-2 ${activeTab === 'system' ? 'text-brand-cyan' : 'text-slate-600 hover:text-slate-400'}`}
+           >
+             Project Structure
+             {activeTab === 'system' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-cyan" />}
+           </button>
+           <button 
+             onClick={() => setActiveTab('spatial')}
+             className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all relative shrink-0 flex items-center gap-2 ${activeTab === 'spatial' ? 'text-brand-cyan' : 'text-slate-600 hover:text-slate-400'}`}
+           >
+             Spatial Logic
+             {activeTab === 'spatial' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-cyan" />}
+           </button>
         </div>
 
         {(activeTab === 'tree' || activeTab === 'bin') && (
@@ -237,7 +251,56 @@ export const AdminPanel = ({
 
         <div className="flex-1 overflow-auto custom-scrollbar p-6 space-y-8">
             <AnimatePresence mode="wait">
-              {activeTab === 'ingest' ? (
+              {activeTab === 'spatial' ? (
+                 <motion.div key="spatial-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-slate-300 space-y-6 text-sm leading-relaxed pb-20">
+                    <div className="bg-brand-cyan/5 border border-brand-cyan/20 rounded-xl p-6">
+                       <h3 className="text-lg font-bold text-white mb-2 italic tracking-tight">HIVE:MESH Volumetric Architecture</h3>
+                       <p className="text-brand-cyan/80">Designing a 3D space for plotting radial relationship diagrams involves moving away from the traditional Cartesian grid (X, Y, Z) and instead thinking in terms of spherical coordinates and hierarchical orbits.</p>
+                       <p className="mt-4">In this kind of visualization—often referred to as a 3D radial tree or a 3D force-directed graph—the structural layout is built around a central focal point, and relationships radiate outward in three dimensions.</p>
+                    </div>
+
+                    <div className="space-y-6 pl-2 pr-4">
+                       <div>
+                          <h4 className="text-md font-bold text-white mb-3 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-brand-cyan rounded-full"/>1. The Coordinate System: Spherical Geometry</h4>
+                          <p className="mb-2">To plot items radially in 3D space, you calculate their positions using three values:</p>
+                          <ul className="list-disc pl-6 space-y-2 text-slate-400">
+                             <li><strong className="text-white">Radius (r):</strong> The distance from the center. In a relationship diagram, the radius typically represents the hierarchical depth or "degrees of separation" from the central topic.</li>
+                             <li><strong className="text-white">Polar Angle (?):</strong> The vertical tilt (like latitude on a globe).</li>
+                             <li><strong className="text-white">Azimuthal Angle (f):</strong> The horizontal rotation around the center (like longitude on a globe).</li>
+                          </ul>
+                          <p className="mt-3 text-slate-400">By translating these spherical coordinates back into 3D space, you form concentric, invisible "shells" or spheres around the origin where your data points will live.</p>
+                       </div>
+
+                       <div>
+                          <h4 className="text-md font-bold text-white mb-3 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-brand-cyan rounded-full"/>2. Plotting the Entities (Nodes)</h4>
+                          <ul className="list-disc pl-6 space-y-2 text-slate-400">
+                             <li><strong className="text-white">The Central Hub:</strong> The core concept or root node is plotted at the exact origin of the 3D space <code className="bg-white/10 px-1 rounded">0, 0, 0</code>.</li>
+                             <li><strong className="text-white">Concentric Layers:</strong> First-degree connections are plotted on the smallest inner sphere. Second-degree connections are plotted on a larger, outer sphere, and so on.</li>
+                             <li><strong className="text-white">Spatial Distribution:</strong> To prevent nodes from overlapping on these spherical shells, algorithms (like the Fibonacci lattice or force-directed repulsion) are used to evenly distribute the points across the surface area of their respective orbital layers.</li>
+                          </ul>
+                       </div>
+
+                       <div>
+                          <h4 className="text-md font-bold text-white mb-3 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-brand-cyan rounded-full"/>3. Plotting the Relationships (Connecting Lines)</h4>
+                          <p className="mb-2">Connecting lines (edges) are crucial for showing the web of relationships. In a 3D space, plotting lines requires specific techniques to avoid visual clutter:</p>
+                          <ul className="list-disc pl-6 space-y-2 text-slate-400">
+                             <li><strong className="text-white">Hierarchical Links:</strong> These lines connect the central hub to the first layer, and the first layer to the second layer. They form the "spokes" of the radial design.</li>
+                             <li><strong className="text-white">Lateral Links:</strong> These lines connect nodes that exist on the same spherical layer (e.g., two related sub-topics that share the same parent).</li>
+                             <li><strong className="text-white">Arcing vs. Straight Lines:</strong> While straight lines are computationally cheaper, 3D diagrams often use Bezier curves (arcing lines) for connections. If you draw straight lines between two nodes on opposite sides of a sphere, the line cuts right through the center, creating a messy core. Arcing the lines so they curve along the surface of the imaginary sphere keeps the center hollow and readable.</li>
+                          </ul>
+                       </div>
+
+                       <div>
+                          <h4 className="text-md font-bold text-white mb-3 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-brand-cyan rounded-full"/>4. Navigational Mechanics</h4>
+                          <p className="mb-2">Because 3D space suffers from occlusion (nodes in the front blocking nodes in the back), the space must inherently support interaction:</p>
+                          <ul className="list-disc pl-6 space-y-2 text-slate-400">
+                             <li><strong className="text-white">Orbit Controls:</strong> The camera must be able to pan and rotate 360 degrees around the central origin.</li>
+                             <li><strong className="text-white">Depth Filtering:</strong> The ability to hide outer layers or fade out unselected branches, allowing the user to focus on a specific structural path without getting overwhelmed by the "hairball" effect of too many crossing lines.</li>
+                          </ul>
+                       </div>
+                    </div>
+                 </motion.div>
+              ) : activeTab === 'ingest' ? (
                  <motion.div key="ingest-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                     <ImportManager nodes={nodes} onApplyChanges={onApplyAIProposal} />
                  </motion.div>
@@ -324,7 +387,8 @@ export const AdminPanel = ({
                             items: [
                               { n: 'Smooth Motion', d: 'Panning and zooming feels natural and fluid, like a high-end map app.' },
                               { n: '8-Way Pilot', d: 'Fly through the map in any direction using your keyboard or the circular thumbstick.' },
-                              { n: 'Auto-Centering', d: 'Stops you from wandering off into empty space by keeping items in view.' }
+                              { n: 'Auto-Centering', d: 'Stops you from wandering off into empty space by keeping items in view.' },
+                              { n: 'Viewport Lock', d: 'Persists your camera position across sessions, ensuring you never lose your place.' }
                             ] 
                           },
                           { 
@@ -332,7 +396,8 @@ export const AdminPanel = ({
                             items: [
                               { n: 'Instant Backup', d: 'Saves a complete, secure snapshot of all files and folders to your computer in one click.' },
                               { n: 'Focus Mode', d: 'Dims and blurs unrelated items so you can focus on a specific node and its connections.' },
-                              { n: 'Mini-map', d: 'A small preview window that lets you "scrub" across the entire enterprise structure.' }
+                              { n: 'Mini-map', d: 'A small preview window that lets you "scrub" across the entire enterprise structure.' },
+                              { n: 'Structural Audit', d: 'Analyze the deep file architecture and system dependencies directly from the Admin Panel.' }
                             ] 
                           },
                           { 
@@ -340,34 +405,36 @@ export const AdminPanel = ({
                             items: [
                               { n: 'Smart Link Tagging', d: 'Link nodes together instantly just by typing their name in brackets inside the description.' },
                               { n: 'Entity Promotion', d: 'Automatically turns regular text into interactive, clickable nodes with one tap.' },
-                              { n: 'Connection Control', d: 'Turn relationship lines on or off directly from the text descriptions.' }
+                              { n: 'Connection Control', d: 'Turn relationship lines on or off directly from the text descriptions.' },
+                              { n: 'Reparenting', d: 'Move entire branches of the hierarchy instantly using the Move icon.' }
                             ] 
                           },
                           { 
                             cat: 'Safety', 
                             items: [
-                              { n: 'Waste Bin', d: 'Safely recover items youâ€™ve deleted. Nothing is truly gone until you empty the bin.' },
+                              { n: 'Waste Bin', d: 'Safely recover items you’ve deleted. Nothing is truly gone until you empty the bin.' },
                               { n: 'Hierarchy Audit', d: 'See at a glance where every node belongs in the hierarchy or transverse links.' },
-                              { n: 'Live Auto-Save', d: 'Your changes are synced the moment you make them, protecting against crashes.' }
+                              { n: 'Live Auto-Save', d: 'Your changes are synced the moment you make them, protecting against crashes.' },
+                              { n: 'Collision Elasticity', d: 'Radial layout engine that prevents node overlaps while allowing dense compaction.' }
                             ] 
                           }
                         ].map(f => (
-                          <div key={f.cat} className="p-3 bg-white/[0.02] rounded-lg border border-white/5">
-                             <div className="text-[8px] font-bold text-brand-cyan mb-2 uppercase tracking-tighter">{f.cat}</div>
-                             <div className="flex flex-wrap gap-2">
-                                {f.items.map(i => (
-                                    <span 
-                                      key={i.n} 
-                                      onMouseEnter={() => setHoveredFeature(i)}
-                                      onMouseLeave={() => setHoveredFeature(null)}
-                                      className="text-[9px] text-slate-400 bg-white/5 px-2 py-1 rounded-md cursor-help hover:bg-brand-cyan/20 hover:text-brand-cyan hover:border-brand-cyan/40 transition-all border border-white/5"
-                                    >
-                                      {i.n}
-                                    </span>
-                                ))}
-                             </div>
-                          </div>
-                        ))}
+                           <div key={f.cat} className="p-3 bg-white/[0.02] rounded-xl border border-white/5 space-y-3">
+                              <div className="text-[8px] font-black text-brand-cyan mb-2 uppercase tracking-tighter bg-brand-cyan/5 px-2 py-1 rounded-md inline-block">{f.cat}</div>
+                              <div className="flex flex-wrap gap-2">
+                                 {f.items.map(i => (
+                                     <div 
+                                       key={i.n} 
+                                       onMouseEnter={() => setHoveredFeature(i)}
+                                       onMouseLeave={() => setHoveredFeature(null)}
+                                       className="text-[9px] text-slate-400 bg-white/5 px-2.5 py-1.5 rounded-lg cursor-help hover:bg-brand-cyan/20 hover:text-brand-cyan hover:border-brand-cyan/40 transition-all border border-white/5 font-bold"
+                                     >
+                                       {i.n}
+                                     </div>
+                                 ))}
+                              </div>
+                           </div>
+                         ))}
                      </div>
                   </div>
 
@@ -385,6 +452,63 @@ export const AdminPanel = ({
                         </div>
                      </div>
                   </div>
+                </motion.div>
+              ) : activeTab === 'system' ? (
+                <motion.div key="system-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8 pb-32">
+                   <div className="space-y-4">
+                      <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest block border-b border-white/5 pb-2">Core System Architecture</span>
+                      
+                      <div className="grid grid-cols-1 gap-2">
+                         {[
+                           { 
+                             cat: 'Application Core', 
+                             files: [
+                               { n: 'App.jsx', d: 'The System Brain. Orchestrates state management, the radial layout engine, and viewport transitions.' },
+                               { n: 'index.css', d: 'The Aesthetic Core. Defines the design system tokens, glassmorphic effects, and motion physics.' },
+                               { n: 'ThemeContext.jsx', d: 'Theme Provider. Persists user interface preferences and color identity across the component tree.' }
+                             ] 
+                           },
+                           { 
+                             cat: 'Mesh & Canvas', 
+                             files: [
+                               { n: 'MeshCanvas.jsx', d: 'The Interaction Engine. High-performance canvas renderer for enterprise hierarchy and connection physics.' },
+                               { n: 'OrbitalNav.jsx', d: 'The Spatial Pilot. Implements HUD-based thumbstick controls and map-scale navigation.' }
+                             ] 
+                           },
+                           { 
+                             cat: 'Knowledge Intelligence', 
+                             files: [
+                               { n: 'IntelligenceDrawer.jsx', d: 'The Knowledge Forge. Rich-text editor for node semantic metadata and hierarchical tagging.' },
+                               { n: 'AdminPanel.jsx', d: 'Architectural Controller. Provides tools for hierarchy auditing, data sync, and system archival.' }
+                             ] 
+                           },
+                           { 
+                             cat: 'Data Fabric', 
+                             files: [
+                               { n: 'mesh_authority.js', d: 'The Golden Source. Authoritative enterprise hierarchy definition in JavaScript format.' },
+                               { n: 'nodes.js', d: 'Entity Blueprints. Defines the internal schema and visual identity for all node types.' }
+                             ] 
+                           }
+                         ].map(group => (
+                           <div key={group.cat} className="p-4 bg-white/[0.02] rounded-xl border border-white/5 space-y-3">
+                              <div className="text-[8px] font-black text-brand-cyan uppercase tracking-widest">{group.cat}</div>
+                              <div className="flex flex-col gap-1.5">
+                                 {group.files.map(f => (
+                                   <div 
+                                     key={f.n}
+                                     onMouseEnter={() => setHoveredFeature(f)}
+                                     onMouseLeave={() => setHoveredFeature(null)}
+                                     className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-white/5 border border-transparent hover:border-white/5 transition-all group cursor-help"
+                                   >
+                                      <Box size={14} className="text-slate-700 group-hover:text-brand-cyan transition-colors" />
+                                      <span className="text-[11px] font-bold text-slate-400 group-hover:text-white">{f.n}</span>
+                                   </div>
+                                 ))}
+                              </div>
+                           </div>
+                         ))}
+                      </div>
+                   </div>
                 </motion.div>
               ) : (
                 <motion.div key="bin-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -442,3 +566,4 @@ export const AdminPanel = ({
     </motion.div>
   );
 };
+

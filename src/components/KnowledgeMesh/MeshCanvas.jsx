@@ -21,7 +21,8 @@ export const MeshCanvas = ({
   onLinkClick,
   isMovingMesh,
   isSidebarOpen,
-  movingNodeId
+  movingNodeId,
+  projectionMode = '2d'
 }) => {
   const NODE_W = 224;
   const NODE_H = 100;
@@ -69,9 +70,10 @@ export const MeshCanvas = ({
   };
 
   const handlePointerMove = (e, id) => {
-    if (draggedNodeId !== id) return;
-    //Repositioning logic temporarily suspended via Spatial Interaction Lock
+    // Manual Repositioning Locked: Use 'Move Node' icon for hierarchical restructuring
     /*
+    if (draggedNodeId !== id || isSidebarOpen) return;
+    
     const dx = (e.clientX - dragStartPos.x) / view.scale;
     const dy = (e.clientY - dragStartPos.y) / view.scale;
     
@@ -90,13 +92,15 @@ export const MeshCanvas = ({
   };
 
   return (
-    <div 
-         ref={meshRef}
-         className="absolute inset-0 origin-top-left will-change-transform"
-         style={{ 
-             transform: `translate3d(${view.x}px, ${view.y}px, 0) scale(${view.scale})`,
-             backfaceVisibility: 'hidden'
-         }}>
+    <div className={`absolute inset-0 ${projectionMode === '3d' ? 'mesh-3d-scene' : ''}`}>
+      <div 
+           ref={meshRef}
+           className={`absolute inset-0 origin-top-left will-change-transform ${projectionMode === '3d' ? 'mesh-3d-layer' : ''}`}
+           style={{ 
+               transform: `translate3d(${view.x}px, ${view.y}px, 0) scale(${view.scale})`,
+               backfaceVisibility: 'hidden',
+               transformStyle: 'preserve-3d'
+           }}>
       
       <svg className="absolute inset-0 w-[5000px] h-[5000px] pointer-events-none overflow-visible">
         <defs>
@@ -125,8 +129,37 @@ export const MeshCanvas = ({
             }
 
             return (
-                <g key={lid} className={`group cursor-pointer transition-all duration-500 ${isUnrelatedDim ? 'opacity-5 blur-[1px]' : 'opacity-100'}`}>
+                <g key={lid} className={`group cursor-pointer transition-all duration-500 ${isUnrelatedDim ? 'opacity-5 blur-[1px]' : 'opacity-100'} ${projectionMode === '3d' ? 'link-3d' : ''}`}>
+                    {/* Visual Base Layer */}
+                    <motion.path 
+                      d={pathData} 
+                      fill="none" 
+                      className="pointer-events-none"
+                      animate={{ 
+                        stroke: color,
+                        strokeWidth: isHovered ? 2 : 1,
+                        strokeOpacity: isHovered ? 0.8 : 0.3
+                      }}
+                      transition={{ duration: 0.4, ease: "easeInOut" }}
+                    />
+
+                    {/* Kinetic Pulse Layer */}
+                    <motion.path 
+                      d={pathData} 
+                      fill="none" 
+                      stroke={color} 
+                      className={`pointer-events-none connection-pulse ${isMovingMesh ? '' : 'animate-pulse'}`}
+                      animate={{ 
+                        strokeWidth: isHovered ? (4 / view.scale) : (2 / view.scale),
+                        strokeOpacity: isHovered ? 0.6 : 0.2
+                      }}
+                      transition={{ duration: 0.4, ease: "easeInOut" }}
+                      style={{ filter: 'url(#meshglow)' }} 
+                    />
+
+                    {/* Top-Level Invisible Hit Area */}
                     <path d={pathData} fill="none" stroke="transparent" strokeWidth={30} 
+                      className="pointer-events-auto"
                       onMouseEnter={() => { 
                         if (!isMovingMesh && !isSidebarOpen) {
                             setHoveredLinkId(lid); 
@@ -138,15 +171,14 @@ export const MeshCanvas = ({
                         }
                       }} 
                       onMouseLeave={() => { if (!isMovingMesh) { setHoveredLinkId(null); setHoveredLinkData(null); } }} 
-                      onClick={(e) => { e.stopPropagation(); onLinkClick(node.id, parent.id); }} className="pointer-events-auto" />
-                    <path d={pathData} fill="none" stroke={color} strokeWidth={isHovered ? 2 : 1} strokeOpacity={isHovered ? 0.8 : 0.3} className="transition-all duration-300" />
-                    <path d={pathData} fill="none" stroke={color} strokeWidth={isHovered ? 4 / view.scale : 2 / view.scale} strokeOpacity={isHovered ? 0.6 : 0.3} className={`connection-pulse opacity-20 ${isMovingMesh ? '' : 'animate-pulse'}`} style={{ filter: 'url(#meshglow)' }} />
+                      onClick={(e) => { e.stopPropagation(); onLinkClick(node.id, parent.id); }} 
+                    />
                 </g>
             );
         })}
 
         {nodes.filter(n => n.secondaryLinks?.length).map(node => 
-            node.secondaryLinks.map(targetId => {
+            node.secondaryLinks.filter(tid => tid !== node.parentId && nodes.find(n => n.id === tid)?.parentId !== node.id).map(targetId => {
                 const target = nodes.find(n => n.id === targetId);
                 if (!target) return null;
                 const pathData = getPath(node, target, target);
@@ -162,7 +194,20 @@ export const MeshCanvas = ({
 
                 return (
                     <g key={lid} className={`group cursor-pointer transition-all duration-500 ${isUnrelatedDim ? 'opacity-5 blur-[1px]' : 'opacity-100'}`}>
+                       <motion.path 
+                         d={pathData} 
+                         fill="none" 
+                         className="pointer-events-none"
+                         animate={{ 
+                           stroke: isHovered ? "#00f0ff" : "#64748b",
+                           strokeWidth: isHovered ? 2 / view.scale : 1 / view.scale,
+                           strokeOpacity: isHovered ? 0.9 : 0.4,
+                           strokeDasharray: isHovered ? "0,0" : "5,5"
+                         }}
+                         transition={{ duration: 0.4, ease: "easeInOut" }}
+                       />
                        <path d={pathData} fill="none" stroke="transparent" strokeWidth={30} 
+                          className="pointer-events-auto"
                           onMouseEnter={() => { 
                             if (!isMovingMesh) {
                                 const config = ENTITY_TYPES[node.type?.toUpperCase()] || ENTITY_TYPES.TAXONOMY || { color: '#ffffff' };
@@ -174,8 +219,7 @@ export const MeshCanvas = ({
                                 }); 
                             }
                           }} 
-                          onMouseLeave={() => { if (!isMovingMesh) { setHoveredLinkId(null); setHoveredLinkData(null); } }} onClick={() => onLinkClick(target.id, node.id)} className="pointer-events-auto" />
-                       <path d={pathData} fill="none" stroke={isHovered ? "#00f0ff" : "currentColor"} strokeWidth={isHovered ? 2 / view.scale : 1 / view.scale} strokeOpacity={isHovered ? 0.8 : 0.4} strokeDasharray={isHovered ? "none" : "5,5"} className="transition-all duration-300 text-slate-400 dark:text-white" />
+                          onMouseLeave={() => { if (!isMovingMesh) { setHoveredLinkId(null); setHoveredLinkData(null); } }} onClick={() => onLinkClick(target.id, node.id)} />
                     </g>
                 );
             })
@@ -216,10 +260,11 @@ export const MeshCanvas = ({
             onPointerUp={(e) => { e.stopPropagation(); handlePointerUp(e, node); }} 
             onMouseEnter={() => { if (!isMovingMesh && !draggedNodeId && !isSidebarOpen) setHoveredNodeId(node.id); }} 
             onMouseLeave={() => { if (!isMovingMesh) setHoveredNodeId(null); }} 
-            className={`absolute w-56 p-1 cursor-move touch-none will-change-transform ${draggedNodeId === node.id ? 'z-50' : 'transition-[opacity,transform,filter] duration-500 z-20'} ${isDimmed ? 'opacity-20 scale-95 blur-[2px]' : 'opacity-100 scale-100'}`} 
+            className={`absolute w-56 p-1 cursor-move touch-none will-change-transform ${draggedNodeId === node.id ? 'z-50' : 'transition-[opacity,transform,filter] duration-500 z-20'} ${isDimmed ? 'opacity-20 scale-95 blur-[2px]' : 'opacity-100 scale-100'} ${projectionMode === '3d' ? 'node-3d-tilt' : ''}`} 
             style={{ 
                 transform: `translate3d(${node.x}px, ${node.y}px, 0)`,
-                backfaceVisibility: 'hidden'
+                backfaceVisibility: 'hidden',
+                transformStyle: 'preserve-3d'
             }}
           >
             <div className={`relative glass-panel overflow-hidden border-t-2 group-hover:shadow-[0_0_30px_rgba(255,255,255,0.05)] transition-all duration-500 rounded-xl ${movingNodeId === node.id ? 'ring-2 ring-brand-cyan ring-offset-4 ring-offset-black animate-pulse shadow-[0_0_30px_rgba(0,240,255,0.4)]' : ''}`}
@@ -230,15 +275,19 @@ export const MeshCanvas = ({
                    Select New Parent Node
                 </div>
               )}
-              <div className="p-4 relative z-10">
-                <div className="flex justify-between items-start mb-2">
-                   <div className="flex items-center gap-1.5 overflow-hidden">
-                      <config.icon size={10} style={{ color }} className="shrink-0" />
-                      <span className="text-[8px] font-black uppercase tracking-[0.2em] truncate opacity-60" style={{ color }}>{config.label}</span>
-                   </div>
+                <div className="p-4 relative z-10 transition-opacity duration-300" style={{ opacity: layoutRules.showLabels ? 1 : 0.2 }}>
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex items-center gap-1.5 overflow-hidden">
+                       <config.icon size={10} style={{ color }} className="shrink-0" />
+                       {layoutRules.showLabels && (
+                         <span className="text-[8px] font-black uppercase tracking-[0.2em] truncate opacity-60" style={{ color }}>{config.label}</span>
+                       )}
+                    </div>
+                  </div>
+                  {layoutRules.showLabels && (
+                    <h3 className="text-[13px] font-bold text-white/90 leading-tight mb-1 italic tracking-tight">{node.title}</h3>
+                  )}
                 </div>
-                <h3 className="text-[13px] font-bold text-white/90 leading-tight mb-1 italic tracking-tight">{node.title}</h3>
-              </div>
 
               <div 
                 className="absolute top-1 right-1 flex gap-1 opacity-60 hover:opacity-100 transition-opacity z-50 pointer-events-auto"
@@ -261,6 +310,7 @@ export const MeshCanvas = ({
           </div>
         );
       })}
+      </div>
     </div>
   );
 };

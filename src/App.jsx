@@ -8,8 +8,9 @@ import { OrbitalNav } from './components/Navigation/OrbitalNav';
 import { StatusSidebars } from './components/Dashboard/StatusSidebars';
 import { IntelligenceDrawer } from './components/Editor/IntelligenceDrawer';
 import { AdminPanel } from './components/Admin/AdminPanel';
+import { SpatialCanvas } from './components/KnowledgeMesh/SpatialCanvas';
 import { AnimatePresence, motion, animate } from 'framer-motion';
-import { Activity, Link as LinkIcon, Cpu, ArrowDown, Network, GitMerge } from 'lucide-react';
+import { Activity, Link as LinkIcon, Cpu, ArrowDown, Network, GitMerge, Box, Layers, Type, Sparkles } from 'lucide-react';
 
 export default function App() {
   const resetLayout = () => {
@@ -30,7 +31,12 @@ export default function App() {
   const [nodes, setNodes] = useState(() => {
     // VERSIONED STORAGE KEY: hive_mesh_v13_corporate_hierarchy
     const saved = localStorage.getItem('hive_mesh_v13_corporate_hierarchy');
-    return saved ? JSON.parse(saved) : MESH_JSON_AUTHORITY;
+    const data = saved ? JSON.parse(saved) : MESH_JSON_AUTHORITY;
+    
+    // STABILITY PASS: Remove duplicates based on ID
+    const uniqueMap = new Map();
+    data.forEach(n => { if (n && n.id) uniqueMap.set(n.id, n); });
+    return Array.from(uniqueMap.values());
   });
 
   const [deletedNodes, setDeletedNodes] = useState(() => {
@@ -51,13 +57,17 @@ export default function App() {
          parentDistance: data.parentDistance ?? 400,
          connectionTension: data.connectionTension ?? 60,
          layoutStyle: data.layoutStyle ?? 'radial',
+         projectionMode: data.projectionMode ?? '2d',
          directionalLocking: data.directionalLocking ?? true,
-         unifiedSyncPoints: data.unifiedSyncPoints ?? true
+         unifiedSyncPoints: data.unifiedSyncPoints ?? true,
+         showLabels: data.showLabels ?? true,
+         labelStyle: data.labelStyle ?? 'standard'
       };
     } catch {
       return { 
          childGap: 50, parentDistance: 400, connectionTension: 60,
-         layoutStyle: 'radial', directionalLocking: true, unifiedSyncPoints: true
+         layoutStyle: 'radial', projectionMode: '2d', directionalLocking: true, unifiedSyncPoints: true,
+         showLabels: true, labelStyle: 'standard'
       };
     }
   });
@@ -74,8 +84,16 @@ export default function App() {
     try { localStorage.setItem('hive_mesh_waste_bin', JSON.stringify(deletedNodes)); } catch (e) { console.error(e); }
   }, [deletedNodes]);
 
-  const [view, setView] = useState({ x: 0, y: 0, scale: 0.8 });
-  const viewRef = useRef({ x: 0, y: 0, scale: 0.8 });
+  const [view, setView] = useState(() => {
+    const saved = localStorage.getItem('hive_mesh_viewport_v1');
+    return saved ? JSON.parse(saved) : { x: 0, y: 0, scale: 0.8 };
+  });
+  const viewRef = useRef(view);
+  
+  useEffect(() => {
+    localStorage.setItem('hive_mesh_viewport_v1', JSON.stringify(view));
+  }, [view]);
+
   const meshRef = useRef(null);
   const [dragType, setDragType] = useState(null);
   const [isDraggingNode, setIsDraggingNode] = useState(false);
@@ -260,7 +278,8 @@ export default function App() {
     });
 
     if (proposal.type === 'new_node' || proposal.type === 'connection') {
-        setTimeout(() => applyLayout(layoutRules), 100);
+        const nextNodes = proposal.type === 'new_node' ? [...nodes, { id: proposal.id || `ai_${Date.now()}`, parentId: proposal.parentId, title: proposal.title, type: proposal.nodeType, content: { Summary: proposal.reason }, x: 2000, y: 2000, ox: 2000, oy: 2000, secondaryLinks: [] }] : nodes;
+        setTimeout(() => applyLayout(layoutRules, nextNodes), 100);
     }
   };
 
@@ -283,8 +302,8 @@ export default function App() {
     }
   }, []);
 
-  const applyLayout = (rules) => {
-      let newNodes = [...nodes];
+  const applyLayout = (rules, baseNodes = null) => {
+      let newNodes = baseNodes ? [...baseNodes] : [...nodes];
       const roots = newNodes.filter(n => !n.parentId);
       
       const siblingGap = rules.childGap ?? 10;
@@ -333,7 +352,6 @@ export default function App() {
 
          const project = (d, dist, list, span) => {
             const coords = new Map();
-            // INCREASED SPACING FOR QUADRANT ISOLATION
             const quadrantDist = dist * 1.2; 
             const run = (nid, dt, dep, ox, oy, seen = new Set()) => {
                if (seen.has(nid) || seen.size > 1000) return 0; seen.add(nid);
@@ -356,23 +374,22 @@ export default function App() {
             };
             
             let safeSpan = Math.max(1, span);
-            // ADDED PADDING BETWEEN QUADRANT STARTS
             let cx = root.x - ((safeSpan - 1) * hSpacing / 2);
             let cy = root.y - ((safeSpan - 1) * vSpacing / 2);
             
             list.forEach(c => {
                if (d === 'Up' || d === 'Down') {
-                 const step = run(c.id, d, 1, cx, root.y);
-                 cx += step * hSpacing;
+                  const step = run(c.id, d, 1, cx, root.y);
+                  cx += step * hSpacing;
                } else {
-                 const step = run(c.id, d, 1, root.x, cy);
-                 cy += step * vSpacing;
+                  const step = run(c.id, d, 1, root.x, cy);
+                  cy += step * vSpacing;
                }
             });
             return coords;
          };
 
-         newNodes.forEach(n => { if (n.id !== root.id) { n.x = 2000; n.y = 2000; } }); // Default to root origin rather than zero
+         newNodes.forEach(n => { if (n.id !== root.id) { n.x = 2000; n.y = 2000; } });
          const resolve = (d, list, s) => {
             const p = project(d, expansionJump, list, s);
             p.forEach((pos, id) => { const n = newNodes.find(no => no.id === id); if (n) { n.x = pos.x; n.y = pos.y; n.ox = pos.x; n.oy = pos.y; n.branchDir = d; } });
@@ -381,6 +398,65 @@ export default function App() {
          root.branchDir = null;
       });
 
+      // COLLISION & CONSTRAINT RESOLUTION PASS (The A/B/C/D Elastic Logic)
+      // This ensures nodes stop moving when they hit boundaries while others continue compacting
+      const iterations = 20; 
+      for (let iter = 0; iter < iterations; iter++) {
+        let changed = false;
+        
+        // 1. Hierarchy Constraints: Ensure children don't crush their parents
+        newNodes.forEach(child => {
+          if (!child.parentId) return;
+          const parent = newNodes.find(p => p.id === child.parentId);
+          if (!parent) return;
+
+          const minGapH = 260; // 224 node width + 36 gap
+          const minGapV = 130; // 100 node height + 30 gap
+
+          if (child.branchDir === 'Right' && child.x < parent.x + minGapH) { child.x = parent.x + minGapH; changed = true; }
+          if (child.branchDir === 'Left' && child.x > parent.x - minGapH) { child.x = parent.x - minGapH; changed = true; }
+          if (child.branchDir === 'Down' && child.y < parent.y + minGapV) { child.y = parent.y + minGapV; changed = true; }
+          if (child.branchDir === 'Up' && child.y > parent.y - minGapV) { child.y = parent.y - minGapV; changed = true; }
+        });
+
+        // 2. Spatial Collision Avoidance: Push unrelated branches apart
+        newNodes.forEach(n1 => {
+          newNodes.forEach(n2 => {
+            if (n1.id === n2.id) return;
+            
+            const dx = n1.x - n2.x;
+            const dy = n1.y - n2.y;
+            const adx = Math.abs(dx);
+            const ady = Math.abs(dy);
+
+            const padH = 250 + siblingGap * 0.5;
+            const padV = 120 + siblingGap * 0.5;
+
+            if (adx < padH && ady < padV) {
+               changed = true;
+               // Calculate required push to clear the overlap
+               const overlapX = padH - adx;
+               const overlapY = padV - ady;
+               
+               // Push along the shallower axis to minimize jitter
+               if (overlapX < overlapY || ady < 20) {
+                  const pushX = (overlapX * (dx >= 0 ? 1 : -1)) * 0.5;
+                  if (n1.parentId) n1.x += pushX;
+                  if (n2.parentId) n2.x -= pushX;
+               } else {
+                  const pushY = (overlapY * (dy >= 0 ? 1 : -1)) * 0.5;
+                  if (n1.parentId) n1.y += pushY;
+                  if (n2.parentId) n2.y -= pushY;
+               }
+            }
+          });
+        });
+
+        if (!changed) break;
+      }
+
+      // Final Sync
+      newNodes.forEach(n => { n.ox = n.x; n.oy = n.y; });
       setNodes(newNodes);
   };
 
@@ -464,6 +540,7 @@ export default function App() {
   useEffect(() => { requestRef.current = requestAnimationFrame(animateLoop); return () => cancelAnimationFrame(requestRef.current); }, []);
 
   const handleWheel = (e) => {
+    if (layoutRules.projectionMode === 'spatial_3d') return;
     e.preventDefault();
     const factor = Math.exp(e.deltaY * -0.001);
     const v = viewRef.current;
@@ -561,10 +638,20 @@ export default function App() {
                    style={{ 
                      left: getTipPos(448, tipHeight).x, 
                      top: getTipPos(448, tipHeight).y, 
-                     borderTopColor: ENTITY_TYPES[nodes.find(n => n.id === hoveredNodeId)?.type]?.color 
+                     borderTopColor: ENTITY_TYPES[nodes.find(n => n.id === hoveredNodeId)?.type?.toUpperCase()]?.color || '#00f2ff'
                    }}>
                  <div className="flex items-center gap-2 mb-4"><Activity size={12} className="text-brand-cyan" /><span className="text-[10px] font-bold tracking-[0.1em] text-brand-cyan uppercase">Information Summary</span></div>
-                 <h4 className="text-white font-bold text-base mb-2 italic tracking-tight">{nodes.find(n => n.id === hoveredNodeId)?.title}</h4>
+                  {(() => {
+                    const node = nodes.find(n => n.id === hoveredNodeId);
+                    if (!node) return null;
+                    const config = ENTITY_TYPES[node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT;
+                    return (
+                      <div className="flex flex-col mb-6">
+                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-1.5">{config.label}</span>
+                        <h4 className="text-white font-bold text-3xl italic tracking-tighter leading-none">{node.title}</h4>
+                      </div>
+                    );
+                  })()}
                  <p className="text-[13px] text-slate-300 leading-relaxed italic mb-5 border-b border-white/5 pb-5">
                     {(() => {
                         const n = nodes.find(n => n.id === hoveredNodeId);
@@ -582,9 +669,9 @@ export default function App() {
                         (h.secondaryLinks || []).forEach(sid => { const s = nodes.find(n => n.id === sid); if (s) rels.push({ n: s, l: 'Link' }); });
                         nodes.filter(n => (n.secondaryLinks || []).includes(h.id)).forEach(n => rels.push({ n, l: 'Reference' }));
                         return rels.map((r, i) => (
-                           <div key={i} className="px-3 py-2.5 rounded-xl border border-white/5 bg-white/[0.01] flex items-center justify-between pointer-events-auto" style={{ borderLeft: `3px solid ${ENTITY_TYPES[r.n.type]?.color}` }}>
-                              <div className="flex flex-col"><span className="text-[8px] font-black uppercase tracking-tighter text-slate-500 mb-0.5">{ENTITY_TYPES[r.n.type]?.label}</span><span className="text-[12px] font-bold text-white/90 italic truncate max-w-[200px]">{r.n.title}</span></div>
-                              <div className="text-[8px] font-black px-2 py-1 rounded-md italic uppercase tracking-widest leading-none border shrink-0 ml-4" style={{ color: ENTITY_TYPES[r.n.type]?.color, borderColor: `${ENTITY_TYPES[r.n.type]?.color}30` }}>{r.l}</div>
+                           <div key={i} className="px-3 py-2.5 rounded-xl border border-white/5 bg-white/[0.01] flex items-center justify-between pointer-events-auto" style={{ borderLeft: `3px solid ${ENTITY_TYPES[r.n.type?.toUpperCase()]?.color || '#00f2ff'}` }}>
+                              <div className="flex flex-col"><span className="text-[8px] font-black uppercase tracking-tighter text-slate-500 mb-0.5">{ENTITY_TYPES[r.n.type?.toUpperCase()]?.label || 'Entity'}</span><span className="text-[12px] font-bold text-white/90 italic truncate max-w-[200px]">{r.n.title}</span></div>
+                              <div className="text-[8px] font-black px-2 py-1 rounded-md italic uppercase tracking-widest leading-none border shrink-0 ml-4" style={{ color: ENTITY_TYPES[r.n.type?.toUpperCase()]?.color || '#00f2ff', borderColor: `${ENTITY_TYPES[r.n.type?.toUpperCase()]?.color || '#00f2ff'}30` }}>{r.l}</div>
                            </div>
                         ));
                       })()}
@@ -643,7 +730,7 @@ export default function App() {
         className={`flex-1 relative overflow-hidden rounded-3xl border border-white/5 shadow-2xl bg-black/20 transition-all duration-700 ${isAdminOpen || isEditorOpen ? 'pointer-events-none grayscale-[0.4] opacity-80' : 'pointer-events-auto'}`}
         onMouseDown={handleMouseDown} 
         onContextMenu={(e) => e.preventDefault()} 
-        onWheel={handleWheel}
+        onWheel={layoutRules.projectionMode === 'spatial_3d' ? undefined : handleWheel}
       >
         <AnimatePresence>
           {isAppearanceOpen && (
@@ -666,45 +753,90 @@ export default function App() {
                      <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>TENSION</span><span className="text-white font-mono">{layoutRules.connectionTension}%</span></div><input type="range" min="10" max="100" value={layoutRules.connectionTension} onChange={(e) => { const u = { ...layoutRules, connectionTension: parseInt(e.target.value) }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
                   </div>
                   <div className="flex gap-1 justify-center border-t border-white/5 pt-3 mt-1">
-                    {[ { id: 'radial', icon: Network }, { id: 'horizontal_lr', icon: GitMerge } ].map(opt => {
-                       const isActive = layoutRules.layoutStyle === opt.id;
-                       return (
-                         <button key={opt.id} onClick={() => { const isR = opt.id === 'radial'; const r = { ...layoutRules, layoutStyle: opt.id, childGap: isR ? 10 : layoutRules.childGap, parentDistance: isR ? 200 : layoutRules.parentDistance }; setLayoutRules(r); applyLayout(r); }} className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all ${isActive ? 'bg-brand-cyan/20 border border-brand-cyan/20' : 'hover:bg-white/5'}`}><opt.icon size={14} className={isActive ? 'text-brand-cyan' : 'text-slate-500'} /></button>
-                       );
-                    })}
+                      <button 
+                        onClick={() => setLayoutRules({ ...layoutRules, showLabels: !layoutRules.showLabels })} 
+                        className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all ${layoutRules.showLabels ? 'bg-brand-cyan/20 border border-brand-cyan/20' : 'hover:bg-white/5'}`}
+                        title="Toggle Labels"
+                      >
+                        <Type size={14} className={layoutRules.showLabels ? 'text-brand-cyan' : 'text-slate-500'} />
+                      </button>
+                      <button 
+                        onClick={() => setLayoutRules({ ...layoutRules, labelStyle: layoutRules.labelStyle === 'pill' ? 'standard' : 'pill' })} 
+                        className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all ${layoutRules.labelStyle === 'pill' ? 'bg-brand-pink/20 border border-brand-pink/20' : 'hover:bg-white/5'}`}
+                        title="Style Labels"
+                      >
+                        <Sparkles size={14} className={layoutRules.labelStyle === 'pill' ? 'text-brand-pink' : 'text-slate-500'} />
+                      </button>
+                      <div className="w-px h-4 bg-white/10 mx-1 self-center" />
+                     {[ { id: 'radial', icon: Network }, { id: 'horizontal_lr', icon: GitMerge } ].map(opt => {
+                        const isActive = layoutRules.layoutStyle === opt.id;
+                        return (
+                          <button key={opt.id} onClick={() => { const isR = opt.id === 'radial'; const r = { ...layoutRules, layoutStyle: opt.id, childGap: isR ? 10 : layoutRules.childGap, parentDistance: isR ? 200 : layoutRules.parentDistance }; setLayoutRules(r); applyLayout(r); }} className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all ${isActive ? 'bg-brand-cyan/20 border border-brand-cyan/20' : 'hover:bg-white/5'}`}><opt.icon size={14} className={isActive ? 'text-brand-cyan' : 'text-slate-500'} /></button>
+                        );
+                     })}
+                     <div className="w-px h-4 bg-white/10 mx-1 self-center" />
+                     {[ { id: '2d', icon: Layers }, { id: 'spatial_3d', icon: Box } ].map(opt => {
+                        const isActive = layoutRules.projectionMode === opt.id;
+                        return (
+                          <button key={opt.id} onClick={() => { setLayoutRules({ ...layoutRules, projectionMode: opt.id }); }} className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all ${isActive ? 'bg-brand-purple/20 border border-brand-purple/20' : 'hover:bg-white/5'}`}><opt.icon size={14} className={isActive ? 'text-brand-purple' : 'text-slate-500'} /></button>
+                        );
+                     })}
                   </div>
                </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        <MeshCanvas 
-           meshRef={meshRef}
-           nodes={nodes} view={view} layoutRules={layoutRules} hoveredNodeId={hoveredNodeId} setHoveredNodeId={handleHoverNode}
-           hoveredLinkId={hoveredLinkId} setHoveredLinkId={setHoveredLinkId} setHoveredLinkData={setHoveredLinkData} 
-           isMovingMesh={!!dragType} isSidebarOpen={isAdminOpen || isEditorOpen}
-           movingNodeId={movingNodeId}
-           onSelectNode={(n) => { 
-              if (movingNodeId) {
-                 if (n.id === movingNodeId) { setMovingNodeId(null); return; }
-                 setNodes(prev => prev.map(node => node.id === movingNodeId ? { ...node, parentId: n.id } : node));
-                 setMovingNodeId(null);
-                 applyLayout(layoutRules);
-                 return;
-              }
-              setSelectedNode(n); setIsEditorOpen(true); setEditingNode(n); setCurrentType(n.type); setFormData({ title: n.title, content: n.content || {} }); 
-           }} 
-           onAddOffshoot={(id) => { setActiveParentId(id); setIsEditorOpen(true); setEditingNode(null); setCurrentType('CONCEPT'); setFormData({ title: '[NEW_ENTITY_SPEC]', content: {} }); }} 
-           onNodeDrag={(id, dx, dy) => setNodes(prev => prev.map(n => n.id === id ? { ...n, x: n.x + dx, y: n.y + dy } : n))}
-           onNodeDragEnd={(id) => setNodes(prev => prev.map(n => n.id === id ? { ...n, ox: n.x, oy: n.y } : n))}
-           onStartReparent={(id) => setMovingNodeId(id)}
-           onLinkClick={(cid, pid) => { 
-             setHoveredLinkId(null); 
-             const targetId = (selectedNode?.id === cid) ? pid : cid;
-             centerOnNode(nodes.find(n => n.id === targetId)); 
-           }}
-        />
-        <OrbitalNav nodes={nodes} view={view} setView={setView} stickPos={stickPos} setStickPos={setStickPos} onOpenAdmin={() => setIsAdminOpen(true)} onOpenAppearance={() => setIsAppearanceOpen(!isAppearanceOpen)} onResetLayout={resetLayout} onMinimapJump={centerOnPoint} />
+        {layoutRules.projectionMode === 'spatial_3d' ? (
+          <SpatialCanvas 
+            nodes={nodes}
+            onSelectNode={(n) => { setSelectedNode(n); }}
+            onOpenDrawer={(n) => { 
+                setSelectedNode(n); 
+                setIsEditorOpen(true); 
+                setIsAdminOpen(false);
+                setEditingNode(n); 
+                setCurrentType(n.type); 
+                setFormData({ title: n.title, content: n.content || {} }); 
+            }}
+            hoveredNodeId={hoveredNodeId}
+            setHoveredNodeId={handleHoverNode}
+            selectedNode={selectedNode}
+            showLabels={layoutRules.showLabels}
+            labelStyle={layoutRules.labelStyle}
+            hoveredLinkData={hoveredLinkData}
+            setHoveredLinkData={setHoveredLinkData}
+          />
+        ) : (
+          <MeshCanvas 
+            meshRef={meshRef}
+            nodes={nodes} view={view} layoutRules={layoutRules} hoveredNodeId={hoveredNodeId} setHoveredNodeId={handleHoverNode}
+            hoveredLinkId={hoveredLinkId} setHoveredLinkId={setHoveredLinkId} setHoveredLinkData={setHoveredLinkData} 
+            isMovingMesh={!!dragType} isSidebarOpen={isAdminOpen || isEditorOpen}
+            movingNodeId={movingNodeId}
+            onSelectNode={(n) => {               if (movingNodeId) {
+                    if (n.id === movingNodeId) { setMovingNodeId(null); return; }
+                    const updatedNodes = nodes.map(node => node.id === movingNodeId ? { ...node, parentId: n.id } : node);
+                    setNodes(updatedNodes);
+                    setMovingNodeId(null);
+                    applyLayout(layoutRules, updatedNodes);
+                    return;
+                }
+                setSelectedNode(n); setIsEditorOpen(true); setEditingNode(n); setCurrentType(n.type); setFormData({ title: n.title, content: n.content || {} }); 
+            }} 
+            onAddOffshoot={(id) => { setActiveParentId(id); setIsEditorOpen(true); setEditingNode(null); setCurrentType('CONCEPT'); setFormData({ title: '[NEW_ENTITY_SPEC]', content: {} }); }} 
+            onNodeDrag={(id, dx, dy) => setNodes(prev => prev.map(n => n.id === id ? { ...n, x: n.x + dx, y: n.y + dy } : n))}
+            onNodeDragEnd={(id) => setNodes(prev => prev.map(n => n.id === id ? { ...n, ox: n.x, oy: n.y } : n))}
+            onStartReparent={(id) => setMovingNodeId(id)}
+            onLinkClick={(cid, pid) => { 
+                setHoveredLinkId(null); 
+                const targetId = (selectedNode?.id === cid) ? pid : cid;
+                centerOnNode(nodes.find(n => n.id === targetId)); 
+            }}
+            projectionMode={layoutRules.projectionMode}
+          />
+        )}
+        <OrbitalNav nodes={nodes} view={view} setView={setView} stickPos={stickPos} setStickPos={setStickPos} onOpenAdmin={() => setIsAdminOpen(true)} onOpenAppearance={() => setIsAppearanceOpen(!isAppearanceOpen)} onResetLayout={resetLayout} onMinimapJump={centerOnPoint} projectionMode={layoutRules.projectionMode} />
       </section>
 
        <AnimatePresence>

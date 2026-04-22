@@ -250,3 +250,34 @@
 /* Ensure hover states also use themed variables where applied */
 .hover\:bg-white\/5:hover { background-color: var(--utility-white-subtle); }
 .hover\:text-white:hover { color: var(--utility-white); }
+
+/* ═══════════════════════════════════════════════════════
+   EXPERIMENTAL 3D PERSPECTIVE (WELTEN3D STYLE)
+   ═══════════════════════════════════════════════════════ */
+
+.mesh-3d-scene {
+  perspective: 2500px;
+  perspective-origin: 50% 50%;
+  transform-style: preserve-3d;
+}
+
+.mesh-3d-layer {
+  transform: rotateX(55deg) rotateZ(-15deg);
+  transition: transform 1.2s cubic-bezier(0.23, 1, 0.32, 1);
+  transform-style: preserve-3d;
+}
+
+.node-3d-tilt {
+  transform: translateZ(40px);
+  box-shadow: 0 40px 80px rgba(0,0,0,0.6);
+  transition: transform 0.4s ease, box-shadow 0.4s ease;
+}
+
+.node-3d-tilt:hover {
+  transform: translateZ(60px) scale(1.05);
+}
+
+.link-3d {
+  transform: translateZ(10px);
+  opacity: 0.6;
+}
