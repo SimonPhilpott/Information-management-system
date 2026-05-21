@@ -38,8 +38,14 @@ export default defineConfig({
   plugins: [react(), backupPlugin()],
   server: {
     host: true,
-    port: 5173,
+    port: 6001,
     strictPort: false,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3005',
+        changeOrigin: true
+      }
+    },
     watch: {
       ignored: ['**/backups/**']
     }

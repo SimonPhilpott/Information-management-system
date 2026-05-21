@@ -1,18 +1,36 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ENTITY_TYPES, SCHEMAS } from './data/nodes';
 import { MESHES } from './data/mesh_authority.js';
 
 const MESH_JSON_AUTHORITY = MESHES;
 import { MeshCanvas } from './components/KnowledgeMesh/MeshCanvas';
 import { OrbitalNav } from './components/Navigation/OrbitalNav';
-import { StatusSidebars } from './components/Dashboard/StatusSidebars';
+import Layout from './components/Dashboard/Layout';
+import ChatInterface from './components/Dashboard/ChatInterface';
 import { IntelligenceDrawer } from './components/Editor/IntelligenceDrawer';
 import { AdminPanel } from './components/Admin/AdminPanel';
 import { SpatialCanvas } from './components/KnowledgeMesh/SpatialCanvas';
+import { InstancedSpatialCanvas } from './components/KnowledgeMesh/InstancedSpatialCanvas';
 import { AnimatePresence, motion, animate } from 'framer-motion';
 import { Activity, Link as LinkIcon, Cpu, ArrowDown, Network, GitMerge, Box, Layers, Type, Sparkles } from 'lucide-react';
 
+import { useAppLogic } from './hooks/useAppLogic';
+import OnboardingSetup from './components/Dashboard/OnboardingSetup';
+import { checkIsEntertainment } from './utils/contentFilter';
+
 export default function App() {
+  const { state, actions } = useAppLogic();
+  const { authStatus, settings, loading } = state;
+
+  // Auth callback check
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('auth') === 'success') {
+      window.history.replaceState({}, '', '/');
+      window.location.reload(); // Refresh to pick up new tokens
+    }
+  }, []);
+
   const resetLayout = () => {
     if (window.confirm('WARNING: This will permanently purge ALL changes and reset your workspace to the authoritative NAVXML structure. Proceed?')) {
       localStorage.clear();
@@ -38,6 +56,25 @@ export default function App() {
     data.forEach(n => { if (n && n.id) uniqueMap.set(n.id, n); });
     return Array.from(uniqueMap.values());
   });
+
+  const filteredNodes = useMemo(() => {
+    const isEntertainment = (node) => {
+      if (!node) return false;
+      if (checkIsEntertainment(node.title) || checkIsEntertainment(node.type)) return true;
+      // Also check ancestor chain
+      let parentId = node.parentId;
+      let depth = 0;
+      while (parentId && depth < 20) {
+        const parent = nodes.find(n => n.id === parentId);
+        if (!parent) break;
+        if (checkIsEntertainment(parent.title) || checkIsEntertainment(parent.type)) return true;
+        parentId = parent.parentId;
+        depth++;
+      }
+      return false;
+    };
+    return nodes.filter(n => !isEntertainment(n));
+  }, [nodes]);
 
   const [deletedNodes, setDeletedNodes] = useState(() => {
     try {
@@ -66,7 +103,7 @@ export default function App() {
     } catch {
       return { 
          childGap: 50, parentDistance: 400, connectionTension: 60,
-         layoutStyle: 'radial', projectionMode: '2d', directionalLocking: true, unifiedSyncPoints: true,
+         layoutStyle: 'radial', projectionMode: 'instanced_3d', directionalLocking: true, unifiedSyncPoints: true,
          showLabels: true, labelStyle: 'standard'
       };
     }
@@ -96,45 +133,52 @@ export default function App() {
 
   const meshRef = useRef(null);
   const [dragType, setDragType] = useState(null);
-  const [isDraggingNode, setIsDraggingNode] = useState(false);
+  const isDraggingNode = false; // Internal tracking
   const [lastPos, setLastPos] = useState({ x: 0, y: 0 });
   const [stickPos, setStickPos] = useState({ x: 0, y: 0, active: false });
   
   const [hoveredNodeId, setHoveredNodeId] = useState(null);
-  const [hoveringNodeId, setHoveringNodeId] = useState(null);
   const hoverTimeout = useRef(null);
+
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isAdminOpen, setIsAdminOpen] = useState(false);
+  const [isAppearanceOpen, setIsAppearanceOpen] = useState(false);
+
+  const activeDisplayNode = useMemo(() => {
+    if (!hoveredNodeId && !selectedNode) return null;
+    if (hoveredNodeId) {
+        const hovered = nodes.find(n => n.id === hoveredNodeId);
+        if (hovered) return hovered;
+    }
+    return selectedNode;
+  }, [nodes, hoveredNodeId, selectedNode]);
 
   const handleHoverNode = (id) => {
     if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
     
-    // INTERACTION LOCK: Block hover extraction if sidebars are active or dragging is in progress
-    if ((isAdminOpen || isEditorOpen || !!dragType || isDraggingNode) && id) {
+    // INTERACTION LOCK: Block hover extraction if dragging is in progress
+    if ((!!dragType || isDraggingNode) && id) {
        setHoveredNodeId(null);
        return;
-    }
+     }
+
 
     if (id) setHoveredNodeId(id);
     else {
       hoverTimeout.current = setTimeout(() => {
         setHoveredNodeId(null);
-      }, 100);
+      }, 80);
     }
   };
 
   const [hoveredLinkId, setHoveredLinkId] = useState(null);
   const [hoveredLinkData, setHoveredLinkData] = useState(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-
-  const [selectedNode, setSelectedNode] = useState(null);
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
-  const [isAppearanceOpen, setIsAppearanceOpen] = useState(false);
   const [movingNodeId, setMovingNodeId] = useState(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   
   const [editingNode, setEditingNode] = useState(null);
-  const [tipHeight, setTipHeight] = useState(400);
-  const tipRef = useRef(null);
   const [activeParentId, setActiveParentId] = useState(null);
   const [currentType, setCurrentType] = useState('CONCEPT');
   const [formData, setFormData] = useState({ title: '', content: {} });
@@ -594,11 +638,6 @@ export default function App() {
     return () => { window.removeEventListener('mousemove', mm); window.removeEventListener('mouseup', mu); };
   }, [dragType, lastPos, nodes]);
 
-  useLayoutEffect(() => {
-    if (hoveredNodeId && tipRef.current) {
-      setTipHeight(tipRef.current.offsetHeight);
-    }
-  }, [hoveredNodeId, nodes]);
 
   const handleBackup = async () => {
     const res = await fetch('/api/backup');
@@ -617,229 +656,356 @@ export default function App() {
     return { x: Math.max(15, nx), y: Math.max(15, ny) };
   };
 
+  if (loading) {
+    return (
+      <div className="onboarding-overlay flex h-screen w-screen justify-center items-center bg-[var(--bg-primary)] text-[var(--text-primary)] font-sans">
+        <div className="flex flex-col items-center">
+          <div className="w-10 h-10 border-4 border-accent-indigo border-t-transparent rounded-full animate-spin mb-4" />
+          <p className="text-[var(--text-secondary)] font-medium animate-pulse">Initializing System...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authStatus?.isAuthorized || !settings?.isConfigured) {
+    return (
+      <OnboardingSetup
+        authStatus={authStatus}
+        onComplete={() => window.location.reload()}
+        API=""
+      />
+    );
+  }
+
   return (
-    <div className="flex h-screen p-8 gap-8 antialiased overflow-hidden select-none relative bg-[#020617]">
-      <div className="fixed inset-0 pointer-events-none opacity-30">
-        <div className="absolute top-0 right-1/4 w-[900px] h-[900px] bg-brand-cyan/20 blur-[180px] rounded-full -translate-y-1/2" />
-        <div className="absolute bottom-0 left-1/4 w-[700px] h-[700px] bg-brand-purple/20 blur-[150px] rounded-full translate-y-1/2" />
-      </div>
-
+    <>
       <div className="fixed inset-0 pointer-events-none z-[1000000]">
-          <AnimatePresence mode="wait">
-            {(hoveredNodeId && !isDraggingNode) && (
-              <motion.div 
-                   ref={tipRef}
-                   initial={{ opacity: 0, scale: 0.95 }} 
-                   animate={{ opacity: 1, scale: 1 }} 
-                   exit={{ opacity: 0, scale: 0.95 }} 
-                   className="fixed backdrop-blur-3xl border border-white/10 p-6 rounded-3xl w-[448px] border-t-4 bg-black/85 shadow-3xl z-[2000000] flex flex-col pointer-events-auto" 
-                   onMouseEnter={() => { if (hoverTimeout.current) clearTimeout(hoverTimeout.current); }}
-                   onMouseLeave={() => handleHoverNode(null)}
-                   style={{ 
-                     left: getTipPos(448, tipHeight).x, 
-                     top: getTipPos(448, tipHeight).y, 
-                     borderTopColor: ENTITY_TYPES[nodes.find(n => n.id === hoveredNodeId)?.type?.toUpperCase()]?.color || '#00f2ff'
-                   }}>
-                 <div className="flex items-center gap-2 mb-4"><Activity size={12} className="text-brand-cyan" /><span className="text-[10px] font-bold tracking-[0.1em] text-brand-cyan uppercase">Information Summary</span></div>
-                  {(() => {
-                    const node = nodes.find(n => n.id === hoveredNodeId);
-                    if (!node) return null;
-                    const config = ENTITY_TYPES[node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT;
-                    return (
-                      <div className="flex flex-col mb-6">
-                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-1.5">{config.label}</span>
-                        <h4 className="text-white font-bold text-3xl italic tracking-tighter leading-none">{node.title}</h4>
-                      </div>
-                    );
-                  })()}
-                 <p className="text-[13px] text-slate-300 leading-relaxed italic mb-5 border-b border-white/5 pb-5">
-                    {(() => {
-                        const n = nodes.find(n => n.id === hoveredNodeId);
-                        return n?.content?.['Definition Summary'] || n?.content?.Summary || 'No summary available.';
-                    })()}
-                 </p>
-                 <div className="flex flex-col gap-3 min-h-0">
-                    <span className="text-[10px] font-bold text-slate-500 tracking-wider block">Connected Nodes</span>
-                    <div className="flex flex-col gap-2 pr-2 overflow-y-auto max-h-[60vh] custom-scrollbar pointer-events-auto">
-                      {(() => {
-                        const h = nodes.find(n => n.id === hoveredNodeId); if (!h) return null;
-                        const rels = [];
-                        if (h.parentId) { const p = nodes.find(n => n.id === h.parentId); if (p) rels.push({ n: p, l: 'Parent' }); }
-                        nodes.filter(n => n.parentId === h.id).forEach(c => rels.push({ n: c, l: 'Child' }));
-                        (h.secondaryLinks || []).forEach(sid => { const s = nodes.find(n => n.id === sid); if (s) rels.push({ n: s, l: 'Link' }); });
-                        nodes.filter(n => (n.secondaryLinks || []).includes(h.id)).forEach(n => rels.push({ n, l: 'Reference' }));
-                        return rels.map((r, i) => (
-                           <div key={i} className="px-3 py-2.5 rounded-xl border border-white/5 bg-white/[0.01] flex items-center justify-between pointer-events-auto" style={{ borderLeft: `3px solid ${ENTITY_TYPES[r.n.type?.toUpperCase()]?.color || '#00f2ff'}` }}>
-                              <div className="flex flex-col"><span className="text-[8px] font-black uppercase tracking-tighter text-slate-500 mb-0.5">{ENTITY_TYPES[r.n.type?.toUpperCase()]?.label || 'Entity'}</span><span className="text-[12px] font-bold text-white/90 italic truncate max-w-[200px]">{r.n.title}</span></div>
-                              <div className="text-[8px] font-black px-2 py-1 rounded-md italic uppercase tracking-widest leading-none border shrink-0 ml-4" style={{ color: ENTITY_TYPES[r.n.type?.toUpperCase()]?.color || '#00f2ff', borderColor: `${ENTITY_TYPES[r.n.type?.toUpperCase()]?.color || '#00f2ff'}30` }}>{r.l}</div>
-                           </div>
-                        ));
-                      })()}
-                    </div>
-                 </div>
-               </motion.div>
-            )}
-
-            {(hoveredLinkData && !isDraggingNode) && (
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-                className="fixed backdrop-blur-3xl border border-white/10 p-6 rounded-3xl w-[448px] border-t-4 bg-black/85 shadow-3xl z-[2000000] flex flex-col border-t-brand-cyan"
-                style={{ left: getTipPos(448, 300).x, top: getTipPos(448, 300).y }}
-              >
-                <div className="flex items-center gap-2 mb-4"><LinkIcon size={12} className="text-brand-cyan" /><span className="text-[10px] font-bold tracking-[0.1em] text-brand-cyan uppercase">Connection Details</span></div>
-                
-                <div className="flex flex-col gap-1">
-                  {/* From Entity */}
-                  <div className="px-4 py-3 rounded-xl border border-white/5 bg-white/[0.02] flex items-center justify-between" style={{ borderLeft: `3px solid ${ENTITY_TYPES[hoveredLinkData.fromType?.toUpperCase()]?.color || '#00f2ff'}` }}>
-                     <div className="flex flex-col">
-                        <span className="text-[8px] font-black uppercase tracking-tighter text-slate-500 mb-0.5">{hoveredLinkData.fromType}</span>
-                        <span className="text-[13px] font-bold text-white/90 italic">{hoveredLinkData.from}</span>
-                     </div>
-                     <div className="text-[8px] font-black px-2 py-1 rounded-md italic uppercase tracking-widest leading-none border border-brand-cyan/20 text-brand-cyan">Start</div>
-                  </div>
-
-                  {/* Flow Arrow */}
-                  <div className="py-1 flex justify-center">
-                     <div className="w-px h-3 bg-gradient-to-b from-brand-cyan to-transparent relative">
-                        <ArrowDown size={10} className="absolute -bottom-1 -left-[4.5px] text-brand-cyan opacity-40" />
-                     </div>
-                  </div>
-
-                  {/* To Entity */}
-                  <div className="px-4 py-3 rounded-xl border border-white/5 bg-white/[0.02] flex items-center justify-between" style={{ borderLeft: `3px solid ${ENTITY_TYPES[hoveredLinkData.toType?.toUpperCase()]?.color || '#00f2ff'}` }}>
-                     <div className="flex flex-col">
-                        <span className="text-[8px] font-black uppercase tracking-tighter text-slate-500 mb-0.5">{hoveredLinkData.toType}</span>
-                        <span className="text-[13px] font-bold text-white/90 italic">{hoveredLinkData.to}</span>
-                     </div>
-                     <div className="text-[8px] font-black px-2 py-1 rounded-md italic uppercase tracking-widest leading-none border border-slate-700 text-slate-400">End</div>
-                  </div>
-
-                  <div className="mt-4 pt-4 border-t border-white/5 flex justify-center">
-                    <span className="text-[10px] font-bold text-brand-cyan/80 bg-brand-cyan/5 px-3 py-1.5 rounded-full italic tracking-tight">{hoveredLinkData.type}</span>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-      </div>
-
-      <StatusSidebars nodes={nodes} isCollapsed={isSidebarCollapsed} onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)} selectedNode={selectedNode} onNodeSearch={centerOnNode} />
-
-      <section 
-        ref={containerRef} 
-        className={`flex-1 relative overflow-hidden rounded-3xl border border-white/5 shadow-2xl bg-black/20 transition-all duration-700 ${isAdminOpen || isEditorOpen ? 'pointer-events-none grayscale-[0.4] opacity-80' : 'pointer-events-auto'}`}
-        onMouseDown={handleMouseDown} 
-        onContextMenu={(e) => e.preventDefault()} 
-        onWheel={layoutRules.projectionMode === 'spatial_3d' ? undefined : handleWheel}
-      >
-        <AnimatePresence>
-          {isAppearanceOpen && (
+        <AnimatePresence mode="wait">
+          {(state.showMesh && hoveredNodeId && !isDraggingNode && activeDisplayNode) && (
             <motion.div 
-              initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-              className="absolute top-8 left-8 z-[100] flex flex-col gap-3 pointer-events-auto" 
-              onMouseDown={e => e.stopPropagation()}
+              initial={{ opacity: 0, scale: 0.9, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 10 }}
+              className="absolute z-[2000] pointer-events-none"
+              style={{ 
+                left: mousePos.x + 20, 
+                top: mousePos.y - 20,
+                width: '448px'
+              }}
             >
-               <div className="flex flex-col gap-1.5 p-3 bg-black/60 backdrop-blur-xl rounded-[16px] border border-white/10 shadow-3xl w-64 relative">
-                  <button 
-                    onClick={() => setIsAppearanceOpen(false)}
-                    className="absolute top-3 right-3 p-1 hover:bg-white/5 rounded-full transition-colors text-slate-500 hover:text-white"
-                  >
-                    <ArrowDown size={14} className="rotate-45" />
-                  </button>
-                  <span className="text-[9px] font-black tracking-tighter text-slate-400 uppercase mb-3 text-center">Mesh Appearance</span>
-                  <div className="flex flex-col gap-4 px-1 mb-4">
-                     <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>CHILD GAP</span><span className="text-white font-mono">{layoutRules.childGap}px</span></div><input type="range" min="0" max="150" value={layoutRules.childGap} onChange={(e) => { const u = { ...layoutRules, childGap: parseInt(e.target.value) }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
-                     <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>PARENT DISTANCE</span><span className="text-white font-mono">{layoutRules.parentDistance}px</span></div><input type="range" min="100" max="1000" value={layoutRules.parentDistance} onChange={(e) => { const u = { ...layoutRules, parentDistance: parseInt(e.target.value) }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
-                     <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>TENSION</span><span className="text-white font-mono">{layoutRules.connectionTension}%</span></div><input type="range" min="10" max="100" value={layoutRules.connectionTension} onChange={(e) => { const u = { ...layoutRules, connectionTension: parseInt(e.target.value) }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
-                  </div>
-                  <div className="flex gap-1 justify-center border-t border-white/5 pt-3 mt-1">
-                      <button 
-                        onClick={() => setLayoutRules({ ...layoutRules, showLabels: !layoutRules.showLabels })} 
-                        className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all ${layoutRules.showLabels ? 'bg-brand-cyan/20 border border-brand-cyan/20' : 'hover:bg-white/5'}`}
-                        title="Toggle Labels"
-                      >
-                        <Type size={14} className={layoutRules.showLabels ? 'text-brand-cyan' : 'text-slate-500'} />
-                      </button>
-                      <button 
-                        onClick={() => setLayoutRules({ ...layoutRules, labelStyle: layoutRules.labelStyle === 'pill' ? 'standard' : 'pill' })} 
-                        className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all ${layoutRules.labelStyle === 'pill' ? 'bg-brand-pink/20 border border-brand-pink/20' : 'hover:bg-white/5'}`}
-                        title="Style Labels"
-                      >
-                        <Sparkles size={14} className={layoutRules.labelStyle === 'pill' ? 'text-brand-pink' : 'text-slate-500'} />
-                      </button>
-                      <div className="w-px h-4 bg-white/10 mx-1 self-center" />
-                     {[ { id: 'radial', icon: Network }, { id: 'horizontal_lr', icon: GitMerge } ].map(opt => {
-                        const isActive = layoutRules.layoutStyle === opt.id;
-                        return (
-                          <button key={opt.id} onClick={() => { const isR = opt.id === 'radial'; const r = { ...layoutRules, layoutStyle: opt.id, childGap: isR ? 10 : layoutRules.childGap, parentDistance: isR ? 200 : layoutRules.parentDistance }; setLayoutRules(r); applyLayout(r); }} className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all ${isActive ? 'bg-brand-cyan/20 border border-brand-cyan/20' : 'hover:bg-white/5'}`}><opt.icon size={14} className={isActive ? 'text-brand-cyan' : 'text-slate-500'} /></button>
-                        );
-                     })}
-                     <div className="w-px h-4 bg-white/10 mx-1 self-center" />
-                     {[ { id: '2d', icon: Layers }, { id: 'spatial_3d', icon: Box } ].map(opt => {
-                        const isActive = layoutRules.projectionMode === opt.id;
-                        return (
-                          <button key={opt.id} onClick={() => { setLayoutRules({ ...layoutRules, projectionMode: opt.id }); }} className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all ${isActive ? 'bg-brand-purple/20 border border-brand-purple/20' : 'hover:bg-white/5'}`}><opt.icon size={14} className={isActive ? 'text-brand-purple' : 'text-slate-500'} /></button>
-                        );
-                     })}
-                  </div>
-               </div>
+              <div className="glass-panel border-t-4 p-8 flex flex-col shadow-3xl" style={{ borderTopColor: ENTITY_TYPES[activeDisplayNode.type?.toUpperCase()]?.color || '#00f2ff', backgroundColor: 'rgba(5, 5, 15, 0.98)' }}>
+                <div className="flex items-center gap-2 mb-4">
+                  <Activity size={12} className="text-brand-cyan" />
+                  <span className="text-[10px] font-bold tracking-[0.1em] text-brand-cyan uppercase">Information Summary</span>
+                </div>
+                
+                <div className="flex flex-col mb-6">
+                   <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-1.5">{activeDisplayNode.type}</span>
+                   <h4 className="text-white font-bold text-4xl italic tracking-tighter leading-none">{activeDisplayNode.title}</h4>
+                </div>
+
+                <p className="text-[14px] text-slate-300 leading-relaxed italic mb-8 border-b border-white/5 pb-8">
+                  {activeDisplayNode.content?.Summary || activeDisplayNode.content?.['Definition Summary'] || 'Analytical breakdown in progress...'}
+                </p>
+
+                <div className="flex flex-col gap-4">
+                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Connected Nodes</span>
+                   <div className="flex flex-col gap-2">
+                      {nodes.filter(n => n.parentId === activeDisplayNode.id || activeDisplayNode.parentId === n.id).slice(0, 8).map(rel => (
+                         <div key={rel.id} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
+                            <div className="flex flex-col">
+                               <span className="text-[8px] font-bold text-slate-500 uppercase">{rel.type}</span>
+                               <span className="text-[11px] font-bold text-white italic">{rel.title}</span>
+                            </div>
+                            <span className="text-[8px] font-black text-brand-cyan uppercase border border-brand-cyan/30 px-2 py-1 rounded">{rel.parentId === activeDisplayNode.id ? 'Child' : 'Parent'}</span>
+                         </div>
+                      ))}
+                   </div>
+                </div>
+
+                <div className="mt-8 pt-6 border-t border-white/5 flex justify-between items-center text-slate-500">
+                   <div className="text-[9px] font-bold uppercase tracking-widest italic">Double Click to Inspect Details</div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {(state.showMesh && hoveredLinkData && !isDraggingNode) && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+              className="fixed backdrop-blur-3xl border border-white/10 p-6 rounded-3xl w-[448px] border-t-4 bg-black/85 shadow-3xl z-[2000000] flex flex-col border-t-brand-cyan"
+              style={{ left: getTipPos(448, 300).x, top: getTipPos(448, 300).y }}
+            >
+              <div className="flex items-center gap-2 mb-4"><LinkIcon size={12} className="text-brand-cyan" /><span className="text-[10px] font-bold tracking-[0.1em] text-brand-cyan uppercase">Connection Details</span></div>
+              
+              <div className="flex flex-col gap-1">
+                {/* From Entity */}
+                <div className="px-4 py-3 rounded-xl border border-white/5 bg-white/[0.02] flex items-center justify-between" style={{ borderLeft: `3px solid ${ENTITY_TYPES[hoveredLinkData.fromType?.toUpperCase()]?.color || '#00f2ff'}` }}>
+                   <div className="flex flex-col">
+                      <span className="text-[8px] font-black uppercase tracking-tighter text-slate-500 mb-0.5">{hoveredLinkData.fromType}</span>
+                      <span className="text-[13px] font-bold text-white/90 italic">{hoveredLinkData.from}</span>
+                   </div>
+                   <div className="text-[8px] font-black px-2 py-1 rounded-md italic uppercase tracking-widest leading-none border border-brand-cyan/20 text-brand-cyan">Start</div>
+                </div>
+
+                {/* Flow Arrow */}
+                <div className="py-1 flex justify-center">
+                   <div className="w-px h-3 bg-gradient-to-b from-brand-cyan to-transparent relative">
+                      <ArrowDown size={10} className="absolute -bottom-1 -left-[4.5px] text-brand-cyan opacity-40" />
+                   </div>
+                </div>
+
+                {/* To Entity */}
+                <div className="px-4 py-3 rounded-xl border border-white/5 bg-white/[0.02] flex items-center justify-between" style={{ borderLeft: `3px solid ${ENTITY_TYPES[hoveredLinkData.toType?.toUpperCase()]?.color || '#00f2ff'}` }}>
+                   <div className="flex flex-col">
+                      <span className="text-[8px] font-black uppercase tracking-tighter text-slate-500 mb-0.5">{hoveredLinkData.toType}</span>
+                      <span className="text-[13px] font-bold text-white/90 italic">{hoveredLinkData.to}</span>
+                   </div>
+                   <div className="text-[8px] font-black px-2 py-1 rounded-md italic uppercase tracking-widest leading-none border border-slate-700 text-slate-400">End</div>
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-white/5 flex justify-center">
+                  <span className="text-[10px] font-bold text-brand-cyan/80 bg-brand-cyan/5 px-3 py-1.5 rounded-full italic tracking-tight">{hoveredLinkData.type}</span>
+                </div>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
+      </div>
 
-        {layoutRules.projectionMode === 'spatial_3d' ? (
-          <SpatialCanvas 
-            nodes={nodes}
-            onSelectNode={(n) => { setSelectedNode(n); }}
-            onOpenDrawer={(n) => { 
-                setSelectedNode(n); 
-                setIsEditorOpen(true); 
-                setIsAdminOpen(false);
-                setEditingNode(n); 
-                setCurrentType(n.type); 
-                setFormData({ title: n.title, content: n.content || {} }); 
-            }}
-            hoveredNodeId={hoveredNodeId}
-            setHoveredNodeId={handleHoverNode}
-            selectedNode={selectedNode}
-            showLabels={layoutRules.showLabels}
-            labelStyle={layoutRules.labelStyle}
-            hoveredLinkData={hoveredLinkData}
-            setHoveredLinkData={setHoveredLinkData}
-          />
+      <Layout
+        sessions={state.sessions}
+        activeSessionId={state.sessionId}
+        onLoadSession={actions.loadSession}
+        onDeleteSession={actions.deleteSession}
+        onClearHistory={actions.clearAllHistory}
+        onNewChat={() => {
+          actions.setSessionId(null);
+          actions.setMessages([]);
+        }}
+        subjects={state.subjects}
+        selectedSubjects={state.selectedSubjects}
+        onSubjectsChange={actions.setSelectedSubjects}
+        currentModel={state.currentModel}
+        onModelChange={actions.updateModel}
+        usage={state.usage}
+        topics={state.topics}
+        suggestions={state.suggestions}
+        onTopicClick={actions.sendMessage}
+        onRefreshSuggestions={actions.refreshSuggestions}
+        syncStatus={state.syncStatus}
+        onSync={actions.triggerSync}
+        pdfViewer={state.pdfViewer}
+        onOpenPdf={(id, p, f, t) => actions.setPdfViewer(id ? { driveFileId: id, pageNum: p, filename: f, highlightText: t } : null)}
+        onClosePdf={() => actions.setPdfViewer(null)}
+        settings={state.settings}
+        authStatus={state.authStatus}
+        onOpenCatalog={() => actions.setShowCatalog(true)}
+        onRefineAll={actions.refineAllLibrary}
+        onOpenAdmin={() => setIsAdminOpen(true)}
+        sidebarWidth={state.sidebarWidth}
+        isResizing={state.isResizing}
+        onResizeStart={() => actions.setIsResizing(true)}
+        topicsWidth={state.topicsWidth}
+        isResizingTopics={state.isResizingTopics}
+        onTopicsResizeStart={() => actions.setIsResizingTopics(true)}
+        onLogin={actions.handleLogin}
+        onLogout={actions.handleLogout}
+        appMode={state.appMode}
+        onModeChange={actions.setAppMode}
+        pinnedItems={state.pinnedItems}
+        onPin={actions.handlePin}
+        chatTone={state.chatTone}
+        onToneChange={actions.setChatTone}
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        gems={state.gems}
+        onActivateGem={actions.activateGem}
+        isClearingHistory={state.isClearingHistory}
+        showCitations={state.showCitations}
+        onToggleCitations={actions.toggleCitations}
+        deletingSessionIds={state.deletingSessionIds}
+        onClearPins={actions.clearAllPins}
+        onOpenMesh={() => actions.setShowMesh(!state.showMesh)}
+        showMesh={state.showMesh}
+      >
+        {state.showMesh ? (
+          <section 
+            ref={containerRef} 
+            className={`flex-1 relative overflow-hidden rounded-3xl border border-white/5 shadow-2xl transition-all duration-700 ${layoutRules.projectionMode === '2d' ? 'bg-black' : 'bg-black/20'} ${isAdminOpen || isEditorOpen ? 'pointer-events-none grayscale-[0.4] opacity-80' : 'pointer-events-auto'}`}
+            onMouseDown={handleMouseDown} 
+            onContextMenu={(e) => e.preventDefault()} 
+            onWheel={layoutRules.projectionMode === 'spatial_3d' ? undefined : handleWheel}
+            style={{ height: '100%' }}
+          >
+            <AnimatePresence>
+              {isAppearanceOpen && (
+                <motion.div 
+                  initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
+                  className="absolute top-8 left-8 z-[100] flex flex-col gap-3 pointer-events-auto" 
+                  onMouseDown={e => e.stopPropagation()}
+                >
+                   <div className="flex flex-col gap-1.5 p-3 bg-black/60 backdrop-blur-xl rounded-[16px] border border-white/10 shadow-3xl w-64 relative">
+                      <button 
+                        onClick={() => setIsAppearanceOpen(false)}
+                        className="absolute top-3 right-3 p-1 hover:bg-white/5 rounded-full transition-colors text-slate-500 hover:text-white"
+                      >
+                        <ArrowDown size={14} className="rotate-45" />
+                      </button>
+                      <span className="text-[9px] font-black tracking-tighter text-slate-400 uppercase mb-3 text-center">Mesh Appearance</span>
+                      <div className="flex flex-col gap-4 px-1 mb-4">
+                         <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>CHILD GAP</span><span className="text-white font-mono">{layoutRules.childGap}px</span></div><input type="range" min="0" max="150" value={layoutRules.childGap} onChange={(e) => { const u = { ...layoutRules, childGap: parseInt(e.target.value) }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
+                         <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>PARENT DISTANCE</span><span className="text-white font-mono">{layoutRules.parentDistance}px</span></div><input type="range" min="100" max="1000" value={layoutRules.parentDistance} onChange={(e) => { const u = { ...layoutRules, parentDistance: parseInt(e.target.value) }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
+                         <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>TENSION</span><span className="text-white font-mono">{layoutRules.connectionTension}%</span></div><input type="range" min="10" max="100" value={layoutRules.connectionTension} onChange={(e) => { const u = { ...layoutRules, connectionTension: parseInt(e.target.value) }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
+                      </div>
+                      <div className="flex gap-1 justify-center border-t border-white/5 pt-3 mt-1">
+                          <button 
+                            onClick={() => setLayoutRules({ ...layoutRules, showLabels: !layoutRules.showLabels })} 
+                            className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all ${layoutRules.showLabels ? 'bg-brand-cyan/20 border border-brand-cyan/20' : 'hover:bg-white/5'}`}
+                            title="Toggle Labels"
+                          >
+                            <Type size={14} className={layoutRules.showLabels ? 'text-brand-cyan' : 'text-slate-500'} />
+                          </button>
+                          <button 
+                            onClick={() => setLayoutRules({ ...layoutRules, labelStyle: layoutRules.labelStyle === 'pill' ? 'standard' : 'pill' })} 
+                            className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all ${layoutRules.labelStyle === 'pill' ? 'bg-brand-pink/20 border border-brand-pink/20' : 'hover:bg-white/5'}`}
+                            title="Style Labels"
+                          >
+                            <Sparkles size={14} className={layoutRules.labelStyle === 'pill' ? 'text-brand-pink' : 'text-slate-500'} />
+                          </button>
+                          <div className="w-px h-4 bg-white/10 mx-1 self-center" />
+                         {[ { id: 'radial', icon: Network }, { id: 'horizontal_lr', icon: GitMerge } ].map(opt => {
+                            const isActive = layoutRules.layoutStyle === opt.id;
+                            return (
+                              <button key={opt.id} onClick={() => { const isR = opt.id === 'radial'; const r = { ...layoutRules, layoutStyle: opt.id, childGap: isR ? 10 : layoutRules.childGap, parentDistance: isR ? 200 : layoutRules.parentDistance }; setLayoutRules(r); applyLayout(r); }} className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all ${isActive ? 'bg-brand-cyan/20 border border-brand-cyan/20' : 'hover:bg-white/5'}`}><opt.icon size={14} className={isActive ? 'text-brand-cyan' : 'text-slate-500'} /></button>
+                            );
+                         })}
+                         <div className="w-px h-4 bg-white/10 mx-1 self-center" />
+                         {[ { id: '2d', icon: Layers }, { id: 'spatial_3d', icon: Box }, { id: 'instanced_3d', icon: Sparkles } ].map(opt => {
+                            const isActive = layoutRules.projectionMode === opt.id;
+                            const isInstanced = opt.id === 'instanced_3d';
+                            return (
+                              <button key={opt.id} onClick={() => { setLayoutRules({ ...layoutRules, projectionMode: opt.id }); }} className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all ${isActive ? (isInstanced ? 'bg-brand-cyan/20 border border-brand-cyan/20' : 'bg-brand-purple/20 border border-brand-purple/20') : 'hover:bg-white/5'}`} title={isInstanced ? "Three.js Instanced Engine" : opt.id}><opt.icon size={14} className={isActive ? (isInstanced ? 'text-brand-cyan' : 'text-brand-purple') : 'text-slate-500'} /></button>
+                            );
+                         })}
+                      </div>
+                   </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            {layoutRules.projectionMode === 'spatial_3d' ? (
+              <SpatialCanvas 
+                nodes={filteredNodes}
+                onSelectNode={(n) => { setSelectedNode(n); }}
+                onOpenDrawer={(n) => { 
+                    setSelectedNode(n); 
+                    setIsEditorOpen(true); 
+                    setIsAdminOpen(false);
+                    setEditingNode(n); 
+                    setCurrentType(n.type); 
+                    setFormData({ title: n.title, content: n.content || {} }); 
+                }}
+                hoveredNodeId={hoveredNodeId}
+                setHoveredNodeId={handleHoverNode}
+                selectedNode={selectedNode}
+                showLabels={layoutRules.showLabels}
+                labelStyle={layoutRules.labelStyle}
+                hoveredLinkData={hoveredLinkData}
+                setHoveredLinkData={setHoveredLinkData}
+              />
+            ) : layoutRules.projectionMode === 'instanced_3d' ? (
+              <InstancedSpatialCanvas 
+                nodes={filteredNodes}
+                onSelectNode={(n) => { 
+                    setSelectedNode(n); 
+                    setIsEditorOpen(true); 
+                    setIsAdminOpen(false);
+                    setEditingNode(n); 
+                    setCurrentType(n.type); 
+                    setFormData({ title: n.title, content: n.content || {} }); 
+                }}
+                hoveredNodeId={hoveredNodeId}
+                setHoveredNodeId={handleHoverNode}
+                selectedNode={selectedNode}
+                onOpenDrawer={(n) => { 
+                    setSelectedNode(n); 
+                    setIsEditorOpen(true); 
+                    setIsAdminOpen(false);
+                    setEditingNode(n); 
+                    setCurrentType(n.type); 
+                    setFormData({ title: n.title, content: n.content || {} }); 
+                }}
+              />
+            ) : (
+              <MeshCanvas 
+                meshRef={meshRef}
+                nodes={filteredNodes} view={view} layoutRules={layoutRules} hoveredNodeId={hoveredNodeId} setHoveredNodeId={handleHoverNode}
+                hoveredLinkId={hoveredLinkId} setHoveredLinkId={setHoveredLinkId} setHoveredLinkData={setHoveredLinkData} 
+                isMovingMesh={!!dragType} isSidebarOpen={isAdminOpen || isEditorOpen}
+                movingNodeId={movingNodeId}
+                onSelectNode={(n) => { 
+                    if (movingNodeId) {
+                        if (n.id === movingNodeId) { setMovingNodeId(null); return; }
+                        const updatedNodes = nodes.map(node => node.id === movingNodeId ? { ...node, parentId: n.id } : node);
+                        setNodes(updatedNodes);
+                        setMovingNodeId(null);
+                        applyLayout(layoutRules, updatedNodes);
+                        return;
+                    }
+                    setSelectedNode(n); setIsEditorOpen(true); setEditingNode(n); setCurrentType(n.type); setFormData({ title: n.title, content: n.content || {} }); 
+                }} 
+                onAddOffshoot={(id) => { setActiveParentId(id); setIsEditorOpen(true); setEditingNode(null); setCurrentType('CONCEPT'); setFormData({ title: '[NEW_ENTITY_SPEC]', content: {} }); }} 
+                onNodeDrag={(id, dx, dy) => setNodes(prev => prev.map(n => n.id === id ? { ...n, x: n.x + dx, y: n.y + dy } : n))}
+                onNodeDragEnd={(id) => setNodes(prev => prev.map(n => n.id === id ? { ...n, ox: n.x, oy: n.y } : n))}
+                onStartReparent={(id) => setMovingNodeId(id)}
+                onLinkClick={(cid, pid) => { 
+                    setHoveredLinkId(null); 
+                    const targetId = (selectedNode?.id === cid) ? pid : cid;
+                    centerOnNode(nodes.find(n => n.id === targetId)); 
+                }}
+                projectionMode={layoutRules.projectionMode}
+              />
+            )}
+            <OrbitalNav 
+              nodes={filteredNodes} 
+              view={view} 
+              stickPos={stickPos} 
+              setStickPos={setStickPos} 
+              onOpenAdmin={() => setIsAdminOpen(true)} 
+              onOpenAppearance={() => setIsAppearanceOpen(!isAppearanceOpen)} 
+              onMinimapJump={centerOnPoint}
+              showMinimap={true}
+              projectionMode={layoutRules.projectionMode} 
+            />
+          </section>
         ) : (
-          <MeshCanvas 
-            meshRef={meshRef}
-            nodes={nodes} view={view} layoutRules={layoutRules} hoveredNodeId={hoveredNodeId} setHoveredNodeId={handleHoverNode}
-            hoveredLinkId={hoveredLinkId} setHoveredLinkId={setHoveredLinkId} setHoveredLinkData={setHoveredLinkData} 
-            isMovingMesh={!!dragType} isSidebarOpen={isAdminOpen || isEditorOpen}
-            movingNodeId={movingNodeId}
-            onSelectNode={(n) => {               if (movingNodeId) {
-                    if (n.id === movingNodeId) { setMovingNodeId(null); return; }
-                    const updatedNodes = nodes.map(node => node.id === movingNodeId ? { ...node, parentId: n.id } : node);
-                    setNodes(updatedNodes);
-                    setMovingNodeId(null);
-                    applyLayout(layoutRules, updatedNodes);
-                    return;
-                }
-                setSelectedNode(n); setIsEditorOpen(true); setEditingNode(n); setCurrentType(n.type); setFormData({ title: n.title, content: n.content || {} }); 
-            }} 
-            onAddOffshoot={(id) => { setActiveParentId(id); setIsEditorOpen(true); setEditingNode(null); setCurrentType('CONCEPT'); setFormData({ title: '[NEW_ENTITY_SPEC]', content: {} }); }} 
-            onNodeDrag={(id, dx, dy) => setNodes(prev => prev.map(n => n.id === id ? { ...n, x: n.x + dx, y: n.y + dy } : n))}
-            onNodeDragEnd={(id) => setNodes(prev => prev.map(n => n.id === id ? { ...n, ox: n.x, oy: n.y } : n))}
-            onStartReparent={(id) => setMovingNodeId(id)}
-            onLinkClick={(cid, pid) => { 
-                setHoveredLinkId(null); 
-                const targetId = (selectedNode?.id === cid) ? pid : cid;
-                centerOnNode(nodes.find(n => n.id === targetId)); 
-            }}
-            projectionMode={layoutRules.projectionMode}
-          />
+          <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <ChatInterface
+              messages={state.messages}
+              isTyping={state.isTyping}
+              onSendMessage={actions.sendMessage}
+              onOpenPdf={(id, p, f, t) => actions.setPdfViewer(id ? { driveFileId: id, pageNum: p, filename: f, highlightText: t } : null)}
+              suggestions={state.suggestions}
+              onTopicClick={actions.sendMessage}
+              appMode={state.appMode}
+              onToggleCanvas={(c) => { 
+                if (c) actions.setCanvasContent(c); 
+                actions.setIsCanvasVisible(prev => !prev); 
+              }}
+              onOpenCanvas={(c) => {
+                if (c) actions.setCanvasContent(c);
+                actions.setIsCanvasVisible(true);
+              }}
+              onPin={actions.handlePin}
+              pinnedItems={state.pinnedItems}
+              voiceEngine={actions.voiceEngine}
+              showCitations={state.showCitations}
+            />
+          </div>
         )}
-        <OrbitalNav nodes={nodes} view={view} setView={setView} stickPos={stickPos} setStickPos={setStickPos} onOpenAdmin={() => setIsAdminOpen(true)} onOpenAppearance={() => setIsAppearanceOpen(!isAppearanceOpen)} onResetLayout={resetLayout} onMinimapJump={centerOnPoint} projectionMode={layoutRules.projectionMode} />
-      </section>
+      </Layout>
 
-       <AnimatePresence>
+      <AnimatePresence>
          {(isEditorOpen || isAdminOpen) && (
            <motion.div 
              initial={{ opacity: 0 }} animate={{ opacity: 0 }} exit={{ opacity: 0 }}
@@ -919,7 +1085,7 @@ export default function App() {
              onApplyAIProposal={handleApplyAIProposal}
            />
          )}
-       </AnimatePresence>
-    </div>
+      </AnimatePresence>
+    </>
   );
 }

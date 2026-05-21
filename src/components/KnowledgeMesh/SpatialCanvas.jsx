@@ -1,63 +1,383 @@
 import React, { useRef, useMemo, useState, useEffect } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, Html, Stars, Environment, Line, Text, Billboard, RoundedBox } from '@react-three/drei';
+import { OrbitControls, Environment, Line, Text, Billboard } from '@react-three/drei';
 import * as THREE from 'three';
 import { ENTITY_TYPES } from '../../data/nodes';
-import { motion, AnimatePresence } from 'framer-motion';
-import { MoveRight, Zap, Activity } from 'lucide-react';
 
-const NodeLabel = React.memo(({ node, config, isHovered, onHover, onClick, isSelected, showLabels, labelStyle }) => {
-  const containerRef = useRef();
-  const { camera } = useThree();
-  const worldPos = useMemo(() => new THREE.Vector3(node.z_x, node.z_y, node.z_z), [node.z_x, node.z_y, node.z_z]);
-  const [isVisible, setIsVisible] = useState(true);
-  const frameCount = useRef(0);
-  const isActive = isHovered;
+const WebGLMemoryDisposer = () => {
+  const { scene } = useThree();
 
+  useEffect(() => {
+    return () => {
+      try {
+        scene.traverse((obj) => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose());
+            else obj.material.dispose();
+          }
+        });
+      } catch (e) {
+        console.warn('[SpatialCanvas] Disposal Traversal Warning:', e);
+      }
+    };
+  }, [scene]);
+
+  return null;
+};
+
+const RefConnector = ({ setCamera, setControls }) => {
+  const { camera, controls } = useThree();
+  
+  useEffect(() => {
+    if (camera) setCamera(camera);
+  }, [camera, setCamera]);
+
+  useFrame(() => {
+    if (controls) setControls(controls);
+  });
+
+  return null;
+};
+
+function MiniMap({ spatialNodes, camera, controls }) {
+  const canvasRef = useRef(null);
+  const nodesRef = useRef(spatialNodes);
+  
+  useEffect(() => {
+    nodesRef.current = spatialNodes;
+  }, [spatialNodes]);
+
+  useEffect(() => {
+    let animationFrameId;
+    
+    const render = () => {
+      animationFrameId = requestAnimationFrame(render);
+
+      const canvas = canvasRef.current;
+      if (!canvas || !camera || !controls) return;
+      const ctx = canvas.getContext('2d');
+      const CW = canvas.width;
+      const CH = canvas.height;
+      
+      const target = controls.target;
+      const nodes = nodesRef.current || [];
+      if (!nodes.length) return;
+
+      // Project all nodes into camera's local space (X = right, Y = up, Z = deep)
+      const projectedNodes = nodes.map(n => {
+        const wp = new THREE.Vector3(n.z_x || 0, n.z_y || 0, n.z_z || 0);
+        const cp = wp.applyMatrix4(camera.matrixWorldInverse);
+        return {
+          id: n.id,
+          parentId: n.parentId,
+          depth: n.depth,
+          type: n.type,
+          cx: cp.x,
+          cy: cp.y,
+          cz: cp.z
+        };
+      });
+
+      // Calculate camera-space bounding box of projected nodes
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      projectedNodes.forEach(cp => {
+        minX = Math.min(minX, cp.cx);
+        maxX = Math.max(maxX, cp.cx);
+        minY = Math.min(minY, cp.cy);
+        maxY = Math.max(maxY, cp.cy);
+      });
+
+      const pad = 25;
+      const worldW = maxX - minX || 100;
+      const worldH = maxY - minY || 100;
+      
+      // Compute fit scale
+      const scale = Math.min((CW - pad * 2) / worldW, (CH - pad * 2) / worldH);
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      
+      const toCanvas = (wx, wy) => [
+        CW / 2 + (wx - cx) * scale,
+        CH / 2 - (wy - cy) * scale // Invert Y for standard canvas orientation
+      ];
+
+      ctx.clearRect(0, 0, CW, CH);
+
+      // Draw premium glassmorphic background styling
+      ctx.fillStyle = 'rgba(8, 12, 20, 0.4)';
+      ctx.fillRect(0, 0, CW, CH);
+
+      // Draw connection lines
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+      ctx.lineWidth = 0.5;
+      projectedNodes.forEach(n => {
+        if (n.parentId) {
+          const parent = projectedNodes.find(pn => pn.id === n.parentId);
+          if (parent) {
+            const [sx, sy] = toCanvas(parent.cx, parent.cy);
+            const [tx, ty] = toCanvas(n.cx, n.cy);
+            ctx.beginPath();
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(tx, ty);
+            ctx.stroke();
+          }
+        }
+      });
+
+      // Draw projected nodes with correct category colors
+      projectedNodes.forEach(n => {
+        const [nx, ny] = toCanvas(n.cx, n.cy);
+        const nodeType = n.type?.toUpperCase() || 'CONCEPT';
+        const config = ENTITY_TYPES[nodeType] || ENTITY_TYPES.CONCEPT || { color: '#ffffff' };
+        
+        ctx.fillStyle = config.color;
+        ctx.beginPath();
+        
+        // Depth cueing: larger nodes for roots/subjects
+        const radius = n.depth === 0 ? 3.5 : 2;
+        ctx.arc(nx, ny, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Border outline for roots/subjects
+        if (n.depth === 0) {
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+      });
+
+      // Draw viewport rectangle in camera-space local coordinates
+      const dist = camera.position.distanceTo(target);
+      const fov = camera.fov * (Math.PI / 180);
+      const halfHeight = Math.tan(fov / 2) * dist;
+      const aspect = window.innerWidth / window.innerHeight;
+      const halfWidth = halfHeight * aspect;
+
+      // Project target point
+      const localTarget = target.clone().applyMatrix4(camera.matrixWorldInverse);
+
+      const [rLeft, rTop] = toCanvas(localTarget.x - halfWidth, localTarget.y + halfHeight);
+      const [rRight, rBottom] = toCanvas(localTarget.x + halfWidth, localTarget.y - halfHeight);
+
+      ctx.strokeStyle = '#00f2ff';
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([3, 3]);
+      ctx.strokeRect(rLeft, rTop, rRight - rLeft, rBottom - rTop);
+      ctx.setLineDash([]);
+    };
+
+    render();
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [camera, controls]);
+
+  const isDragging = useRef(false);
+  const lastMousePos = useRef(null);
+
+  const handleMouseDown = (e) => {
+    isDragging.current = false;
+    lastMousePos.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleMouseMove = (e) => {
+    if (!lastMousePos.current) return;
+    const dx = e.clientX - lastMousePos.current.x;
+    const dy = e.clientY - lastMousePos.current.y;
+    const threshold = 3;
+    if (Math.abs(dx) > threshold || Math.abs(dy) > threshold) {
+      isDragging.current = true;
+    }
+    if (!isDragging.current) return;
+    
+    // Scale delta based on minimap fitting factor
+    const CW = 220;
+    const CH = 160;
+    
+    // Re-calculate mapping context
+    const nodes = nodesRef.current || [];
+    const projectedNodes = nodes.map(n => {
+        const wp = new THREE.Vector3(n.z_x || 0, n.z_y || 0, n.z_z || 0);
+        const cp = wp.applyMatrix4(camera.matrixWorldInverse);
+        return { cx: cp.x, cy: cp.y };
+    });
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    projectedNodes.forEach(cp => {
+        minX = Math.min(minX, cp.cx); maxX = Math.max(maxX, cp.cx);
+        minY = Math.min(minY, cp.cy); maxY = Math.max(maxY, cp.cy);
+    });
+    const currentScale = Math.min((CW - 50) / (maxX - minX || 100), (CH - 50) / (maxY - minY || 100));
+
+    if (!currentScale || isNaN(currentScale)) return;
+    
+    const dx_world = dx / currentScale;
+    const dy_world = -dy / currentScale;
+
+    const localX = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    const localY = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+
+    const panVector = localX.clone().multiplyScalar(-dx_world).add(localY.clone().multiplyScalar(-dy_world));
+    
+    camera.position.add(panVector);
+    controls.target.add(panVector);
+    controls.update();
+
+    lastMousePos.current = { x: e.clientX, y: e.clientY };
+  };
+
+  return (
+    <div
+      className="absolute bottom-8 right-8 z-[2000] minimap-container"
+      style={{
+        width: '220px',
+        height: '160px',
+        background: 'rgba(10, 15, 25, 0.8)',
+        backdropFilter: 'blur(20px)',
+        border: '1px solid rgba(0, 242, 255, 0.15)',
+        borderRadius: '16px',
+        boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
+        overflow: 'hidden',
+        cursor: 'crosshair',
+        pointerEvents: 'auto'
+      }}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={() => { lastMousePos.current = null; }}
+    >
+      <canvas ref={canvasRef} width={220} height={160} style={{ width: '100%', height: '100%' }} />
+      <div 
+        className="absolute top-2 left-2 px-1.5 py-0.5 bg-black/40 border border-white/5 rounded text-[8px] font-black uppercase tracking-widest text-slate-400 pointer-events-none"
+      >
+        Minimap
+      </div>
+    </div>
+  );
+}
+
+const CanvasTextureLabel = React.memo(({ title, isSubject, scale = 1.0 }) => {
+  const textureData = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    const oversample = 2;
+    const baseFontSize = isSubject ? 48 : 34;
+    const fontSize = baseFontSize * oversample * scale;
+    const safeName = title || 'Unnamed';
+    
+    context.font = `bold ${fontSize}px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    const metrics = context.measureText(safeName);
+    const textWidth = metrics.width;
+    const padding = 20 * oversample;
+    
+    canvas.width = textWidth + padding;
+    canvas.height = fontSize + padding;
+    
+    context.font = `bold ${fontSize}px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    
+    context.shadowColor = 'rgba(0, 0, 0, 0.9)';
+    context.shadowBlur = 4 * oversample;
+    
+    context.fillStyle = '#FFFFFF';
+    context.fillText(safeName, canvas.width / 2, canvas.height / 2);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.anisotropy = 4;
+    texture.needsUpdate = true;
+    
+    return { texture, width: canvas.width, height: canvas.height, oversample };
+  }, [title, isSubject, scale]);
+
+  useEffect(() => {
+    return () => {
+      if (textureData.texture) {
+        textureData.texture.dispose();
+      }
+    };
+  }, [textureData]);
+
+  const scaleFactor = isSubject ? 2.5 : 1.8;
+  const widthVal = (textureData.width / (textureData.oversample * 10)) * scaleFactor * 10;
+  const heightVal = (textureData.height / (textureData.oversample * 10)) * scaleFactor * 10;
+
+  return (
+    <sprite renderOrder={999} scale={[widthVal, heightVal, 1]}>
+      <spriteMaterial
+        attach="material"
+        map={textureData.texture}
+        transparent={true}
+        alphaTest={0.1}
+        opacity={1.0}
+        depthTest={true}
+        depthWrite={true}
+        sizeAttenuation={true}
+      />
+    </sprite>
+  );
+});
+const CanvasTexturePillLabel = React.memo(({ title, isSubject, isSelected, scale = 1.0 }) => {
+  const textureData = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    const oversample = 2;
+    const fontSize = (isSubject ? 48 : 34) * oversample * scale;
+    const safeName = (title || 'Unnamed').toUpperCase();
+    context.font = `bold ${fontSize}px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    const metrics = context.measureText(safeName);
+    const w = metrics.width + 80 * oversample;
+    const h = fontSize + 48 * oversample;
+    canvas.width = w; canvas.height = h;
+    
+    context.beginPath(); context.roundRect(0, 0, w, h, h / 2);
+    context.fillStyle = isSelected ? 'rgba(0, 242, 255, 0.95)' : 'rgba(10, 15, 25, 0.9)';
+    context.fill();
+    context.lineWidth = 3 * oversample;
+    context.strokeStyle = isSelected ? '#00f2ff' : (isSubject ? '#ffffff' : '#899981');
+    context.stroke();
+    
+    context.font = `bold ${fontSize}px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    context.textAlign = 'center'; context.textBaseline = 'middle';
+    context.fillStyle = isSelected ? '#000000' : '#ffffff';
+    context.fillText(safeName, w / 2, h / 2);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.anisotropy = 4;
+    texture.needsUpdate = true;
+    return { texture, width: w, height: h, oversample };
+  }, [title, isSubject, isSelected, scale]);
+
+  useEffect(() => { return () => textureData.texture.dispose(); }, [textureData]);
+  
+  const scaleFactor = isSubject ? 2.5 : 1.8;
+  const widthVal = (textureData.width / (textureData.oversample * 10)) * scaleFactor * 10;
+  const heightVal = (textureData.height / (textureData.oversample * 10)) * scaleFactor * 10;
+  
+  return (
+    <sprite renderOrder={999} scale={[widthVal, heightVal, 1]}>
+      <spriteMaterial attach="material" map={textureData.texture} transparent={true} alphaTest={0.1} />
+    </sprite>
+  );
+});
+
+const NodeLabel = React.memo(({ node, isHovered, onHover, onClick, showLabels, labelStyle, onOpenDrawer }) => {
   const [uHover, setUHover] = useState(0);
 
   useFrame((state, delta) => {
-    // 1. Throttled culling check (once every 6 frames)
-    if (frameCount.current % 6 === 0) {
-      const dist = camera.position.distanceTo(worldPos);
-      const visible = dist < 22000;
-      if (visible !== isVisible) setIsVisible(visible);
-    }
-    
-    // 2. Smooth Lerp for Node Hover & Scale
-    const targetHover = isActive ? 1.0 : 0.0;
+    const targetHover = isHovered ? 1.0 : 0.0;
     const nextHover = THREE.MathUtils.lerp(uHover, targetHover, delta * 4.0);
     if (Math.abs(nextHover - uHover) > 0.001) setUHover(nextHover);
-
-    if (isActive && containerRef.current) {
-      const dist = camera.position.distanceTo(worldPos);
-      const scale = Math.max(0.4, Math.min(1.0, 15000 / dist)) * (0.95 + uHover * 0.05);
-      containerRef.current.style.transform = `translate(-50%, -50%) scale(${scale})`;
-      containerRef.current.style.opacity = uHover.toString();
-      containerRef.current.style.pointerEvents = uHover > 0.1 ? 'auto' : 'none';
-    }
-    
-    frameCount.current++;
   });
-
-  const hoverTimeout = useRef();
-  const handlePointerOver = (e) => {
-    e.stopPropagation();
-    hoverTimeout.current = setTimeout(() => onHover(node.id), 120);
-  };
-  const handlePointerOut = (e) => {
-    e.stopPropagation();
-    clearTimeout(hoverTimeout.current);
-    onHover(null);
-  };
-
-  const [clickCount, setClickCount] = useState(0);
 
   return (
     <group 
       renderOrder={999}
       onPointerOver={(e) => { e.stopPropagation(); onHover(node.id); }}
-      onPointerOut={handlePointerOut} 
+      onPointerOut={() => onHover(null)} 
       onClick={(e) => { 
         e.stopPropagation(); 
         onClick(node);
@@ -67,140 +387,30 @@ const NodeLabel = React.memo(({ node, config, isHovered, onHover, onClick, isSel
         if (onOpenDrawer) onOpenDrawer(node); 
       }}
     >
-      {isActive && (
-        <Html position={[0, 0, 0]} center ref={containerRef} style={{ pointerEvents: 'none', transition: 'opacity 0.2s' }}>
-           <div className="w-[448px] glass-panel border-t-4 p-8 flex flex-col shadow-3xl pointer-events-auto" style={{ borderTopColor: config.color, backgroundColor: 'rgba(5, 5, 15, 0.95)' }}>
-             <div className="flex items-center gap-2 mb-4">
-               <Activity size={12} className="text-brand-cyan" />
-               <span className="text-[10px] font-bold tracking-[0.1em] text-brand-cyan uppercase">Intelligence Pulse</span>
-             </div>
-             
-             <div className="flex flex-col mb-6">
-                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-1.5">{config.label}</span>
-                <h4 className="text-white font-bold text-4xl italic tracking-tighter leading-none">{node.title}</h4>
-             </div>
-
-             <p className="text-[14px] text-slate-300 leading-relaxed italic mb-8 border-b border-white/5 pb-8">
-               {node.content?.['Definition Summary'] || node.content?.Summary || 'No structural summary available for this sector.'}
-             </p>
-
-             <div className="flex flex-col gap-4">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Metadata Fabric</span>
-                <div className="grid grid-cols-2 gap-4">
-                   <div className="flex flex-col gap-1 p-3 rounded-xl bg-white/5 border border-white/5">
-                      <span className="text-[8px] font-bold text-slate-500 uppercase">Sector Status</span>
-                      <span className="text-[11px] font-bold text-brand-cyan uppercase">Operational</span>
-                   </div>
-                   <div className="flex flex-col gap-1 p-3 rounded-xl bg-white/5 border border-white/5">
-                      <span className="text-[8px] font-bold text-slate-500 uppercase">Sync Level</span>
-                      <span className="text-[11px] font-bold text-brand-purple uppercase">LOD High</span>
-                   </div>
-                </div>
-             </div>
-
-             <div className="mt-8 pt-6 border-t border-white/5 flex justify-between items-center text-slate-500">
-                <div className="flex items-center gap-2">
-                   <Zap size={10} />
-                   <span className="text-[9px] font-bold uppercase tracking-widest font-mono">ID: {node.id.split('_').pop()}</span>
-                </div>
-                <div className="text-[9px] font-bold uppercase tracking-widest italic group-hover:text-brand-cyan transition-colors">Double Click to Edit</div>
-             </div>
-           </div>
-        </Html>
-      )}
-      {/* 1. NATIVE WEBGL PILL */}
-      {showLabels && labelStyle === 'pill' && isVisible && (
+      {showLabels && labelStyle === 'standard' && (
         <Billboard>
-          {(() => {
-             const pillWidth = node.title.length * 28 + 120;
-             const pillHeight = 100;
-             return (
-               <mesh position={[0, 0, -1]}>
-                 <planeGeometry args={[pillWidth, pillHeight]} />
-                 <shaderMaterial
-                   transparent
-                   depthTest={true}
-                   depthWrite={true}
-                   uniforms={{
-                     color: { value: new THREE.Color(config.color) },
-                     bgColor: { value: new THREE.Color("#050510") },
-                     aspect: { value: pillWidth / pillHeight }
-                   }}
-                   vertexShader={`
-                     varying vec2 vUv;
-                     void main() {
-                         vUv = uv;
-                         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                     }
-                   `}
-                   fragmentShader={`
-                     uniform vec3 color;
-                     uniform vec3 bgColor;
-                     uniform float aspect;
-                     varying vec2 vUv;
- 
-                      float sdRoundedBox(vec2 p, vec2 b, float r) {
-                          vec2 q = abs(p) - b + r;
-                          return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
-                      }
- 
-                      void main() {
-                          vec2 p = (vUv * 2.0 - 1.0) * vec2(aspect, 1.0);
-                          float radius = 0.9;
-                          float d = sdRoundedBox(p, vec2(aspect, 1.0), radius);
-                          
-                          if (d > 0.0) discard;
-                          
-                          float borderThickness = 0.12;
-                          float borderMask = smoothstep(-borderThickness, -borderThickness + 0.02, d);
-                          vec3 finalColor = mix(bgColor, color, borderMask);
-                          
-                          gl_FragColor = vec4(finalColor, borderMask > 0.01 ? 1.0 : 0.4);
-                      }
-                    `}
-                  />
-                </mesh>
-              );
-           })()}
-           <Text
-              position={[0, 0, 1]} 
-              fontSize={42}
-              color="#ffffff"
-              anchorX="center" anchorY="middle"
-              fillOpacity={1.0}
-              fontWeight={800}
-              font="https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/dmserifdisplay/DMSerifDisplay-Regular.ttf"
-              depthTest={false}
-            >
-              {node.title}
-           </Text>
+          <CanvasTextureLabel 
+            title={node.title} 
+            isSubject={node.depth === 0} 
+            scale={1.0} 
+          />
         </Billboard>
       )}
-
-      {/* 2. STRATEGIC TEXT */}
-      {showLabels && labelStyle === 'standard' && isVisible && (
+      {showLabels && labelStyle === 'pill' && (
         <Billboard>
-            <Text
-              position={[0, 0, 0]} 
-              fontSize={42}
-              color={config.color}
-              anchorX="center" anchorY="middle"
-              fillOpacity={1.0}
-              fontWeight={800}
-              font="https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/dmserifdisplay/DMSerifDisplay-Regular.ttf"
-              outlineWidth={0}
-              depthTest={false}
-            >
-              {node.title}
-            </Text>
+          <CanvasTexturePillLabel 
+            title={node.title} 
+            isSubject={node.depth === 0} 
+            isSelected={isHovered}
+            scale={1.0}
+          />
         </Billboard>
       )}
     </group>
   );
 });
 
-const NeuralLine = React.memo(({ start, end, color, isHovered, isSecondary = false, hoveredLinkData, setHoveredLinkData, isActivePath = false, hoveredNodeId }) => {
-  const lineRef = useRef();
+const NeuralLine = React.memo(({ start, end, color, isHovered, isSecondary = false, isActivePath = false, hoveredNodeId, setHoveredLinkData }) => {
   const [lineHovered, setLineHovered] = useState(false);
   const materialRef = useRef();
 
@@ -215,25 +425,14 @@ const NeuralLine = React.memo(({ start, end, color, isHovered, isSecondary = fal
       const active = isHovered || lineHovered;
       materialRef.current.uniforms.time.value += delta * (active ? 2.5 : 1.2);
       
-      // Multi-Step Radiance Transition (Cinematic Fade)
       const targetHover = active ? 1.0 : 0.0;
       const currentHover = materialRef.current.uniforms.uHover.value;
-      materialRef.current.uniforms.uHover.value = THREE.MathUtils.lerp(
-        currentHover,
-        targetHover,
-        delta * 3.5 // Eased transition
-      );
+      materialRef.current.uniforms.uHover.value = THREE.MathUtils.lerp(currentHover, targetHover, delta * 3.5);
 
-      // Active Path Transition (The "Lighting Up" Logic)
       const targetActive = isActivePath ? 1.0 : 0.0;
       const currentActive = materialRef.current.uniforms.uActive.value;
-      materialRef.current.uniforms.uActive.value = THREE.MathUtils.lerp(
-        currentActive,
-        targetActive,
-        delta * 3.5 // Eased transition
-      );
+      materialRef.current.uniforms.uActive.value = THREE.MathUtils.lerp(currentActive, targetActive, delta * 3.5);
       
-      // Update color only if changed to avoid uniform overhead
       if (materialRef.current.uniforms.color.value.getHex() !== new THREE.Color(color).getHex()) {
           materialRef.current.uniforms.color.value.set(color);
       }
@@ -246,63 +445,41 @@ const NeuralLine = React.memo(({ start, end, color, isHovered, isSecondary = fal
     
     if (vStart.distanceTo(vEnd) < 1) return [vStart, vEnd];
 
-    const mid = new THREE.Vector3().lerpVectors(vStart, vEnd, 0.5);
-    
     if (isSecondary) {
+      const mid = new THREE.Vector3().lerpVectors(vStart, vEnd, 0.5);
+      // Transverse threads bow outwards more significantly
       if (mid.length() > 0.1) {
          mid.normalize().multiplyScalar(Math.max(vStart.length(), vEnd.length(), 500) * 1.4);
       } else {
          mid.set(0, 0, 1).multiplyScalar(Math.max(vStart.length(), vEnd.length(), 1000) * 1.4);
       }
+      const curve = new THREE.QuadraticBezierCurve3(vStart, mid, vEnd);
+      return curve.getPoints(16);
     } else {
-      if (mid.length() > 0.1) {
-         const naturalLength = mid.length();
-         mid.normalize().multiplyScalar(naturalLength * 1.05);
-      }
+      // Primary structural lines are clean, direct, straight lines
+      return [vStart, vEnd];
     }
-    
-    const curve = new THREE.QuadraticBezierCurve3(vStart, mid, vEnd);
-    return curve.getPoints(16);
   }, [start, end, isSecondary]);
-
-  const midPoint = points[Math.floor(points.length / 2)];
-  const [hoverPoint, setHoverPoint] = useState(midPoint);
-
-  const hoverTimeout = useRef();
-  const leaveTimeout = useRef();
 
   const handlePointerOver = (e) => {
     if (hoveredNodeId) return;
     e.stopPropagation();
-    if (leaveTimeout.current) clearTimeout(leaveTimeout.current);
-    setHoverPoint(e.point);
-    hoverTimeout.current = setTimeout(() => {
-      setLineHovered(true);
-      if (setHoveredLinkData) {
-        setHoveredLinkData({
-          from: start.title,
-          fromType: start.type,
-          to: end.title,
-          toType: end.type,
-          type: isSecondary ? 'Transverse Thread' : 'Structural Pipeline'
-        });
-      }
-    }, 120);
-  };
-
-  const handlePointerMove = (e) => {
-    if (hoveredNodeId) return;
-    e.stopPropagation();
-    setHoverPoint(e.point);
+    setLineHovered(true);
+    if (setHoveredLinkData) {
+      setHoveredLinkData({
+        from: start.title,
+        fromType: start.type,
+        to: end.title,
+        toType: end.type,
+        type: isSecondary ? 'Transverse Thread' : 'Structural Pipeline'
+      });
+    }
   };
 
   const handlePointerOut = (e) => {
     e.stopPropagation();
-    clearTimeout(hoverTimeout.current);
-    leaveTimeout.current = setTimeout(() => {
-      setLineHovered(false);
-      if (setHoveredLinkData) setHoveredLinkData(null);
-    }, 150);
+    setLineHovered(false);
+    if (setHoveredLinkData) setHoveredLinkData(null);
   };
 
   return (
@@ -353,7 +530,6 @@ const NeuralLine = React.memo(({ start, end, color, isHovered, isSecondary = fal
               float baseAlpha = isSecondary > 0.5 ? 0.2 : 0.4;
               float finalAlpha = mix(baseAlpha, 1.0, combinedFocus);
 
-              // Cinematic color elevation
               vec3 baseColor = color * (mix(1.5, 3.0, combinedFocus));
               vec3 glowColor = color * (mix(4.0, 10.0, combinedFocus));
               
@@ -371,18 +547,17 @@ const NeuralLine = React.memo(({ start, end, color, isHovered, isSecondary = fal
         colorWrite={false}
         depthWrite={false}
         onPointerOver={handlePointerOver}
-        onPointerMove={handlePointerMove}
         onPointerOut={handlePointerOut}
       />
     </group>
   );
 });
 
-const NeuralMesh = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, spatialNodes, showLabels, labelStyle, hoveredLinkData, setHoveredLinkData, onOpenDrawer }) => {
+const NeuralMesh = ({ onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, spatialNodes, showLabels, labelStyle, setHoveredLinkData, onOpenDrawer }) => {
   const meshGroup = useRef();
   
   useFrame((state, delta) => {
-    const isInteracting = selectedNode || hoveredNodeId || hoveredLinkData;
+    const isInteracting = selectedNode || hoveredNodeId;
     
     if (meshGroup.current && !isInteracting) {
       meshGroup.current.rotation.y += delta * 0.05; 
@@ -441,26 +616,20 @@ const NeuralMesh = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNodeId, sele
             color={link.color} 
             isHovered={hoveredNodeId === link.from.id || hoveredNodeId === link.to.id}
             isSecondary={link.type === 'secondary'}
-            hoveredLinkData={hoveredLinkData}
-            setHoveredLinkData={setHoveredLinkData}
             isActivePath={activePathIds.has(link.from.id) && activePathIds.has(link.to.id)}
             hoveredNodeId={hoveredNodeId}
+            setHoveredLinkData={setHoveredLinkData}
           />
         ))}
 
         {spatialNodes.map(node => {
-          const config = ENTITY_TYPES[node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT;
-          const isSelected = selectedNode?.id === node.id;
-          const isHovered = hoveredNodeId === node.id;
-          
           return (
             <group key={`node-${node.id}`} position={[node.z_x, node.z_y, node.z_z]}>
                 <NodeLabel 
-                  node={node} config={config} isHovered={isHovered} 
-                  onHover={setHoveredNodeId} onClick={onSelectNode} isSelected={isSelected}
+                  node={node} isHovered={hoveredNodeId === node.id} 
+                  onHover={setHoveredNodeId} onClick={onSelectNode}
                   showLabels={showLabels}
                   labelStyle={labelStyle}
-                  isActivePath={activePathIds.has(node.id)}
                   onOpenDrawer={onOpenDrawer}
                 />
             </group>
@@ -473,27 +642,25 @@ const NeuralMesh = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNodeId, sele
 
 const CameraController = ({ targetNode }) => {
   const { camera, controls } = useThree();
-  const [isCanceled, setIsCanceled] = useState(false);
+  const isCanceledRef = useRef(false);
   
-  useEffect(() => { setIsCanceled(false); }, [targetNode]);
+  useEffect(() => { isCanceledRef.current = false; }, [targetNode]);
 
   useEffect(() => {
-    if (!targetNode || !controls || isCanceled) return;
+    if (!targetNode || !controls || isCanceledRef.current) return;
     
     const targetPos = new THREE.Vector3(targetNode.z_x, targetNode.z_y, targetNode.z_z);
-    
     const approachRadius = targetNode.depth === 0 ? 5000 : 2500;
     const cameraOffset = targetPos.clone().normalize().multiplyScalar(approachRadius); 
     if (cameraOffset.length() === 0) cameraOffset.set(0, 0, approachRadius);
-    
     const idealPos = targetPos.clone().add(cameraOffset);
     
-    const onIntervene = () => setIsCanceled(true);
+    const onIntervene = () => { isCanceledRef.current = true; };
     controls.addEventListener('start', onIntervene);
 
     let frameId;
     const animate = () => {
-       if (isCanceled) return;
+       if (isCanceledRef.current) return;
        camera.position.lerp(idealPos, 0.05);
        controls.target.lerp(targetPos, 0.08);
        controls.update();
@@ -505,12 +672,15 @@ const CameraController = ({ targetNode }) => {
        cancelAnimationFrame(frameId);
        controls.removeEventListener('start', onIntervene);
     };
-  }, [targetNode, camera, controls, isCanceled]);
+  }, [targetNode, camera, controls]);
 
   return null;
 };
 
-export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, showLabels, labelStyle, hoveredLinkData, setHoveredLinkData, onOpenDrawer }) => {
+export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, showLabels, labelStyle, setHoveredLinkData, onOpenDrawer }) => {
+  const [cameraInstance, setCameraInstance] = useState(null);
+  const [controlsInstance, setControlsInstance] = useState(null);
+
   const spatialNodes = useMemo(() => {
     const processed = [];
     const seen = new Set();
@@ -521,10 +691,7 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
       if (!node) return;
       seen.add(nid);
 
-      // BALANCED RADIAL SHELLS
       const radius = depth === 0 ? 0 : 2000 + (depth - 1) * 1800;
-      
-      // Calculate geometric center of this node's assigned heavenly real estate
       const theta = (thetaRange[0] + thetaRange[1]) / 2;
       const phi = (phiRange[0] + phiRange[1]) / 2;
       
@@ -536,37 +703,23 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
 
       const children = nodes.filter(n => n.parentId === nid);
       if (children.length > 0) {
-        // Constriction factor to create 'breathing room' between disparate constellations
         const tSpan = (thetaRange[1] - thetaRange[0]) * 0.85;
         const pSpan = (phiRange[1] - phiRange[0]) * 0.85;
-        
         const startT = theta - tSpan / 2;
         const startP = phi - pSpan / 2;
 
         const N = children.length;
-        
-        // DYNAMIC SPHERICAL PATCH GRIDDING
-        // We split the available surface area into horizontal and vertical slices
         const cols = Math.ceil(Math.sqrt(N));
         const rows = Math.ceil(N / cols);
-        
         const pStep = pSpan / rows;
 
         children.forEach((child, i) => {
           const row = Math.floor(i / cols);
           const col = i % cols;
-          
-          // Auto-center incomplete final rows
           const itemsInThisRow = (row === rows - 1 && N % cols !== 0) ? N % cols : cols;
           const dynamicTStep = tSpan / itemsInThisRow;
           
-          const c_tStart = startT + col * dynamicTStep;
-          const c_tEnd = startT + (col + 1) * dynamicTStep;
-
-          const c_pStart = startP + row * pStep;
-          const c_pEnd = startP + (row + 1) * pStep;
-
-          walk(child.id, depth + 1, [c_tStart, c_tEnd], [c_pStart, c_pEnd]);
+          walk(child.id, depth + 1, [startT + col * dynamicTStep, startT + (col + 1) * dynamicTStep], [startP + row * pStep, startP + (row + 1) * pStep]);
         });
       }
     };
@@ -576,51 +729,37 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
       const step = (Math.PI * 2) / roots.length;
       walk(root.id, 0, [i * step, (i + 1) * step], [0.4, Math.PI - 0.4]);
     });
-
-    nodes.forEach(n => {
-      if (!seen.has(n.id)) {
-        processed.push({ ...n, z_x: (Math.random() - 0.5) * 5000, z_y: (Math.random() - 0.5) * 5000, z_z: -1000, depth: 0 });
-      }
-    });
-
     return processed;
   }, [nodes]);
 
-  const activeSpatialNode = useMemo(() => 
-    selectedNode ? spatialNodes.find(n => n.id === selectedNode.id) : null
-  , [selectedNode, spatialNodes]);
-
   return (
     <div className="w-full h-full bg-black relative">
-      <Canvas shadows camera={{ position: [0, 0, 8500], fov: 32, near: 10, far: 500000 }} dpr={[1, 2]}>
+      <Canvas shadows camera={{ position: [0, 0, 8500], fov: 32, near: 10, far: 500000 }}>
+        <WebGLMemoryDisposer />
+        <RefConnector setCamera={setCameraInstance} setControls={setControlsInstance} />
         <color attach="background" args={['#000000']} />
         
         <ambientLight intensity={2.5} />
         <directionalLight position={[10000, 10000, 10000]} intensity={3.0} color="#00f2ff" />
-        <directionalLight position={[-10000, -10000, 5000]} intensity={1.5} color="#ffffff" />
         
         <OrbitControls 
-          makeDefault enableDamping dampingFactor={0.05} rotateSpeed={0.5}
+          makeDefault enableDamping dampingFactor={0.05}
           maxDistance={150000} minDistance={100}
         />
         
-        <CameraController targetNode={activeSpatialNode} />
-        <NeuralMesh 
-          nodes={nodes} 
-          onSelectNode={onSelectNode} 
-          hoveredNodeId={hoveredNodeId} 
-          setHoveredNodeId={setHoveredNodeId} 
-          selectedNode={selectedNode} 
-          spatialNodes={spatialNodes}
-          showLabels={showLabels}
-          labelStyle={labelStyle}
-          hoveredLinkData={hoveredLinkData}
-          setHoveredLinkData={setHoveredLinkData}
-          onOpenDrawer={onOpenDrawer}
-        />
+        <CameraController targetNode={selectedNode ? spatialNodes.find(n => n.id === selectedNode.id) : null} />
+        <NeuralMesh onSelectNode={onSelectNode} hoveredNodeId={hoveredNodeId} setHoveredNodeId={setHoveredNodeId} selectedNode={selectedNode} spatialNodes={spatialNodes} showLabels={showLabels} labelStyle={labelStyle} setHoveredLinkData={setHoveredLinkData} onOpenDrawer={onOpenDrawer} />
         
         <Environment preset="night" />
       </Canvas>
+
+      {cameraInstance && controlsInstance && (
+        <MiniMap 
+          spatialNodes={spatialNodes} 
+          camera={cameraInstance} 
+          controls={controlsInstance} 
+        />
+      )}
     </div>
   );
 };

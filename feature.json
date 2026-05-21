@@ -1,0 +1,39 @@
+{
+  "features": {
+    "3D Spatial Knowledge Graph": {
+      "status": "enabled",
+      "description": "3D network mesh visualizing parent-child organizational hierarchy and secondary links.",
+      "renderingEngine": "Three.js / React Three Fiber",
+      "subFeatures": [
+        "Dynamic viewport minimap navigation",
+        "Standard 3D canvas rendering with direct-line hierarchy",
+        "High-performance instanced 3D rendering with glowing mesh nodes",
+        "Left-sidebar toggle switcher underneath citations toggle with symmetric 8px spacing",
+        "Unconditional RPG and entertainment node dynamic tree hierarchy pruning",
+        "Flat top-right 2D minimap navigation control display"
+      ]
+    },
+    "Oatmeal Premium Theme Layout": {
+      "status": "enabled",
+      "description": "Premium theme layout wrapping featuring glassmorphism, responsive sidebar layout with resize handles, voice telemetry integration, and GBP regionalisation.",
+      "subFeatures": [
+        "Interactive top header with model selection and usage tracking",
+        "Dual-sidebar architecture with resize drag boundaries",
+        "Haptic active state feedback and viewport containment reliability"
+      ]
+    },
+    "Topic Discovery & Session Panel": {
+      "status": "enabled",
+      "description": "Dedicated control panel managing research sessions, document library categorization and AI synthesis triggers.",
+      "subFeatures": [
+        "Auto-generated session chat logs",
+        "Topic tag filtering and suggested prompts",
+        "Notebook clipboard for pinning references and drive file sync indicator",
+        "Conversational search bar with dynamic query matching",
+        "Pinned conversation slots displaying at the top of the history stack",
+        "Individual session deletion with Lucide visual progress tracking",
+        "Bulk conversation deletion with robust double confirmation safeguards"
+      ]
+    }
+  }
+}

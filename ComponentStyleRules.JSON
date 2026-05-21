@@ -1,0 +1,68 @@
+{
+  "SpatialCanvas": {
+    "primaryLines": {
+      "type": "straight",
+      "description": "Clean, direct parent-child connections representing organizational hierarchy without curved clutter."
+    },
+    "secondaryLines": {
+      "type": "bezier_curved",
+      "description": "Cross-branch transverse links that bow outwards to prevent overlapping through the core tree center."
+    },
+    "labels": {
+      "baseFontSize": {
+        "subject": 48,
+        "concept": 34
+      },
+      "scaleFactor": {
+        "subject": 2.5,
+        "concept": 1.8
+      },
+      "fontFamily": "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif",
+      "color": "#FFFFFF",
+      "shadow": "rgba(0, 0, 0, 0.9) 4px oversample blur"
+    }
+  },
+  "InstancedSpatialCanvas": {
+    "labels": {
+      "baseFontSize": {
+        "root": 48,
+        "concept": 34
+      },
+      "scale": {
+        "root": 3.0,
+        "concept": 2.2
+      },
+      "background": {
+        "selected": "rgba(0, 242, 255, 0.95)",
+        "unselected": "rgba(10, 15, 25, 0.9)"
+      }
+    }
+  },
+  "Layout": {
+    "aesthetics": {
+      "translucency": "glassmorphism with backdrop-blur-xl and multi-tiered borders",
+      "gradient": "Sage Green/Teal var(--gradient-primary) for active states",
+      "fontFamily": "Inter, System Font",
+      "regionalisation": "GBP £ for usage display, British English context tags",
+      "sidebarToggles": "Symmetric vertical gaps (exactly 8px margin offset) with mode-switcher container matching design guidelines"
+    },
+    "behavior": {
+      "resizeMultiplier": "2x scroll scaling for lists, 5px touch drag threshold",
+      "activeFeedback": "0.98x haptic scaling on active touch clicks"
+    }
+  },
+  "ChatInterface": {
+    "aesthetics": {
+      "alignment": "Strictly centered layout with 480px overflow protection",
+      "preWrap": "Full-text pre-wrap without truncation for tooltips and hover modals"
+    }
+  },
+  "ChatHistory": {
+    "aesthetics": {
+      "itemPadding": "Right padding set to 68px to prevent overlapping of the absolute pin and delete action buttons",
+      "searchBar": "Glassmorphic search input field positioned under the header with Lucide Search icon decoration",
+      "pinToggle": "Tilt rotation micro-interaction (45 degrees) when unpinned, direct vertical rotation and high-contrast accent highlight color when pinned",
+      "confirmModal": "Inline glassmorphic action buttons for single-click confirmation of mass deletion of conversation records"
+    }
+  }
+}

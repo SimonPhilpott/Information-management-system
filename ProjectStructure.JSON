@@ -1,0 +1,37 @@
+{
+  "name": "Information Management System",
+  "modules": {
+    "src/App.jsx": {
+      "description": "Main entrypoint managing state, layout config, node authorities, and view transformations.",
+      "dependencies": [
+        "src/components/KnowledgeMesh/MeshCanvas.jsx",
+        "src/components/KnowledgeMesh/SpatialCanvas.jsx",
+        "src/components/KnowledgeMesh/InstancedSpatialCanvas.jsx",
+        "src/components/Dashboard/Layout.jsx",
+        "src/components/Dashboard/ChatInterface.jsx"
+      ]
+    },
+    "src/components/Dashboard/Layout.jsx": {
+      "description": "Premium layout system incorporating glassmorphism, resizable sidebar drawers, unified top headers, cost monitoring, and speech telemetry integration.",
+      "dependencies": [
+        "src/components/Dashboard/ChatHistory.jsx"
+      ]
+    },
+    "src/components/Dashboard/ChatHistory.jsx": {
+      "description": "Sidebar control panel displaying persistent conversation histories with search filters, pinned items, single deletion visual progress bars, and bulk deletion safeguards.",
+      "dependencies": []
+    },
+    "src/components/Dashboard/ChatInterface.jsx": {
+      "description": "Core interface for processing text conversations, model suggestions, and rendering drive file previews.",
+      "dependencies": []
+    },
+    "src/components/KnowledgeMesh/SpatialCanvas.jsx": {
+      "description": "3D interactive spatial knowledge mesh rendering primary connections as straight lines and transverse connections as outward curves, utilizing dynamic billboard text textures.",
+      "dependencies": []
+    },
+    "src/components/KnowledgeMesh/InstancedSpatialCanvas.jsx": {
+      "description": "High-performance instanced 3D spatial knowledge mesh rendering with high vertex count and structured text labels.",
+      "dependencies": []
+    }
+  }
+}
