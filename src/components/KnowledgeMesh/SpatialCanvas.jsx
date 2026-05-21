@@ -226,7 +226,7 @@ function MiniMap({ spatialNodes, camera, controls }) {
 
   return (
     <div
-      className="absolute bottom-8 right-8 z-[2000] minimap-container"
+      className="absolute top-10 right-10 z-[2000] minimap-container"
       style={{
         width: '220px',
         height: '160px',
@@ -640,21 +640,32 @@ const NeuralMesh = ({ onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNod
   );
 };
 
-const CameraController = ({ targetNode }) => {
+const CameraController = ({ targetNode, spatialNodes }) => {
   const { camera, controls } = useThree();
   const isCanceledRef = useRef(false);
   
   useEffect(() => { isCanceledRef.current = false; }, [targetNode]);
 
   useEffect(() => {
-    if (!targetNode || !controls || isCanceledRef.current) return;
-    
-    const targetPos = new THREE.Vector3(targetNode.z_x, targetNode.z_y, targetNode.z_z);
-    const approachRadius = targetNode.depth === 0 ? 5000 : 2500;
-    const cameraOffset = targetPos.clone().normalize().multiplyScalar(approachRadius); 
-    if (cameraOffset.length() === 0) cameraOffset.set(0, 0, approachRadius);
-    const idealPos = targetPos.clone().add(cameraOffset);
-    
+    if (!controls) return;
+
+    let targetPos = new THREE.Vector3(0, 0, 0);
+    let idealPos = new THREE.Vector3(0, 0, 7500); // Perfect default framing matching the 3D screenshot
+
+    if (targetNode) {
+      targetPos.set(targetNode.z_x || 0, targetNode.z_y || 0, targetNode.z_z || 0);
+      const approachRadius = targetNode.depth === 0 ? 5000 : 2500;
+      const cameraOffset = targetPos.clone().normalize().multiplyScalar(approachRadius); 
+      if (cameraOffset.length() === 0) cameraOffset.set(0, 0, approachRadius);
+      idealPos = targetPos.clone().add(cameraOffset);
+    } else if (spatialNodes && spatialNodes.length > 0) {
+      const rootNode = spatialNodes.find(n => n.depth === 0) || spatialNodes[0];
+      if (rootNode) {
+        targetPos.set(rootNode.z_x || 0, rootNode.z_y || 0, rootNode.z_z || 0);
+        idealPos.set(targetPos.x, targetPos.y, targetPos.z + 7500);
+      }
+    }
+
     const onIntervene = () => { isCanceledRef.current = true; };
     controls.addEventListener('start', onIntervene);
 
@@ -672,7 +683,7 @@ const CameraController = ({ targetNode }) => {
        cancelAnimationFrame(frameId);
        controls.removeEventListener('start', onIntervene);
     };
-  }, [targetNode, camera, controls]);
+  }, [targetNode, camera, controls, spatialNodes]);
 
   return null;
 };
@@ -747,7 +758,7 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
           maxDistance={150000} minDistance={100}
         />
         
-        <CameraController targetNode={selectedNode ? spatialNodes.find(n => n.id === selectedNode.id) : null} />
+        <CameraController targetNode={selectedNode ? spatialNodes.find(n => n.id === selectedNode.id) : null} spatialNodes={spatialNodes} />
         <NeuralMesh onSelectNode={onSelectNode} hoveredNodeId={hoveredNodeId} setHoveredNodeId={setHoveredNodeId} selectedNode={selectedNode} spatialNodes={spatialNodes} showLabels={showLabels} labelStyle={labelStyle} setHoveredLinkData={setHoveredLinkData} onOpenDrawer={onOpenDrawer} />
         
         <Environment preset="night" />

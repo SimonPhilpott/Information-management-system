@@ -346,6 +346,15 @@ export default function App() {
     }
   }, []);
 
+  useEffect(() => {
+    if (layoutRules.projectionMode === '2d') {
+      const rootNode = nodes.find(n => n.id === 'tt_group') || nodes[0];
+      if (rootNode) {
+        setTimeout(() => centerOnNode(rootNode), 100);
+      }
+    }
+  }, [layoutRules.projectionMode]);
+
   const applyLayout = (rules, baseNodes = null) => {
       let newNodes = baseNodes ? [...baseNodes] : [...nodes];
       const roots = newNodes.filter(n => !n.parentId);

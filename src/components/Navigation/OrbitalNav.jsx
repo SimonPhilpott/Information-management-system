@@ -49,7 +49,7 @@ export const OrbitalNav = ({ nodes, view, stickPos, setStickPos, onOpenAdmin, on
   }, [stickPos.x, stickPos.y]);
 
   return (
-    <div className="absolute top-10 right-10 flex gap-6 items-start z-[1000]">
+    <div className={`absolute top-10 flex gap-6 items-start z-[1000] ${projectionMode === '2d' ? 'right-10' : 'right-[250px]'}`}>
       <div className="flex flex-col gap-3">
         <button onClick={onOpenAdmin} title="Admin Panel" className="w-12 h-12 glass-panel border-white/5 flex items-center justify-center text-slate-500 hover:text-brand-cyan transition-all active:scale-95 group">
            <Settings size={20} className="group-hover:rotate-90 transition-transform duration-500" />
@@ -59,7 +59,7 @@ export const OrbitalNav = ({ nodes, view, stickPos, setStickPos, onOpenAdmin, on
         </button>
       </div>
 
-      {showMinimap && (
+      {showMinimap && projectionMode === '2d' && (
         <div 
           ref={mapRef} onMouseDown={handleMapAction} onMouseMove={(e) => e.buttons === 1 && handleMapAction(e)}
           className="w-48 h-36 glass-panel border-white/10 overflow-hidden relative cursor-crosshair group shadow-2xl p-1"

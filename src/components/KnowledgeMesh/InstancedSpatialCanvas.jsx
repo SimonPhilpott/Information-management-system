@@ -31,6 +31,54 @@ const RefConnector = ({ setCamera, setControls }) => {
   return null;
 };
 
+const CameraController = ({ targetNode, spatialNodes }) => {
+  const { camera, controls } = useThree();
+  const isCanceledRef = useRef(false);
+  
+  useEffect(() => { isCanceledRef.current = false; }, [targetNode]);
+
+  useEffect(() => {
+    if (!controls) return;
+
+    let targetPos = new THREE.Vector3(0, 0, 0);
+    let idealPos = new THREE.Vector3(0, 0, 7500);
+
+    if (targetNode) {
+      targetPos.set(targetNode.z_x || 0, targetNode.z_y || 0, targetNode.z_z || 0);
+      const approachRadius = targetNode.depth === 0 ? 5000 : 2500;
+      const cameraOffset = targetPos.clone().normalize().multiplyScalar(approachRadius); 
+      if (cameraOffset.length() === 0) cameraOffset.set(0, 0, approachRadius);
+      idealPos = targetPos.clone().add(cameraOffset);
+    } else if (spatialNodes && spatialNodes.length > 0) {
+      const rootNode = spatialNodes.find(n => n.depth === 0) || spatialNodes[0];
+      if (rootNode) {
+        targetPos.set(rootNode.z_x || 0, rootNode.z_y || 0, rootNode.z_z || 0);
+        idealPos.set(targetPos.x, targetPos.y, targetPos.z + 7500);
+      }
+    }
+
+    const onIntervene = () => { isCanceledRef.current = true; };
+    controls.addEventListener('start', onIntervene);
+
+    let frameId;
+    const animate = () => {
+       if (isCanceledRef.current) return;
+       camera.position.lerp(idealPos, 0.05);
+       controls.target.lerp(targetPos, 0.08);
+       controls.update();
+       if (camera.position.distanceTo(idealPos) > 10) frameId = requestAnimationFrame(animate);
+    };
+    animate();
+
+    return () => {
+       cancelAnimationFrame(frameId);
+       controls.removeEventListener('start', onIntervene);
+    };
+  }, [targetNode, camera, controls, spatialNodes]);
+
+  return null;
+};
+
 function MiniMap({ spatialNodes, camera, controls }) {
   const canvasRef = useRef(null);
   const nodesRef = useRef(spatialNodes);
@@ -106,7 +154,7 @@ function MiniMap({ spatialNodes, camera, controls }) {
   }, [camera, controls]);
 
   return (
-    <div className="absolute bottom-8 right-8 z-[2000] minimap-container" style={{ width: '220px', height: '160px', background: 'rgba(10, 15, 25, 0.8)', backdropFilter: 'blur(20px)', border: '1px solid rgba(0, 242, 255, 0.15)', borderRadius: '16px', overflow: 'hidden' }}>
+    <div className="absolute top-10 right-10 z-[2000] minimap-container" style={{ width: '220px', height: '160px', background: 'rgba(10, 15, 25, 0.8)', backdropFilter: 'blur(20px)', border: '1px solid rgba(0, 242, 255, 0.15)', borderRadius: '16px', overflow: 'hidden' }}>
       <canvas ref={canvasRef} width={220} height={160} style={{ width: '100%', height: '100%' }} />
     </div>
   );
@@ -239,6 +287,7 @@ export const InstancedSpatialCanvas = ({ nodes = [], onSelectNode, hoveredNodeId
         <pointLight position={[10000, 10000, 10000]} intensity={2} />
         <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
         <OrbitControls makeDefault />
+        <CameraController targetNode={selectedNode ? spatialNodes.find(n => n.id === selectedNode.id) : null} spatialNodes={spatialNodes} />
         <InstancedNodes spatialNodes={spatialNodes} onSelectNode={onSelectNode} hoveredNodeId={hoveredNodeId} setHoveredNodeId={setHoveredNodeId} selectedNode={selectedNode} />
         {spatialNodes.filter(n => n.depth <= 2 || hoveredNodeId === n.id || selectedNode?.id === n.id).map(node => (
           <Billboard key={`label-${node.id}`} position={[node.z_x, node.z_y + 280, node.z_z + 50]} onPointerOver={() => setHoveredNodeId(node.id)}>
