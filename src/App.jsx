@@ -11,8 +11,9 @@ import { IntelligenceDrawer } from './components/Editor/IntelligenceDrawer';
 import { AdminPanel } from './components/Admin/AdminPanel';
 import { SpatialCanvas } from './components/KnowledgeMesh/SpatialCanvas';
 import { InstancedSpatialCanvas } from './components/KnowledgeMesh/InstancedSpatialCanvas';
+import { SunburstCanvas } from './components/KnowledgeMesh/SunburstCanvas';
 import { AnimatePresence, motion, animate } from 'framer-motion';
-import { Activity, Link as LinkIcon, Cpu, ArrowDown, Network, GitMerge, Box, Layers, Type, Sparkles, Globe } from 'lucide-react';
+import { Activity, Link as LinkIcon, Cpu, ArrowDown, Network, GitMerge, Box, Layers, Type, Sparkles, Globe, Aperture } from 'lucide-react';
 
 import { useAppLogic } from './hooks/useAppLogic';
 import OnboardingSetup from './components/Dashboard/OnboardingSetup';
@@ -99,13 +100,13 @@ export default function App() {
          unifiedSyncPoints: data.unifiedSyncPoints ?? true,
          showLabels: data.showLabels ?? true,
          labelStyle: data.labelStyle ?? 'standard',
-         betaLayout: data.betaLayout ?? false
+         betaLayout: true
       };
     } catch {
       return { 
          childGap: 50, parentDistance: 400, connectionTension: 60,
          layoutStyle: 'radial', projectionMode: 'spatial_3d', directionalLocking: true, unifiedSyncPoints: true,
-         showLabels: true, labelStyle: 'standard', betaLayout: false
+         showLabels: true, labelStyle: 'standard', betaLayout: true
       };
     }
   });
@@ -612,7 +613,8 @@ export default function App() {
   useEffect(() => { requestRef.current = requestAnimationFrame(animateLoop); return () => cancelAnimationFrame(requestRef.current); }, []);
 
   const handleWheel = (e) => {
-    if (layoutRules.projectionMode === 'spatial_3d') return;
+    // SunburstCanvas registers its own passive:false wheel handler on its container.
+    if (layoutRules.projectionMode === 'spatial_3d' || layoutRules.projectionMode === 'sunburst') return;
     e.preventDefault();
     const factor = Math.exp(e.deltaY * -0.001);
     const v = viewRef.current;
@@ -634,6 +636,9 @@ export default function App() {
   const handleMouseDown = (e) => {
     // BLOCK PANNING IF CLICKING UI ELEMENTS, SIDEBARS, OR FIXED HUD
     if (e.target.closest('button') || e.target.closest('input') || e.target.closest('[drag]') || e.target.closest('.fixed')) return;
+
+    // SunburstCanvas manages its own right-click pan and wheel zoom independently.
+    if (layoutRules.projectionMode === 'sunburst') return;
 
     if (e.button === 0) setDragType('pan');
     if (e.button === 2) { e.preventDefault(); setDragType('zoom'); }
@@ -880,7 +885,7 @@ export default function App() {
         {state.showGraph ? (
           <section 
             ref={containerRef} 
-            className={`flex-1 relative overflow-hidden rounded-3xl border border-white/5 shadow-2xl transition-all duration-700 ${isAdminOpen || isEditorOpen ? 'pointer-events-none grayscale-[0.4] opacity-80' : 'pointer-events-auto'}`}
+            className={`flex-1 relative overflow-hidden rounded-3xl border border-white/5 shadow-2xl transition-all duration-700 ${(isAdminOpen || isEditorOpen) && layoutRules.projectionMode !== 'sunburst' ? 'pointer-events-none grayscale-[0.4] opacity-80' : 'pointer-events-auto'}`}
             style={{ height: '100%', background: layoutRules.projectionMode === '2d' ? (state.theme === 'light' ? '#ece8dd' : '#000000') : (state.theme === 'light' ? 'rgba(236,232,221,0.4)' : 'rgba(0,0,0,0.2)') }}
             onMouseDown={handleMouseDown} 
             onContextMenu={(e) => e.preventDefault()} 
@@ -978,6 +983,35 @@ export default function App() {
               >
                 <Box size={14} />
               </button>
+
+              {/* Sunburst Projection (Sunburst) */}
+              <button 
+                onClick={() => {
+                  setSelectedNode(null);
+                  setLayoutRules({ ...layoutRules, projectionMode: 'sunburst' });
+                  
+                  // Force Zoom & Position reset for Sunburst View
+                  const nv = { x: 0, y: 0, scale: 1.0 };
+                  viewRef.current = nv;
+                  setView(nv);
+                  if (meshRef.current) {
+                    meshRef.current.style.transform = `translate3d(${nv.x}px, ${nv.y}px, 0) scale(${nv.scale})`;
+                  }
+                }}
+                className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all active:scale-[0.95] ${
+                  layoutRules.projectionMode === 'sunburst' 
+                    ? (state.theme === 'light' 
+                        ? 'bg-[#899981]/25 border border-[#899981]/40 text-[#4E5A47]' 
+                        : 'bg-brand-cyan/20 border border-brand-cyan/20 text-brand-cyan') 
+                    : (state.theme === 'light' 
+                        ? 'text-[#6A645D] hover:bg-[#2E2B27]/5 hover:text-[#2E2B27]' 
+                        : 'text-slate-500 hover:bg-white/5 hover:text-white')
+                }`}
+                title="Sunburst View"
+              >
+                {/* Aperture icon — camera-iris radial pattern mirrors the sunburst rings */}
+                <Aperture size={14} />
+              </button>
             </div>
 
             <AnimatePresence>
@@ -1002,26 +1036,14 @@ export default function App() {
                          <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>PARENT DISTANCE</span><span className="text-white font-mono">{layoutRules.parentDistance}px</span></div><input type="range" min="100" max="1000" value={layoutRules.parentDistance} onChange={(e) => { const u = { ...layoutRules, parentDistance: parseInt(e.target.value) }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
                          <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>TENSION</span><span className="text-white font-mono">{layoutRules.connectionTension}%</span></div><input type="range" min="10" max="100" value={layoutRules.connectionTension} onChange={(e) => { const u = { ...layoutRules, connectionTension: parseInt(e.target.value) }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
                          
-                          <div className="flex gap-1.5 justify-center border-t border-white/5 pt-3 mt-1">
+                           <div className="flex gap-1 justify-center border-t border-white/5 pt-3 mt-1">
                               <button 
                                 onClick={() => setLayoutRules({ ...layoutRules, showLabels: !layoutRules.showLabels })} 
-                                className={`px-3 py-1.5 text-[9px] font-black tracking-wider rounded-lg border transition-all flex items-center gap-1.5 w-1/2 justify-center ${layoutRules.showLabels ? 'bg-brand-cyan/20 border-brand-cyan/30 text-brand-cyan' : 'border-white/10 text-slate-500 hover:bg-white/5 hover:text-white'}`}
+                                className={`px-3 py-1.5 text-[9px] font-black tracking-wider rounded-lg border transition-all flex items-center gap-1.5 w-full justify-center ${layoutRules.showLabels ? 'bg-brand-cyan/20 border-brand-cyan/30 text-brand-cyan' : 'border-white/10 text-slate-500 hover:bg-white/5 hover:text-white'}`}
                                 title="Toggle Labels"
                               >
                                 <Type size={12} />
                                 <span>SHOW LABELS</span>
-                              </button>
-                              <button 
-                                onClick={() => {
-                                  const updated = { ...layoutRules, betaLayout: !layoutRules.betaLayout };
-                                  setLayoutRules(updated);
-                                  applyLayout(updated);
-                                }} 
-                                className={`px-3 py-1.5 text-[9px] font-black tracking-wider rounded-lg border transition-all flex items-center gap-1.5 w-1/2 justify-center ${layoutRules.betaLayout ? 'bg-brand-cyan/20 border-brand-cyan/30 text-brand-cyan' : 'border-white/10 text-slate-500 hover:bg-white/5 hover:text-white'}`}
-                                title="Toggle Beta Layout (Globe Aesthetic)"
-                              >
-                                <Globe size={12} />
-                                <span>BETA GRAPH</span>
                               </button>
                           </div>
                       </div>
@@ -1029,7 +1051,22 @@ export default function App() {
                 </motion.div>
               )}
             </AnimatePresence>
-            {layoutRules.projectionMode === 'spatial_3d' ? (
+            {layoutRules.projectionMode === 'sunburst' ? (
+              <SunburstCanvas 
+                meshRef={meshRef}
+                view={view}
+                nodes={filteredNodes}
+                onSelectNode={(n) => { 
+                    setSelectedNode(n); 
+                    setIsEditorOpen(true); 
+                    setIsAdminOpen(false);
+                    setEditingNode(n); 
+                    setCurrentType(n.type); 
+                    setFormData({ title: n.title, content: n.content || {} }); 
+                }}
+                theme={state.theme}
+              />
+            ) : layoutRules.projectionMode === 'spatial_3d' ? (
               <SpatialCanvas 
                 nodes={filteredNodes}
                 onSelectNode={(n) => { setSelectedNode(n); }}
