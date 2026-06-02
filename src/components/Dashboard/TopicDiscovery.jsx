@@ -8,7 +8,7 @@ const formatSubject = (subject) => {
   return parts[parts.length - 1];
 };
 
-export default function TopicDiscovery({ topics, suggestions, onTopicClick, onRefresh, subjects, onOpenMesh, showMesh }) {
+export default function TopicDiscovery({ topics, suggestions, onTopicClick, onRefresh, subjects, onOpenGraph, showGraph }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('Everything');
   

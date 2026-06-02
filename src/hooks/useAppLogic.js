@@ -77,28 +77,59 @@ export function useAppLogic() {
     }
   }, [subjects]);
 
+  /**
+   * Filters the suggestions list to remove any entry that contains entertainment/RPG content
+   * in ANY of its fields (question text, subject, filename, or topic label).
+   * Checks each field independently to avoid || short-circuit bypass.
+   */
   const filteredSuggestions = useMemo(() => {
     try {
       return suggestions.filter(s => {
-        const textToCheck = typeof s === 'string' ? s : (s.suggested_question || s.subject || s.filename || '');
-        return !checkIsEntertainment(textToCheck);
+        if (typeof s === 'string') return !checkIsEntertainment(s);
+        // Check every relevant field independently — do NOT use || which short-circuits
+        const isEntertainment = (
+          checkIsEntertainment(s.suggested_question || '') ||
+          checkIsEntertainment(s.subject || '') ||
+          checkIsEntertainment(s.filename || '') ||
+          checkIsEntertainment(s.topic || '')
+        );
+        return !isEntertainment;
       });
     } catch (err) {
+      console.error('[Filtering] Suggestions filter crashed:', err);
       return suggestions;
     }
   }, [suggestions]);
 
+  /**
+   * Filters the topics map to remove any subject group or individual topic entry
+   * that contains entertainment/RPG content in ANY of its fields.
+   * Subject keys and each topic's topic/description/filename are checked independently.
+   */
   const filteredTopics = useMemo(() => {
     if (!topics) return {};
     try {
       const newTopics = {};
-      Object.keys(topics).forEach(topic => {
-        if (!checkIsEntertainment(topic)) {
-          newTopics[topic] = topics[topic].filter(t => !checkIsEntertainment(t.topic || t.description || t.filename || ''));
+      Object.keys(topics).forEach(subjectKey => {
+        // Exclude entire subject group if the key itself is entertainment-related
+        if (checkIsEntertainment(subjectKey)) return;
+        const cleanItems = topics[subjectKey].filter(t => {
+          // Check each field independently — do NOT use || which short-circuits
+          const isEntertainment = (
+            checkIsEntertainment(t.topic || '') ||
+            checkIsEntertainment(t.description || '') ||
+            checkIsEntertainment(t.filename || '') ||
+            checkIsEntertainment(t.subject || '')
+          );
+          return !isEntertainment;
+        });
+        if (cleanItems.length > 0) {
+          newTopics[subjectKey] = cleanItems;
         }
       });
       return newTopics;
     } catch (err) {
+      console.error('[Filtering] Topics filter crashed:', err);
       return topics;
     }
   }, [topics]);
@@ -115,7 +146,7 @@ export function useAppLogic() {
   const [isRefining, setIsRefining] = useState(false);
   const [refineProgress, setRefineProgress] = useState({ current: 0, total: 0, currentFile: '' });
   const [isClearingHistory, setIsClearingHistory] = useState(false);
-  const [showMesh, setShowMesh] = useState(false);
+  const [showGraph, setShowGraph] = useState(false);
 
   // Active UI theme configuration
   const [theme, setTheme] = useState(() => localStorage.getItem('app-theme') || 'dark');
@@ -510,9 +541,10 @@ export function useAppLogic() {
    * Pulls dynamic Google Auth login URL and redirects browser to start session.
    */
   const handleLogin = async () => {
+    const currentOrigin = window.location.origin;
     console.log('[Auth] Fetching redirect URL...');
     try {
-      const data = await fetch(`${API}/api/auth/url`).then(r => r.json());
+      const data = await fetch(`${API}/api/auth/url?clientUrl=${encodeURIComponent(currentOrigin)}`).then(r => r.json());
       if (data.url) {
         window.location.href = data.url;
       } else {
@@ -579,7 +611,7 @@ export function useAppLogic() {
       suggestions: filteredSuggestions, 
       syncStatus, pdfViewer, pinnedItems, showCapWarning,
       pendingMessage, showCatalog, showAdmin, isRefining, refineProgress, theme,
-      gems, isClearingHistory, showCitations, topicsWidth, isResizingTopics, showMesh,
+      gems, isClearingHistory, showCitations, topicsWidth, isResizingTopics, showGraph,
       subjectSource, deletingSessionIds
     },
 
@@ -593,7 +625,7 @@ export function useAppLogic() {
       setRefineProgress, loadAppData, sendMessage, triggerSync,
       refineAllLibrary, abortRefinement, loadSession, deleteSession, clearAllHistory, updateModel, handlePin, clearAllPins,
       handleLogin, handleLogout, toggleTheme, toggleCitations, activateGem, refreshSuggestions,
-      setTopicsWidth, setIsResizingTopics, setShowMesh,
+      setTopicsWidth, setIsResizingTopics, setShowGraph,
       voiceEngine
     }
   };

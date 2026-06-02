@@ -3,13 +3,13 @@ import { Layout, Globe, Settings, Database, Activity, Target, Shield, Droplets, 
 export const ENTITY_TYPES = {
   CONCEPT: { 
     label: 'Concept', color: '#00f2ff', icon: Layout, 
-    description: 'The Strategic Buckets: High-level building blocks of the business.',
+    description: 'Corporate definitions: High-level building blocks of the business.',
     guidance: 'WHAT IT MEANS: Broad services or major capabilities. They define WHAT we do, not HOW.\nROLE: Strategic parents (e.g., Cost Management, Net Zero).',
     examples: 'EXAMPLES: Project Management, Digital Transformation, Infrastructure.'
   },
   PATTERN: { 
     label: 'Pattern', color: '#ff007a', icon: Globe, 
-    description: 'The Archetypes & Frameworks: A repeatable model applying concept to reality.',
+    description: 'The Archetypes and frameworks: A repeatable model applied across business knowledge.',
     guidance: 'WHAT IT MEANS: The "Standard Operating Model" before customization.\nROLE: Sector-specific frameworks (e.g., Data Centre Delivery Model).',
     examples: 'EXAMPLES: Healthcare Campus Framework, Standard Supply Chain Setups.'
   },
@@ -21,13 +21,13 @@ export const ENTITY_TYPES = {
   },
   VARIANT: { 
     label: 'Variant', color: '#ffffff', icon: Target, 
-    description: 'The Localizations & Exceptions: Regional or client-specific deviations.',
+    description: 'The Localisations and exceptions: Regional, framework or client-specific deviations.',
     guidance: 'WHAT IT MEANS: Used when regional, legal, or client rules override the standard.\nROLE: Exceptions (e.g., UK JCT vs US AIA).',
     examples: 'EXAMPLES: UK Public Contract Regulations, "The Shell Way".'
   },
   SCENARIO: { 
     label: 'Scenario', color: '#bd00ff', icon: Activity, 
-    description: 'The Stress Tests: Hypothetical environments and dynamic constraints.',
+    description: 'Our best practice: Hypothetical or real life examples of the Concepts, Patterns, Procedures and Variants.',
     guidance: 'WHAT IT MEANS: How the standard workflow must flex under specific risk events.\nROLE: Mitigation plans (e.g., High Inflation, Supply Chain Collapse).',
     examples: 'EXAMPLES: Rapid-timeline Adjustments, Material Delay Mitigation.'
   }

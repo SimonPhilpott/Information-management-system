@@ -7,10 +7,14 @@
       "subFeatures": [
         "Dynamic viewport minimap navigation",
         "Standard 3D canvas rendering with direct-line hierarchy",
-        "High-performance instanced 3D rendering with glowing mesh nodes",
+        "Sleek floating glassmorphic toolbar at the top-left containing label, layout, and 2D/3D projection toggles",
         "Left-sidebar toggle switcher underneath citations toggle with symmetric 8px spacing",
         "Unconditional RPG and entertainment node dynamic tree hierarchy pruning",
-        "Flat top-right 2D minimap navigation control display"
+        "Flat top-right 2D minimap navigation control display",
+        "Real-time, relative viewport zoom scale metric indicator overlay",
+        "Entity-type-coloured pill label borders in 3D spatial and instanced views",
+        "Visible parent-child connection lines on 2D minimap with proper SVG coordinate rendering",
+        "Mesh Appearance panel drawer featuring controls for Child Gap, Parent Distance, Tension, and a comparative 'BETA GRAPH' toggle for before/after layout comparison"
       ]
     },
     "Oatmeal Premium Theme Layout": {

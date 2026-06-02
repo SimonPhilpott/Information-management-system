@@ -22,8 +22,10 @@ export const MeshCanvas = ({
   isMovingMesh,
   isSidebarOpen,
   movingNodeId,
-  projectionMode = '2d'
+  projectionMode = '2d',
+  theme = 'dark'
 }) => {
+  const isDark = theme !== 'light';
   const NODE_W = 224;
   const NODE_H = 100;
   
@@ -116,7 +118,8 @@ export const MeshCanvas = ({
             if (!parent) return null;
 
             const pathData = getPath(parent, node, node);
-            const color = ENTITY_TYPES[node.type?.toUpperCase()]?.color || '#00f2ff';
+            let color = ENTITY_TYPES[node.type?.toUpperCase()]?.color || '#00f2ff';
+            if (!isDark && (node.type?.toUpperCase() === 'VARIANT' || node.type?.toUpperCase() === 'CONCEPT')) color = '#000000';
             const lid = `link-${parent.id}-${node.id}`;
             const isHovered = hoveredLinkId === lid;
             
@@ -228,7 +231,8 @@ export const MeshCanvas = ({
 
       {nodes.map(node => {
         const config = ENTITY_TYPES[node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT;
-        const color = config.color;
+        let color = config.color;
+        if (!isDark && (node.type?.toUpperCase() === 'VARIANT' || node.type?.toUpperCase() === 'CONCEPT')) color = '#000000';
         
         // VIEWPORT CULLING: Only render if reasonably close to the screen center
         // This is a rough estimation to keep performance high without complex math
@@ -267,25 +271,36 @@ export const MeshCanvas = ({
                 transformStyle: 'preserve-3d'
             }}
           >
-            <div className={`relative glass-panel overflow-hidden border-t-2 group-hover:shadow-[0_0_30px_rgba(255,255,255,0.05)] transition-all duration-500 rounded-xl ${movingNodeId === node.id ? 'ring-2 ring-brand-cyan ring-offset-4 ring-offset-black animate-pulse shadow-[0_0_30px_rgba(0,240,255,0.4)]' : ''}`}
-                 style={{ borderTopColor: color, backgroundColor: 'rgba(10, 15, 20, 0.8)' }}>
+            <div className={`relative glass-panel overflow-hidden border-l-4 group-hover:shadow-[0_0_30px_rgba(255,255,255,0.05)] transition-all duration-500 rounded-xl ${movingNodeId === node.id ? 'ring-2 ring-brand-cyan ring-offset-4 ring-offset-black animate-pulse shadow-[0_0_30px_rgba(0,240,255,0.4)]' : ''}`}
+                 style={{ 
+                   borderLeftColor: color, 
+                   background: isDark ? 'rgba(10, 15, 20, 0.8)' : 'var(--gradient-primary)' 
+                 }}>
               
               {movingNodeId === node.id && (
                 <div className="absolute top-0 left-0 right-0 py-1 bg-brand-cyan text-black text-[7px] font-black uppercase tracking-widest text-center">
                    Select New Parent Node
                 </div>
               )}
-                <div className="p-4 relative z-10 transition-opacity duration-300" style={{ opacity: layoutRules.showLabels ? 1 : 0.2 }}>
+                <div 
+                  className="p-4 relative z-10 transition-opacity duration-300 rounded-xl" 
+                  style={{ 
+                    opacity: layoutRules.showLabels ? 1 : 0.2,
+                    background: isDark ? 'transparent' : 'rgba(0, 0, 0, 0.2)'
+                  }}
+                >
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-1.5 overflow-hidden">
-                       <config.icon size={10} style={{ color }} className="shrink-0" />
+                       <div className="p-1.5 rounded-md bg-white/10 backdrop-blur-md">
+                         <config.icon size={12} style={{ color: isDark ? color : '#FFFFFF' }} className="shrink-0" />
+                       </div>
                        {layoutRules.showLabels && (
-                         <span className="text-[8px] font-black uppercase tracking-[0.2em] truncate opacity-60" style={{ color }}>{config.label}</span>
+                         <span className="text-[8px] font-black uppercase tracking-[0.2em] truncate text-white">{config.label}</span>
                        )}
                     </div>
                   </div>
                   {layoutRules.showLabels && (
-                    <h3 className="text-[13px] font-bold text-white/90 leading-tight mb-1 italic tracking-tight">{node.title}</h3>
+                    <h3 className="text-[13px] font-bold leading-tight mb-1 italic tracking-tight text-white">{node.title}</h3>
                   )}
                 </div>
 
@@ -295,11 +310,14 @@ export const MeshCanvas = ({
                 onMouseEnter={(e) => { e.stopPropagation(); if (!isMovingMesh) setHoveredNodeId(null); }}
                 onMouseLeave={(e) => { e.stopPropagation(); if (!isMovingMesh) setHoveredNodeId(node.id); }}
               >
-                <button className="p-1 hover:bg-white/20 rounded cursor-pointer bg-white/5 border border-white/10" onClick={(e) => { e.stopPropagation(); onAddOffshoot(node.id); }}>
-                  <Plus size={10} className="text-white" />
+                <button 
+                  className={`p-1 rounded cursor-pointer border transition-all ${isDark ? 'hover:bg-white/20 bg-white/5 border-white/10' : 'hover:bg-black/10 bg-black/5 border-black/10'}`} 
+                  onClick={(e) => { e.stopPropagation(); onAddOffshoot(node.id); }}
+                >
+                  <Plus size={10} className={isDark ? 'text-white' : 'text-black'} />
                 </button>
                 <button 
-                  className={`p-1 rounded cursor-pointer border transition-all ${movingNodeId === node.id ? 'bg-brand-cyan border-brand-cyan text-black' : 'hover:bg-white/20 bg-white/5 border-white/10 text-white'}`} 
+                  className={`p-1 rounded cursor-pointer border transition-all ${movingNodeId === node.id ? 'bg-brand-cyan border-brand-cyan text-black' : (isDark ? 'hover:bg-white/20 bg-white/5 border-white/10 text-white' : 'hover:bg-black/10 bg-black/5 border-black/10 text-black')}`} 
                   onClick={(e) => { e.stopPropagation(); onStartReparent(node.id); }}
                   title="Move/Reparent Node"
                 >

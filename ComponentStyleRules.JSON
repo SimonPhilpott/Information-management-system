@@ -8,6 +8,11 @@
       "type": "bezier_curved",
       "description": "Cross-branch transverse links that bow outwards to prevent overlapping through the core tree center."
     },
+    "pillLabels": {
+      "borderColor": "ENTITY_TYPES[node.type].color — matches the node variant colour (e.g. #00f2ff for CONCEPT, #ff007a for PATTERN, #ffe600 for PROCEDURE, #ffffff for VARIANT, #bd00ff for SCENARIO)",
+      "selectedBorder": "#00f2ff (cyan override when selected/hovered)",
+      "background": { "dark": "rgba(10, 15, 25, 0.9)", "light": "rgba(240, 244, 248, 0.95)" }
+    },
     "labels": {
       "baseFontSize": {
         "subject": 48,
@@ -44,7 +49,8 @@
       "gradient": "Sage Green/Teal var(--gradient-primary) for active states",
       "fontFamily": "Inter, System Font",
       "regionalisation": "GBP £ for usage display, British English context tags",
-      "sidebarToggles": "Symmetric vertical gaps (exactly 8px margin offset) with mode-switcher container matching design guidelines"
+      "sidebarToggles": "Symmetric vertical gaps (exactly 8px margin offset) with mode-switcher container matching design guidelines",
+      "topbarLayout": "Model Selection toggle sits in the left topbar tool container immediately to the right of the Gem/Role selector"
     },
     "behavior": {
       "resizeMultiplier": "2x scroll scaling for lists, 5px touch drag threshold",
@@ -63,6 +69,188 @@
       "searchBar": "Glassmorphic search input field positioned under the header with Lucide Search icon decoration",
       "pinToggle": "Tilt rotation micro-interaction (45 degrees) when unpinned, direct vertical rotation and high-contrast accent highlight color when pinned",
       "confirmModal": "Inline glassmorphic action buttons for single-click confirmation of mass deletion of conversation records"
+    }
+  },
+  "ZoomHUD": {
+    "aesthetics": {
+      "position": "absolute bottom-6 right-6 z-[1000]",
+      "styling": "Google Antigravity Premium dark translucent overlay border border-brand-cyan/20 px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-2xl pointer-events-none select-none font-mono text-[10px] tracking-wider text-brand-cyan uppercase",
+      "background": "rgba(10, 15, 25, 0.75)",
+      "backdropFilter": "blur(12px)",
+      "boxShadow": "0 8px 32px rgba(0, 0, 0, 0.4)"
+    }
+  },
+  "SpatialGraphToolbar": {
+    "aesthetics": {
+      "position": "absolute top-8 left-8 z-[100]",
+      "styling": {
+        "dark": "bg-black/60 border border-white/10 backdrop-blur-xl rounded-[12px] shadow-3xl flex items-center gap-1.5 p-1 transition-all duration-300",
+        "light": "bg-[#EDE5D8]/80 border border-[#2E2B27]/15 backdrop-blur-xl rounded-[12px] shadow-3xl flex items-center gap-1.5 p-1 transition-all duration-300"
+      },
+      "buttons": {
+        "dark": "w-8 h-8 flex items-center justify-center rounded-[8px] transition-all text-slate-500 hover:bg-white/5 hover:text-white active:scale-[0.95]",
+        "light": "w-8 h-8 flex items-center justify-center rounded-[8px] transition-all text-[#6A645D] hover:bg-[#2E2B27]/5 hover:text-[#2E2B27] active:scale-[0.95]"
+      },
+      "activeButtonState": {
+        "dark_2d": "bg-brand-cyan/20 border border-brand-cyan/20 text-brand-cyan",
+        "light_2d": "bg-[#899981]/25 border border-[#899981]/40 text-[#4E5A47]",
+        "dark_3d": "bg-brand-purple/20 border border-brand-purple/20 text-brand-purple",
+        "light_3d": "bg-[#4F46E5]/15 border border-[#4F46E5]/25 text-[#4F46E5]"
+      },
+      "dividers": {
+        "dark": "w-px h-4 bg-white/10 mx-0.5 self-center transition-colors duration-300",
+        "light": "w-px h-4 bg-[#2E2B27]/15 mx-0.5 self-center transition-colors duration-300"
+      }
+    }
+  },
+  "InformationSummaryPopup": {
+    "aesthetics": {
+      "translucency": "glassmorphism with backdrop-blur-xl using dynamic backdrop filters",
+      "borderRadius": "rounded-3xl (24px) conforming to the primary design system",
+      "border": "1px solid uniform all-around theme-specific border",
+      "shadow": "shadow-lg matching soft ambient light parameters",
+      "categoryIndicator": "Left category accent border stripe on the title card header block to preserve color identification without heavy top border visual clutter",
+      "fontFamily": "Inter, System Font",
+      "typography": {
+        "category": "text-[9px] font-black uppercase tracking-[0.2em] text-slate-500",
+        "title": "text-4xl font-bold italic tracking-tighter leading-none",
+        "summary": "text-[14px] leading-relaxed italic border-b pb-8"
+      },
+      "colors": {
+        "dark": {
+          "background": "rgba(10, 15, 25, 0.98)",
+          "border": "border-white/10",
+          "textTitle": "text-white",
+          "textSummary": "text-slate-300",
+          "listBg": "bg-white/5 border-white/5",
+          "badge": "text-brand-cyan border-brand-cyan/30 bg-brand-cyan/5"
+        },
+        "light": {
+          "background": "rgba(244, 239, 229, 0.98)",
+          "border": "border-[#2E2B27]/15",
+          "textTitle": "text-[#2E2B27]",
+          "textSummary": "text-[#4A443F]",
+          "listBg": "bg-black/[0.03] border-[#2E2B27]/10",
+          "badge": "text-[#0891B2] border-[#0891B2]/30 bg-[#0891B2]/5"
+        }
+      }
+    }
+  },
+  "ConnectionDetailsPopup": {
+    "aesthetics": {
+      "translucency": "glassmorphism matching InformationSummaryPopup backdrop parameters",
+      "borderRadius": "rounded-3xl (24px) conforming to the primary design system",
+      "border": "1px solid uniform all-around theme-specific border",
+      "shadow": "shadow-lg matching soft ambient light parameters",
+      "cards": {
+        "borderLeft": "3px solid category color",
+        "text": "italic Inter text with Start/End metadata badges"
+      },
+      "colors": {
+        "dark": {
+          "background": "rgba(10, 15, 25, 0.98)",
+          "border": "border-white/10",
+          "textTitle": "text-white/90",
+          "badgeStart": "border-brand-cyan/20 text-brand-cyan",
+          "badgeEnd": "border-slate-700 text-slate-400"
+        },
+        "light": {
+          "background": "rgba(244, 239, 229, 0.98)",
+          "border": "border-[#2E2B27]/15",
+          "textTitle": "text-[#2E2B27]",
+          "badgeStart": "border-[#0891B2]/30 text-[#0891B2]",
+          "badgeEnd": "border-slate-300 text-slate-500"
+        }
+      }
+    }
+  },
+  "MiniMap": {
+    "aesthetics": {
+      "translucency": "glassmorphism with blur(20px)",
+      "borderRadius": "rounded-2xl (16px) conforming to premium cards system",
+      "shadow": "0 12px 32px matching shadow-2xl parameters",
+      "size": "220px width by 160px height absolute top-10 right-10 z-[2000]",
+      "viewportAccents": {
+        "primary": {
+          "light": "#0891B2 (high-contrast accessible teal)",
+          "dark": "#00f2ff (vibrant cyan)",
+          "style": "dashed stroke on top [3, 3] line dash pattern"
+        },
+        "secondary": {
+          "color": "#899981 (sage green)",
+          "style": "solid stroke at bottom layer 1.5px width"
+        }
+      },
+      "colors": {
+        "dark": {
+          "background": "rgba(10, 15, 25, 0.8)",
+          "border": "1px solid rgba(0, 242, 255, 0.15)",
+          "canvasBg": "rgba(8, 12, 20, 0.4)",
+          "nodeOutline": "rgba(255, 255, 255, 0.4)",
+          "linkLine": "rgba(255, 255, 255, 0.18)"
+        },
+        "light": {
+          "background": "rgba(244, 239, 229, 0.85)",
+          "border": "1px solid rgba(46, 43, 39, 0.15)",
+          "canvasBg": "rgba(244, 239, 229, 0.5)",
+          "nodeOutline": "rgba(46, 43, 39, 0.3)",
+          "linkLine": "rgba(46, 43, 39, 0.25)"
+        }
+      }
+    },
+    "behavior": {
+      "dragScaling": "dynamic coordinate conversion based on canvas-space min/max bounds and fitting scale"
+    }
+  },
+  "AdminPanelCenteredModal": {
+    "aesthetics": {
+      "overlay": "absolute inset-0 bg-black/60 backdrop-blur-[30px]",
+      "container": "relative w-full max-w-6xl h-[85vh] rounded-[var(--radius-xl)] shadow-2xl flex flex-col overflow-hidden border border-[var(--glass-border)] bg-[var(--bg-overlay)] backdrop-blur-[40px]",
+      "tabsHeader": "flex items-center bg-[var(--bg-elevated)] p-[3px] rounded-full border border-[var(--glass-border)] gap-[2px] overflow-x-auto scrollbar-none",
+      "bentoCards": {
+        "layout": "grid layout panels with border border-[var(--glass-border)] bg-[var(--bg-secondary)] rounded-[var(--radius-lg)] p-5 shadow-sm shadow-inner textareas/inputs",
+        "nestedTree": "directory tree browser with collapsible nodes and left borders on active indentation branches"
+      },
+      "activeTabState": "var(--gradient-primary) with var(--shadow-glow) active highlights and Framer Motion spring fade-in transitions"
+    },
+    "behavior": {
+      "draggableScroll": "useDraggableScroll for grab-to-scroll horizontal overflow header tags",
+      "scaleHaptic": "0.95x active scaling feedback on active control clicks"
+    }
+  },
+  "BranchClassificationCards": {
+    "aesthetics": {
+      "cardsLayout": "grid grid-cols-3 gap-3",
+      "cardButton": {
+        "base": "group relative p-4 border-2 rounded-[var(--radius-lg)] flex flex-col gap-2 transition-all text-left",
+        "active": "Border matches dynamic category color (v.color), Background uses 5% opacity tint of category color (v.color + '15'), Box-shadow glow matches category color (v.color + '25')",
+        "inactive": "Border is var(--glass-border), Background is var(--bg-secondary)"
+      },
+      "typography": {
+        "title": "text-xs font-semibold colored in category color (v.color)",
+        "description": "text-[11px] leading-snug text-[var(--text-secondary)]"
+      },
+      "predictiveTagging": {
+        "container": "p-5 rounded-2xl flex items-start gap-4 mb-4 border transition-all bg-[var(--accent-indigo)]/5 border-[var(--accent-indigo)]/10",
+        "dottedBoxes": "font-semibold border border-dotted px-1.5 py-0.5 rounded mx-1 text-[var(--accent-indigo)] border-[var(--accent-indigo)] bg-[var(--accent-indigo)]/5"
+      }
+    }
+  },
+  "MeshAppearanceDrawer": {
+    "aesthetics": {
+      "position": "absolute top-20 left-8 z-[100] w-64 pointer-events-auto",
+      "container": "flex flex-col gap-1.5 p-3 bg-black/60 backdrop-blur-xl rounded-[16px] border border-white/10 shadow-3xl relative",
+      "controls": {
+        "labels": "text-[9px] font-bold text-brand-cyan/80 uppercase",
+        "metrics": "text-white font-mono text-[9px]",
+        "sliders": "w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan"
+      },
+      "footerButtons": {
+        "layout": "flex gap-1.5 justify-center border-t border-white/5 pt-3 mt-1",
+        "button": "px-3 py-1.5 text-[9px] font-black tracking-wider rounded-lg border transition-all flex items-center gap-1.5 w-1/2 justify-center",
+        "active": "bg-brand-cyan/20 border-brand-cyan/30 text-brand-cyan",
+        "inactive": "border-white/10 text-slate-500 hover:bg-white/5 hover:text-white"
+      }
     }
   }
 }

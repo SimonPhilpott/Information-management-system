@@ -14,7 +14,8 @@
     "src/components/Dashboard/Layout.jsx": {
       "description": "Premium layout system incorporating glassmorphism, resizable sidebar drawers, unified top headers, cost monitoring, and speech telemetry integration.",
       "dependencies": [
-        "src/components/Dashboard/ChatHistory.jsx"
+        "src/components/Dashboard/ChatHistory.jsx",
+        "src/components/Dashboard/ModelSwitcher.jsx"
       ]
     },
     "src/components/Dashboard/ChatHistory.jsx": {

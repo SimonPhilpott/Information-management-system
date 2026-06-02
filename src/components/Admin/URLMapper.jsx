@@ -40,40 +40,46 @@ export function URLMapper({ nodes, onApplyAIProposal }) {
     localStorage.setItem('hive_mesh_node_urls', JSON.stringify(newUrls));
   };
 
-  const syncNode = (node) => {
+  const syncNode = async (node) => {
     const url = urls[node.id];
     if (!url) return;
 
     setIsSyncing(node.id);
-    
-    // Scrape Simulation logic (Enhanced for TT specific routing)
-    setTimeout(() => {
-        let content = `[SYNCED INTEL FROM ${url}]\n\n`;
-        
-        if (url.includes('sustainability')) {
-            content += "Turner & Townsend works with its partners to deliver sustainable change by accelerating the journey to net zero, focusing on environmental, social, and economic outcomes. Our climate-tech solutions enable real-time tracking of Scope 1, 2, and 3 emissions across global infrastructure projects.";
-        } else if (url.includes('digital')) {
-            content += "Our digital performance solutions integrate data-driven insights with project controls to drive predictability and performance. We utilize advanced BIM, digital twins, and automated reporting to transform how complex programmes are delivered in the real estate and infrastructure sectors.";
-        } else if (url.includes('clean-energy')) {
-            content += "Accelerating the energy transition through expert programme management of offshore wind, solar, and hydrogen initiatives. We help clients navigate the complexity of low-carbon energy infrastructure from inception to commissioning.";
-        } else {
-            content += `Authoritative sector intelligence for ${node.title}. Analysis of the provided resource indicates a strong alignment with global ${ENTITY_TYPES[node.type]?.label.toLowerCase()} standards, specifically regarding operational excellence and value-driven delivery models.`;
-        }
+    try {
+      const response = await fetch('/api/graph/scrape', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          url,
+          nodeTitle: node.title,
+          nodeType: node.type
+        })
+      });
 
-        const proposal = {
-            id: `sync_${node.id}_${Date.now()}`,
-            type: 'update',
-            targetId: node.id,
-            field: 'Summary',
-            oldValue: node.content?.Summary || 'No existing intelligence.',
-            newValue: content,
-            reason: `Data harvested from authoritative Turner & Townsend resource: ${url}`,
-            impact: 1400
-        };
-        
-        onApplyAIProposal(proposal);
-        setIsSyncing(null);
-    }, 1500);
+      if (!response.ok) {
+        throw new Error(`Sync failed with status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const proposal = {
+        id: `sync_${node.id}_${Date.now()}`,
+        type: 'update',
+        targetId: node.id,
+        field: 'Summary',
+        oldValue: node.content?.Summary || 'No existing intelligence.',
+        newValue: data.content,
+        reason: `Data dynamically harvested from authoritative resource: ${url}`,
+        impact: 1400
+      };
+      
+      onApplyAIProposal(proposal);
+    } catch (err) {
+      console.error('[SyncNode] ERROR:', err);
+    } finally {
+      setIsSyncing(null);
+    }
   };
 
   const filteredNodes = nodes.filter(n => n.title.toLowerCase().includes(search.toLowerCase()) || nodeMatchesUrl(n));
@@ -86,13 +92,13 @@ export function URLMapper({ nodes, onApplyAIProposal }) {
   return (
     <div className="space-y-8 pb-32">
        {/* Instruction Banner */}
-       <div className="p-5 bg-brand-cyan/10 border border-brand-cyan/20 rounded-2xl flex items-start gap-4">
-          <Database size={18} className="text-brand-cyan shrink-0 mt-0.5 shadow-[0_0_10px_rgba(0,242,255,0.3)]" />
+       <div className="p-5 bg-[var(--accent-indigo)]/10 border border-[var(--accent-indigo)]/20 rounded-2xl flex items-start gap-4">
+          <Database size={18} className="text-[var(--accent-indigo)] shrink-0 mt-0.5" />
           <div className="space-y-1">
-             <div className="flex items-center gap-2 text-brand-cyan">
+             <div className="flex items-center gap-2 text-[var(--accent-indigo)]">
                 <span className="text-[10px] font-black uppercase tracking-[0.2em]">Automated Authority Mapping</span>
              </div>
-             <p className="text-[10px] text-slate-400 italic leading-relaxed">
+             <p className="text-[10px] text-[var(--text-muted)] italic leading-relaxed">
                 I have automatically extracted the URLs from the Turner & Townsend navigation structure. Click **Sync** on any node to populate the workspace with live intelligence.
              </p>
           </div>
@@ -100,9 +106,9 @@ export function URLMapper({ nodes, onApplyAIProposal }) {
 
        {/* Search Bar */}
        <div className="relative">
-          <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+          <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
           <input 
-             className="w-full bg-black/40 border border-white/5 rounded-xl py-4 pl-12 pr-4 text-[11px] text-white outline-none focus:border-brand-cyan/30 transition-all font-mono shadow-inner"
+             className="w-full bg-[var(--bg-primary)] border border-[var(--glass-border)] rounded-xl py-4 pl-12 pr-4 text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent-indigo)]/40 transition-all font-mono shadow-inner"
              placeholder="Search node or URL..."
              value={search}
              onChange={(e) => setSearch(e.target.value)}
@@ -112,37 +118,35 @@ export function URLMapper({ nodes, onApplyAIProposal }) {
        {/* Node URL List */}
        <div className="space-y-3">
           {filteredNodes.slice(0, 20).map(node => (
-             <div key={node.id} className="p-5 bg-white/[0.02] border border-white/5 rounded-2xl hover:border-brand-cyan/20 transition-all flex flex-col gap-4 group">
+             <div key={node.id} className="p-5 bg-[var(--bg-secondary)] border border-[var(--glass-border)] rounded-2xl hover:border-[var(--accent-indigo)]/30 transition-all flex flex-col gap-4 group shadow-sm">
                 <div className="flex items-center justify-between">
                    <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: ENTITY_TYPES[node.type]?.color }} />
-                      <span className="text-[11px] font-black text-white uppercase tracking-wider group-hover:text-brand-cyan transition-colors">{node.title}</span>
+                      <span className="text-[11px] font-black text-[var(--text-primary)] uppercase tracking-wider group-hover:text-[var(--accent-indigo)] transition-colors">{node.title}</span>
                    </div>
                 </div>
 
-                <div className="flex gap-2">
-                   <div className="relative flex-1">
-                      <Globe size={12} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
-                      <input 
-                         className="w-full bg-black/40 border border-white/5 rounded-xl py-3 pl-10 pr-4 text-[10px] text-slate-300 outline-none focus:border-brand-cyan/30 transition-all font-mono"
-                         placeholder="Mapping URL..."
-                         value={urls[node.id] || ''}
-                         onChange={(e) => saveUrls({ ...urls, [node.id]: e.target.value })}
-                      />
-                   </div>
+                <div className="relative w-full flex items-center">
+                   <Globe size={12} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                   <input 
+                      className="w-full bg-[var(--bg-primary)] border border-[var(--glass-border)] rounded-xl py-3.5 pl-10 pr-24 text-[10px] text-[var(--text-secondary)] outline-none focus:border-[var(--accent-indigo)]/40 transition-all font-mono"
+                      placeholder="Mapping URL..."
+                      value={urls[node.id] || ''}
+                      onChange={(e) => saveUrls({ ...urls, [node.id]: e.target.value })}
+                   />
                    <button 
                      onClick={() => syncNode(node)}
                      disabled={isSyncing === node.id || !urls[node.id]}
-                     className={`px-4 rounded-xl flex items-center gap-2 transition-all ${isSyncing === node.id ? 'bg-brand-cyan/10 text-brand-cyan animate-pulse border border-brand-cyan/20' : 'bg-brand-cyan/5 text-slate-500 hover:bg-brand-cyan hover:text-black border border-white/5 hover:border-brand-cyan'}`}
+                     className={`absolute right-1.5 top-1/2 -translate-y-1/2 py-2 px-4 rounded-lg flex items-center gap-1.5 transition-all border-none cursor-pointer ${isSyncing === node.id ? 'bg-[var(--accent-indigo)]/25 text-[var(--accent-indigo)] animate-pulse' : 'bg-[var(--accent-indigo)]/10 text-[var(--text-secondary)] hover:bg-[var(--accent-indigo)] hover:text-white hover:shadow-[var(--shadow-glow)]'}`}
                    >
-                      {isSyncing === node.id ? <RefreshCw size={12} className="animate-spin" /> : <Zap size={12} />}
+                      {isSyncing === node.id ? <RefreshCw size={10} className="animate-spin" /> : <Zap size={10} />}
                       <span className="text-[9px] font-black uppercase tracking-widest">Sync</span>
                    </button>
                 </div>
              </div>
           ))}
           {filteredNodes.length > 20 && (
-            <p className="text-center text-[9px] text-slate-700 uppercase font-black tracking-widest pt-4 opacity-50">Refine search for remaining {filteredNodes.length - 20} nodes</p>
+            <p className="text-center text-[9px] text-[var(--text-muted)] uppercase font-black tracking-widest pt-4 opacity-50">Refine search for remaining {filteredNodes.length - 20} nodes</p>
           )}
        </div>
     </div>

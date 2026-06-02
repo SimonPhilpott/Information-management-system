@@ -1,6 +1,12 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { exec } from 'child_process'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const ports = JSON.parse(fs.readFileSync(path.join(__dirname, 'ports.json'), 'utf8'))
 
 const backupPlugin = () => ({
   name: 'backup-plugin',
@@ -38,12 +44,17 @@ export default defineConfig({
   plugins: [react(), backupPlugin()],
   server: {
     host: true,
-    port: 6001,
+    port: ports.ims.port,
     strictPort: false,
     proxy: {
       '/api': {
-        target: 'http://localhost:3005',
-        changeOrigin: true
+        target: `http://127.0.0.1:${ports.pdf_knowledge_base.server.port}`,
+        changeOrigin: true,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.error('Vite Proxy Error:', err);
+          });
+        }
       }
     },
     watch: {

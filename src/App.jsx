@@ -12,7 +12,7 @@ import { AdminPanel } from './components/Admin/AdminPanel';
 import { SpatialCanvas } from './components/KnowledgeMesh/SpatialCanvas';
 import { InstancedSpatialCanvas } from './components/KnowledgeMesh/InstancedSpatialCanvas';
 import { AnimatePresence, motion, animate } from 'framer-motion';
-import { Activity, Link as LinkIcon, Cpu, ArrowDown, Network, GitMerge, Box, Layers, Type, Sparkles } from 'lucide-react';
+import { Activity, Link as LinkIcon, Cpu, ArrowDown, Network, GitMerge, Box, Layers, Type, Sparkles, Globe } from 'lucide-react';
 
 import { useAppLogic } from './hooks/useAppLogic';
 import OnboardingSetup from './components/Dashboard/OnboardingSetup';
@@ -94,17 +94,18 @@ export default function App() {
          parentDistance: data.parentDistance ?? 400,
          connectionTension: data.connectionTension ?? 60,
          layoutStyle: data.layoutStyle ?? 'radial',
-         projectionMode: data.projectionMode ?? '2d',
+         projectionMode: data.projectionMode === 'instanced_3d' ? 'spatial_3d' : (data.projectionMode ?? '2d'),
          directionalLocking: data.directionalLocking ?? true,
          unifiedSyncPoints: data.unifiedSyncPoints ?? true,
          showLabels: data.showLabels ?? true,
-         labelStyle: data.labelStyle ?? 'standard'
+         labelStyle: data.labelStyle ?? 'standard',
+         betaLayout: data.betaLayout ?? false
       };
     } catch {
       return { 
          childGap: 50, parentDistance: 400, connectionTension: 60,
-         layoutStyle: 'radial', projectionMode: 'instanced_3d', directionalLocking: true, unifiedSyncPoints: true,
-         showLabels: true, labelStyle: 'standard'
+         layoutStyle: 'radial', projectionMode: 'spatial_3d', directionalLocking: true, unifiedSyncPoints: true,
+         showLabels: true, labelStyle: 'standard', betaLayout: false
       };
     }
   });
@@ -123,8 +124,10 @@ export default function App() {
 
   const [view, setView] = useState(() => {
     const saved = localStorage.getItem('hive_mesh_viewport_v1');
-    return saved ? JSON.parse(saved) : { x: 0, y: 0, scale: 0.8 };
+    return saved ? JSON.parse(saved) : { x: -50, y: -331, scale: 0.36 };
   });
+  const [zoom3D, setZoom3D] = useState(0);
+  const [coords3D, setCoords3D] = useState({ x: 0, y: 0, z: 0 });
   const viewRef = useRef(view);
   
   useEffect(() => {
@@ -133,6 +136,7 @@ export default function App() {
 
   const meshRef = useRef(null);
   const [dragType, setDragType] = useState(null);
+  const [is3DInteracting, setIs3DInteracting] = useState(false);
   const isDraggingNode = false; // Internal tracking
   const [lastPos, setLastPos] = useState({ x: 0, y: 0 });
   const [stickPos, setStickPos] = useState({ x: 0, y: 0, active: false });
@@ -157,8 +161,8 @@ export default function App() {
   const handleHoverNode = (id) => {
     if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
     
-    // INTERACTION LOCK: Block hover extraction if dragging is in progress
-    if ((!!dragType || isDraggingNode) && id) {
+    // INTERACTION LOCK: Block hover extraction if dragging/interacting is in progress
+    if ((!!dragType || isDraggingNode || is3DInteracting) && id) {
        setHoveredNodeId(null);
        return;
      }
@@ -174,6 +178,15 @@ export default function App() {
 
   const [hoveredLinkId, setHoveredLinkId] = useState(null);
   const [hoveredLinkData, setHoveredLinkData] = useState(null);
+
+  useEffect(() => {
+    if (dragType || is3DInteracting) {
+      setHoveredNodeId(null);
+      setHoveredLinkId(null);
+      setHoveredLinkData(null);
+    }
+  }, [dragType, is3DInteracting]);
+
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [movingNodeId, setMovingNodeId] = useState(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -340,12 +353,17 @@ export default function App() {
     // MANDATORY INITIAL LAYOUT: Ensure authoritative spacing on cold boot
     applyLayout(layoutRules);
 
+    // REMOVED AUTO-CENTERING ON MOUNT TO PRESERVE DEFAULT/SAVED VIEWPORT STATE
+    /*
     const rootNode = nodes.find(n => n.id === 'tt_group') || nodes[0];
     if (rootNode) {
        setTimeout(() => centerOnNode(rootNode), 100);
     }
+    */
   }, []);
 
+  // REMOVED AUTO-CENTERING ON PROJECTION MODE CHANGE TO PRESERVE DEFAULT/SAVED VIEWPORT STATE
+  /*
   useEffect(() => {
     if (layoutRules.projectionMode === '2d') {
       const rootNode = nodes.find(n => n.id === 'tt_group') || nodes[0];
@@ -354,6 +372,7 @@ export default function App() {
       }
     }
   }, [layoutRules.projectionMode]);
+  */
 
   const applyLayout = (rules, baseNodes = null) => {
       let newNodes = baseNodes ? [...baseNodes] : [...nodes];
@@ -686,95 +705,115 @@ export default function App() {
     );
   }
 
+  const hoveredNodeRelCount = (hoveredNodeId && activeDisplayNode) 
+    ? nodes.filter(n => n.parentId === activeDisplayNode.id || activeDisplayNode.parentId === n.id).slice(0, 8).length 
+    : 0;
+  const nodeTipPos = (hoveredNodeId && activeDisplayNode)
+    ? getTipPos(448, 330 + hoveredNodeRelCount * 54)
+    : { x: 0, y: 0 };
+  const linkTipPos = hoveredLinkData ? getTipPos(448, 320) : { x: 0, y: 0 };
+
   return (
     <>
       <div className="fixed inset-0 pointer-events-none z-[1000000]">
         <AnimatePresence mode="wait">
-          {(state.showMesh && hoveredNodeId && !isDraggingNode && activeDisplayNode) && (
+          {(state.showGraph && hoveredNodeId && !isDraggingNode && !dragType && !is3DInteracting && activeDisplayNode) && (
             <motion.div 
               initial={{ opacity: 0, scale: 0.9, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 10 }}
-              className="absolute z-[2000] pointer-events-none"
+              className={`fixed glass-panel border rounded-[16px] p-5 flex flex-col shadow-lg z-[2000] pointer-events-none transition-all duration-300 ${
+                state.theme === 'light' ? 'border-[#2E2B27]/15' : 'border-white/10'
+              }`}
               style={{ 
-                left: mousePos.x + 20, 
-                top: mousePos.y - 20,
-                width: '448px'
+                left: nodeTipPos.x, 
+                top: nodeTipPos.y,
+                width: '360px',
+                backgroundColor: state.theme === 'light' ? 'rgba(244, 239, 229, 0.98)' : 'rgba(10, 15, 25, 0.98)' 
               }}
             >
-              <div className="glass-panel border-t-4 p-8 flex flex-col shadow-3xl" style={{ borderTopColor: ENTITY_TYPES[activeDisplayNode.type?.toUpperCase()]?.color || '#00f2ff', backgroundColor: 'rgba(5, 5, 15, 0.98)' }}>
-                <div className="flex items-center gap-2 mb-4">
-                  <Activity size={12} className="text-brand-cyan" />
-                  <span className="text-[10px] font-bold tracking-[0.1em] text-brand-cyan uppercase">Information Summary</span>
-                </div>
-                
-                <div className="flex flex-col mb-6">
-                   <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-1.5">{activeDisplayNode.type}</span>
-                   <h4 className="text-white font-bold text-4xl italic tracking-tighter leading-none">{activeDisplayNode.title}</h4>
-                </div>
-
-                <p className="text-[14px] text-slate-300 leading-relaxed italic mb-8 border-b border-white/5 pb-8">
-                  {activeDisplayNode.content?.Summary || activeDisplayNode.content?.['Definition Summary'] || 'Analytical breakdown in progress...'}
-                </p>
-
-                <div className="flex flex-col gap-4">
-                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Connected Nodes</span>
-                   <div className="flex flex-col gap-2">
-                      {nodes.filter(n => n.parentId === activeDisplayNode.id || activeDisplayNode.parentId === n.id).slice(0, 8).map(rel => (
-                         <div key={rel.id} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
-                            <div className="flex flex-col">
-                               <span className="text-[8px] font-bold text-slate-500 uppercase">{rel.type}</span>
-                               <span className="text-[11px] font-bold text-white italic">{rel.title}</span>
-                            </div>
-                            <span className="text-[8px] font-black text-brand-cyan uppercase border border-brand-cyan/30 px-2 py-1 rounded">{rel.parentId === activeDisplayNode.id ? 'Child' : 'Parent'}</span>
-                         </div>
-                      ))}
-                   </div>
-                </div>
-
-                <div className="mt-8 pt-6 border-t border-white/5 flex justify-between items-center text-slate-500">
-                   <div className="text-[9px] font-bold uppercase tracking-widest italic">Double Click to Inspect Details</div>
-                </div>
+              <div className="flex items-center gap-1.5 mb-3">
+                <Activity size={10} className={state.theme === 'light' ? 'text-[#0891B2]' : 'text-brand-cyan'} />
+                <span className={`text-[9px] font-bold tracking-[0.1em] uppercase transition-colors duration-300 ${state.theme === 'light' ? 'text-[#0891B2]' : 'text-brand-cyan'}`}>Information Summary</span>
+              </div>
+              
+              <div className="flex flex-col mb-3" style={{ borderLeft: `3px solid ${ENTITY_TYPES[activeDisplayNode.type?.toUpperCase()]?.color || '#00f2ff'}`, paddingLeft: '12px' }}>
+                 <span className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500 mb-0.5">{activeDisplayNode.type}</span>
+                 <h4 className={`font-bold text-xl italic tracking-tight leading-snug transition-colors duration-300 ${state.theme === 'light' ? 'text-[#2E2B27]' : 'text-white'}`}>{activeDisplayNode.title}</h4>
+              </div>
+ 
+              <p className={`text-[12px] leading-relaxed italic mb-4 border-b pb-4 transition-colors duration-300 ${state.theme === 'light' ? 'text-[#4A443F] border-[#2E2B27]/10' : 'text-slate-300 border-white/5'}`}>
+                {activeDisplayNode.content?.Summary || activeDisplayNode.content?.['Definition Summary'] || 'Analytical breakdown in progress...'}
+              </p>
+ 
+              <div className="flex flex-col gap-3">
+                 <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Connected Nodes</span>
+                 <div className="flex flex-col gap-1.5">
+                    {nodes.filter(n => n.parentId === activeDisplayNode.id || activeDisplayNode.parentId === n.id).slice(0, 5).map(rel => (
+                       <div key={rel.id} className={`flex items-center justify-between p-2.5 rounded-lg border transition-all duration-300 ${state.theme === 'light' ? 'bg-black/[0.03] border-[#2E2B27]/10' : 'bg-white/5 border border-white/5'}`}>
+                          <div className="flex flex-col">
+                             <span className="text-[7px] font-bold text-slate-500 uppercase">{rel.type}</span>
+                             <span className={`text-[10px] font-bold italic transition-colors duration-300 ${state.theme === 'light' ? 'text-[#2E2B27]' : 'text-white'}`}>{rel.title}</span>
+                          </div>
+                          <span className={`text-[7px] font-black uppercase border px-1.5 py-0.5 rounded transition-all duration-300 ${state.theme === 'light' ? 'text-[#0891B2] border-[#0891B2]/30 bg-[#0891B2]/5' : 'text-brand-cyan border-brand-cyan/30'}`}>{rel.parentId === activeDisplayNode.id ? 'Child' : 'Parent'}</span>
+                       </div>
+                    ))}
+                 </div>
+              </div>
+ 
+              <div className={`mt-4 pt-3 border-t flex justify-between items-center text-slate-500 transition-colors duration-300 ${state.theme === 'light' ? 'border-[#2E2B27]/10' : 'border-white/5'}`}>
+                 <div className="text-[8px] font-bold uppercase tracking-widest italic">Double Click to Inspect Details</div>
               </div>
             </motion.div>
           )}
-
-          {(state.showMesh && hoveredLinkData && !isDraggingNode) && (
+ 
+          {(state.showGraph && hoveredLinkData && !isDraggingNode && !dragType && !is3DInteracting) && (
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-              className="fixed backdrop-blur-3xl border border-white/10 p-6 rounded-3xl w-[448px] border-t-4 bg-black/85 shadow-3xl z-[2000000] flex flex-col border-t-brand-cyan"
-              style={{ left: getTipPos(448, 300).x, top: getTipPos(448, 300).y }}
+              className={`fixed glass-panel p-4 w-[360px] border rounded-[16px] shadow-lg z-[2000000] pointer-events-none flex flex-col transition-all duration-300 ${
+                state.theme === 'light' 
+                  ? 'border-[#2E2B27]/15' 
+                  : 'border-white/10'
+              }`}
+              style={{ 
+                left: linkTipPos.x, 
+                top: linkTipPos.y,
+                backgroundColor: state.theme === 'light' ? 'rgba(244, 239, 229, 0.98)' : 'rgba(10, 15, 25, 0.98)'
+              }}
             >
-              <div className="flex items-center gap-2 mb-4"><LinkIcon size={12} className="text-brand-cyan" /><span className="text-[10px] font-bold tracking-[0.1em] text-brand-cyan uppercase">Connection Details</span></div>
+              <div className="flex items-center gap-1.5 mb-3">
+                <LinkIcon size={10} className={state.theme === 'light' ? 'text-[#0891B2]' : 'text-brand-cyan'} />
+                <span className={`text-[9px] font-bold tracking-[0.1em] uppercase transition-colors duration-300 ${state.theme === 'light' ? 'text-[#0891B2]' : 'text-brand-cyan'}`}>Connection Details</span>
+              </div>
               
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-0.5">
                 {/* From Entity */}
-                <div className="px-4 py-3 rounded-xl border border-white/5 bg-white/[0.02] flex items-center justify-between" style={{ borderLeft: `3px solid ${ENTITY_TYPES[hoveredLinkData.fromType?.toUpperCase()]?.color || '#00f2ff'}` }}>
+                <div className={`px-3 py-2 rounded-lg border flex items-center justify-between transition-all duration-300 ${state.theme === 'light' ? 'border-[#2E2B27]/10 bg-black/[0.03]' : 'border-white/5 bg-white/[0.02]'}`} style={{ borderLeft: `3px solid ${ENTITY_TYPES[hoveredLinkData.fromType?.toUpperCase()]?.color || '#00f2ff'}` }}>
                    <div className="flex flex-col">
-                      <span className="text-[8px] font-black uppercase tracking-tighter text-slate-500 mb-0.5">{hoveredLinkData.fromType}</span>
-                      <span className="text-[13px] font-bold text-white/90 italic">{hoveredLinkData.from}</span>
+                      <span className="text-[7px] font-black uppercase tracking-tighter text-slate-500 mb-0.5">{hoveredLinkData.fromType}</span>
+                      <span className={`text-[11px] font-bold italic transition-colors duration-300 ${state.theme === 'light' ? 'text-[#2E2B27]' : 'text-white/90'}`}>{hoveredLinkData.from}</span>
                    </div>
-                   <div className="text-[8px] font-black px-2 py-1 rounded-md italic uppercase tracking-widest leading-none border border-brand-cyan/20 text-brand-cyan">Start</div>
+                   <div className={`text-[7px] font-black px-1.5 py-0.5 rounded-md italic uppercase tracking-widest leading-none border transition-all duration-300 ${state.theme === 'light' ? 'border-[#0891B2]/30 text-[#0891B2]' : 'border-brand-cyan/20 text-brand-cyan'}`}>Start</div>
                 </div>
 
                 {/* Flow Arrow */}
-                <div className="py-1 flex justify-center">
-                   <div className="w-px h-3 bg-gradient-to-b from-brand-cyan to-transparent relative">
-                      <ArrowDown size={10} className="absolute -bottom-1 -left-[4.5px] text-brand-cyan opacity-40" />
+                <div className="py-0.5 flex justify-center">
+                   <div className={`w-px h-2.5 bg-gradient-to-b ${state.theme === 'light' ? 'from-[#0891B2]' : 'from-brand-cyan'} to-transparent relative`}>
+                      <ArrowDown size={8} className={`absolute -bottom-1 -left-[3.5px] opacity-40 transition-colors duration-300 ${state.theme === 'light' ? 'text-[#0891B2]' : 'text-brand-cyan'}`} />
                    </div>
                 </div>
 
                 {/* To Entity */}
-                <div className="px-4 py-3 rounded-xl border border-white/5 bg-white/[0.02] flex items-center justify-between" style={{ borderLeft: `3px solid ${ENTITY_TYPES[hoveredLinkData.toType?.toUpperCase()]?.color || '#00f2ff'}` }}>
+                <div className={`px-3 py-2 rounded-lg border flex items-center justify-between transition-all duration-300 ${state.theme === 'light' ? 'border-[#2E2B27]/10 bg-black/[0.03]' : 'border-white/5 bg-white/[0.02]'}`} style={{ borderLeft: `3px solid ${ENTITY_TYPES[hoveredLinkData.toType?.toUpperCase()]?.color || '#00f2ff'}` }}>
                    <div className="flex flex-col">
-                      <span className="text-[8px] font-black uppercase tracking-tighter text-slate-500 mb-0.5">{hoveredLinkData.toType}</span>
-                      <span className="text-[13px] font-bold text-white/90 italic">{hoveredLinkData.to}</span>
+                      <span className="text-[7px] font-black uppercase tracking-tighter text-slate-500 mb-0.5">{hoveredLinkData.toType}</span>
+                      <span className={`text-[11px] font-bold italic transition-colors duration-300 ${state.theme === 'light' ? 'text-[#2E2B27]' : 'text-white/90'}`}>{hoveredLinkData.to}</span>
                    </div>
-                   <div className="text-[8px] font-black px-2 py-1 rounded-md italic uppercase tracking-widest leading-none border border-slate-700 text-slate-400">End</div>
+                   <div className={`text-[7px] font-black px-1.5 py-0.5 rounded-md italic uppercase tracking-widest leading-none border transition-all duration-300 ${state.theme === 'light' ? 'border-[#0891B2]/30 text-[#0891B2]' : 'border-brand-cyan/20 text-brand-cyan'}`}>End</div>
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-white/5 flex justify-center">
-                  <span className="text-[10px] font-bold text-brand-cyan/80 bg-brand-cyan/5 px-3 py-1.5 rounded-full italic tracking-tight">{hoveredLinkData.type}</span>
+                <div className={`mt-3 pt-3 border-t flex justify-center transition-colors duration-300 ${state.theme === 'light' ? 'border-[#2E2B27]/10' : 'border-white/5'}`}>
+                   <span className={`text-[9px] font-bold px-2.5 py-1 rounded-full italic tracking-tight transition-all duration-300 ${state.theme === 'light' ? 'text-[#0891B2] bg-[#0891B2]/5' : 'text-brand-cyan/80 bg-brand-cyan/5'}`}>{hoveredLinkData.type}</span>
                 </div>
               </div>
             </motion.div>
@@ -835,23 +874,119 @@ export default function App() {
         onToggleCitations={actions.toggleCitations}
         deletingSessionIds={state.deletingSessionIds}
         onClearPins={actions.clearAllPins}
-        onOpenMesh={() => actions.setShowMesh(!state.showMesh)}
-        showMesh={state.showMesh}
+        onOpenGraph={() => actions.setShowGraph(!state.showGraph)}
+        showGraph={state.showGraph}
       >
-        {state.showMesh ? (
+        {state.showGraph ? (
           <section 
             ref={containerRef} 
-            className={`flex-1 relative overflow-hidden rounded-3xl border border-white/5 shadow-2xl transition-all duration-700 ${layoutRules.projectionMode === '2d' ? 'bg-black' : 'bg-black/20'} ${isAdminOpen || isEditorOpen ? 'pointer-events-none grayscale-[0.4] opacity-80' : 'pointer-events-auto'}`}
+            className={`flex-1 relative overflow-hidden rounded-3xl border border-white/5 shadow-2xl transition-all duration-700 ${isAdminOpen || isEditorOpen ? 'pointer-events-none grayscale-[0.4] opacity-80' : 'pointer-events-auto'}`}
+            style={{ height: '100%', background: layoutRules.projectionMode === '2d' ? (state.theme === 'light' ? '#ece8dd' : '#000000') : (state.theme === 'light' ? 'rgba(236,232,221,0.4)' : 'rgba(0,0,0,0.2)') }}
             onMouseDown={handleMouseDown} 
             onContextMenu={(e) => e.preventDefault()} 
             onWheel={layoutRules.projectionMode === 'spatial_3d' ? undefined : handleWheel}
-            style={{ height: '100%' }}
           >
+            {/* Top Left Spatial Graph Controls Toolbar */}
+            <div 
+              className={`absolute top-8 left-8 z-[100] flex items-center gap-1.5 p-1 backdrop-blur-xl rounded-[12px] shadow-3xl pointer-events-auto transition-all duration-300 ${
+                state.theme === 'light' 
+                  ? 'bg-[#EDE5D8]/80 border border-[#2E2B27]/15' 
+                  : 'bg-black/60 border border-white/10'
+              }`}
+              onMouseDown={e => e.stopPropagation()}
+            >
+              {/* Radial (2D) */}
+              <button 
+                onClick={() => {
+                  setSelectedNode(null);
+                  const r = { ...layoutRules, projectionMode: '2d', layoutStyle: 'radial', childGap: 10, parentDistance: 200 };
+                  setLayoutRules(r);
+                  applyLayout(r);
+                  
+                  // Force Zoom & Position reset
+                  const nv = { x: -50, y: -331, scale: 0.36 };
+                  viewRef.current = nv;
+                  setView(nv);
+                  if (meshRef.current) {
+                    meshRef.current.style.transform = `translate3d(${nv.x}px, ${nv.y}px, 0) scale(${nv.scale})`;
+                  }
+                }}
+                className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all active:scale-[0.95] ${
+                  (layoutRules.projectionMode === '2d' && layoutRules.layoutStyle === 'radial') 
+                    ? (state.theme === 'light' 
+                        ? 'bg-[#899981]/25 border border-[#899981]/40 text-[#4E5A47]' 
+                        : 'bg-brand-cyan/20 border border-brand-cyan/20 text-brand-cyan') 
+                    : (state.theme === 'light' 
+                        ? 'text-[#6A645D] hover:bg-[#2E2B27]/5 hover:text-[#2E2B27]' 
+                        : 'text-slate-500 hover:bg-white/5 hover:text-white')
+                }`}
+                title="radial"
+              >
+                <Network size={14} />
+              </button>
+
+              {/* Horizontal LR (2D) */}
+              <button 
+                onClick={() => {
+                  setSelectedNode(null);
+                  const r = { ...layoutRules, projectionMode: '2d', layoutStyle: 'horizontal_lr' };
+                  setLayoutRules(r);
+                  applyLayout(r);
+                  
+                  // Force Zoom & Position reset
+                  const nv = { x: -258, y: -1242, scale: 0.36 };
+                  viewRef.current = nv;
+                  setView(nv);
+                  if (meshRef.current) {
+                    meshRef.current.style.transform = `translate3d(${nv.x}px, ${nv.y}px, 0) scale(${nv.scale})`;
+                  }
+                }}
+                className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all active:scale-[0.95] ${
+                  (layoutRules.projectionMode === '2d' && layoutRules.layoutStyle === 'horizontal_lr') 
+                    ? (state.theme === 'light' 
+                        ? 'bg-[#899981]/25 border border-[#899981]/40 text-[#4E5A47]' 
+                        : 'bg-brand-cyan/20 border border-brand-cyan/20 text-brand-cyan') 
+                    : (state.theme === 'light' 
+                        ? 'text-[#6A645D] hover:bg-[#2E2B27]/5 hover:text-[#2E2B27]' 
+                        : 'text-slate-500 hover:bg-white/5 hover:text-white')
+                }`}
+                title="horizontal_lr"
+              >
+                <GitMerge size={14} />
+              </button>
+
+              <div className={`w-px h-4 mx-0.5 self-center transition-colors duration-300 ${
+                state.theme === 'light' ? 'bg-[#2E2B27]/15' : 'bg-white/10'
+              }`} />
+
+              {/* Spatial 3D (3D) */}
+              <button 
+                onClick={() => {
+                  setSelectedNode(null);
+                  setLayoutRules({ ...layoutRules, projectionMode: 'spatial_3d' });
+                }}
+                className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all active:scale-[0.95] ${
+                  layoutRules.projectionMode === 'spatial_3d' 
+                    ? (state.theme === 'light' 
+                        ? 'bg-[#899981]/25 border border-[#899981]/40 text-[#4E5A47]' 
+                        : 'bg-brand-cyan/20 border border-brand-cyan/20 text-brand-cyan') 
+                    : (state.theme === 'light' 
+                        ? 'text-[#6A645D] hover:bg-[#2E2B27]/5 hover:text-[#2E2B27]' 
+                        : 'text-slate-500 hover:bg-white/5 hover:text-white')
+                }`}
+                title="spatial_3d"
+              >
+                <Box size={14} />
+              </button>
+            </div>
+
             <AnimatePresence>
               {isAppearanceOpen && (
                 <motion.div 
-                  initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-                  className="absolute top-8 left-8 z-[100] flex flex-col gap-3 pointer-events-auto" 
+                  initial={{ opacity: 0, y: -10 }} 
+                  animate={{ opacity: 1, y: 0 }} 
+                  exit={{ opacity: 0, y: -10 }}
+                  className="absolute top-20 left-8 z-[100] flex flex-col gap-3 pointer-events-auto" 
                   onMouseDown={e => e.stopPropagation()}
                 >
                    <div className="flex flex-col gap-1.5 p-3 bg-black/60 backdrop-blur-xl rounded-[16px] border border-white/10 shadow-3xl w-64 relative">
@@ -862,41 +997,33 @@ export default function App() {
                         <ArrowDown size={14} className="rotate-45" />
                       </button>
                       <span className="text-[9px] font-black tracking-tighter text-slate-400 uppercase mb-3 text-center">Mesh Appearance</span>
-                      <div className="flex flex-col gap-4 px-1 mb-4">
+                      <div className="flex flex-col gap-4 px-1 mb-1">
                          <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>CHILD GAP</span><span className="text-white font-mono">{layoutRules.childGap}px</span></div><input type="range" min="0" max="150" value={layoutRules.childGap} onChange={(e) => { const u = { ...layoutRules, childGap: parseInt(e.target.value) }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
                          <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>PARENT DISTANCE</span><span className="text-white font-mono">{layoutRules.parentDistance}px</span></div><input type="range" min="100" max="1000" value={layoutRules.parentDistance} onChange={(e) => { const u = { ...layoutRules, parentDistance: parseInt(e.target.value) }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
                          <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>TENSION</span><span className="text-white font-mono">{layoutRules.connectionTension}%</span></div><input type="range" min="10" max="100" value={layoutRules.connectionTension} onChange={(e) => { const u = { ...layoutRules, connectionTension: parseInt(e.target.value) }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
-                      </div>
-                      <div className="flex gap-1 justify-center border-t border-white/5 pt-3 mt-1">
-                          <button 
-                            onClick={() => setLayoutRules({ ...layoutRules, showLabels: !layoutRules.showLabels })} 
-                            className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all ${layoutRules.showLabels ? 'bg-brand-cyan/20 border border-brand-cyan/20' : 'hover:bg-white/5'}`}
-                            title="Toggle Labels"
-                          >
-                            <Type size={14} className={layoutRules.showLabels ? 'text-brand-cyan' : 'text-slate-500'} />
-                          </button>
-                          <button 
-                            onClick={() => setLayoutRules({ ...layoutRules, labelStyle: layoutRules.labelStyle === 'pill' ? 'standard' : 'pill' })} 
-                            className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all ${layoutRules.labelStyle === 'pill' ? 'bg-brand-pink/20 border border-brand-pink/20' : 'hover:bg-white/5'}`}
-                            title="Style Labels"
-                          >
-                            <Sparkles size={14} className={layoutRules.labelStyle === 'pill' ? 'text-brand-pink' : 'text-slate-500'} />
-                          </button>
-                          <div className="w-px h-4 bg-white/10 mx-1 self-center" />
-                         {[ { id: 'radial', icon: Network }, { id: 'horizontal_lr', icon: GitMerge } ].map(opt => {
-                            const isActive = layoutRules.layoutStyle === opt.id;
-                            return (
-                              <button key={opt.id} onClick={() => { const isR = opt.id === 'radial'; const r = { ...layoutRules, layoutStyle: opt.id, childGap: isR ? 10 : layoutRules.childGap, parentDistance: isR ? 200 : layoutRules.parentDistance }; setLayoutRules(r); applyLayout(r); }} className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all ${isActive ? 'bg-brand-cyan/20 border border-brand-cyan/20' : 'hover:bg-white/5'}`}><opt.icon size={14} className={isActive ? 'text-brand-cyan' : 'text-slate-500'} /></button>
-                            );
-                         })}
-                         <div className="w-px h-4 bg-white/10 mx-1 self-center" />
-                         {[ { id: '2d', icon: Layers }, { id: 'spatial_3d', icon: Box }, { id: 'instanced_3d', icon: Sparkles } ].map(opt => {
-                            const isActive = layoutRules.projectionMode === opt.id;
-                            const isInstanced = opt.id === 'instanced_3d';
-                            return (
-                              <button key={opt.id} onClick={() => { setLayoutRules({ ...layoutRules, projectionMode: opt.id }); }} className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all ${isActive ? (isInstanced ? 'bg-brand-cyan/20 border border-brand-cyan/20' : 'bg-brand-purple/20 border border-brand-purple/20') : 'hover:bg-white/5'}`} title={isInstanced ? "Three.js Instanced Engine" : opt.id}><opt.icon size={14} className={isActive ? (isInstanced ? 'text-brand-cyan' : 'text-brand-purple') : 'text-slate-500'} /></button>
-                            );
-                         })}
+                         
+                          <div className="flex gap-1.5 justify-center border-t border-white/5 pt-3 mt-1">
+                              <button 
+                                onClick={() => setLayoutRules({ ...layoutRules, showLabels: !layoutRules.showLabels })} 
+                                className={`px-3 py-1.5 text-[9px] font-black tracking-wider rounded-lg border transition-all flex items-center gap-1.5 w-1/2 justify-center ${layoutRules.showLabels ? 'bg-brand-cyan/20 border-brand-cyan/30 text-brand-cyan' : 'border-white/10 text-slate-500 hover:bg-white/5 hover:text-white'}`}
+                                title="Toggle Labels"
+                              >
+                                <Type size={12} />
+                                <span>SHOW LABELS</span>
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  const updated = { ...layoutRules, betaLayout: !layoutRules.betaLayout };
+                                  setLayoutRules(updated);
+                                  applyLayout(updated);
+                                }} 
+                                className={`px-3 py-1.5 text-[9px] font-black tracking-wider rounded-lg border transition-all flex items-center gap-1.5 w-1/2 justify-center ${layoutRules.betaLayout ? 'bg-brand-cyan/20 border-brand-cyan/30 text-brand-cyan' : 'border-white/10 text-slate-500 hover:bg-white/5 hover:text-white'}`}
+                                title="Toggle Beta Layout (Globe Aesthetic)"
+                              >
+                                <Globe size={12} />
+                                <span>BETA GRAPH</span>
+                              </button>
+                          </div>
                       </div>
                    </div>
                 </motion.div>
@@ -921,6 +1048,11 @@ export default function App() {
                 labelStyle={layoutRules.labelStyle}
                 hoveredLinkData={hoveredLinkData}
                 setHoveredLinkData={setHoveredLinkData}
+                onZoomChange={setZoom3D}
+                onCoordsChange={setCoords3D}
+                theme={state.theme}
+                setIs3DInteracting={setIs3DInteracting}
+                layoutRules={layoutRules}
               />
             ) : layoutRules.projectionMode === 'instanced_3d' ? (
               <InstancedSpatialCanvas 
@@ -944,6 +1076,11 @@ export default function App() {
                     setCurrentType(n.type); 
                     setFormData({ title: n.title, content: n.content || {} }); 
                 }}
+                onZoomChange={setZoom3D}
+                onCoordsChange={setCoords3D}
+                theme={state.theme}
+                setIs3DInteracting={setIs3DInteracting}
+                layoutRules={layoutRules}
               />
             ) : (
               <MeshCanvas 
@@ -973,6 +1110,7 @@ export default function App() {
                     centerOnNode(nodes.find(n => n.id === targetId)); 
                 }}
                 projectionMode={layoutRules.projectionMode}
+                theme={state.theme}
               />
             )}
             <OrbitalNav 
@@ -985,7 +1123,49 @@ export default function App() {
               onMinimapJump={centerOnPoint}
               showMinimap={true}
               projectionMode={layoutRules.projectionMode} 
+              theme={state.theme}
             />
+
+            {/* Viewport Relative Zoom Indicator HUD */}
+            <div 
+              className={`absolute bottom-6 right-6 z-[1000] px-4 py-2.5 rounded-xl flex flex-col gap-1.5 shadow-2xl pointer-events-none select-none font-mono text-[10px] tracking-wider uppercase transition-all duration-300 ${
+                state.theme === 'light' 
+                  ? 'border border-[#2E2B27]/15 text-[#0891B2]' 
+                  : 'border border-brand-cyan/20 text-brand-cyan'
+              }`}
+              style={{
+                background: state.theme === 'light' ? 'rgba(244, 239, 229, 0.85)' : 'rgba(10, 15, 25, 0.75)',
+                backdropFilter: 'blur(12px)',
+                boxShadow: state.theme === 'light' ? '0 8px 32px rgba(46, 43, 39, 0.15)' : '0 8px 32px rgba(0, 0, 0, 0.4)'
+              }}
+            >
+              <div className="flex items-center justify-between gap-4">
+                <span className="opacity-60">ZOOM:</span>
+                <span className={`font-black ${state.theme === 'light' ? 'text-[#2E2B27]' : 'text-white'}`}>
+                  {(() => {
+                    const val = layoutRules.projectionMode === '2d' 
+                      ? Math.round((view.scale - 0.8) * 100) 
+                      : zoom3D;
+                    return (val > 0 ? '+' : '') + val;
+                  })()}
+                </span>
+              </div>
+              <div className={`h-px my-0.5 ${state.theme === 'light' ? 'bg-[#2E2B27]/10' : 'bg-brand-cyan/10'}`} />
+              <div className="flex items-center gap-3 text-[9px] opacity-80">
+                {layoutRules.projectionMode === '2d' ? (
+                  <>
+                    <span>X: <span className={state.theme === 'light' ? 'text-[#2E2B27] font-bold' : 'text-white font-bold'}>{Math.round(view.x)}</span></span>
+                    <span>Y: <span className={state.theme === 'light' ? 'text-[#2E2B27] font-bold' : 'text-white font-bold'}>{Math.round(view.y)}</span></span>
+                  </>
+                ) : (
+                  <>
+                    <span>X: <span className={state.theme === 'light' ? 'text-[#2E2B27] font-bold' : 'text-white font-bold'}>{Math.round(coords3D.x)}</span></span>
+                    <span>Y: <span className={state.theme === 'light' ? 'text-[#2E2B27] font-bold' : 'text-white font-bold'}>{Math.round(coords3D.y)}</span></span>
+                    <span>Z: <span className={state.theme === 'light' ? 'text-[#2E2B27] font-bold' : 'text-white font-bold'}>{Math.round(coords3D.z)}</span></span>
+                  </>
+                )}
+              </div>
+            </div>
           </section>
         ) : (
           <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -1037,6 +1217,7 @@ export default function App() {
            <IntelligenceDrawer 
              key={editingNode?.id || 'new'}
              isOpen={isEditorOpen} 
+             theme={state.theme}
              onClose={() => setIsEditorOpen(false)} 
              nodes={nodes} 
              editingNode={editingNode} 

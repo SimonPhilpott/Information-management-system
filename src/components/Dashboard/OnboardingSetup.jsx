@@ -44,9 +44,10 @@ export default function OnboardingSetup({ authStatus, onComplete, API }) {
    * Redirects the client browser session to start OAuth handshake.
    */
   const handleConnect = async () => {
-    console.log('[Auth] Fetching auth URL from:', `${API}/api/auth/url`);
+    const currentOrigin = window.location.origin;
+    console.log('[Auth] Fetching auth URL from:', `${API}/api/auth/url?clientUrl=${encodeURIComponent(currentOrigin)}`);
     try {
-      const res = await fetch(`${API}/api/auth/url`);
+      const res = await fetch(`${API}/api/auth/url?clientUrl=${encodeURIComponent(currentOrigin)}`);
       const { url } = await res.json();
       console.log('[Auth] Redirecting to:', url);
       window.location.href = url;

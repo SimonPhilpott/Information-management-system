@@ -1,9 +1,9 @@
 import React, { useRef, useMemo, useEffect } from 'react';
 import { motion, useMotionValue, useSpring } from 'framer-motion';
-import { Compass, Map as MapIcon, Settings, Palette } from 'lucide-react';
+import { Compass, Map as MapIcon, Palette } from 'lucide-react';
 import { ENTITY_TYPES } from '../../data/nodes';
 
-export const OrbitalNav = ({ nodes, view, stickPos, setStickPos, onOpenAdmin, onOpenAppearance, onMinimapJump, showMinimap = true, projectionMode = '2d' }) => {
+export const OrbitalNav = ({ nodes, view, stickPos, setStickPos, onOpenAdmin, onOpenAppearance, onMinimapJump, showMinimap = true, projectionMode = '2d', theme = 'dark' }) => {
   const mapRef = useRef(null);
   const stickRefLocal = useRef({ dragging: false });
 
@@ -26,7 +26,7 @@ export const OrbitalNav = ({ nodes, view, stickPos, setStickPos, onOpenAdmin, on
   const worldW = bounds.maxX - bounds.minX || 1;
   const worldH = bounds.maxY - bounds.minY || 1;
   const padding = 200;
-  const mapScale = Math.min(180 / (worldW + padding), 130 / (worldH + padding));
+  const mapScale = Math.min(208 / (worldW + padding), 148 / (worldH + padding));
 
   const vw = window.innerWidth / (view?.scale || 1);
   const vh = window.innerHeight / (view?.scale || 1);
@@ -48,13 +48,29 @@ export const OrbitalNav = ({ nodes, view, stickPos, setStickPos, onOpenAdmin, on
     }
   }, [stickPos.x, stickPos.y]);
 
+  const isLight = theme === 'light';
+
+  // Calculate viewport boundaries in canvas pixels relative to the minimap
+  const rectLeft = (vx - bounds.minX + padding/4) * mapScale;
+  const rectTop = (vy - bounds.minY + padding/4) * mapScale;
+  const rectWidth = vw * mapScale;
+  const rectHeight = vh * mapScale;
+
   return (
-    <div className={`absolute top-10 flex gap-6 items-start z-[1000] ${projectionMode === '2d' ? 'right-10' : 'right-[250px]'}`}>
+    <div 
+      className="absolute top-10 flex gap-6 items-start z-[2001]"
+      style={{ right: projectionMode === '2d' ? '10px' : '254px' }}
+    >
       <div className="flex flex-col gap-3">
-        <button onClick={onOpenAdmin} title="Admin Panel" className="w-12 h-12 glass-panel border-white/5 flex items-center justify-center text-slate-500 hover:text-brand-cyan transition-all active:scale-95 group">
-           <Settings size={20} className="group-hover:rotate-90 transition-transform duration-500" />
-        </button>
-        <button onClick={onOpenAppearance} title="Mesh Appearance" className="w-12 h-12 glass-panel border-white/5 flex items-center justify-center text-slate-500 hover:text-brand-cyan transition-all active:scale-95 group">
+        <button 
+          onClick={onOpenAppearance} 
+          title="Mesh Appearance" 
+          className={`w-12 h-12 flex items-center justify-center transition-all active:scale-95 group rounded-xl border ${
+            isLight 
+              ? 'bg-[#EDE5D8]/80 border-[#2E2B27]/15 text-[#6A645D] hover:text-[#0891B2] hover:bg-[#2E2B27]/5' 
+              : 'bg-black/40 border-white/5 text-slate-500 hover:text-brand-cyan hover:bg-white/5'
+          }`}
+        >
            <Palette size={20} className="group-hover:scale-110 transition-transform" />
         </button>
       </div>
@@ -62,18 +78,118 @@ export const OrbitalNav = ({ nodes, view, stickPos, setStickPos, onOpenAdmin, on
       {showMinimap && projectionMode === '2d' && (
         <div 
           ref={mapRef} onMouseDown={handleMapAction} onMouseMove={(e) => e.buttons === 1 && handleMapAction(e)}
-          className="w-48 h-36 glass-panel border-white/10 overflow-hidden relative cursor-crosshair group shadow-2xl p-1"
+          className="w-[220px] h-[160px] overflow-hidden relative cursor-crosshair group shadow-2xl p-1 rounded-2xl transition-all duration-300"
+          style={{
+            background: isLight ? 'rgba(244, 239, 229, 0.85)' : 'rgba(10, 15, 25, 0.8)',
+            backdropFilter: 'blur(20px)',
+            border: isLight ? '1px solid rgba(46, 43, 39, 0.15)' : '1px solid rgba(0, 242, 255, 0.15)',
+            boxShadow: isLight ? '0 12px 32px rgba(46, 43, 39, 0.15)' : '0 12px 32px rgba(0, 0, 0, 0.5)',
+            borderRadius: '16px'
+          }}
         >
-          <div className="absolute inset-0 bg-brand-cyan/5 -z-10" />
-          <div className="relative w-full h-full origin-top-left pointer-events-none" style={{ transform: `scale(${mapScale}) translate(${-bounds.minX + padding/4}px, ${-bounds.minY + padding/4}px)` }}>
-              {nodes?.map(n => (
-                <div key={n.id} className="absolute w-40 h-32 rounded-lg opacity-80" style={{ left: n.x, top: n.y, backgroundColor: ENTITY_TYPES[n.type?.toUpperCase()]?.color || '#00f2ff', boxShadow: `0 0 50px ${ENTITY_TYPES[n.type?.toUpperCase()]?.color || '#00f2ff'}` }} />
-              ))}
-              <div className="absolute border-[8px] border-slate-400/50 dark:border-white bg-brand-cyan/5 pointer-events-none transition-none shadow-[0_0_100px_black]" style={{ left: vx, top: vy, width: vw, height: vh }} />
+          {/* Top-left premium Minimap label badge */}
+          <div 
+            className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest pointer-events-none z-10"
+            style={{
+              background: isLight ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
+              border: isLight ? '1px solid rgba(46, 43, 39, 0.1)' : '1px solid rgba(255, 255, 255, 0.05)',
+              color: isLight ? '#6E6C68' : '#94a3b8'
+            }}
+          >
+            Minimap
           </div>
-          <div className="absolute bottom-3 left-3 flex items-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
-             <MapIcon size={12} className="text-brand-cyan" />
-             <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Global Scope</span>
+
+          {/* Exact canvas-layer overlay background mapping to 3D minimap */}
+          <div 
+            className="absolute inset-0 pointer-events-none" 
+            style={{ backgroundColor: isLight ? 'rgba(244, 239, 229, 0.5)' : 'rgba(8, 12, 20, 0.4)' }}
+          />
+
+          {/* Connection Lines Layer (matching the 3D canvas connections style exactly) */}
+          <svg className="absolute inset-0 pointer-events-none" width={220} height={160} viewBox="0 0 220 160" style={{ overflow: 'visible' }}>
+            {nodes?.map(n => {
+              if (!n.parentId) return null;
+              const parent = nodes.find(pn => pn.id === n.parentId);
+              if (!parent) return null;
+
+              // Center coordinates in pixels for parent and child
+              const pX = (parent.x + 112 - bounds.minX + padding/4) * mapScale;
+              const pY = (parent.y + 50 - bounds.minY + padding/4) * mapScale;
+              const cX = (n.x + 112 - bounds.minX + padding/4) * mapScale;
+              const cY = (n.y + 50 - bounds.minY + padding/4) * mapScale;
+
+              return (
+                <line 
+                  key={`line-${parent.id}-${n.id}`}
+                  x1={pX} 
+                  y1={pY} 
+                  x2={cX} 
+                  y2={cY} 
+                  stroke={isLight ? 'rgba(46, 43, 39, 0.25)' : 'rgba(255, 255, 255, 0.18)'}
+                  strokeWidth={0.75}
+                />
+              );
+            })}
+          </svg>
+
+          {/* Pre-calculated Node Dots Container (1:1 sharp pixel rendering) */}
+          <div className="absolute inset-0 pointer-events-none">
+            {nodes?.map(n => {
+              const nodeColor = ENTITY_TYPES[n.type?.toUpperCase()]?.color || (isLight ? '#0891B2' : '#00f2ff');
+              const isRoot = n.depth === 0;
+              const radius = isRoot ? 3.5 : 2;
+              const diameter = radius * 2;
+              
+              // Center coordinates in pixels
+              const cx = (n.x + 112 - bounds.minX + padding/4) * mapScale;
+              const cy = (n.y + 50 - bounds.minY + padding/4) * mapScale;
+
+              return (
+                <div 
+                  key={n.id} 
+                  className="absolute opacity-95" 
+                  style={{ 
+                    left: `${cx - radius}px`, 
+                    top: `${cy - radius}px`, 
+                    width: `${diameter}px`,
+                    height: `${diameter}px`,
+                    backgroundColor: nodeColor, 
+                    borderRadius: '50%',
+                    border: isLight ? '0.5px solid rgba(46, 43, 39, 0.3)' : '0.5px solid rgba(255, 255, 255, 0.4)',
+                    boxShadow: isLight ? `0 0 4px ${nodeColor}20` : `0 0 6px ${nodeColor}40`
+                  }} 
+                />
+              );
+            })}
+          </div>
+
+          {/* Viewport boundary overlay layer (non-scaled sharp borders matching 3D minimap exactly) */}
+          <div className="absolute inset-1 pointer-events-none overflow-hidden rounded-xl">
+            <div 
+              className="absolute pointer-events-none transition-none" 
+              style={{ 
+                left: `${rectLeft}px`, 
+                top: `${rectTop}px`, 
+                width: `${rectWidth}px`, 
+                height: `${rectHeight}px`,
+                border: '1.5px solid #899981',
+                borderRadius: '4px'
+              }} 
+            >
+              <div 
+                className="absolute border-dashed"
+                style={{ 
+                  inset: '-1.5px',
+                  border: `1.5px dashed ${isLight ? '#0891B2' : '#00f2ff'}`,
+                  borderRadius: '4px'
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="absolute bottom-3 left-3 flex items-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity z-10">
+             <MapIcon size={12} className={isLight ? 'text-[#0891B2]' : 'text-brand-cyan'} />
+             <span className={`text-[8px] font-black uppercase tracking-widest ${isLight ? 'text-[#4A443F]' : 'text-slate-400'}`}>Global Scope</span>
           </div>
         </div>
       )}

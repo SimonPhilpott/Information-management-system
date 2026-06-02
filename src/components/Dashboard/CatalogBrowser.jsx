@@ -255,10 +255,10 @@ export default function CatalogBrowser({ onClose, onOpenFile, chatTone = 'friend
       setProcessingAI(false);
       setSelectedIds([]);
       loadCatalog();
-      alert(`AI reorganized ${data.count} documents into better sub-categories.`);
+      alert(`AI reorganised ${data.count} documents into better sub-categories.`);
     } catch (err) {
       setProcessingAI(false);
-      alert('AI reorganization failed: ' + err.message);
+      alert('AI reorganisation failed: ' + err.message);
     }
   };
 
@@ -398,7 +398,7 @@ export default function CatalogBrowser({ onClose, onOpenFile, chatTone = 'friend
                 </button>
                 <button className="toolbar-btn primary" onClick={handleAIRorganize} disabled={processingAI}>
                   <BookOpen size={14} />
-                  <span>{processingAI ? 'AI Working...' : 'AI Reorganize'}</span>
+                  <span>{processingAI ? 'AI Working...' : 'AI Reorganise'}</span>
                 </button>
                 <button className="toolbar-btn danger" onClick={() => {
                   setConfirmDelete(selectedIds);

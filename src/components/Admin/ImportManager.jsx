@@ -85,22 +85,23 @@ export function ImportManager({ nodes, onApplyChanges }) {
   return (
     <div className="space-y-8 pb-32">
        {/* Quota Monitor */}
-       <div className="p-6 bg-black/40 border-2 border-brand-cyan/20 rounded-2xl space-y-4">
+       <div className="p-6 bg-[var(--bg-secondary)]/50 backdrop-blur-xl border border-[var(--glass-border)] rounded-2xl space-y-4 shadow-sm">
           <div className="flex items-center justify-between">
              <div className="flex items-center gap-2">
-                <CreditCard size={14} className="text-brand-cyan" />
-                <span className="text-[10px] font-black uppercase text-white tracking-widest">Gemini Pro API Limit</span>
+                <CreditCard size={14} className="text-[var(--accent-indigo)]" />
+                <span className="text-[10px] font-black uppercase text-[var(--text-primary)] tracking-widest">Gemini Pro API Limit</span>
              </div>
-             <span className="text-[10px] font-mono font-bold text-brand-cyan">{Math.round(quotaPercent)}% Used</span>
+             <span className="text-[10px] font-mono font-bold text-[var(--accent-indigo)]">{Math.round(quotaPercent)}% Used</span>
           </div>
-          <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
+          <div className="h-2 w-full bg-[var(--bg-primary)] rounded-full overflow-hidden border border-[var(--glass-border)]">
              <motion.div 
                 initial={{ width: 0 }} 
                 animate={{ width: `${quotaPercent}%` }} 
-                className={`h-full ${quotaPercent > 90 ? 'bg-red-500' : quotaPercent > 70 ? 'bg-orange-500' : 'bg-brand-cyan shadow-[0_0_10px_rgba(0,242,255,0.5)]'}`} 
+                style={{ background: 'var(--gradient-primary)' }}
+                className="h-full rounded-full shadow-[var(--shadow-glow)]" 
              />
           </div>
-          <div className="flex justify-between text-[8px] font-mono text-slate-500 font-bold uppercase tracking-widest">
+          <div className="flex justify-between text-[8px] font-mono text-[var(--text-muted)] font-bold uppercase tracking-widest">
              <span>{quota.used.toLocaleString()} Tokens used</span>
              <span>Limit: {quota.max.toLocaleString()}</span>
           </div>
@@ -111,7 +112,7 @@ export function ImportManager({ nodes, onApplyChanges }) {
           <AlertTriangle size={18} className="text-orange-500 shrink-0 mt-0.5" />
           <div className="space-y-1">
              <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest">Fiscal Safety Protocol</span>
-             <p className="text-[10px] text-slate-400 leading-relaxed italic">
+             <p className="text-[10px] text-[var(--text-muted)] leading-relaxed italic">
                 Scanning complex websites consumes significant API quota. Verify crawl depth and frequency to prevent unexpected overage charges on your Gemini account.
              </p>
           </div>
@@ -121,32 +122,40 @@ export function ImportManager({ nodes, onApplyChanges }) {
        <div className="space-y-6 pt-4 relative">
           <div className="flex items-center justify-between">
              <div className="space-y-1">
-                <h3 className="text-[11px] font-black text-white uppercase tracking-wider">Mesh Ingestion Engine</h3>
-                <p className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Sync workspace with external sources</p>
+                <h3 className="text-[11px] font-black text-[var(--text-primary)] uppercase tracking-wider">Graph Ingestion Engine</h3>
+                <p className="text-[9px] text-[var(--text-muted)] uppercase tracking-widest font-bold">Sync workspace with external sources</p>
              </div>
-             <div className="flex bg-black/40 p-1 rounded-xl border border-white/5">
+             <div className="flex bg-[var(--bg-elevated)] p-[3px] rounded-full border border-[var(--glass-border)] gap-[2px]">
                 <button 
                    onClick={() => setMode('webpage')}
-                   className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${mode === 'webpage' ? 'bg-brand-cyan text-black shadow-lg shadow-brand-cyan/20' : 'text-slate-500 hover:text-white'}`}
+                   style={{
+                     background: mode === 'webpage' ? 'var(--gradient-primary)' : 'transparent',
+                     color: mode === 'webpage' ? '#ffffff' : 'var(--text-muted)'
+                   }}
+                   className={`px-5 py-2 rounded-full text-[10px] font-extrabold uppercase tracking-wider transition-all duration-300 group cursor-pointer shrink-0 ${mode === 'webpage' ? 'shadow-[var(--shadow-glow)] text-white' : 'hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-light)]'}`}
                 >
                    Webpage
                 </button>
                 <button 
                    onClick={() => setMode('website')}
-                   className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${mode === 'website' ? 'bg-brand-cyan text-black shadow-lg shadow-brand-cyan/20' : 'text-slate-500 hover:text-white'}`}
+                   style={{
+                     background: mode === 'website' ? 'var(--gradient-primary)' : 'transparent',
+                     color: mode === 'website' ? '#ffffff' : 'var(--text-muted)'
+                   }}
+                   className={`px-5 py-2 rounded-full text-[10px] font-extrabold uppercase tracking-wider transition-all duration-300 group cursor-pointer shrink-0 ${mode === 'website' ? 'shadow-[var(--shadow-glow)] text-white' : 'hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-light)]'}`}
                 >
                    Website
                 </button>
              </div>
           </div>
 
-          <div className="space-y-4 bg-white/[0.02] border border-white/5 p-6 rounded-2xl overflow-hidden relative">
+          <div className="space-y-4 bg-[var(--bg-secondary)] border border-[var(--glass-border)] p-6 rounded-2xl overflow-hidden relative shadow-sm">
              <div className="space-y-2">
-                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Source URL</label>
+                <label className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest">Source URL</label>
                 <div className="relative">
-                   <Globe size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-cyan opacity-40" />
+                   <Globe size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--accent-indigo)] opacity-60" />
                    <input 
-                      className="w-full bg-black/40 border border-white/5 rounded-xl py-4 pl-12 pr-4 text-[12px] text-white outline-none focus:border-brand-cyan/30 transition-all font-mono"
+                      className="w-full bg-[var(--bg-primary)] border border-[var(--glass-border)] rounded-xl py-4 pl-12 pr-4 text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent-indigo)]/40 transition-all font-mono shadow-inner"
                       placeholder="https://www.turnerandtownsend.com/..."
                       value={url}
                       onInput={(e) => setUrl(e.target.value)}
@@ -155,15 +164,15 @@ export function ImportManager({ nodes, onApplyChanges }) {
              </div>
 
              {mode === 'website' && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-4 pt-2 border-t border-white/5">
-                   <div className="flex justify-between items-center text-[9px] font-black uppercase text-slate-500">
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-4 pt-2 border-t border-[var(--glass-border)]">
+                   <div className="flex justify-between items-center text-[9px] font-black uppercase text-[var(--text-muted)]">
                       <span>Crawl Depth</span>
-                      <span className="text-brand-cyan font-mono">{depth} Levels</span>
+                      <span className="text-[var(--accent-indigo)] font-mono">{depth} Levels</span>
                    </div>
                    <input 
                       type="range" min="1" max="5" value={depth} 
                       onChange={(e) => setDepth(parseInt(e.target.value))} 
-                      className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" 
+                      className="w-full h-1 bg-[var(--bg-primary)] rounded-lg appearance-none cursor-pointer accent-[var(--accent-indigo)] border border-[var(--glass-border)]" 
                    />
                 </motion.div>
              )}
@@ -174,12 +183,17 @@ export function ImportManager({ nodes, onApplyChanges }) {
                    setIsConfirming(true);
                 }}
                 disabled={isScanning || !url}
-                className={`w-full py-4 rounded-xl flex items-center justify-center gap-3 font-black text-[10px] uppercase tracking-[0.2em] transition-all ${isScanning ? 'bg-slate-800 text-brand-cyan shadow-[0_0_15px_rgba(0,242,255,0.1)]' : 'bg-brand-cyan text-black hover:scale-[1.02] active:scale-95 shadow-[0_0_30px_rgba(0,242,255,0.2)]'}`}
+                style={{
+                  background: isScanning ? 'var(--bg-elevated)' : 'var(--gradient-primary)',
+                  color: '#ffffff',
+                  boxShadow: isScanning ? 'none' : 'var(--shadow-glow)'
+                }}
+                className="w-full py-4 rounded-xl flex items-center justify-center gap-3 font-extrabold text-[10px] uppercase tracking-[0.2em] transition-all hover:scale-[1.01] active:scale-95 border-none cursor-pointer"
              >
                 {isScanning ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 border-2 border-brand-cyan border-t-transparent rounded-full animate-spin" />
-                    Analyzing Network Nodes...
+                  <div className="flex items-center gap-2 text-[var(--text-muted)]">
+                    <div className="w-3.5 h-3.5 border-2 border-[var(--text-muted)] border-t-transparent rounded-full animate-spin" />
+                    Analysing Network Nodes...
                   </div>
                 ) : "Run AI Analysis"}
              </button>
@@ -190,18 +204,18 @@ export function ImportManager({ nodes, onApplyChanges }) {
                    <motion.div 
                       key="confirm-overlay"
                       initial={{ opacity: 0, y: 100 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 100 }}
-                      className="absolute inset-0 bg-[#0c0d12]/98 backdrop-blur-2xl p-8 flex flex-col justify-center gap-4 z-50 border border-brand-cyan/20"
+                      className="absolute inset-0 bg-[var(--bg-overlay)] backdrop-blur-2xl p-8 flex flex-col justify-center gap-4 z-50 border border-[var(--glass-border)] rounded-2xl"
                    >
                       <div className="flex items-center gap-3 text-orange-500 mb-2">
                          <AlertTriangle size={24} />
                          <span className="font-black text-[12px] uppercase tracking-[0.2em]">Quota Authorization</span>
                       </div>
-                      <p className="text-[12px] text-slate-300 italic leading-relaxed">
-                         The requested scan will consume approximately <span className="text-white font-bold">{predictedImpact.toLocaleString()}</span> tokens of your Gemini Pro limit.
+                      <p className="text-[12px] text-[var(--text-secondary)] italic leading-relaxed">
+                         The requested scan will consume approximately <span className="text-[var(--text-primary)] font-bold">{predictedImpact.toLocaleString()}</span> tokens of your Gemini Pro limit.
                       </p>
                       <div className="flex flex-col gap-2 mt-4">
-                         <button onClick={startAnalysis} className="w-full py-4 bg-brand-cyan text-black font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-white transition-all shadow-[0_0_20px_rgba(0,242,255,0.3)]">Authorize & Execute Scan</button>
-                         <button onClick={() => setIsConfirming(false)} className="w-full py-4 border border-white/10 text-slate-500 font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-white/5 transition-all">Cancel Request</button>
+                         <button onClick={startAnalysis} style={{ background: 'var(--gradient-primary)' }} className="w-full py-4 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:opacity-90 transition-all border-none cursor-pointer shadow-[var(--shadow-glow)]">Authorize & Execute Scan</button>
+                         <button onClick={() => setIsConfirming(false)} className="w-full py-4 border border-[var(--glass-border)] bg-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-light)] font-black text-[10px] uppercase tracking-widest rounded-xl transition-all cursor-pointer">Cancel Request</button>
                       </div>
                    </motion.div>
                 )}
@@ -216,12 +230,12 @@ export function ImportManager({ nodes, onApplyChanges }) {
                 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                 className="space-y-6"
              >
-                <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-4">
                    <div className="flex items-center gap-2">
-                      <LayoutGrid size={14} className="text-brand-cyan" />
-                      <span className="text-[10px] font-black uppercase text-white tracking-widest">Proposed Intelligent Updates</span>
+                      <LayoutGrid size={14} className="text-[var(--accent-indigo)]" />
+                      <span className="text-[10px] font-black uppercase text-[var(--text-primary)] tracking-widest">Proposed Intelligent Updates</span>
                    </div>
-                   <span className="bg-brand-cyan/20 text-brand-cyan px-2 py-0.5 rounded-full text-[9px] font-bold">{proposals.length} Items</span>
+                   <span className="bg-[var(--accent-indigo)]/20 text-[var(--accent-indigo)] px-2 py-0.5 rounded-full text-[9px] font-bold">{proposals.length} Items</span>
                 </div>
 
                 <div className="space-y-4">
@@ -234,60 +248,66 @@ export function ImportManager({ nodes, onApplyChanges }) {
                          <motion.div 
                             key={p.id} 
                             layout
-                            className="group p-5 bg-white/[0.02] border border-white/5 rounded-2xl hover:border-brand-cyan/20 transition-all flex flex-col gap-4 relative overflow-hidden"
+                            className="group p-5 bg-[var(--bg-secondary)] border border-[var(--glass-border)] rounded-2xl hover:border-[var(--accent-indigo)]/30 transition-all flex flex-col gap-4 relative overflow-hidden shadow-sm"
                          >
                             <div className="flex flex-col gap-1">
                                <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2">
-                                     <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${p.type === 'update' ? 'bg-orange-500/20 text-orange-500' : p.type === 'new_node' ? 'bg-brand-cyan/20 text-brand-cyan' : 'bg-brand-purple/20 text-brand-purple'}`}>
+                                     <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${p.type === 'update' ? 'bg-orange-500/20 text-orange-500' : p.type === 'new_node' ? 'bg-[var(--accent-indigo)]/20 text-[var(--accent-indigo)]' : 'bg-purple-500/20 text-purple-400'}`}>
                                         {p.type.replace('_', ' ')}
                                      </span>
                                      <div className="flex flex-col">
-                                       <span className="text-[11px] font-black text-white tracking-wider">{displayTitle}</span>
-                                       {p.targetId && <span className="text-[8px] font-mono text-slate-600 uppercase">Node ID: {p.targetId}</span>}
+                                       <span className="text-[11px] font-black text-[var(--text-primary)] tracking-wider">{displayTitle}</span>
+                                       {p.targetId && <span className="text-[8px] font-mono text-[var(--text-muted)] uppercase">Node ID: {p.targetId}</span>}
                                      </div>
                                   </div>
-                                  <span className="text-[9px] font-mono text-brand-cyan/60">Impact: +{p.impact}</span>
+                                  <span className="text-[9px] font-mono text-[var(--accent-indigo)]/80">Impact: +{p.impact}</span>
                                </div>
-                               <p className="text-[9px] text-slate-500 font-medium leading-relaxed italic border-l border-white/10 pl-3 mt-2">{p.reason}</p>
+                               <p className="text-[9px] text-[var(--text-muted)] font-medium leading-relaxed italic border-l border-[var(--glass-border)] pl-3 mt-2">{p.reason}</p>
                             </div>
 
                             {p.type === 'update' && (
                                <div className="space-y-3 pt-2">
                                   <div className="flex items-center gap-2">
-                                     <div className="h-px flex-1 bg-white/5" />
-                                     <span className="text-[8px] font-black text-slate-500 uppercase tracking-[0.2em]">{p.field} Overhaul</span>
-                                     <div className="h-px flex-1 bg-white/5" />
+                                     <div className="h-px flex-1 bg-[var(--glass-border)]" />
+                                     <span className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em]">{p.field} Overhaul</span>
+                                     <div className="h-px flex-1 bg-[var(--glass-border)]" />
                                   </div>
                                   <div className="grid grid-cols-2 gap-4">
                                      <div className="space-y-1">
-                                        <span className="text-[8px] font-black text-red-500/60 uppercase tracking-widest">Current Text</span>
-                                        <div className="p-3 bg-red-500/5 rounded-lg border border-red-500/10 text-[10px] text-slate-600 line-through truncate leading-relaxed">{p.oldValue}</div>
+                                         <span className="text-[8px] font-black text-red-500/60 uppercase tracking-widest">Current Text</span>
+                                         <div className="p-3 bg-red-500/5 rounded-lg border border-red-500/10 text-[10px] text-[var(--text-muted)] line-through truncate leading-relaxed">{p.oldValue}</div>
                                      </div>
                                      <div className="space-y-1">
-                                        <span className="text-[8px] font-black text-brand-cyan/60 uppercase tracking-widest">Proposed Intelligent Text</span>
-                                        <div className="p-3 bg-brand-cyan/5 rounded-lg border border-brand-cyan/10 text-[10px] text-white/90 font-medium leading-relaxed">{p.newValue}</div>
+                                         <span className="text-[8px] font-black text-[var(--accent-indigo)]/60 uppercase tracking-widest">Proposed Intelligent Text</span>
+                                         <div className="p-3 bg-[var(--accent-indigo)]/5 rounded-lg border border-[var(--accent-indigo)]/10 text-[10px] text-[var(--text-primary)] font-medium leading-relaxed">{p.newValue}</div>
                                      </div>
                                   </div>
                                </div>
                             )}
 
                             {p.type === 'new_node' && (
-                               <div className="p-4 bg-brand-cyan/5 border border-brand-cyan/10 rounded-xl space-y-2">
-                                  <div className="flex justify-between text-[9px] font-black text-slate-500 uppercase">
+                               <div className="p-4 bg-[var(--accent-indigo)]/5 border border-[var(--accent-indigo)]/10 rounded-xl space-y-2">
+                                  <div className="flex justify-between text-[9px] font-black text-[var(--text-muted)] uppercase">
                                      <span>Inject into Branch:</span>
-                                     <span className="text-white">{parentNode?.title || 'Mesh Root'}</span>
+                                     <span className="text-[var(--text-primary)]">{parentNode?.title || 'Mesh Root'}</span>
                                   </div>
-                                  <div className="flex justify-between text-[9px] font-black text-slate-500 uppercase border-t border-white/5 pt-2">
+                                  <div className="flex justify-between text-[9px] font-black text-[var(--text-muted)] uppercase border-t border-[var(--glass-border)] pt-2">
                                      <span>Entity Class:</span>
-                                     <span className="text-brand-cyan">{p.nodeType}</span>
+                                     <span className="text-[var(--accent-indigo)]">{p.nodeType}</span>
                                   </div>
                                 </div>
                             )}
 
                             <div className="flex items-center gap-2 mt-2">
-                               <button onClick={() => approveProposal(p)} className="flex-1 py-3 rounded-xl bg-brand-cyan/10 border border-brand-cyan/20 text-brand-cyan text-[9px] font-black uppercase tracking-widest hover:bg-brand-cyan hover:text-black transition-all">Approve & Inject</button>
-                               <button className="p-3 rounded-xl border border-white/5 text-slate-600 hover:text-red-500 hover:border-red-500/20 transition-all" onClick={() => setProposals(prev => prev.filter(item => item.id !== p.id))}><X size={14} /></button>
+                               <button 
+                                 onClick={() => approveProposal(p)} 
+                                 style={{ background: 'var(--gradient-primary)' }}
+                                 className="flex-1 py-3 rounded-xl text-white text-[9px] font-black uppercase tracking-widest hover:opacity-90 transition-all border-none cursor-pointer shadow-sm"
+                               >
+                                 Approve & Inject
+                               </button>
+                               <button className="p-3 rounded-xl border border-[var(--glass-border)] bg-[var(--bg-primary)] text-[var(--text-muted)] hover:text-red-500 hover:border-red-500/20 transition-all cursor-pointer" onClick={() => setProposals(prev => prev.filter(item => item.id !== p.id))}><X size={14} /></button>
                             </div>
                          </motion.div>
                       );

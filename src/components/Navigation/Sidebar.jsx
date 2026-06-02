@@ -27,8 +27,8 @@ export default function Sidebar({
   onToggleCitations,
   deletingSessionIds = new Set(),
   onClearPins,
-  showMesh,
-  onOpenMesh,
+  showGraph,
+  onOpenGraph,
 }) {
   const [isConfirmingClearPins, setIsConfirmingClearPins] = useState(false);
 
@@ -131,8 +131,8 @@ export default function Sidebar({
               <div className="mode-switcher" style={{ width: '100%' }}>
                 <Tooltip text="View library as 3D Spatial Knowledge Graph">
                   <div
-                    className={`mode-item ${showMesh ? 'active' : ''}`}
-                    onClick={() => !showMesh && onOpenMesh()}
+                    className={`mode-item ${showGraph ? 'active' : ''}`}
+                    onClick={() => !showGraph && onOpenGraph()}
                   >
                     <Compass size={12} />
                     <span>Spatial Graph</span>
@@ -140,8 +140,8 @@ export default function Sidebar({
                 </Tooltip>
                 <Tooltip text="Switch back to conversational chat interface">
                   <div
-                    className={`mode-item ${!showMesh ? 'active' : ''}`}
-                    onClick={() => showMesh && onOpenMesh()}
+                    className={`mode-item ${!showGraph ? 'active' : ''}`}
+                    onClick={() => showGraph && onOpenGraph()}
                   >
                     <MessageSquare size={12} />
                     <span>Chat</span>

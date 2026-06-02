@@ -35,8 +35,8 @@ export default function Layout({
   onToggleCitations,
   deletingSessionIds,
   onClearPins,
-  onOpenMesh,
-  showMesh,
+  onOpenGraph,
+  showGraph,
 }) {
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -159,15 +159,15 @@ export default function Layout({
                 <GemSelector gems={gems} onSelect={onActivateGem} compact={true} />
               </div>
             )}
-          </div>
-        </div>
-        <div className="app-topbar-right">
-          <div className="topbar-tool-container desktop-only-flex">
             {!teleportedIds.includes('model') && (
               <div data-tool-id="model">
                 <ModelSwitcher current={currentModel} onChange={onModelChange} />
               </div>
             )}
+          </div>
+        </div>
+        <div className="app-topbar-right">
+          <div className="topbar-tool-container desktop-only-flex">
             {!teleportedIds.includes('usage') && (
               <div data-tool-id="usage">
                 <TokenUsageMeter usage={usage} />
@@ -234,8 +234,8 @@ export default function Layout({
             showCitations={showCitations}
             onToggleCitations={onToggleCitations}
             deletingSessionIds={deletingSessionIds}
-            showMesh={showMesh}
-            onOpenMesh={onOpenMesh}
+            showGraph={showGraph}
+            onOpenGraph={onOpenGraph}
           />
         </div>
 
@@ -275,8 +275,8 @@ export default function Layout({
             onTopicClick={onTopicClick}
             onRefresh={onRefreshSuggestions}
             subjects={subjects}
-            onOpenMesh={onOpenMesh}
-            showMesh={showMesh}
+            onOpenGraph={onOpenGraph}
+            showGraph={showGraph}
           />
         </div>
       </div>

@@ -40,8 +40,8 @@ const CameraController = ({ targetNode, spatialNodes }) => {
   useEffect(() => {
     if (!controls) return;
 
-    let targetPos = new THREE.Vector3(0, 0, 0);
-    let idealPos = new THREE.Vector3(0, 0, 7500);
+    let targetPos = new THREE.Vector3(-2236, -2205, 1871);
+    let idealPos = new THREE.Vector3(-2236, -2205, 19771); // Default: ZOOM:-123, X:-2236, Y:-2205, Z:1871
 
     if (targetNode) {
       targetPos.set(targetNode.z_x || 0, targetNode.z_y || 0, targetNode.z_z || 0);
@@ -49,12 +49,6 @@ const CameraController = ({ targetNode, spatialNodes }) => {
       const cameraOffset = targetPos.clone().normalize().multiplyScalar(approachRadius); 
       if (cameraOffset.length() === 0) cameraOffset.set(0, 0, approachRadius);
       idealPos = targetPos.clone().add(cameraOffset);
-    } else if (spatialNodes && spatialNodes.length > 0) {
-      const rootNode = spatialNodes.find(n => n.depth === 0) || spatialNodes[0];
-      if (rootNode) {
-        targetPos.set(rootNode.z_x || 0, rootNode.z_y || 0, rootNode.z_z || 0);
-        idealPos.set(targetPos.x, targetPos.y, targetPos.z + 7500);
-      }
     }
 
     const onIntervene = () => { isCanceledRef.current = true; };
@@ -79,10 +73,58 @@ const CameraController = ({ targetNode, spatialNodes }) => {
   return null;
 };
 
-function MiniMap({ spatialNodes, camera, controls }) {
+/** Pivots the OrbitControls target to the 3D point under the cursor on rotation start */
+const CursorPivot = () => {
+  const { camera, controls, gl, scene } = useThree();
+  const raycaster = useMemo(() => new THREE.Raycaster(), []);
+  const mouse = useMemo(() => new THREE.Vector2(), []);
+
+  useEffect(() => {
+    if (!controls) return;
+
+    const handlePointerDown = (e) => {
+      if (e.button !== 2 && e.button !== 1) return;
+
+      const rect = gl.domElement.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.set(camera.position, new THREE.Vector3(mouse.x, mouse.y, 0.5).unproject(camera).sub(camera.position).normalize());
+
+      const hits = raycaster.intersectObjects(scene.children, true);
+      let point = null;
+
+      if (hits.length > 0) {
+        point = hits[0].point;
+      } else {
+        const plane = new THREE.Plane();
+        const targetDir = new THREE.Vector3().subVectors(controls.target, camera.position).normalize();
+        plane.setFromNormalAndCoplanarPoint(targetDir, controls.target);
+        const intersection = new THREE.Vector3();
+        if (raycaster.ray.intersectPlane(plane, intersection)) {
+          point = intersection;
+        }
+      }
+
+      if (point) {
+        controls.target.lerp(point, 0.6);
+        controls.update();
+      }
+    };
+
+    gl.domElement.addEventListener('pointerdown', handlePointerDown);
+    return () => gl.domElement.removeEventListener('pointerdown', handlePointerDown);
+  }, [camera, controls, gl, scene, raycaster, mouse]);
+
+  return null;
+};
+
+function MiniMap({ spatialNodes, camera, controls, theme = 'dark' }) {
   const canvasRef = useRef(null);
   const nodesRef = useRef(spatialNodes);
   useEffect(() => { nodesRef.current = spatialNodes; }, [spatialNodes]);
+
+  const isLight = theme === 'light';
 
   useEffect(() => {
     let animationFrameId;
@@ -116,10 +158,13 @@ function MiniMap({ spatialNodes, camera, controls }) {
 
       const toCanvas = (wx, wy) => [CW / 2 + (wx - cx) * scale, CH / 2 - (wy - cy) * scale];
       ctx.clearRect(0, 0, CW, CH);
-      ctx.fillStyle = 'rgba(8, 12, 20, 0.4)';
+      
+      // Draw background
+      ctx.fillStyle = isLight ? 'rgba(244, 239, 229, 0.5)' : 'rgba(8, 12, 20, 0.4)';
       ctx.fillRect(0, 0, CW, CH);
 
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+      // Connections
+      ctx.strokeStyle = isLight ? 'rgba(46, 43, 39, 0.15)' : 'rgba(255, 255, 255, 0.06)';
       ctx.lineWidth = 0.5;
       projectedNodes.forEach(n => {
         if (n.parentId) {
@@ -132,11 +177,17 @@ function MiniMap({ spatialNodes, camera, controls }) {
         }
       });
 
+      // Nodes
       projectedNodes.forEach(n => {
         const [nx, ny] = toCanvas(n.cx, n.cy);
         const config = ENTITY_TYPES[n.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT || { color: '#ffffff' };
         ctx.fillStyle = config.color;
         ctx.beginPath(); ctx.arc(nx, ny, n.depth === 0 ? 3.5 : 2, 0, Math.PI * 2); ctx.fill();
+
+        // Border outline for ALL nodes (reversing dynamically to guarantee high contrast)
+        ctx.strokeStyle = isLight ? 'rgba(46, 43, 39, 0.3)' : 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
       });
 
       const dist = camera.position.distanceTo(target);
@@ -145,46 +196,142 @@ function MiniMap({ spatialNodes, camera, controls }) {
       const localTarget = target.clone().applyMatrix4(camera.matrixWorldInverse);
       const [rLeft, rTop] = toCanvas(localTarget.x - halfWidth, localTarget.y + halfHeight);
       const [rRight, rBottom] = toCanvas(localTarget.x + halfWidth, localTarget.y - halfHeight);
-      ctx.strokeStyle = '#00f2ff';
-      ctx.lineWidth = 1.2;
-      ctx.setLineDash([3, 3]); ctx.strokeRect(rLeft, rTop, rRight - rLeft, rBottom - rTop); ctx.setLineDash([]);
+      
+      const primaryAccent = isLight ? '#0891B2' : '#00f2ff';
+      const secondaryAccent = '#899981';
+
+      // 1. Draw solid secondary (sage green) accent rectangle first
+      ctx.strokeStyle = secondaryAccent;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(rLeft, rTop, rRight - rLeft, rBottom - rTop);
+
+      // 2. Draw dashed primary accent rectangle on top
+      ctx.strokeStyle = primaryAccent;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 3]);
+      ctx.strokeRect(rLeft, rTop, rRight - rLeft, rBottom - rTop);
+      ctx.setLineDash([]);
     };
     render();
     return () => cancelAnimationFrame(animationFrameId);
-  }, [camera, controls]);
+  }, [camera, controls, theme, isLight]);
+
+  const isDragging = useRef(false);
+  const lastMousePos = useRef(null);
+
+  const handleMouseDown = (e) => {
+    isDragging.current = false;
+    lastMousePos.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleMouseMove = (e) => {
+    if (!lastMousePos.current) return;
+    const dx = e.clientX - lastMousePos.current.x;
+    const dy = e.clientY - lastMousePos.current.y;
+    const threshold = 3;
+    if (Math.abs(dx) > threshold || Math.abs(dy) > threshold) {
+      isDragging.current = true;
+    }
+    if (!isDragging.current) return;
+
+    // Scale delta based on minimap fitting factor
+    const CW = 220;
+    const CH = 160;
+
+    const nodes = nodesRef.current || [];
+    const projectedNodes = nodes.map(n => {
+      const wp = new THREE.Vector3(n.z_x || 0, n.z_y || 0, n.z_z || 0);
+      const cp = wp.applyMatrix4(camera.matrixWorldInverse);
+      return { cx: cp.x, cy: cp.y };
+    });
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    projectedNodes.forEach(cp => {
+      minX = Math.min(minX, cp.cx); maxX = Math.max(maxX, cp.cx);
+      minY = Math.min(minY, cp.cy); maxY = Math.max(maxY, cp.cy);
+    });
+    const currentScale = Math.min((CW - 50) / (maxX - minX || 100), (CH - 50) / (maxY - minY || 100));
+
+    if (!currentScale || isNaN(currentScale)) return;
+
+    const dx_world = dx / currentScale;
+    const dy_world = -dy / currentScale;
+
+    const localX = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    const localY = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+
+    const panVector = localX.clone().multiplyScalar(-dx_world).add(localY.clone().multiplyScalar(-dy_world));
+
+    camera.position.add(panVector);
+    controls.target.add(panVector);
+    controls.update();
+
+    lastMousePos.current = { x: e.clientX, y: e.clientY };
+  };
 
   return (
-    <div className="absolute top-10 right-10 z-[2000] minimap-container" style={{ width: '220px', height: '160px', background: 'rgba(10, 15, 25, 0.8)', backdropFilter: 'blur(20px)', border: '1px solid rgba(0, 242, 255, 0.15)', borderRadius: '16px', overflow: 'hidden' }}>
+    <div
+      className="absolute top-10 z-[2000] minimap-container"
+      style={{
+        right: '10px',
+        width: '220px',
+        height: '160px',
+        background: isLight ? 'rgba(244, 239, 229, 0.85)' : 'rgba(10, 15, 25, 0.8)',
+        backdropFilter: 'blur(20px)',
+        border: isLight ? '1px solid rgba(46, 43, 39, 0.15)' : '1px solid rgba(0, 242, 255, 0.15)',
+        borderRadius: '16px',
+        boxShadow: isLight ? '0 12px 32px rgba(46, 43, 39, 0.15)' : '0 12px 32px rgba(0,0,0,0.5)',
+        overflow: 'hidden',
+        cursor: 'crosshair',
+        pointerEvents: 'auto'
+      }}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={() => { lastMousePos.current = null; }}
+    >
       <canvas ref={canvasRef} width={220} height={160} style={{ width: '100%', height: '100%' }} />
+      <div 
+        className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest pointer-events-none"
+        style={{
+          background: isLight ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
+          border: isLight ? '1px solid rgba(46, 43, 39, 0.1)' : '1px solid rgba(255, 255, 255, 0.05)',
+          color: isLight ? '#6E6C68' : '#94a3b8'
+        }}
+      >
+        Minimap
+      </div>
     </div>
   );
 }
 
-const CanvasTexturePillLabel = React.memo(({ title, isRoot, isSelected }) => {
+const CanvasTexturePillLabel = React.memo(({ title, isRoot, isSelected, isDark = true, nodeColor = '#899981' }) => {
   const textureData = useMemo(() => {
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
     const oversample = 2;
     const fontSize = (isRoot ? 48 : 34) * oversample;
     const safeName = (title || 'Unnamed').toUpperCase();
+    const strokeW = 3 * oversample;
+    const halfStroke = strokeW / 2;
     context.font = `bold ${fontSize}px "Inter", sans-serif`;
     const metrics = context.measureText(safeName);
-    const w = metrics.width + 80 * oversample;
-    const h = fontSize + 48 * oversample;
-    canvas.width = w; canvas.height = h;
-    context.beginPath(); context.roundRect(0, 0, w, h, h / 2);
-    context.fillStyle = isSelected ? 'rgba(0, 242, 255, 0.95)' : 'rgba(10, 15, 25, 0.9)';
+    const innerW = metrics.width + 80 * oversample;
+    const innerH = fontSize + 48 * oversample;
+    canvas.width = innerW + strokeW; canvas.height = innerH + strokeW;
+    context.beginPath(); context.roundRect(halfStroke, halfStroke, innerW, innerH, innerH / 2);
+    context.fillStyle = isSelected
+      ? 'rgba(0, 242, 255, 0.95)'
+      : isDark ? 'rgba(10, 15, 25, 0.9)' : 'rgba(240, 244, 248, 0.95)';
     context.fill();
-    context.lineWidth = 3 * oversample;
-    context.strokeStyle = isSelected ? '#00f2ff' : (isRoot ? '#ffffff' : '#899981');
+    context.lineWidth = strokeW;
+    context.strokeStyle = isSelected ? '#00f2ff' : nodeColor;
     context.stroke();
     context.font = `bold ${fontSize}px "Inter", sans-serif`;
     context.textAlign = 'center'; context.textBaseline = 'middle';
-    context.fillStyle = isSelected ? '#000000' : '#ffffff';
-    context.fillText(safeName, w / 2, h / 2);
+    context.fillStyle = isSelected ? '#000000' : (isDark ? '#ffffff' : '#0a0f1a');
+    context.fillText(safeName, canvas.width / 2, canvas.height / 2);
     const texture = new THREE.CanvasTexture(canvas);
-    return { texture, width: w, height: h, oversample };
-  }, [title, isRoot, isSelected]);
+    return { texture, width: canvas.width, height: canvas.height, oversample };
+  }, [title, isRoot, isSelected, isDark, nodeColor]);
 
   useEffect(() => { return () => textureData.texture.dispose(); }, [textureData]);
   const scale = isRoot ? 3.0 : 2.2;
@@ -195,7 +342,7 @@ const CanvasTexturePillLabel = React.memo(({ title, isRoot, isSelected }) => {
   );
 });
 
-const InstancedNodes = ({ spatialNodes, onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode }) => {
+const InstancedNodes = ({ spatialNodes, onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, layoutRules }) => {
   const meshRef = useRef();
   const tempMatrix = useMemo(() => new THREE.Matrix4(), []);
   const tempColor = useMemo(() => new THREE.Color(), []);
@@ -204,12 +351,15 @@ const InstancedNodes = ({ spatialNodes, onSelectNode, hoveredNodeId, setHoveredN
 
   useFrame((state) => {
     if (!meshRef.current) return;
+    const beta = layoutRules?.betaLayout ?? false;
     spatialNodes.forEach((node, i) => {
       const isHovered = hoveredNodeId === node.id;
       const isSelected = selectedNode?.id === node.id;
       const s = isSelected ? (1.8 + Math.sin(state.clock.elapsedTime * 6) * 0.15) : (isHovered ? 1.4 : 1.0);
+      const centralityScale = beta ? (0.85 + Math.min(node.degree || 0, 8) * 0.12) : 1.0;
+      const finalScale = s * centralityScale;
       tempPos.set(node.z_x || 0, node.z_y || 0, node.z_z || 0);
-      tempScale.set(s, s, s);
+      tempScale.set(finalScale, finalScale, finalScale);
       tempMatrix.compose(tempPos, new THREE.Quaternion(), tempScale);
       meshRef.current.setMatrixAt(i, tempMatrix);
       const config = ENTITY_TYPES[node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT;
@@ -234,38 +384,198 @@ const InstancedNodes = ({ spatialNodes, onSelectNode, hoveredNodeId, setHoveredN
   );
 };
 
-export const InstancedSpatialCanvas = ({ nodes = [], onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode }) => {
+const ZoomTracker = ({ onZoomChange, onCoordsChange }) => {
+  const { camera, controls } = useThree();
+  const lastZoomRef = useRef(null);
+  const lastCoordsRef = useRef({ x: null, y: null, z: null });
+
+  useFrame(() => {
+    if (!controls) return;
+    const distance = camera.position.distanceTo(controls.target);
+    const zoomVal = Math.round((7500 - distance) / 100);
+    if (zoomVal !== lastZoomRef.current) {
+      lastZoomRef.current = zoomVal;
+      onZoomChange(zoomVal);
+    }
+
+    const tx = Math.round(controls.target.x);
+    const ty = Math.round(controls.target.y);
+    const tz = Math.round(controls.target.z);
+    if (tx !== lastCoordsRef.current.x || ty !== lastCoordsRef.current.y || tz !== lastCoordsRef.current.z) {
+      lastCoordsRef.current = { x: tx, y: ty, z: tz };
+      onCoordsChange({ x: tx, y: ty, z: tz });
+    }
+  });
+
+  return null;
+};
+
+export const InstancedSpatialCanvas = ({ nodes = [], onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, onOpenDrawer, onZoomChange, onCoordsChange, theme = 'dark', setIs3DInteracting, layoutRules }) => {
+  const isDark = theme !== 'light';
+  const bgColor = isDark ? '#000000' : '#ece8dd';
   const [cameraInstance, setCameraInstance] = useState(null);
   const [controlsInstance, setControlsInstance] = useState(null);
 
   const spatialNodes = useMemo(() => {
-    const processed = []; const seen = new Set();
-    const walk = (nid, depth = 0, thetaRange = [0, Math.PI * 2], phiRange = [0.2, Math.PI - 0.2]) => {
+    const processed = [];
+    const seen = new Set();
+    const beta = layoutRules?.betaLayout ?? false;
+
+    // Helper to calculate the cumulative weight (size) of a subtree recursively
+    const getSubtreeWeight = (nodeId) => {
+      const children = nodes.filter(n => n.parentId === nodeId);
+      if (children.length === 0) return 1;
+      return 1 + children.reduce((acc, child) => acc + getSubtreeWeight(child.id), 0);
+    };
+
+    const walk = (nid, depth = 0, thetaRange = [0, Math.PI * 2], phiRange = [0.2, Math.PI - 0.2], parentChildCount = 1, parentRadius = 0) => {
       if (seen.has(nid)) return;
-      const node = nodes.find(n => n.id === nid); if (!node) return;
+      const node = nodes.find(n => n.id === nid);
+      if (!node) return;
       seen.add(nid);
-      const radius = depth === 0 ? 0 : 2500 + (depth - 1) * 2000;
+
+      // Distance from center
+      let radius;
+      if (beta) {
+        radius = parentRadius;
+      } else {
+        // Original grid radius
+        const baseDistance = (layoutRules?.parentDistance ?? 400) * 4.5;
+        const gapOffset = (layoutRules?.childGap ?? 50) * 10.0;
+        radius = depth === 0 ? 0 : baseDistance + gapOffset + (depth - 1) * (baseDistance * 0.9 + gapOffset);
+      }
+
       const theta = (thetaRange[0] + thetaRange[1]) / 2;
       const phi = (phiRange[0] + phiRange[1]) / 2;
-      processed.push({ ...node, z_x: radius * Math.sin(phi) * Math.cos(theta), z_y: radius * Math.sin(phi) * Math.sin(theta), z_z: radius * Math.cos(phi), depth });
+      
+      const z_x = radius * Math.sin(phi) * Math.cos(theta);
+      const z_y = radius * Math.sin(phi) * Math.sin(theta);
+      const z_z = radius * Math.cos(phi);
+
+      // Calculate topological degree centrality
+      const parentLinkCount = node.parentId ? 1 : 0;
+      const childrenLinkCount = nodes.filter(n => n.parentId === node.id).length;
+      const secondaryLinkCount = (node.secondaryLinks || []).length;
+      const totalDegree = parentLinkCount + childrenLinkCount + secondaryLinkCount;
+
+      processed.push({ ...node, z_x, z_y, z_z, depth, degree: totalDegree });
+
       const children = nodes.filter(n => n.parentId === nid);
       if (children.length > 0) {
-        const tSpan = (thetaRange[1] - thetaRange[0]) * 0.8;
-        const pSpan = (phiRange[1] - phiRange[0]) * 0.8;
-        const cols = Math.ceil(Math.sqrt(children.length));
-        const rows = Math.ceil(children.length / cols);
-        const pStep = pSpan / rows;
-        children.forEach((child, i) => {
-          const row = Math.floor(i / cols); const col = i % cols;
-          const dynamicTStep = tSpan / ((row === rows - 1 && children.length % cols !== 0) ? children.length % cols : cols);
-          walk(child.id, depth + 1, [theta - tSpan / 2 + col * dynamicTStep, theta - tSpan / 2 + (col + 1) * dynamicTStep], [phi - pSpan / 2 + row * pStep, phi - pSpan / 2 + (row + 1) * pStep]);
-        });
+        if (beta) {
+          // PROPORTIONAL WEIGHTED & EQUAL FANNING MIXED ALLOCATION
+          const gapVal = layoutRules?.childGap ?? 50;
+          const N = children.length;
+          const cols = Math.ceil(Math.sqrt(N));
+          const rows = Math.ceil(N / cols);
+          
+          // Dynamic sector opening: span fraction opens extremely wide by default to spread out siblings laterally
+          const spanFraction = Math.min(1.3, 0.85 + (gapVal / 150) * 0.4); 
+          const tSpan = (thetaRange[1] - thetaRange[0]) * spanFraction;
+          const pSpan = (phiRange[1] - phiRange[0]) * spanFraction;
+          const startT = theta - tSpan / 2;
+          const startP = phi - pSpan / 2;
+
+          // DYNAMIC SAFESPACING: Calculate step size to guarantee zero sibling billboard overlaps
+          const deltaTheta = tSpan / Math.max(1, cols);
+          const deltaPhi = pSpan / Math.max(1, rows);
+          
+          const safeHorizontal = 550; 
+          const safeVertical = 220;
+          
+          const rSafeH = safeHorizontal / Math.max(0.01, deltaTheta);
+          const rSafeV = safeVertical / Math.max(0.01, deltaPhi);
+          const dynamicRadiusStep = Math.max(rSafeH, rSafeV);
+          
+          // SIGNIFICANTLY REDUCED parent-child radial distance
+          const baseDistance = (layoutRules?.parentDistance ?? 400) * 3.5; 
+          const minStep = baseDistance * 0.6; 
+          const maxStep = baseDistance * 2.2; 
+          const finalDefaultStep = Math.min(maxStep, Math.max(minStep, dynamicRadiusStep));
+          
+          // Compact slider global adder to keep parent-child lines short and crisp
+          const gapAdder = gapVal * 3.5; 
+          
+          let childForwardStep;
+          if (depth === 0) {
+            // Majestic central globe radial jump to establish wide central space
+            childForwardStep = 4500 + gapVal * 12.0;
+          } else {
+            childForwardStep = finalDefaultStep + gapAdder;
+          }
+
+          const childWeights = children.map(child => ({
+            child,
+            weight: getSubtreeWeight(child.id)
+          }));
+          const totalWeight = childWeights.reduce((acc, cw) => acc + cw.weight, 0);
+
+          // Force dynamic blending: equal-spread is dominant by default to fan nodes out laterally
+          const baseAlpha = Math.max(0.05, 0.5 - (gapVal / 150) * 0.4);
+          const alpha = Math.max(0.02, baseAlpha - Math.max(0, N - 3) * 0.05);
+
+          let currentTheta = startT;
+          const pStep = pSpan / Math.max(1, rows);
+
+          childWeights.forEach((cw, i) => {
+            const proportionalPart = (cw.weight / totalWeight) * tSpan * alpha;
+            const equalPart = (1.0 / N) * tSpan * (1.0 - alpha);
+            const thetaFraction = proportionalPart + equalPart;
+            
+            const row = Math.floor(i / cols);
+            const childPhiRange = [startP + row * pStep, startP + (row + 1) * pStep];
+            
+            walk(cw.child.id, depth + 1, [currentTheta, currentTheta + thetaFraction], childPhiRange, N, radius + childForwardStep);
+            currentTheta += thetaFraction;
+          });
+        } else {
+          // ORIGINAL EQUAL GRID ALLOCATION
+          const tSpan = (thetaRange[1] - thetaRange[0]) * 0.85;
+          const pSpan = (phiRange[1] - phiRange[0]) * 0.85;
+          const startT = theta - tSpan / 2;
+          const startP = phi - pSpan / 2;
+
+          const N = children.length;
+          const cols = Math.ceil(Math.sqrt(N));
+          const rows = Math.ceil(N / cols);
+          const pStep = pSpan / Math.max(1, rows);
+
+          children.forEach((child, i) => {
+            const row = Math.floor(i / cols);
+            const col = i % cols;
+            const itemsInThisRow = (row === rows - 1 && N % cols !== 0) ? N % cols : cols;
+            const dynamicTStep = tSpan / itemsInThisRow;
+            
+            walk(child.id, depth + 1, [startT + col * dynamicTStep, startT + (col + 1) * dynamicTStep], [startP + row * pStep, startP + (row + 1) * pStep], N, radius + 2000);
+          });
+        }
       }
     };
+
     const roots = nodes.filter(n => !n.parentId);
-    roots.forEach((root, i) => walk(root.id, 0, [i * (Math.PI * 2 / Math.max(1, roots.length)), (i + 1) * (Math.PI * 2 / Math.max(1, roots.length))], [0.4, Math.PI - 0.4]));
+    if (roots.length > 0) {
+      if (beta) {
+        const rootWeights = roots.map(r => ({
+          root: r,
+          weight: getSubtreeWeight(r.id)
+        }));
+        const totalRootWeight = rootWeights.reduce((acc, rw) => acc + rw.weight, 0);
+
+        let currentTheta = 0;
+        rootWeights.forEach(rw => {
+          const thetaFraction = (rw.weight / totalRootWeight) * (Math.PI * 2);
+          walk(rw.root.id, 0, [currentTheta, currentTheta + thetaFraction], [0.15, Math.PI - 0.15], roots.length, 0);
+          currentTheta += thetaFraction;
+        });
+      } else {
+        roots.forEach((root, i) => {
+          const step = (Math.PI * 2) / roots.length;
+          walk(root.id, 0, [i * step, (i + 1) * step], [0.4, Math.PI - 0.4], roots.length);
+        });
+      }
+    }
     return processed;
-  }, [nodes]);
+  }, [nodes, layoutRules]);
 
   const links = useMemo(() => {
     const l = []; spatialNodes.forEach(node => {
@@ -278,20 +588,27 @@ export const InstancedSpatialCanvas = ({ nodes = [], onSelectNode, hoveredNodeId
   }, [spatialNodes]);
 
   return (
-    <div className="w-full h-full bg-black relative">
-      <Canvas camera={{ position: [0, 0, 10000], fov: 35, near: 100, far: 1000000 }}>
+    <div className="w-full h-full relative" style={{ background: bgColor }}>
+      <Canvas camera={{ position: [-2236, -2205, 19771], fov: 35, near: 100, far: 1000000 }}>
         <WebGLMemoryDisposer />
         <RefConnector setCamera={setCameraInstance} setControls={setControlsInstance} />
-        <color attach="background" args={['#000000']} />
+        <ZoomTracker onZoomChange={onZoomChange} onCoordsChange={onCoordsChange} />
+        <color attach="background" args={[bgColor]} />
         <ambientLight intensity={1.5} />
         <pointLight position={[10000, 10000, 10000]} intensity={2} />
         <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
-        <OrbitControls makeDefault />
+        <OrbitControls 
+          makeDefault enableDamping dampingFactor={0.2} 
+          target={[-2236, -2205, 1871]} 
+          onStart={() => setIs3DInteracting && setIs3DInteracting(true)}
+          onEnd={() => setIs3DInteracting && setIs3DInteracting(false)}
+        />
+        <CursorPivot />
         <CameraController targetNode={selectedNode ? spatialNodes.find(n => n.id === selectedNode.id) : null} spatialNodes={spatialNodes} />
-        <InstancedNodes spatialNodes={spatialNodes} onSelectNode={onSelectNode} hoveredNodeId={hoveredNodeId} setHoveredNodeId={setHoveredNodeId} selectedNode={selectedNode} />
+        <InstancedNodes spatialNodes={spatialNodes} onSelectNode={onSelectNode} hoveredNodeId={hoveredNodeId} setHoveredNodeId={setHoveredNodeId} selectedNode={selectedNode} layoutRules={layoutRules} />
         {spatialNodes.filter(n => n.depth <= 2 || hoveredNodeId === n.id || selectedNode?.id === n.id).map(node => (
           <Billboard key={`label-${node.id}`} position={[node.z_x, node.z_y + 280, node.z_z + 50]} onPointerOver={() => setHoveredNodeId(node.id)}>
-            <CanvasTexturePillLabel title={node.title} isRoot={node.depth === 0} isSelected={selectedNode?.id === node.id} />
+            <CanvasTexturePillLabel title={node.title} isRoot={node.depth === 0} isSelected={selectedNode?.id === node.id} isDark={isDark} nodeColor={(ENTITY_TYPES[node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color} />
           </Billboard>
         ))}
         {links.map(link => (
@@ -299,7 +616,7 @@ export const InstancedSpatialCanvas = ({ nodes = [], onSelectNode, hoveredNodeId
         ))}
         <Environment preset="night" />
       </Canvas>
-      {cameraInstance && controlsInstance && <MiniMap spatialNodes={spatialNodes} camera={cameraInstance} controls={controlsInstance} />}
+      {cameraInstance && controlsInstance && <MiniMap spatialNodes={spatialNodes} camera={cameraInstance} controls={controlsInstance} theme={theme} />}
     </div>
   );
 };
