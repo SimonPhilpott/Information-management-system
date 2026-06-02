@@ -151,20 +151,33 @@ export const SunburstCanvas = ({
     if (!treeData) return [];
     const slices = [];
 
-    const assignAngles = (node, startAngle = 0, endAngle = 2 * Math.PI, depth = 0) => {
-      slices.push({ ...node, startAngle, endAngle, depth });
+    /**
+     * Each depth-1 segment establishes a "sector colour" derived from its
+     * entity type. That colour is passed down to every descendant so that
+     * nodes in the same branch share a common hue — making relationships
+     * visually obvious at a glance. Opacity decreases with depth so the
+     * hierarchy reads like a gentle gradient from vivid → whisper.
+     */
+    const assignAngles = (node, startAngle = 0, endAngle = 2 * Math.PI, depth = 0, sectorColor = null) => {
+      // At depth 1 the node anchors the sector hue; children inherit it.
+      const mySectorColor = depth === 1
+        ? (ENTITY_TYPES[node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color
+        : sectorColor;
+
+      slices.push({ ...node, startAngle, endAngle, depth, sectorColor: mySectorColor });
+
       if (node.children?.length) {
         let cur = startAngle;
         const span = endAngle - startAngle;
         node.children.forEach(child => {
           const fraction = (child.value / node.value) * span;
-          assignAngles(child, cur, cur + fraction, depth + 1);
+          assignAngles(child, cur, cur + fraction, depth + 1, mySectorColor);
           cur += fraction;
         });
       }
     };
 
-    assignAngles(treeData, 0, 2 * Math.PI, 0);
+    assignAngles(treeData, 0, 2 * Math.PI, 0, null);
     return slices;
   }, [treeData]);
 
@@ -238,15 +251,19 @@ export const SunburstCanvas = ({
 
   // ── Colour helpers ───────────────────────────────────────────────────────────
   /**
-   * Fill opacity decreases with depth to create a natural visual hierarchy.
-   * Dark mode: colourful but restrained to preserve the premium black aesthetic.
-   * Light mode: richer saturation so rings read clearly on the warm parchment bg.
+   * Faint background tints that fade with depth — enough to show which
+   * branch a node belongs to without obscuring the premium black / parchment
+   * background. On hover the fill lifts to show the node's own entity colour.
+   *
+   * Depth 1 (inner ring) → most visible (anchors the sector hue).
+   * Each additional ring loses ~25 % opacity so outer nodes whisper their colour.
    */
   const getFillOpacity = (depth, isHovered) => {
-    if (depth === 0) return isDark ? 0.06 : 0.10;
-    if (isHovered)   return isDark ? 0.88 : 0.95;
-    const darkLevels  = [0.58, 0.48, 0.40, 0.34, 0.28];
-    const lightLevels = [0.78, 0.66, 0.56, 0.48, 0.40];
+    if (depth === 0) return isDark ? 0.04 : 0.07;
+    if (isHovered)   return isDark ? 0.72 : 0.82;
+    // Faint, hierarchy-aware background tints
+    const darkLevels  = [0.22, 0.16, 0.12, 0.09, 0.07];
+    const lightLevels = [0.28, 0.21, 0.15, 0.11, 0.08];
     const table       = isDark ? darkLevels : lightLevels;
     return table[Math.min(depth - 1, table.length - 1)];
   };
@@ -339,20 +356,30 @@ export const SunburstCanvas = ({
             <circle cx={cx} cy={cy} r={innerBaseRadius + ringWidth}   fill="none" stroke={isDark ? 'rgba(0,242,255,0.03)'  : 'rgba(78,90,71,0.05)'}  strokeWidth={1} />
             <circle cx={cx} cy={cy} r={innerBaseRadius + 2 * ringWidth} fill="none" stroke={isDark ? 'rgba(0,242,255,0.015)' : 'rgba(78,90,71,0.03)'}  strokeWidth={1} />
 
-            {/* Slice fills with entity-type colours and depth-based opacity */}
+            {/* Slice fills — sector colour for grouping, entity colour for hover */}
             <g>
               {flatSlices.map(slice => {
                 const { r0, r1 } = getRadius(slice.depth);
-                const pathD      = getArcPath(r0, r1, slice.startAngle, slice.endAngle);
-                const color      = (ENTITY_TYPES[slice.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color;
-                const isHov      = hoveredNode?.id === slice.id;
-                const fillOp     = getFillOpacity(slice.depth, isHov);
+                const pathD = getArcPath(r0, r1, slice.startAngle, slice.endAngle);
+
+                // entityColor: this node's own type — used for hover glow only
+                const entityColor = (ENTITY_TYPES[slice.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color;
+
+                // sectorColor: the inherited depth-1 ancestor hue — used for the
+                // faint background fill so all related nodes share the same tint.
+                const fillColor = slice.sectorColor || entityColor;
+
+                const isHov  = hoveredNode?.id === slice.id;
+                const fillOp = getFillOpacity(slice.depth, isHov);
+
+                // On hover, lift the fill with the node's own entity colour for precision.
+                const activeFill = isHov ? entityColor : fillColor;
 
                 return (
                   <path
                     key={`slice-${slice.id}`}
                     d={pathD}
-                    fill={color}
+                    fill={activeFill}
                     fillOpacity={fillOp}
                     stroke={separatorStroke}
                     strokeWidth={isHov ? 1.5 : 0.9}
