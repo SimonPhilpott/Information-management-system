@@ -15,6 +15,7 @@
   --bg-secondary: #F8F7F3;
   --bg-tertiary: #EDE5D8;
   --bg-elevated: #E5DCCB;
+  --bg-overlay: rgba(248, 247, 243, 0.95);
 
   /* Glass effect backgrounds */
   --glass-bg: #F8F7F3;
@@ -98,6 +99,7 @@
   --bg-secondary: #111827;
   --bg-tertiary: #1a2035;
   --bg-elevated: #1e2642;
+  --bg-overlay: rgba(17, 24, 39, 0.95);
 
   /* Glass effect backgrounds */
   --glass-bg: rgba(17, 24, 39, 0.7);

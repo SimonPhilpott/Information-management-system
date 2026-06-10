@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { ENTITY_TYPES, SCHEMAS } from './data/nodes';
 import { MESHES } from './data/mesh_authority.js';
 
@@ -13,11 +13,34 @@ import { SpatialCanvas } from './components/KnowledgeMesh/SpatialCanvas';
 import { InstancedSpatialCanvas } from './components/KnowledgeMesh/InstancedSpatialCanvas';
 import { SunburstCanvas } from './components/KnowledgeMesh/SunburstCanvas';
 import { AnimatePresence, motion, animate } from 'framer-motion';
-import { Activity, Link as LinkIcon, Cpu, ArrowDown, Network, GitMerge, Box, Layers, Type, Sparkles, Globe, Aperture } from 'lucide-react';
+import { Activity, Link as LinkIcon, Cpu, ArrowDown, Network, GitMerge, Box, Layers, Type, Globe, Aperture, Maximize2, Minimize2 } from 'lucide-react';
 
 import { useAppLogic } from './hooks/useAppLogic';
 import OnboardingSetup from './components/Dashboard/OnboardingSetup';
 import { checkIsEntertainment } from './utils/contentFilter';
+
+const getShortSummary = (text) => {
+  if (!text) return '';
+  // Strip HTML tags, replacing them with a space to prevent words from sticking together
+  let cleanText = text.replace(/<[^>]*>/g, ' ');
+  // Decode common HTML entities
+  cleanText = cleanText
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
+  // Strip synced metadata header
+  cleanText = cleanText.replace(/^\[SYNCED INTEL FROM [^\]]+\]\s*/i, '');
+  // Normalize whitespaces
+  cleanText = cleanText.replace(/\s+/g, ' ').trim();
+  
+  const sentences = cleanText.match(/[^.!?]+[.!?]+(\s|$)/g);
+  if (!sentences || sentences.length <= 2) return cleanText;
+  return sentences.slice(0, 2).join('').trim();
+};
 
 export default function App() {
   const { state, actions } = useAppLogic();
@@ -31,6 +54,31 @@ export default function App() {
       window.location.reload(); // Refresh to pick up new tokens
     }
   }, []);
+
+  const [typesVersion, setTypesVersion] = useState(0);
+  const handleAddEntityType = (newTypeKey, newTypeConfig, newSchemaFields) => {
+    try {
+      const savedTypes = localStorage.getItem('hive_graph_custom_entity_types');
+      const customTypes = savedTypes ? JSON.parse(savedTypes) : {};
+      customTypes[newTypeKey] = newTypeConfig;
+      localStorage.setItem('hive_graph_custom_entity_types', JSON.stringify(customTypes));
+
+      const savedSchemas = localStorage.getItem('hive_graph_custom_schemas');
+      const customSchemas = savedSchemas ? JSON.parse(savedSchemas) : {};
+      customSchemas[newTypeKey] = newSchemaFields;
+      localStorage.setItem('hive_graph_custom_schemas', JSON.stringify(customSchemas));
+
+      ENTITY_TYPES[newTypeKey] = {
+        ...newTypeConfig,
+        icon: Database
+      };
+      SCHEMAS[newTypeKey] = newSchemaFields;
+
+      setTypesVersion(prev => prev + 1);
+    } catch (e) {
+      console.error('Failed to add custom type:', e);
+    }
+  };
 
   const resetLayout = () => {
     if (window.confirm('WARNING: This will permanently purge ALL changes and reset your workspace to the authoritative NAVXML structure. Proceed?')) {
@@ -50,11 +98,28 @@ export default function App() {
   const [nodes, setNodes] = useState(() => {
     // VERSIONED STORAGE KEY: hive_mesh_v13_corporate_hierarchy
     const saved = localStorage.getItem('hive_mesh_v13_corporate_hierarchy');
-    const data = saved ? JSON.parse(saved) : MESH_JSON_AUTHORITY;
+    const savedNodes = saved ? JSON.parse(saved) : [];
     
-    // STABILITY PASS: Remove duplicates based on ID
     const uniqueMap = new Map();
-    data.forEach(n => { if (n && n.id) uniqueMap.set(n.id, n); });
+    // 1. Seed with authoritative node set from file
+    MESH_JSON_AUTHORITY.forEach(n => { if (n && n.id) uniqueMap.set(n.id, { ...n, visible: n.visible !== false }); });
+    // 2. Overwrite/merge with user saved state (preserving user visibility updates)
+    savedNodes.forEach(n => {
+      if (n && n.id) {
+        const existing = uniqueMap.get(n.id);
+        if (existing) {
+          uniqueMap.set(n.id, { 
+            ...n, 
+            parentId: existing.parentId, 
+            secondaryLinks: existing.secondaryLinks,
+            title: existing.title,
+            type: existing.type
+          });
+        } else {
+          uniqueMap.set(n.id, n);
+        }
+      }
+    });
     return Array.from(uniqueMap.values());
   });
 
@@ -74,7 +139,7 @@ export default function App() {
       }
       return false;
     };
-    return nodes.filter(n => !isEntertainment(n));
+    return nodes.filter(n => !isEntertainment(n) && n.visible !== false);
   }, [nodes]);
 
   const [deletedNodes, setDeletedNodes] = useState(() => {
@@ -91,8 +156,8 @@ export default function App() {
       const data = saved ? JSON.parse(saved) : null;
       if (!data || typeof data !== 'object') throw new Error('Invalid config');
       return { 
-         childGap: data.childGap ?? 50,
-         parentDistance: data.parentDistance ?? 400,
+         childGap: data.childGap ?? 60,
+         parentDistance: data.parentDistance ?? 700,
          connectionTension: data.connectionTension ?? 60,
          layoutStyle: data.layoutStyle ?? 'radial',
          projectionMode: data.projectionMode === 'instanced_3d' ? 'spatial_3d' : (data.projectionMode ?? '2d'),
@@ -104,7 +169,7 @@ export default function App() {
       };
     } catch {
       return { 
-         childGap: 50, parentDistance: 400, connectionTension: 60,
+         childGap: 60, parentDistance: 700, connectionTension: 60,
          layoutStyle: 'radial', projectionMode: 'spatial_3d', directionalLocking: true, unifiedSyncPoints: true,
          showLabels: true, labelStyle: 'standard', betaLayout: true
       };
@@ -150,6 +215,7 @@ export default function App() {
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isAppearanceOpen, setIsAppearanceOpen] = useState(false);
 
+
   const activeDisplayNode = useMemo(() => {
     if (!hoveredNodeId && !selectedNode) return null;
     if (hoveredNodeId) {
@@ -159,7 +225,7 @@ export default function App() {
     return selectedNode;
   }, [nodes, hoveredNodeId, selectedNode]);
 
-  const handleHoverNode = (id) => {
+  const handleHoverNode = useCallback((id) => {
     if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
     
     // INTERACTION LOCK: Block hover extraction if dragging/interacting is in progress
@@ -168,14 +234,26 @@ export default function App() {
        return;
      }
 
-
     if (id) setHoveredNodeId(id);
     else {
       hoverTimeout.current = setTimeout(() => {
         setHoveredNodeId(null);
       }, 80);
     }
-  };
+  }, [dragType, isDraggingNode, is3DInteracting]);
+
+  const handleSelectNode = useCallback((n) => {
+    setSelectedNode(n);
+  }, []);
+
+  const handleOpenDrawer = useCallback((n) => {
+    setSelectedNode(n); 
+    setIsEditorOpen(true); 
+    setIsAdminOpen(false);
+    setEditingNode(n); 
+    setCurrentType(n.type); 
+    setFormData({ title: n.title, content: n.content || {}, tier: n.tier || 3 }); 
+  }, []);
 
   const [hoveredLinkId, setHoveredLinkId] = useState(null);
   const [hoveredLinkData, setHoveredLinkData] = useState(null);
@@ -188,25 +266,39 @@ export default function App() {
     }
   }, [dragType, is3DInteracting]);
 
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [movingNodeId, setMovingNodeId] = useState(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   
   const [editingNode, setEditingNode] = useState(null);
   const [activeParentId, setActiveParentId] = useState(null);
   const [currentType, setCurrentType] = useState('CONCEPT');
-  const [formData, setFormData] = useState({ title: '', content: {} });
+  const [formData, setFormData] = useState({ title: '', content: {}, tier: 3 });
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const containerRef = useRef(null);
   const requestRef = useRef();
   const stickRef = useRef({ x: 0, y: 0, active: false });
   const velocityRef = useRef({ x: 0, y: 0 });
 
+  /** Toggles the graph container between fullscreen and windowed mode. */
+  const toggleFullscreen = () => {
+    if (!containerRef.current) return;
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
+
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
+
   const pressedKeys = useRef(new Set());
 
   useEffect(() => {
-    const handleGlobalMouse = (e) => setMousePos({ x: e.clientX, y: e.clientY });
-    
     const updatePilot = () => {
       let nx = 0;
       let ny = 0;
@@ -239,16 +331,39 @@ export default function App() {
       updatePilot();
     };
 
-    window.addEventListener('mousemove', handleGlobalMouse);
     window.addEventListener('keydown', handleGlobalKey);
     window.addEventListener('keyup', handleGlobalKeyUp);
     
     return () => {
-      window.removeEventListener('mousemove', handleGlobalMouse);
       window.removeEventListener('keydown', handleGlobalKey);
       window.removeEventListener('keyup', handleGlobalKeyUp);
     };
   }, []);
+
+  useEffect(() => {
+    if (!hoveredNodeId && !hoveredLinkData) return;
+
+    const handleTooltipMove = (e) => {
+      const el = document.getElementById('mesh-tooltip');
+      if (el) {
+        const tw = 360;
+        const th = el.offsetHeight || 300;
+        let nx = e.clientX + 35;
+        let ny = e.clientY + 10;
+        if (nx + tw > window.innerWidth - 30) nx = e.clientX - tw - 35;
+        const overflowBottom = ny + th > window.innerHeight - 30;
+        const isBottomHalf = e.clientY > window.innerHeight * 0.55;
+        if (isBottomHalf || overflowBottom) ny = e.clientY - th - 10;
+        el.style.left = `${Math.max(15, nx)}px`;
+        el.style.top = `${Math.max(15, ny)}px`;
+      }
+    };
+
+    window.addEventListener('mousemove', handleTooltipMove);
+    return () => {
+      window.removeEventListener('mousemove', handleTooltipMove);
+    };
+  }, [hoveredNodeId, hoveredLinkData]);
 
   const panRef = useRef(null);
 
@@ -341,15 +456,40 @@ export default function App() {
     }
   };
 
+  const handleReviewSync = (node, decomposedContent) => {
+    setSelectedNode(node);
+    setEditingNode(node);
+    setCurrentType(node.type);
+    setFormData({
+      title: node.title,
+      content: decomposedContent,
+      tier: node.tier || 3
+    });
+    setIsEditorOpen(true);
+    setIsAdminOpen(false);
+  };
+
   useEffect(() => {
-    // STATE INTEGRITY CHECK: Purge any accidental NaN values from storage
-    setNodes(prev => prev.map(n => ({
-      ...n,
-      x: isNaN(n.x) ? 2000 : n.x,
-      y: isNaN(n.y) ? 2000 : n.y,
-      ox: isNaN(n.ox) ? 2000 : n.ox,
-      oy: isNaN(n.oy) ? 2000 : n.oy
-    })));
+    // STATE INTEGRITY CHECK: Purge any accidental NaN values and clear Real Estate content for testing
+    setNodes(prev => prev.map(n => {
+      if (n.id === 'seg_re') {
+        return {
+          ...n,
+          content: {},
+          x: isNaN(n.x) ? 2000 : n.x,
+          y: isNaN(n.y) ? 2000 : n.y,
+          ox: isNaN(n.ox) ? 2000 : n.ox,
+          oy: isNaN(n.oy) ? 2000 : n.oy
+        };
+      }
+      return {
+        ...n,
+        x: isNaN(n.x) ? 2000 : n.x,
+        y: isNaN(n.y) ? 2000 : n.y,
+        ox: isNaN(n.ox) ? 2000 : n.ox,
+        oy: isNaN(n.oy) ? 2000 : n.oy
+      };
+    }));
 
     // MANDATORY INITIAL LAYOUT: Ensure authoritative spacing on cold boot
     applyLayout(layoutRules);
@@ -679,15 +819,7 @@ export default function App() {
     return data;
   };
 
-  const getTipPos = (tw, th) => {
-    let nx = mousePos.x + 35; 
-    let ny = mousePos.y + 10;
-    if (nx + tw > window.innerWidth - 30) nx = mousePos.x - tw - 35;
-    const overflowBottom = ny + th > window.innerHeight - 30;
-    const isBottomHalf = mousePos.y > window.innerHeight * 0.55;
-    if (isBottomHalf || overflowBottom) ny = mousePos.y - th - 10;
-    return { x: Math.max(15, nx), y: Math.max(15, ny) };
-  };
+
 
   if (loading) {
     return (
@@ -710,13 +842,8 @@ export default function App() {
     );
   }
 
-  const hoveredNodeRelCount = (hoveredNodeId && activeDisplayNode) 
-    ? nodes.filter(n => n.parentId === activeDisplayNode.id || activeDisplayNode.parentId === n.id).slice(0, 8).length 
-    : 0;
-  const nodeTipPos = (hoveredNodeId && activeDisplayNode)
-    ? getTipPos(448, 330 + hoveredNodeRelCount * 54)
-    : { x: 0, y: 0 };
-  const linkTipPos = hoveredLinkData ? getTipPos(448, 320) : { x: 0, y: 0 };
+  const nodeTipPos = { x: -9999, y: -9999 };
+  const linkTipPos = { x: -9999, y: -9999 };
 
   return (
     <>
@@ -724,10 +851,11 @@ export default function App() {
         <AnimatePresence mode="wait">
           {(state.showGraph && hoveredNodeId && !isDraggingNode && !dragType && !is3DInteracting && activeDisplayNode) && (
             <motion.div 
+              id="mesh-tooltip"
               initial={{ opacity: 0, scale: 0.9, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 10 }}
-              className={`fixed glass-panel border rounded-[16px] p-5 flex flex-col shadow-lg z-[2000] pointer-events-none transition-all duration-300 ${
+              className={`fixed glass-panel border rounded-[16px] p-5 flex flex-col shadow-lg z-[2000] pointer-events-none ${
                 state.theme === 'light' ? 'border-[#2E2B27]/15' : 'border-white/10'
               }`}
               style={{ 
@@ -748,7 +876,7 @@ export default function App() {
               </div>
  
               <p className={`text-[12px] leading-relaxed italic mb-4 border-b pb-4 transition-colors duration-300 ${state.theme === 'light' ? 'text-[#4A443F] border-[#2E2B27]/10' : 'text-slate-300 border-white/5'}`}>
-                {activeDisplayNode.content?.Summary || activeDisplayNode.content?.['Definition Summary'] || 'Analytical breakdown in progress...'}
+                {getShortSummary(activeDisplayNode.content?.Summary || activeDisplayNode.content?.['Definition Summary']) || 'Analytical breakdown in progress...'}
               </p>
  
               <div className="flex flex-col gap-3">
@@ -774,8 +902,9 @@ export default function App() {
  
           {(state.showGraph && hoveredLinkData && !isDraggingNode && !dragType && !is3DInteracting) && (
             <motion.div 
+              id="mesh-tooltip"
               initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-              className={`fixed glass-panel p-4 w-[360px] border rounded-[16px] shadow-lg z-[2000000] pointer-events-none flex flex-col transition-all duration-300 ${
+              className={`fixed glass-panel p-4 w-[360px] border rounded-[16px] shadow-lg z-[2000000] pointer-events-none flex flex-col ${
                 state.theme === 'light' 
                   ? 'border-[#2E2B27]/15' 
                   : 'border-white/10'
@@ -968,7 +1097,7 @@ export default function App() {
               <button 
                 onClick={() => {
                   setSelectedNode(null);
-                  setLayoutRules({ ...layoutRules, projectionMode: 'spatial_3d' });
+                  setLayoutRules({ ...layoutRules, projectionMode: 'spatial_3d', parentDistance: 700, childGap: 60 });
                 }}
                 className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all active:scale-[0.95] ${
                   layoutRules.projectionMode === 'spatial_3d' 
@@ -1011,6 +1140,27 @@ export default function App() {
               >
                 {/* Aperture icon — camera-iris radial pattern mirrors the sunburst rings */}
                 <Aperture size={14} />
+              </button>
+
+              <div className={`w-px h-4 mx-0.5 self-center transition-colors duration-300 ${
+                state.theme === 'light' ? 'bg-[#2E2B27]/15' : 'bg-white/10'
+              }`} />
+
+              {/* Fullscreen Toggle */}
+              <button 
+                onClick={toggleFullscreen}
+                className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all active:scale-[0.95] ${
+                  isFullscreen 
+                    ? (state.theme === 'light' 
+                        ? 'bg-[#899981]/25 border border-[#899981]/40 text-[#4E5A47]' 
+                        : 'bg-brand-cyan/20 border border-brand-cyan/20 text-brand-cyan') 
+                    : (state.theme === 'light' 
+                        ? 'text-[#6A645D] hover:bg-[#2E2B27]/5 hover:text-[#2E2B27]' 
+                        : 'text-slate-500 hover:bg-white/5 hover:text-white')
+                }`}
+                title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+              >
+                {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
               </button>
             </div>
 
@@ -1062,22 +1212,23 @@ export default function App() {
                     setIsAdminOpen(false);
                     setEditingNode(n); 
                     setCurrentType(n.type); 
-                    setFormData({ title: n.title, content: n.content || {} }); 
+                    setFormData({ title: n.title, content: n.content || {}, tier: n.tier || 3 }); 
+                }}
+                onAddOffshoot={(id) => {
+                    setActiveParentId(id);
+                    setIsEditorOpen(true);
+                    setEditingNode(null);
+                    setCurrentType('CONCEPT');
+                    setFormData({ title: '[NEW_ENTITY_SPEC]', content: {}, tier: 3 });
                 }}
                 theme={state.theme}
+                onThemeToggle={actions.toggleTheme}
               />
             ) : layoutRules.projectionMode === 'spatial_3d' ? (
               <SpatialCanvas 
                 nodes={filteredNodes}
-                onSelectNode={(n) => { setSelectedNode(n); }}
-                onOpenDrawer={(n) => { 
-                    setSelectedNode(n); 
-                    setIsEditorOpen(true); 
-                    setIsAdminOpen(false);
-                    setEditingNode(n); 
-                    setCurrentType(n.type); 
-                    setFormData({ title: n.title, content: n.content || {} }); 
-                }}
+                onSelectNode={handleSelectNode}
+                onOpenDrawer={handleOpenDrawer}
                 hoveredNodeId={hoveredNodeId}
                 setHoveredNodeId={handleHoverNode}
                 selectedNode={selectedNode}
@@ -1094,25 +1245,11 @@ export default function App() {
             ) : layoutRules.projectionMode === 'instanced_3d' ? (
               <InstancedSpatialCanvas 
                 nodes={filteredNodes}
-                onSelectNode={(n) => { 
-                    setSelectedNode(n); 
-                    setIsEditorOpen(true); 
-                    setIsAdminOpen(false);
-                    setEditingNode(n); 
-                    setCurrentType(n.type); 
-                    setFormData({ title: n.title, content: n.content || {} }); 
-                }}
+                onSelectNode={handleOpenDrawer}
                 hoveredNodeId={hoveredNodeId}
                 setHoveredNodeId={handleHoverNode}
                 selectedNode={selectedNode}
-                onOpenDrawer={(n) => { 
-                    setSelectedNode(n); 
-                    setIsEditorOpen(true); 
-                    setIsAdminOpen(false);
-                    setEditingNode(n); 
-                    setCurrentType(n.type); 
-                    setFormData({ title: n.title, content: n.content || {} }); 
-                }}
+                onOpenDrawer={handleOpenDrawer}
                 onZoomChange={setZoom3D}
                 onCoordsChange={setCoords3D}
                 theme={state.theme}
@@ -1126,6 +1263,7 @@ export default function App() {
                 hoveredLinkId={hoveredLinkId} setHoveredLinkId={setHoveredLinkId} setHoveredLinkData={setHoveredLinkData} 
                 isMovingMesh={!!dragType} isSidebarOpen={isAdminOpen || isEditorOpen}
                 movingNodeId={movingNodeId}
+                selectedNode={selectedNode}
                 onSelectNode={(n) => { 
                     if (movingNodeId) {
                         if (n.id === movingNodeId) { setMovingNodeId(null); return; }
@@ -1135,9 +1273,9 @@ export default function App() {
                         applyLayout(layoutRules, updatedNodes);
                         return;
                     }
-                    setSelectedNode(n); setIsEditorOpen(true); setEditingNode(n); setCurrentType(n.type); setFormData({ title: n.title, content: n.content || {} }); 
+                    setSelectedNode(n); setIsEditorOpen(true); setEditingNode(n); setCurrentType(n.type); setFormData({ title: n.title, content: n.content || {}, tier: n.tier || 3 }); 
                 }} 
-                onAddOffshoot={(id) => { setActiveParentId(id); setIsEditorOpen(true); setEditingNode(null); setCurrentType('CONCEPT'); setFormData({ title: '[NEW_ENTITY_SPEC]', content: {} }); }} 
+                onAddOffshoot={(id) => { setActiveParentId(id); setIsEditorOpen(true); setEditingNode(null); setCurrentType('CONCEPT'); setFormData({ title: '[NEW_ENTITY_SPEC]', content: {}, tier: 3 }); }} 
                 onNodeDrag={(id, dx, dy) => setNodes(prev => prev.map(n => n.id === id ? { ...n, x: n.x + dx, y: n.y + dy } : n))}
                 onNodeDragEnd={(id) => setNodes(prev => prev.map(n => n.id === id ? { ...n, ox: n.x, oy: n.y } : n))}
                 onStartReparent={(id) => setMovingNodeId(id)}
@@ -1163,7 +1301,8 @@ export default function App() {
               theme={state.theme}
             />
 
-            {/* Viewport Relative Zoom Indicator HUD */}
+            {/* Viewport Relative Zoom Indicator HUD — hidden in sunburst mode where it overlaps the interactivity guide */}
+            {layoutRules.projectionMode !== 'sunburst' && (
             <div 
               className={`absolute bottom-6 right-6 z-[1000] px-4 py-2.5 rounded-xl flex flex-col gap-1.5 shadow-2xl pointer-events-none select-none font-mono text-[10px] tracking-wider uppercase transition-all duration-300 ${
                 state.theme === 'light' 
@@ -1203,6 +1342,7 @@ export default function App() {
                 )}
               </div>
             </div>
+            )} {/* end sunburst HUD conditional */}
           </section>
         ) : (
           <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -1263,14 +1403,17 @@ export default function App() {
              formData={formData} 
              setFormData={setFormData} 
              onSave={(u) => { 
-                if (editingNode) setNodes(prev => prev.map(n => n.id === editingNode.id ? { ...n, ...u, title: formData.title, type: currentType } : n)); 
-                else { 
-                   const id = `node_${Date.now()}`; 
-                   const p = nodes.find(n => n.id === activeParentId); 
-                   const nn = { id, parentId: activeParentId, x: p ? p.x + 300 : 1000, y: p ? p.y + 100 : 500, title: formData.title, type: currentType, content: formData.content, ox: p ? p.x + 300 : 1000, oy: p ? p.y + 100 : 500 }; 
-                   setNodes(prev => [...prev, nn]); 
-                } 
-                setIsEditorOpen(false); 
+                if (editingNode) {
+                    const updatedNode = { ...editingNode, ...u, title: formData.title, type: currentType, tier: formData.tier || 3 };
+                    setNodes(prev => prev.map(n => n.id === editingNode.id ? updatedNode : n)); 
+                    setSelectedNode(updatedNode);
+                 } else { 
+                    const id = `node_${Date.now()}`; 
+                    const p = nodes.find(n => n.id === activeParentId); 
+                    const nn = { id, parentId: activeParentId, x: p ? p.x + 300 : 1000, y: p ? p.y + 100 : 500, title: formData.title, type: currentType, content: formData.content, tier: formData.tier || 3, ox: p ? p.x + 300 : 1000, oy: p ? p.y + 100 : 500 }; 
+                    setNodes(prev => [...prev, nn]); 
+                 } 
+                 setIsEditorOpen(false); 
              }} 
              onToggleConnection={(tid) => { 
                 if (!editingNode) return; 
@@ -1286,14 +1429,17 @@ export default function App() {
          {isAdminOpen && (
            <AdminPanel 
              nodes={nodes} 
+             onUpdateNodes={setNodes} 
+             onAddEntityType={handleAddEntityType}
              deletedNodes={deletedNodes} 
              isOpen={isAdminOpen} 
+             theme={state.theme}
              onClose={() => setIsAdminOpen(false)} 
              onFocusNode={(n) => { 
                 centerOnNode(n); 
                 setEditingNode(n); 
                 setCurrentType(n.type); 
-                setFormData({ title: n.title, content: n.content || {} });
+                setFormData({ title: n.title, content: n.content || {}, tier: n.tier || 3 });
                 // We keep Admin Panel open now as per user request
                 setIsEditorOpen(true); 
              }} 
@@ -1310,6 +1456,7 @@ export default function App() {
              setLayoutRules={setLayoutRules} 
              applyLayout={applyLayout} 
              onApplyAIProposal={handleApplyAIProposal}
+             onReviewSync={handleReviewSync}
            />
          )}
       </AnimatePresence>

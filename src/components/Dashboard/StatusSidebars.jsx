@@ -1,5 +1,4 @@
 import React from 'react';
-import { motion } from 'framer-motion';
 import { PanelLeftClose, PanelLeft, Database, Network, Cpu, Search, X } from 'lucide-react';
 import { ENTITY_TYPES, SCHEMAS } from '../../data/nodes';
 
@@ -59,7 +58,7 @@ export const StatusSidebars = ({ nodes, isCollapsed, onToggle, selectedNode, onN
                  <div className="w-full h-full bg-brand-cyan/20" />
               </motion.div>
               <h1 className="text-2xl font-bold italic leading-none tracking-tight text-white">
-                 Mesh
+                 Graph
               </h1>
            </div>
            <button onClick={onToggle} className="p-2 hover:bg-white/5 rounded-lg transition-colors text-slate-500 hover:text-white">

@@ -12,12 +12,12 @@ export const THEMES = [
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() => {
     try {
-      return localStorage.getItem('hive_mesh_theme') || 'corporate';
+      return localStorage.getItem('hive_graph_theme') || localStorage.getItem('hive_mesh_theme') || 'corporate';
     } catch { return 'corporate'; }
   });
 
   useEffect(() => {
-    localStorage.setItem('hive_mesh_theme', theme);
+    localStorage.setItem('hive_graph_theme', theme);
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 

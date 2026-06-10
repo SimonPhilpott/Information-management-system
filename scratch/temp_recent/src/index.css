@@ -1,0 +1,283 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════════════
+   THEME DEFINITIONS
+   ═══════════════════════════════════════════════════════ */
+
+:root,
+[data-theme="corporate"] {
+  --bg-primary: #0f1623;
+  --bg-surface: #141e30;
+  --bg-surface-alt: #1a2540;
+  --bg-input: #0c1320;
+  --bg-overlay: rgba(15, 22, 35, 0.98);
+  --bg-matrix: rgba(0, 0, 0, 0.4);
+  --accent-rgb: 201, 168, 76;
+  --accent-secondary-rgb: 59, 130, 246;
+  --text-primary: #ffffff;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
+  --border-color: rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(20, 30, 48, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --font-heading: 'Publico Headline', 'DM Serif Display', Georgia, serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --invert-base: 255, 255, 255;
+  --node-bg: rgba(255, 255, 255, 0.04);
+  --node-border: rgba(255, 255, 255, 0.1);
+
+  --utility-white: #ffffff;
+  --utility-white-subtle: rgba(255, 255, 255, 0.05);
+  --utility-white-subtle-low: rgba(255, 255, 255, 0.015);
+  --utility-white-subtle-high: rgba(255, 255, 255, 0.1);
+  --utility-slate-100: #f1f5f9;
+  --utility-slate-200: #e2e8f0;
+  --utility-slate-300: #cbd5e1;
+  --utility-border-white-5: rgba(255, 255, 255, 0.05);
+  --utility-border-white-10: rgba(255, 255, 255, 0.1);
+  --utility-bg-black-40: rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="space"] {
+  --bg-primary: #000105;
+  --bg-surface: rgba(15, 23, 42, 0.4);
+  --bg-surface-alt: rgba(255, 255, 255, 0.03);
+  --bg-input: rgba(2, 6, 23, 0.6);
+  --bg-overlay: rgba(8, 9, 13, 0.98);
+  --bg-matrix: rgba(0, 0, 0, 0.4);
+  --accent-rgb: 0, 242, 255;
+  --accent-secondary-rgb: 191, 0, 255;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
+  --border-color: rgba(255, 255, 255, 0.05);
+  --glass-bg: rgba(15, 23, 42, 0.4);
+  --glass-border: rgba(255, 255, 255, 0.05);
+  --font-heading: 'Outfit', sans-serif;
+  --font-body: 'Outfit', sans-serif;
+  --invert-base: 255, 255, 255;
+  --node-bg: rgba(255, 255, 255, 0.04);
+  --node-border: rgba(255, 255, 255, 0.1);
+
+  --utility-white: #ffffff;
+  --utility-white-subtle: rgba(255, 255, 255, 0.05);
+  --utility-white-subtle-low: rgba(255, 255, 255, 0.015);
+  --utility-white-subtle-high: rgba(255, 255, 255, 0.1);
+  --utility-slate-100: #f1f5f9;
+  --utility-slate-200: #e2e8f0;
+  --utility-slate-300: #cbd5e1;
+  --utility-border-white-5: rgba(255, 255, 255, 0.05);
+  --utility-border-white-10: rgba(255, 255, 255, 0.1);
+  --utility-bg-black-40: rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="white"] {
+  --bg-primary: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-surface-alt: #f8fafc;
+  --bg-input: #f1f5f9;
+  --bg-overlay: rgba(255, 255, 255, 0.98);
+  --bg-matrix: #ffffff;
+  --accent-rgb: 37, 99, 235;
+  --accent-secondary-rgb: 124, 58, 237;
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --border-color: rgba(0, 0, 0, 0.12);
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(0, 0, 0, 0.1);
+  --node-bg: #ffffff;
+  --node-border: rgba(0, 0, 0, 0.15);
+  --font-heading: 'Publico Headline', 'DM Serif Display', Georgia, serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --invert-base: 0, 0, 0;
+
+  --utility-white: var(--text-primary);
+  --utility-white-subtle: rgba(0, 0, 0, 0.05);
+  --utility-white-subtle-low: rgba(0, 0, 0, 0.015);
+  --utility-white-subtle-high: rgba(0, 0, 0, 0.08);
+  --utility-slate-100: #1e293b;
+  --utility-slate-200: #334155;
+  --utility-slate-300: #475569;
+  --utility-border-white-5: rgba(0, 0, 0, 0.08);
+  --utility-border-white-10: rgba(0, 0, 0, 0.12);
+  --utility-bg-black-40: rgba(255, 255, 255, 0.95);
+}
+
+/* ═══════════════════════════════════════════════════════
+   BASE LAYER
+   ═══════════════════════════════════════════════════════ */
+
+@layer base {
+  body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  [data-theme="corporate"] body,
+  [data-theme="space"] body {
+    background-image: 
+      radial-gradient(circle at 50% 50%, rgba(var(--accent-rgb), 0.06) 0%, transparent 60%),
+      linear-gradient(to right, rgba(var(--invert-base), 0.03) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(var(--invert-base), 0.03) 1px, transparent 1px);
+    background-size: 100% 100%, 60px 60px, 60px 60px;
+  }
+
+  [data-theme="white"] body {
+    background-image: 
+      linear-gradient(to right, rgba(0, 0, 0, 0.025) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(0, 0, 0, 0.025) 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   COMPONENT LAYER
+   ═══════════════════════════════════════════════════════ */
+
+@layer components {
+  .glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    border: 1px solid var(--glass-border);
+    border-radius: 1rem;
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+  }
+
+  .cyber-button {
+    @apply px-4 py-2 transition-all duration-300 uppercase text-[10px] font-black tracking-[0.25em] rounded-sm italic;
+    background: rgb(var(--accent-rgb) / 0.1);
+    border: 1px solid rgb(var(--accent-rgb) / 0.4);
+    color: rgb(var(--accent-rgb));
+  }
+  .cyber-button:hover {
+    background: rgb(var(--accent-rgb));
+    color: var(--bg-primary);
+    box-shadow: 0 0 40px rgb(var(--accent-rgb) / 0.4);
+  }
+
+  .cyber-input {
+    @apply w-full rounded-xl p-4 text-sm outline-none transition-all duration-300;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+  }
+  .cyber-input:focus {
+    border-color: rgb(var(--accent-rgb) / 0.3);
+    box-shadow: 0 0 0 1px rgb(var(--accent-rgb) / 0.2);
+  }
+  .cyber-input::placeholder {
+    color: var(--text-muted);
+    opacity: 0.5;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgb(var(--accent-rgb) / 0.2);
+    border-radius: 9999px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--accent-rgb) / 0.4);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   EFFECTS & ANIMATIONS
+   ═══════════════════════════════════════════════════════ */
+
+.intelligence-popup {
+  filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.5));
+  background: linear-gradient(135deg, var(--bg-overlay), var(--bg-surface));
+  border: 1px solid rgb(var(--accent-rgb) / 0.1);
+}
+
+@keyframes pulse {
+  0% { stroke-dashoffset: 100; opacity: 0; }
+  20% { opacity: 0.8; }
+  80% { opacity: 0.8; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+.connection-pulse {
+  stroke-dasharray: 10, 90;
+  animation: pulse 3s linear infinite;
+  stroke-width: 3;
+}
+
+[drag] {
+  touch-action: none;
+}
+
+/* ═══════════════════════════════════════════════════════
+   WHITE THEME — Utility Inversions
+   ═══════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════
+   THEMED UTILITY CLASSES
+   (Replaces hardcoded Tailwind colors with theme-aware versions)
+   ═══════════════════════════════════════════════════════ */
+
+.text-white { color: var(--utility-white); }
+.text-slate-100 { color: var(--utility-slate-100); }
+.text-slate-200 { color: var(--utility-slate-200); }
+.text-slate-300 { color: var(--utility-slate-300); }
+
+.border-white\/5 { border-color: var(--utility-border-white-5); }
+.border-white\/10 { border-color: var(--utility-border-white-10); }
+
+.bg-black\/40 { background-color: var(--utility-bg-black-40); }
+.bg-white\/1 { background-color: var(--utility-white-subtle-low); }
+.bg-white\/2 { background-color: var(--utility-white-subtle-low); }
+.bg-white\/5 { background-color: var(--utility-white-subtle); }
+.bg-white\/10 { background-color: var(--utility-white-subtle-high); }
+.bg-white\/\[0\.01\] { background-color: var(--utility-white-subtle-low); }
+
+/* Ensure hover states also use themed variables where applied */
+.hover\:bg-white\/5:hover { background-color: var(--utility-white-subtle); }
+.hover\:text-white:hover { color: var(--utility-white); }
+
+/* ═══════════════════════════════════════════════════════
+   EXPERIMENTAL 3D PERSPECTIVE (WELTEN3D STYLE)
+   ═══════════════════════════════════════════════════════ */
+
+.mesh-3d-scene {
+  perspective: 2500px;
+  perspective-origin: 50% 50%;
+  transform-style: preserve-3d;
+}
+
+.mesh-3d-layer {
+  transform: rotateX(55deg) rotateZ(-15deg);
+  transition: transform 1.2s cubic-bezier(0.23, 1, 0.32, 1);
+  transform-style: preserve-3d;
+}
+
+.node-3d-tilt {
+  transform: translateZ(40px);
+  box-shadow: 0 40px 80px rgba(0,0,0,0.6);
+  transition: transform 0.4s ease, box-shadow 0.4s ease;
+}
+
+.node-3d-tilt:hover {
+  transform: translateZ(60px) scale(1.05);
+}
+
+.link-3d {
+  transform: translateZ(10px);
+  opacity: 0.6;
+}

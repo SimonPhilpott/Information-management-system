@@ -59,12 +59,12 @@ export const OrbitalNav = ({ nodes, view, stickPos, setStickPos, onOpenAdmin, on
   return (
     <div 
       className="absolute top-10 flex gap-6 items-start z-[2001]"
-      style={{ right: projectionMode === '2d' ? '10px' : '254px' }}
+      style={{ right: projectionMode === '2d' ? '10px' : projectionMode === 'sunburst' ? '330px' : '254px' }}
     >
       <div className="flex flex-col gap-3">
         <button 
           onClick={onOpenAppearance} 
-          title="Mesh Appearance" 
+          title="Graph Appearance" 
           className={`w-12 h-12 flex items-center justify-center transition-all active:scale-95 group rounded-xl border ${
             isLight 
               ? 'bg-[#EDE5D8]/80 border-[#2E2B27]/15 text-[#6A645D] hover:text-[#0891B2] hover:bg-[#2E2B27]/5' 

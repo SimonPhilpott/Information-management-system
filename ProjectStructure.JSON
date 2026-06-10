@@ -7,6 +7,7 @@
         "src/components/KnowledgeMesh/MeshCanvas.jsx",
         "src/components/KnowledgeMesh/SpatialCanvas.jsx",
         "src/components/KnowledgeMesh/InstancedSpatialCanvas.jsx",
+        "src/components/KnowledgeMesh/SunburstCanvas.jsx",
         "src/components/Dashboard/Layout.jsx",
         "src/components/Dashboard/ChatInterface.jsx"
       ]
@@ -32,6 +33,14 @@
     },
     "src/components/KnowledgeMesh/InstancedSpatialCanvas.jsx": {
       "description": "High-performance instanced 3D spatial knowledge mesh rendering with high vertex count and structured text labels.",
+      "dependencies": []
+    },
+    "src/components/KnowledgeMesh/SunburstCanvas.jsx": {
+      "description": "Interactive concentric nested radial SVG chart showcasing node hierarchy, clicked-based zoom/drill-down, and curved secondary transverse links.",
+      "dependencies": []
+    },
+    "src/components/KnowledgeMesh/MeshCanvas.jsx": {
+      "description": "High-performance interactive 2D Mycelium and Vertical tree canvas with spline connection engines, node editing actions, and query matching overlays.",
       "dependencies": []
     }
   }

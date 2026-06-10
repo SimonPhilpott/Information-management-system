@@ -14,7 +14,8 @@
         "Real-time, relative viewport zoom scale metric indicator overlay",
         "Entity-type-coloured pill label borders in 3D spatial and instanced views",
         "Visible parent-child connection lines on 2D minimap with proper SVG coordinate rendering",
-        "Mesh Appearance panel drawer featuring controls for Child Gap, Parent Distance, Tension, and a comparative 'BETA GRAPH' toggle for before/after layout comparison"
+        "Mesh Appearance panel drawer featuring controls for Child Gap, Parent Distance, Tension, and a comparative 'BETA GRAPH' toggle for before/after layout comparison",
+        "Global fuzzy search input overlay with suggestions dropdown, distance-sorted tier list, and query highlights"
       ]
     },
     "Oatmeal Premium Theme Layout": {
@@ -37,6 +38,20 @@
         "Pinned conversation slots displaying at the top of the history stack",
         "Individual session deletion with Lucide visual progress tracking",
         "Bulk conversation deletion with robust double confirmation safeguards"
+      ]
+    },
+    "Hierarchical SVG Sunburst Visualisation": {
+      "status": "enabled",
+      "description": "Interactive concentric nested radial segment chart representing Turner & Townsend knowledge database and cross-branch secondary connections.",
+      "renderingEngine": "SVG / React / Framer Motion",
+      "subFeatures": [
+        "Concentric ring layers (depth 0 to 4) representing entity-type hierarchies",
+        "Proportional sector angular sweep based on subtree weights",
+        "Click-to-zoom interactive drill-down focus pivoting",
+        "Hover glassmorphic metadata cards and title path tooltip popups",
+        "Flipped rotated text labels ensuring zero upside-down rendering",
+        "Curved glowing transverse secondary links bowing elegantly through the core",
+        "Concentric-distance sorted Node Tier Listing overlay dropdown and fuzzy search query matching"
       ]
     }
   }

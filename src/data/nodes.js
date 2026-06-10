@@ -1,5 +1,42 @@
 import { Layout, Globe, Settings, Database, Activity, Target, Shield, Droplets, Truck, Zap, Building, GraduationCap, Microscope, ShoppingCart, Trophy, Cpu, Wind, Flame, ZapOff, HardHat, Briefcase, Heart, BookOpen } from 'lucide-react';
 
+// Read custom entity types from localStorage if available (with fallback support)
+const getCustomEntityTypes = () => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const saved = localStorage.getItem('hive_graph_custom_entity_types');
+    return saved ? JSON.parse(saved) : {};
+  } catch { return {}; }
+};
+
+const getCustomSchemas = () => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const saved = localStorage.getItem('hive_graph_custom_schemas');
+    return saved ? JSON.parse(saved) : {};
+  } catch { return {}; }
+};
+
+const customTypes = getCustomEntityTypes();
+const customSchemas = getCustomSchemas();
+
+// Default Lucide icons mapped for custom types dynamically
+const getIconForType = (typeKey) => {
+  const icons = [Database, Activity, Target, Shield, BookOpen, Cpu, HardHat, Briefcase];
+  let sum = 0;
+  for (let i = 0; i < typeKey.length; i++) sum += typeKey.charCodeAt(i);
+  return icons[sum % icons.length] || Database;
+};
+
+// Map custom types to include dynamic icons
+const customTypesWithIcons = {};
+Object.entries(customTypes).forEach(([key, config]) => {
+  customTypesWithIcons[key] = {
+    ...config,
+    icon: getIconForType(key)
+  };
+});
+
 export const ENTITY_TYPES = {
   CONCEPT: { 
     label: 'Concept', color: '#00f2ff', icon: Layout, 
@@ -30,7 +67,8 @@ export const ENTITY_TYPES = {
     description: 'Our best practice: Hypothetical or real life examples of the Concepts, Patterns, Procedures and Variants.',
     guidance: 'WHAT IT MEANS: How the standard workflow must flex under specific risk events.\nROLE: Mitigation plans (e.g., High Inflation, Supply Chain Collapse).',
     examples: 'EXAMPLES: Rapid-timeline Adjustments, Material Delay Mitigation.'
-  }
+  },
+  ...customTypesWithIcons
 };
 
 export const SCHEMAS = {
@@ -58,7 +96,8 @@ export const SCHEMAS = {
     { name: 'Definition Summary' }, 
     { name: 'Stress Test Parameters (The "What If")' }, 
     { name: 'Mitigation & Flex Logic' }
-  ]
+  ],
+  ...customSchemas
 };
 
 export const INITIAL_NODES = [
