@@ -1,0 +1,34 @@
+{
+  "project": "Knowledge Base",
+  "architecture": "Client-Server (MERN-like with SQLite)",
+  "structure": {
+    "root": {
+      "client": "Vite/React frontend application",
+      "server": "Express.js backend application",
+      "scratch": "Utility and testing scripts",
+      "feature.JSON": "Feature tracking (Global Rule)",
+      "ProjectStructure.JSON": "Architecture mapping (Global Rule)"
+    },
+    "client": {
+      "src/components": "Reusable UI components (TokenUsageMeter, CitationCard, etc.)",
+      "src/hooks": "Shared logic primitives (useDraggableScroll, etc.)",
+      "src/pages": "Main application views",
+      "src/context": "State management (Auth, Theme, Usage)",
+      "src/styles": "CSS styling using Vanilla CSS tokens"
+    },
+    "server": {
+      "index.js": "Main entry point and API routing",
+      "config.js": "Environment and model configurations",
+      "db/": "Database schema and initialization",
+      "services/": "Modular business logic",
+      "services/chatService.js": "Gemini AI interaction logic",
+      "services/imageService.js": "Imagen AI generation logic",
+      "services/categorisationService.js": "AI library organization logic",
+      "services/usageService.js": "Token and cost tracking",
+      "services/pdfService.js": "PDF processing and extraction",
+      "services/vectorStore.js": "FAISS-like vector search logic",
+      "data/": "SQLite database and PDF storage"
+    }
+  },
+  "alignment": "The server/index.js serves the API routes used by the client. The client is a SPA that communicates via REST."
+}

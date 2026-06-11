@@ -1,0 +1,190 @@
+{
+  "project": "Knowledge Base",
+  "version": "1.2.0",
+  "currency": "GBP",
+  "features": [
+    {
+      "id": "FEAT-001",
+      "name": "AI-Powered Research Assistant",
+      "description": "Interactive chat interface for querying PDF knowledge base with context-aware responses.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-002",
+      "name": "Multimodal PDF Workspace",
+      "description": "Support for text and visual content within PDFs for comprehensive research.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-003",
+      "name": "Subject Indexing & Library Catalog",
+      "description": "Automatic categorisation and indexing of PDFs by subject for easy discovery.",
+      "status": "implemented",
+      "notes": "Enhanced with source tracking and preservation logic."
+    },
+    {
+      "id": "FEAT-004",
+      "name": "Token Usage & Spend Monitoring",
+      "description": "Real-time tracking of API usage and estimated costs in GBP £.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-005",
+      "name": "Intelligence Drawer & Canvas",
+      "description": "Rich-text workspace for assembling research findings with a 'view content' toggle.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-006",
+      "name": "Citation Mapping",
+      "description": "Direct links from AI responses to specific pages and sections in source PDFs.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-007",
+      "name": "Google OAuth Authentication",
+      "description": "Secure access restricted to authorised admin accounts via Google Login.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-008",
+      "name": "Print & Export",
+      "description": "Ability to print or export research findings from the rich-text editor.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-009",
+      "name": "Tone Selection",
+      "description": "Customise the AI's response style (Friendly, Professional, Direct, Investigator).",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-010",
+      "name": "AI Image Generation",
+      "description": "Generate high-fidelity research visualisations directly from chat prompts using Imagen 4.0.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-011",
+      "name": "Enhanced Subject Preservation",
+      "description": "Distinguish between folder-sourced and AI-sourced subjects with persistent tracking.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-012",
+      "name": "Mobile UX Stability & Layout Grounding",
+      "description": "Cross-device stability for chat interface and status bar with viewport locking and flexbox optimization.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-013",
+      "name": "Oatmeal Design System & Admin Portal UX",
+      "description": "Premium visual consistency with refined executive dashboard aesthetics, prioritised Admin access, and integrated Ngrok administrative tunneling.",
+      "status": "implemented",
+      "notes": "Optimised tool teleportation to ensure Admin access remains prioritised across all breakpoints."
+    },
+    {
+      "id": "FEAT-014",
+      "name": "Hands-Free Voice Research (STT)",
+      "description": "Integrated en-GB speech recognition with auto-submit protocol for seamless conversational research.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-015",
+      "name": "Premium Voice Feedback (TTS)",
+      "description": "Automated text-to-speech engine using Google Premium voices with markdown-stripping for natural auditory feedback.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-016",
+      "name": "Voice Interruption Protocol",
+      "description": "Intelligent system logic that automatically cancels AI speech when user voice input is detected.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-017",
+      "name": "Zero Truncation Summary Protocol",
+      "description": "Enforced architectural constraint ensuring full text visibility for conversation summaries through expanded 480px viewport-aware tooltips.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-018",
+      "name": "Subject-Aware Discovery Mechanism",
+      "description": "Dynamic subject-specific question generation through a dedicated discovery dropdown, allowing for targeted library exploration.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-019",
+      "name": "Architectural Traceability",
+      "description": "Admin Portal feature that maps every UI component to its source file, facilitating rapid maintenance and design parity verification.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-020",
+      "name": "Research Citation Visibility Toggle",
+      "description": "User-controlled toggle to show or hide inline AI citations, allowing for a cleaner reading experience or deep-dive verification.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-021",
+      "name": "Administrative Diagnostics Dashboard",
+      "description": "Integrated system health check within the Admin Portal, enabling one-click voice engine verification and citation-stripping diagnostics.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-022",
+      "name": "Progress-Tracked Session Purging",
+      "description": "High-fidelity chat history deletion with a multi-stage visual feedback loop, including confirmation gating and a real-time progress bar.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-023",
+      "name": "Resizable Knowledge Discovery Sidebar",
+      "description": "Integrated a resizable right-hand panel for Knowledge Discovery, featuring strict flex-box constraints and transition-suppressed resizing for optimal performance.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-024",
+      "name": "Dynamic Port Configuration",
+      "description": "Admin Portal control to change the localhost and ngrok tunnel port. Port is persisted in the database and used by both the Vite dev server (via VITE_PORT env) and ngrok tunnel forwarding.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-025",
+      "name": "Design System Synchronization & Parity",
+      "description": "Established absolute visual parity between Admin Portal previews and production UI through a token-driven synchronization protocol using ComponentStyleRules.JSON.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-026",
+      "name": "Spatial Knowledge Graph",
+      "description": "Interactive 3D mesh visualization of the library with reactive node/link filtering for professional focus, document visibility, and multi-tier semantic connection toggles.",
+      "status": "implemented",
+      "notes": "Enhanced with stabilized visibility controls and forced WebGL scene synchronization."
+    },
+    {
+      "id": "FEAT-027",
+      "name": "Automated Style Audit (/styleaudit)",
+      "description": "Integrated workflow for detecting design system drift and style inconsistencies across all application screens by comparing production UI against the ComponentStyleRules.JSON source of truth.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-028",
+      "name": "High-Performance 3D TOC Graph Optimization",
+      "description": "Adaptive canvas text label constraints and server-side semantic link safety protocols to handle 9,800+ TOC items without GPU memory exhaust crashes. Dynamically defaults subject depth to 1 in TOC view for instantaneous startup.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-029",
+      "name": "High-Fidelity Neural TTS & Tone/Role Alignment",
+      "description": "Integrated Microsoft Edge Neural Speech Synthesis (Edge Read Aloud) backend service delivering warm, human-like voice feedback tailored to the active search tone setting and assistant Gem persona.",
+      "status": "implemented"
+    },
+    {
+      "id": "FEAT-030",
+      "name": "2D Mindmap WebGL Render Mode",
+      "description": "Traditional horizontal mind map layout engine inside Three.js using direct column placement coordinates and premium pill cards with glowing hovered/selected boundaries.",
+      "status": "implemented"
+    }
+  ]
+}

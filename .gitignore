@@ -29,3 +29,9 @@ pdf-knowledge-base/client/dist
 pdf-knowledge-base/node_modules
 pdf-knowledge-base/client/node_modules
 pdf-knowledge-base/.env
+pdf-knowledge-base/scratch/
+pdf-knowledge-base/server/scratch/
+pdf-knowledge-base/server/db/*.db
+pdf-knowledge-base/server/db/*.sqlite
+pdf-knowledge-base/client-fixed/
+

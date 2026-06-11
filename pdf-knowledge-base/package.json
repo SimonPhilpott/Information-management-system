@@ -1,0 +1,31 @@
+{
+  "name": "pdf-knowledge-base",
+  "version": "1.0.0",
+  "description": "RAG-powered PDF Knowledge Base with Google Drive + Gemini",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "node --watch-path=server/routes --watch-path=server/services --watch-path=server/db --watch-path=server/config.js --watch-path=server/index.js server/index.js",
+    "dev:client": "npm run --prefix client dev",
+    "build": "npm run --prefix client build",
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "@ngrok/ngrok": "^1.7.0",
+    "better-sqlite3": "^11.6.0",
+    "canvas": "^2.11.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-session": "^1.18.1",
+    "googleapis": "^144.0.0",
+    "pdfjs-dist": "^4.8.69",
+    "playwright": "^1.59.1",
+    "uuid": "^10.0.0",
+    "ws": "^8.20.1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

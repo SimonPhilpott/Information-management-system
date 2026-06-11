@@ -1,0 +1,241 @@
+{
+  "version": "1.0.8",
+  "design_system": {
+    "name": "Google Antigravity Premium",
+    "theme": "Oatmeal / Dark",
+    "typography": {
+      "headings": {
+        "h1_executive": "48px / 900 / -0.04em",
+        "h2_portal_title": "24px / 800 / tracking-tight",
+        "h3_manifest_header": "11px / 900 / tracking-[5px]"
+      },
+      "body": {
+        "standard_interface": "14px / 1.5 / 500",
+        "manifest_text": "12px / 1.7 / 400"
+      }
+    },
+    "coreColors": {
+      "ivory": "#F1EFE9",
+      "sageGreen": "#899981",
+      "charcoal": "#2E2B27",
+      "indigo": "#6366F1"
+    }
+  },
+  "components": {
+    "BinaryToggle": {
+      "wrapperClass": "mode-switcher",
+      "itemClass": "mode-item",
+      "description": "Used for balanced 50/50 toggles in the sidebar (Library/Gemini, Theme, Citations).",
+      "specs": {
+        "padding": "4px",
+        "radius": "var(--radius-full)",
+        "gap": "1px",
+        "item_padding": "8px 16px",
+        "item_font_size": "11px",
+        "item_font_weight": "600",
+        "active_shadow": "var(--shadow-glow)"
+      }
+    },
+    "ResizableSidebar": {
+      "resizerClass": "sidebar-resizer",
+      "description": "Standard draggable handle for resizing lateral panels.",
+      "specs": {
+        "width": "4px",
+        "zIndex": "20",
+        "active_color": "var(--accent-indigo)"
+      }
+    },
+    "LateralPanels": {
+      "description": "Left and right sidebar layouts with consistent vertical rhythm.",
+      "specs": {
+        "width_left": "260px",
+        "width_right": "320px",
+        "component_gap": "8px",
+        "section_padding": "0 var(--space-md)",
+        "radius": "0",
+        "resize_handle": "4px",
+        "content_max_width_left": "247px",
+        "content_max_width_right": "288px",
+        "alignment_left": "flex-start",
+        "alignment_right": "flex-end",
+        "width_behavior": "Primary inputs and buttons must span 100% of the usable width at default size, but remain static (clamped to their respective content_max_width) when panels are expanded. Navigation (left) aligns to start; Discovery (right) aligns to end.",
+        "content_max_width_left_var": "var(--sidebar-content-max-width-left, 247px)",
+        "content_max_width_right_var": "var(--sidebar-content-max-width-right, 288px)"
+      }
+    },
+    "buttons": {
+      "description": "Global action triggers with scale-hover protocols.",
+      "maintaining_file": "index.css",
+      "classes": ["global-btn", "action-trigger"],
+      "variants": {
+        "primary_ghost": {
+          "specs": {
+            "background": "var(--bg-tertiary)",
+            "padding": "10px var(--space-md)",
+            "radius": "var(--radius-md)",
+            "font_size": "12px",
+            "font_weight": "700",
+            "border": "1px solid var(--glass-border)",
+            "hover_border": "static"
+          }
+        },
+        "accent_filled": {
+          "specs": {
+            "background": "var(--gradient-primary)",
+            "padding": "12px var(--space-md)",
+            "radius": "var(--radius-md)",
+            "active_text": "white"
+          }
+        }
+      }
+    },
+    "messages": {
+      "description": "Multimodal intelligence synthesis containers.",
+      "maintaining_file": "ChatInterface.jsx",
+      "variants": {
+        "ai_response": {
+          "specs": {
+            "background": "var(--glass-bg)",
+            "radius": "var(--radius-lg)",
+            "border": "1px solid var(--glass-border)",
+            "color": "var(--text-primary)"
+          }
+        },
+        "user_prompt": {
+          "specs": {
+            "background": "var(--accent-indigo)",
+            "radius": "var(--radius-lg)",
+            "border_bottom_right_radius": "var(--space-xs)",
+            "color": "white"
+          }
+        }
+      }
+    },
+    "segment_toggles": {
+      "description": "Triple-state persona selectors with animated active indices.",
+      "maintaining_file": "ToneSwitcher.jsx",
+      "specs": {
+        "container_padding": "3px",
+        "container_radius": "var(--radius-full)",
+        "container_background": "var(--bg-tertiary)",
+        "between_item_gap": "2px",
+        "item_padding": "8px 16px",
+        "item_radius": "var(--radius-full)",
+        "internal_icon_gap": "8px",
+        "active_background": "var(--gradient-primary)",
+        "active_text": "white",
+        "active_shadow": "var(--shadow-glow)",
+        "font_size": "11px",
+        "font_weight": "700"
+      }
+    },
+    "history_item": {
+      "description": "Compact session history nodes with tooltip overflow protection.",
+      "maintaining_file": "ChatHistory.jsx",
+      "specs": {
+        "radius": "var(--radius-sm)",
+        "padding": "var(--space-sm) var(--space-sm)",
+        "hover_background": "var(--glass-bg-light)",
+        "active_background": "color-mix(in srgb, var(--accent-indigo), transparent 85%)",
+        "active_border": "1px solid color-mix(in srgb, var(--accent-indigo), transparent 70%)",
+        "font_size": "13px"
+      }
+    },
+    "prompt_action_icons": {
+      "description": "Interactive triggers for multimodal input (Camera, Mic, Send).",
+      "maintaining_file": "ChatInterface.jsx",
+      "specs": {
+        "icon_size": "16",
+        "gap": "8px",
+        "padding": "6px",
+        "radius": "var(--radius-sm)",
+        "active_color": "var(--accent-indigo)",
+        "hover_color": "var(--accent-indigo-light)"
+      }
+    },
+    "hover_components": {
+      "description": "Coordinate-aware tooltips with viewport-boundary flipping.",
+      "maintaining_file": "CursorHover.jsx",
+      "variants": {
+        "standard_tooltip": {
+          "specs": {
+            "offset": "12px",
+            "padding": "10px 14px",
+            "radius": "var(--radius-md)",
+            "font_size": "11px",
+            "font_weight": "600",
+            "shadow": "var(--shadow-lg)"
+          }
+        },
+        "cursor_popover": {
+          "specs": {
+            "width": "480px",
+            "radius": "var(--radius-xl)",
+            "border": "1px solid var(--glass-border)",
+            "shadow": "var(--shadow-xl)"
+          }
+        }
+      }
+    },
+    "graph_controls": {
+      "description": "UI elements for spatial graph manipulation, adhering to the Oatmeal theme.",
+      "maintaining_file": "MeshCanvas.jsx",
+      "variants": {
+        "slider": {
+          "specs": {
+            "track_accent": "var(--accent-sage)",
+            "label_color": "var(--accent-sage)",
+            "value_color": "var(--text-primary)",
+            "sublabel_color": "#A1A1AA",
+            "margin_bottom": "var(--space-md)"
+          }
+        },
+        "panel": {
+          "specs": {
+            "background": "var(--glass-bg)",
+            "backdrop_blur": "blur-xl",
+            "border": "1px solid var(--glass-border)",
+            "shadow": "var(--shadow-xl)",
+            "radius": "2.5rem",
+            "padding": "var(--space-lg)"
+          }
+        },
+        "visibility_toggle": {
+          "specs": {
+            "hierarchy": "#3B82F6",
+            "category": "#22C55E",
+            "discovery": "#EF4444",
+            "semantic": "#F59E0B",
+            "thematic": "#94A3B8",
+            "active_shadow": "var(--shadow-glow)"
+          }
+        }
+      }
+    },
+    "SyncStatus": {
+      "description": "System status and library synchronization feedback components.",
+      "maintaining_file": "SyncStatus.jsx",
+      "variants": {
+        "success_state": {
+          "specs": {
+            "color": "var(--status-green)",
+            "background": "rgba(34, 197, 94, 0.15)",
+            "border": "1px solid rgba(34, 197, 94, 0.3)"
+          }
+        },
+        "error_state": {
+          "specs": {
+            "color": "var(--status-red)",
+            "background": "rgba(239, 68, 68, 0.15)",
+            "border": "1px solid rgba(239, 68, 68, 0.3)"
+          }
+        },
+        "amber_state": {
+          "specs": {
+            "color": "var(--status-amber)"
+          }
+        }
+      }
+    }
+  }
+}

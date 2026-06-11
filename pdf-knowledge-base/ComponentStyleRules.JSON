@@ -1,0 +1,29 @@
+{
+  "project": "Knowledge Base",
+  "stylingSystem": "Vanilla CSS with Design Tokens",
+  "theme": "Oatmeal (Ivory #F1EFE9, Warm White #FBF9F7, Sage Green #899981)",
+  "components": {
+    "SubjectDepthSlider": {
+      "description": "Premium range slider control used in the Spatial Knowledge Graph top-bar for setting subject hierarchy depth.",
+      "containerClass": "flex items-center gap-3 bg-white/80 backdrop-blur-md rounded-xl border border-[#899981]/15 px-4 py-2 shadow-sm",
+      "sliderClass": "subject-depth-slider w-28 h-1.5 appearance-none rounded-full outline-none bg-tertiary cursor-pointer transition-colors duration-150",
+      "thumbClass": "::-webkit-slider-thumb width-16 height-16 border-2-white border-radius-50 gradient-primary shadow-sm hover-scale-1.25 hover-shadow active-scale-0.95 transition-transform duration-100",
+      "textClass": "text-[10px] font-black uppercase tracking-widest text-[#899981]",
+      "valueBadgeClass": "flex items-center justify-center w-5 h-5 bg-[#899981]/10 rounded-full text-[10px] font-black text-[#899981]"
+    },
+    "SpatialGraphModal": {
+      "description": "Full screen overlay modal with a blurred backdrop containing the 3D canvas and controls.",
+      "backdropClass": "fixed inset-0 bg-stone-900/40 backdrop-blur-md z-[999] flex items-center justify-center p-6 animate-fade-in",
+      "containerClass": "relative w-full h-full max-w-7xl max-h-[85vh] bg-[#FBF9F7]/95 rounded-2xl shadow-2xl border border-stone-200/50 flex flex-col overflow-hidden",
+      "headerClass": "flex items-center justify-between border-b border-stone-200/50 px-6 py-4 bg-white/50 backdrop-blur-sm",
+      "sidebarClass": "w-64 border-r border-stone-200/50 p-6 flex flex-col gap-6 bg-stone-50/50",
+      "canvasContainerClass": "relative flex-1 bg-[#F5F4F0] overflow-hidden"
+    },
+    "OatmealControls": {
+      "description": "Standardized form controls matching the warm-minimal Oatmeal style.",
+      "booleanSwitchClass": "relative w-11 h-6 bg-stone-200 rounded-full transition-colors duration-200 peer-checked:bg-[#899981]/80 cursor-pointer",
+      "switchThumbClass": "absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform duration-200 peer-checked:translate-x-5 shadow-sm",
+      "secondaryButtonClass": "px-4 py-2 rounded-xl text-stone-700 bg-stone-100 border border-stone-200 hover:bg-stone-200/80 active:scale-98 transition-all text-xs font-bold uppercase tracking-wider"
+    }
+  }
+}

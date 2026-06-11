@@ -1,0 +1,44 @@
+{
+  "project": "PDF Knowledge Base",
+  "architecture": "Client-Server (MERN-like with SQLite)",
+  "structure": {
+    "root": {
+      "client": "Vite/React frontend application",
+      "server": "Express.js backend application",
+      "scratch": "Utility and testing scripts",
+      "feature.JSON": "Feature tracking (Global Rule)",
+      "ProjectStructure.JSON": "Architecture mapping (Global Rule)",
+      "README.md": "Main entry point and overview",
+      "CHANGELOG.md": "Version history and notable changes",
+      "llms.txt": "AI-friendly context map",
+      "docs/": "Comprehensive technical documentation and ADRs"
+    },
+    "client": {
+      "src/components": "Reusable UI components (TokenUsageMeter, CitationCard, etc.)",
+      "src/hooks": "Business logic and state orchestration (useAppLogic, useVoiceEngine)",
+      "src/ComponentStyleRules.JSON": "Central styling registry (Global Rule)",
+      "src/components/Admin": "Administrative portal views (DiagnosticsView, StructureView, etc.)",
+      "src/pages": "Main application views",
+      "src/context": "State management (Auth, Theme, Usage)",
+      "src/styles": "CSS styling using Vanilla CSS tokens",
+      "src/components/MeshCanvas.jsx": "3D Spatial Knowledge Graph component"
+    },
+    "server": {
+      "index.js": "Main entry point and API routing",
+      "config.js": "Environment and model configurations",
+      "db/": "Database schema and initialization",
+      "services/": "Modular business logic",
+      "services/chatService.js": "Gemini AI interaction logic",
+      "services/imageService.js": "Imagen AI generation logic",
+      "services/categorisationService.js": "AI library organization logic",
+      "services/graphService.js": "Shared concept mapping and graph data logic",
+      "services/usageService.js": "Token and cost tracking",
+      "services/pdfService.js": "PDF processing and extraction",
+      "services/vectorStore.js": "FAISS-like vector search logic",
+      "routes/": "Express API endpoints",
+      "routes/graph.js": "Endpoint for fetching graph data",
+      "data/": "SQLite database and PDF storage"
+    }
+  },
+  "alignment": "The server/index.js serves the API routes used by the client. The client is a SPA that communicates via REST."
+}

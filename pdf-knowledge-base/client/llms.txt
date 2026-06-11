@@ -1,0 +1,29 @@
+# Knowledge Base: AI Context Map
+
+## Objective
+A high-fidelity PDF research suite built with React, Express, and Google Gemini.
+
+## Core Files & Folders
+- `src/App.jsx`: UI entry point and component orchestrator.
+- `src/hooks/useAppLogic.js`: Centralized business logic and state.
+- `src/ComponentStyleRules.JSON`: Single source of truth for UI tokens.
+- `src/components/Admin/AdminPortal.jsx`: Diagnostic and synchronization tools.
+- `server/index.js`: API entry point and routing.
+- `server/services/`: Specialized logic for Chat, Image, and PDF processing.
+- `feature.JSON`: Current feature manifest and status.
+
+## Key Design Patterns
+- **Oatmeal Theme**: Ivory/Sage palette with glassmorphism effects.
+- **Token-Driven Previews**: Admin previews consume JSON tokens for visual parity.
+- **Voice Protocol**: STT/TTS with auto-submit and interruption logic.
+
+## Environment Variables
+- `VITE_PORT`: Localhost port for the dev server (standard: 5173).
+- `GOOGLE_API_KEY`: Required for Gemini and Imagen models.
+- `DATABASE_URL`: Path to the SQLite database.
+
+## Architecture
+- **Frontend**: Vite/React SPA.
+- **Backend**: Node.js/Express.
+- **Database**: SQLite (embedded).
+- **Styles**: Vanilla CSS with custom tokens.
