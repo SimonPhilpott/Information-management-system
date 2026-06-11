@@ -436,15 +436,58 @@ export const SunburstCanvas = ({
     if (!flatSlices || flatSlices.length === 0) return [];
     
     const q = searchQuery.toLowerCase().trim();
-    const matching = q 
-      ? flatSlices.filter(n => 
-          n.title.toLowerCase().includes(q) || 
-          n.id.toLowerCase().includes(q) ||
-          (n.content && Object.values(n.content).some(val => 
-            typeof val === 'string' && val.toLowerCase().includes(q)
-          ))
-        )
-      : flatSlices;
+    let matching = [];
+    const activeTargets = [];
+    if (selectedNode) {
+      activeTargets.push(selectedNode);
+    }
+    if (q) {
+      flatSlices.forEach(n => {
+        const isMatch = n.title.toLowerCase().includes(q) || 
+                        n.id.toLowerCase().includes(q) ||
+                        (n.content && Object.values(n.content).some(val => 
+                          typeof val === 'string' && val.toLowerCase().includes(q)
+                        ));
+        if (isMatch && !activeTargets.some(t => t.id === n.id)) {
+          activeTargets.push(n);
+        }
+      });
+    }
+
+    if (activeTargets.length > 0) {
+      const relevantSet = new Set();
+      activeTargets.forEach(m => {
+        relevantSet.add(m.id);
+        
+        let curr = m;
+        while (curr) {
+          relevantSet.add(curr.id);
+          curr = curr.parentId ? flatSlices.find(n => n.id === curr.parentId) : null;
+        }
+        
+        const addChildren = (parentId) => {
+          flatSlices.forEach(n => {
+            if (n.parentId === parentId && !relevantSet.has(n.id)) {
+              relevantSet.add(n.id);
+              addChildren(n.id);
+            }
+          });
+        };
+        addChildren(m.id);
+        
+        if (m.secondaryLinks) {
+          m.secondaryLinks.forEach(sid => relevantSet.add(sid));
+        }
+        flatSlices.forEach(n => {
+          if (n.secondaryLinks && n.secondaryLinks.includes(m.id)) {
+            relevantSet.add(n.id);
+          }
+        });
+      });
+      matching = flatSlices.filter(n => relevantSet.has(n.id));
+    } else {
+      matching = flatSlices;
+    }
 
     const refNode = (selectedNode && matching.some(n => n.id === selectedNode.id))
       ? selectedNode

@@ -751,15 +751,58 @@ export const InstancedSpatialCanvas = ({ nodes = [], onSelectNode, hoveredNodeId
     if (!spatialNodes || spatialNodes.length === 0) return [];
     
     const q = searchQuery.toLowerCase().trim();
-    const matching = q 
-      ? spatialNodes.filter(n => 
-          n.title.toLowerCase().includes(q) || 
-          n.id.toLowerCase().includes(q) ||
-          (n.content && Object.values(n.content).some(val => 
-            typeof val === 'string' && val.toLowerCase().includes(q)
-          ))
-        )
-      : spatialNodes;
+    let matching = [];
+    const activeTargets = [];
+    if (selectedNode) {
+      activeTargets.push(selectedNode);
+    }
+    if (q) {
+      spatialNodes.forEach(n => {
+        const isMatch = n.title.toLowerCase().includes(q) || 
+                        n.id.toLowerCase().includes(q) ||
+                        (n.content && Object.values(n.content).some(val => 
+                          typeof val === 'string' && val.toLowerCase().includes(q)
+                        ));
+        if (isMatch && !activeTargets.some(t => t.id === n.id)) {
+          activeTargets.push(n);
+        }
+      });
+    }
+
+    if (activeTargets.length > 0) {
+      const relevantSet = new Set();
+      activeTargets.forEach(m => {
+        relevantSet.add(m.id);
+        
+        let curr = m;
+        while (curr) {
+          relevantSet.add(curr.id);
+          curr = curr.parentId ? spatialNodes.find(n => n.id === curr.parentId) : null;
+        }
+        
+        const addChildren = (parentId) => {
+          spatialNodes.forEach(n => {
+            if (n.parentId === parentId && !relevantSet.has(n.id)) {
+              relevantSet.add(n.id);
+              addChildren(n.id);
+            }
+          });
+        };
+        addChildren(m.id);
+        
+        if (m.secondaryLinks) {
+          m.secondaryLinks.forEach(sid => relevantSet.add(sid));
+        }
+        spatialNodes.forEach(n => {
+          if (n.secondaryLinks && n.secondaryLinks.includes(m.id)) {
+            relevantSet.add(n.id);
+          }
+        });
+      });
+      matching = spatialNodes.filter(n => relevantSet.has(n.id));
+    } else {
+      matching = spatialNodes;
+    }
 
     const refNode = (selectedNode && matching.some(n => n.id === selectedNode.id))
       ? selectedNode
