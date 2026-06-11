@@ -9,6 +9,7 @@ import SyncStatus from './SyncStatus';
 import ToneSwitcher from './ToneSwitcher';
 import ThemeToggle from './ThemeToggle';
 import GemSelector from './GemSelector';
+import PDFWorkspace from './PDFWorkspace';
 
 export default function Layout({
   children, // The main center viewport children
@@ -43,6 +44,27 @@ export default function Layout({
   const [isTopicsOpen, setIsTopicsOpen] = useState(false);
   const [isStatusExpanded, setIsStatusExpanded] = useState(false);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  
+  // PDF Viewer split sizing state and mouse drag handlers
+  const [pdfWidth, setPdfWidth] = useState(500);
+  const [isResizingPdf, setIsResizingPdf] = useState(false);
+
+  useEffect(() => {
+    if (!isResizingPdf) return;
+    const handleMouseMove = (e) => {
+      const newWidth = window.innerWidth - e.clientX;
+      setPdfWidth(Math.max(300, Math.min(window.innerWidth * 0.8, newWidth)));
+    };
+    const handleMouseUp = () => {
+      setIsResizingPdf(false);
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizingPdf]);
   
   // Teleportation state
   const [teleportedIds, setTeleportedIds] = useState([]);
@@ -251,7 +273,29 @@ export default function Layout({
           height: '100%',
           position: 'relative'
         }}>
-          {children}
+          <div style={{ flex: 1, height: '100%', overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+            {children}
+          </div>
+          {pdfViewer && (
+            <>
+              <div 
+                className={`pdf-pane-resizer ${isResizingPdf ? 'active' : ''}`}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setIsResizingPdf(true);
+                }}
+              />
+              <div style={{ width: `${pdfWidth}px`, height: '100%', flexShrink: 0 }}>
+                <PDFWorkspace
+                  driveFileId={pdfViewer.driveFileId}
+                  initialPage={pdfViewer.pageNum || pdfViewer.page_num}
+                  filename={pdfViewer.filename}
+                  highlightText={pdfViewer.highlightText}
+                  onClose={onClosePdf}
+                />
+              </div>
+            </>
+          )}
         </div>
 
         <div 

@@ -38,7 +38,12 @@ export default function PDFWorkspace({ driveFileId, initialPage, filename, highl
 
   // Sync with initialPage changes
   useEffect(() => {
-    if (initialPage) setPageNumber(initialPage);
+    if (initialPage) {
+      const parsedPage = parseInt(initialPage, 10);
+      if (!isNaN(parsedPage)) {
+        setPageNumber(parsedPage);
+      }
+    }
   }, [initialPage]);
 
   function onDocumentLoadSuccess({ numPages }) {

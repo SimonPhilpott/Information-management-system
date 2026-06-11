@@ -16,7 +16,8 @@
       "description": "Premium layout system incorporating glassmorphism, resizable sidebar drawers, unified top headers, cost monitoring, and speech telemetry integration.",
       "dependencies": [
         "src/components/Dashboard/ChatHistory.jsx",
-        "src/components/Dashboard/ModelSwitcher.jsx"
+        "src/components/Dashboard/ModelSwitcher.jsx",
+        "src/components/Dashboard/PDFWorkspace.jsx"
       ]
     },
     "src/components/Dashboard/ChatHistory.jsx": {
@@ -41,6 +42,10 @@
     },
     "src/components/KnowledgeMesh/MeshCanvas.jsx": {
       "description": "High-performance interactive 2D Mycelium and Vertical tree canvas with spline connection engines, node editing actions, and query matching overlays.",
+      "dependencies": []
+    },
+    "src/components/Dashboard/PDFWorkspace.jsx": {
+      "description": "Resizable split-screen document viewer component utilizing react-pdf to render reference material at specific page targets.",
       "dependencies": []
     }
   }

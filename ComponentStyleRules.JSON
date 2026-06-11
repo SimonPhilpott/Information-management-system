@@ -321,6 +321,16 @@
       },
       "pasteSanitization": "Strips inline styling for font-size, color, font-family, and background properties on standard text elements (SPAN, P, FONT) to guarantee pasted clipboard text falls back to clean, uniform 12pt black layouts."
     }
+  },
+  "PDFWorkspace": {
+    "aesthetics": {
+      "translucency": "glassmorphic header with backdrop-blur-xl and multi-tiered borders",
+      "controls": "Pagination and zoom controls wrapped in soft glass border overlays",
+      "canvasShadow": "box-shadow: 0 10px 40px rgba(0,0,0,0.5) to highlight the active page canvas sheet"
+    },
+    "behavior": {
+      "resizing": "Resizable split-pane with active cursor col-resize and drag tracking bounds"
+    }
   }
 }
 

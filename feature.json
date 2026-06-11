@@ -53,6 +53,15 @@
         "Curved glowing transverse secondary links bowing elegantly through the core",
         "Concentric-distance sorted Node Tier Listing overlay dropdown and fuzzy search query matching"
       ]
+    },
+    "PDF Research Workspace": {
+      "status": "enabled",
+      "description": "Split-screen document viewer integrating react-pdf for rendering reference sources side-by-side with chat or mesh graph.",
+      "subFeatures": [
+        "Interactive citations opening specific PDF page targets",
+        "Synchronised page transitions with string integer parsing checks",
+        "Drag-resizable split-pane partition using the global layout system layout resizer"
+      ]
     }
   }
 }
