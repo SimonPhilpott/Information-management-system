@@ -146,7 +146,7 @@ const HeatmapCloud = ({ spatialNodes, searchQuery, showHeatmap }) => {
       <shaderMaterial 
         transparent 
         depthWrite={false} 
-        blending={THREE.AdditiveBlending}
+        blending={THREE.NormalBlending}
         vertexColors
         vertexShader={`
           varying vec3 vColor;
@@ -167,7 +167,7 @@ const HeatmapCloud = ({ spatialNodes, searchQuery, showHeatmap }) => {
 
             // Fanned stepped vector contour lines
             float steps = floor(dist * 6.0) / 6.0;
-            float alpha = (1.0 - steps) * 0.38;
+            float alpha = (1.0 - steps) * 0.75;
 
             // Boost vibrancy multiplier for rich HSL look
             gl_FragColor = vec4(vColor * 1.8, alpha);
