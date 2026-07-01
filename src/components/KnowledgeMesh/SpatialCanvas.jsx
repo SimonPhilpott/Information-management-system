@@ -61,17 +61,28 @@ const HeatmapCloud = ({ spatialNodes, searchQuery, showHeatmap }) => {
 
     if (matchNodes.length === 0) return null;
 
+    // Seeded random number generator
+    const seededRandom = (s) => {
+      const x = Math.sin(s) * 10000;
+      return x - Math.floor(x);
+    };
+
     const pointsPerNode = 100;
     const numPoints = matchNodes.length * pointsPerNode;
     const positions = new Float32Array(numPoints * 3);
     const colors = new Float32Array(numPoints * 3);
 
     let idx = 0;
-    matchNodes.forEach(({ node, score }) => {
+    matchNodes.forEach(({ node, score }, nodeIdx) => {
+      let seed = nodeIdx * 1234;
       for (let i = 0; i < pointsPerNode; i++) {
-        const r = 300 + Math.random() * 800;
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos((Math.random() * 2) - 1);
+        const r1 = seededRandom(seed++);
+        const r2 = seededRandom(seed++);
+        const r3 = seededRandom(seed++);
+
+        const r = 300 + r1 * 900;
+        const theta = r2 * Math.PI * 2;
+        const phi = Math.acos((r3 * 2) - 1);
         
         const px = node.z_x + r * Math.sin(phi) * Math.cos(theta);
         const py = node.z_y + r * Math.sin(phi) * Math.sin(theta);
@@ -145,7 +156,8 @@ const HeatmapCloud = ({ spatialNodes, searchQuery, showHeatmap }) => {
             vColor = color;
             vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
             gl_Position = projectionMatrix * mvPosition;
-            gl_PointSize = 1200.0 * (300.0 / -mvPosition.z);
+            // Larger point size to overlap and form a continuous solid cloud
+            gl_PointSize = 3200.0 * (300.0 / -mvPosition.z);
           }
         `}
         fragmentShader={`
@@ -155,11 +167,12 @@ const HeatmapCloud = ({ spatialNodes, searchQuery, showHeatmap }) => {
             float dist = length(uv) * 2.0;
             if (dist > 1.0) discard;
 
-            // Concentric bands to create a vector-like stepped fanning density contour
+            // Fanned stepped vector contour lines
             float steps = floor(dist * 6.0) / 6.0;
-            float alpha = (1.0 - steps) * 0.35;
+            float alpha = (1.0 - steps) * 0.38;
 
-            gl_FragColor = vec4(vColor, alpha);
+            // Boost vibrancy multiplier for rich HSL look
+            gl_FragColor = vec4(vColor * 1.8, alpha);
           }
         `}
       />
