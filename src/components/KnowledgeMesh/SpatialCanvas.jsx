@@ -591,13 +591,13 @@ const NodeLabel = React.memo(({ node, isHovered, onHover, onClick, showLabels, l
           />
         </Billboard>
       )}
-      {!showLabels && !isDimmed && (
+      {!showLabels && (
         <mesh scale={node.parentId ? [90, 90, 90] : [160, 160, 160]}>
           <sphereGeometry args={[1, 16, 16]} />
           <meshBasicMaterial 
             color={(ENTITY_TYPES[node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color} 
             transparent
-            opacity={0.85}
+            opacity={isDimmed ? 0.08 : 0.85}
           />
         </mesh>
       )}
