@@ -1039,11 +1039,21 @@ export const InstancedSpatialCanvas = ({ nodes = [], onSelectNode, hoveredNodeId
                         }}
                       >
                         <span className="font-medium truncate mr-2">{node.title}</span>
-                        {node.d1 !== undefined && (
-                          <span className="text-[9px] text-slate-500 font-mono flex-shrink-0">
-                            {node.d1 > 0 ? `d: ${Math.round(node.d1)}` : 'focal'}
-                          </span>
-                        )}
+                        {(() => {
+                          const typeColor = ENTITY_TYPES[node.type?.toUpperCase()]?.color || '#94a3b8';
+                          return (
+                            <span 
+                              className="text-[8px] font-black px-1.5 py-0.5 rounded border uppercase tracking-wider flex-shrink-0"
+                              style={{
+                                color: typeColor,
+                                borderColor: `${typeColor}40`,
+                                background: `${typeColor}12`
+                              }}
+                            >
+                              {node.type}
+                            </span>
+                          );
+                        })()}
                       </button>
                     ))}
                   </div>
