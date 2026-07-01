@@ -3,7 +3,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Stars, Environment, Line, Billboard } from '@react-three/drei';
 import * as THREE from 'three';
 import { ENTITY_TYPES } from '../../data/nodes';
-import { Search, Copy, Check, X, ListOrdered } from 'lucide-react';
+import { Search, Copy, Check, X, ListOrdered, Activity } from 'lucide-react';
 
 const WebGLMemoryDisposer = () => {
   const { scene } = useThree();
@@ -639,7 +639,7 @@ const HeatmapCloud = ({ spatialNodes, searchQuery, showHeatmap }) => {
   );
 };
 
-export const InstancedSpatialCanvas = ({ nodes = [], onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, onOpenDrawer, onZoomChange, onCoordsChange, theme = 'dark', setIs3DInteracting, layoutRules, showLabels = true, showHeatmap = false }) => {
+export const InstancedSpatialCanvas = ({ nodes = [], onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, onOpenDrawer, onZoomChange, onCoordsChange, theme = 'dark', setIs3DInteracting, layoutRules, showLabels = true, showHeatmap = false, showTierList: showTierListProp = false }) => {
   const isDark = theme !== 'light';
   const bgColor = isDark ? '#000000' : '#ece8dd';
   const [cameraInstance, setCameraInstance] = useState(null);
@@ -649,7 +649,14 @@ export const InstancedSpatialCanvas = ({ nodes = [], onSelectNode, hoveredNodeId
   const [activeSearchQuery, setActiveSearchQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [showTierList, setShowTierList] = useState(false);
+  const [showTierList, setShowTierList] = useState(showTierListProp);
+  useEffect(() => {
+    setShowTierList(showTierListProp);
+  }, [showTierListProp]);
+  const [localShowHeatmap, setLocalShowHeatmap] = useState(showHeatmap);
+  useEffect(() => {
+    setLocalShowHeatmap(showHeatmap);
+  }, [showHeatmap]);
 
   const searchRef = useRef(null);
 
@@ -1056,6 +1063,70 @@ export const InstancedSpatialCanvas = ({ nodes = [], onSelectNode, hoveredNodeId
 
   return (
     <div className="w-full h-full relative animate-fade-in" style={{ background: bgColor }}>
+      {/* Left-side Tier List Panel */}
+      {showTierList && (
+        <div
+          className="absolute top-4 left-4 z-[2000] flex flex-col gap-0 pointer-events-auto"
+          style={{ width: '260px', maxHeight: 'calc(100% - 2rem)' }}
+        >
+          <div
+            className="w-full overflow-y-auto rounded-xl border flex flex-col gap-3 p-3 scrollbar-thin"
+            style={{
+              background: isDark ? 'rgba(10, 15, 25, 0.95)' : 'rgba(244, 239, 229, 0.95)',
+              borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(46, 43, 39, 0.15)',
+              backdropFilter: 'blur(25px)',
+              boxShadow: '0 12px 40px rgba(0, 0, 0, 0.5)',
+              maxHeight: 'calc(100% - 2rem)'
+            }}
+          >
+            <div className="text-[9px] font-black tracking-widest uppercase text-slate-400 mb-1 px-1">Node Tier Listing</div>
+            {groupedTiers.length === 0 ? (
+              <div className="text-xs text-center text-slate-400 py-2">Search to filter nodes</div>
+            ) : (
+              groupedTiers.map((group) => (
+                <div key={group.name} className="flex flex-col gap-1">
+                  <div
+                    className="text-[10px] uppercase font-bold tracking-wider px-1 py-0.5 border-b pb-1"
+                    style={{ color: group.color, borderColor: `${group.color}30` }}
+                  >
+                    {group.name}
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    {group.nodes.map((node) => (
+                      <button
+                        key={node.id}
+                        onClick={() => {
+                          onSelectNode(node);
+                          setSearchQuery(node.title);
+                          setActiveSearchQuery('');
+                        }}
+                        className="w-full px-2 py-1.5 rounded text-left text-xs transition-colors flex items-center justify-between"
+                        style={{ color: isDark ? '#e2e8f0' : '#2E2B27', background: 'transparent' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(46,43,39,0.05)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                      >
+                        <span className="font-medium truncate mr-2">{node.title}</span>
+                        {(() => {
+                          const typeColor = ENTITY_TYPES[node.type?.toUpperCase()]?.color || '#94a3b8';
+                          return (
+                            <span
+                              className="text-[8px] font-black px-1.5 py-0.5 rounded border uppercase tracking-wider flex-shrink-0"
+                              style={{ color: typeColor, borderColor: `${typeColor}40`, background: `${typeColor}12` }}
+                            >
+                              {node.type}
+                            </span>
+                          );
+                        })()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Search Bar & Thumbprint Overlay */}
       <div 
         ref={searchRef}
@@ -1115,86 +1186,15 @@ export const InstancedSpatialCanvas = ({ nodes = [], onSelectNode, hoveredNodeId
           )}
           <button 
             onClick={() => {
-              setShowTierList(!showTierList);
+              setLocalShowHeatmap(!localShowHeatmap);
               setShowSuggestions(false);
             }}
-            className={`p-1 rounded transition-colors ${showTierList ? (isDark ? 'bg-white/20 text-[#00f2ff]' : 'bg-black/10 text-cyan-600') : 'text-slate-400 hover:text-white'}`}
-            title="Toggle Node Tier Listing"
+            className={`p-1 rounded transition-colors ${localShowHeatmap ? (isDark ? 'bg-white/20 text-orange-400 animate-pulse' : 'bg-black/10 text-orange-600') : 'text-slate-400 hover:text-white'}`}
+            title="Toggle Heatmap"
           >
-            <ListOrdered size={16} />
+            <Activity size={16} />
           </button>
         </div>
-
-        {/* Tier List Dropdown */}
-        {showTierList && (
-          <div 
-            className="w-full max-h-[640px] overflow-y-auto rounded-xl border mt-1 flex flex-col gap-3 p-3 transition-all duration-300 scrollbar-thin"
-            style={{
-              background: isDark ? 'rgba(10, 15, 25, 0.95)' : 'rgba(244, 239, 229, 0.95)',
-              borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(46, 43, 39, 0.15)',
-              backdropFilter: 'blur(25px)',
-              boxShadow: '0 12px 40px rgba(0, 0, 0, 0.5)'
-            }}
-          >
-            {groupedTiers.length === 0 ? (
-              <div className="text-xs text-center text-slate-400 py-2">No matching nodes</div>
-            ) : (
-              groupedTiers.map((group) => (
-                <div key={group.name} className="flex flex-col gap-1">
-                  <div 
-                    className="text-[10px] uppercase font-bold tracking-wider px-1 py-0.5 border-b pb-1"
-                    style={{
-                      color: group.color,
-                      borderColor: `${group.color}30`
-                    }}
-                  >
-                    {group.name}
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    {group.nodes.map((node) => (
-                      <button
-                        key={node.id}
-                        onClick={() => {
-                          onSelectNode(node);
-                          setSearchQuery(node.title);
-                          setShowTierList(false);
-                        }}
-                        className="w-full px-2 py-1.5 rounded text-left text-xs transition-colors flex items-center justify-between"
-                        style={{
-                          color: isDark ? '#e2e8f0' : '#2E2B27',
-                          background: 'transparent',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(46, 43, 39, 0.05)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'transparent';
-                        }}
-                      >
-                        <span className="font-medium truncate mr-2">{node.title}</span>
-                        {(() => {
-                          const typeColor = ENTITY_TYPES[node.type?.toUpperCase()]?.color || '#94a3b8';
-                          return (
-                            <span 
-                              className="text-[8px] font-black px-1.5 py-0.5 rounded border uppercase tracking-wider flex-shrink-0"
-                              style={{
-                                color: typeColor,
-                                borderColor: `${typeColor}40`,
-                                background: `${typeColor}12`
-                              }}
-                            >
-                              {node.type}
-                            </span>
-                          );
-                        })()}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        )}
 
         {/* Suggestion Dropdown */}
         {showSuggestions && !showTierList && suggestions.length > 0 && (
@@ -1338,7 +1338,7 @@ export const InstancedSpatialCanvas = ({ nodes = [], onSelectNode, hoveredNodeId
           <gridHelper args={[150000, 80, isDark ? '#00f2ff' : '#0891B2', isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.08)']} position={[0, -9000, 0]} transparent opacity={0.35} />
         )}
         
-        <HeatmapCloud spatialNodes={spatialNodes} searchQuery={searchQuery} showHeatmap={showHeatmap} />
+        <HeatmapCloud spatialNodes={spatialNodes} searchQuery={searchQuery} showHeatmap={localShowHeatmap} />
         
         <Environment preset="night" />
       </Canvas>

@@ -13,7 +13,7 @@ import { SpatialCanvas } from './components/KnowledgeMesh/SpatialCanvas';
 import { InstancedSpatialCanvas } from './components/KnowledgeMesh/InstancedSpatialCanvas';
 import { SunburstCanvas } from './components/KnowledgeMesh/SunburstCanvas';
 import { AnimatePresence, motion, animate } from 'framer-motion';
-import { Activity, Link as LinkIcon, Cpu, ArrowDown, Network, GitMerge, Box, CircleDot, Type, Globe, Aperture, Maximize2, Minimize2 } from 'lucide-react';
+import { Activity, Link as LinkIcon, Cpu, ArrowDown, Network, GitMerge, Box, CircleDot, Type, Globe, Aperture, Maximize2, Minimize2, ListOrdered } from 'lucide-react';
 
 import { useAppLogic } from './hooks/useAppLogic';
 import OnboardingSetup from './components/Dashboard/OnboardingSetup';
@@ -1672,11 +1672,11 @@ export default function App() {
                          <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>CHILD GAP</span><span className="text-white font-mono">{layoutRules.childGap}px</span></div><input type="range" min="0" max="150" value={layoutRules.childGap} onChange={(e) => { const u = { ...layoutRules, childGap: parseInt(e.target.value) }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
                          <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>PARENT DISTANCE</span><span className="text-white font-mono">{layoutRules.parentDistance}px</span></div><input type="range" min="100" max="1000" value={layoutRules.parentDistance} onChange={(e) => { const u = { ...layoutRules, parentDistance: parseInt(e.target.value) }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
                          <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>TENSION</span><span className="text-white font-mono">{layoutRules.connectionTension}%</span></div><input type="range" min="10" max="100" value={layoutRules.connectionTension} onChange={(e) => { const u = { ...layoutRules, connectionTension: parseInt(e.target.value) }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
-                         <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>SIBLING SPREAD</span><span className="text-white font-mono">{Math.round((layoutRules.siblingMultiplier ?? 0.32) * 100)}%</span></div><input type="range" min="0" max="100" value={Math.round((layoutRules.siblingMultiplier ?? 0.32) * 100)} onChange={(e) => { const u = { ...layoutRules, siblingMultiplier: parseFloat(e.target.value) / 100 }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
-                            <div className="flex gap-1.5 justify-center border-t border-white/5 pt-3 mt-1">
+                         <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>SIBLING SPREAD</span><span className="text-white font-mono">{Math.round((layoutRules.siblingMultiplier ?? 0.32) * 100)}%</span></div><input type="range" min="0" max="100" value={Math.round((layoutRules.siblingMultiplier ?? 0.32) * 100)} onChange={(e) => { const u = { ...layoutRules, siblingMultiplier: parseFloat(e.target.value) / 100 }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" />
+                            <div className="flex gap-1.5 justify-center border-t border-white/5 pt-3 mt-1 flex-wrap">
                               <button 
                                 onClick={() => setLayoutRules({ ...layoutRules, showLabels: !layoutRules.showLabels })} 
-                                className={`px-2.5 py-1.5 text-[9px] font-black tracking-wider rounded-lg border transition-all flex items-center gap-1 w-1/2 justify-center ${layoutRules.showLabels ? 'bg-brand-cyan/20 border-brand-cyan/30 text-brand-cyan' : 'border-white/10 text-slate-500 hover:bg-white/5 hover:text-white'}`}
+                                className={`px-2.5 py-1.5 text-[9px] font-black tracking-wider rounded-lg border transition-all flex items-center gap-1 w-1/3 justify-center flex-1 ${layoutRules.showLabels ? 'bg-brand-cyan/20 border-brand-cyan/30 text-brand-cyan' : 'border-white/10 text-slate-500 hover:bg-white/5 hover:text-white'}`}
                                 title="Toggle Labels"
                               >
                                 <Type size={12} />
@@ -1684,11 +1684,19 @@ export default function App() {
                               </button>
                               <button 
                                 onClick={() => setLayoutRules({ ...layoutRules, showHeatmap: !layoutRules.showHeatmap })} 
-                                className={`px-2.5 py-1.5 text-[9px] font-black tracking-wider rounded-lg border transition-all flex items-center gap-1 w-1/2 justify-center ${layoutRules.showHeatmap ? 'bg-orange-500/20 border-orange-500/30 text-orange-400' : 'border-white/10 text-slate-500 hover:bg-white/5 hover:text-white'}`}
+                                className={`px-2.5 py-1.5 text-[9px] font-black tracking-wider rounded-lg border transition-all flex items-center gap-1 w-1/3 justify-center flex-1 ${layoutRules.showHeatmap ? 'bg-orange-500/20 border-orange-500/30 text-orange-400' : 'border-white/10 text-slate-500 hover:bg-white/5 hover:text-white'}`}
                                 title="Toggle Heatmap"
                               >
                                 <Activity size={12} />
                                 <span>HEATMAP</span>
+                              </button>
+                              <button 
+                                onClick={() => setLayoutRules({ ...layoutRules, showTierList: !layoutRules.showTierList })} 
+                                className={`px-2.5 py-1.5 text-[9px] font-black tracking-wider rounded-lg border transition-all flex items-center gap-1 w-1/3 justify-center flex-1 ${layoutRules.showTierList ? 'bg-brand-cyan/20 border-brand-cyan/30 text-brand-cyan' : 'border-white/10 text-slate-500 hover:bg-white/5 hover:text-white'}`}
+                                title="Toggle Tier List"
+                              >
+                                <ListOrdered size={12} />
+                                <span>TIER</span>
                               </button>
                           </div>
                       </div>
@@ -1803,6 +1811,7 @@ export default function App() {
                 selectedNode={selectedNode}
                 showLabels={layoutRules.showLabels}
                 showHeatmap={layoutRules.showHeatmap}
+                showTierList={layoutRules.showTierList ?? false}
                 labelStyle={layoutRules.labelStyle}
                 hoveredLinkData={hoveredLinkData}
                 setHoveredLinkData={setHoveredLinkData}
@@ -1835,6 +1844,7 @@ export default function App() {
                 layoutRules={layoutRules}
                 showLabels={layoutRules.showLabels}
                 showHeatmap={layoutRules.showHeatmap}
+                showTierList={layoutRules.showTierList ?? false}
               />
             ) : (
               <MeshCanvas 

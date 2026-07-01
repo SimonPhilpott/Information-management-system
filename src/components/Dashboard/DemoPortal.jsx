@@ -104,6 +104,7 @@ export default function DemoPortal({
   const [formData, setFormData] = useState({ title: '', content: {}, tier: 3 });
   const [showLabels, setShowLabels] = useState(true);
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const [showTierList, setShowTierList] = useState(false);
 
   // Custom entity types configuration for the demo portal
   const demoEntityTypes = useMemo(() => {
@@ -501,6 +502,16 @@ export default function DemoPortal({
               >
                 <span>Heatmap: {showHeatmap ? 'ON' : 'OFF'}</span>
               </button>
+              <button
+                onClick={() => setShowTierList(!showTierList)}
+                className={`px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer active:scale-95 shadow-md flex items-center gap-1.5 ${
+                  showTierList
+                    ? (isDark ? 'bg-brand-cyan/20 border-brand-cyan/40 text-brand-cyan shadow-[0_0_10px_rgba(0,242,255,0.15)]' : 'bg-[#899981]/25 border-[#899981]/50 text-[#4E5A47]')
+                    : (isDark ? 'bg-slate-900/80 border-white/10 text-slate-400 hover:text-white' : 'bg-white/80 border-black/10 text-slate-600 hover:text-black')
+                }`}
+              >
+                <span>Tier: {showTierList ? 'ON' : 'OFF'}</span>
+              </button>
             </div>
             <SpatialCanvas 
               nodes={localNodes}
@@ -513,6 +524,7 @@ export default function DemoPortal({
               theme={theme}
               showLabels={showLabels}
               showHeatmap={showHeatmap}
+              showTierList={showTierList}
               labelStyle="standard"
               onZoomChange={() => {}}
               onCoordsChange={() => {}}
