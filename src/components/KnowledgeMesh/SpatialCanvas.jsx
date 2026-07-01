@@ -28,19 +28,6 @@ const WebGLMemoryDisposer = () => {
 };
 
 const HeatmapCloud = ({ spatialNodes, searchQuery, showHeatmap }) => {
-  const texture = useMemo(() => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 16;
-    canvas.height = 16;
-    const ctx = canvas.getContext('2d');
-    const grad = ctx.createRadialGradient(8, 8, 0, 8, 8, 8);
-    grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-    grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 16, 16);
-    return new THREE.CanvasTexture(canvas);
-  }, []);
-
   const geometry = useMemo(() => {
     if (!showHeatmap || !searchQuery?.trim() || !spatialNodes || spatialNodes.length === 0) {
       return null;
@@ -147,14 +134,34 @@ const HeatmapCloud = ({ spatialNodes, searchQuery, showHeatmap }) => {
 
   return (
     <points geometry={geometry}>
-      <pointsMaterial 
-        size={250} 
-        vertexColors 
+      <shaderMaterial 
         transparent 
-        opacity={0.35} 
         depthWrite={false} 
         blending={THREE.AdditiveBlending}
-        map={texture}
+        vertexColors
+        vertexShader={`
+          varying vec3 vColor;
+          void main() {
+            vColor = color;
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            gl_Position = projectionMatrix * mvPosition;
+            gl_PointSize = 1200.0 * (300.0 / -mvPosition.z);
+          }
+        `}
+        fragmentShader={`
+          varying vec3 vColor;
+          void main() {
+            vec2 uv = gl_PointCoord - vec2(0.5);
+            float dist = length(uv) * 2.0;
+            if (dist > 1.0) discard;
+
+            // Concentric bands to create a vector-like stepped fanning density contour
+            float steps = floor(dist * 6.0) / 6.0;
+            float alpha = (1.0 - steps) * 0.35;
+
+            gl_FragColor = vec4(vColor, alpha);
+          }
+        `}
       />
     </points>
   );
@@ -584,13 +591,13 @@ const NodeLabel = React.memo(({ node, isHovered, onHover, onClick, showLabels, l
           />
         </Billboard>
       )}
-      {!showLabels && (
+      {!showLabels && !isDimmed && (
         <mesh scale={node.parentId ? [90, 90, 90] : [160, 160, 160]}>
           <sphereGeometry args={[1, 16, 16]} />
           <meshBasicMaterial 
             color={(ENTITY_TYPES[node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color} 
             transparent
-            opacity={isDimmed ? 0.25 : 0.85}
+            opacity={0.85}
           />
         </mesh>
       )}
@@ -739,7 +746,7 @@ const NeuralLine = React.memo(({ start, end, color, isHovered, isSecondary = fal
 });
 
 
-const NeuralMesh = ({ onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, spatialNodes, showLabels, labelStyle, setHoveredLinkData, onOpenDrawer, isDark, layoutRules, activeSearchQuery }) => {
+const NeuralMesh = ({ onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, spatialNodes, showLabels, labelStyle, setHoveredLinkData, onOpenDrawer, isDark, layoutRules, activeSearchQuery, searchQuery, showHeatmap }) => {
   const meshGroup = useRef();
   const { controls } = useThree();
   const [userInteracted, setUserInteracted] = useState(false);
@@ -906,6 +913,7 @@ const NeuralMesh = ({ onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNod
           );
         })}
       </group>
+      <HeatmapCloud spatialNodes={spatialNodes} searchQuery={searchQuery} showHeatmap={showHeatmap} />
     </group>
   );
 };
@@ -1703,9 +1711,7 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
         <CursorPivot />
         
         <CameraController targetNode={selectedNode ? spatialNodes.find(n => n.id === selectedNode.id) : null} spatialNodes={spatialNodes} />
-        <NeuralMesh onSelectNode={onSelectNode} hoveredNodeId={hoveredNodeId} setHoveredNodeId={setHoveredNodeId} selectedNode={selectedNode} spatialNodes={spatialNodes} showLabels={showLabels} labelStyle={labelStyle} setHoveredLinkData={setHoveredLinkData} onOpenDrawer={onOpenDrawer} isDark={isDark} layoutRules={layoutRules} activeSearchQuery={activeSearchQuery} />
-        
-        <HeatmapCloud spatialNodes={spatialNodes} searchQuery={searchQuery} showHeatmap={showHeatmap} />
+        <NeuralMesh onSelectNode={onSelectNode} hoveredNodeId={hoveredNodeId} setHoveredNodeId={setHoveredNodeId} selectedNode={selectedNode} spatialNodes={spatialNodes} showLabels={showLabels} labelStyle={labelStyle} setHoveredLinkData={setHoveredLinkData} onOpenDrawer={onOpenDrawer} isDark={isDark} layoutRules={layoutRules} activeSearchQuery={activeSearchQuery} searchQuery={searchQuery} showHeatmap={showHeatmap} />
         
         <Environment preset="night" />
       </Canvas>
