@@ -104,27 +104,25 @@ const HeatmapCloud = ({ spatialNodes, searchQuery, showHeatmap }) => {
 
         const heat = Math.min(1.0, totalHeat);
 
-        let r_val = 0, g_val = 0, b_val = 0;
-        if (heat < 0.25) {
-          const t = heat / 0.25;
-          r_val = 0;
-          g_val = t;
-          b_val = 1.0;
-        } else if (heat < 0.5) {
-          const t = (heat - 0.25) / 0.25;
-          r_val = 0;
-          g_val = 1.0;
-          b_val = 1.0 - t;
-        } else if (heat < 0.75) {
-          const t = (heat - 0.5) / 0.25;
+        let r_val = 0.0, g_val = 0.0, b_val = 0.0;
+        if (heat < 0.33) {
+          // Green to Yellow
+          const t = heat / 0.33;
           r_val = t;
-          g_val = 1.0 - t * 0.3;
-          b_val = 0;
-        } else {
-          const t = (heat - 0.75) / 0.25;
+          g_val = 0.75 + t * 0.25;
+          b_val = 0.0;
+        } else if (heat < 0.66) {
+          // Yellow to Orange
+          const t = (heat - 0.33) / 0.33;
           r_val = 1.0;
-          g_val = 0.7 * (1.0 - t);
-          b_val = 0;
+          g_val = 1.0 - t * 0.5;
+          b_val = 0.0;
+        } else {
+          // Orange to Red
+          const t = (heat - 0.66) / 0.34;
+          r_val = 1.0;
+          g_val = 0.5 * (1.0 - t);
+          b_val = 0.0;
         }
 
         colors[idx * 3] = r_val;
