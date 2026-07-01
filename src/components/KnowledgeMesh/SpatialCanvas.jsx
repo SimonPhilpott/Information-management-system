@@ -1492,8 +1492,8 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
       {/* Left-side Tier List Panel */}
       {showTierList && (
         <div
-          className="absolute top-4 left-4 z-[2000] flex flex-col gap-0 pointer-events-auto"
-          style={{ width: '260px', maxHeight: 'calc(100% - 2rem)' }}
+          className="absolute top-16 left-4 z-[2000] flex flex-col gap-0 pointer-events-auto"
+          style={{ width: '260px', maxHeight: 'calc(100% - 5rem)' }}
         >
           <div
             className="w-full overflow-y-auto rounded-xl border flex flex-col gap-3 p-3 scrollbar-thin"
