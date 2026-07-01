@@ -1,0 +1,472 @@
+{
+  "Building Knowledge Graphs.pdf": [
+    {
+      "id": "toc_1781177073681_18_f81z",
+      "title": "Richer Graph Models",
+      "level": 2,
+      "parentId": "toc_1781177073681_16_wqqv",
+      "pageNumber": 229,
+      "orderIndex": 18
+    },
+    {
+      "id": "toc_1781177073682_76_x62l",
+      "title": "Querying the Metadata Graph Model",
+      "level": 1,
+      "parentId": "toc_1781177073682_70_5154",
+      "pageNumber": 1576,
+      "orderIndex": 76
+    },
+    {
+      "id": "toc_1781177073682_79_bnwx",
+      "title": "Chapter 9. Identity Knowledge Graphs",
+      "level": 0,
+      "parentId": null,
+      "pageNumber": 1627,
+      "orderIndex": 79
+    },
+    {
+      "id": "toc_1781177073682_105_pk4u",
+      "title": "Advanced Graph Dependency Modeling",
+      "level": 1,
+      "parentId": "toc_1781177073682_103_z9wh",
+      "pageNumber": 2206,
+      "orderIndex": 105
+    },
+    {
+      "id": "toc_1781177073682_130_boj1",
+      "title": "Path Similarity",
+      "level": 2,
+      "parentId": "toc_1781177073682_129_jl1m",
+      "pageNumber": 2996,
+      "orderIndex": 130
+    }
+  ],
+  "Large-scale Graph Analysis System Algorithm and Optimization.pdf": [
+    {
+      "id": "toc_1781177073705_17_e2zx",
+      "title": "2.4 Workload-Aware Cost Model for Optimizations",
+      "level": 1,
+      "parentId": "toc_1781177073705_13_nbe4",
+      "pageNumber": null,
+      "orderIndex": 17
+    },
+    {
+      "id": "toc_1781177073705_18_pzn6",
+      "title": "2.4.1 Cost Model Analysis",
+      "level": 2,
+      "parentId": "toc_1781177073705_17_e2zx",
+      "pageNumber": null,
+      "orderIndex": 18
+    },
+    {
+      "id": "toc_1781177073705_19_9cie",
+      "title": "2.4.1.1 Cost Model of BSP-Based Systems",
+      "level": 3,
+      "parentId": "toc_1781177073705_18_pzn6",
+      "pageNumber": null,
+      "orderIndex": 19
+    },
+    {
+      "id": "toc_1781177073705_20_ekjg",
+      "title": "2.4.1.2 Cost Model in the Context of Graph",
+      "level": 3,
+      "parentId": "toc_1781177073705_18_pzn6",
+      "pageNumber": null,
+      "orderIndex": 20
+    },
+    {
+      "id": "toc_1781177073705_34_38sj",
+      "title": "3.3.3 Partition-Aware Concurrency Control Model",
+      "level": 2,
+      "parentId": "toc_1781177073705_31_c3aq",
+      "pageNumber": null,
+      "orderIndex": 34
+    },
+    {
+      "id": "toc_1781177073705_40_v6cy",
+      "title": "3.4.2 Evaluation on the Concurrency Control Model",
+      "level": 2,
+      "parentId": "toc_1781177073705_38_qvqb",
+      "pageNumber": null,
+      "orderIndex": 40
+    },
+    {
+      "id": "toc_1781177073705_88_qxvz",
+      "title": "5.2.3.1 Path Enumeration and Pair-Wise Aggregation",
+      "level": 3,
+      "parentId": "toc_1781177073705_87_f9gs",
+      "pageNumber": null,
+      "orderIndex": 88
+    },
+    {
+      "id": "toc_1781177073705_91_z6gf",
+      "title": "5.3.1 Primitive Pattern and Path Concatenation Plan",
+      "level": 2,
+      "parentId": "toc_1781177073705_90_xusl",
+      "pageNumber": null,
+      "orderIndex": 91
+    },
+    {
+      "id": "toc_1781177073705_97_g31g",
+      "title": "5.5 Path Concatenation Plan Selection ",
+      "level": 1,
+      "parentId": "toc_1781177073705_82_wx55",
+      "pageNumber": null,
+      "orderIndex": 97
+    },
+    {
+      "id": "toc_1781177073705_98_p5p6",
+      "title": "5.5.1 The Path Size Estimation for PCP",
+      "level": 2,
+      "parentId": "toc_1781177073705_97_g31g",
+      "pageNumber": null,
+      "orderIndex": 98
+    },
+    {
+      "id": "toc_1781177073705_101_s58j",
+      "title": "5.5.2.2 Path Optimized Strategy",
+      "level": 3,
+      "parentId": "toc_1781177073705_99_v9l2",
+      "pageNumber": null,
+      "orderIndex": 101
+    },
+    {
+      "id": "toc_1781177073705_122_vtk9",
+      "title": "6.4.1 Subgraph-Oriented Model",
+      "level": 2,
+      "parentId": "toc_1781177073705_121_lzff",
+      "pageNumber": null,
+      "orderIndex": 122
+    }
+  ],
+  "The Practitioners Guide to Graph Data.pdf": [
+    {
+      "id": "toc_1781177073817_30_75cz",
+      "title": "Relational Data Modeling",
+      "level": 1,
+      "parentId": "toc_1781177073817_26_u3iw",
+      "pageNumber": 396,
+      "orderIndex": 30
+    },
+    {
+      "id": "toc_1781177073817_45_97vg",
+      "title": "Full Example Graph Model",
+      "level": 2,
+      "parentId": "toc_1781177073817_39_c720",
+      "pageNumber": 622,
+      "orderIndex": 45
+    },
+    {
+      "id": "toc_1781177073817_47_czts",
+      "title": "Data Modeling",
+      "level": 2,
+      "parentId": "toc_1781177073817_46_hng0",
+      "pageNumber": 655,
+      "orderIndex": 47
+    },
+    {
+      "id": "toc_1781177073817_56_t5w2",
+      "title": "Data Models",
+      "level": 2,
+      "parentId": "toc_1781177073817_55_kd0y",
+      "pageNumber": 727,
+      "orderIndex": 56
+    },
+    {
+      "id": "toc_1781177073817_60_i8e6",
+      "title": "Data Models",
+      "level": 2,
+      "parentId": "toc_1781177073817_59_moer",
+      "pageNumber": 883,
+      "orderIndex": 60
+    },
+    {
+      "id": "toc_1781177073817_64_vphy",
+      "title": "Relational Versus Graph: Data Modeling",
+      "level": 2,
+      "parentId": "toc_1781177073817_63_w2tp",
+      "pageNumber": 1024,
+      "orderIndex": 64
+    },
+    {
+      "id": "toc_1781177073817_73_mb01",
+      "title": "Graph Data Modeling 101",
+      "level": 1,
+      "parentId": "toc_1781177073817_71_xte0",
+      "pageNumber": 1105,
+      "orderIndex": 73
+    },
+    {
+      "id": "toc_1781177073817_76_27g2",
+      "title": "A Graph Has No Name: Common Mistakes in Naming",
+      "level": 2,
+      "parentId": "toc_1781177073817_73_mb01",
+      "pageNumber": 1205,
+      "orderIndex": 76
+    },
+    {
+      "id": "toc_1781177073817_77_1h4y",
+      "title": "Our Full Development Graph Model",
+      "level": 2,
+      "parentId": "toc_1781177073817_73_mb01",
+      "pageNumber": 1236,
+      "orderIndex": 77
+    },
+    {
+      "id": "toc_1781177073817_91_6pzf",
+      "title": "The Most Important Topic to Understand About Data Modeling: Primary Keys",
+      "level": 2,
+      "parentId": "toc_1781177073817_90_zt0u",
+      "pageNumber": 1543,
+      "orderIndex": 91
+    },
+    {
+      "id": "toc_1781177073817_92_n11l",
+      "title": "Partition Keys and Data Locality in a Distributed Environment",
+      "level": 2,
+      "parentId": "toc_1781177073817_90_zt0u",
+      "pageNumber": 1555,
+      "orderIndex": 92
+    },
+    {
+      "id": "toc_1781177073817_96_ojz2",
+      "title": "Graph Data Modeling 201",
+      "level": 1,
+      "parentId": "toc_1781177073817_88_thzq",
+      "pageNumber": 1737,
+      "orderIndex": 96
+    },
+    {
+      "id": "toc_1781177073817_114_izcr",
+      "title": "Depth in Walks, Paths, and Cycles",
+      "level": 2,
+      "parentId": "toc_1781177073817_112_julj",
+      "pageNumber": 2032,
+      "orderIndex": 114
+    },
+    {
+      "id": "toc_1781177073817_117_chwc",
+      "title": "Conceptual Model Using the GSL Notation",
+      "level": 2,
+      "parentId": "toc_1781177073817_115_g1dz",
+      "pageNumber": 2177,
+      "orderIndex": 117
+    },
+    {
+      "id": "toc_1781177073817_122_tmce",
+      "title": "From This Sensor, What Was Its Path to Any Tower?",
+      "level": 2,
+      "parentId": "toc_1781177073817_120_qn9o",
+      "pageNumber": 2274,
+      "orderIndex": 122
+    },
+    {
+      "id": "toc_1781177073817_145_ltk2",
+      "title": "What Valid Paths Can We Find from Georgetown Down to All Sensors?",
+      "level": 2,
+      "parentId": "toc_1781177073817_143_9lqf",
+      "pageNumber": 2743,
+      "orderIndex": 145
+    },
+    {
+      "id": "toc_1781177073817_149_9a2s",
+      "title": "Chapter 8. Finding Paths in Development",
+      "level": 0,
+      "parentId": null,
+      "pageNumber": 2828,
+      "orderIndex": 149
+    },
+    {
+      "id": "toc_1781177073817_154_jy20",
+      "title": "How Do Companies Model Package Delivery?",
+      "level": 2,
+      "parentId": "toc_1781177073817_151_eksd",
+      "pageNumber": 2873,
+      "orderIndex": 154
+    },
+    {
+      "id": "toc_1781177073817_155_w1l7",
+      "title": "Fundamental Concepts About Paths",
+      "level": 1,
+      "parentId": "toc_1781177073817_149_9a2s",
+      "pageNumber": 2887,
+      "orderIndex": 155
+    },
+    {
+      "id": "toc_1781177073817_156_h76w",
+      "title": "Shortest Paths",
+      "level": 2,
+      "parentId": "toc_1781177073817_155_w1l7",
+      "pageNumber": 2904,
+      "orderIndex": 156
+    },
+    {
+      "id": "toc_1781177073817_158_bxa3",
+      "title": "Learning to See Application Features as Different Path Problems",
+      "level": 2,
+      "parentId": "toc_1781177073817_155_w1l7",
+      "pageNumber": 2944,
+      "orderIndex": 158
+    },
+    {
+      "id": "toc_1781177073817_159_datf",
+      "title": "Finding Paths in a Trust Network",
+      "level": 1,
+      "parentId": "toc_1781177073817_149_9a2s",
+      "pageNumber": 2961,
+      "orderIndex": 159
+    },
+    {
+      "id": "toc_1781177073817_171_74pq",
+      "title": "Shortest Path Queries",
+      "level": 1,
+      "parentId": "toc_1781177073817_149_9a2s",
+      "pageNumber": 3138,
+      "orderIndex": 171
+    },
+    {
+      "id": "toc_1781177073817_172_7c9m",
+      "title": "Finding Paths of a Fixed Length",
+      "level": 2,
+      "parentId": "toc_1781177073817_171_74pq",
+      "pageNumber": 3153,
+      "orderIndex": 172
+    },
+    {
+      "id": "toc_1781177073817_173_z2l1",
+      "title": "Finding Paths of Any Length",
+      "level": 2,
+      "parentId": "toc_1781177073817_171_74pq",
+      "pageNumber": 3181,
+      "orderIndex": 173
+    },
+    {
+      "id": "toc_1781177073817_174_dh8m",
+      "title": "Augmenting Our Paths with the Trust Scores",
+      "level": 2,
+      "parentId": "toc_1781177073817_171_74pq",
+      "pageNumber": 3215,
+      "orderIndex": 174
+    },
+    {
+      "id": "toc_1781177073817_176_k6rb",
+      "title": "Chapter 9. Finding Paths in Production",
+      "level": 0,
+      "parentId": null,
+      "pageNumber": 3294,
+      "orderIndex": 176
+    },
+    {
+      "id": "toc_1781177073817_178_2rss",
+      "title": "Weighted Paths and Search Algorithms",
+      "level": 1,
+      "parentId": "toc_1781177073817_176_k6rb",
+      "pageNumber": 3303,
+      "orderIndex": 178
+    },
+    {
+      "id": "toc_1781177073817_179_sbmi",
+      "title": "Shortest Weighted Path Problem Definition",
+      "level": 2,
+      "parentId": "toc_1781177073817_178_2rss",
+      "pageNumber": 3317,
+      "orderIndex": 179
+    },
+    {
+      "id": "toc_1781177073817_180_zddr",
+      "title": "Shortest Weighted Path Search Optimizations",
+      "level": 2,
+      "parentId": "toc_1781177073817_178_2rss",
+      "pageNumber": 3331,
+      "orderIndex": 180
+    },
+    {
+      "id": "toc_1781177073817_181_0gxe",
+      "title": "Normalization of Edge Weights for Shortest Path Problems",
+      "level": 1,
+      "parentId": "toc_1781177073817_176_k6rb",
+      "pageNumber": 3366,
+      "orderIndex": 181
+    },
+    {
+      "id": "toc_1781177073817_185_stgl",
+      "title": "Some Thoughts Before Moving On to Shortest Weighted Path Queries",
+      "level": 2,
+      "parentId": "toc_1781177073817_181_0gxe",
+      "pageNumber": 3494,
+      "orderIndex": 185
+    },
+    {
+      "id": "toc_1781177073817_186_se58",
+      "title": "Shortest Weighted Path Queries",
+      "level": 1,
+      "parentId": "toc_1781177073817_176_k6rb",
+      "pageNumber": 3494,
+      "orderIndex": 186
+    },
+    {
+      "id": "toc_1781177073817_187_43y6",
+      "title": "Building a Shortest Weighted Path Query for Production",
+      "level": 2,
+      "parentId": "toc_1781177073817_186_se58",
+      "pageNumber": 3516,
+      "orderIndex": 187
+    },
+    {
+      "id": "toc_1781177073817_188_avhu",
+      "title": "Weighted Paths and Trust in Production",
+      "level": 1,
+      "parentId": "toc_1781177073817_176_k6rb",
+      "pageNumber": 3625,
+      "orderIndex": 188
+    },
+    {
+      "id": "toc_1781177073817_199_mi21",
+      "title": "Three Different Models for Ranking Recommendations",
+      "level": 2,
+      "parentId": "toc_1781177073817_195_dwjw",
+      "pageNumber": 3770,
+      "orderIndex": 199
+    },
+    {
+      "id": "toc_1781177073817_201_9swa",
+      "title": "Data Model for Movie Recommendations",
+      "level": 2,
+      "parentId": "toc_1781177073817_200_wyub",
+      "pageNumber": 3835,
+      "orderIndex": 201
+    },
+    {
+      "id": "toc_1781177073817_206_fokr",
+      "title": "Path Queries in the Movie Data",
+      "level": 2,
+      "parentId": "toc_1781177073817_200_wyub",
+      "pageNumber": 4017,
+      "orderIndex": 206
+    },
+    {
+      "id": "toc_1781177073817_208_vl1m",
+      "title": "Model 1: Counting Paths in the Recommendation Set",
+      "level": 2,
+      "parentId": "toc_1781177073817_207_t8ba",
+      "pageNumber": 4051,
+      "orderIndex": 208
+    },
+    {
+      "id": "toc_1781177073817_209_ksfz",
+      "title": "Model 2: NPS-Inspired",
+      "level": 2,
+      "parentId": "toc_1781177073817_207_t8ba",
+      "pageNumber": 4070,
+      "orderIndex": 209
+    },
+    {
+      "id": "toc_1781177073817_210_xgzf",
+      "title": "Model 3: Normalized NPS",
+      "level": 2,
+      "parentId": "toc_1781177073817_207_t8ba",
+      "pageNumber": 4102,
+      "orderIndex": 210
+    }
+  ]
+}

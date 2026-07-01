@@ -1073,9 +1073,17 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
       if (depth === 0) {
         pos = new THREE.Vector3(0, 0, 0);
       } else {
-        // Parent-child step scales down slightly with depth to keep tree compact,
-        // and incorporates parentDistance + childGap sliders.
-        const step = (parentDistanceVal * 2.8) * Math.pow(0.85, depth - 1) + gapVal * 6.0;
+        const baseStep = (parentDistanceVal * 2.8) * Math.pow(0.85, depth - 1) + gapVal * 6.0;
+        let step = baseStep;
+
+        if (depth > 1) {
+          const subtreeWeight = getSubtreeWeight(nid);
+          const siblingCount = nodes.filter(n => n.parentId === node.parentId).length;
+          const siblingScale = siblingCount > 5 ? 1.0 + Math.sqrt(siblingCount - 5) * 0.22 : 1.0;
+          const weightScale = 1.0 + Math.log10(subtreeWeight) * 0.9;
+          step = baseStep * siblingScale * weightScale;
+        }
+
         pos = parentPos.clone().addScaledVector(dir, step);
       }
 
@@ -1176,25 +1184,17 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
     
     const q = searchQuery.toLowerCase().trim();
     let matching = [];
-    const activeTargets = [];
-    if (selectedNode) {
-      activeTargets.push(selectedNode);
-    }
     if (q) {
-      spatialNodes.forEach(n => {
-        const isMatch = n.title.toLowerCase().includes(q) || 
-                        n.id.toLowerCase().includes(q) ||
-                        (n.content && Object.values(n.content).some(val => 
-                          typeof val === 'string' && val.toLowerCase().includes(q)
-                        ));
-        if (isMatch && !activeTargets.some(t => t.id === n.id)) {
-          activeTargets.push(n);
-        }
-      });
-    }
-
-    if (activeTargets.length > 0) {
+      matching = spatialNodes.filter(n => 
+        n.title.toLowerCase().includes(q) || 
+        n.id.toLowerCase().includes(q) ||
+        (n.content && Object.values(n.content).some(val => 
+          typeof val === 'string' && val.toLowerCase().includes(q)
+        ))
+      );
+    } else if (selectedNode) {
       const relevantSet = new Set();
+      const activeTargets = [selectedNode];
       activeTargets.forEach(m => {
         relevantSet.add(m.id);
         

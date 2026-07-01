@@ -15,7 +15,9 @@
         "Entity-type-coloured pill label borders in 3D spatial and instanced views",
         "Visible parent-child connection lines on 2D minimap with proper SVG coordinate rendering",
         "Mesh Appearance panel drawer featuring controls for Child Gap, Parent Distance, Tension, and a comparative 'BETA GRAPH' toggle for before/after layout comparison",
-        "Global fuzzy search input overlay with suggestions dropdown, distance-sorted tier list, and query highlights"
+        "Global fuzzy search input overlay with suggestions dropdown, distance-sorted tier list, and query highlights",
+        "Hover actions menu overlay displaying a small dropdown next to the node label in all graph views",
+        "Interactive connection builder banner with autocompletion suggestion autocompletion node targets"
       ]
     },
     "Oatmeal Premium Theme Layout": {
@@ -61,6 +63,26 @@
         "Interactive citations opening specific PDF page targets",
         "Synchronised page transitions with string integer parsing checks",
         "Drag-resizable split-pane partition using the global layout system layout resizer"
+      ]
+    },
+    "SharePointPortalView": {
+      "status": "enabled",
+      "description": "SharePoint Portal View for the Node Information Panel/Drawer with hierarchical navigation menus and child node inheritance.",
+      "subFeatures": [
+        "Toggle control between Standard View and SharePoint Portal View",
+        "Dynamic deep-blue hierarchical navigation bar with multi-level dropdowns and flyout menus representing active sub-trees",
+        "Parent node title and node type badge indicators alongside page title header banner",
+        "Large prominent blue card depicting the node definition summary",
+        "Child node text area cards inheriting and displaying descending procedure definitions under Concept nodes"
+      ]
+    },
+    "Simplified Demo Portal": {
+      "status": "enabled",
+      "description": "Simplified dashboard portal accessible via /demo route with node catalog overview and embedded Sunburst structure view.",
+      "subFeatures": [
+        "Path-based route detection for /demo",
+        "Streamlined stats dashboard with quick analytics",
+        "Direct link to launch/embed Sunburst Canvas"
       ]
     }
   }

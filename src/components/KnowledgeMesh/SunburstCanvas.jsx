@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ENTITY_TYPES } from '../../data/nodes';
+import { ENTITY_TYPES as DEFAULT_ENTITY_TYPES } from '../../data/nodes';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Layers, Search, Copy, Check, X, ListOrdered } from 'lucide-react';
 
@@ -82,14 +82,17 @@ const getSearchSummaryPath = (matchingNodes, allNodes) => {
 };
 
 export const SunburstCanvas = ({
-  meshRef,      // API-compat only — not used; component owns its own pan/zoom
+  meshRef,      // API-compat only — not used — component owns its own pan/zoom
   view,         // API-compat only — not used
   nodes = [],
+  selectedNode, // Pass in selectedNode state
   onSelectNode,
   onAddOffshoot,
   theme = 'dark',
   onThemeToggle,
+  entityTypes,
 }) => {
+  const ENTITY_TYPES = entityTypes || DEFAULT_ENTITY_TYPES;
   const isDark     = theme !== 'light';
   const bgColor    = isDark ? '#000000' : '#ece8dd';
   const textColor  = isDark ? 'text-white' : 'text-[#2E2B27]';
@@ -153,10 +156,7 @@ export const SunburstCanvas = ({
     h: Math.min(Math.max(vp.h, 70),  8000),
   });
 
-  const resetViewport = () => {
-    viewportRef.current = DEFAULT_VP;
-    setViewport(DEFAULT_VP);
-  };
+  // resetViewport is defined below flatSlices to support auto-fitting the view
 
   // ── Wheel zoom anchored to cursor ────────────────────────────────────────────
   useEffect(() => {
@@ -307,6 +307,35 @@ export const SunburstCanvas = ({
   // Rings sized to contain multi-word labels without clipping
   const ringWidth       = 130;
 
+  const getFitViewport = (slices) => {
+    if (!slices || slices.length === 0) return DEFAULT_VP;
+    const maxDepth = Math.max(...slices.map(s => s.depth));
+    const maxR = innerBaseRadius + (maxDepth > 0 ? maxDepth * ringWidth : 0);
+    // If drilled down (currentRootId !== rootId), we show external connections, so we need more padding
+    const hasExternal = currentRootId !== rootId;
+    const padding = hasExternal ? 450 : 200;
+    const size = Math.max(900, maxR * 2 + padding);
+    const w = size * 1.125;
+    const h = size;
+    return {
+      x: cx - w / 2,
+      y: cy - h / 2,
+      w,
+      h
+    };
+  };
+
+  const resetViewport = () => {
+    const newVp = getFitViewport(flatSlices);
+    viewportRef.current = newVp;
+    setViewport(newVp);
+  };
+
+  // Auto-fit viewport whenever flatSlices changes
+  useEffect(() => {
+    resetViewport();
+  }, [flatSlices]);
+
   const getRadius = (depth) => {
     if (depth === 0) return { r0: 0, r1: innerBaseRadius };
     const r0 = innerBaseRadius + (depth - 1) * ringWidth;
@@ -371,8 +400,96 @@ export const SunburstCanvas = ({
     return paths;
   }, [flatSlices, sliceCenters]);
 
+  const activePerspectiveLinksCount = useMemo(() => {
+    const flatIds = new Set(flatSlices.map(s => s.id));
+    const seenLinks = new Set();
+    nodes.forEach(node => {
+      (node.secondaryLinks || []).forEach(targetId => {
+        if (flatIds.has(node.id) || flatIds.has(targetId)) {
+          const linkKey = node.id < targetId ? `${node.id}-${targetId}` : `${targetId}-${node.id}`;
+          seenLinks.add(linkKey);
+        }
+      });
+    });
+    return seenLinks.size;
+  }, [flatSlices, nodes]);
+
+  // ── External Connections (floating outside sunburst) ─────────────────────────
+  const externalConnections = useMemo(() => {
+    if (!flatSlices || flatSlices.length === 0) return [];
+    const flatIds = new Set(flatSlices.map(s => s.id));
+    const connections = [];
+
+    const maxDepth = Math.max(...flatSlices.map(s => s.depth));
+    const maxR = innerBaseRadius + (maxDepth > 0 ? maxDepth * ringWidth : 0);
+    const outerRadius = maxR + 90;
+
+    const sliceToConn = {};
+
+    flatSlices.forEach(slice => {
+      nodes.forEach(node => {
+        if (flatIds.has(node.id)) return;
+
+        const isConnected =
+          (slice.secondaryLinks && slice.secondaryLinks.includes(node.id)) ||
+          (node.secondaryLinks && node.secondaryLinks.includes(slice.id));
+
+        if (isConnected) {
+          if (!sliceToConn[slice.id]) {
+            sliceToConn[slice.id] = [];
+          }
+          if (!sliceToConn[slice.id].some(n => n.id === node.id)) {
+            sliceToConn[slice.id].push(node);
+          }
+        }
+      });
+    });
+
+    Object.keys(sliceToConn).forEach(sliceId => {
+      const slice = flatSlices.find(s => s.id === sliceId);
+      if (!slice) return;
+
+      const connNodes = sliceToConn[sliceId];
+      const K = connNodes.length;
+      const midAngle = (slice.startAngle + slice.endAngle) / 2;
+
+      // Spread angles slightly to prevent overlapping floating circles
+      const angularSpacing = 0.42;
+      connNodes.forEach((connNode, index) => {
+        const offset = (index - (K - 1) / 2) * angularSpacing;
+        const angle = midAngle + offset;
+
+        // Stagger distance of nodes significantly to prevent text label overlap
+        const radialOffset = (index % 2 === 1) ? 90 : 0;
+        const radius = outerRadius + radialOffset;
+
+        const x = cx + radius * Math.cos(angle);
+        const y = cy + radius * Math.sin(angle);
+
+        // Anchor the connection line origin radius exactly to the r1 outer edge of the slice depth it is linked to,
+        // using the matching connection angle offset so the line extends outward without crossing other inner text labels.
+        const { r1 } = getRadius(slice.depth);
+        const sliceX = cx + r1 * Math.cos(angle);
+        const sliceY = cy + r1 * Math.sin(angle);
+
+        connections.push({
+          id: `ext-${slice.id}-${connNode.id}`,
+          slice,
+          node: connNode,
+          x,
+          y,
+          sliceX,
+          sliceY,
+          angle,
+        });
+      });
+    });
+
+    return connections;
+  }, [flatSlices, nodes, innerBaseRadius, ringWidth]);
+
   // ── Search Logic & Memos ───────────────────────────────────────────────────
-  const selectedNode = useMemo(() => nodes.find(n => n.id === focusNodeId), [focusNodeId, nodes]);
+
 
   const copyToClipboard = () => {
     if (!thumbprint) return;
@@ -437,25 +554,17 @@ export const SunburstCanvas = ({
     
     const q = searchQuery.toLowerCase().trim();
     let matching = [];
-    const activeTargets = [];
-    if (selectedNode) {
-      activeTargets.push(selectedNode);
-    }
     if (q) {
-      flatSlices.forEach(n => {
-        const isMatch = n.title.toLowerCase().includes(q) || 
-                        n.id.toLowerCase().includes(q) ||
-                        (n.content && Object.values(n.content).some(val => 
-                          typeof val === 'string' && val.toLowerCase().includes(q)
-                        ));
-        if (isMatch && !activeTargets.some(t => t.id === n.id)) {
-          activeTargets.push(n);
-        }
-      });
-    }
-
-    if (activeTargets.length > 0) {
+      matching = flatSlices.filter(n => 
+        n.title.toLowerCase().includes(q) || 
+        n.id.toLowerCase().includes(q) ||
+        (n.content && Object.values(n.content).some(val => 
+          typeof val === 'string' && val.toLowerCase().includes(q)
+        ))
+      );
+    } else if (selectedNode) {
       const relevantSet = new Set();
+      const activeTargets = [selectedNode];
       activeTargets.forEach(m => {
         relevantSet.add(m.id);
         
@@ -600,7 +709,12 @@ export const SunburstCanvas = ({
    * Inner ring (~42 % on dark) → outermost ring (~13 %).
    */
   const getFillOpacity = (depth, isHovered) => {
-    if (depth === 0) return isDark ? 0.02 : 0.04;
+    if (depth === 0) {
+      if (currentRootId !== rootId) {
+        return isHovered ? (isDark ? 0.45 : 0.50) : (isDark ? 0.18 : 0.22);
+      }
+      return isDark ? 0.02 : 0.04;
+    }
     if (isHovered)   return isDark ? 0.45 : 0.50;
     const darkLevels  = [0.18, 0.14, 0.10, 0.07, 0.05];
     const lightLevels = [0.22, 0.17, 0.12, 0.08, 0.06];
@@ -608,8 +722,9 @@ export const SunburstCanvas = ({
     return table[Math.min(depth - 1, table.length - 1)];
   };
 
-  /** Separator hairline: near-black on dark bg, near-white on light bg. */
-  const separatorStroke = isDark ? 'rgba(8,12,20,0.92)' : 'rgba(255,255,255,0.92)';
+  // Separator opacity constants — borders use the entity fill colour, opacity varies by state.
+  // Rest: mid-opacity so borders are visible but don't overpower the fill.
+  // Hover: high-opacity for clear edge definition. Never a global colour.
 
   // ── Click handling — single vs double ────────────────────────────────────────
   /**
@@ -620,31 +735,20 @@ export const SunburstCanvas = ({
   const handleSliceClick = (e, slice) => {
     if (isPanning.current) return; // Ignore clicks that ended a pan
 
-    if (clickTimerRef.current) {
-      // Second click arrived before timer — it's a double-click
-      clearTimeout(clickTimerRef.current);
-      clickTimerRef.current = null;
-      if (onSelectNode) onSelectNode(slice);
-      return;
-    }
-
-    clickTimerRef.current = setTimeout(() => {
-      clickTimerRef.current = null;
-
-      // Navigate
-      if (slice.depth === 0) {
-        const node = nodes.find(n => n.id === currentRootId);
-        if (node?.parentId) setFocusNodeId(node.parentId);
-        else if (currentRootId !== rootId) setFocusNodeId(null);
-        resetViewport();
-      } else if (slice.children?.length) {
-        setFocusNodeId(slice.id);
-        resetViewport();
-      } else {
-        // Leaf node: open intelligence drawer immediately on single click
-        if (onSelectNode) onSelectNode(slice);
+    // Navigate
+    if (slice.depth === 0) {
+      const node = nodes.find(n => n.id === currentRootId);
+      if (node?.parentId) {
+        setFocusNodeId(node.parentId);
+      } else if (currentRootId !== rootId) {
+        setFocusNodeId(null);
       }
-    }, DBLCLICK_DELAY_MS);
+    } else if (slice.children?.length) {
+      setFocusNodeId(slice.id);
+    } else {
+      // Leaf node: select it on single click
+      if (onSelectNode) onSelectNode(slice);
+    }
   };
 
   // ── Tooltip tracking ─────────────────────────────────────────────────────────
@@ -683,24 +787,7 @@ export const SunburstCanvas = ({
         className="flex-1 relative overflow-hidden"
         onMouseDown={handleContainerMouseDown}
       >
-        {/* ZOOM OUT button */}
-        {currentRootId !== rootId && (
-          <button
-            onClick={() => {
-              const p = nodes.find(n => n.id === currentRootId)?.parentId;
-              setFocusNodeId(p === rootId ? null : p);
-              resetViewport();
-            }}
-            className={`absolute top-8 left-[250px] z-[100] px-3 py-1.5 rounded-lg border flex items-center gap-1.5 text-[10px] font-black tracking-wider transition-all active:scale-95 ${
-              isDark
-                ? 'bg-black/40 border-white/10 hover:bg-white/5 text-brand-cyan'
-                : 'bg-[#ece8dd]/80 border-[#2E2B27]/20 hover:bg-[#2E2B27]/5 text-[#0891B2]'
-            }`}
-          >
-            <ArrowLeft size={12} />
-            <span>ZOOM OUT</span>
-          </button>
-        )}
+
 
         {/*
           The SVG uses viewBox for zoom/pan — NOT a CSS transform wrapper.
@@ -749,13 +836,14 @@ export const SunburstCanvas = ({
                   d={pathD}
                   fillRule="evenodd"
                   style={{
-                    fill:        activeFill,
-                    fillOpacity: fillOp,
-                    stroke:      separatorStroke,
-                    strokeWidth: isHov ? 1.5 : 0.9,
-                    transition:  'fill 0.15s, fill-opacity 0.15s',
-                    cursor:      'pointer',
-                    fillRule:    'evenodd',
+                    fill:         activeFill,
+                    fillOpacity:  fillOp,
+                    stroke:       activeFill,
+                    strokeOpacity: isHov ? 0.85 : 0.45,
+                    strokeWidth:  isHov ? 1.5 : 0.9,
+                    transition:   'fill 0.15s, fill-opacity 0.15s, stroke-opacity 0.15s',
+                    cursor:       'pointer',
+                    fillRule:     'evenodd',
                   }}
                   onClick={e => handleSliceClick(e, slice)}
                   onMouseMove={e => handleSliceMouseMove(e, slice)}
@@ -788,12 +876,13 @@ export const SunburstCanvas = ({
                   cy={cy}
                   r={innerBaseRadius}
                   style={{
-                    fill:        activeFill,
-                    fillOpacity: fillOp,
-                    stroke:      separatorStroke,
-                    strokeWidth: isHov ? 1.5 : 0.9,
-                    transition:  'fill 0.15s, fill-opacity 0.15s',
-                    cursor:      'pointer',
+                    fill:          activeFill,
+                    fillOpacity:   fillOp,
+                    stroke:        activeFill,
+                    strokeOpacity: isHov ? 0.85 : 0.45,
+                    strokeWidth:   isHov ? 1.5 : 0.9,
+                    transition:    'fill 0.15s, fill-opacity 0.15s, stroke-opacity 0.15s',
+                    cursor:        'pointer',
                   }}
                   onClick={e => handleSliceClick(e, slice)}
                   onMouseMove={e => handleSliceMouseMove(e, slice)}
@@ -876,16 +965,111 @@ export const SunburstCanvas = ({
           {/* Secondary transverse links */}
           <g pointerEvents="none">
             {secondaryPaths.map(p => {
-              let opacity = 0.45;
-              if (selectedNode) {
+              let opacity = 0.55;
+              if (selectedNode && selectedNode.id !== 'tt_group' && selectedNode.id !== rootId) {
                 const isLinkConnected = p.fromId === selectedNode.id || p.toId === selectedNode.id;
-                opacity = isLinkConnected ? 0.75 : 0.05;
+                opacity = isLinkConnected ? 0.85 : 0.08;
               } else if (matchingNodeIds) {
                 const bothMatch = matchingNodeIds.has(p.fromId) && matchingNodeIds.has(p.toId);
-                opacity = bothMatch ? 0.75 : 0.05;
+                opacity = bothMatch ? 0.85 : 0.08;
               }
               return (
                 <path key={p.id} d={p.d} style={{ fill: 'none', stroke: p.color, strokeWidth: 1.5, strokeDasharray: '4,4', strokeOpacity: opacity }} />
+              );
+            })}
+          </g>
+
+          {/* External connections floating nodes */}
+          <g>
+            {externalConnections.map(conn => {
+              const entityColor = (ENTITY_TYPES[conn.node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color;
+              const isHov = hoveredNode?.id === conn.node.id;
+              const labelSide = Math.cos(conn.angle) > 0 ? 'right' : 'left';
+              const textAnchor = labelSide === 'right' ? 'start' : 'end';
+              const textDx = labelSide === 'right' ? 12 : -12;
+
+              return (
+                <g
+                  key={conn.id}
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const node = conn.node;
+                    if (node.children?.length || nodes.filter(n => n.parentId === node.id).length > 0) {
+                      setFocusNodeId(node.id);
+                    } else {
+                      setFocusNodeId(node.parentId || null);
+                    }
+                    if (onSelectNode) onSelectNode(node);
+                  }}
+                  onMouseEnter={() => setHoveredNode(conn.node)}
+                  onMouseLeave={() => setHoveredNode(null)}
+                >
+                  {/* Connecting Line */}
+                  <line
+                    x1={conn.sliceX}
+                    y1={conn.sliceY}
+                    x2={conn.x}
+                    y2={conn.y}
+                    style={{
+                      stroke: entityColor,
+                      strokeWidth: isHov ? 2 : 1.2,
+                      strokeDasharray: '3,3',
+                      opacity: isHov ? 0.95 : 0.6,
+                      transition: 'stroke-width 0.2s, opacity 0.2s',
+                    }}
+                  />
+
+                  {/* Outer Glow Ring on Hover */}
+                  {isHov && (
+                    <circle
+                      cx={conn.x}
+                      cy={conn.y}
+                      r={14}
+                      style={{
+                        fill: 'none',
+                        stroke: entityColor,
+                        strokeWidth: 1.5,
+                        strokeOpacity: 0.5,
+                      }}
+                    />
+                  )}
+
+                  {/* Connection Node Circle */}
+                  <circle
+                    cx={conn.x}
+                    cy={conn.y}
+                    r={7}
+                    style={{
+                      fill: entityColor,
+                      fillOpacity: isHov ? 1.0 : 0.8,
+                      stroke: isDark ? '#000000' : '#ffffff',
+                      strokeWidth: 1.5,
+                      transition: 'fill-opacity 0.2s, r 0.2s',
+                    }}
+                  />
+
+                  {/* Connection Node Title */}
+                  <text
+                    x={conn.x}
+                    y={conn.y}
+                    dx={textDx}
+                    dy="3"
+                    textAnchor={textAnchor}
+                    style={{
+                      fill: isDark ? 'rgba(255,255,255,0.95)' : 'rgba(46,43,39,0.98)',
+                      fontSize: '9px',
+                      fontWeight: 600,
+                      letterSpacing: '0.02em',
+                      paintOrder: 'stroke',
+                      stroke: isDark ? '#000000' : '#ece8dd',
+                      strokeWidth: 3,
+                      strokeLinejoin: 'round',
+                    }}
+                  >
+                    {conn.node.title}
+                  </text>
+                </g>
               );
             })}
           </g>
@@ -1023,7 +1207,7 @@ export const SunburstCanvas = ({
                 <div className={`border-t pt-1.5 mt-0.5 text-[7px] font-bold uppercase tracking-wider ${
                   isDark ? 'border-white/5 text-slate-500' : 'border-[#2E2B27]/10 text-[#6A645D]'
                 }`}>
-                  Double-click to open details
+                  Single-click to view details
                 </div>
               )}
             </motion.div>
@@ -1087,79 +1271,7 @@ export const SunburstCanvas = ({
                 <X size={14} />
               </button>
             )}
-            <button 
-              onClick={() => {
-                setShowTierList(!showTierList);
-                setShowSuggestions(false);
-              }}
-              className={`p-1 rounded transition-colors ${showTierList ? (isDark ? 'bg-white/20 text-[#00f2ff]' : 'bg-black/10 text-cyan-600') : 'text-slate-400 hover:text-white'}`}
-              title="Toggle Node Tier Listing"
-            >
-              <ListOrdered size={16} />
-            </button>
           </div>
-
-          {/* Tier List Dropdown */}
-          {showTierList && (
-            <div 
-              className="w-full max-h-80 overflow-y-auto rounded-xl border mt-1 flex flex-col gap-3 p-3 transition-all duration-300 scrollbar-thin"
-              style={{
-                background: isDark ? 'rgba(10, 15, 25, 0.95)' : 'rgba(244, 239, 229, 0.95)',
-                borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(46, 43, 39, 0.15)',
-                backdropFilter: 'blur(25px)',
-                boxShadow: '0 12px 40px rgba(0, 0, 0, 0.5)'
-              }}
-            >
-              {groupedTiers.length === 0 ? (
-                <div className="text-xs text-center text-slate-400 py-2">No matching nodes</div>
-              ) : (
-                groupedTiers.map((group) => (
-                  <div key={group.name} className="flex flex-col gap-1">
-                    <div 
-                      className="text-[10px] uppercase font-bold tracking-wider px-1 py-0.5 border-b pb-1"
-                      style={{
-                        color: group.color,
-                        borderColor: `${group.color}30`
-                      }}
-                    >
-                      {group.name}
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      {group.nodes.map((node) => (
-                        <button
-                          key={node.id}
-                          onClick={() => {
-                            onSelectNode(node);
-                            setSearchQuery(node.title);
-                            setActiveSearchQuery('');
-                            setShowTierList(false);
-                          }}
-                          className="w-full px-2 py-1.5 rounded text-left text-xs transition-colors flex items-center justify-between"
-                          style={{
-                            color: isDark ? '#e2e8f0' : '#2E2B27',
-                            background: 'transparent',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(46, 43, 39, 0.05)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = 'transparent';
-                          }}
-                        >
-                          <span className="font-medium truncate mr-2">{node.title}</span>
-                          {node.d1 !== undefined && (
-                            <span className="text-[9px] text-slate-500 font-mono flex-shrink-0">
-                              {node.d1 > 0 ? `d: ${Math.round(node.d1)}` : 'focal'}
-                            </span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
 
           {/* Suggestion Dropdown */}
           {showSuggestions && !showTierList && suggestions.length > 0 && (
@@ -1178,6 +1290,11 @@ export const SunburstCanvas = ({
                   <button
                     key={node.id}
                     onClick={() => {
+                      if (node.children?.length || nodes.filter(n => n.parentId === node.id).length > 0) {
+                        setFocusNodeId(node.id);
+                      } else {
+                        setFocusNodeId(node.parentId || null);
+                      }
                       onSelectNode(node);
                       setSearchQuery(node.title);
                       setActiveSearchQuery('');
@@ -1209,34 +1326,6 @@ export const SunburstCanvas = ({
                   </button>
                 );
               })}
-            </div>
-          )}
-
-          {/* Thumbprint Display */}
-          {topMatchNode && thumbprint && (
-            <div 
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] font-mono tracking-wider transition-all duration-300"
-              style={{
-                background: isDark ? 'rgba(10, 15, 25, 0.5)' : 'rgba(244, 239, 229, 0.6)',
-                borderColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(46, 43, 39, 0.1)',
-                color: isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(46, 43, 39, 0.8)',
-                backdropFilter: 'blur(10px)'
-              }}
-            >
-              <span className="truncate max-w-[340px]" title={thumbprint}>
-                {thumbprint}
-              </span>
-              <button 
-                onClick={copyToClipboard}
-                className="p-1 rounded hover:bg-white/10 transition-colors text-slate-400 hover:text-white flex items-center gap-1"
-                title="Copy Thumbprint"
-              >
-                {copied ? (
-                  <Check size={10} className="text-emerald-400" />
-                ) : (
-                  <Copy size={10} />
-                )}
-              </button>
             </div>
           )}
         </div>
@@ -1317,7 +1406,7 @@ export const SunburstCanvas = ({
           {[
             { label: 'Nodes', value: flatSlices.length },
             { label: 'Layers', value: flatSlices.reduce((m, s) => Math.max(m, s.depth), 0) },
-            { label: 'Links', value: secondaryPaths.length },
+            { label: 'Links', value: activePerspectiveLinksCount },
           ].map(stat => (
             <div
               key={stat.label}

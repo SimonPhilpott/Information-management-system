@@ -13,11 +13,12 @@ import { SpatialCanvas } from './components/KnowledgeMesh/SpatialCanvas';
 import { InstancedSpatialCanvas } from './components/KnowledgeMesh/InstancedSpatialCanvas';
 import { SunburstCanvas } from './components/KnowledgeMesh/SunburstCanvas';
 import { AnimatePresence, motion, animate } from 'framer-motion';
-import { Activity, Link as LinkIcon, Cpu, ArrowDown, Network, GitMerge, Box, Layers, Type, Globe, Aperture, Maximize2, Minimize2 } from 'lucide-react';
+import { Activity, Link as LinkIcon, Cpu, ArrowDown, Network, GitMerge, Box, CircleDot, Type, Globe, Aperture, Maximize2, Minimize2 } from 'lucide-react';
 
 import { useAppLogic } from './hooks/useAppLogic';
 import OnboardingSetup from './components/Dashboard/OnboardingSetup';
 import { checkIsEntertainment } from './utils/contentFilter';
+import DemoPortal from './components/Dashboard/DemoPortal';
 
 const getShortSummary = (text) => {
   if (!text) return '';
@@ -45,6 +46,15 @@ const getShortSummary = (text) => {
 export default function App() {
   const { state, actions } = useAppLogic();
   const { authStatus, settings, loading } = state;
+  const [currentPath, setCurrentPath] = useState(window.location.pathname);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Auth callback check
   useEffect(() => {
@@ -96,27 +106,48 @@ export default function App() {
   }, []);
 
   const [nodes, setNodes] = useState(() => {
-    // VERSIONED STORAGE KEY: hive_mesh_v13_corporate_hierarchy
-    const saved = localStorage.getItem('hive_mesh_v13_corporate_hierarchy');
-    const savedNodes = saved ? JSON.parse(saved) : [];
-    
+    // VERSIONED STORAGE KEY: hive_mesh_v14_corporate_hierarchy
+    // v14: bumped to force re-seed from updated mesh_authority.js (all T&T locations).
+    // Migrates any user-created nodes from v13 so custom work is not lost.
+    const STORAGE_KEY = 'hive_mesh_v14_corporate_hierarchy';
+    const saved = localStorage.getItem(STORAGE_KEY);
+
+    // Migration: pull in user-created nodes from previous v13 key so they are not lost.
+    let migratedUserNodes = [];
+    if (!saved) {
+      try {
+        const old = localStorage.getItem('hive_mesh_v13_corporate_hierarchy');
+        if (old) {
+          const oldNodes = JSON.parse(old);
+          const authorityIds = new Set(MESH_JSON_AUTHORITY.map(n => n.id));
+          // Only carry forward nodes the user created themselves (not in authority).
+          migratedUserNodes = oldNodes.filter(n => n && n.id && !authorityIds.has(n.id));
+        }
+      } catch { /* ignore migration errors */ }
+    }
+
+    const savedNodes = saved ? JSON.parse(saved) : migratedUserNodes;
+
     const uniqueMap = new Map();
-    // 1. Seed with authoritative node set from file
-    MESH_JSON_AUTHORITY.forEach(n => { if (n && n.id) uniqueMap.set(n.id, { ...n, visible: n.visible !== false }); });
-    // 2. Overwrite/merge with user saved state (preserving user visibility updates)
+    // 1. Seed with authoritative node set — all nodes start visible.
+    MESH_JSON_AUTHORITY.forEach(n => { if (n && n.id) uniqueMap.set(n.id, { ...n, visible: true }); });
+    // 2. Merge user-saved state: preserve position/visibility but enforce authoritative
+    //    parentId, secondaryLinks, title, and type so the graph structure stays correct.
     savedNodes.forEach(n => {
       if (n && n.id) {
         const existing = uniqueMap.get(n.id);
         if (existing) {
-          uniqueMap.set(n.id, { 
-            ...n, 
-            parentId: existing.parentId, 
+          uniqueMap.set(n.id, {
+            ...n,
+            parentId:      existing.parentId,
             secondaryLinks: existing.secondaryLinks,
-            title: existing.title,
-            type: existing.type
+            title:         existing.title,
+            type:          existing.type,
+            visible:       true, // Authority nodes are always visible
           });
         } else {
-          uniqueMap.set(n.id, n);
+          // User-created node — keep as-is.
+          uniqueMap.set(n.id, { ...n, visible: n.visible !== false });
         }
       }
     });
@@ -159,6 +190,7 @@ export default function App() {
          childGap: data.childGap ?? 60,
          parentDistance: data.parentDistance ?? 700,
          connectionTension: data.connectionTension ?? 60,
+         siblingMultiplier: data.siblingMultiplier ?? 0.32,
          layoutStyle: data.layoutStyle ?? 'radial',
          projectionMode: data.projectionMode === 'instanced_3d' ? 'spatial_3d' : (data.projectionMode ?? '2d'),
          directionalLocking: data.directionalLocking ?? true,
@@ -166,22 +198,22 @@ export default function App() {
          showLabels: data.showLabels ?? true,
          labelStyle: data.labelStyle ?? 'standard',
          betaLayout: true
-      };
-    } catch {
-      return { 
-         childGap: 60, parentDistance: 700, connectionTension: 60,
-         layoutStyle: 'radial', projectionMode: 'spatial_3d', directionalLocking: true, unifiedSyncPoints: true,
-         showLabels: true, labelStyle: 'standard', betaLayout: true
-      };
-    }
-  });
+       };
+     } catch {
+       return { 
+          childGap: 60, parentDistance: 700, connectionTension: 60, siblingMultiplier: 0.32,
+          layoutStyle: 'radial', projectionMode: 'spatial_3d', directionalLocking: true, unifiedSyncPoints: true,
+          showLabels: true, labelStyle: 'standard', betaLayout: true
+       };
+     }
+   });
 
   useEffect(() => {
     try { localStorage.setItem('hive_mesh_rules_v1.5', JSON.stringify(layoutRules)); } catch (e) { console.error(e); }
   }, [layoutRules]);
 
   useEffect(() => {
-    try { localStorage.setItem('hive_mesh_v13_corporate_hierarchy', JSON.stringify(nodes)); } catch (e) { console.error(e); }
+    try { localStorage.setItem('hive_mesh_v14_corporate_hierarchy', JSON.stringify(nodes)); } catch (e) { console.error(e); }
   }, [nodes]);
 
   useEffect(() => {
@@ -201,14 +233,18 @@ export default function App() {
   }, [view]);
 
   const meshRef = useRef(null);
+  const dragStartRef = useRef({ x: 0, y: 0 });
   const [dragType, setDragType] = useState(null);
   const [is3DInteracting, setIs3DInteracting] = useState(false);
   const isDraggingNode = false; // Internal tracking
   const [lastPos, setLastPos] = useState({ x: 0, y: 0 });
   const [stickPos, setStickPos] = useState({ x: 0, y: 0, active: false });
+  const [isZooming, setIsZooming] = useState(false);
   
   const [hoveredNodeId, setHoveredNodeId] = useState(null);
   const hoverTimeout = useRef(null);
+  const linkHoverTimeout = useRef(null);
+  const zoomTimeoutRef = useRef(null);
 
   const [selectedNode, setSelectedNode] = useState(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -238,22 +274,91 @@ export default function App() {
     else {
       hoverTimeout.current = setTimeout(() => {
         setHoveredNodeId(null);
-      }, 80);
+      }, 50);
     }
   }, [dragType, isDraggingNode, is3DInteracting]);
 
+  const handleHoverLink = useCallback((id, data) => {
+    if (linkHoverTimeout.current) clearTimeout(linkHoverTimeout.current);
+    
+    if (dragType || is3DInteracting) {
+      setHoveredLinkId(null);
+      setHoveredLinkData(null);
+      return;
+    }
+
+    if (id && data) {
+      setHoveredLinkId(id);
+      setHoveredLinkData(data);
+    } else {
+      linkHoverTimeout.current = setTimeout(() => {
+        setHoveredLinkId(null);
+        setHoveredLinkData(null);
+      }, 180);
+    }
+  }, [dragType, is3DInteracting]);
+
+  const [connectionSourceId, setConnectionSourceId] = useState(null);
+  const [connSearchQuery, setConnSearchQuery] = useState('');
+
+  const connSuggestions = useMemo(() => {
+    if (!connSearchQuery.trim()) return [];
+    const q = connSearchQuery.toLowerCase().trim();
+    const sourceNode = nodes.find(n => n.id === connectionSourceId);
+    const existingLinks = sourceNode?.secondaryLinks || [];
+    return nodes.filter(n => 
+      n.id !== connectionSourceId &&
+      !existingLinks.includes(n.id) &&
+      (n.title.toLowerCase().includes(q) || n.id.toLowerCase().includes(q))
+    ).slice(0, 5);
+  }, [connSearchQuery, nodes, connectionSourceId]);
+
   const handleSelectNode = useCallback((n) => {
+    if (connectionSourceId) {
+      if (n.id === connectionSourceId) {
+        setConnectionSourceId(null);
+        return;
+      }
+      setNodes(prev => prev.map(node => {
+        if (node.id === connectionSourceId) {
+          const links = node.secondaryLinks || [];
+          if (!links.includes(n.id)) {
+            return { ...node, secondaryLinks: [...links, n.id] };
+          }
+        }
+        return node;
+      }));
+      setConnectionSourceId(null);
+      return;
+    }
     setSelectedNode(n);
-  }, []);
+  }, [connectionSourceId]);
 
   const handleOpenDrawer = useCallback((n) => {
+    if (connectionSourceId) {
+      if (n.id === connectionSourceId) {
+        setConnectionSourceId(null);
+        return;
+      }
+      setNodes(prev => prev.map(node => {
+        if (node.id === connectionSourceId) {
+          const links = node.secondaryLinks || [];
+          if (!links.includes(n.id)) {
+            return { ...node, secondaryLinks: [...links, n.id] };
+          }
+        }
+        return node;
+      }));
+      setConnectionSourceId(null);
+      return;
+    }
     setSelectedNode(n); 
     setIsEditorOpen(true); 
     setIsAdminOpen(false);
     setEditingNode(n); 
     setCurrentType(n.type); 
     setFormData({ title: n.title, content: n.content || {}, tier: n.tier || 3 }); 
-  }, []);
+  }, [connectionSourceId]);
 
   const [hoveredLinkId, setHoveredLinkId] = useState(null);
   const [hoveredLinkData, setHoveredLinkData] = useState(null);
@@ -274,6 +379,15 @@ export default function App() {
   const [currentType, setCurrentType] = useState('CONCEPT');
   const [formData, setFormData] = useState({ title: '', content: {}, tier: 3 });
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const lastMousePosRef = useRef({ x: 0, y: 0 });
+  useEffect(() => {
+    const trackMouse = (e) => {
+      lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+    };
+    window.addEventListener('mousemove', trackMouse, { passive: true });
+    return () => window.removeEventListener('mousemove', trackMouse);
+  }, []);
 
   const containerRef = useRef(null);
   const requestRef = useRef();
@@ -526,18 +640,261 @@ export default function App() {
 
       roots.forEach(root => {
          root.x = 2000; root.y = 2000; root.ox = 2000; root.oy = 2000;
-         if (rules.layoutStyle === 'horizontal_lr') { 
-            const walkLR = (nid, depth, ox, oy, seen = new Set()) => {
-               if (seen.has(nid) || seen.size > 1000) return 0; seen.add(nid);
+         if (rules.layoutStyle === 'vertical_tb') { 
+            const layoutSubtreeTB = (nid, depth, seen = new Set()) => {
+               if (seen.has(nid) || seen.size > 1000) {
+                  return { positions: new Map(), contour: [] };
+               }
+               seen.add(nid);
+               
                const n = newNodes.find(no => no.id === nid);
-               if (!n) return 0;
+               if (!n) return { positions: new Map(), contour: [] };
+
                const children = newNodes.filter(no => no.parentId === nid);
-               let s = 0; if (children.length === 0) s = 1; else children.forEach(child => { s += walkLR(child.id, depth + 1, ox, oy + s * vSpacing, seen); });
-               n.x = ox + (depth * (224 + expansionJump)); n.y = children.length > 0 ? oy + ((s - 1) * vSpacing) / 2 : oy;
-               n.ox = n.x; n.oy = n.y; n.branchDir = 'Right'; return s;
-            };
-            walkLR(root.id, 0, 2000, 2000); return; 
-         }
+               const relativeY = depth * (100 + expansionJump);
+
+               if (children.length === 0) {
+                  const positions = new Map();
+                  positions.set(nid, { x: 0, y: relativeY });
+                  return {
+                     positions,
+                     contour: [{ left: -112, right: 112 }]
+                  };
+               }
+
+               const descendantCounts = new Map();
+               const countDescendants = (id, seen = new Set()) => {
+                  if (seen.has(id)) return 0;
+                  seen.add(id);
+                  const cc = newNodes.filter(no => no.parentId === id);
+                  let count = cc.length;
+                  cc.forEach(c => { count += countDescendants(c.id, seen); });
+                  return count;
+               };
+               children.forEach(c => {
+                  descendantCounts.set(c.id, countDescendants(c.id));
+               });
+
+               const numRows = children.length > 12 ? 3 : (children.length > 3 ? 2 : 2);
+               const childSubtrees = [];
+               
+               children.forEach((child, i) => {
+                  const row = i % numRows;
+                  const descCount = descendantCounts.get(child.id) || 0;
+                  const extraDepth = descCount > 15 ? 2 : (descCount > 4 ? 1 : 0);
+                  const childDepthOffset = 1 + row + extraDepth;
+                  const childRes = layoutSubtreeTB(child.id, depth + childDepthOffset, seen);
+                  childSubtrees.push({
+                     id: child.id,
+                     depthOffset: childDepthOffset,
+                     positions: childRes.positions,
+                     contour: childRes.contour
+                   });
+                });
+
+                const mergedContour = [];
+                const positions = new Map();
+                const childrenXCoords = [];
+
+                const minSiblingXGap = 120 + siblingGap;
+                let lastShiftX = 0;
+
+                childSubtrees.forEach((sub, i) => {
+                   let shiftX = (i === 0) ? 0 : (lastShiftX + minSiblingXGap);
+                   
+                   for (let d = 0; d < sub.contour.length; d++) {
+                      const parentD = sub.depthOffset + d;
+                      if (mergedContour[parentD] && sub.contour[d]) {
+                         const overlap = mergedContour[parentD].right + hSpacing - sub.contour[d].left;
+                         if (overlap > shiftX) {
+                            shiftX = overlap;
+                         }
+                      }
+                   }
+
+                   sub.positions.forEach((pos, id) => {
+                      positions.set(id, { x: pos.x + shiftX, y: pos.y });
+                   });
+
+                   for (let d = 0; d < sub.contour.length; d++) {
+                      const parentD = sub.depthOffset + d;
+                      if (sub.contour[d]) {
+                         const left = sub.contour[d].left + shiftX;
+                         const right = sub.contour[d].right + shiftX;
+                         if (!mergedContour[parentD]) {
+                            mergedContour[parentD] = { left, right };
+                         } else {
+                            mergedContour[parentD].left = Math.min(mergedContour[parentD].left, left);
+                            mergedContour[parentD].right = Math.max(mergedContour[parentD].right, right);
+                         }
+                      }
+                   }
+
+                   childrenXCoords.push(shiftX);
+                   lastShiftX = shiftX;
+                });
+
+                const parentX = (childrenXCoords[0] + childrenXCoords[childrenXCoords.length - 1]) / 2;
+
+                positions.forEach((pos, id) => {
+                   pos.x -= parentX;
+                });
+                positions.set(nid, { x: 0, y: relativeY });
+
+                const finalContour = [{ left: -112, right: 112 }];
+                for (let d = 0; d < mergedContour.length; d++) {
+                   if (mergedContour[d]) {
+                      finalContour[d] = {
+                         left: mergedContour[d].left - parentX,
+                         right: mergedContour[d].right - parentX
+                      };
+                   }
+                }
+
+                return { positions, contour: finalContour };
+             };
+
+             const result = layoutSubtreeTB(root.id, 0);
+             result.positions.forEach((pos, id) => {
+                const n = newNodes.find(no => no.id === id);
+                if (n) {
+                   n.x = 2000 + pos.x;
+                   n.y = 2000 + pos.y;
+                   n.ox = n.x;
+                   n.oy = n.y;
+                   n.branchDir = 'Down';
+                }
+             });
+             return; 
+          }
+
+          if (rules.layoutStyle === 'horizontal_lr') { 
+             const layoutSubtreeLR = (nid, depth, seen = new Set()) => {
+                if (seen.has(nid) || seen.size > 1000) {
+                   return { positions: new Map(), contour: [] };
+                }
+                seen.add(nid);
+                
+                const n = newNodes.find(no => no.id === nid);
+                if (!n) return { positions: new Map(), contour: [] };
+
+                const children = newNodes.filter(no => no.parentId === nid);
+                const relativeX = depth * (224 + expansionJump);
+
+                if (children.length === 0) {
+                   const positions = new Map();
+                   positions.set(nid, { x: relativeX, y: 0 });
+                   return {
+                      positions,
+                      contour: [{ left: -50, right: 50 }]
+                   };
+                }
+
+                const descendantCounts = new Map();
+                const countDescendants = (id, seen = new Set()) => {
+                   if (seen.has(id)) return 0;
+                   seen.add(id);
+                   const cc = newNodes.filter(no => no.parentId === id);
+                   let count = cc.length;
+                   cc.forEach(c => { count += countDescendants(c.id, seen); });
+                   return count;
+                };
+                children.forEach(c => {
+                   descendantCounts.set(c.id, countDescendants(c.id));
+                });
+
+                const numCols = children.length > 12 ? 3 : (children.length > 3 ? 2 : 2);
+                const childSubtrees = [];
+                
+                children.forEach((child, i) => {
+                   const col = i % numCols;
+                   const descCount = descendantCounts.get(child.id) || 0;
+                   const extraDepth = descCount > 15 ? 2 : (descCount > 4 ? 1 : 0);
+                   const childDepthOffset = 1 + col + extraDepth;
+                   const childRes = layoutSubtreeLR(child.id, depth + childDepthOffset, seen);
+                   childSubtrees.push({
+                      id: child.id,
+                      depthOffset: childDepthOffset,
+                      positions: childRes.positions,
+                      contour: childRes.contour
+                   });
+                });
+
+                const mergedContour = [];
+                const positions = new Map();
+                const childrenYCoords = [];
+
+                const minSiblingYGap = 60 + siblingGap;
+                let lastShiftY = 0;
+
+                childSubtrees.forEach((sub, i) => {
+                   let shiftY = (i === 0) ? 0 : (lastShiftY + minSiblingYGap);
+                   
+                   for (let d = 0; d < sub.contour.length; d++) {
+                      const parentD = sub.depthOffset + d;
+                      if (mergedContour[parentD] && sub.contour[d]) {
+                         const overlap = mergedContour[parentD].right + vSpacing - sub.contour[d].left;
+                         if (overlap > shiftY) {
+                            shiftY = overlap;
+                         }
+                      }
+                   }
+
+                   sub.positions.forEach((pos, id) => {
+                      positions.set(id, { x: pos.x, y: pos.y + shiftY });
+                   });
+
+                   for (let d = 0; d < sub.contour.length; d++) {
+                      const parentD = sub.depthOffset + d;
+                      if (sub.contour[d]) {
+                         const left = sub.contour[d].left + shiftY;
+                         const right = sub.contour[d].right + shiftY;
+                         if (!mergedContour[parentD]) {
+                            mergedContour[parentD] = { left, right };
+                         } else {
+                            mergedContour[parentD].left = Math.min(mergedContour[parentD].left, left);
+                            mergedContour[parentD].right = Math.max(mergedContour[parentD].right, right);
+                         }
+                      }
+                   }
+
+                   childrenYCoords.push(shiftY);
+                   lastShiftY = shiftY;
+                });
+
+                const parentY = (childrenYCoords[0] + childrenYCoords[childrenYCoords.length - 1]) / 2;
+
+                positions.forEach((pos, id) => {
+                   pos.y -= parentY;
+                });
+                positions.set(nid, { x: relativeX, y: 0 });
+
+                const finalContour = [{ left: -50, right: 50 }];
+                for (let d = 0; d < mergedContour.length; d++) {
+                   if (mergedContour[d]) {
+                      finalContour[d] = {
+                         left: mergedContour[d].left - parentY,
+                         right: mergedContour[d].right - parentY
+                      };
+                   }
+                }
+
+                return { positions, contour: finalContour };
+             };
+
+             const result = layoutSubtreeLR(root.id, 0);
+             result.positions.forEach((pos, id) => {
+                const n = newNodes.find(no => no.id === id);
+                if (n) {
+                   n.x = 2000 + pos.x;
+                   n.y = 2000 + pos.y;
+                   n.ox = n.x;
+                   n.oy = n.y;
+                   n.branchDir = 'Right';
+                }
+             });
+             return; 
+          }
 
          const chs = newNodes.filter(n => n.parentId === root.id);
          const topChs = chs.filter(c => c.title.includes('Regions'));
@@ -552,6 +909,11 @@ export default function App() {
                   if (seen.has(nid) || seen.size > 1000) return 0; seen.add(nid);
                   const cc = newNodes.filter(n => n.parentId === nid);
                   if (cc.length === 0) return 1;
+                  const isLeafNode = (nodeId) => newNodes.filter(no => no.parentId === nodeId).length === 0;
+                  if (cc.length > 6 && cc.every(child => isLeafNode(child.id))) {
+                     const numCols = cc.length > 12 ? 3 : 2;
+                     return Math.ceil(cc.length / numCols);
+                  }
                   let s = 0; cc.forEach(ch => { s += walk(ch.id, seen); });
                   return s;
                };
@@ -567,24 +929,58 @@ export default function App() {
             const coords = new Map();
             const quadrantDist = dist * 1.2; 
             const run = (nid, dt, dep, ox, oy, seen = new Set()) => {
-               if (seen.has(nid) || seen.size > 1000) return 0; seen.add(nid);
-               const n = newNodes.find(node => node.id === nid);
-               if (!n) return 0;
-               const cc = newNodes.filter(node => node.parentId === nid);
-               let s = 0;
-               if (cc.length === 0) s = 1; else cc.forEach(ch => {
-                  if (dt === 'Right' || dt === 'Left') s += run(ch.id, dt, dep + 1, ox, oy + s * vSpacing, seen);
-                  else s += run(ch.id, dt, dep + 1, ox + s * hSpacing, oy, seen);
-               });
-               let nx, ny;
-               if (dt === 'Right') { nx = ox + (dep * (224 + quadrantDist)); ny = cc.length > 0 ? oy + ((s - 1) * vSpacing) / 2 : oy; }
-               else if (dt === 'Left') { nx = ox - (dep * (224 + quadrantDist)); ny = cc.length > 0 ? oy + ((s - 1) * vSpacing) / 2 : oy; }
-               else if (dt === 'Down') { nx = cc.length > 0 ? ox + ((s - 1) * hSpacing) / 2 : ox; ny = oy + (dep * (100 + quadrantDist)); }
-               else if (dt === 'Up') { nx = cc.length > 0 ? ox + ((s - 1) * hSpacing) / 2 : ox; ny = oy - (dep * (100 + quadrantDist)); }
-               
-               if (isNaN(nx)) nx = ox; if (isNaN(ny)) ny = oy;
-               coords.set(nid, { x: nx, y: ny }); return s;
-            };
+                if (seen.has(nid) || seen.size > 1000) return 0; seen.add(nid);
+                const n = newNodes.find(node => node.id === nid);
+                if (!n) return 0;
+                const cc = newNodes.filter(node => node.parentId === nid);
+                let s = 0;
+                if (cc.length === 0) {
+                   s = 1;
+                } else {
+                   const isLeafNode = (nodeId) => newNodes.filter(no => no.parentId === nodeId).length === 0;
+                   if (cc.length > 6 && cc.every(child => isLeafNode(child.id))) {
+                      const numCols = cc.length > 12 ? 3 : 2;
+                      const colWidth = 264; // 224 node width + 40 gap
+                      cc.forEach((child, i) => {
+                         seen.add(child.id);
+                         const col = i % numCols;
+                         const row = Math.floor(i / numCols);
+                         let cx, cy;
+                         if (dt === 'Right') {
+                            cx = ox + (dep * (224 + quadrantDist)) + col * colWidth;
+                            cy = oy + row * vSpacing;
+                         } else if (dt === 'Left') {
+                            cx = ox - (dep * (224 + quadrantDist)) - col * colWidth;
+                            cy = oy + row * vSpacing;
+                         } else if (dt === 'Down') {
+                            cx = ox + col * hSpacing;
+                            cy = oy + (dep * (100 + quadrantDist)) + row * vSpacing;
+                         } else if (dt === 'Up') {
+                            cx = ox + col * hSpacing;
+                            cy = oy - (dep * (100 + quadrantDist)) - row * vSpacing;
+                         }
+                         child.x = cx; child.y = cy;
+                         child.ox = cx; child.oy = cy;
+                         child.branchDir = dt;
+                         coords.set(child.id, { x: cx, y: cy });
+                      });
+                      s = Math.ceil(cc.length / numCols);
+                   } else {
+                      cc.forEach(ch => {
+                         if (dt === 'Right' || dt === 'Left') s += run(ch.id, dt, dep + 1, ox, oy + s * vSpacing, seen);
+                         else s += run(ch.id, dt, dep + 1, ox + s * hSpacing, oy, seen);
+                      });
+                   }
+                }
+                let nx, ny;
+                if (dt === 'Right') { nx = ox + (dep * (224 + quadrantDist)); ny = cc.length > 0 ? oy + ((s - 1) * vSpacing) / 2 : oy; }
+                else if (dt === 'Left') { nx = ox - (dep * (224 + quadrantDist)); ny = cc.length > 0 ? oy + ((s - 1) * vSpacing) / 2 : oy; }
+                else if (dt === 'Down') { nx = cc.length > 0 ? ox + ((s - 1) * hSpacing) / 2 : ox; ny = oy + (dep * (100 + quadrantDist)); }
+                else if (dt === 'Up') { nx = cc.length > 0 ? ox + ((s - 1) * hSpacing) / 2 : ox; ny = oy - (dep * (100 + quadrantDist)); }
+                
+                if (isNaN(nx)) nx = ox; if (isNaN(ny)) ny = oy;
+                coords.set(nid, { x: nx, y: ny }); return s;
+             };
             
             let safeSpan = Math.max(1, span);
             let cx = root.x - ((safeSpan - 1) * hSpacing / 2);
@@ -642,8 +1038,16 @@ export default function App() {
             const adx = Math.abs(dx);
             const ady = Math.abs(dy);
 
-            const padH = 250 + siblingGap * 0.5;
-            const padV = 120 + siblingGap * 0.5;
+            let padH = 250 + siblingGap * 0.5;
+            let padV = 120 + siblingGap * 0.5;
+
+            if (rules.layoutStyle === 'vertical_tb') {
+               padH = 224 + siblingGap;
+               padV = 100 + siblingGap;
+            } else if (rules.layoutStyle === 'horizontal_lr') {
+               padH = 224 + siblingGap;
+               padV = 100 + siblingGap;
+            }
 
             if (adx < padH && ady < padV) {
                changed = true;
@@ -756,6 +1160,7 @@ export default function App() {
     // SunburstCanvas registers its own passive:false wheel handler on its container.
     if (layoutRules.projectionMode === 'spatial_3d' || layoutRules.projectionMode === 'sunburst') return;
     e.preventDefault();
+    setIsZooming(true);
     const factor = Math.exp(e.deltaY * -0.001);
     const v = viewRef.current;
     const ns = Math.min(Math.max(v.scale * factor, 0.1), 3);
@@ -770,7 +1175,13 @@ export default function App() {
     if (meshRef.current) {
         meshRef.current.style.transform = `translate3d(${nv.x}px, ${nv.y}px, 0) scale(${nv.scale})`;
     }
-    setView(nv); // Wheel zoom needs state sync for node clarity/LOD
+    
+    // Throttle/Debounce state updates for buttery smooth zoom performance
+    if (zoomTimeoutRef.current) clearTimeout(zoomTimeoutRef.current);
+    zoomTimeoutRef.current = setTimeout(() => {
+      setView(viewRef.current);
+      setIsZooming(false);
+    }, 100);
   };
 
   const handleMouseDown = (e) => {
@@ -783,10 +1194,25 @@ export default function App() {
     if (e.button === 0) setDragType('pan');
     if (e.button === 2) { e.preventDefault(); setDragType('zoom'); }
     
+    dragStartRef.current = { x: e.clientX, y: e.clientY };
     // Auto-collapse sidebars ONLY when clicking the ACTUAL mesh background
     setIsEditorOpen(false); 
     setIsAdminOpen(false);
     setLastPos({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleSectionClick = (e) => {
+    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('[drag]') || e.target.closest('.fixed') || e.target.closest('.glass-panel')) return;
+    if (layoutRules.projectionMode === 'sunburst') return;
+    const start = dragStartRef.current;
+    if (start) {
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 5) {
+        setSelectedNode(null);
+      }
+    }
   };
 
   useEffect(() => {
@@ -832,6 +1258,18 @@ export default function App() {
     );
   }
 
+  if (currentPath === '/demo' || currentPath.startsWith('/demo/')) {
+    return (
+      <DemoPortal 
+        nodes={filteredNodes} 
+        theme={state.theme} 
+        onThemeToggle={actions.toggleTheme} 
+        currentPath={currentPath}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
   if (!authStatus?.isAuthorized || !settings?.isConfigured) {
     return (
       <OnboardingSetup
@@ -842,19 +1280,33 @@ export default function App() {
     );
   }
 
-  const nodeTipPos = { x: -9999, y: -9999 };
-  const linkTipPos = { x: -9999, y: -9999 };
+  const getInitialTipPos = () => {
+    const mouse = lastMousePosRef.current;
+    const tw = 360;
+    const th = 300; // estimated/average height
+    let nx = mouse.x + 35;
+    let ny = mouse.y + 10;
+    if (nx + tw > window.innerWidth - 30) nx = mouse.x - tw - 35;
+    const overflowBottom = ny + th > window.innerHeight - 30;
+    const isBottomHalf = mouse.y > window.innerHeight * 0.55;
+    if (isBottomHalf || overflowBottom) ny = mouse.y - th - 10;
+    return { x: Math.max(15, nx), y: Math.max(15, ny) };
+  };
+
+  const nodeTipPos = getInitialTipPos();
+  const linkTipPos = getInitialTipPos();
 
   return (
     <>
       <div className="fixed inset-0 pointer-events-none z-[1000000]">
-        <AnimatePresence mode="wait">
+        <AnimatePresence>
           {(state.showGraph && hoveredNodeId && !isDraggingNode && !dragType && !is3DInteracting && activeDisplayNode) && (
             <motion.div 
               id="mesh-tooltip"
-              initial={{ opacity: 0, scale: 0.9, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 10 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.04 }}
               className={`fixed glass-panel border rounded-[16px] p-5 flex flex-col shadow-lg z-[2000] pointer-events-none ${
                 state.theme === 'light' ? 'border-[#2E2B27]/15' : 'border-white/10'
               }`}
@@ -903,7 +1355,10 @@ export default function App() {
           {(state.showGraph && hoveredLinkData && !isDraggingNode && !dragType && !is3DInteracting) && (
             <motion.div 
               id="mesh-tooltip"
-              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.04 }}
               className={`fixed glass-panel p-4 w-[360px] border rounded-[16px] shadow-lg z-[2000000] pointer-events-none flex flex-col ${
                 state.theme === 'light' 
                   ? 'border-[#2E2B27]/15' 
@@ -1017,6 +1472,7 @@ export default function App() {
             className={`flex-1 relative overflow-hidden rounded-3xl border border-white/5 shadow-2xl transition-all duration-700 ${(isAdminOpen || isEditorOpen) && layoutRules.projectionMode !== 'sunburst' ? 'pointer-events-none grayscale-[0.4] opacity-80' : 'pointer-events-auto'}`}
             style={{ height: '100%', background: layoutRules.projectionMode === '2d' ? (state.theme === 'light' ? '#ece8dd' : '#000000') : (state.theme === 'light' ? 'rgba(236,232,221,0.4)' : 'rgba(0,0,0,0.2)') }}
             onMouseDown={handleMouseDown} 
+            onClick={handleSectionClick}
             onContextMenu={(e) => e.preventDefault()} 
             onWheel={layoutRules.projectionMode === 'spatial_3d' ? undefined : handleWheel}
           >
@@ -1056,7 +1512,7 @@ export default function App() {
                 }`}
                 title="radial"
               >
-                <Network size={14} />
+                <CircleDot size={14} />
               </button>
 
               {/* Horizontal LR (2D) */}
@@ -1087,6 +1543,36 @@ export default function App() {
                 title="horizontal_lr"
               >
                 <GitMerge size={14} />
+              </button>
+
+              {/* Vertical TB (2D) */}
+              <button 
+                onClick={() => {
+                  setSelectedNode(null);
+                  const r = { ...layoutRules, projectionMode: '2d', layoutStyle: 'vertical_tb' };
+                  setLayoutRules(r);
+                  applyLayout(r);
+                  
+                  // Force Zoom & Position reset
+                  const nv = { x: -390, y: -640, scale: 0.36 };
+                  viewRef.current = nv;
+                  setView(nv);
+                  if (meshRef.current) {
+                    meshRef.current.style.transform = `translate3d(${nv.x}px, ${nv.y}px, 0) scale(${nv.scale})`;
+                  }
+                }}
+                className={`w-8 h-8 flex items-center justify-center rounded-[8px] transition-all active:scale-[0.95] ${
+                  (layoutRules.projectionMode === '2d' && layoutRules.layoutStyle === 'vertical_tb') 
+                    ? (state.theme === 'light' 
+                        ? 'bg-[#899981]/25 border border-[#899981]/40 text-[#4E5A47]' 
+                        : 'bg-brand-cyan/20 border border-brand-cyan/20 text-brand-cyan') 
+                    : (state.theme === 'light' 
+                        ? 'text-[#6A645D] hover:bg-[#2E2B27]/5 hover:text-[#2E2B27]' 
+                        : 'text-slate-500 hover:bg-white/5 hover:text-white')
+                }`}
+                title="vertical_tb"
+              >
+                <Network size={14} />
               </button>
 
               <div className={`w-px h-4 mx-0.5 self-center transition-colors duration-300 ${
@@ -1185,7 +1671,7 @@ export default function App() {
                          <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>CHILD GAP</span><span className="text-white font-mono">{layoutRules.childGap}px</span></div><input type="range" min="0" max="150" value={layoutRules.childGap} onChange={(e) => { const u = { ...layoutRules, childGap: parseInt(e.target.value) }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
                          <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>PARENT DISTANCE</span><span className="text-white font-mono">{layoutRules.parentDistance}px</span></div><input type="range" min="100" max="1000" value={layoutRules.parentDistance} onChange={(e) => { const u = { ...layoutRules, parentDistance: parseInt(e.target.value) }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
                          <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>TENSION</span><span className="text-white font-mono">{layoutRules.connectionTension}%</span></div><input type="range" min="10" max="100" value={layoutRules.connectionTension} onChange={(e) => { const u = { ...layoutRules, connectionTension: parseInt(e.target.value) }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
-                         
+                         <div className="flex flex-col gap-1.5"><div className="flex justify-between items-center text-[9px] font-bold text-brand-cyan/80"><span>SIBLING SPREAD</span><span className="text-white font-mono">{Math.round((layoutRules.siblingMultiplier ?? 0.32) * 100)}%</span></div><input type="range" min="0" max="100" value={Math.round((layoutRules.siblingMultiplier ?? 0.32) * 100)} onChange={(e) => { const u = { ...layoutRules, siblingMultiplier: parseFloat(e.target.value) / 100 }; setLayoutRules(u); applyLayout(u); }} className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-cyan" /></div>
                            <div className="flex gap-1 justify-center border-t border-white/5 pt-3 mt-1">
                               <button 
                                 onClick={() => setLayoutRules({ ...layoutRules, showLabels: !layoutRules.showLabels })} 
@@ -1198,6 +1684,72 @@ export default function App() {
                           </div>
                       </div>
                    </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <AnimatePresence>
+              {connectionSourceId && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20, x: '-50%' }}
+                  animate={{ opacity: 1, y: 0, x: '-50%' }}
+                  exit={{ opacity: 0, y: -20, x: '-50%' }}
+                  className="absolute top-24 left-1/2 z-[100] transform -translate-x-1/2 flex flex-col gap-2 p-3 bg-slate-900/90 backdrop-blur-xl border border-brand-cyan/40 rounded-2xl shadow-2xl pointer-events-auto w-80"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-brand-cyan animate-pulse" />
+                      <span className="text-[10px] font-black tracking-wider text-slate-400 uppercase">
+                        CONNECT FROM:
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setConnectionSourceId(null);
+                        setConnSearchQuery('');
+                      }}
+                      className="p-1 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+                    >
+                      <X size={12} className="text-slate-400 hover:text-white" />
+                    </button>
+                  </div>
+                  <div className="text-[11px] font-bold text-white truncate px-1">
+                    {nodes.find((n) => n.id === connectionSourceId)?.title || connectionSourceId}
+                  </div>
+                  <div className="relative mt-1">
+                    <input
+                      type="text"
+                      placeholder="Type target node name..."
+                      value={connSearchQuery}
+                      onChange={(e) => setConnSearchQuery(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-2.5 py-1 text-[11px] text-white focus:outline-none focus:border-brand-cyan/50 placeholder-slate-500"
+                      autoFocus
+                    />
+                    {connSuggestions.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 mt-1.5 bg-slate-950/95 border border-white/10 rounded-lg shadow-2xl overflow-hidden z-50 flex flex-col">
+                        {connSuggestions.map((node) => (
+                          <button
+                            key={node.id}
+                            onClick={() => {
+                              setNodes(prev => prev.map(n => {
+                                if (n.id === connectionSourceId) {
+                                  const links = n.secondaryLinks || [];
+                                  if (!links.includes(node.id)) {
+                                    return { ...n, secondaryLinks: [...links, node.id] };
+                                  }
+                                }
+                                return n;
+                              }));
+                              setConnectionSourceId(null);
+                              setConnSearchQuery('');
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-[10px] hover:bg-white/5 text-slate-300 hover:text-brand-cyan transition-colors border-b border-white/5 last:border-b-0 font-medium truncate"
+                          >
+                            {node.title}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -1229,6 +1781,14 @@ export default function App() {
                 nodes={filteredNodes}
                 onSelectNode={handleSelectNode}
                 onOpenDrawer={handleOpenDrawer}
+                onAddOffshoot={(id) => {
+                    setActiveParentId(id);
+                    setIsEditorOpen(true);
+                    setEditingNode(null);
+                    setCurrentType('CONCEPT');
+                    setFormData({ title: '[NEW_ENTITY_SPEC]', content: {}, tier: 3 });
+                }}
+                onStartConnection={(id) => setConnectionSourceId(id)}
                 hoveredNodeId={hoveredNodeId}
                 setHoveredNodeId={handleHoverNode}
                 selectedNode={selectedNode}
@@ -1246,10 +1806,18 @@ export default function App() {
               <InstancedSpatialCanvas 
                 nodes={filteredNodes}
                 onSelectNode={handleOpenDrawer}
+                onOpenDrawer={handleOpenDrawer}
+                onAddOffshoot={(id) => {
+                    setActiveParentId(id);
+                    setIsEditorOpen(true);
+                    setEditingNode(null);
+                    setCurrentType('CONCEPT');
+                    setFormData({ title: '[NEW_ENTITY_SPEC]', content: {}, tier: 3 });
+                }}
+                onStartConnection={(id) => setConnectionSourceId(id)}
                 hoveredNodeId={hoveredNodeId}
                 setHoveredNodeId={handleHoverNode}
                 selectedNode={selectedNode}
-                onOpenDrawer={handleOpenDrawer}
                 onZoomChange={setZoom3D}
                 onCoordsChange={setCoords3D}
                 theme={state.theme}
@@ -1260,11 +1828,24 @@ export default function App() {
               <MeshCanvas 
                 meshRef={meshRef}
                 nodes={filteredNodes} view={view} layoutRules={layoutRules} hoveredNodeId={hoveredNodeId} setHoveredNodeId={handleHoverNode}
-                hoveredLinkId={hoveredLinkId} setHoveredLinkId={setHoveredLinkId} setHoveredLinkData={setHoveredLinkData} 
-                isMovingMesh={!!dragType} isSidebarOpen={isAdminOpen || isEditorOpen}
+                hoveredLinkId={hoveredLinkId} onHoverLink={handleHoverLink}                 isMovingMesh={!!dragType || isZooming} isSidebarOpen={isAdminOpen || isEditorOpen}
                 movingNodeId={movingNodeId}
                 selectedNode={selectedNode}
                 onSelectNode={(n) => { 
+                    if (connectionSourceId) {
+                        if (n.id === connectionSourceId) { setConnectionSourceId(null); return; }
+                        setNodes(prev => prev.map(node => {
+                            if (node.id === connectionSourceId) {
+                                const links = node.secondaryLinks || [];
+                                if (!links.includes(n.id)) {
+                                    return { ...node, secondaryLinks: [...links, n.id] };
+                                }
+                            }
+                            return node;
+                        }));
+                        setConnectionSourceId(null);
+                        return;
+                    }
                     if (movingNodeId) {
                         if (n.id === movingNodeId) { setMovingNodeId(null); return; }
                         const updatedNodes = nodes.map(node => node.id === movingNodeId ? { ...node, parentId: n.id } : node);
@@ -1273,9 +1854,11 @@ export default function App() {
                         applyLayout(layoutRules, updatedNodes);
                         return;
                     }
-                    setSelectedNode(n); setIsEditorOpen(true); setEditingNode(n); setCurrentType(n.type); setFormData({ title: n.title, content: n.content || {}, tier: n.tier || 3 }); 
+                    setSelectedNode(n);
                 }} 
+                onOpenDrawer={handleOpenDrawer}
                 onAddOffshoot={(id) => { setActiveParentId(id); setIsEditorOpen(true); setEditingNode(null); setCurrentType('CONCEPT'); setFormData({ title: '[NEW_ENTITY_SPEC]', content: {}, tier: 3 }); }} 
+                onStartConnection={(id) => setConnectionSourceId(id)}
                 onNodeDrag={(id, dx, dy) => setNodes(prev => prev.map(n => n.id === id ? { ...n, x: n.x + dx, y: n.y + dy } : n))}
                 onNodeDragEnd={(id) => setNodes(prev => prev.map(n => n.id === id ? { ...n, ox: n.x, oy: n.y } : n))}
                 onStartReparent={(id) => setMovingNodeId(id)}
@@ -1402,6 +1985,7 @@ export default function App() {
              setCurrentType={setCurrentType} 
              formData={formData} 
              setFormData={setFormData} 
+             onSelectNode={handleOpenDrawer} 
              onSave={(u) => { 
                 if (editingNode) {
                     const updatedNode = { ...editingNode, ...u, title: formData.title, type: currentType, tier: formData.tier || 3 };

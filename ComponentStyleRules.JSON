@@ -331,6 +331,66 @@
     "behavior": {
       "resizing": "Resizable split-pane with active cursor col-resize and drag tracking bounds"
     }
+  },
+  "NodeActionsMenu": {
+    "aesthetics": {
+      "button": "w-5 h-5 flex items-center justify-center rounded-full bg-slate-900/90 hover:bg-brand-cyan text-white hover:text-black border border-white/20 hover:border-brand-cyan shadow-lg transition-all active:scale-[0.9] cursor-pointer",
+      "dropdown": "mt-1 flex flex-col gap-1 p-1 bg-slate-900/95 border border-white/10 rounded-lg shadow-xl min-w-[100px] backdrop-blur-md",
+      "dropdownItem": "flex items-center gap-1.5 px-2 py-1 text-[9px] font-black tracking-wider text-left text-white hover:text-brand-cyan hover:bg-white/5 rounded transition-all cursor-pointer uppercase",
+      "connectionBanner": "absolute top-24 left-1/2 z-[100] transform -translate-x-1/2 flex flex-col gap-2 p-3 bg-slate-900/90 backdrop-blur-xl border border-brand-cyan/40 rounded-2xl shadow-2xl pointer-events-auto w-80",
+      "connectionInput": "w-full bg-white/5 border border-white/10 rounded-lg px-2.5 py-1 text-[11px] text-white focus:outline-none focus:border-brand-cyan/50 placeholder-slate-500",
+      "connectionSuggestions": "absolute top-full left-0 right-0 mt-1.5 bg-slate-950/95 border border-white/10 rounded-lg shadow-2xl overflow-hidden z-50 flex flex-col"
+    }
+  },
+  "SharePointPortalView": {
+    "aesthetics": {
+      "navbar": {
+        "background": "#1E4479",
+        "textColor": "#FFFFFF",
+        "dropdownHover": "rgba(255, 255, 255, 0.15)",
+        "dropdownBg": "#FFFFFF",
+        "dropdownText": "#000000"
+      },
+      "pills": {
+        "parentBg": "#1E4479",
+        "parentText": "#FFFFFF",
+        "typeBorder": "Dynamic based on ENTITY_TYPES"
+      },
+      "definitionBox": {
+        "background": "#1E4479",
+        "textColor": "#FFFFFF"
+      },
+      "inheritedBox": {
+        "border": "1px solid rgba(0, 0, 0, 0.1)",
+        "background": "#FFFFFF",
+        "shadow": "shadow-sm"
+      }
+    }
+  },
+  "IntelligenceDrawer": {
+    "aesthetics": {
+      "viewModeToggle": {
+        "light": "bg-[#899981]/15 border-[#899981]/30 text-[#4E5A47] hover:bg-[#899981]/25 active:scale-[0.98]",
+        "dark": "bg-brand-cyan/10 border-brand-cyan/30 text-brand-cyan hover:bg-brand-cyan/20 active:scale-[0.98]"
+      },
+      "commitButton": {
+        "active": "bg-[var(--gradient-primary)] text-white shadow-[var(--shadow-glow)] hover:brightness-[1.05] hover:shadow-[var(--shadow-glow-hover)] active:scale-[0.98]",
+        "disabled": "bg-[var(--glass-border)] text-[var(--text-muted)] opacity-40 cursor-not-allowed pointer-events-none"
+      }
+    },
+    "DemoPortal": {
+      "aesthetics": {
+        "layout": "min-h-screen w-full flex flex-col font-sans transition-colors duration-500",
+        "header": "px-6 py-4 flex items-center justify-between border-b backdrop-blur-xl sticky top-0 z-50",
+        "tabs": "flex items-center gap-1.5 p-1 rounded-xl border",
+        "activeTab": {
+          "dark": "bg-brand-cyan/20 text-brand-cyan border border-brand-cyan/25 px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider",
+          "light": "bg-[#899981]/20 text-[#4E5A47] border border-[#899981]/30 px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider"
+        },
+        "cards": "p-5 rounded-2xl border backdrop-blur-xl flex flex-col gap-1 transition-all",
+        "sunburstContainer": "w-full h-[650px] relative rounded-3xl overflow-hidden border border-white/5 shadow-2xl"
+      }
+    }
   }
 }
 

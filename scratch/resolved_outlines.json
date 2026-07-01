@@ -1,0 +1,298 @@
+{
+  "Building Knowledge Graphs.pdf": [
+    {
+      "title": "Richer Graph Models",
+      "level": 2,
+      "pageNumber": 23
+    },
+    {
+      "title": "Querying the Metadata Graph Model",
+      "level": 1,
+      "pageNumber": 143
+    },
+    {
+      "title": "Chapter 9. Identity Knowledge Graphs",
+      "level": 0,
+      "pageNumber": 147
+    },
+    {
+      "title": "Advanced Graph Dependency Modeling",
+      "level": 1,
+      "pageNumber": 202
+    },
+    {
+      "title": "Path Similarity",
+      "level": 2,
+      "pageNumber": 270
+    }
+  ],
+  "Large-scale Graph Analysis System Algorithm and Optimization.pdf": [
+    {
+      "title": "2.4 Workload-Aware Cost Model for Optimizations",
+      "level": 1,
+      "pageNumber": 32
+    },
+    {
+      "title": "2.4.1 Cost Model Analysis",
+      "level": 2,
+      "pageNumber": 32
+    },
+    {
+      "title": "2.4.1.1 Cost Model of BSP-Based Systems",
+      "level": 3,
+      "pageNumber": 32
+    },
+    {
+      "title": "2.4.1.2 Cost Model in the Context of Graph",
+      "level": 3,
+      "pageNumber": 34
+    },
+    {
+      "title": "3.3.3 Partition-Aware Concurrency Control Model",
+      "level": 2,
+      "pageNumber": 48
+    },
+    {
+      "title": "3.4.2 Evaluation on the Concurrency Control Model",
+      "level": 2,
+      "pageNumber": 55
+    },
+    {
+      "title": "5.2.3.1 Path Enumeration and Pair-Wise Aggregation",
+      "level": 3,
+      "pageNumber": 100
+    },
+    {
+      "title": "5.3.1 Primitive Pattern and Path Concatenation Plan",
+      "level": 2,
+      "pageNumber": 102
+    },
+    {
+      "title": "5.5 Path Concatenation Plan Selection ",
+      "level": 1,
+      "pageNumber": 109
+    },
+    {
+      "title": "5.5.1 The Path Size Estimation for PCP",
+      "level": 2,
+      "pageNumber": 110
+    },
+    {
+      "title": "5.5.2.2 Path Optimized Strategy",
+      "level": 3,
+      "pageNumber": 111
+    },
+    {
+      "title": "6.4.1 Subgraph-Oriented Model",
+      "level": 2,
+      "pageNumber": 131
+    }
+  ],
+  "The Practitioners Guide to Graph Data.pdf": [
+    {
+      "title": "Relational Data Modeling",
+      "level": 1,
+      "pageNumber": 45
+    },
+    {
+      "title": "Full Example Graph Model",
+      "level": 2,
+      "pageNumber": 61
+    },
+    {
+      "title": "Data Modeling",
+      "level": 2,
+      "pageNumber": 63
+    },
+    {
+      "title": "Data Models",
+      "level": 2,
+      "pageNumber": 71
+    },
+    {
+      "title": "Data Models",
+      "level": 2,
+      "pageNumber": 82
+    },
+    {
+      "title": "Relational Versus Graph: Data Modeling",
+      "level": 2,
+      "pageNumber": 95
+    },
+    {
+      "title": "Graph Data Modeling 101",
+      "level": 1,
+      "pageNumber": 102
+    },
+    {
+      "title": "A Graph Has No Name: Common Mistakes in Naming",
+      "level": 2,
+      "pageNumber": 109
+    },
+    {
+      "title": "Our Full Development Graph Model",
+      "level": 2,
+      "pageNumber": 111
+    },
+    {
+      "title": "The Most Important Topic to Understand About Data Modeling: Primary Keys",
+      "level": 2,
+      "pageNumber": 140
+    },
+    {
+      "title": "Partition Keys and Data Locality in a Distributed Environment",
+      "level": 2,
+      "pageNumber": 141
+    },
+    {
+      "title": "Graph Data Modeling 201",
+      "level": 1,
+      "pageNumber": 156
+    },
+    {
+      "title": "Depth in Walks, Paths, and Cycles",
+      "level": 2,
+      "pageNumber": 180
+    },
+    {
+      "title": "Conceptual Model Using the GSL Notation",
+      "level": 2,
+      "pageNumber": 190
+    },
+    {
+      "title": "From This Sensor, What Was Its Path to Any Tower?",
+      "level": 2,
+      "pageNumber": 198
+    },
+    {
+      "title": "What Valid Paths Can We Find from Georgetown Down to All Sensors?",
+      "level": 2,
+      "pageNumber": 235
+    },
+    {
+      "title": "Chapter 8. Finding Paths in Development",
+      "level": 0,
+      "pageNumber": 245
+    },
+    {
+      "title": "How Do Companies Model Package Delivery?",
+      "level": 2,
+      "pageNumber": 248
+    },
+    {
+      "title": "Fundamental Concepts About Paths",
+      "level": 1,
+      "pageNumber": 249
+    },
+    {
+      "title": "Shortest Paths",
+      "level": 2,
+      "pageNumber": 250
+    },
+    {
+      "title": "Learning to See Application Features as Different Path Problems",
+      "level": 2,
+      "pageNumber": 253
+    },
+    {
+      "title": "Finding Paths in a Trust Network",
+      "level": 1,
+      "pageNumber": 254
+    },
+    {
+      "title": "Shortest Path Queries",
+      "level": 1,
+      "pageNumber": 266
+    },
+    {
+      "title": "Finding Paths of a Fixed Length",
+      "level": 2,
+      "pageNumber": 267
+    },
+    {
+      "title": "Finding Paths of Any Length",
+      "level": 2,
+      "pageNumber": 270
+    },
+    {
+      "title": "Augmenting Our Paths with the Trust Scores",
+      "level": 2,
+      "pageNumber": 273
+    },
+    {
+      "title": "Chapter 9. Finding Paths in Production",
+      "level": 0,
+      "pageNumber": 281
+    },
+    {
+      "title": "Weighted Paths and Search Algorithms",
+      "level": 1,
+      "pageNumber": 282
+    },
+    {
+      "title": "Shortest Weighted Path Problem Definition",
+      "level": 2,
+      "pageNumber": 283
+    },
+    {
+      "title": "Shortest Weighted Path Search Optimizations",
+      "level": 2,
+      "pageNumber": 284
+    },
+    {
+      "title": "Normalization of Edge Weights for Shortest Path Problems",
+      "level": 1,
+      "pageNumber": 287
+    },
+    {
+      "title": "Some Thoughts Before Moving On to Shortest Weighted Path Queries",
+      "level": 2,
+      "pageNumber": 297
+    },
+    {
+      "title": "Shortest Weighted Path Queries",
+      "level": 1,
+      "pageNumber": 297
+    },
+    {
+      "title": "Building a Shortest Weighted Path Query for Production",
+      "level": 2,
+      "pageNumber": 298
+    },
+    {
+      "title": "Weighted Paths and Trust in Production",
+      "level": 1,
+      "pageNumber": 308
+    },
+    {
+      "title": "Three Different Models for Ranking Recommendations",
+      "level": 2,
+      "pageNumber": 319
+    },
+    {
+      "title": "Data Model for Movie Recommendations",
+      "level": 2,
+      "pageNumber": 323
+    },
+    {
+      "title": "Path Queries in the Movie Data",
+      "level": 2,
+      "pageNumber": 336
+    },
+    {
+      "title": "Model 1: Counting Paths in the Recommendation Set",
+      "level": 2,
+      "pageNumber": 338
+    },
+    {
+      "title": "Model 2: NPS-Inspired",
+      "level": 2,
+      "pageNumber": 339
+    },
+    {
+      "title": "Model 3: Normalized NPS",
+      "level": 2,
+      "pageNumber": 342
+    }
+  ]
+}

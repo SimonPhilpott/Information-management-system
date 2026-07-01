@@ -149,7 +149,7 @@ export function useAppLogic() {
   const [showGraph, setShowGraph] = useState(false);
 
   // Active UI theme configuration
-  const [theme, setTheme] = useState(() => localStorage.getItem('app-theme') || 'dark');
+  const [theme, setTheme] = useState(() => localStorage.getItem('app-theme') || 'light');
   const [showCitations, setShowCitations] = useState(() => {
     const saved = localStorage.getItem('app-show-citations');
     return saved !== null ? JSON.parse(saved) : false;

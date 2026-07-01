@@ -1,0 +1,1232 @@
+========================================================
+BOOK: Building Knowledge Graphs.pdf
+========================================================
+
+### RANGE: Identity Knowledge Graphs (Pages 147-157) ###
+
+--- Page 147 ---
+CHAPTER 9
+Identity Knowledge Graphs
+Being able to confidently identify a person or thing is a bedrock of business infor‐
+mation systems. Given two records, can you determine if they represent the same
+real-world thing (a person, an organization, a place, and so on)?
+This problem commonly arises when integrating data from different systems, when
+you need to reason that a record in one system has a counterpart (or not) in the other.
+In that context, it is often referred to as entity resolution or master data management.
+In this chapter, you will learn how knowledge graphs help you address the problem
+of identity. You will see how the topology of a knowledge graph can give you the
+confidence to link multiple entities and allow you to reason about them as if they
+were a single golden record.
+Knowing Your Customer
+Identity and its myriad of difficulties is part of our everyday experience. For example,
+Jane Coleman has been a happy and profitable customer of the Bank’s credit card for
+several years.
+Some months ago, Jane married her husband Peter and decided to take his name.
+Jane Downe and Peter Downe are the owners of a joint checking account with the
+Bank. But how can the Bank know that Jane Coleman and Jane Downe are the same
+person? There’s no obligation on Jane to tell the Bank; indeed, she is free to continue
+to use her maiden name (a not unusual practice among certain professionals like
+doctors).
+As a consequence, Jane regularly gets letters in her mailbox inviting her to open a
+credit card account, which she already has. This is clearly a waste of time and money,
+and probably a modest annoyance to Jane. But were Jane to be a fraudster, then
+135
+
+--- Page 148 ---
+tracking down all her activities would be hampered by not being able to discern a
+single identity.
+When records have a consistent strong identifier, then it’s easy to connect them.
+It’s one of the reasons why database practitioners are so concerned with things like
+unique identifiers to help solve that problem. At a human level, think of things like
+a Social Security number or a passport number for an individual, a product’s unique
+SKU, or a unique company identifier issued by a government agency.
+But not everything is as simple as a unique identifier. There are cases like the one
+in the banking example described earlier where strong identifiers may exist but are
+not consistent across all data. Maybe Jane opened her credit card account using her
+driver’s license and the current account using her passport.
+The data in Example 9-1 paints a typical picture of the problem. Rows 1 and 2 are
+easy to link. You can see they have the same Passport entry, so you can safely reason
+that Pete Downe and Peter J. Downe are the same person.
+Example 9-1. Two records representing the same product
+rowid, Source, AccountNo, Name, Passport, DriversLic, DOB
+1, "Credit", 9918475, "Pete Downe", "VX83041",, 1987-03-12
+2, "Current", 2436930, "Peter J. Downe", "VX83041",, 1987-03-12
+3, "Credit", , "Jane Coleman", ,"49587640", 1989-10-28
+4, "Current", 2436930, "Jane Downe", "RA14958", , 1989-10-28
+Rows 3 and 4 in Example 9-1 are much harder to discern. There are different names
+(Jane’s maiden and married names) and no common alphanumeric identifiers. Given
+just this data, you’d have to conclude there’s a strong possibility of two people being
+represented in those rows.
+Things become even more problematic in the absence of strong identifiers. In those
+cases, you will need to use whichever features are available, and often a combination,
+to try to determine if two similar references refer to the same thing.
+When Does the Problem Appear?
+There are several scenarios where you may face duplicated data. Some of the most
+common are:
+Data integration
+This is probably the most frequent case. Different applications store variants
+of the same data for different functions, but often the data from multiple sys‐
+tems needs to be combined for analytics purposes. Sales applications, customer
+relationship management (CRM), marketing, and so on all hold customer data
+(or product data, or event data…), but that data is collected and managed
+136 | Chapter 9: Identity Knowledge Graphs
+
+--- Page 149 ---
+independently. This results in records being identified and described in different
+ways by each, without consistent strong identifiers across systems.
+Any analytic workload (analysis, reporting, predictive model building) of the
+integrated data is unreliable without first having solved the duplication problem.
+Duplicate records must be identified in order to merge them into master data
+entities (golden records) to establish a single trusted view.
+Anonymous activity
+Many publicly accessible systems allow users to interact with them without
+authenticating (e.g., to browse products). By definition, there is no authentica‐
+tion of the user that can be used to identify them, but users do leave traces
+(clickstream) of their activity and the devices they use to access those systems.
+These traces will include features like time, cookie IDs, and even the navigational
+choices they made, which can help identify patterns and eventually unique users
+and sessions.
+Intentional/fraudulent duplicates
+Sometimes duplicates are created intentionally when bad actors are trying to beat
+a system. Examples include:
+• Individuals trying to get better insurance quotes by slightly adjusting some•
+parameters like their address, their age, or others
+• In more sophisticated cases, users trying to abuse service trials by authenti‐•
+cating with different credentials (fake emails or names, etc.)
+• Online sellers posting multiple small variants of the same product listing in•
+an attempt to maximize its chances of being seen and ultimately sold
+All these scenarios share the same fundamental question: given two records, do they
+refer to the same or to different entities?
+Graph-Based Entity Resolution Step by Step
+The process of entity resolution includes three fundamental activities:
+• Data preparation•
+• Entity matching•
+• Curation of a persisted record of master entities•
+You can see examples of each in Example 9-2. You have three overlapping data sets
+with personal information that need deduplication and integration into a single view.
+Graph-Based Entity Resolution Step by Step | 137
+
+--- Page 150 ---
+Example 9-2. Three sample files
+file: ds1.csv
+╒═════════╤═══════════════════╤═══════════════════╤═════════════╤═══════════╤══════╕
+│system_id│full_name │email │ssn │passport_no│yob │
+╞═════════╪═══════════════════╪═══════════════════╪═════════════╪═══════════╪══════╡
+│"1_1" │"Sidney Bernardy" │"sbernardy0@va.gov"│"252-13-7091"│"A465901" │"1979"│
+├─────────┼───────────────────┼───────────────────┼─────────────┼───────────┼──────┤
+│"1_2" │"Ernestine Ouchterl│"eouchterlony1@sun.│"557-21-3938"│"CF3586" │"1999"│
+│ │ony" │com" │ │ │ │
+├─────────┼───────────────────┼───────────────────┼─────────────┼───────────┼──────┤
+│"1_3" │"Cherish Gosnall" │"cgosnall2@google.c│"422-45-7305"│"BS945813" │"1983"│
+│ │ │om.br" │ │ │ │
+├─────────┼───────────────────┼───────────────────┼─────────────┼───────────┼──────┤
+│"1_4" │"Husein Sprull" │"hsprull3@va.gov" │"123-03-8992"│"FG45867" │"1980"│
+├─────────┼───────────────────┼───────────────────┼─────────────┼───────────┼──────┤
+│"1_5" │"Jonathan Pedracci"│"jpedraccig@gateway│"581-96-2576"│null │"1991"│
+│ │ │.com" │ │ │ │
+└─────────┴───────────────────┴───────────────────┴─────────────┴───────────┴──────┘
+file: ds2.csv
+╒═════════╤════════════════════╤════════════════════╤═════════════╤═══════════╤════╕
+│system_id│name │email │ssn │passport_no│age │
+╞═════════╪════════════════════╪════════════════════╪═════════════╪═══════════╪════╡
+│"2_1" │"Bernardy, Sydney Jo│null │null │"A465901" │"44"│
+│ │anne" │ │ │ │ │
+├─────────┼────────────────────┼────────────────────┼─────────────┼───────────┼────┤
+│"2_3" │"Gosnall, Cherise" │"cgosnall@outlook.co│"422-45-7305"│null │"40"│
+│ │ │m" │ │ │ │
+└─────────┴────────────────────┴────────────────────┴─────────────┴───────────┴────┘
+file: ds3.csv
+╒═════════╤══════════╤══════════╤════════════╤════════════╤═══════════╤════════════╕
+│system_id│first_name│last_name │email │ssn │passport_no│dob │
+╞═════════╪══════════╪══════════╪════════════╪════════════╪═══════════╪════════════╡
+│"3_1" │"Syd J" │"Bernardy"│"sjb@gmail.c│"252-13-7091│null │"1979-05-13"│
+│ │ │ │om" │" │ │ │
+├─────────┼──────────┼──────────┼────────────┼────────────┼───────────┼────────────┤
+│"3_2" │"C" │"Gosnall" │null │"422-45-7305│null │"1983-04-23"│
+│ │ │ │ │" │ │ │
+├─────────┼──────────┼──────────┼────────────┼────────────┼───────────┼────────────┤
+│"3_3" │"Jon" │"Pedracci"│"pedracci@ou│null │"TH834501" │"1991-12-05"│
+│ │ │ │tlook.com" │ │ │ │
+├─────────┼──────────┼──────────┼────────────┼────────────┼───────────┼────────────┤
+│"3_4" │"Hana" │"Sprull" │"hsprull3@va│"465-63-9210│null │"1984-10-13"│
+│ │ │ │.gov" │" │ │ │
+└─────────┴──────────┴──────────┴────────────┴────────────┴───────────┴────────────┘
+Data Preparation
+The purpose of the data preparation phase is to make sure that the data meets
+the required quality characteristics. When there are multiple data sets from
+138 | Chapter 9: Identity Knowledge Graphs
+
+--- Page 151 ---
+independently governed systems, the different parts will also need to be harmonized
+to make them comparable. This will include activities like aligning data types and
+units (all distances in km, all prices in dollars, all scores between 0 and 1, etc.).
+Even when all data comes from a single source and does not require those adjust‐
+ments, all the features that you intend to use in the matching phase of the process still
+need to be cleansed, standardized, and so forth to maximize the quality of the results.
+This means making sure nulls are actually nulls (and not the string “null”), unifying
+string format (all uppercase or all lowercase and encoding), trimming, removing
+multiple spaces or special characters, and so on.
+The first step is to model the data as a knowledge graph, storing it in a graph
+database. Since each record represents a person, the model will be the simplest
+possible. The obvious graph is with a Person node for each row and each column
+providing a property on that node. Though the files are quite similar, there are some
+file-specific columns (yob, age, or dob) which will introduce some variability in the
+node structure. This is fine for now and will be dealt with before the entity matching
+phase.
+The Cypher script that loads each record into Person nodes is shown in Example 9-3.
+This generic script takes the structure (columns) in the source file and adds a prop‐
+erty called source for data provenance.
+There is never a single way of doing things in data management.
+Part of what was done in this phase could legitimately be carried
+out before the data is loaded into the graph. The data preparation
+work can be executed on the files directly using Python (and
+pandas is a great tool for this) or as SQL transformations on a
+cloud data warehouse after loading the files into tables. The scripts
+in Example 9-3 would just be loading into the graph database
+management system (DBMS) data in a format that is ready for
+entity matching (with the exception of the graph features that can
+only be extracted once the data is modeled as a graph). Simplicity,
+robustness, and performance should guide you when choosing
+your approach.
+Example 9-3. Loading personal data files
+LOAD CSV WITH HEADERS FROM "file:///ds1.csv" AS row
+CREATE (p:Person) set p.source = "ds1", p += properties(row) ;
+LOAD CSV WITH HEADERS FROM "file:///ds2.csv" AS row
+CREATE (p:Person) set p.source = "ds2", p += properties(row) ;
+LOAD CSV WITH HEADERS FROM "file:///ds3.csv" AS row
+CREATE (p:Person) set p.source = "ds3", p += properties(row) ;
+Graph-Based Entity Resolution Step by Step | 139
+
+--- Page 152 ---
+1 LOAD CSV reads all fields until coerced to other types.
+The most obvious difference between the nodes generated from the different files is
+the level of detail in the customer’s date of birth information. While nodes from data
+set 1 include a year of birth (yob) property with a four-digit string representation
+of the year,1 nodes from data set 2 will have a string property called age with a
+representation of the current age of the customer, and nodes from data set 3 will
+have a dob property with a string containing the customer’s complete date of birth.
+To make these pieces of information comparable for the entity matching phase, the
+lowest common denominator in terms of information is the year of birth.
+The Cypher script in Example 9-4 shows how to create a new property called m_yob
+(for matching year of birth) of type integer in all nodes. Notice how the source
+property is used to determine the type of transformation logic to be applied in each
+case, and number-casting functions, date functions, and arithmetic operators are used
+on the original data.
+Example 9-4. Normalizing dates in personal data files
+MATCH (p:Person) WHERE p.source = "ds1" SET p.m_yob = toInteger(p.yob) ;
+MATCH (p:Person)
+WHERE p.source = "ds2" SET p.m_yob = date().year - toInteger(p.age) ;
+MATCH (p:Person) WHERE p.source = "ds3" SET p.m_yob = date(p.dob).year ;
+The name element also needs alignment, as each data set uses a different way to store
+names. You can see separate fields for first and last name, CSVs, and a single string
+containing the full name. The Cypher script in Example 9-5 creates a new property
+called m_fullname (for matching full name) in all nodes with type string and a
+“canonical” representation of a customer name: firstname lastname. The script uses
+the source property to apply the relevant logic implemented by using string functions
+(trim,toLower and tokenizer split).
+Example 9-5. Normalizing names in personal data files
+MATCH (p:Person)
+WHERE p.source = "ds1" SET p.m_fullname = toLower(trim(p.full_name)) ;
+MATCH (p:Person) WHERE p.source = "ds2"
+WITH p, split(p.name,",") AS parts
+SET p.m_fullname = toLower(trim(parts[1]) + ' ' + trim(parts[0]));
+MATCH (p:Person) WHERE p.source = "ds3"
+SET p.m_fullname = toLower(trim(p.first_name) + ' ' + trim(p.last_name)) ;
+140 | Chapter 9: Identity Knowledge Graphs
+
+--- Page 153 ---
+Once the graph data has been harmonized and normalized, it is ready for the applica‐
+tion of the matching rules.
+Blocking Keys
+Optionally, the data preparation phase may include the generation of blocking keys.
+Blocking is a technique to reduce the search space and so improve performance.
+When looking for duplicates, you will need to compare every record to every other
+record requiring n2 operations for n elements.
+To reduce this to a more manageable computational workload, you need to avoid
+comparing pairs that are not likely to produce matches. This is the job of the blocking
+keys.
+Only candidates with the same blocking key are compared with each other. Some‐
+times features in the data can be used as blocking keys. For instance, you could use
+postal codes and then only compare records representing entities within a reasonable
+proximity.
+Where “natural” blocking keys don’t exist, you can still generate them synthetically,
+including using algorithms or ML models to suggest them.
+Entity Matching
+Matching is the central activity in the entity resolution process, where the identity
+logic is applied. You will define when two entities are considered to be the same,
+based on your business heuristics. This is done through the application of a set of
+rules based on the features identified and prepared in the preparation phase. These
+rules can vary in complexity but generally will be based on exact matches (useful
+for strong identifiers), will approximate matches based on a definition of distance
+(numeric, dates, embeddings), and may also introduce elements of fuzziness (string
+similarity, value approximation, etc.). Some rules will give unambiguous matches
+(e.g., a strong identifier) while others will provide weightings for probabilistic
+scoring.
+The following algorithm provides a systematic approach to applying the matching
+rules:
+1. Create a SAME_AS relationship between nodes for which there is a match on a1.
+strong identifier feature.
+2. Create a weighted SIMILAR relationship between nodes for which there is a match2.
+above threshold on a weak identifier feature and a SAME_AS relationship does not
+exist between the two nodes.
+Graph-Based Entity Resolution Step by Step | 141
+
+--- Page 154 ---
+3. Discard the SIMILAR relationships for which there is a mismatch in one of the3.
+strong identifier features. The weight in the relationship will be the similarity
+score.
+4. Apply a correcting factor to the weight in a SIMILAR relationship when there is a4.
+match above threshold on a nonidentifying feature.
+5. Discard the SIMILAR relationships with a similarity score below a minimum5.
+threshold.
+The application of these rules generates a graph of related nodes connected through
+SAME_AS and SIMILAR relationships in which connected nodes will identify unique
+entities. These four steps implicitly define three types of features: strong identifiers,
+weak identifiers, and nonidentifying features.
+In Example 9-6, the two strong identifiers in the data set are the passport number
+(passport_no) and the Social Security number (ssn). The application of step 1 will
+instantiate a relationship of type SAME_AS between any pair of Person nodes that share
+the same value for either of the two strong identifiers.
+Note the introduction of the filter on id(p1) > id(p2), avoiding the comparison
+of p1 versus p2 and then the superfluous p2 versus p1. This is because the SAME_AS
+relationship is symmetrical (if p1 is the same as p2, then p2 is the same as p1), so there
+is no need to compare them in both directions and create two SAME_AS relationships
+between the nodes.
+Example 9-6. Creating SAME_AS relationships between nodes matching on strong IDs
+MATCH (p1:Person), (p2:Person)
+WHERE p1.source <> p2.source
+AND (p1.ssn = p2.ssn OR p1.passport_no = p2.passport_no)
+AND id(p1) > id(p2)
+CREATE (p1)-[:SAME_AS { ssn_match : p1.ssn = p2.ssn,
+passport_match : p1.passport_no =
+p2.passport_no}]->(p2)
+The script in Example 9-7 shows an implementation of step 2, taking care of the
+weak identifiers. The m_fullname property is a weak identifier that was created by
+amalgamating data across sources and by standardizing all name information avail‐
+able. Normally, a match on the name is not sufficient to derive that two persons are
+the same. That’s why it is treated as a secondary identifier, and a SIMILAR relationship
+is created only when a match above threshold is found. In Example 9-7, one standard
+string similarity metric called Jaro–Winkler distance is used, and when that metric is
+below 0.2 (depending on the use case), the relationship is created and annotated with
+a similarity metric.
+142 | Chapter 9: Identity Knowledge Graphs
+
+--- Page 155 ---
+Example 9-7. Creating similar relationships between nodes matching on weak IDs
+MATCH (p1:Person), (p2:Person)
+WHERE NOT (p1)-[:SAME_AS]-(p2)
+AND p1.source <> p2.source
+AND id(p1) > id(p2)
+AND apoc.text.jaroWinklerDistance(p1.m_fullname, p2.m_fullname) < 0.2
+CREATE (p1)-[:SIMILAR { sim_score : 1 -
+apoc.text.jaroWinklerDistance(p1.m_fullname, p2.m_fullname)}]->(p2)
+In Example 9-7 the metric is inverted because it measures distance instead of similar‐
+ity, so to trigger the creation of the relationship, the actual value needs to be under a
+given distance value instead of over threshold as stated earlier.
+The similarity score (sim_score) used to qualify the SIMILAR relationship is created
+by subtracting the Jaro–Winkler distance from 1. It is important to keep consistent
+semantics in the score used in this metric to make them comparable and composable
+later on. The script in Example 9-7 sets a score between 0 and 1.0. The higher the
+score, the stronger the similarity.
+Step 3 is about filtering detected similarities based on weak identifiers (those materi‐
+alized by SIMILAR relationships) by discarding the ones that exist between entities
+with discrepancies in the strong identifier features. This is what the Cypher script in
+Example 9-8 implements.
+Example 9-8. Removing similar relationships between nodes matching on weak IDs
+when they differ on strong ones
+MATCH (p1:Person)-[sim:SIMILAR]->(p2:Person)
+WHERE p1.ssn <> p2.ssn OR p1.passport_no <> p2.passport_no
+DELETE sim
+Step 4 applies a correcting factor to the weights in the SIMILAR relationships. The
+code in Example 9-9 provides an example of this. For every pair of nodes at both
+ends of a SIMILAR relationship, if there is a reasonable similarity on the year of
+birth (m_yob, a nonidentifying feature in this case), then the similarity score will be
+adjusted up or down.
+The logic in steps 3 and 4 can also be implemented together with
+step 2 and, in some cases, achieve an improvement in performance
+by running a single pass on the data. The disadvantage would be
+the lack of detailed traceability of the effect of each step. In this
+chapter, the steps are separated for clarity.
+The logic in Example 9-9 is based on an absolute threshold (abs(p1.m_yob -
+p2.m_yob) > $yob_threshold). If the years of birth are not too dissimilar, the
+Graph-Based Entity Resolution Step by Step | 143
+
+--- Page 156 ---
+similarity score is increased by 10%, but if the difference is too significant, then the
+score is decreased by 10%. The adjustment function can be as sophisticated as you
+need for your use case.
+Example 9-9. Boosting or damping similar relationships between nodes matching on
+weak IDs when they differ on other features
+MATCH (p1:Person)-[sim:SIMILAR]->(p2:Person)
+WITH sim, abs(p1.m_yob - p2.m_yob) AS yob_diff
+SET sim.sim_score = sim.sim_score * CASE WHEN yob_diff > $yob_threshold
+THEN .9 ELSE 1.1 END
+Step 5 removes the SIMILAR relationships that, after applying the correcting factor in
+the previous step, would result in a similarity score below acceptable. The code in
+Example 9-10 shows how this can be implemented straightforwardly using Cypher.
+Example 9-10. Removing similar relationships between nodes matching on weak IDs
+when below minimum score
+MATCH (p1:Person)-[sim:SIMILAR]->(p2:Person)
+WHERE sim.sim_score < $sim_score_threshold
+DELETE sim
+The result of processing all five steps produces the graph in Figure 9-1.
+Figure 9-1. Graph result of applying the matching rules
+It’s worth mentioning that after the application of step 2, additional SIMILAR relation‐
+ships were created, which were subsequently removed when executing step 3—for
+example, the nodes representing the individuals named Husein Sprull and Hana
+Sprull. On execution of step 2, a relationship would be created based on the similarity
+in their names, which would later be removed in step 3 due to the mismatch in their
+Social Security numbers. This process is shown in Figure 9-2.
+144 | Chapter 9: Identity Knowledge Graphs
+
+--- Page 157 ---
+Figure 9-2. Relationship of type SIMILAR added and subsequently removed
+In the next section, the graph in Figure 9-1 will be analyzed topologically to identify
+related entities.
+Build/Update a Persisted Record of Master Entities
+Once the set of related entities has been determined and the relationships made
+explicit in the graph, the final step is to create a persisted representation of what’s
+typically called master entities. Essentially, this means detecting sets of connected
+nodes in the graph either through SAME_AS or SIMILAR relationships resulting from
+applying the matching rules.
+All nodes in a set form a connected component and are equivalent to a unique entity.
+Detecting such sets is what the Weakly Connected Components (WCC) algorithm
+does. The adjective weakly comes from the fact that the algorithm works on undirec‐
+ted graphs. This nicely fits the objective of this exercise because the direction of both
+SAME_AS and SIMILAR relationships is irrelevant, as both are symmetric.
+You can see how this can be implemented using the concepts from Chapter 6. A
+prerequisite to the application of any algorithm is the creation of an in-memory
+projection of the subgraph to be used. This is what the code in Example 9-11 does.
+Example 9-11. Creating a projection on person nodes and SIMILAR and SAME_AS
+relationships
+CALL gds.graph.project(
+'identity-wcc',
+'Person',
+['SAME_AS','SIMILAR']
+)
+Graph-Based Entity Resolution Step by Step | 145
+
+========================================================
+BOOK: The Practitioners Guide to Graph Data.pdf
+========================================================
+
+### RANGE: Naming Mistakes (Pages 109-119) ###
+
+--- Page 109 ---
+Rule of Thumb #6
+If you need to use data to subselect a group, make it a property.
+Ordering transactions by time requires us to have that value stored in our graph
+model: enter properties. This is a great use of a property on the transaction vertex so
+that we can subselect those vertices in our model. Figure 4-6 shows how we would
+add time into our ongoing example.
+Figure 4-6. Modeling time as a property on the transaction vertex so that we can subse‐
+lect to query for only the most recent transactions
+Together, tips #1–6 give you a great starting point for identifying what will be a ver‐
+tex, an edge, or a property in your graph data model. We have one last section of data
+modeling best practices to consider before we start the implementation details for this
+chapter.
+A Graph Has No Name: Common Mistakes in Naming
+The callouts in the upcoming section are common mistakes. Each mistake is followed
+by our bad-better-best recommendations.
+Arriving at a consensus on what something should be named and maintained with
+your codebase is surprisingly difficult. We have three topics on which teams com‐
+monly waste their valuable time in bikeshedding how to address naming conventions
+in their graph data model.
+Pitfalls in Naming Conventions #1
+Using the word has as an edge label.
+One of the most common mistakes we see comes from naming all of your edges with
+the label has, as shown on the left side of Figure 4-7. This is a mistake in naming
+because the word has does not provide meaningful context regarding the edge’s pur‐
+pose or direction.
+Graph Data Modeling 101 | 89
+
+--- Page 110 ---
+Figure 4-7. From left to right: the bad, better, and recommended ways to name your
+edges
+If your graph model uses has for its edge labels, we have two recommendations for
+you. A better edge label would have the form has_{vertex_label}, as shown in the
+center in orange in Figure 4-7. This type of name allows you to have more specificity
+in your graph queries while also providing a more meaningful name to maintain in
+your codebase.
+The preferred solution to this problem is shown in green at far right in Figure 4-7.
+This recommendation advises you to use an active verb that communicates meaning,
+direction, and specificity to your data. We are going to use the edge labels deposit_to
+and withdraw_from to connect transactions to the accounts in our examples.
+After meaningful edge labels have been selected, it is also a common mistake to create
+property names that do not help uniquely identify your data. This brings us to our
+next pitfall in property graph modeling.
+Pitfalls in Naming Conventions #2
+Using the word id as a property.
+The concept of which pieces of data uniquely identify an entity is a deep topic. Using
+a property key called id is a bad decision because it is not descriptive of what it is
+referring to. Additionally, id is a naming clash with the internal naming conventions
+within Apache Cassandra and is not supported in DataStax Graph.
+A slightly better convention would be to name the property that uniquely identifies
+your data with {vertex_label}_id, as shown at center in Figure 4-8. We use this a
+few times throughout the book because we are working with synthetic examples, and
+this type of identifier is perfectly fine if you use randomly generated identifiers, like
+UUIDs (universally unique identifiers). However, you will see us move to using more
+descriptive identifiers when we work with open source data. These identifiers repre‐
+sent concepts that uniquely identify entities within their domain, such as social secu‐
+rity numbers, public keys, and domain-specific universally unique identifiers.
+90 | Chapter 4: Exploring Neighborhoods in Development
+
+--- Page 111 ---
+Figure 4-8. From left to right, the bad, better, and recommended ways to name a prop‐
+erty to uniquely identify your data.
+This brings us to the last and debatably most important mistake that we see through‐
+out application codebases.
+Pitfalls in Naming Conventions #3
+Inconsistent use of casing.
+When it comes to casing, the best approach follows the language conventions that
+you are writing in. Some languages have style guides that promote CamelCase,
+whereas others prefer snake_case. For the examples in this book, we plan to follow
+the following casing and styles:
+1. Capital CamelCase for vertex labels
+2. Lowercase snake_case for edge labels, property keys, and example data
+This last tip feels a bit pedantic to even bring up in a graph book. We are mentioning
+it because consistency in naming conventions tends to be forgotten, creating expen‐
+sive roadblocks for teams during the last stretch of getting their graph technology
+into production. The more trivial these tips seem to your team, the better off you
+probably already are in making sure to remember them.
+Our Full Development Graph Model
+The previous discussion of graph data modeling illustrated how we broke down our
+first query to evolve the example from Chapter 3. In this section, we want to build up
+the remaining elements in our data model to answer all the questions for this chap‐
+ter’s example.
+Graph Data Modeling 101 | 91
+
+--- Page 112 ---
+The example in this chapter adds schema and data that enable our application to
+answer the following three questions:
+1. What are the most recent 20 transactions involving Michael’s account?
+2. In December, at which vendors did Michael shop, and with what frequency?
+3. Find and update the transactions that Jamie and Aaliyah most value: their pay‐
+ments from their account to their mortgage loan.
+We have already stepped through how to model the first question. Let’s take a closer
+look at it.
+Figure 4-9. The augmented graph schema from Chapter 3 that applies the data modeling
+principles to answer the first query of our expanded example
+The graph schema in Figure 4-9 applies the principles we built up to answer the first
+question into a graph data model. The new vertex label is Transaction, with two new
+edge labels to the Account vertex: withdraw_from and deposit_to, respectively. We
+discussed how and where to model time in our graph, which you see in Figure 4-9
+with timestamp on the Transaction vertex.
+Next, let’s consider this chapter’s remaining questions for our example in this chapter
+by modeling the queries:
+92 | Chapter 4: Exploring Neighborhoods in Development
+
+--- Page 113 ---
+1. In December, at which vendors did Michael shop, and with what frequency?
+2. Find and update the transactions that Jamie and Aaliyah most value:
+their payments from their account to their mortgage loan.
+To arrive at a data model for these questions, let’s apply the thought processes we
+introduced in “Graph Data Modeling 101” on page 82. Following the advice there, we
+came up with three statements about transactions:
+1. Transactions charge credit cards.
+2. Transactions pay vendors.
+3. Transactions pay loans.
+From these statements, we can find the rest of our required schema elements. First,
+we need a new vertex label to represent where our customers shop: Vendor. Next, we
+need an edge label, pay, for a transaction to the Loan or Vendor vertex labels. Last, we
+need another edge label, charge, to indicate that a transaction charges a credit card.
+Bringing all of this together, we have the schema shown in Figure 4-10.
+Figure 4-10. The development schema that answers all of the queries we aim to build for
+this example
+Before We Start Building
+We reduced the full perspective on graph data modeling to include only the practices
+that we need for our current example. Beyond these core principles, you will find
+Graph Data Modeling 101 | 93
+
+--- Page 114 ---
+edge cases about your data that are not covered here. That is expected. We are teach‐
+ing a thought process and selected the principles here as a starting guide for modeling
+your data like a graph.
+If we could ensure you understood one concept about graph data
+modeling, it would be the following: modeling your data as a graph
+is just as much of an art as it is engineering. The art of the data
+modeling process involves creating and evolving your perspective
+on your data. This evolution translates your mindset into the para‐
+digm of relationship-first data modeling.
+When you find new modeling cases in this book or in your own work, ask the follow‐
+ing questions about what you are modeling to help develop your own reasoning:
+1. What does this concept mean to the end user of the application?
+2. How are you going to read this data in your application?
+Defining your data model is the first step in applying graph thinking to your applica‐
+tion. Focus on the data you can integrate, the queries you want to ask, and what this
+will mean to your end user. When combined, those three concepts articulate how we
+see, model, and use graph data within an application.
+Our Thoughts on the Importance of Data, Queries, and the End User
+To help you learn and apply our perspective to building your own graph model, let’s
+walk through the importance of data, queries, and the end user.
+Our first piece of advice is to focus on the data you have. It is easy to boil the ocean by
+modeling your industry’s entire graph problem; avoid this rabbit hole! Your graph
+model will evolve if you keep centered on getting to production with the data with
+which your application will be working.
+Second, apply the practice of query-driven design. Build your data model to accom‐
+modate only a predefined set of graph queries. A common red herring we run into on
+this topic is those applications that aim to create open traversals across any discovera‐
+ble data in a graph. For developmental purposes, the ability to explore and discover
+makes sense. However, for production use, an application with open traversal access
+can introduce a myriad of concerns.
+For security, performance, and maintenance implications, we strongly advise teams
+not to create production platforms with unbounded and unlimited traversals. The
+warning sign we see is a lack of specificity for your graph application. We know this
+perspective is very hard to apply when you are first exploring graph data. We see the
+94 | Chapter 4: Exploring Neighborhoods in Development
+
+--- Page 115 ---
+line here as setting expectations between what you want to do during development
+versus what you want to push to production in a distributed production application.
+Last and most importantly, you have to consider what the data means to your end
+user. Everything from selecting naming conventions to the objects in your graph will
+be interpreted by someone else: your team members or your application users.
+Naming conventions and graph objects are interpreted and maintained by your engi‐
+neering team members; choose them wisely.
+Ultimately, your graph data will be presented to an end user through your applica‐
+tion. Spend time designing your data architecture, models, and queries to present
+information that is most meaningful to them.
+When combined, these three concepts articulate how we see, model, and use graph
+data within an application. Again, the three concepts are to build with the data you
+have, follow query-driven design, and design for your end user. Following these
+design principles will help get you unstuck during those difficult data modeling dis‐
+cussions and prepare your application to be the best use of graph data the industry
+has ever seen.
+Implementation Details for Exploring Neighborhoods in
+Development
+Our schema from Figure 4-10 requires only two new vertex labels: Transaction and
+Vendor. What you have practiced a few times prior to now is how to take a schema
+drawing and translate it into code. We showed the schema in Figure 4-10, and in
+Example 4-1 we show you the code.
+Example 4-1.
+schema.vertexLabel("Transaction").
+ifNotExists().
+partitionBy("transaction_id", Int).
+property("transaction_type", Text).
+property("timestamp", Text).
+create();
+schema.vertexLabel("Vendor").
+ifNotExists().
+partitionBy("vendor_id", Int).
+property("vendor_name", Text).
+create();
+Implementation Details for Exploring Neighborhoods in Development | 95
+
+--- Page 116 ---
+In case you are wondering, we are using Text as the data type for
+timestamp to make it easier to teach concepts in our upcoming
+examples. We will be using the ISO 8601 standard format stored as
+text.
+In addition to these vertex labels, we added relationships between the Transaction
+vertex and the other vertex labels in this graph. Let’s start with the new edge labels
+between the Transaction and Account vertex labels. The schema code for the new
+edge labels is shown in Example 4-2.
+Example 4-2.
+schema.edgeLabel("withdraw_from").
+ifNotExists().
+from("Transaction").
+to("Account").
+create();
+schema.edgeLabel("deposit_to").
+ifNotExists().
+from("Transaction").
+to("Account").
+create();
+These two edges model how money moves to and from an account within your bank.
+In Example 4-3, we add in the rest of the edge labels in our example:
+Example 4-3.
+schema.edgeLabel("pay").
+ifNotExists().
+from("Transaction").
+to("Loan").
+create();
+schema.edgeLabel("charge").
+ifNotExists().
+from("Transaction").
+to("CreditCard").
+create();
+schema.edgeLabel("pay").
+ifNotExists().
+from("Transaction").
+to("Vendor").
+create();
+96 | Chapter 4: Exploring Neighborhoods in Development
+
+--- Page 117 ---
+These last three edge labels complete the edges we will need to describe transactions
+between the assets in our example.
+Generating More Data for Our Expanded Example
+As examples grow, so too does the data. We wrote a small data generator to expand
+the data from Chapter 3 to include our data model from Figure 4-10. If you are inter‐
+ested in the data generation process for this chapter, you have two options.
+Your first option is to use the bash scripts to reload the exact same data you will see in
+the upcoming examples. We will teach you about this tool and process in Chapter 5,
+but you are welcome to preview the loading script in the GitHub repository. We rec‐
+ommend using the scripts throughout this book if you would like the examples you
+are running locally to match the results we show in the text.
+Your second option is to dive into and execute our data generation code. We provided
+our code in a separate Studio Notebook called Ch4_DataGeneration. We recommend
+this option if you want to dig into creating fake data with Gremlin and the methods
+we used.
+An Important Warning About the Data Generation Process
+If you rerun the data insertion process in your Studio Notebook,
+the results in your local graph will not precisely match the results
+printed in this text. If you want the data to match precisely, we rec‐
+ommend importing the exact same graph structure via DataStax
+Bulk Loader. You will find all of this in the accompanying technical
+materials.
+Up to this point, we have accomplished many tasks. We explored our first set of data
+modeling tips, created a development model, looked at the schema code, and inserted
+data.
+The last main task is to use the Gremlin query language to walk around our model
+and answer questions about our data.
+Basic Gremlin Navigation
+The main objective of this chapter is to illustrate a real-world graph schema that
+walks through multiple neighborhoods of graph data.
+For your reference, we will use the words walk, navigate, and tra‐
+verse interchangeably throughout this book to mean that we are
+writing graph queries.
+Basic Gremlin Navigation | 97
+
+--- Page 118 ---
+Everything in this chapter up until now was required to set up answering the follow‐
+ing three questions in this section:
+1. What are the most recent 20 transactions involving Michael’s account?
+2. In December, at which vendors did Michael shop, and with what frequency?
+3. Find and update the transactions that Jamie and Aaliyah most value: their pay‐
+ments from their account to their mortgage loan.
+Let’s walk through the queries and their results. Then, in the chapter’s final section on
+Advanced Gremlin, we will delve a bit deeper into how to shape the result payload.
+Our recommendation is that you find a way to reference Figure 4-10 as you practice
+the queries in the upcoming sections. We recommend doing this because your
+schema functions as your map; you need to know where you are so that you can walk
+in the right direction to your destination.
+Query 1: What are the most recent 20 transactions involving Michael’s account?
+Let’s start with some pseudocode in Example 4-4 to think about how we are going to
+walk through our data to answer this first question.
+Example 4-4.
+Question: What are the most recent 20 transactions involving Michael's account?
+Process:
+Start at Michael's customer vertex
+Walk to his account
+Walk to all transactions
+Sort them by time, descending
+Return the top 20 transaction ids
+We used the process outlined in Example 4-4 to create the Gremlin query in
+Example 4-5.
+Example 4-5.
+1 dev.V().has("Customer", "customer_id", "customer_0"). // the customer
+2 out("owns"). // walk to his account
+3 in("withdraw_from", "deposit_to"). // walk to all transactions
+4 order(). // sort the vertices
+5 by("timestamp", desc). // by their timestamp, descending
+6 limit(20). // filter to only the 20 most recent
+7 values("transaction_id") // return the transaction_ids
+A sample of the results:
+"184", "244", "268", ...
+98 | Chapter 4: Exploring Neighborhoods in Development
+
+--- Page 119 ---
+Let’s dig into this query one step at a time.
+On line 1, dev.V().has("Customer", "customer_id", "customer_0") looks up a
+vertex according to its unique identifier. Then on line 2, the step out("owns") walks
+through the outgoing owns edge to the Account vertices for this customer. In this
+case, Michael has only one account.
+At this point, we want to access all transactions. On line 3, the in("withdraw_from",
+"deposit_to") step does just that: we walk through the incoming edge labels to
+access transactions. At line 4, we are on the transaction vertices.
+We left a detail out of “An evolution of modeling transactions in a
+graph” on page 86 that we want to bring up now. The simplicity of
+line 3 in Example 4-5 was also part of the motivation that led to
+how we designed the edges in our data model. This first query was
+much harder to write and reason about when the edges were going
+in different directions.
+The order() step on line 4 indicates that we need to provide some sort of order to the
+vertices, which are transactions. We specify the sort order on line 5 with the by("time
+stamp", desc) step. This means that we are going to access, merge, and sort all
+Transaction vertices according to their timestamp. Then we want to select only the
+20 most recent vertices with limit(20). Last, on line 7, we want to get access to the
+transaction_ids, so we select them via the values("transaction_id") step.
+This query will return a list of values that contains the transaction_id for each of
+the 20 most recent transactions across all of the customer’s accounts.
+Imagine how much more powerful this would be to display for the end user. They
+would be able to see the details that are most relevant to them instead of navigating
+multiple screens to join this data together in their head. This type of query is vital in
+understanding how to personalize your application to what a customer most cares
+about.
+Query 2: In December 2020, at which vendors did Michael shop, and with what frequency?
+For this second question, let’s start with an outline of the query in Example 4-6 to
+think about how we are going to walk through our data to answer the question.
+Basic Gremlin Navigation | 99
+
+### RANGE: Primary Keys (Pages 140-146) ###
+
+--- Page 140 ---
+Working with Graph Data in Apache Cassandra
+This section looks at the fundamental concepts of working with graph data structures
+in Apache Cassandra: primary keys, partition keys, clustering columns, and material‐
+ized views.
+We are going to discuss these Cassandra data modeling topics from a graph user’s
+perspective.
+First, we will talk about what you need to know about vertices, and then we will go
+over what you need to know about edges. For vertices, you need to know about pri‐
+mary keys and partition keys. For edges, you need to know about clustering columns
+and materialized views.
+Let’s get started with the concept that connects everything: the primary key.
+The Most Important Topic to Understand About Data Modeling:
+Primary Keys
+A major challenge of building a good data model within a distributed system is deter‐
+mining how to uniquely identify your data with primary keys.
+You have already worked with one of the simplest forms of a primary key: the parti‐
+tion key.
+Partition key
+The partition key is the first element of a primary key in Apache Cassandra. The
+partition key is the part of the primary key that identifies the location of the data
+in a distributed environment.
+From a user’s perspective, the entire primary key is required for you to access your
+data from the system. The partition key is just the first piece of the primary key.
+Primary key
+The primary key describes a unique piece of data in the system. In DataStax
+Graph, a primary key can be made up of one or more properties.
+You have already been using and working with primary and partition keys. In Data‐
+Stax Graph, you specify the desired primary key in the schema API. We saw the sim‐
+plest version of a primary key—just one partition key—in the previous chapter with:
+schema.vertexLabel("Customer").
+ifNotExists().
+partitionBy("customer_id", Text). // basic primary key: one partition key
+property("name", Text).
+create();
+120 | Chapter 5: Exploring Neighborhoods in Production
+
+--- Page 141 ---
+The partitionBy() method indicates the value that will be included in the label’s
+partition key. In this case, we have only one value, customer_id. This means that cus
+tomer_id is the full primary key and partition key for the Customer vertex.
+From a developer’s perspective, this decision has three consequences for your appli‐
+cation. First, the value for customer_id uniquely identifies the data. Second, your
+application will need the value for customer_id to read the data about the customer.
+We will cover the third point in a moment.
+These two consequences govern how you, the user, design your data’s primary and
+partition keys. Let’s take a look at an example. Previously, you used your primary key
+to look up this data in Gremlin via:
+g.V().has("Customer", "customer_id", "customer_0").
+elementMap()
+This returns:
+{
+"id": "dseg:/Customer/customer_0",
+"label": "Customer",
+"name": "Michael",
+"customer_id": "customer_0"
+}
+Looking up vertices or edges by their full primary key is the fastest way to read data
+in DataStax Graph. This is one of the main reasons that selecting a good partition and
+primary key for your data is so important.
+There is a third consequence of the partition key in Apache Cassandra. A vertex
+label’s partition key assigns your graph data to a host within a distributed environ‐
+ment. Partition keys also give you different ways you can colocate your graph data.
+Let’s dig into the details.
+Partition Keys and Data Locality in a Distributed Environment
+We recommend this section if you like getting deep in the weeds.
+This section aims to synthesize topics across the Cassandra and graph communities.
+We will explore some hypothetical alternatives to graph partitioning by examining
+different partition key choices to colocate graph data. We will conclude with the par‐
+tition strategy we started with for our example, but you will have gained a better
+understanding of the effects of partition key design and the graph partitioning prob‐
+lem.
+And we need to be pedantic about what we really mean for a brief moment.
+The word partition means two very different things to two different groups of people.
+The Cassandra community’s understanding of partition answers the question,
+Working with Graph Data in Apache Cassandra | 121
+
+--- Page 142 ---
+“Where is my data in my cluster?” The graph community’s understanding of the term
+answers the question, “How can I organize my graph data into a smaller group to
+minimize an invariant?”
+This book applies the Cassandra community’s definition of partitioning to working
+with graph data. When we refer to a partition, we are referencing data locality, or on
+which server your data is written to disk across your distributed system.
+To illustrate how we will be using the idea of partitioning, let’s recall some data for
+our current example, as shown in Figure 5-2.
+Figure 5-2. Sample data for three customers in our C360 example
+To visualize data assignment to a server (also referred to as an instance or a node) in a
+cluster, imagine you are working with a cluster of four servers running DataStax
+Graph in Apache Cassandra. In Figure 5-3, we represent a distributed cluster with a
+circle that has four servers running Cassandra. (Each eye in Figure 5-3 represents
+DataStax Graph in Cassandra.) Then, we show where your graph data is written to
+disk by illustrating the graph data next to the server around your cluster, as we do in
+Figure 5-3.
+The largest circle in Figure 5-3 represents a cluster of four servers, each indicated
+with the Cassandra eye logo, running DataStax Graph in Apache Cassandra. The
+sample data from Figure 5-2 is shown next to the server in which the data is physi‐
+cally stored. In Apache Cassandra, data is mapped to a specific server in your cluster
+according to its partition key.
+122 | Chapter 5: Exploring Neighborhoods in Production
+
+--- Page 143 ---
+Figure 5-3. Illustrating which server (node) each vertex is stored in a distributed cluster;
+the circle with four eyes represents a distributed cluster
+In Figure 5-3, you see that the data for customer_0 is mapped to four different
+machines. The customer vertex is written to server 1, the loan vertex is on server 2,
+the account vertex is written to machine 3, and the credit card vertex is on machine 0.
+You can think of partition keys and their association to data locality in a distributed
+environment as follows: data with the same partition key is stored on the same
+machine, and data with different keys may be stored on different machines.
+Partitioning graph data according to access pattern
+With graph data, there are strategies for designing your partition keys to minimize
+the latency of your graph traversals. Different partitioning strategies affect the coloca‐
+tion of your data and, therefore, the latency of your query.
+To minimize jumping around machines in your cluster when you are processing your
+graph data, you may consider a partitioning strategy that keeps all the data related to
+your query within the same partition. To illustrate this idea, Figure 5-4 shows a parti‐
+tioning strategy optimized for the expected access pattern of a C360 application. The
+partitions are defined according to the individual customer and their data because a
+C360 query will typically be looking for an individual and their associated data. For
+our sample data, we would create a partition for each individual.
+Working with Graph Data in Apache Cassandra | 123
+
+--- Page 144 ---
+Figure 5-4. Partitioning graph data in a distributed system according to access pattern
+If you have a background in graph theory, the partitioning strategy
+illustrated in Figure 5-4 is similar to partitioning according to con‐
+nected components.
+If you have a background in working with Apache Cassandra, the
+partitioning strategy illustrated in Figure 5-4 follows the same
+practice of partitioning according to access pattern.
+To implement the partitioning strategy illustrated in Figure 5-4, you would need to
+add the customer’s unique identifier as the partition key for every vertex label. In
+your schema code, we implement the partitioning strategy with:
+schema.vertexLabel("Account").
+ifNotExists().
+partitionBy("customer_id", Text).
+clusterBy("acct_id", Text). // to be defined in a coming section
+property("name", Text).
+create();
+It is useful to consider this partitioning strategy because it minimizes the latency of
+your query. All the data for your customer-centric query is colocated on the same
+node in your environment. This is an optimization at the physical data layer that will
+be advantageous when you query your data.
+However, there are two reasons why this type of partition strategy will not be recom‐
+mended for the queries we are exploring for our example. Recall that the full primary
+key is required to start your graph query. The first downside to the design shown in
+Figure 5-4 is that you will need to know the customer’s identifier to start your graph
+traversal at an account.
+Applying this to our example of a shared account, acct_14, brings us to another
+drawback to using this partition strategy. This schema design will create two vertices
+about acct_14 that are adjacent to two different people. This means that you won’t be
+able to start at acct_14 and find all customers who own that account. This has impli‐
+cations for your graph query.
+124 | Chapter 5: Exploring Neighborhoods in Production
+
+--- Page 145 ---
+For the C360 queries we are exploring in this example, the partition strategy from
+Figure 5-4 doesn’t make sense. When we talk about trees in an upcoming example,
+however, it makes sense to consider data model optimizations to minimize query
+latency.
+Partitioning according to unique key
+Let’s look at a second strategy and compare it to colocating data according to your
+application’s access pattern.
+Think back to the full schema for our example and recall that each vertex label had a
+single, unique partition key. You can think of this as separating your graph data via
+the most granular division possible: the data’s most unique value.
+Figure 5-5. A visual example of the different partitions within your graph data according
+to the vertex label’s partition key
+The graph data in Figure 5-5 would distribute the vertices across your cluster accord‐
+ing to the partition key’s value. Essentially, each vertex will be mapped to a different
+partition because each partition key’s value is unique.
+One of the drawbacks to partitioning your vertices according to a unique key is that
+any time you need to walk through your data, you will be jumping between machines
+across your distributed environment. The purpose of using graph data in your appli‐
+cation is to use the connections and relationships in your data. If you structure your
+graph data across a distributed environment according to unique identifiers, that also
+means that you will (likely) be switching servers each time you need to access con‐
+nected data.
+Final thoughts on partitioning strategies
+There are benefits and drawbacks to the different strategies for partitioning graph
+data in a distributed environment. Partitioning your graph data according to access
+pattern creates limitations on how you can walk through connected data. On the
+other hand, this strategy minimizes traversal latency by colocating large components
+of data onto the same node.
+Working with Graph Data in Apache Cassandra | 125
+
+--- Page 146 ---
+The most common way to partition your graph data is by the data’s unique identifier.
+This makes it easiest to plan for query flexibility but does also introduce latency to
+your queries due to the distributed nature of your graph. This is the approach we will
+use for our C360 example.
+The only way to understand the implications of any partition strategy is to calculate
+what it would look like for your data and queries. This requires a balance between
+understanding the distributions of the data for the application you need to build
+today and considering the future scope toward which you are building.
+Selecting a good partitioning strategy is more complicated when we
+are working with graph data. Partitioning graph data around a dis‐
+tributed environment is synonymous with breaking up your graph
+data into different sections. Optimizing which data belongs to a
+particular section is classified as one of the hardest types of prob‐
+lems in computer science: an NP-complete problem. While maybe
+not the best news, this helps to explain why using graph technolo‐
+gies in a distributed environment isn’t as simple as translating an
+entity-relationship diagram into a graph data model.
+On the topic of partitioning, there are two main takeaways to restate here: uniqueness
+and locality. In DataStax Graph, your data’s primary key is its unique identifier. For
+the fastest performance, you start your graph queries by data via its full primary key.
+The second thing to note is that your data’s partition key determines its locality in
+your cluster. This governs which machines in your cluster will store the data and the
+colocation of other data alongside it.
+Given uniqueness and locality with partition keys, let’s take a look at how edges are
+represented in Apache Cassandra.
+Understanding Edges, Part 1: Edges in Adjacency Lists
+Diving into the world of graph modeling brings a large wave of terms, concepts, and
+thinking patterns. Now that we have the basics covered, let’s take a look at how graph
+data, namely the edges, can be represented on disk or in memory.
+There are three main data structures for representing edges in data:
+Edge list
+An edge list is a list of pairs in which every pair contains two adjacent vertices.
+The first element in the pair is the source (from) vertex, and the second element
+is the destination (to) vertex.
+126 | Chapter 5: Exploring Neighborhoods in Production
+
+### RANGE: Path Concepts (Pages 249-256) ###
+
+--- Page 249 ---
+Figure 8-3. An example of analyzing paths to determine an optimal route for a logistics
+company
+Figure 8-3 depicts how a package travels from a warehouse to your home. You see
+three potential paths, each with different combinations of length and types of trans‐
+fer. Depending on a multitude of factors, one path in our logistics network may be
+more trusted than another.
+For example, if you are someone who watches your package’s path, you also feel the
+effect of route optimization for shipping. The more stops you see your package take,
+the lower your trust in its on-time arrival.
+Route optimization is one of the most popular uses of graphs in computer science.
+Whether you are making decisions for personal travel or waiting for a package, the
+most trusted solutions seek the shortest path through the data.
+It is the trust in the path between the source and the destination that matters.
+Quantifying trust between two concepts through understanding shared relationships
+is (probably) the most relatable and approachable application of distributed graph
+technology today.
+Fundamental Concepts About Paths
+Pathfinding queries are popular uses of graph technology when you do not know
+exactly how to walk between vertices in your graph.
+However, discovering paths throughout graph structure may become a double-edged
+sword: on the one hand, pathfinding with graph technology will provide you with
+Fundamental Concepts About Paths | 229
+
+--- Page 250 ---
+short and elegant solutions; on the other hand, naive pathfinding queries may quickly
+get out of control.
+Pathfinding questions are simple to ask but expensive to compute. This is where
+things can get out of hand very quickly.
+Let’s start by walking through the fundamental problem definitions for discovering
+paths in graph structure.
+Shortest Paths
+In this chapter, we will introduce shortest paths according to a path’s distance.
+Recall from Chapter 2 the definition of distance as the smallest number of edges it
+takes to walk from one vertex to another. The shortest path problem is to find the path
+with the smallest distance, or shortest walk, from one vertex to another in your graph.
+Here are the four terms and their definitions that we will be applying throughout the
+next two chapters.
+Path
+A path in a graph is a sequence of consecutive edges in a graph.
+Length
+The length of a path is the number of edges in the path.
+Shortest path
+The shortest path between two vertices is the path that connects the two vertices
+and has the shortest length or distance.
+Distance
+The distance between two vertices in a graph is the number of edges in a shortest
+path.
+In Figure 8-4, there are three ways to walk from A to D:
+1. A → D
+2. A → C → D
+3. A → B → C → D
+The shortest path is the path with the smallest distance. That is the path from A to D,
+which has a distance of 1. The other paths have distances of 2 and 3, respectively.
+230 | Chapter 8: Finding Paths in Development
+
+--- Page 251 ---
+Figure 8-4. An example of the shortest path from A to D
+There are three types of shortest path problems:
+Shortest path
+The goal of a shortest path problem is to discover the smallest distance walk from
+A to B.
+Single-source shortest path
+The goal of a single-source shortest path problem is to discover the smallest-
+distance walk from A to all other vertices in the graph.
+All-pairs shortest path
+The goal of an all-pairs shortest path problem is to discover the smallest-distance
+walk between any two vertices in the graph.
+These definitions give us a classification of the three types of path‐
+finding problems that you may have run into or will run into. This
+chapter focuses on solutions to the first type of problem: finding
+the shortest path between two known points.
+Any solution to a path problem relies on understanding how to procedurally walk
+through graph data. Let’s dig into depth-first search (DFS) and breadth-first search
+(BFS), two fundamental techniques for finding shortest paths.
+Depth-first search
+Depth-first search is an algorithm for traversing graph data structures. It explores
+a path as deep as possible along each branch before backtracking.
+Fundamental Concepts About Paths | 231
+
+--- Page 252 ---
+Breadth-First Search
+Breadth-first search is an algorithm for traversing graph data structures. It
+explores all of the neighbor vertices at the present depth prior to moving on to
+the vertices at the next depth level.
+You may be wondering: “Why do we need to go into DFS versus BFS?”
+First, most engineers start their research about pathfinding by searching for informa‐
+tion on a certain pathfinding algorithm. To us, that is a backwards approach. Second,
+because paths are so natural to understand, it is easy to confuse the solution with the
+underlying problem.
+You first need to understand which path problem you are trying to solve before you
+apply a certain algorithm.
+Depth-First Search and Breadth-First Search
+Depth-first search and breadth-first search are two of the most popular ways to illus‐
+trate procedural visitation of graph-structured data. Diving deep into understanding
+each technique gives you the foundation you need to explore the world of pathfind‐
+ing algorithms, because at some level, all other solutions to pathfinding problems
+build upon these two techniques.
+The difference between the two approaches is easy to understand. Depth-first search
+prioritizes exploring one path as deeply as you can before returning to a different
+path. Breadth-first search prioritizes exploring all paths up to a certain distance
+before moving deeper into the data.
+Let’s take a look at these differences in Figure 8-5. As you walk through the figure, the
+main idea is to consider the order in which a vertex is visited for each process; we call
+this the visited set. We numerically label each vertex in Figure 8-5 with the order in
+which it is visited (or reached) by each algorithm.
+For each graph in Figure 8-5, the goal is to walk procedurally from the starting vertex
+at the top to the end. The graph on the left shows the order in which every vertex is
+visited according to DFS. Here, you see that each branch is explored until its end
+before you return back to the top to select a different path. The graph on the right
+shows the order in which every vertex is visited according to BFS. Here, you see that
+each level or neighborhood is fully explored before you move deeper into the graph.
+232 | Chapter 8: Finding Paths in Development
+
+--- Page 253 ---
+Figure 8-5. Illustrating the visited set for the two most common graph-searching
+algorithms
+The implementation details between DFS and BFS come down to which data struc‐
+ture you use. DFS uses a last in, first out (LIFO) stack. You can remember this by vis‐
+ualizing a stack. Stacks are typically thought of as vertical structures, just like how
+DFS explores data deeply before going wide. BFS uses a first in, first out (FIFO)
+queue. You can remember this by visualizing a queue. Queues are typically thought of
+as horizontal structures, just like how BFS explores widely before going deep.
+However long it takes you to think like a graph, it is vital that you understand the
+runtime and overhead required to process your data. So keep practicing how to pro‐
+cedurally think through how much data you need to visit during a traversal. From
+there, you can quantify an expectation for how long a traversal or algorithm will run
+or the overhead it requires for your data.
+Learning to See Application Features as Different Path Problems
+Think about the last time you used LinkedIn. You likely opened the LinkedIn applica‐
+tion to search for someone else. When you found candidates, you received a metric
+indicating how closely connected you were to each person in your search results. You
+knew right away whether someone was a first-, second-, or third-degree connection.
+Now think like an engineer working for LinkedIn.
+In this scenario, you are designing the connected badge feature that you just used. It
+is a requirement that any user of LinkedIn knows the distance from themselves to
+Fundamental Concepts About Paths | 233
+
+--- Page 254 ---
+anyone else when they search. From there, you and your engineering team have a
+long list of approaches to consider.
+Do you precalculate all distance values for the connected badge by solving the all-
+pairs shortest path problem for your graph? If you do, what happens when new con‐
+nections are added to or removed from LinkedIn’s network?
+What are the end user’s expectations for knowing their connectedness to another per‐
+son? What requirements can you relax in order to prioritize speed of delivering the
+information to the end user?
+Though presented in the context of pathfinding at LinkedIn, all of these questions are
+common considerations for any team wanting to use path distance in an application.
+To answer any of those questions about your application’s design, you need to under‐
+stand the performance implications of processing graph-structured data. And the
+fundamental approach to walking through graph-structured data to solve problems at
+LinkedIn scale builds procedures off of BFS or DFS.
+We will be using these fundamental techniques in the coming sections as we explore
+the example data and find paths of trust throughout it. To that end, let’s introduce the
+data for this chapter’s example and apply shortest paths to our sample problem.
+Finding Paths in a Trust Network
+Distance between concepts quantifies trust.
+To bring that axiom to life, our running example from now until the end of Chapter 9
+dives into the world of Bitcoin. Exploring a network of trust between Bitcoin traders
+creates an interesting intersection between paths in graph data and trust. Ironically,
+the advent of Bitcoin centers on a distrust of centralized institutions.
+In this section, we will introduce the data, walk through a brief primer on Bitcoin ter‐
+minology, and develop our data model.
+Source Data
+We will be exploring a network of people who trade Bitcoin on the Bitcoin OTC
+(Over The Counter) Marketplace. The Bitcoin OTC Marketplace allows its members
+to rate how much they trust other members, and those ratings form who-trusts-
+whom networks, which we will be using in the dataset. These ratings are given on a
+scale of [–10, 10]. You will see the ratings in the details to come, but we won’t use
+234 | Chapter 8: Finding Paths in Development
+
+--- Page 255 ---
+2 Kumar, Srijan, et al. “Edge Weight Prediction in Weighted Signed Networks,” in 2016 IEEE 16th International
+Conference on Data Mining (ICDM), Barcelona, Spain, December 12–15, 2016 (Piscataway, NJ: Institute of
+Electrical and Electronics Engineers, 2017), 221–30.
+3 Srijan Kumar, Bryan Hooi, Disha Makhija, Mohit Kumar, Christos Faloutsos, and V.S. Subrahmanian, “REV2:
+Fraudulent User Prediction in Rating Platforms,” in WSM ’18: Proceedings of the Eleventh ACM International
+Conference on Web Search and Data Mining , Marina del Rey, California, February 5–9, 2018 (New York:
+ACM, 2018), 333–41.
+them in our queries until Chapter 9. The data comes from the research work of Srijan
+Kumar et al. and can be found on the Stanford Network Analysis Platform.2 3
+Stanford Network Analysis Platform (SNAP) is a general-purpose
+network analysis and graph mining library.
+Each line in the dataset has one rating, sorted by time, with the following format:
+SOURCE, TARGET, RATING, TIME
+The meaning for each piece of the data is as follows:
+Source
+The vertex ID of the rater
+Target
+The vertex ID of the ratee
+Rating
+The source’s rating for the target, ranging from –10 to +10 in steps of 1
+Time
+The time of the rating, measured as seconds since epoch
+Let’s look at the first five lines of the data in Example 8-1.
+Example 8-1.
+$ head -5 soc-sign-Bitcoinotc.csv
+6,2,4,1289241911.72836
+6,5,2,1289241941.53378
+1,15,1,1289243140.39049
+4,3,7,1289245277.36975
+13,16,8,1289254254.44746
+Let’s examine the first line of data from Example 8-1: 6,2,4,1289241911.72836. This
+means that the person with ID 6 trusts the person with ID 2 a total of 4. This rating
+Finding Paths in a Trust Network | 235
+
+--- Page 256 ---
+was captured at 1289241911.72836 epoch time, or Monday, November 8, 2010, at
+13:45 GMT.
+The original source data has time in epoch. The data that accompa‐
+nies this book uses the ISO 8601 standard because we converted
+the timestamps for ease of understanding in our examples. For
+example, 1289241911.72836 in epoch time converts to
+2010-11-08T13:45:11.728360Z in the ISO 8601 standard.
+Before we can build out interesting queries and a data model, let’s take a tour of the
+world of Bitcoin terminology.
+A Brief Primer on Bitcoin Terminology
+Bitcoin is a cryptocurrency, which is used as a decentralized digital currency, mean‐
+ing there is no central bank or institution that controls its value. Instead, Bitcoin is
+exchanged on a peer-to-peer network.
+Each bitcoin is basically a computer file stored in a digital wallet application on a
+smartphone or computer. People can send whole bitcoins or fractions thereof to your
+digital wallet, and you can send bitcoins to other people. Every transaction is recor‐
+ded in a public list called the blockchain.
+Address
+An address is a Bitcoin public key to which transactions can be sent.
+Wallet
+A wallet is a collection of private keys that correspond to addresses.
+In our data, we are working with what we can observe on the blockchain. We can
+observe the exchange of bitcoins between two people. We say you send bitcoins to or
+receive bitcoins from an address. You encrypt, export, back up, and import your wal‐
+let. A wallet can have multiple private keys that correspond to addresses.
+From here, we are able to define a schema to use in development for our example.
+Creating Our Development Schema
+Though the sample data shows integers, real Bitcoin addresses actually are alphanu‐
+meric strings with up to 34 characters. Therefore, we will be using the Text data type
+in our graph schema for the addresses.
+The data model we will need is quite simple. We have a list of addresses that rated
+other addresses. An address can rate another address many times; we would like to
+capture each rating by its unique rating value.
+236 | Chapter 8: Finding Paths in Development
+

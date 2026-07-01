@@ -52,10 +52,11 @@ export const MeshCanvas = ({
   hoveredNodeId, 
   setHoveredNodeId, 
   hoveredLinkId, 
-  setHoveredLinkId, 
-  setHoveredLinkData, 
+  onHoverLink, 
   onSelectNode, 
+  onOpenDrawer,
   onAddOffshoot, 
+  onStartConnection,
   onNodeDrag, 
   onNodeDragEnd, 
   onStartReparent, 
@@ -71,9 +72,28 @@ export const MeshCanvas = ({
   const NODE_W = 224;
   const NODE_H = 100;
   
+  const nodeMap = useMemo(() => {
+    const map = {};
+    nodes.forEach(n => {
+      map[n.id] = n;
+    });
+    return map;
+  }, [nodes]);
+
+  const hNode = hoveredNodeId ? nodeMap[hoveredNodeId] : null;
+
   const [draggedNodeId, setDraggedNodeId] = useState(null);
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
   const [hasMovedDuringDrag, setHasMovedDuringDrag] = useState(false);
+  const [activeMenuNodeId, setActiveMenuNodeId] = useState(null);
+
+  useEffect(() => {
+    const handleOutsideClick = () => {
+      setActiveMenuNodeId(null);
+    };
+    document.addEventListener('click', handleOutsideClick);
+    return () => document.removeEventListener('click', handleOutsideClick);
+  }, []);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSearchQuery, setActiveSearchQuery] = useState('');
@@ -160,25 +180,17 @@ export const MeshCanvas = ({
     
     const q = searchQuery.toLowerCase().trim();
     let matching = [];
-    const activeTargets = [];
-    if (selectedNode) {
-      activeTargets.push(selectedNode);
-    }
     if (q) {
-      nodes.forEach(n => {
-        const isMatch = n.title.toLowerCase().includes(q) || 
-                        n.id.toLowerCase().includes(q) ||
-                        (n.content && Object.values(n.content).some(val => 
-                          typeof val === 'string' && val.toLowerCase().includes(q)
-                        ));
-        if (isMatch && !activeTargets.some(t => t.id === n.id)) {
-          activeTargets.push(n);
-        }
-      });
-    }
-
-    if (activeTargets.length > 0) {
+      matching = nodes.filter(n => 
+        n.title.toLowerCase().includes(q) || 
+        n.id.toLowerCase().includes(q) ||
+        (n.content && Object.values(n.content).some(val => 
+          typeof val === 'string' && val.toLowerCase().includes(q)
+        ))
+      );
+    } else if (selectedNode) {
       const relevantSet = new Set();
+      const activeTargets = [selectedNode];
       activeTargets.forEach(m => {
         relevantSet.add(m.id);
         
@@ -371,13 +383,34 @@ export const MeshCanvas = ({
     setDraggedNodeId(null);
   };
 
+  const visibleNodeIds = useMemo(() => {
+    const set = new Set();
+    const worldCX = (window.innerWidth / 2 - view.x) / view.scale;
+    const worldCY = (window.innerHeight / 2 - view.y) / view.scale;
+    const paddingMultiplier = isMovingMesh ? 10.0 : 1.8;
+    const visibleRange = (Math.max(window.innerWidth, window.innerHeight) / view.scale) * paddingMultiplier;
+
+    nodes.forEach(node => {
+      const dist = Math.sqrt(Math.pow(node.x - worldCX, 2) + Math.pow(node.y - worldCY, 2));
+      if (dist <= visibleRange) {
+        set.add(node.id);
+      }
+    });
+    return set;
+  }, [nodes, view.x, view.y, view.scale, isMovingMesh]);
+
+  useEffect(() => {
+    if (meshRef.current) {
+      meshRef.current.style.transform = `translate3d(${view.x}px, ${view.y}px, 0) scale(${view.scale})`;
+    }
+  }, [view.x, view.y, view.scale, meshRef]);
+
   return (
     <div className={`absolute inset-0 ${projectionMode === '3d' ? 'mesh-3d-scene' : ''}`}>
       <div 
            ref={meshRef}
            className={`absolute inset-0 origin-top-left will-change-transform ${projectionMode === '3d' ? 'mesh-3d-layer' : ''}`}
            style={{ 
-               transform: `translate3d(${view.x}px, ${view.y}px, 0) scale(${view.scale})`,
                backfaceVisibility: 'hidden',
                transformStyle: 'preserve-3d'
            }}>
@@ -392,8 +425,11 @@ export const MeshCanvas = ({
 
         {nodes.map(node => {
             if (!node.parentId) return null;
-            const parent = nodes.find(n => n.id === node.parentId);
+            const parent = nodeMap[node.parentId];
             if (!parent) return null;
+
+            // Cull connection line if neither endpoint is visible
+            if (!visibleNodeIds.has(node.id) && !visibleNodeIds.has(parent.id)) return null;
 
             const pathData = getPath(parent, node, node);
             let color = ENTITY_TYPES[node.type?.toUpperCase()]?.color || '#00f2ff';
@@ -413,48 +449,47 @@ export const MeshCanvas = ({
             }
 
             return (
-                <g key={lid} className={`group cursor-pointer transition-all duration-500 ${isUnrelatedDim ? 'opacity-5 blur-[1px]' : 'opacity-100'} ${projectionMode === '3d' ? 'link-3d' : ''}`}>
+                <g key={lid} className={`group cursor-pointer transition-opacity duration-300 ${isUnrelatedDim ? 'opacity-5' : 'opacity-100'} ${projectionMode === '3d' ? 'link-3d' : ''}`}>
                     {/* Visual Base Layer */}
-                    <motion.path 
+                    <path 
                       d={pathData} 
                       fill="none" 
                       className="pointer-events-none"
-                      animate={{ 
+                      style={{
                         stroke: color,
                         strokeWidth: isHovered ? 2 : 1,
-                        strokeOpacity: isHovered ? 0.8 : 0.3
+                        strokeOpacity: isHovered ? 0.8 : 0.3,
+                        transition: 'stroke 0.4s ease, stroke-width 0.4s ease, stroke-opacity 0.4s ease'
                       }}
-                      transition={{ duration: 0.4, ease: "easeInOut" }}
                     />
 
                     {/* Kinetic Pulse Layer */}
-                    <motion.path 
+                    <path 
                       d={pathData} 
                       fill="none" 
                       stroke={color} 
                       className={`pointer-events-none connection-pulse ${isMovingMesh ? '' : 'animate-pulse'}`}
-                      animate={{ 
+                      style={{ 
                         strokeWidth: isHovered ? (4 / view.scale) : (2 / view.scale),
-                        strokeOpacity: isHovered ? 0.6 : 0.2
-                      }}
-                      transition={{ duration: 0.4, ease: "easeInOut" }}
-                      style={{ filter: 'url(#meshglow)' }} 
+                        strokeOpacity: isHovered ? 0.6 : 0.2,
+                        filter: 'url(#meshglow)',
+                        transition: 'stroke-width 0.4s ease, stroke-opacity 0.4s ease'
+                      }} 
                     />
 
                     {/* Top-Level Invisible Hit Area */}
-                    <path d={pathData} fill="none" stroke="transparent" strokeWidth={30} 
+                    <path d={pathData} fill="none" stroke="transparent" strokeWidth={3} 
                       className="pointer-events-auto"
                       onMouseEnter={() => { 
                         if (!isMovingMesh && !isSidebarOpen) {
-                            setHoveredLinkId(lid); 
-                            setHoveredLinkData({ 
+                            onHoverLink(lid, { 
                                 from: parent.title, to: node.title, 
                                 fromType: parent.type, toType: node.type,
                                 type: 'Structural Thread' 
                             }); 
                         }
                       }} 
-                      onMouseLeave={() => { if (!isMovingMesh) { setHoveredLinkId(null); setHoveredLinkData(null); } }} 
+                      onMouseLeave={() => { if (!isMovingMesh) { onHoverLink(null, null); } }} 
                       onClick={(e) => { e.stopPropagation(); onLinkClick(node.id, parent.id); }} 
                     />
                 </g>
@@ -462,9 +497,13 @@ export const MeshCanvas = ({
         })}
 
         {nodes.filter(n => n.secondaryLinks?.length).map(node => 
-            node.secondaryLinks.filter(tid => tid !== node.parentId && nodes.find(n => n.id === tid)?.parentId !== node.id).map(targetId => {
-                const target = nodes.find(n => n.id === targetId);
+            node.secondaryLinks.filter(tid => tid !== node.parentId && nodeMap[tid]?.parentId !== node.id).map(targetId => {
+                const target = nodeMap[targetId];
                 if (!target) return null;
+
+                // Cull connection line if neither endpoint is visible
+                if (!visibleNodeIds.has(node.id) && !visibleNodeIds.has(targetId)) return null;
+
                 const pathData = getPath(node, target, target);
                 const lid = `secondary-${node.id}-${targetId}`;
                 const isHovered = hoveredLinkId === lid;
@@ -480,33 +519,31 @@ export const MeshCanvas = ({
                 }
 
                 return (
-                    <g key={lid} className={`group cursor-pointer transition-all duration-500 ${isUnrelatedDim ? 'opacity-5 blur-[1px]' : 'opacity-100'}`}>
-                       <motion.path 
+                    <g key={lid} className={`group cursor-pointer transition-opacity duration-300 ${isUnrelatedDim ? 'opacity-5' : 'opacity-100'}`}>
+                       <path 
                          d={pathData} 
                          fill="none" 
                          className="pointer-events-none"
-                         animate={{ 
+                         style={{ 
                            stroke: isHovered ? "#00f0ff" : "#64748b",
                            strokeWidth: isHovered ? 2 / view.scale : 1 / view.scale,
                            strokeOpacity: isHovered ? 0.9 : 0.4,
-                           strokeDasharray: isHovered ? "0,0" : "5,5"
+                           strokeDasharray: isHovered ? "none" : "5,5",
+                           transition: 'stroke 0.4s ease, stroke-width 0.4s ease, stroke-opacity 0.4s ease, stroke-dasharray 0.4s ease'
                          }}
-                         transition={{ duration: 0.4, ease: "easeInOut" }}
                        />
-                       <path d={pathData} fill="none" stroke="transparent" strokeWidth={30} 
+                       <path d={pathData} fill="none" stroke="transparent" strokeWidth={3} 
                           className="pointer-events-auto"
                           onMouseEnter={() => { 
                             if (!isMovingMesh) {
-                                const config = ENTITY_TYPES[node.type?.toUpperCase()] || ENTITY_TYPES.TAXONOMY || { color: '#ffffff' };
-                                setHoveredLinkId(lid); 
-                                setHoveredLinkData({ 
+                                onHoverLink(lid, { 
                                     from: node.title, to: target.title, 
                                     fromType: node.type, toType: target.type,
                                     type: 'Transverse Thread' 
                                 }); 
                             }
                           }} 
-                          onMouseLeave={() => { if (!isMovingMesh) { setHoveredLinkId(null); setHoveredLinkData(null); } }} onClick={() => onLinkClick(target.id, node.id)} />
+                          onMouseLeave={() => { if (!isMovingMesh) { onHoverLink(null, null); } }} onClick={() => onLinkClick(target.id, node.id)} />
                     </g>
                 );
             })
@@ -518,20 +555,13 @@ export const MeshCanvas = ({
         let color = config.color;
         if (!isDark && (node.type?.toUpperCase() === 'VARIANT' || node.type?.toUpperCase() === 'CONCEPT')) color = '#000000';
         
-        // VIEWPORT CULLING: Only render if reasonably close to the screen center
-        // This is a rough estimation to keep performance high without complex math
-        const worldCX = (window.innerWidth / 2 - view.x) / view.scale;
-        const worldCY = (window.innerHeight / 2 - view.y) / view.scale;
-        const dist = Math.sqrt(Math.pow(node.x - worldCX, 2) + Math.pow(node.y - worldCY, 2));
-        const visibleRange = (Math.max(window.innerWidth, window.innerHeight) / view.scale) * 1.5;
-        if (dist > visibleRange && !isMovingMesh) return null;
+        const isVisible = visibleNodeIds.has(node.id);
 
         let isRelated = false;
         let isDimmed = false;
         if (hoveredNodeId) {
             if (node.id === hoveredNodeId) isRelated = true;
             else {
-                const hNode = nodes.find(n => n.id === hoveredNodeId);
                 if (node.parentId === hoveredNodeId) isRelated = true;
                 if (hNode && hNode.parentId === node.id) isRelated = true;
                 if (hNode && hNode.secondaryLinks?.includes(node.id)) isRelated = true;
@@ -550,16 +580,18 @@ export const MeshCanvas = ({
             onPointerDown={(e) => { e.stopPropagation(); handlePointerDown(e, node.id); }} 
             onPointerMove={(e) => { e.stopPropagation(); handlePointerMove(e, node.id); }} 
             onPointerUp={(e) => { e.stopPropagation(); handlePointerUp(e, node); }} 
+            onDoubleClick={(e) => { e.stopPropagation(); onOpenDrawer && onOpenDrawer(node); }} 
             onMouseEnter={() => { if (!isMovingMesh && !draggedNodeId && !isSidebarOpen) setHoveredNodeId(node.id); }} 
             onMouseLeave={() => { if (!isMovingMesh) setHoveredNodeId(null); }} 
-            className={`absolute w-56 p-1 cursor-move touch-none will-change-transform ${draggedNodeId === node.id ? 'z-50' : 'transition-[opacity,transform,filter] duration-500 z-20'} ${isDimmed ? 'opacity-20 scale-95 blur-[2px]' : 'opacity-100 scale-100'} ${projectionMode === '3d' ? 'node-3d-tilt' : ''}`} 
+            className={`absolute w-56 p-1 cursor-pointer touch-none will-change-transform ${draggedNodeId === node.id ? 'z-50' : 'transition-[opacity,transform] duration-300 z-20'} ${isDimmed ? 'opacity-20 scale-95' : 'opacity-100 scale-100'} ${projectionMode === '3d' ? 'node-3d-tilt' : ''} ${layoutRules.showLabels ? '' : 'opacity-0 pointer-events-none'}`} 
             style={{ 
                 transform: `translate3d(${node.x}px, ${node.y}px, 0)`,
                 backfaceVisibility: 'hidden',
-                transformStyle: 'preserve-3d'
+                transformStyle: 'preserve-3d',
+                display: isVisible ? 'block' : 'none'
             }}
           >
-            <div className={`relative glass-panel overflow-hidden border-l-4 group-hover:shadow-[0_0_30px_rgba(255,255,255,0.05)] transition-all duration-500 rounded-xl ${movingNodeId === node.id ? 'ring-2 ring-brand-cyan ring-offset-4 ring-offset-black animate-pulse shadow-[0_0_30px_rgba(0,240,255,0.4)]' : ''}`}
+            <div className={`group relative glass-panel overflow-hidden border-l-4 group-hover:shadow-[0_0_30px_rgba(255,255,255,0.05)] transition-all duration-500 rounded-xl ${movingNodeId === node.id ? 'ring-2 ring-brand-cyan ring-offset-4 ring-offset-black animate-pulse shadow-[0_0_30px_rgba(0,240,255,0.4)]' : ''}`}
                  style={{ 
                    borderLeftColor: color, 
                    background: isDark ? 'rgba(10, 15, 20, 0.8)' : 'var(--gradient-primary)' 
@@ -593,24 +625,53 @@ export const MeshCanvas = ({
                 </div>
 
               <div 
-                className="absolute top-1 right-1 flex gap-1 opacity-60 hover:opacity-100 transition-opacity z-50 pointer-events-auto"
+                className={`absolute top-1 right-1 flex flex-col items-end gap-1 transition-opacity duration-300 z-50 pointer-events-auto ${activeMenuNodeId === node.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                 onPointerDown={(e) => e.stopPropagation()}
-                onMouseEnter={(e) => { e.stopPropagation(); if (!isMovingMesh) setHoveredNodeId(null); }}
-                onMouseLeave={(e) => { e.stopPropagation(); if (!isMovingMesh) setHoveredNodeId(node.id); }}
+                onMouseEnter={(e) => e.stopPropagation()}
+                onMouseLeave={(e) => e.stopPropagation()}
               >
-                <button 
-                  className={`p-1 rounded cursor-pointer border transition-all ${isDark ? 'hover:bg-white/20 bg-white/5 border-white/10' : 'hover:bg-black/10 bg-black/5 border-black/10'}`} 
-                  onClick={(e) => { e.stopPropagation(); onAddOffshoot(node.id); }}
-                >
-                  <Plus size={10} className={isDark ? 'text-white' : 'text-black'} />
-                </button>
-                <button 
-                  className={`p-1 rounded cursor-pointer border transition-all ${movingNodeId === node.id ? 'bg-brand-cyan border-brand-cyan text-black' : (isDark ? 'hover:bg-white/20 bg-white/5 border-white/10 text-white' : 'hover:bg-black/10 bg-black/5 border-black/10 text-black')}`} 
-                  onClick={(e) => { e.stopPropagation(); onStartReparent(node.id); }}
-                  title="Move/Reparent Node"
-                >
-                  <GitPullRequest size={10} />
-                </button>
+                <div className="flex gap-1">
+                  <button 
+                    className={`p-1 rounded cursor-pointer border transition-all ${activeMenuNodeId === node.id ? 'bg-brand-cyan text-black border-brand-cyan' : (isDark ? 'hover:bg-white/20 bg-white/5 border-white/10 text-white' : 'hover:bg-black/10 bg-black/5 border-black/10 text-black')}`} 
+                    onClick={(e) => { e.stopPropagation(); setActiveMenuNodeId(activeMenuNodeId === node.id ? null : node.id); }}
+                    title="Node Actions"
+                  >
+                    {activeMenuNodeId === node.id ? <X size={10} /> : <Plus size={10} />}
+                  </button>
+                  <button 
+                    className={`p-1 rounded cursor-pointer border transition-all ${movingNodeId === node.id ? 'bg-brand-cyan border-brand-cyan text-black' : (isDark ? 'hover:bg-white/20 bg-white/5 border-white/10 text-white' : 'hover:bg-black/10 bg-black/5 border-black/10 text-black')}`} 
+                    onClick={(e) => { e.stopPropagation(); onStartReparent(node.id); }}
+                    title="Move/Reparent Node"
+                  >
+                    <GitPullRequest size={10} />
+                  </button>
+                </div>
+                {activeMenuNodeId === node.id && (
+                  <div className="flex flex-col gap-1 p-1 bg-slate-900 border border-white/10 rounded shadow-xl min-w-[100px] z-50">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveMenuNodeId(null);
+                        onAddOffshoot(node.id);
+                      }}
+                      className="flex items-center gap-1.5 px-2 py-1 text-[9px] font-black tracking-wider text-left text-white hover:text-brand-cyan hover:bg-white/5 rounded transition-all cursor-pointer uppercase"
+                    >
+                      <Plus size={10} />
+                      <span>Add Node</span>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveMenuNodeId(null);
+                        onStartConnection && onStartConnection(node.id);
+                      }}
+                      className="flex items-center gap-1.5 px-2 py-1 text-[9px] font-black tracking-wider text-left text-white hover:text-brand-cyan hover:bg-white/5 rounded transition-all cursor-pointer uppercase"
+                    >
+                      <GitPullRequest size={10} />
+                      <span>Connect</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>

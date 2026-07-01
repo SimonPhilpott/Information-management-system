@@ -4,6 +4,7 @@ import { X, ChevronRight, ChevronDown, Search, Database, RefreshCw, Layers, Tras
 import { ENTITY_TYPES } from '../../data/nodes';
 import { ImportManager } from './ImportManager';
 import { URLMapper } from './URLMapper';
+import { IMPORTANCE_TIERS } from '../Editor/IntelligenceDrawer';
 
 const TreeItem = ({ node, nodes, level = 0, onSelect }) => {
   const [isOpen, setIsOpen] = useState(level < 1);
@@ -303,7 +304,7 @@ export const AdminPanel = ({
               {activeTab === 'spatial' ? (
                  <motion.div key="spatial-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-[var(--text-secondary)] space-y-6 text-sm leading-relaxed pb-20">
                     <div className="bg-[var(--accent-cyan)]/5 border border-[var(--accent-cyan)]/20 rounded-xl p-6">
-                       <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2 italic tracking-tight">HIVE:MESH Volumetric Architecture</h3>
+                       <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2 italic tracking-tight">IMS Volumetric Architecture</h3>
                        <p className="text-[var(--accent-cyan)]/80">Designing a 3D space for plotting radial relationship diagrams involves moving away from the traditional Cartesian grid (X, Y, Z) and instead thinking in terms of spherical coordinates and hierarchical orbits.</p>
                        <p className="mt-4">In this kind of visualization—often referred to as a 3D radial tree or a 3D force-directed graph—the structural layout is built around a central focal point, and relationships radiate outward in three dimensions.</p>
                     </div>
@@ -335,7 +336,7 @@ export const AdminPanel = ({
                           <ul className="list-disc pl-6 space-y-2 text-[var(--text-secondary)]">
                              <li><strong className="text-[var(--text-primary)]">Hierarchical Links:</strong> These lines connect the central hub to the first layer, and the first layer to the second layer. They form the "spokes" of the radial design.</li>
                              <li><strong className="text-[var(--text-primary)]">Lateral Links:</strong> These lines connect nodes that exist on the same spherical layer (e.g., two related sub-topics that share the same parent).</li>
-                             <li><strong className="text-[var(--text-primary)]">Arcing vs. Straight Lines:</strong> While straight lines are computationally cheaper, 3D diagrams often use Bezier curves (arcing lines) for connections. If you draw straight lines between two nodes on opposite sides of a sphere, the line cuts right through the center, creating a messy core. Arcing the lines so they curve along the surface of the imaginary sphere keeps the center hollow and readable.</li>
+                             <li><strong className="text-[var(--text-primary)]">Arcing versus Straight Lines:</strong> While straight lines are computationally cheaper, 3D diagrams often use Bezier curves (arcing lines) for connections. If you draw straight lines between two nodes on opposite sides of a sphere, the line cuts right through the center, creating a messy core. Arcing the lines so they curve along the surface of the imaginary sphere keeps the center hollow and readable.</li>
                           </ul>
                        </div>
 
@@ -454,45 +455,155 @@ export const AdminPanel = ({
                     <URLMapper nodes={nodes} onReviewSync={onReviewSync} />
                  </motion.div>
               ) : activeTab === 'defs' ? (
-                 <motion.div key="defs-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6 pb-32">
+                 <motion.div key="defs-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8 pb-32">
                     <div className="p-4 bg-[var(--accent-cyan)]/10 border border-[var(--accent-cyan)]/20 rounded-xl mb-4">
                        <div className="flex items-center gap-2 text-[var(--accent-cyan)] mb-1">
                           <Info size={14} />
-                          <span className="text-[10px] font-black uppercase tracking-widest">Architectural Guidance</span>
+                          <span className="text-[10px] font-black uppercase tracking-widest">Architectural & Metadata Guidance</span>
                        </div>
                        <p className="text-[10px] text-[var(--text-secondary)] italic leading-relaxed">
-                          Define the semantic meaning of each node type. These descriptions will be used to train the AI agent for dynamic hierarchy expansion.
+                          Define the semantic meaning of each node type and importance priority tier. These parameters train the AI agent for dynamic RAG hierarchy reasoning.
                        </p>
                     </div>
 
-                    {Object.entries(ENTITY_TYPES).map(([key, config]) => (
-                      <div key={key} className="space-y-4 p-6 bg-[var(--bg-elevated)]/50 border border-[var(--glass-border)] rounded-2xl shadow-lg">
-                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                               <div className="w-3 h-3 rounded-full" style={{ backgroundColor: config.color }} />
-                               <span className="text-[11px] font-black text-[var(--text-primary)] uppercase tracking-wider">{config.label}</span>
-                            </div>
-                            <span className="text-[8px] font-mono text-[var(--text-muted)] tracking-tighter">TYPE_ID: {key}</span>
-                         </div>
-                         
-                         {config.guidance && (
-                            <div className="pl-6 border-l border-[var(--glass-border)] space-y-1">
-                                {config.guidance.split('\n').map((line, i) => (
-                                  <p key={i} className="text-[9px] text-[var(--text-secondary)] uppercase font-black leading-tight tracking-tighter">{line}</p>
-                               ))}
-                            </div>
-                         )}
+                    {/* --- NODE TYPE DEFINITIONS SECTION --- */}
+                    <div className="space-y-4">
+                      <h3 className="text-xs font-black uppercase tracking-[0.15em] text-[var(--text-muted)] border-b border-[var(--glass-border)] pb-2 flex items-center gap-2">
+                        <Layers size={12} /> Node Classifications
+                      </h3>
+                      {Object.entries(ENTITY_TYPES).map(([key, config]) => {
+                        const storageKey = `hive_def_desc_${key}`;
+                        const savedDesc = localStorage.getItem(storageKey) || config.description || '';
+                        const storageExamplesKey = `hive_def_examples_${key}`;
+                        const savedExamples = localStorage.getItem(storageExamplesKey) || config.examples || '';
+                        const storageMappingKey = `hive_def_mapping_${key}`;
+                        const savedMapping = localStorage.getItem(storageMappingKey) || config.mappingSummary || '';
 
-                         <textarea 
-                            className="w-full bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-xl p-4 text-[11px] text-[var(--text-primary)] min-h-[100px] outline-none focus:border-brand-cyan/30 transition-all placeholder:text-[var(--text-muted)] placeholder:italic"
-                            placeholder={config.examples || "Enter custom protocol..."}
-                            defaultValue={""} 
-                            onBlur={(e) => {
-                                console.log(`Updated ${key} definition:`, e.target.value);
-                            }}
-                         />
-                      </div>
-                    ))}
+                        return (
+                          <div key={key} className="space-y-4 p-6 bg-[var(--bg-elevated)]/50 border border-[var(--glass-border)] rounded-2xl shadow-lg">
+                             <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: config.color }} />
+                                   <span className="text-[11px] font-black text-[var(--text-primary)] uppercase tracking-wider">{config.label}</span>
+                                </div>
+                                <span className="text-[8px] font-mono text-[var(--text-muted)] tracking-tighter">TYPE_ID: {key}</span>
+                             </div>
+                             
+                             {config.guidance && (
+                                <div className="pl-6 border-l border-[var(--glass-border)] space-y-1">
+                                    {config.guidance.split('\n').map((line, i) => (
+                                      <p key={i} className="text-[9px] text-[var(--text-secondary)] uppercase font-black leading-tight tracking-tighter">{line}</p>
+                                   ))}
+                                </div>
+                             )}
+
+                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="space-y-1.5">
+                                  <label className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Classification Summary</label>
+                                  <textarea 
+                                     className="w-full bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-xl p-3 text-[11px] text-[var(--text-primary)] min-h-[90px] outline-none focus:border-brand-cyan/30 transition-all placeholder:text-[var(--text-muted)] placeholder:italic"
+                                     placeholder="Enter class description..."
+                                     defaultValue={savedDesc} 
+                                     onBlur={(e) => {
+                                         localStorage.setItem(storageKey, e.target.value);
+                                         config.description = e.target.value;
+                                     }}
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Mapping Summary</label>
+                                  <textarea 
+                                     className="w-full bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-xl p-3 text-[11px] text-[var(--text-primary)] min-h-[90px] outline-none focus:border-brand-cyan/30 transition-all placeholder:text-[var(--text-muted)] placeholder:italic"
+                                     placeholder="Enter mapping details..."
+                                     defaultValue={savedMapping} 
+                                     onBlur={(e) => {
+                                         localStorage.setItem(storageMappingKey, e.target.value);
+                                         config.mappingSummary = e.target.value;
+                                     }}
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Examples</label>
+                                  <textarea 
+                                     className="w-full bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-xl p-3 text-[11px] text-[var(--text-primary)] min-h-[90px] outline-none focus:border-brand-cyan/30 transition-all placeholder:text-[var(--text-muted)] placeholder:italic"
+                                     placeholder="Enter real-world examples..."
+                                     defaultValue={savedExamples} 
+                                     onBlur={(e) => {
+                                         localStorage.setItem(storageExamplesKey, e.target.value);
+                                         config.examples = e.target.value;
+                                     }}
+                                  />
+                                </div>
+                             </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* --- IMPORTANCE TIER DEFINITIONS SECTION --- */}
+                    <div className="space-y-4 pt-6">
+                      <h3 className="text-xs font-black uppercase tracking-[0.15em] text-[var(--text-muted)] border-b border-[var(--glass-border)] pb-2 flex items-center gap-2">
+                        <Palette size={12} /> Importance Tiers
+                      </h3>
+                      {IMPORTANCE_TIERS.map((tier) => {
+                        const storageKey = `hive_tier_desc_${tier.id}`;
+                        const savedDesc = localStorage.getItem(storageKey) || tier.description || '';
+                        const storageMappingKey = `hive_tier_mapping_${tier.id}`;
+                        const savedMapping = localStorage.getItem(storageMappingKey) || tier.mappingSummary || '';
+                        const storageExamplesKey = `hive_tier_examples_${tier.id}`;
+                        const savedExamples = localStorage.getItem(storageExamplesKey) || '';
+
+                        return (
+                          <div key={tier.id} className="space-y-4 p-6 bg-[var(--bg-elevated)]/50 border border-[var(--glass-border)] rounded-2xl shadow-lg">
+                             <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: tier.color }} />
+                                   <span className="text-[11px] font-black text-[var(--text-primary)] uppercase tracking-wider">{tier.label}</span>
+                                </div>
+                                <span className="text-[8px] font-mono text-[var(--text-muted)] tracking-tighter">TIER_ID: T{tier.id}</span>
+                             </div>
+
+                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="space-y-1.5">
+                                  <label className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Tier Summary</label>
+                                  <textarea 
+                                     className="w-full bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-xl p-3 text-[11px] text-[var(--text-primary)] min-h-[90px] outline-none focus:border-brand-cyan/30 transition-all placeholder:text-[var(--text-muted)] placeholder:italic"
+                                     placeholder="Enter tier description..."
+                                     defaultValue={savedDesc} 
+                                     onBlur={(e) => {
+                                         localStorage.setItem(storageKey, e.target.value);
+                                         tier.description = e.target.value;
+                                     }}
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Mapping Summary</label>
+                                  <textarea 
+                                     className="w-full bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-xl p-3 text-[11px] text-[var(--text-primary)] min-h-[90px] outline-none focus:border-brand-cyan/30 transition-all placeholder:text-[var(--text-muted)] placeholder:italic"
+                                     placeholder="Enter mapping details..."
+                                     defaultValue={savedMapping} 
+                                     onBlur={(e) => {
+                                         localStorage.setItem(storageMappingKey, e.target.value);
+                                         tier.mappingSummary = e.target.value;
+                                     }}
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Examples</label>
+                                  <textarea 
+                                     className="w-full bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-xl p-3 text-[11px] text-[var(--text-primary)] min-h-[90px] outline-none focus:border-brand-cyan/30 transition-all placeholder:text-[var(--text-muted)] placeholder:italic"
+                                     placeholder="Enter real-world examples..."
+                                     defaultValue={savedExamples} 
+                                     onBlur={(e) => {
+                                         localStorage.setItem(storageExamplesKey, e.target.value);
+                                     }}
+                                  />
+                                </div>
+                             </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                  </motion.div>
               ) : activeTab === 'tree' ? (
                 <motion.div key="tree-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8 pb-32">
@@ -503,7 +614,7 @@ export const AdminPanel = ({
                        <div className="space-y-1">
                            {filteredNodes.length > 0 ? filteredNodes.map(n => (
                                <div 
-                                   key={n.id} 
+                                   key={`search-res-${n.id}`} 
                                    onClick={() => onFocusNode(n)}
                                    className="flex items-center gap-3 py-3 px-4 rounded-xl hover:bg-[var(--bg-elevated)] cursor-pointer border border-transparent hover:border-[var(--glass-border)] transition-all active:scale-[0.98]"
                                >
@@ -523,7 +634,7 @@ export const AdminPanel = ({
 
                   {/* Feature Blueprint */}
                   <div className="space-y-4">
-                     <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest block border-b border-[var(--glass-border)] pb-2">HIVE:MESH User Guide</span>
+                     <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest block border-b border-[var(--glass-border)] pb-2">IMS User Guide</span>
                      
                      <div className="grid grid-cols-1 gap-1.5">
                         {[

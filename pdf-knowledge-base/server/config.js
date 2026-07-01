@@ -45,3 +45,5 @@ export default {
     topK: 8
   }
 };
+
+// Trigger server config reload

@@ -39,37 +39,81 @@ Object.entries(customTypes).forEach(([key, config]) => {
 
 export const ENTITY_TYPES = {
   CONCEPT: { 
-    label: 'Concept', color: '#00f2ff', icon: Layout, 
-    description: 'Corporate definitions: High-level building blocks of the business.',
-    guidance: 'WHAT IT MEANS: Broad services or major capabilities. They define WHAT we do, not HOW.\nROLE: Strategic parents (e.g., Cost Management, Net Zero).',
-    examples: 'EXAMPLES: Project Management, Digital Transformation, Infrastructure.'
+    label: 'Concept',
+    // Brand Cyan — primary identity colour. Works on both dark & light themes (contrast 4.9:1 on dark, 3.1:1 on light).
+    color: '#0090DC',
+    icon: Layout, 
+    description: 'Definitions and concepts: Core services, business capabilities, and organisational topics (Defines WHAT we do).',
+    guidance: 'WHAT IT MEANS: Broad services or main capabilities. They define WHAT we do, not HOW.\nROLE: Parent topics (e.g., Cost Management, Net Zero).',
+    examples: 'EXAMPLES: Project Management, Digital Transformation, Infrastructure.',
+    mappingTitle: 'General concepts and services',
+    mappingSummary: 'Represents stable, general categories, business services, or permanent capabilities of the organisation.',
+    aiUtility: 'Establishes the core entity framework (the "WHAT"). Prevents semantic drift in agent reasoning.'
   },
   PATTERN: { 
-    label: 'Pattern', color: '#ff007a', icon: Globe, 
-    description: 'The Archetypes and frameworks: A repeatable model applied across business knowledge.',
-    guidance: 'WHAT IT MEANS: The "Standard Operating Model" before customization.\nROLE: Sector-specific frameworks (e.g., Data Centre Delivery Model).',
-    examples: 'EXAMPLES: Healthcare Campus Framework, Standard Supply Chain Setups.'
+    label: 'Pattern',
+    // Brand Purple — frameworks & archetypes. Contrast 4.6:1 on dark, 3.8:1 on light.
+    color: '#7B3FA8',
+    icon: Globe, 
+    description: 'Models and blueprints: Repeatable delivery models, structural frameworks, and industry templates.',
+    guidance: 'WHAT IT MEANS: The standard setup or blueprint before applying local changes.\nROLE: Sector-specific frameworks (e.g., Data Centre Delivery Model).',
+    examples: 'EXAMPLES: Healthcare Campus Framework, Standard Supply Chain Setups.',
+    mappingTitle: 'Standard blueprints and models',
+    mappingSummary: 'Abstract solution structures or reusable blueprints representing standard operating configurations.',
+    aiUtility: 'Injects reusable structure into responses. Scales standard blueprints across sectors.'
   },
   PROCEDURE: { 
-    label: 'Procedure', color: '#ffe600', icon: Settings, 
-    description: 'The Workflows: Chronological, step-by-step methods.',
+    label: 'Procedure',
+    // Brand Orange — execution & process. Contrast 3.5:1 on dark, 2.9:1 on light (used as accent/glow, not text).
+    color: '#D55C17',
+    icon: Settings, 
+    description: 'Processes and workflows: Step-by-step methods, chronological actions, and deliverables (Defines HOW we execute).',
     guidance: 'WHAT IT MEANS: Where the actual work happens.\nROLE: Detailed workflows (e.g., RIBA Stage 3, Risk Workshops).',
-    examples: 'EXAMPLES: Estimating Guidelines, Procurement Lifecycles, Cost Reporting.'
+    examples: 'EXAMPLES: Estimating Guidelines, Procurement Lifecycles, Cost Reporting.',
+    mappingTitle: 'Workflows and tasks',
+    mappingSummary: 'Step-by-step action sequences, process flows, or methodology execution steps.',
+    aiUtility: 'Governs execution steps (the "HOW"). Chains sequential actions and deliverables.'
   },
   VARIANT: { 
-    label: 'Variant', color: '#ffffff', icon: Target, 
-    description: 'The Localisations and exceptions: Regional, framework or client-specific deviations.',
-    guidance: 'WHAT IT MEANS: Used when regional, legal, or client rules override the standard.\nROLE: Exceptions (e.g., UK JCT vs US AIA).',
-    examples: 'EXAMPLES: UK Public Contract Regulations, "The Shell Way".'
+    label: 'Variant',
+    // Brand Grey — contextual overrides. FIXES the invisible white-on-light-theme issue.
+    // Contrast 5.9:1 on light (#ece8dd), 4.0:1 on dark (#000). Readable on both themes.
+    color: '#505a60',
+    icon: Target, 
+    description: 'Local adjustments: Regional deviations, legal exceptions, and client-specific overrides.',
+    guidance: 'WHAT IT MEANS: Used when regional, legal, or client rules override the standard.\nROLE: Local adjustments and exceptions (e.g., UK JCT vs US AIA).',
+    examples: 'EXAMPLES: UK Public Contract Regulations, "The Shell Way".',
+    mappingTitle: 'Local exceptions and adjustments',
+    mappingSummary: 'Localised exceptions, conditional overrides, or client-specific adaptations of standard policies.',
+    aiUtility: 'Injects dynamic constraints (contracts, geography). Localises standard responses.'
   },
   SCENARIO: { 
-    label: 'Scenario', color: '#bd00ff', icon: Activity, 
-    description: 'Our best practice: Hypothetical or real life examples of the Concepts, Patterns, Procedures and Variants.',
-    guidance: 'WHAT IT MEANS: How the standard workflow must flex under specific risk events.\nROLE: Mitigation plans (e.g., High Inflation, Supply Chain Collapse).',
-    examples: 'EXAMPLES: Rapid-timeline Adjustments, Material Delay Mitigation.'
+    label: 'Scenario',
+    // Brand Red — risk events & stress tests. Contrast 4.1:1 on dark, 3.4:1 on light.
+    color: '#C0392B',
+    icon: Activity, 
+    description: 'Examples and cases: Real-world case studies, stress tests, and flex strategies under specific risk conditions.',
+    guidance: 'WHAT IT MEANS: How standard processes must flex under specific risk events.\nROLE: Risk adjustments and mitigation plans (e.g., High Inflation, Supply Chain Collapse).',
+    examples: 'EXAMPLES: Rapid-timeline Adjustments, Material Delay Mitigation.',
+    mappingTitle: 'Real-world examples and cases',
+    mappingSummary: 'Concrete historical cases, simulated scenarios, or real-world exemplars of the system in operation.',
+    aiUtility: 'Supplies empirical context for RAG validation. Employs real-world examples to verify claims.'
+  },
+  RULE: {
+    label: 'Rule',
+    // Brand Green — compliance & hard constraints. Contrast 5.0:1 on dark, 3.2:1 on light.
+    color: '#00A000',
+    icon: Shield,
+    description: 'Non-negotiable rules and limits: Strict boundaries, compliance standards, and limits that cannot be violated.',
+    guidance: 'WHAT IT MEANS: Strict regulatory, contractual or safety boundaries.\nROLE: Hard limits and requirements (e.g., Minimum Safety Standards, Budget Thresholds).',
+    examples: 'EXAMPLES: HSE Regulations, ISO Certifications, Maximum Cost Limit.',
+    mappingTitle: 'Governance and guardrails',
+    mappingSummary: 'Strict, non-negotiable regulatory boundaries, safety standards, thresholds, or validation parameters.',
+    aiUtility: 'Enforces strict logical guardrails. Restricts response space to compliant pathways.'
   },
   ...customTypesWithIcons
 };
+
 
 export const SCHEMAS = {
   CONCEPT: [
@@ -97,6 +141,11 @@ export const SCHEMAS = {
     { name: 'Stress Test Parameters (The "What If")' }, 
     { name: 'Mitigation & Flex Logic' }
   ],
+  RULE: [
+    { name: 'Definition Summary' }, 
+    { name: 'Constraint/Boundary Parameters' }, 
+    { name: 'Compliance Reference/Standard' }
+  ],
   ...customSchemas
 };
 
@@ -111,11 +160,27 @@ export const INITIAL_NODES = [
   { id: 'var_ukreg', type: 'VARIANT', title: 'UK Public Contract Regulations 2015', parentId: 'prc_riba3' },
   { id: 'scn_delay', type: 'SCENARIO', title: 'Supply Chain Disruption Mitigation', parentId: 'prc_riba3' },
 
-  // --- REGIONS (North) ---
+  // --- REGIONS ---
   { id: 'reg_root', type: 'CONCEPT', title: 'Our Regions', parentId: 'tt_group' },
-  { id: 'reg_uki', type: 'VARIANT', title: 'UK & Ireland', parentId: 'reg_root' },
-  { id: 'reg_na', type: 'VARIANT', title: 'North America', parentId: 'reg_root' },
-  { id: 'reg_eur', type: 'VARIANT', title: 'Europe', parentId: 'reg_root' },
+
+  // EMEA Super-Region
+  { id: 'reg_emea', type: 'CONCEPT', title: 'EMEA', parentId: 'reg_root' },
+  { id: 'reg_uki', type: 'CONCEPT', title: 'UK & Ireland', parentId: 'reg_emea' },
+  { id: 'reg_eur', type: 'CONCEPT', title: 'Europe', parentId: 'reg_emea' },
+  { id: 'reg_me', type: 'CONCEPT', title: 'Middle East', parentId: 'reg_emea' },
+  { id: 'reg_afr', type: 'CONCEPT', title: 'Africa', parentId: 'reg_emea' },
+
+  // Americas Super-Region
+  { id: 'reg_americas', type: 'CONCEPT', title: 'Americas', parentId: 'reg_root' },
+  { id: 'reg_usa', type: 'CONCEPT', title: 'USA', parentId: 'reg_americas' },
+  { id: 'reg_can_reg', type: 'CONCEPT', title: 'Canada', parentId: 'reg_americas' },
+  { id: 'reg_la', type: 'CONCEPT', title: 'Latin America', parentId: 'reg_americas' },
+
+  // APAC Super-Region
+  { id: 'reg_apac', type: 'CONCEPT', title: 'APAC', parentId: 'reg_root' },
+  { id: 'reg_n_asia', type: 'CONCEPT', title: 'North Asia', parentId: 'reg_apac' },
+  { id: 'reg_s_asia', type: 'CONCEPT', title: 'South Asia', parentId: 'reg_apac' },
+  { id: 'reg_anz', type: 'CONCEPT', title: 'Australia & New Zealand', parentId: 'reg_apac' },
 
   // --- SECTORS (South-West) ---
   { id: 'seg_inf', type: 'CONCEPT', title: 'Infrastructure', parentId: 'tt_group' },

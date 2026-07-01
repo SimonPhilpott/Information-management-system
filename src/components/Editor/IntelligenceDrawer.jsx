@@ -3,16 +3,55 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, ChevronRight, Save, Trash2, Cpu, Plus, Link as LinkIcon, Info, AlertTriangle, Bold, Italic, List, Heading1, Heading2, CheckCircle2, Zap, AlignLeft, AlignCenter, AlignRight, AlignJustify, Shield } from 'lucide-react';
 import { ENTITY_TYPES, SCHEMAS } from '../../data/nodes';
 
-/** Importance tier definitions — ordered from highest to lowest priority. */
-const IMPORTANCE_TIERS = [
-  { id: 1, label: 'Critical',      color: '#FF3B30', description: 'Mission-critical — regulatory, safety, or contractual obligation.' },
-  { id: 2, label: 'High',          color: '#FF9500', description: 'Significant business impact — key deliverables and milestones.' },
-  { id: 3, label: 'Standard',      color: '#34C759', description: 'Normal priority — standard operating procedures and guidance.' },
-  { id: 4, label: 'Low',           color: '#5AC8FA', description: 'Supplementary context — useful but not time-sensitive.' },
-  { id: 5, label: 'Informational', color: '#8E8E93', description: 'Reference only — background knowledge and archive material.' },
+export const IMPORTANCE_TIERS = [
+  { 
+    id: 1, 
+    label: 'Tier 1: Critical',      
+    color: '#FF3B30', 
+    description: 'Non-negotiable requirements: Essential standards, safety codes, and mandatory regulatory limits.',
+    mappingTitle: 'Safety and Regulatory Standards',
+    mappingSummary: 'Inviolable compliance thresholds, safety instructions, or legally binding conditions.',
+    aiUtility: 'Highest utility context. Ensures answer compliance with safety and legal regulations first.'
+  },
+  { 
+    id: 2, 
+    label: 'Tier 2: High',          
+    color: '#FF9500', 
+    description: 'Primary methodologies: Core business models, standard templates, and primary delivery methods.',
+    mappingTitle: 'Core Delivery Models',
+    mappingSummary: 'Key frameworks, core delivery models, and essential operating workflows.',
+    aiUtility: 'Primary instruction context. Shapes response structure around main templates and blueprints.'
+  },
+  { 
+    id: 3, 
+    label: 'Tier 3: Standard',      
+    color: '#34C759', 
+    description: 'Operating procedures: Standard day-to-day procedures, general guides, and common steps.',
+    mappingTitle: 'Standard Workflows',
+    mappingSummary: 'Standard workflows, common procedures, and day-to-day execution guidelines.',
+    aiUtility: 'Standard execution context. Provides typical procedures and steps for regular tasks.'
+  },
+  { 
+    id: 4, 
+    label: 'Tier 4: Low',           
+    color: '#5AC8FA', 
+    description: 'Background guides: Helpful context, secondary advice, and optional templates.',
+    mappingTitle: 'Contextual Guides and Tips',
+    mappingSummary: 'Helpful hints, secondary guides, and optional templates for additional detail.',
+    aiUtility: 'Supplementary context. Offers useful but optional instructions to enrich the final output.'
+  },
+  { 
+    id: 5, 
+    label: 'Tier 5: Informational', 
+    color: '#8E8E93', 
+    description: 'General knowledge: Archives, past case studies, and general background information.',
+    mappingTitle: 'Reference Materials and Archives',
+    mappingSummary: 'Archived studies, general background information, and legacy reference sheets.',
+    aiUtility: 'Lowest utility context. Feeds historical examples and background details if relevant.'
+  },
 ];
 
-const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, currentSecondaryLinks = [], theme = 'dark' }) => {
+export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, currentSecondaryLinks = [], theme = 'dark', placeholder = "Analyse and document intelligence..." }) => {
   const editorRef = useRef(null);
   const containerRef = useRef(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -337,7 +376,7 @@ const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, current
           onClick={handleClick}
           onPaste={handlePaste}
           className="rich-editor-content cyber-input min-h-[300px] p-6 rounded-[var(--radius-lg)] transition-all outline-none text-[13px] leading-relaxed border border-[var(--glass-border)] bg-white hover:border-[var(--glass-border-hover)] focus:border-[var(--accent-indigo)]/40 text-black"
-          placeholder="Analyse and document intelligence..."
+          placeholder={placeholder}
         />
         <AnimatePresence>
           {showSuggestions && (
@@ -402,11 +441,18 @@ const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, current
 
 export const IntelligenceDrawer = ({ 
   isOpen, onClose, nodes, editingNode, currentType, setCurrentType, 
-  formData, setFormData, onSave, onToggleConnection, onDeleteNode, theme = 'dark'
+  formData, setFormData, onSave, onToggleConnection, onDeleteNode, theme = 'dark',
+  onSelectNode
 }) => {
   const [isDeleting, setIsDeleting] = useState(false);
   const isDark = theme !== 'light';
   const activeRangeRef = useRef(null);
+
+  // Toggle state between 'old' (Standard Editor) and 'new' (SharePoint Portal View)
+  const [viewMode, setViewMode] = useState('old');
+  const [activeTooltip, setActiveTooltip] = useState(null);
+  const [hoveredItemId, setHoveredItemId] = useState(null);
+  const [hoveredGrandchildId, setHoveredGrandchildId] = useState(null);
 
   const [colorPalette, setColorPalette] = useState([
     '#000000', // Black
@@ -422,6 +468,30 @@ export const IntelligenceDrawer = ({
 
   const [currentFontSize, setCurrentFontSize] = useState('12pt');
   const [currentHeading, setCurrentHeading] = useState('P');
+
+  // Helper to fetch descendants recursively
+  const getDescendants = (nodeId) => {
+    const list = [];
+    const queue = [nodeId];
+    const visited = new Set();
+    while (queue.length > 0) {
+      const currentId = queue.shift();
+      if (visited.has(currentId)) continue;
+      visited.add(currentId);
+      const children = nodes.filter(n => n.parentId === currentId);
+      children.forEach(c => {
+        list.push(c);
+        queue.push(c.id);
+      });
+    }
+    return list;
+  };
+
+  const parentNode = editingNode ? nodes.find(n => n.id === editingNode.parentId) : null;
+  const directChildren = editingNode ? nodes.filter(n => n.parentId === editingNode.id) : [];
+  const descendants = editingNode ? getDescendants(editingNode.id) : [];
+  // Inherit descendant procedures (workflows)
+  const inheritedProcedures = descendants.filter(n => n.type === 'PROCEDURE');
 
   // Track selection state and computed styles
   useEffect(() => {
@@ -549,6 +619,64 @@ export const IntelligenceDrawer = ({
     }
   };
 
+  const renderReadOnlyContent = (text) => {
+    if (!text) return <span className="italic opacity-50">Pending logic capture...</span>;
+    
+    const parts = [];
+    let lastIndex = 0;
+    const regex = /\[\[(.*?)\|(.*?)\]\]/g;
+    let match;
+    
+    while ((match = regex.exec(text)) !== null) {
+      const id = match[1];
+      const title = match[2];
+      const matchIndex = match.index;
+      
+      if (matchIndex > lastIndex) {
+        const sub = text.substring(lastIndex, matchIndex);
+        parts.push(<span key={`text_${lastIndex}`} dangerouslySetInnerHTML={{ __html: sub }} />);
+      }
+      
+      const targetNode = nodes.find(n => n.id === id);
+      const color = ENTITY_TYPES[targetNode?.type]?.color || '#00f2ff';
+      
+      parts.push(
+        <button
+          key={`tag_${matchIndex}`}
+          onClick={() => {
+            const node = nodes.find(n => n.id === id);
+            if (node && onSelectNode) onSelectNode(node);
+          }}
+          className="inline-tag active-tag"
+          style={{
+            border: `1px solid ${color}88`,
+            background: `${color}22`,
+            color: color,
+            boxShadow: `0 0 10px ${color}22`,
+            padding: '2px 8px',
+            borderRadius: '4px',
+            fontSize: '11px',
+            margin: '0 4px',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center'
+          }}
+        >
+          {title}
+        </button>
+      );
+      
+      lastIndex = regex.lastIndex;
+    }
+    
+    if (lastIndex < text.length) {
+      const sub = text.substring(lastIndex);
+      parts.push(<span key={`text_${lastIndex}`} dangerouslySetInnerHTML={{ __html: sub }} />);
+    }
+    
+    return <div className="prose max-w-none text-inherit">{parts.length > 0 ? parts : <div dangerouslySetInnerHTML={{ __html: text }} />}</div>;
+  };
+
   return (
     <motion.div 
       initial={{ x: '100%' }} animate={{ x: isOpen ? 0 : '100%' }}
@@ -558,6 +686,7 @@ export const IntelligenceDrawer = ({
       onPointerDown={e => e.stopPropagation()}
       onClick={e => e.stopPropagation()}
     >
+       {/* Top drawer header */}
        <div className="p-6 border-b flex justify-between items-center shrink-0 border-[var(--glass-border)] bg-[var(--bg-secondary)]/30 transition-colors duration-300">
           <div className="flex flex-col">
              <div className="flex items-center gap-3">
@@ -565,257 +694,629 @@ export const IntelligenceDrawer = ({
                 <h2 className="text-[20px] font-semibold text-[var(--text-primary)] transition-colors duration-300">Intelligence Review</h2>
              </div>
           </div>
-          <button onClick={onClose} className="p-2.5 rounded-full transition-all hover:bg-[var(--glass-border)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"><X size={22} /></button>
-       </div>
-       
-       <div className="flex-1 overflow-auto custom-scrollbar relative flex flex-col">
-            {/* Sticky Unified Formatting Toolbar */}
-            <div 
-              className="sticky top-0 z-50 px-8 py-3 bg-[var(--bg-secondary)] border-b border-[var(--glass-border)] flex flex-wrap items-center gap-3 transition-colors duration-300 shadow-sm"
-              style={{ backdropFilter: 'blur(20px)' }}
-            >
-               {/* Bold & Italic */}
-               <div className="flex items-center gap-1 p-1 bg-black/10 rounded-lg border border-[var(--glass-border)]">
-                  <button 
-                    onMouseDown={(e) => { e.preventDefault(); exec('bold'); }}
-                    className="p-1.5 rounded hover:bg-black/15 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
-                    title="Bold"
-                  >
-                    <Bold size={13} />
-                  </button>
-                  <button 
-                    onMouseDown={(e) => { e.preventDefault(); exec('italic'); }}
-                    className="p-1.5 rounded hover:bg-black/15 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
-                    title="Italic"
-                  >
-                    <Italic size={13} />
-                  </button>
-               </div>
-
-               {/* Font Size selector */}
-               <div className="flex items-center gap-1 p-1 bg-black/10 rounded-lg border border-[var(--glass-border)]">
-                  <input 
-                    type="text"
-                    list="font-sizes"
-                    value={currentFontSize}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setCurrentFontSize(val);
-                      applyFontSize(val);
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    className="bg-transparent text-xs text-[var(--text-primary)] outline-none border-none py-1 px-1.5 w-[60px] text-center"
-                    placeholder="11pt"
-                  />
-                  <datalist id="font-sizes">
-                    <option value="8pt" />
-                    <option value="9pt" />
-                    <option value="10pt" />
-                    <option value="11pt" />
-                    <option value="12pt" />
-                    <option value="14pt" />
-                    <option value="16pt" />
-                    <option value="18pt" />
-                    <option value="20pt" />
-                    <option value="24pt" />
-                    <option value="30pt" />
-                    <option value="36pt" />
-                  </datalist>
-               </div>
-
-               {/* Headings & Lists */}
-               <div className="flex items-center gap-1 p-1 bg-black/10 rounded-lg border border-[var(--glass-border)]">
-                  <select
-                    value={currentHeading}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setCurrentHeading(val);
-                      applyHeading(val);
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    className="bg-transparent text-xs text-[var(--text-primary)] outline-none border-none py-1 px-1.5 cursor-pointer"
-                  >
-                    <option value="P" className="text-black">Normal</option>
-                    <option value="H1" className="text-black">H1</option>
-                    <option value="H2" className="text-black">H2</option>
-                    <option value="H3" className="text-black">H3</option>
-                    <option value="H4" className="text-black">H4</option>
-                    <option value="H5" className="text-black">H5</option>
-                    <option value="H6" className="text-black">H6</option>
-                  </select>
-                  <div className="w-px h-4 bg-[var(--glass-border)] mx-0.5" />
-                  <button 
-                    onMouseDown={(e) => { e.preventDefault(); exec('insertUnorderedList'); }}
-                    className="p-1.5 rounded hover:bg-black/15 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
-                    title="Bullet List"
-                  >
-                    <List size={13} />
-                  </button>
-               </div>
-
-               {/* Color Palette & Custom Color Builder */}
-               <div className="flex items-center gap-2 p-1 bg-black/10 rounded-lg border border-[var(--glass-border)]">
-                  <div className="flex items-center gap-1 overflow-x-auto max-w-[180px] scrollbar-none pr-1">
-                     {colorPalette.map((color, i) => (
-                       <button
-                         key={i}
-                         onMouseDown={(e) => { e.preventDefault(); exec('foreColor', color); }}
-                         className="w-3.5 h-3.5 rounded-full border border-white/20 shrink-0 hover:scale-110 active:scale-95 transition-all"
-                         style={{ backgroundColor: color }}
-                         title={color}
-                       />
-                     ))}
-                  </div>
-                  <div className="w-px h-4 bg-[var(--glass-border)]" />
-                  <div 
-                    className="relative w-5 h-5 rounded-full overflow-hidden border border-white/20 hover:scale-110 active:scale-95 transition-all cursor-pointer"
-                    style={{ background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' }}
-                    title="Select Custom Color"
-                  >
-                     <input 
-                       type="color" 
-                       value={customColor}
-                       onChange={(e) => {
-                         const selected = e.target.value;
-                         setCustomColor(selected);
-                         if (!colorPalette.includes(selected)) {
-                           setColorPalette([...colorPalette, selected]);
-                         }
-                         exec('foreColor', selected);
-                       }}
-                       className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                     />
-                  </div>
-               </div>
-            </div>
-
-           <div className="p-8 space-y-10 flex-1">
-             <div className="space-y-3.5">
-                <label className="text-xs font-semibold flex items-center gap-2 text-[var(--accent-indigo)] transition-colors duration-300">
-                   <div className="w-1 h-3.5 bg-[var(--accent-indigo)] rounded-full" />
-                   Designation
-                </label>
-                <input 
-                   className="cyber-input text-[28px] font-medium bg-transparent w-full outline-none transition-colors duration-300 border-[var(--glass-border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]/20 tracking-tight" 
-                   value={formData.title} 
-                   onChange={(e) => setFormData({ ...formData, title: e.target.value })} 
-                   placeholder="Enter designation..."
-                />
-             </div>
-             <div className="space-y-4">
-                <label className="text-xs font-semibold flex items-center gap-2 text-[var(--text-muted)] transition-colors duration-300">
-                   <Info size={12} />
-                   Branch Classification
-                </label>
-                <div className="grid grid-cols-3 gap-3">
-                   {Object.entries(ENTITY_TYPES).map(([k,v]) => {
-                     const isActive = currentType === k;
-                     const style = isActive ? {
-                       borderColor: v.color,
-                       backgroundColor: `${v.color}15`,
-                       boxShadow: `0 0 20px ${v.color}25`
-                     } : {
-                       borderColor: 'var(--glass-border)',
-                       backgroundColor: 'var(--bg-secondary)'
-                     };
-                     
-                     return (
-                       <button 
-                         key={k} 
-                         onClick={() => setCurrentType(k)} 
-                         style={style}
-                         className="group relative p-4 border-2 rounded-[var(--radius-lg)] flex flex-col gap-2 transition-all text-left"
-                       >
-                          <div className="flex items-center gap-2">
-                             <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: v.color }} />
-                             <span 
-                               className="text-xs font-semibold transition-colors" 
-                               style={{ color: v.color }}
-                             >
-                               {v.label}
-                             </span>
-                          </div>
-                          <p className="text-[11px] leading-snug text-[var(--text-secondary)] transition-colors">{v.description}</p>
-                       </button>
-                     );
-                   })}
-                </div>
-             </div>
-             {/* ── Importance Tier Selector ── */}
-             <div className="space-y-4 pt-6">
-                <label className="text-xs font-semibold flex items-center gap-2 text-[var(--text-muted)] transition-colors duration-300">
-                   <Shield size={12} />
-                   Importance Tier
-                </label>
-                <div className="flex gap-2">
-                   {IMPORTANCE_TIERS.map(tier => {
-                     const isActive = (formData.tier || 3) === tier.id;
-                     return (
-                       <button
-                         key={tier.id}
-                         onClick={() => setFormData({ ...formData, tier: tier.id })}
-                         className="group relative flex-1 py-2.5 px-2 rounded-[var(--radius-lg)] border-2 flex flex-col items-center gap-1.5 transition-all text-center"
-                         style={isActive ? {
-                           borderColor: tier.color,
-                           backgroundColor: `${tier.color}15`,
-                           boxShadow: `0 0 16px ${tier.color}20`
-                         } : {
-                           borderColor: 'var(--glass-border)',
-                           backgroundColor: 'var(--bg-secondary)'
-                         }}
-                         title={tier.description}
-                       >
-                         <div
-                           className="w-2 h-2 rounded-full transition-all"
-                           style={{ backgroundColor: tier.color, opacity: isActive ? 1 : 0.4 }}
-                         />
-                         <span
-                           className="text-[10px] font-bold uppercase tracking-wide transition-colors"
-                           style={{ color: isActive ? tier.color : 'var(--text-muted)' }}
-                         >
-                           {tier.label}
-                         </span>
-                         <span className="text-[8px] font-mono opacity-60" style={{ color: isActive ? tier.color : 'var(--text-muted)' }}>
-                           T{tier.id}
-                         </span>
-                       </button>
-                     );
-                   })}
-                </div>
-                <p className="text-[10px] italic text-[var(--text-muted)] leading-snug">
-                  {IMPORTANCE_TIERS.find(t => t.id === (formData.tier || 3))?.description}
-                </p>
-             </div>
-             <div className="space-y-10 pt-10 border-t border-[var(--glass-border)] pb-32 transition-colors duration-300">
-                <div className="p-5 rounded-2xl flex items-start gap-4 mb-4 border transition-all bg-[var(--accent-indigo)]/5 border-[var(--accent-indigo)]/10">
-                   <Zap size={18} className="shrink-0 text-[var(--accent-indigo)]" />
-                   <div className="space-y-1">
-                      <span className="text-xs font-semibold text-[var(--accent-indigo)]">Predictive Tagging Engaged</span>
-                      <p className="text-[11px] italic text-[var(--text-secondary)] transition-colors duration-300">Review keywords with <span className="font-semibold border border-dotted px-1.5 py-0.5 rounded mx-1 text-[var(--accent-indigo)] border-[var(--accent-indigo)] bg-[var(--accent-indigo)]/5">dotted boxes</span> to instantly establish new graph connections.</p>
-                   </div>
-                </div>
-                {SCHEMAS[currentType]?.map(f => (
-                  <div key={f.name} className="space-y-4">
-                     <label className="text-[13px] font-semibold flex items-center gap-2 text-[var(--text-secondary)] transition-colors duration-300">
-                        <ChevronRight size={12} className="text-[var(--accent-indigo)]" />
-                        {f.name}
-                     </label>
-                     <RichTaggingEditor 
-                        value={formData.content[f.name] || ''} 
-                        onChange={(val) => setFormData(prev => ({
-                           ...prev, content: { ...prev.content, [f.name]: val }
-                        }))} 
-                        nodes={nodes}
-                        theme={theme}
-                        placeholder={`Document ${f.name} with intelligence...`}
-                        onToggleConnection={onToggleConnection}
-                        currentSecondaryLinks={editingNode?.secondaryLinks || []}
-                     />
-                  </div>
-                ))}
-             </div>
+          
+          <div className="flex items-center gap-4">
+             {/* New Toggle Button for View Modes */}
+             {editingNode && (
+               <button 
+                 onClick={() => setViewMode(viewMode === 'old' ? 'new' : 'old')}
+                 className={`px-4 py-2 text-[11px] font-bold rounded-lg border transition-all uppercase tracking-wider active:scale-[0.98] ${
+                   theme === 'light'
+                     ? 'bg-[#899981]/15 border-[#899981]/30 text-[#4E5A47] hover:bg-[#899981]/25'
+                     : 'bg-brand-cyan/10 border-brand-cyan/30 text-brand-cyan hover:bg-brand-cyan/20'
+                 }`}
+               >
+                 {viewMode === 'old' ? 'SharePoint View' : 'Standard Editor'}
+               </button>
+             )}
+             <button onClick={onClose} className="p-2.5 rounded-full transition-all hover:bg-[var(--glass-border)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"><X size={22} /></button>
           </div>
        </div>
+
+       {viewMode === 'new' && editingNode ? (
+         /* ── SHAREPOINT PORTAL VIEW ────────────────────────────────────── */
+         <div className="flex-1 overflow-auto custom-scrollbar bg-[#F2EEE7] text-slate-800 flex flex-col select-text">
+           
+           {/* 1. Deep Blue Navigation Bar representing subtree nodes */}
+           <nav className="flex items-center gap-6 px-8 py-3 bg-[#1E4479] text-white text-[13px] font-medium font-sans relative select-none w-full shrink-0 shadow-md">
+             <div className="font-extrabold uppercase tracking-wider text-[#A3B8CC] mr-2 text-[11px]">Navigation:</div>
+             {directChildren.length === 0 ? (
+               <span className="italic text-white/50 text-[11px]">No child nodes in this branch</span>
+             ) : (
+               directChildren.map(child => {
+                 const grandchildren = nodes.filter(n => n.parentId === child.id);
+                 const hasChildren = grandchildren.length > 0;
+                 const isHovered = hoveredItemId === child.id;
+
+                 return (
+                   <div
+                     key={child.id}
+                     className="relative py-1 cursor-pointer"
+                     onMouseEnter={() => setHoveredItemId(child.id)}
+                     onMouseLeave={() => { setHoveredItemId(null); setHoveredGrandchildId(null); }}
+                   >
+                     <div 
+                       onClick={() => onSelectNode && onSelectNode(child)}
+                       className="flex items-center gap-1.5 hover:text-cyan-200 transition-colors"
+                     >
+                       <span>{child.title}</span>
+                       {hasChildren && <span className="text-[8px] opacity-75">▼</span>}
+                     </div>
+
+                     {hasChildren && isHovered && (
+                       <div 
+                         className="absolute top-full left-0 mt-2 bg-white text-black py-2 rounded-lg shadow-2xl z-[80000] min-w-[220px] border border-slate-200 flex flex-col"
+                         onMouseLeave={() => setHoveredGrandchildId(null)}
+                       >
+                         {grandchildren.map(gc => {
+                           const greatGrandchildren = nodes.filter(n => n.parentId === gc.id);
+                           const hasGreatChildren = greatGrandchildren.length > 0;
+                           const isGcHovered = hoveredGrandchildId === gc.id;
+
+                           return (
+                             <div
+                               key={gc.id}
+                               className="relative px-4 py-2.5 hover:bg-slate-100 transition-colors flex items-center justify-between group"
+                               onMouseEnter={() => setHoveredGrandchildId(gc.id)}
+                               onClick={(e) => {
+                                 e.stopPropagation();
+                                 onSelectNode && onSelectNode(gc);
+                               }}
+                             >
+                               <span className="group-hover:text-[#1E4479] font-medium text-[12px]">{gc.title}</span>
+                               {hasGreatChildren && <span className="text-[8px] text-slate-400">▶</span>}
+
+                               {hasGreatChildren && isGcHovered && (
+                                 <div 
+                                   className="absolute left-full top-0 ml-1 bg-white text-black py-1.5 rounded-lg shadow-2xl z-[90000] min-w-[200px] border border-slate-200 flex flex-col"
+                                   onClick={(e) => e.stopPropagation()}
+                                 >
+                                   {greatGrandchildren.map(ggc => (
+                                     <button
+                                       key={ggc.id}
+                                       onClick={(e) => {
+                                         e.stopPropagation();
+                                         onSelectNode && onSelectNode(ggc);
+                                       }}
+                                       className="px-4 py-2.5 text-left hover:bg-slate-100 hover:text-[#1E4479] transition-colors w-full text-[11px] font-medium truncate"
+                                     >
+                                       {ggc.title}
+                                     </button>
+                                   ))}
+                                 </div>
+                               )}
+                             </div>
+                           );
+                         })}
+                       </div>
+                     )}
+                   </div>
+                 );
+               })
+             )}
+           </nav>
+
+           {/* 2. Banner / Header area */}
+           <div className="bg-slate-200 border-b border-slate-300/60 p-8 flex flex-col gap-3 relative shadow-inner">
+             <div className="flex items-center gap-2">
+               {parentNode && (
+                 <button
+                   onClick={() => onSelectNode && onSelectNode(parentNode)}
+                   className="px-3 py-1 bg-[#1E4479] text-white text-[10px] font-black uppercase rounded tracking-wider shadow-sm hover:bg-[#153056] transition-colors"
+                 >
+                   {parentNode.title}
+                 </button>
+               )}
+               <span 
+                 className="px-3 py-1 border text-[10px] font-black uppercase rounded tracking-wider shadow-sm"
+                 style={{
+                   borderColor: ENTITY_TYPES[currentType]?.color || '#505A60',
+                   color: ENTITY_TYPES[currentType]?.color || '#505A60',
+                   backgroundColor: '#ffffff'
+                 }}
+               >
+                 {ENTITY_TYPES[currentType]?.label}
+               </span>
+             </div>
+             
+             <h1 className="text-4xl font-extrabold tracking-tighter text-slate-900 leading-none">
+               {formData.title}
+             </h1>
+           </div>
+
+           {/* 3. Main layout grid (central column & right sidebar) */}
+           <div className="p-8 grid grid-cols-3 gap-8 flex-1">
+             
+             {/* Left/Central Column (Col Span 2) */}
+             <div className="col-span-2 space-y-8">
+               
+               {/* Prominent blue Definition card */}
+               <div className="bg-[#1E4479] text-white p-8 rounded-3xl shadow-lg border border-white/5 relative overflow-hidden">
+                 <div className="absolute top-0 right-0 p-8 opacity-5 scale-150 rotate-12 pointer-events-none text-white">
+                   <Cpu size={120} />
+                 </div>
+                 <h3 className="text-[10px] font-black tracking-widest uppercase text-slate-300 mb-4">Definition Summary</h3>
+                 <div className="text-[17px] leading-relaxed font-light text-slate-100">
+                   {renderReadOnlyContent(formData.content['Definition Summary'] || formData.content['Summary'] || '')}
+                 </div>
+               </div>
+
+               {/* Other fields from schema */}
+               {SCHEMAS[currentType]?.filter(f => f.name !== 'Definition Summary' && f.name !== 'Summary').map(f => (
+                 <div key={f.name} className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+                   <h4 className="text-[11px] font-black tracking-wider uppercase text-slate-400 border-b pb-2">{f.name}</h4>
+                   <div className="text-[13px] leading-relaxed text-slate-700 font-light">
+                     {renderReadOnlyContent(formData.content[f.name] || '')}
+                   </div>
+                 </div>
+               ))}
+
+               {/* 4. Inherited Child Node Text Areas (Listed under main node definition) */}
+               {inheritedProcedures.length > 0 && (
+                 <div className="space-y-4 pt-4">
+                   <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-500 border-b-2 border-slate-300 pb-2">Inherited Workflows &amp; Processes</h3>
+                   <div className="grid grid-cols-1 gap-4">
+                     {inheritedProcedures.map(childNode => (
+                       <div 
+                         key={childNode.id}
+                         className="bg-white border-l-4 border-[#ffe600] rounded-xl p-5 shadow-sm hover:shadow-md transition-all border border-slate-200 border-l-[6px]"
+                       >
+                         <button
+                           onClick={() => onSelectNode && onSelectNode(childNode)}
+                           className="text-left font-bold text-slate-900 hover:text-[#1E4479] transition-colors text-[14px] block mb-2"
+                         >
+                           {childNode.title}
+                         </button>
+                         <div className="text-[12px] text-slate-600 leading-relaxed font-light">
+                           {renderReadOnlyContent(childNode.content?.['Definition Summary'] || childNode.content?.['Summary'] || 'No process definition found.')}
+                         </div>
+                       </div>
+                     ))}
+                   </div>
+                 </div>
+               )}
+             </div>
+
+             {/* Right Sidebar Column */}
+             <div className="space-y-6">
+               
+               {/* Importance Tier badge with rich descriptions & mapping metadata */}
+                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+                  <h4 className="text-[10px] font-black tracking-wider uppercase text-slate-400">Importance Rank</h4>
+                  {(() => {
+                    const t = IMPORTANCE_TIERS.find(tier => tier.id === (formData.tier || 3)) || IMPORTANCE_TIERS[2];
+                    return (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                          <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
+                          <div>
+                            <div className="text-[13px] font-extrabold text-slate-800">{t.label}</div>
+                            <div className="text-[10px] text-slate-500 italic">Tier {t.id} priority level</div>
+                          </div>
+                        </div>
+                        
+                        <p className="text-[11px] leading-snug text-slate-600">{t.description}</p>
+                        
+                        <div className="pt-2 border-t border-slate-100 flex flex-col gap-2 text-[9px] text-slate-500 select-none">
+                          {t.mappingTitle && (
+                            <div 
+                              className="relative cursor-help w-fit"
+                              onMouseEnter={() => setActiveTooltip(`tier-mapping-${t.id}`)}
+                              onMouseLeave={() => setActiveTooltip(null)}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <span className="font-medium text-slate-600 underline decoration-dotted decoration-slate-400/50 hover:text-slate-900">
+                                Mapping: {t.mappingTitle}
+                              </span>
+                              {activeTooltip === `tier-mapping-${t.id}` && (
+                                <div className="absolute z-[9999] bottom-full left-0 mb-2 w-64 p-3.5 rounded-xl border border-slate-200 bg-slate-900 text-xs text-slate-200 shadow-2xl backdrop-blur-md transition-all duration-300">
+                                  <div className="font-semibold text-xs mb-1" style={{ color: t.color }}>Mapping Summary</div>
+                                  <div className="leading-relaxed font-normal">{t.mappingSummary}</div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
+                          {t.aiUtility && (
+                            <div 
+                              className="relative cursor-help flex items-center gap-1.5 text-[9px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 w-fit hover:bg-emerald-100/50"
+                              onMouseEnter={() => setActiveTooltip(`tier-ai-${t.id}`)}
+                              onMouseLeave={() => setActiveTooltip(null)}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Cpu size={10} />
+                              <span>AI Utility</span>
+                              {activeTooltip === `tier-ai-${t.id}` && (
+                                <div className="absolute z-[9999] bottom-full left-0 mb-2 w-64 p-3.5 rounded-xl border border-slate-200 bg-slate-900 text-xs text-slate-200 shadow-2xl backdrop-blur-md transition-all duration-300">
+                                  <div className="font-semibold text-xs text-emerald-400 mb-1 flex items-center gap-1.5">
+                                    <Cpu size={12} />
+                                    AI Prompt Value & Utility
+                                  </div>
+                                  <div className="leading-relaxed font-normal">{t.aiUtility}</div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+               {/* Transverse / Secondary Connections */}
+               <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+                 <h4 className="text-[10px] font-black tracking-wider uppercase text-slate-400">Transverse Threads</h4>
+                 <div className="flex flex-col gap-2 max-h-[160px] overflow-y-auto custom-scrollbar">
+                   {(!editingNode.secondaryLinks || editingNode.secondaryLinks.length === 0) ? (
+                     <span className="text-[11px] italic text-slate-400">No secondary connections established.</span>
+                   ) : (
+                     editingNode.secondaryLinks.map(linkId => {
+                       const linked = nodes.find(n => n.id === linkId);
+                       if (!linked) return null;
+                       return (
+                         <button
+                           key={linkId}
+                           onClick={() => onSelectNode && onSelectNode(linked)}
+                           className="text-left px-3 py-2 rounded-lg border border-slate-100 hover:border-brand-cyan/40 bg-slate-50 hover:bg-cyan-50/20 text-slate-700 hover:text-brand-cyan transition-all text-[11px] font-semibold flex items-center gap-2"
+                         >
+                           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: ENTITY_TYPES[linked.type]?.color }} />
+                           <span className="truncate">{linked.title}</span>
+                         </button>
+                       );
+                     })
+                   )}
+                 </div>
+               </div>
+
+               {/* Predictive Tagging & Connection Suggestions */}
+               <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+                 <h4 className="text-[10px] font-black tracking-wider uppercase text-slate-400">Suggested Connections</h4>
+                 <div className="p-3 bg-indigo-50/30 border border-indigo-100/50 rounded-xl flex items-start gap-2.5">
+                   <Zap size={14} className="text-[var(--accent-indigo)] shrink-0 mt-0.5" />
+                   <p className="text-[10px] italic text-slate-500 leading-snug">
+                     To connect, toggle to the **Standard Editor** and use the interactive tags in the rich editor.
+                   </p>
+                 </div>
+               </div>
+
+             </div>
+           </div>
+         </div>
+       ) : (
+         /* ── STANDARD EDITING VIEW ────────────────────────────────────── */
+         <div className="flex-1 overflow-auto custom-scrollbar relative flex flex-col">
+             {/* Sticky Unified Formatting Toolbar */}
+             <div 
+               className="sticky top-0 z-50 px-8 py-3 bg-[var(--bg-secondary)] border-b border-[var(--glass-border)] flex flex-wrap items-center gap-3 transition-colors duration-300 shadow-sm"
+               style={{ backdropFilter: 'blur(20px)' }}
+             >
+                {/* Bold & Italic */}
+                <div className="flex items-center gap-1 p-1 bg-black/10 rounded-lg border border-[var(--glass-border)]">
+                   <button 
+                     onMouseDown={(e) => { e.preventDefault(); exec('bold'); }}
+                     className="p-1.5 rounded hover:bg-black/15 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
+                     title="Bold"
+                   >
+                     <Bold size={13} />
+                   </button>
+                   <button 
+                     onMouseDown={(e) => { e.preventDefault(); exec('italic'); }}
+                     className="p-1.5 rounded hover:bg-black/15 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
+                     title="Italic"
+                   >
+                     <Italic size={13} />
+                   </button>
+                </div>
+
+                {/* Font Size selector */}
+                <div className="flex items-center gap-1 p-1 bg-black/10 rounded-lg border border-[var(--glass-border)]">
+                   <input 
+                     type="text"
+                     list="font-sizes"
+                     value={currentFontSize}
+                     onChange={(e) => {
+                       const val = e.target.value;
+                       setCurrentFontSize(val);
+                       applyFontSize(val);
+                     }}
+                     onMouseDown={(e) => e.stopPropagation()}
+                     className="bg-transparent text-xs text-[var(--text-primary)] outline-none border-none py-1 px-1.5 w-[60px] text-center"
+                     placeholder="11pt"
+                   />
+                   <datalist id="font-sizes">
+                     <option value="8pt" />
+                     <option value="9pt" />
+                     <option value="10pt" />
+                     <option value="11pt" />
+                     <option value="12pt" />
+                     <option value="14pt" />
+                     <option value="16pt" />
+                     <option value="18pt" />
+                     <option value="20pt" />
+                     <option value="24pt" />
+                     <option value="30pt" />
+                     <option value="36pt" />
+                   </datalist>
+                </div>
+
+                {/* Headings & Lists */}
+                <div className="flex items-center gap-1 p-1 bg-black/10 rounded-lg border border-[var(--glass-border)]">
+                   <select
+                     value={currentHeading}
+                     onChange={(e) => {
+                       const val = e.target.value;
+                       setCurrentHeading(val);
+                       applyHeading(val);
+                     }}
+                     onMouseDown={(e) => e.stopPropagation()}
+                     className="bg-transparent text-xs text-[var(--text-primary)] outline-none border-none py-1 px-1.5 cursor-pointer"
+                   >
+                     <option value="P" className="text-black">Normal</option>
+                     <option value="H1" className="text-black">H1</option>
+                     <option value="H2" className="text-black">H2</option>
+                     <option value="H3" className="text-black">H3</option>
+                     <option value="H4" className="text-black">H4</option>
+                     <option value="H5" className="text-black">H5</option>
+                     <option value="H6" className="text-black">H6</option>
+                   </select>
+                   <div className="w-px h-4 bg-[var(--glass-border)] mx-0.5" />
+                   <button 
+                     onMouseDown={(e) => { e.preventDefault(); exec('insertUnorderedList'); }}
+                     className="p-1.5 rounded hover:bg-black/15 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
+                     title="Bullet List"
+                   >
+                     <List size={13} />
+                   </button>
+                </div>
+
+                {/* Color Palette & Custom Color Builder */}
+                <div className="flex items-center gap-2 p-1 bg-black/10 rounded-lg border border-[var(--glass-border)]">
+                   <div className="flex items-center gap-1 overflow-x-auto max-w-[180px] scrollbar-none pr-1">
+                      {colorPalette.map((color, i) => (
+                        <button
+                          key={i}
+                          onMouseDown={(e) => { e.preventDefault(); exec('foreColor', color); }}
+                          className="w-3.5 h-3.5 rounded-full border border-white/20 shrink-0 hover:scale-110 active:scale-95 transition-all"
+                          style={{ backgroundColor: color }}
+                          title={color}
+                        />
+                      ))}
+                   </div>
+                   <div className="w-px h-4 bg-[var(--glass-border)]" />
+                   <div 
+                     className="relative w-5 h-5 rounded-full overflow-hidden border border-white/20 hover:scale-110 active:scale-95 transition-all cursor-pointer"
+                     style={{ background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' }}
+                     title="Select Custom Color"
+                   >
+                      <input 
+                        type="color" 
+                        value={customColor}
+                        onChange={(e) => {
+                          const selected = e.target.value;
+                          setCustomColor(selected);
+                          if (!colorPalette.includes(selected)) {
+                            setColorPalette([...colorPalette, selected]);
+                          }
+                          exec('foreColor', selected);
+                        }}
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                      />
+                   </div>
+                </div>
+             </div>
+
+            <div className="p-8 space-y-10 flex-1">
+              <div className="space-y-3.5">
+                 <label className="text-xs font-semibold flex items-center gap-2 text-[var(--accent-indigo)] transition-colors duration-300">
+                    <div className="w-1 h-3.5 bg-[var(--accent-indigo)] rounded-full" />
+                    Designation
+                 </label>
+                 <input 
+                    className="cyber-input text-[28px] font-medium bg-transparent w-full outline-none transition-colors duration-300 border-[var(--glass-border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]/20 tracking-tight" 
+                    value={formData.title} 
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })} 
+                    placeholder="Enter designation..."
+                 />
+              </div>
+              <div className="space-y-4">
+                 <label className="text-xs font-semibold flex items-center gap-2 text-[var(--text-muted)] transition-colors duration-300">
+                    <Info size={12} />
+                    Branch Classification
+                 </label>
+                 <div className="grid grid-cols-3 gap-3">
+                     {Object.entries(ENTITY_TYPES).map(([k,v]) => {
+                       const isActive = currentType === k;
+                       const style = isActive ? {
+                         borderColor: v.color,
+                         backgroundColor: `${v.color}15`,
+                         boxShadow: `0 0 20px ${v.color}25`
+                       } : {
+                         borderColor: 'var(--glass-border)',
+                         backgroundColor: 'var(--bg-secondary)'
+                       };
+                       
+                       return (
+                         <div 
+                           key={k} 
+                           onClick={() => setCurrentType(k)} 
+                           style={style}
+                           className="group relative p-4 border-2 rounded-[var(--radius-lg)] flex flex-col gap-2 transition-all text-left cursor-pointer hover:border-slate-500/50"
+                         >
+                            <div className="flex items-center gap-2">
+                               <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: v.color }} />
+                               <span 
+                                 className="text-xs font-semibold transition-colors" 
+                                 style={{ color: v.color }}
+                               >
+                                 {v.label}
+                               </span>
+                            </div>
+                            <p className="text-[11px] leading-snug text-[var(--text-secondary)] transition-colors">{v.description}</p>
+                            
+                            {v.mappingTitle && (
+                              <div className="mt-2 pt-2 border-t border-[var(--glass-border)] flex flex-col gap-2 text-[9px] text-[var(--text-muted)] select-none">
+                                <div 
+                                  className="relative cursor-help w-fit"
+                                  onMouseEnter={() => setActiveTooltip(`mapping-${k}`)}
+                                  onMouseLeave={() => setActiveTooltip(null)}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <span className="font-medium text-[var(--text-secondary)] underline decoration-dotted decoration-[var(--text-muted)]/50 hover:text-[var(--text-primary)]">
+                                    Mapping: {v.mappingTitle}
+                                  </span>
+                                  {activeTooltip === `mapping-${k}` && (
+                                    <div className="absolute z-[9999] bottom-full left-0 mb-2 w-64 p-3.5 rounded-xl border border-[#27272a]/80 bg-[#18181b]/95 text-xs text-slate-200 shadow-2xl backdrop-blur-md transition-all duration-300">
+                                      <div className="font-semibold text-xs mb-1" style={{ color: v.color }}>Mapping Summary</div>
+                                      <div className="leading-relaxed font-normal">{v.mappingSummary}</div>
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                {v.aiUtility && (
+                                  <div 
+                                    className="relative cursor-help flex items-center gap-1.5 text-[9px] text-[var(--accent-emerald)] bg-[var(--accent-emerald)]/10 px-1.5 py-0.5 rounded border border-[var(--accent-emerald)]/20 w-fit hover:bg-[var(--accent-emerald)]/20"
+                                    onMouseEnter={() => setActiveTooltip(`ai-${k}`)}
+                                    onMouseLeave={() => setActiveTooltip(null)}
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <Cpu size={10} />
+                                    <span>AI Utility</span>
+                                    {activeTooltip === `ai-${k}` && (
+                                      <div className="absolute z-[9999] bottom-full left-0 mb-2 w-64 p-3.5 rounded-xl border border-[#27272a]/80 bg-[#18181b]/95 text-xs text-slate-200 shadow-2xl backdrop-blur-md transition-all duration-300">
+                                        <div className="font-semibold text-xs text-[var(--accent-emerald)] mb-1 flex items-center gap-1.5">
+                                          <Cpu size={12} />
+                                          AI Prompt Value & Utility
+                                        </div>
+                                        <div className="leading-relaxed font-normal">{v.aiUtility}</div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                         </div>
+                       );
+                     })}
+                  </div>
+              </div>
+              {/* ── Importance Tier Selector ── */}
+              <div className="space-y-4 pt-6">
+                  <label className="text-xs font-semibold flex items-center gap-2 text-[var(--text-muted)] transition-colors duration-300">
+                     <Shield size={12} />
+                     Importance Tier
+                  </label>
+                  <div className="grid grid-cols-5 gap-3">
+                     {IMPORTANCE_TIERS.map(tier => {
+                       const isActive = (formData.tier || 3) === tier.id;
+                       const style = isActive ? {
+                         borderColor: tier.color,
+                         backgroundColor: `${tier.color}15`,
+                         boxShadow: `0 0 20px ${tier.color}25`
+                       } : {
+                         borderColor: 'var(--glass-border)',
+                         backgroundColor: 'var(--bg-secondary)'
+                       };
+                       
+                       return (
+                         <div
+                           key={tier.id}
+                           onClick={() => setFormData({ ...formData, tier: tier.id })}
+                           style={style}
+                           className="group relative p-4 border-2 rounded-[var(--radius-lg)] flex flex-col gap-2 transition-all text-left cursor-pointer hover:border-slate-500/50"
+                         >
+                           <div className="flex items-center gap-2">
+                             <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: tier.color }} />
+                             <span 
+                               className="text-xs font-semibold transition-colors" 
+                               style={{ color: tier.color }}
+                             >
+                               {tier.label}
+                             </span>
+                             <span className="text-[8px] font-mono opacity-50 ml-auto" style={{ color: tier.color }}>
+                               T{tier.id}
+                             </span>
+                           </div>
+                           <p className="text-[10px] leading-snug text-[var(--text-secondary)] transition-colors">{tier.description}</p>
+                           
+                           <div className="mt-auto pt-2 border-t border-[var(--glass-border)] flex flex-col gap-2 text-[9px] text-[var(--text-muted)] select-none">
+                             {tier.mappingTitle && (
+                               <div 
+                                 className="relative cursor-help w-fit"
+                                 onMouseEnter={() => setActiveTooltip(`tier-editor-mapping-${tier.id}`)}
+                                 onMouseLeave={() => setActiveTooltip(null)}
+                                 onClick={(e) => e.stopPropagation()}
+                                >
+                                 <span className="font-medium text-[var(--text-secondary)] underline decoration-dotted decoration-[var(--text-muted)]/50 hover:text-[var(--text-primary)]">
+                                   Mapping: {tier.mappingTitle}
+                                 </span>
+                                 {activeTooltip === `tier-editor-mapping-${tier.id}` && (
+                                   <div className="absolute z-[9999] bottom-full left-0 mb-2 w-64 p-3.5 rounded-xl border border-[#27272a]/80 bg-[#18181b]/95 text-xs text-slate-200 shadow-2xl backdrop-blur-md transition-all duration-300">
+                                     <div className="font-semibold text-xs mb-1" style={{ color: tier.color }}>Mapping Summary</div>
+                                     <div className="leading-relaxed font-normal">{tier.mappingSummary}</div>
+                                   </div>
+                                 )}
+                               </div>
+                             )}
+                             
+                             {tier.aiUtility && (
+                               <div 
+                                 className="relative cursor-help flex items-center gap-1.5 text-[9px] text-[var(--accent-emerald)] bg-[var(--accent-emerald)]/10 px-1.5 py-0.5 rounded border border-[var(--accent-emerald)]/20 w-fit hover:bg-[var(--accent-emerald)]/20"
+                                 onMouseEnter={() => setActiveTooltip(`tier-editor-ai-${tier.id}`)}
+                                 onMouseLeave={() => setActiveTooltip(null)}
+                                 onClick={(e) => e.stopPropagation()}
+                               >
+                                 <Cpu size={10} />
+                                 <span>AI Utility</span>
+                                 {activeTooltip === `tier-editor-ai-${tier.id}` && (
+                                   <div className="absolute z-[9999] bottom-full left-0 mb-2 w-64 p-3.5 rounded-xl border border-[#27272a]/80 bg-[#18181b]/95 text-xs text-slate-200 shadow-2xl backdrop-blur-md transition-all duration-300">
+                                     <div className="font-semibold text-xs text-[var(--accent-emerald)] mb-1 flex items-center gap-1.5">
+                                       <Cpu size={12} />
+                                       AI Prompt Value & Utility
+                                     </div>
+                                     <div className="leading-relaxed font-normal">{tier.aiUtility}</div>
+                                   </div>
+                                 )}
+                               </div>
+                             )}
+                           </div>
+                         </div>
+                       );
+                     })}
+                  </div>
+              </div>
+              <div className="space-y-10 pt-10 border-t border-[var(--glass-border)] pb-32 transition-colors duration-300">
+                 <div className="p-5 rounded-2xl flex items-start gap-4 mb-4 border transition-all bg-[var(--accent-indigo)]/5 border-[var(--accent-indigo)]/10">
+                    <Zap size={18} className="shrink-0 text-[var(--accent-indigo)]" />
+                    <div className="space-y-1">
+                       <span className="text-xs font-semibold text-[var(--accent-indigo)]">Predictive Tagging Engaged</span>
+                       <p className="text-[11px] italic text-[var(--text-secondary)] transition-colors duration-300">Review keywords with <span className="font-semibold border border-dotted px-1.5 py-0.5 rounded mx-1 text-[var(--accent-indigo)] border-[var(--accent-indigo)] bg-[var(--accent-indigo)]/5">dotted boxes</span> to instantly establish new graph connections.</p>
+                    </div>
+                 </div>
+                 {SCHEMAS[currentType]?.map(f => (
+                   <div key={f.name} className="space-y-4">
+                      <label className="text-[13px] font-semibold flex items-center gap-2 text-[var(--text-secondary)] transition-colors duration-300">
+                         <ChevronRight size={12} className="text-[var(--accent-indigo)]" />
+                         {f.name}
+                      </label>
+                      <RichTaggingEditor 
+                         value={formData.content[f.name] || ''} 
+                         onChange={(val) => setFormData(prev => ({
+                            ...prev, content: { ...prev.content, [f.name]: val }
+                         }))} 
+                         nodes={nodes}
+                         theme={theme}
+                         placeholder={`Document ${f.name} with intelligence...`}
+                         onToggleConnection={onToggleConnection}
+                         currentSecondaryLinks={editingNode?.secondaryLinks || []}
+                      />
+                   </div>
+                 ))}
+              </div>
+            </div>
+         </div>
+       )}
+
+       {/* Footer save/delete buttons */}
        <div className="py-4 px-6 border-t flex justify-between items-center shrink-0 border-[var(--glass-border)] bg-[var(--bg-secondary)] transition-colors duration-300">
           <div className="flex items-center gap-4">
              {editingNode && (
@@ -838,11 +1339,19 @@ export const IntelligenceDrawer = ({
                 </div>
              )}
           </div>
-          <button onClick={() => onSave(formData)} disabled={!currentType} className={`px-16 py-3.5 rounded-[var(--radius-lg)] flex items-center gap-2.5 font-semibold text-xs transition-all tracking-normal ${currentType ? 'bg-[var(--gradient-primary)] text-white shadow-[var(--shadow-glow)] border-none' : 'bg-[var(--glass-border)] text-[var(--text-muted)]/30'}`}>
+          <button 
+             onClick={() => onSave(formData)} 
+             disabled={!currentType} 
+             className={`px-16 py-3.5 rounded-[var(--radius-lg)] flex items-center gap-2.5 font-semibold text-xs transition-all duration-200 tracking-normal cursor-pointer active:scale-[0.98] ${
+               currentType 
+                 ? 'bg-[var(--gradient-primary)] text-white shadow-[var(--shadow-glow)] hover:brightness-[1.05] hover:shadow-[var(--shadow-glow-hover)] border-none' 
+                 : 'bg-[var(--glass-border)] text-[var(--text-muted)] opacity-40 cursor-not-allowed pointer-events-none'
+             }`}
+           >
              <Save size={14} />
              <span>Commit to Graph</span>
           </button>
-       </div>
-    </motion.div>
+        </div>
+     </motion.div>
   );
 };

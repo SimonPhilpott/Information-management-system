@@ -9,7 +9,8 @@
         "src/components/KnowledgeMesh/InstancedSpatialCanvas.jsx",
         "src/components/KnowledgeMesh/SunburstCanvas.jsx",
         "src/components/Dashboard/Layout.jsx",
-        "src/components/Dashboard/ChatInterface.jsx"
+        "src/components/Dashboard/ChatInterface.jsx",
+        "src/components/Dashboard/DemoPortal.jsx"
       ]
     },
     "src/components/Dashboard/Layout.jsx": {
@@ -47,6 +48,12 @@
     "src/components/Dashboard/PDFWorkspace.jsx": {
       "description": "Resizable split-screen document viewer component utilizing react-pdf to render reference material at specific page targets.",
       "dependencies": []
+    },
+    "src/components/Dashboard/DemoPortal.jsx": {
+      "description": "Streamlined user dashboard providing simple node search, details preview, and visual Sunburst map view toggle.",
+      "dependencies": [
+        "src/components/KnowledgeMesh/SunburstCanvas.jsx"
+      ]
     }
   }
 }

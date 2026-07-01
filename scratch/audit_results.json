@@ -1,0 +1,520 @@
+{
+  "summary": {
+    "total": 233,
+    "changed": 35,
+    "unchanged": 198,
+    "byProposedType": {
+      "CONCEPT": 97,
+      "PATTERN": 46,
+      "PROCEDURE": 12,
+      "VARIANT": 65,
+      "SCENARIO": 3,
+      "RULE": 10
+    },
+    "byCurrentType": {
+      "CONCEPT": 128,
+      "PATTERN": 36,
+      "PROCEDURE": 3,
+      "VARIANT": 65,
+      "SCENARIO": 1
+    }
+  },
+  "changes": [
+    {
+      "id": "seg_re",
+      "title": "Real Estate",
+      "current": "PATTERN",
+      "proposed": "CONCEPT",
+      "changed": true,
+      "reason": "Root organisational entity — defines WHAT the node cluster represents.",
+      "parentId": "seg_root"
+    },
+    {
+      "id": "seg_inf",
+      "title": "Infrastructure",
+      "current": "PATTERN",
+      "proposed": "CONCEPT",
+      "changed": true,
+      "reason": "Root organisational entity — defines WHAT the node cluster represents.",
+      "parentId": "seg_root"
+    },
+    {
+      "id": "bok_business_commercial_strategy",
+      "title": "Business commercial strategy",
+      "current": "CONCEPT",
+      "proposed": "PATTERN",
+      "changed": true,
+      "reason": "Represents a reusable delivery archetype or sector template.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_business_review_framework",
+      "title": "Business review framework",
+      "current": "CONCEPT",
+      "proposed": "PATTERN",
+      "changed": true,
+      "reason": "Represents a reusable delivery archetype or sector template.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_change_control",
+      "title": "Change control",
+      "current": "CONCEPT",
+      "proposed": "RULE",
+      "changed": true,
+      "reason": "Represents a binding standard, regulatory framework, or compliance constraint.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_connected_assets_and_iot",
+      "title": "Connected assets and IoT",
+      "current": "CONCEPT",
+      "proposed": "RULE",
+      "changed": true,
+      "reason": "Represents a binding standard, regulatory framework, or compliance constraint.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_controls_development_and_transformation",
+      "title": "Controls development and transformation",
+      "current": "CONCEPT",
+      "proposed": "RULE",
+      "changed": true,
+      "reason": "Represents a binding standard, regulatory framework, or compliance constraint.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_cost_auditing_and_assurance",
+      "title": "Cost auditing and assurance",
+      "current": "CONCEPT",
+      "proposed": "RULE",
+      "changed": true,
+      "reason": "Represents a binding standard, regulatory framework, or compliance constraint.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_cost_control",
+      "title": "Cost control",
+      "current": "CONCEPT",
+      "proposed": "RULE",
+      "changed": true,
+      "reason": "Represents a binding standard, regulatory framework, or compliance constraint.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_cost_planning_and_engineering",
+      "title": "Cost planning and engineering",
+      "current": "CONCEPT",
+      "proposed": "PROCEDURE",
+      "changed": true,
+      "reason": "Represents an execution method or step-sequence delivery process.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_execution_planning",
+      "title": "Execution planning",
+      "current": "CONCEPT",
+      "proposed": "PROCEDURE",
+      "changed": true,
+      "reason": "Represents an execution method or step-sequence delivery process.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_fire_consultancy_and_fire_risk_assessment",
+      "title": "Fire consultancy and fire risk assessment",
+      "current": "CONCEPT",
+      "proposed": "SCENARIO",
+      "changed": true,
+      "reason": "Episodic risk/stress event requiring bespoke mitigation logic.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_governance_and_assurance",
+      "title": "Governance and assurance",
+      "current": "CONCEPT",
+      "proposed": "RULE",
+      "changed": true,
+      "reason": "Represents a binding standard, regulatory framework, or compliance constraint.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_performance_assurance",
+      "title": "Performance assurance",
+      "current": "CONCEPT",
+      "proposed": "RULE",
+      "changed": true,
+      "reason": "Represents a binding standard, regulatory framework, or compliance constraint.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_ppp",
+      "title": "PPP",
+      "current": "CONCEPT",
+      "proposed": "RULE",
+      "changed": true,
+      "reason": "Represents a binding standard, regulatory framework, or compliance constraint.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_procurement_and_contract_strategy",
+      "title": "Procurement and contract strategy",
+      "current": "CONCEPT",
+      "proposed": "PATTERN",
+      "changed": true,
+      "reason": "Represents a reusable delivery archetype or sector template.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_programme_assurance",
+      "title": "Programme assurance",
+      "current": "CONCEPT",
+      "proposed": "RULE",
+      "changed": true,
+      "reason": "Represents a binding standard, regulatory framework, or compliance constraint.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_project_handover_and_close",
+      "title": "Project handover and close",
+      "current": "CONCEPT",
+      "proposed": "PROCEDURE",
+      "changed": true,
+      "reason": "Represents an execution method or step-sequence delivery process.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_quality_strategy_and_management",
+      "title": "Quality strategy and management",
+      "current": "CONCEPT",
+      "proposed": "PATTERN",
+      "changed": true,
+      "reason": "Represents a reusable delivery archetype or sector template.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_requirements_management",
+      "title": "Requirements management",
+      "current": "CONCEPT",
+      "proposed": "RULE",
+      "changed": true,
+      "reason": "Represents a binding standard, regulatory framework, or compliance constraint.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_risk_management",
+      "title": "Risk management",
+      "current": "CONCEPT",
+      "proposed": "SCENARIO",
+      "changed": true,
+      "reason": "Episodic risk/stress event requiring bespoke mitigation logic.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_safety_health_and_environmental_strategy_and_management",
+      "title": "Safety, health and environmental strategy and management",
+      "current": "CONCEPT",
+      "proposed": "PATTERN",
+      "changed": true,
+      "reason": "Represents a reusable delivery archetype or sector template.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_supply_chain_strategy",
+      "title": "Supply chain strategy",
+      "current": "CONCEPT",
+      "proposed": "PATTERN",
+      "changed": true,
+      "reason": "Represents a reusable delivery archetype or sector template.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_target_operating_model",
+      "title": "Target operating model",
+      "current": "CONCEPT",
+      "proposed": "PATTERN",
+      "changed": true,
+      "reason": "Represents a reusable delivery archetype or sector template.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_testing_and_commissioning",
+      "title": "Testing and commissioning",
+      "current": "CONCEPT",
+      "proposed": "PROCEDURE",
+      "changed": true,
+      "reason": "Represents an execution method or step-sequence delivery process.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_programme_strategy_and_set_up",
+      "title": "Programme strategy and set-up",
+      "current": "CONCEPT",
+      "proposed": "PROCEDURE",
+      "changed": true,
+      "reason": "Represents an execution method or step-sequence delivery process.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_net_zero_strategy_and_roadmap",
+      "title": "Net zero strategy and roadmap",
+      "current": "CONCEPT",
+      "proposed": "PATTERN",
+      "changed": true,
+      "reason": "Represents a reusable delivery archetype or sector template.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_carbon_accounting",
+      "title": "Carbon accounting",
+      "current": "CONCEPT",
+      "proposed": "PATTERN",
+      "changed": true,
+      "reason": "Structured strategic framework or reusable model for net zero delivery.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_net_zero_maturity_assessment",
+      "title": "Net zero maturity assessment",
+      "current": "CONCEPT",
+      "proposed": "PATTERN",
+      "changed": true,
+      "reason": "Structured strategic framework or reusable model for net zero delivery.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_net_zero_programme_set_up",
+      "title": "Net zero programme set-up",
+      "current": "CONCEPT",
+      "proposed": "PROCEDURE",
+      "changed": true,
+      "reason": "Represents an execution method or step-sequence delivery process.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_net_zero_capital_planning",
+      "title": "Net zero capital planning",
+      "current": "CONCEPT",
+      "proposed": "PROCEDURE",
+      "changed": true,
+      "reason": "Represents an execution method or step-sequence delivery process.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_disclosure_and_esg_reporting",
+      "title": "Disclosure and ESG reporting",
+      "current": "CONCEPT",
+      "proposed": "PATTERN",
+      "changed": true,
+      "reason": "Structured strategic framework or reusable model for net zero delivery.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_sustainable_procurement",
+      "title": "Sustainable procurement",
+      "current": "CONCEPT",
+      "proposed": "PATTERN",
+      "changed": true,
+      "reason": "Structured strategic framework or reusable model for net zero delivery.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_net_zero_programme_delivery",
+      "title": "Net zero programme delivery",
+      "current": "CONCEPT",
+      "proposed": "PROCEDURE",
+      "changed": true,
+      "reason": "Represents an execution method or step-sequence delivery process.",
+      "parentId": "bok_root"
+    },
+    {
+      "id": "bok_net_zero_project_diagnostic",
+      "title": "Net zero project diagnostic",
+      "current": "CONCEPT",
+      "proposed": "PROCEDURE",
+      "changed": true,
+      "reason": "Operational programme delivery workflow.",
+      "parentId": "bok_root"
+    }
+  ],
+  "unchanged": [
+    {
+      "id": "tt_group",
+      "title": "Turner & Townsend Group",
+      "current": "CONCEPT",
+      "proposed": "CONCEPT",
+      "changed": false,
+      "reason": "Root organisational entity — defines WHAT the node cluster represents."
+    },
+    {
+      "id": "bus_root",
+      "title": "Our Business",
+      "current": "CONCEPT",
+      "proposed": "CONCEPT",
+      "changed": false,
+      "reason": "Root organisational entity — defines WHAT the node cluster represents.",
+      "parentId": "tt_group"
+    },
+    {
+      "id": "bus_strat",
+      "title": "Strategic Plan 2025-2030",
+      "current": "PATTERN",
+      "proposed": "PATTERN",
+      "changed": false,
+      "reason": "Current type is semantically correct.",
+      "parentId": "bus_root"
+    },
+    {
+      "id": "bus_ann",
+      "title": "Annual Review & Performance",
+      "current": "PATTERN",
+      "proposed": "PATTERN",
+      "changed": false,
+      "reason": "Current type is semantically correct.",
+      "parentId": "bus_root"
+    },
+    {
+      "id": "win_root",
+      "title": "Winning New Work",
+      "current": "CONCEPT",
+      "proposed": "CONCEPT",
+      "changed": false,
+      "reason": "Current type is semantically correct.",
+      "parentId": "tt_group"
+    },
+    {
+      "id": "win_bid",
+      "title": "Bid Management & Excellence",
+      "current": "PATTERN",
+      "proposed": "PATTERN",
+      "changed": false,
+      "reason": "Current type is semantically correct.",
+      "parentId": "win_root"
+    },
+    {
+      "id": "win_bd",
+      "title": "Business Development Strategy",
+      "current": "PATTERN",
+      "proposed": "PATTERN",
+      "changed": false,
+      "reason": "Current type is semantically correct.",
+      "parentId": "win_root"
+    },
+    {
+      "id": "bus_win",
+      "title": "The Winning Way Workflow",
+      "current": "PROCEDURE",
+      "proposed": "PROCEDURE",
+      "changed": false,
+      "reason": "Current type is semantically correct.",
+      "parentId": "win_bid"
+    },
+    {
+      "id": "ops_root",
+      "title": "Operations & Support Services",
+      "current": "CONCEPT",
+      "proposed": "CONCEPT",
+      "changed": false,
+      "reason": "Current type is semantically correct.",
+      "parentId": "tt_group"
+    },
+    {
+      "id": "ops_it",
+      "title": "IT & Technology Services",
+      "current": "PATTERN",
+      "proposed": "PATTERN",
+      "changed": false,
+      "reason": "Current type is semantically correct.",
+      "parentId": "ops_root"
+    },
+    {
+      "id": "ops_fm",
+      "title": "Facilities Management",
+      "current": "PATTERN",
+      "proposed": "PATTERN",
+      "changed": false,
+      "reason": "Current type is semantically correct.",
+      "parentId": "ops_root"
+    },
+    {
+      "id": "ops_hr",
+      "title": "Human Resources & Payroll",
+      "current": "PATTERN",
+      "proposed": "PATTERN",
+      "changed": false,
+      "reason": "Current type is semantically correct.",
+      "parentId": "ops_root"
+    },
+    {
+      "id": "ops_fin",
+      "title": "Finance & Internal Audit",
+      "current": "PATTERN",
+      "proposed": "PATTERN",
+      "changed": false,
+      "reason": "Current type is semantically correct.",
+      "parentId": "ops_root"
+    },
+    {
+      "id": "ops_km",
+      "title": "Knowledge Management",
+      "current": "PATTERN",
+      "proposed": "PATTERN",
+      "changed": false,
+      "reason": "Current type is semantically correct.",
+      "parentId": "ops_root"
+    },
+    {
+      "id": "gov_root",
+      "title": "Governance & Culture",
+      "current": "CONCEPT",
+      "proposed": "CONCEPT",
+      "changed": false,
+      "reason": "Current type is semantically correct.",
+      "parentId": "tt_group"
+    },
+    {
+      "id": "gov_hsw",
+      "title": "Health, Safety & Wellbeing",
+      "current": "PATTERN",
+      "proposed": "PATTERN",
+      "changed": false,
+      "reason": "Current type is semantically correct.",
+      "parentId": "gov_root"
+    },
+    {
+      "id": "gov_dei",
+      "title": "Diversity, Equity & Inclusion",
+      "current": "PATTERN",
+      "proposed": "PATTERN",
+      "changed": false,
+      "reason": "Current type is semantically correct.",
+      "parentId": "gov_root"
+    },
+    {
+      "id": "gov_risk",
+      "title": "Risk & Compliance",
+      "current": "PATTERN",
+      "proposed": "PATTERN",
+      "changed": false,
+      "reason": "Current type is semantically correct.",
+      "parentId": "gov_root"
+    },
+    {
+      "id": "gov_legal",
+      "title": "Legal & General Counsel",
+      "current": "PATTERN",
+      "proposed": "PATTERN",
+      "changed": false,
+      "reason": "Current type is semantically correct.",
+      "parentId": "gov_root"
+    },
+    {
+      "id": "cap_root",
+      "title": "Global Capabilities",
+      "current": "CONCEPT",
+      "proposed": "CONCEPT",
+      "changed": false,
+      "reason": "Root organisational entity — defines WHAT the node cluster represents.",
+      "parentId": "tt_group"
+    }
+  ]
+}
