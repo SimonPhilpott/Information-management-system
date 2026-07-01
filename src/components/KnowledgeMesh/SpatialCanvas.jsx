@@ -27,6 +27,139 @@ const WebGLMemoryDisposer = () => {
   return null;
 };
 
+const HeatmapCloud = ({ spatialNodes, searchQuery, showHeatmap }) => {
+  const texture = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 16;
+    canvas.height = 16;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(8, 8, 0, 8, 8, 8);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 16, 16);
+    return new THREE.CanvasTexture(canvas);
+  }, []);
+
+  const geometry = useMemo(() => {
+    if (!showHeatmap || !searchQuery?.trim() || !spatialNodes || spatialNodes.length === 0) {
+      return null;
+    }
+
+    const q = searchQuery.toLowerCase().trim();
+    const matchNodes = spatialNodes
+      .map(n => {
+        let score = 0;
+        const title = n.title.toLowerCase();
+        if (title === q) score = 1.0;
+        else if (title.startsWith(q)) score = 0.8;
+        else if (title.includes(q)) score = 0.6;
+        else if (n.content) {
+          let count = 0;
+          Object.values(n.content).forEach(val => {
+            if (typeof val === 'string') {
+              const lowerVal = val.toLowerCase();
+              let idx = lowerVal.indexOf(q);
+              while (idx !== -1) {
+                count++;
+                idx = lowerVal.indexOf(q, idx + q.length);
+              }
+            }
+          });
+          if (count > 0) score = Math.min(0.5, count * 0.15);
+        }
+        return { node: n, score };
+      })
+      .filter(x => x.score > 0);
+
+    if (matchNodes.length === 0) return null;
+
+    const pointsPerNode = 100;
+    const numPoints = matchNodes.length * pointsPerNode;
+    const positions = new Float32Array(numPoints * 3);
+    const colors = new Float32Array(numPoints * 3);
+
+    let idx = 0;
+    matchNodes.forEach(({ node, score }) => {
+      for (let i = 0; i < pointsPerNode; i++) {
+        const r = 300 + Math.random() * 800;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos((Math.random() * 2) - 1);
+        
+        const px = node.z_x + r * Math.sin(phi) * Math.cos(theta);
+        const py = node.z_y + r * Math.sin(phi) * Math.sin(theta);
+        const pz = node.z_z + r * Math.cos(phi);
+
+        positions[idx * 3] = px;
+        positions[idx * 3 + 1] = py;
+        positions[idx * 3 + 2] = pz;
+
+        let totalHeat = 0;
+        matchNodes.forEach(other => {
+          const dx = px - other.node.z_x;
+          const dy = py - other.node.z_y;
+          const dz = pz - other.node.z_z;
+          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+          const influence = other.score * Math.max(0, 1.0 - dist / 1200);
+          totalHeat += influence;
+        });
+
+        const heat = Math.min(1.0, totalHeat);
+
+        let r_val = 0, g_val = 0, b_val = 0;
+        if (heat < 0.25) {
+          const t = heat / 0.25;
+          r_val = 0;
+          g_val = t;
+          b_val = 1.0;
+        } else if (heat < 0.5) {
+          const t = (heat - 0.25) / 0.25;
+          r_val = 0;
+          g_val = 1.0;
+          b_val = 1.0 - t;
+        } else if (heat < 0.75) {
+          const t = (heat - 0.5) / 0.25;
+          r_val = t;
+          g_val = 1.0 - t * 0.3;
+          b_val = 0;
+        } else {
+          const t = (heat - 0.75) / 0.25;
+          r_val = 1.0;
+          g_val = 0.7 * (1.0 - t);
+          b_val = 0;
+        }
+
+        colors[idx * 3] = r_val;
+        colors[idx * 3 + 1] = g_val;
+        colors[idx * 3 + 2] = b_val;
+
+        idx++;
+      }
+    });
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    return geom;
+  }, [showHeatmap, searchQuery, spatialNodes]);
+
+  if (!geometry) return null;
+
+  return (
+    <points geometry={geometry}>
+      <pointsMaterial 
+        size={250} 
+        vertexColors 
+        transparent 
+        opacity={0.35} 
+        depthWrite={false} 
+        blending={THREE.AdditiveBlending}
+        map={texture}
+      />
+    </points>
+  );
+};
+
 const RefConnector = ({ setCamera, setControls }) => {
   const { camera, controls } = useThree();
   
@@ -450,6 +583,16 @@ const NodeLabel = React.memo(({ node, isHovered, onHover, onClick, showLabels, l
             isDimmed={isDimmed}
           />
         </Billboard>
+      )}
+      {!showLabels && (
+        <mesh scale={node.parentId ? [90, 90, 90] : [160, 160, 160]}>
+          <sphereGeometry args={[1, 16, 16]} />
+          <meshBasicMaterial 
+            color={(ENTITY_TYPES[node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color} 
+            transparent
+            opacity={isDimmed ? 0.25 : 0.85}
+          />
+        </mesh>
       )}
     </group>
   );
@@ -970,7 +1113,7 @@ const getSearchSummaryPath = (matchingNodes, allNodes) => {
   return serialize(tree);
 };
 
-export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, showLabels, labelStyle, setHoveredLinkData, onOpenDrawer, onZoomChange, onCoordsChange, theme = 'dark', setIs3DInteracting, layoutRules }) => {
+export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, showLabels, labelStyle, setHoveredLinkData, onOpenDrawer, onZoomChange, onCoordsChange, theme = 'dark', setIs3DInteracting, layoutRules, showHeatmap = false }) => {
   const isDark = theme !== 'light';
   const bgColor = isDark ? '#000000' : '#ece8dd';
   const [cameraInstance, setCameraInstance] = useState(null);
@@ -1561,6 +1704,8 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
         
         <CameraController targetNode={selectedNode ? spatialNodes.find(n => n.id === selectedNode.id) : null} spatialNodes={spatialNodes} />
         <NeuralMesh onSelectNode={onSelectNode} hoveredNodeId={hoveredNodeId} setHoveredNodeId={setHoveredNodeId} selectedNode={selectedNode} spatialNodes={spatialNodes} showLabels={showLabels} labelStyle={labelStyle} setHoveredLinkData={setHoveredLinkData} onOpenDrawer={onOpenDrawer} isDark={isDark} layoutRules={layoutRules} activeSearchQuery={activeSearchQuery} />
+        
+        <HeatmapCloud spatialNodes={spatialNodes} searchQuery={searchQuery} showHeatmap={showHeatmap} />
         
         <Environment preset="night" />
       </Canvas>

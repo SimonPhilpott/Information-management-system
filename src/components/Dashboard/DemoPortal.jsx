@@ -103,6 +103,7 @@ export default function DemoPortal({
   const [currentType, setCurrentType] = useState('CONCEPT');
   const [formData, setFormData] = useState({ title: '', content: {}, tier: 3 });
   const [showLabels, setShowLabels] = useState(true);
+  const [showHeatmap, setShowHeatmap] = useState(false);
 
   // Custom entity types configuration for the demo portal
   const demoEntityTypes = useMemo(() => {
@@ -478,7 +479,7 @@ export default function DemoPortal({
         ) : activeTab === 'spatial' ? (
           /* Embedded Spatial Graph View */
           <div className="flex-1 w-full flex flex-col relative overflow-hidden">
-            {/* Float control overlay for toggling labels */}
+            {/* Float control overlay for toggling labels & heatmap */}
             <div className="absolute top-4 left-4 z-50 flex items-center gap-2 pointer-events-auto">
               <button
                 onClick={() => setShowLabels(!showLabels)}
@@ -489,6 +490,16 @@ export default function DemoPortal({
                 }`}
               >
                 <span>Labels: {showLabels ? 'ON' : 'OFF'}</span>
+              </button>
+              <button
+                onClick={() => setShowHeatmap(!showHeatmap)}
+                className={`px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer active:scale-95 shadow-md flex items-center gap-1.5 ${
+                  showHeatmap
+                    ? (isDark ? 'bg-orange-500/20 border-orange-500/40 text-orange-400 shadow-[0_0_10px_rgba(249,115,22,0.15)]' : 'bg-orange-500/15 border-orange-500/30 text-orange-700')
+                    : (isDark ? 'bg-slate-900/80 border-white/10 text-slate-400 hover:text-white' : 'bg-white/80 border-black/10 text-slate-600 hover:text-black')
+                }`}
+              >
+                <span>Heatmap: {showHeatmap ? 'ON' : 'OFF'}</span>
               </button>
             </div>
             <SpatialCanvas 
@@ -501,6 +512,7 @@ export default function DemoPortal({
               setHoveredNodeId={setHoveredNodeId}
               theme={theme}
               showLabels={showLabels}
+              showHeatmap={showHeatmap}
               labelStyle="standard"
               onZoomChange={() => {}}
               onCoordsChange={() => {}}
