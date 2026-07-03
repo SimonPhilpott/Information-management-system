@@ -80,12 +80,6 @@ export const MESHES = [
     "parentId": "ops_root"
   },
   {
-    "id": "ops_km",
-    "type": "PATTERN",
-    "title": "Knowledge Management",
-    "parentId": "ops_root"
-  },
-  {
     "id": "gov_root",
     "type": "CONCEPT",
     "title": "Governance & Culture",
@@ -170,40 +164,10 @@ export const MESHES = [
     "parentId": "cap_root"
   },
   {
-    "id": "srv_cm",
-    "type": "CONCEPT",
-    "title": "Construction Management",
-    "parentId": "cap_root"
-  },
-  {
     "id": "reg_root",
     "type": "CONCEPT",
     "title": "Our Regions",
-    "parentId": "bus_root"
-  },
-  {
-    "id": "reg_la",
-    "type": "CONCEPT",
-    "title": "Latin America",
-    "parentId": "reg_americas"
-  },
-  {
-    "id": "reg_afr",
-    "type": "CONCEPT",
-    "title": "Africa",
-    "parentId": "reg_emea"
-  },
-  {
-    "id": "reg_me",
-    "type": "CONCEPT",
-    "title": "Middle East",
-    "parentId": "reg_emea"
-  },
-  {
-    "id": "reg_anz",
-    "type": "CONCEPT",
-    "title": "Australia and New Zealand",
-    "parentId": "reg_apac"
+    "parentId": "tt_group"
   },
   {
     "id": "loc_uk",
@@ -218,6 +182,33 @@ export const MESHES = [
     "parentId": "reg_uki"
   },
   {
+    "id": "uki_pm",
+    "type": "VARIANT",
+    "title": "UK Project Management",
+    "parentId": "loc_uk",
+    "secondaryLinks": [
+      "srv_pm"
+    ]
+  },
+  {
+    "id": "uki_ccm",
+    "type": "VARIANT",
+    "title": "UK Cost & Commercial Management",
+    "parentId": "loc_uk",
+    "secondaryLinks": [
+      "srv_ccm"
+    ]
+  },
+  {
+    "id": "uki_dig",
+    "type": "VARIANT",
+    "title": "UK Digital Performance",
+    "parentId": "loc_uk",
+    "secondaryLinks": [
+      "srv_dig"
+    ]
+  },
+  {
     "id": "loc_usa",
     "type": "VARIANT",
     "title": "United States",
@@ -230,12 +221,6 @@ export const MESHES = [
     "parentId": "reg_can_reg"
   },
   {
-    "id": "loc_mex",
-    "type": "VARIANT",
-    "title": "Mexico",
-    "parentId": "reg_la"
-  },
-  {
     "id": "loc_arg",
     "type": "VARIANT",
     "title": "Argentina",
@@ -245,6 +230,12 @@ export const MESHES = [
     "id": "loc_bra",
     "type": "VARIANT",
     "title": "Brazil",
+    "parentId": "reg_la"
+  },
+  {
+    "id": "loc_mex",
+    "type": "VARIANT",
+    "title": "Mexico",
     "parentId": "reg_la"
   },
   {
@@ -278,6 +269,12 @@ export const MESHES = [
     "parentId": "reg_eur"
   },
   {
+    "id": "reg_me",
+    "type": "CONCEPT",
+    "title": "Middle East",
+    "parentId": "reg_emea"
+  },
+  {
     "id": "loc_ksa",
     "type": "VARIANT",
     "title": "Kingdom of Saudi Arabia",
@@ -290,43 +287,28 @@ export const MESHES = [
     "parentId": "reg_me"
   },
   {
+    "id": "reg_anz",
+    "type": "CONCEPT",
+    "title": "Australia & New Zealand",
+    "parentId": "reg_apac"
+  },
+  {
     "id": "loc_aus",
     "type": "VARIANT",
     "title": "Australia",
     "parentId": "reg_anz"
   },
   {
+    "id": "reg_afr",
+    "type": "CONCEPT",
+    "title": "Africa",
+    "parentId": "reg_emea"
+  },
+  {
     "id": "loc_saf",
     "type": "VARIANT",
     "title": "South Africa",
     "parentId": "reg_afr"
-  },
-  {
-    "id": "uki_pm",
-    "type": "VARIANT",
-    "title": "UK Project Management",
-    "parentId": "srv_pm",
-    "secondaryLinks": [
-      "loc_uk"
-    ]
-  },
-  {
-    "id": "uki_ccm",
-    "type": "VARIANT",
-    "title": "UK Cost & Commercial Management",
-    "parentId": "srv_ccm",
-    "secondaryLinks": [
-      "loc_uk"
-    ]
-  },
-  {
-    "id": "uki_dig",
-    "type": "VARIANT",
-    "title": "UK Digital Performance",
-    "parentId": "srv_dig",
-    "secondaryLinks": [
-      "loc_uk"
-    ]
   },
   {
     "id": "seg_root",
@@ -377,36 +359,6 @@ export const MESHES = [
     "parentId": "seg_re"
   },
   {
-    "id": "re_sports",
-    "type": "PATTERN",
-    "title": "Sports & Venues",
-    "parentId": "seg_re"
-  },
-  {
-    "id": "re_tall",
-    "type": "PATTERN",
-    "title": "Tall & Iconic Buildings",
-    "parentId": "seg_re"
-  },
-  {
-    "id": "re_corp",
-    "type": "PATTERN",
-    "title": "Corporate Occupier",
-    "parentId": "seg_re"
-  },
-  {
-    "id": "re_retail",
-    "type": "PATTERN",
-    "title": "Retail",
-    "parentId": "seg_re"
-  },
-  {
-    "id": "re_ls",
-    "type": "PATTERN",
-    "title": "Life Sciences",
-    "parentId": "seg_re"
-  },
-  {
     "id": "seg_inf",
     "type": "CONCEPT",
     "title": "Infrastructure",
@@ -422,24 +374,6 @@ export const MESHES = [
     "id": "inf_def",
     "type": "PATTERN",
     "title": "Defense",
-    "parentId": "seg_inf"
-  },
-  {
-    "id": "inf_ports",
-    "type": "PATTERN",
-    "title": "Ports & Maritime",
-    "parentId": "seg_inf"
-  },
-  {
-    "id": "inf_water",
-    "type": "PATTERN",
-    "title": "Water Resources",
-    "parentId": "seg_inf"
-  },
-  {
-    "id": "inf_highways",
-    "type": "PATTERN",
-    "title": "Highways & Roads",
     "parentId": "seg_inf"
   },
   {
@@ -461,21 +395,9 @@ export const MESHES = [
     "parentId": "seg_enr"
   },
   {
-    "id": "enr_mining",
-    "type": "PATTERN",
-    "title": "Mining",
-    "parentId": "seg_enr"
-  },
-  {
-    "id": "enr_td",
-    "type": "PATTERN",
-    "title": "Power Transmission & Distribution",
-    "parentId": "seg_enr"
-  },
-  {
     "id": "prc_riba3",
     "type": "PROCEDURE",
-    "title": "RIStage 3 Cost Planning",
+    "title": "RIBA Stage 3 Cost Planning",
     "parentId": "uki_ccm",
     "secondaryLinks": [
       "re_health"
@@ -485,7 +407,11 @@ export const MESHES = [
     "id": "ccm_interim_valuations",
     "type": "PROCEDURE",
     "title": "Interim valuations",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_contract_management",
+      "bok_contract_administration"
+    ]
   },
   {
     "id": "ccm_final_account",
@@ -497,13 +423,21 @@ export const MESHES = [
     "id": "ccm_insolvency_management",
     "type": "PROCEDURE",
     "title": "Insolvency management",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_claims_management",
+      "bok_dispute_resolution"
+    ]
   },
   {
     "id": "ccm_claims_management",
     "type": "PROCEDURE",
     "title": "Claims management",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_claims_management",
+      "bok_dispute_resolution"
+    ]
   },
   {
     "id": "ccm_insurance_reinstatement",
@@ -521,7 +455,10 @@ export const MESHES = [
     "id": "ccm_knowledge_data_insight",
     "type": "PROCEDURE",
     "title": "Knowledge, data and insight",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_management_information_and_reporting"
+    ]
   },
   {
     "id": "ccm_our_approach",
@@ -545,55 +482,86 @@ export const MESHES = [
     "id": "ccm_order_of_cost_estimate",
     "type": "PROCEDURE",
     "title": "Order of cost estimate",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_cost_estimating",
+      "bok_capex_opex_and_lifecycle_estimating"
+    ]
   },
   {
     "id": "ccm_benchmarking",
     "type": "PROCEDURE",
     "title": "Benchmarking",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_cost_benchmarking"
+    ]
   },
   {
     "id": "ccm_value_engineering",
     "type": "PROCEDURE",
     "title": "Value engineering and value management",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_value_engineering",
+      "bok_value_management"
+    ]
   },
   {
     "id": "ccm_risk_management",
     "type": "PROCEDURE",
     "title": "Risk management",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_risk_management"
+    ]
   },
   {
     "id": "ccm_cost_planning",
     "type": "PROCEDURE",
     "title": "Cost planning",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_cost_planning_and_engineering"
+    ]
   },
   {
     "id": "ccm_procurement_contract_strategy",
     "type": "PROCEDURE",
     "title": "Procurement and contract strategy",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_procurement_and_contract_strategy"
+    ]
   },
   {
     "id": "ccm_tender_management_evaluation",
     "type": "PROCEDURE",
     "title": "Tender management and evaluation",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_tender_evaluation",
+      "bok_procurement_management"
+    ]
   },
   {
     "id": "ccm_contract_setup",
     "type": "PROCEDURE",
     "title": "Contract setup",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_contract_management",
+      "bok_contract_administration"
+    ]
   },
   {
     "id": "ccm_project_cost_control",
     "type": "PROCEDURE",
     "title": "Project cost control",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_cost_control"
+    ]
   },
   {
     "id": "prc_rail_est",
@@ -613,732 +581,6 @@ export const MESHES = [
       "uki_pm",
       "inf_tra"
     ]
-  },
-  {
-    "id": "bok_root",
-    "type": "CONCEPT",
-    "title": "Body of Knowledge",
-    "parentId": "cap_root"
-  },
-  {
-    "id": "bok_asset_management_consulting",
-    "type": "CONCEPT",
-    "title": "Asset management consulting",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "PAS55:2008, ISO 55000:2014, Capital investment planning, Estates management"
-    }
-  },
-  {
-    "id": "bok_asset_security",
-    "type": "CONCEPT",
-    "title": "Asset security",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "CPNI, GDPR"
-    }
-  },
-  {
-    "id": "bok_baseline_development",
-    "type": "CONCEPT",
-    "title": "Baseline development",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Planning and baselining, Integrated control baseline, Integrated baseline review (IBR), Work Breakdown Structure (WBS), Organisational Breakdown Structure (OBS), Statement of Works (SOW)"
-    }
-  },
-  {
-    "id": "bok_benchmarking",
-    "type": "CONCEPT",
-    "title": "Benchmarking",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_benefits_management",
-    "type": "CONCEPT",
-    "title": "Benefits management",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Benefits realisation, C6"
-    }
-  },
-  {
-    "id": "bok_bim_and_information_management",
-    "type": "CONCEPT",
-    "title": "BIM and information management",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_business_case_development",
-    "type": "CONCEPT",
-    "title": "Business case development",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Business and investment cases, Programme Business Case (PBC)"
-    }
-  },
-  {
-    "id": "bok_business_commercial_strategy",
-    "type": "PATTERN",
-    "title": "Business commercial strategy",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Commercial management"
-    }
-  },
-  {
-    "id": "bok_business_review_framework",
-    "type": "PATTERN",
-    "title": "Business review framework",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "BRF"
-    }
-  },
-  {
-    "id": "bok_c6",
-    "type": "CONCEPT",
-    "title": "C6",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_capex_opex_and_lifecycle_estimating",
-    "type": "CONCEPT",
-    "title": "CAPEX, OPEX and lifecycle estimating",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_cdm_principal_designer_and_construction_health_and_safety",
-    "type": "CONCEPT",
-    "title": "CDM principal designer and construction health and safety",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "CDM"
-    }
-  },
-  {
-    "id": "bok_change_control",
-    "type": "RULE",
-    "title": "Change control",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_change_management",
-    "type": "CONCEPT",
-    "title": "Change management",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_claims_management",
-    "type": "CONCEPT",
-    "title": "Claims management",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Claims avoidance, Claims evaluation, Claim analysis, CLEO"
-    }
-  },
-  {
-    "id": "bok_connected_assets_and_iot",
-    "type": "CONCEPT",
-    "title": "Connected assets and IoT",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Connectivity lab, Digital workplace, Physical technology"
-    }
-  },
-  {
-    "id": "bok_construction_management",
-    "type": "CONCEPT",
-    "title": "Construction management",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_contract_administration",
-    "type": "CONCEPT",
-    "title": "Contract administration",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_contract_gaming_and_training",
-    "type": "CONCEPT",
-    "title": "Contract gaming and training",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_contract_management",
-    "type": "CONCEPT",
-    "title": "Contract management",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "EPC, EPCM"
-    }
-  },
-  {
-    "id": "bok_contract_negotiation_and_award",
-    "type": "CONCEPT",
-    "title": "Contract negotiation and award",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "CUBE, Discover-Develop–Deliver (3D), Gap analysis"
-    }
-  },
-  {
-    "id": "bok_controls_development_and_transformation",
-    "type": "CONCEPT",
-    "title": "Controls development and transformation",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Establishment, Transformation, Transition, Gap analysis, Business Change"
-    }
-  },
-  {
-    "id": "bok_cost_and_scheduling_assessment",
-    "type": "CONCEPT",
-    "title": "Cost and scheduling assessment",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_cost_auditing_and_assurance",
-    "type": "RULE",
-    "title": "Cost auditing and assurance",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Cost verification"
-    }
-  },
-  {
-    "id": "bok_cost_benchmarking",
-    "type": "CONCEPT",
-    "title": "Cost benchmarking",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Benchmark and compare, Cost modelling"
-    }
-  },
-  {
-    "id": "bok_cost_control",
-    "type": "RULE",
-    "title": "Cost control",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_cost_estimating",
-    "type": "CONCEPT",
-    "title": "Cost estimating",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_cost_planning_and_engineering",
-    "type": "PROCEDURE",
-    "title": "Cost planning and engineering",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_defects_management",
-    "type": "CONCEPT",
-    "title": "Defects management",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_design_management",
-    "type": "CONCEPT",
-    "title": "Design management",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Concept design, Engineering management, Diagnosis service, Construction logistics, Construction supervision"
-    }
-  },
-  {
-    "id": "bok_digital_maturity_and_transformation",
-    "type": "CONCEPT",
-    "title": "Digital maturity and transformation",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Digital transformation consultancy, BIM consultancy, Information / data management consultancy, Solution / systems consultancy, International / special projects consultancy"
-    }
-  },
-  {
-    "id": "bok_disability_access_consultancy",
-    "type": "CONCEPT",
-    "title": "Disability access consultancy",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "BS8300, DfT"
-    }
-  },
-  {
-    "id": "bok_dispute_resolution",
-    "type": "CONCEPT",
-    "title": "Dispute resolution",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_document_and_data_management",
-    "type": "CONCEPT",
-    "title": "Document and data management",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Document control, Electronic document management system (EDMS), Configuration management, Enterprise content management (ECM), Common data environment (CDE), Enterprise data management (EDM), Information management, Master data management (MDM)"
-    }
-  },
-  {
-    "id": "bok_due_diligence",
-    "type": "CONCEPT",
-    "title": "Due diligence",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Funding advisory, Credit Compliance, Poor contractor performance, Technical risk, Distressed Development"
-    }
-  },
-  {
-    "id": "bok_execution_planning",
-    "type": "PROCEDURE",
-    "title": "Execution planning",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Project execution plan (PEP), Programme management plan (PMP), Portfolio management plan (PMP)"
-    }
-  },
-  {
-    "id": "bok_facilities_management_consulting",
-    "type": "CONCEPT",
-    "title": "Facilities management consulting",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "FM consulting, FM procurement"
-    }
-  },
-  {
-    "id": "bok_fire_consultancy_and_fire_risk_assessment",
-    "type": "SCENARIO",
-    "title": "Fire consultancy and fire risk assessment",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "BS9997, DSEAR"
-    }
-  },
-  {
-    "id": "bok_governance_and_assurance",
-    "type": "RULE",
-    "title": "Governance and assurance",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Lifecycle management, P3"
-    }
-  },
-  {
-    "id": "bok_independent_project_review",
-    "type": "CONCEPT",
-    "title": "Independent project review",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_lean_consulting_and_operational_excellence",
-    "type": "CONCEPT",
-    "title": "Lean consulting and operational excellence",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_management_information_and_reporting",
-    "type": "CONCEPT",
-    "title": "Management information and reporting",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Strategy and business analysis, Data management, Data visualisations and analysis"
-    }
-  },
-  {
-    "id": "bok_management_systems",
-    "type": "CONCEPT",
-    "title": "Management systems",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_operational_readiness_and_transition",
-    "type": "CONCEPT",
-    "title": "Operational readiness and transition",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "ORAT, Migration management"
-    }
-  },
-  {
-    "id": "bok_organisational_design_and_development",
-    "type": "CONCEPT",
-    "title": "Organisational design and development",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_performance_assurance",
-    "type": "RULE",
-    "title": "Performance assurance",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_performance_forensics",
-    "type": "CONCEPT",
-    "title": "Performance forensics",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_performance_improvement",
-    "type": "CONCEPT",
-    "title": "Performance improvement",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_performance_reporting",
-    "type": "CONCEPT",
-    "title": "Performance reporting",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Performance measurement, Dashboards, Business intelligence (BI), Cost value reconciliation (CVR), Key performance indicators (KPIs), Performance metrics, EV analysis, monitoring, analysis"
-    }
-  },
-  {
-    "id": "bok_portfolio_management",
-    "type": "CONCEPT",
-    "title": "Portfolio management",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_ppp",
-    "type": "RULE",
-    "title": "PPP",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "PFI, P3"
-    }
-  },
-  {
-    "id": "bok_procurement_and_contract_strategy",
-    "type": "PATTERN",
-    "title": "Procurement and contract strategy",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "2 stage procurement"
-    }
-  },
-  {
-    "id": "bok_procurement_management",
-    "type": "CONCEPT",
-    "title": "Procurement management",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Procurement strategy, Tender evaluation, Tender report"
-    }
-  },
-  {
-    "id": "bok_programme_assurance",
-    "type": "RULE",
-    "title": "Programme assurance",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_programme_definition",
-    "type": "CONCEPT",
-    "title": "Programme definition",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_programme_improvement",
-    "type": "CONCEPT",
-    "title": "Programme improvement",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "P3 Improvement, Portfolio improvement, Continuous improvement"
-    }
-  },
-  {
-    "id": "bok_programme_management_office",
-    "type": "CONCEPT",
-    "title": "Programme management office",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "PMO, Programme management organisation, Programme centre of excellence, Project management office, Portfolio management office"
-    }
-  },
-  {
-    "id": "bok_programme_recovery",
-    "type": "CONCEPT",
-    "title": "Programme recovery",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Project recovery, Portfolio recovery, P3, Programme intervention, Project intervention"
-    }
-  },
-  {
-    "id": "bok_project_audit",
-    "type": "CONCEPT",
-    "title": "Project audit",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_project_brief_development",
-    "type": "CONCEPT",
-    "title": "Project brief development",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_project_handover_and_close",
-    "type": "PROCEDURE",
-    "title": "Project handover and close",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_quality_strategy_and_management",
-    "type": "PATTERN",
-    "title": "Quality strategy and management",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_quanttum",
-    "type": "CONCEPT",
-    "title": "QuanTTum",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "FEED"
-    }
-  },
-  {
-    "id": "bok_real_estate_consulting",
-    "type": "CONCEPT",
-    "title": "Real estate consulting",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_reality_capture_and_site_scanning",
-    "type": "CONCEPT",
-    "title": "Reality capture and site scanning",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_requirements_management",
-    "type": "RULE",
-    "title": "Requirements management",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_risk_management",
-    "type": "SCENARIO",
-    "title": "Risk management",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Threat and opportunity management, Quantitative schedule risk analysis (QRSA), Issues management, ISO 31000"
-    }
-  },
-  {
-    "id": "bok_safety_health_and_environmental_strategy_and_management",
-    "type": "PATTERN",
-    "title": "Safety, health and environmental strategy and management",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_schedule_management",
-    "type": "CONCEPT",
-    "title": "Schedule management",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Planning, Scheduling, Programming, Project planning"
-    }
-  },
-  {
-    "id": "bok_security_clearance",
-    "type": "CONCEPT",
-    "title": "Security clearance",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_shq_training_and_competence",
-    "type": "CONCEPT",
-    "title": "SHQ training and competence",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_skills_passport",
-    "type": "CONCEPT",
-    "title": "Skills passport",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_stakeholder_management",
-    "type": "CONCEPT",
-    "title": "Stakeholder management",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Communication management, Engagement plan, Engagement strategy"
-    }
-  },
-  {
-    "id": "bok_supply_chain_management",
-    "type": "CONCEPT",
-    "title": "Supply chain management",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_supply_chain_strategy",
-    "type": "PATTERN",
-    "title": "Supply chain strategy",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_sustainability_consulting",
-    "type": "CONCEPT",
-    "title": "Sustainability consulting",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Environmental impact, Energy reduction, Carbon, ISO 14001, ISO 50001, Environmental management, Energy management, Carbon management"
-    }
-  },
-  {
-    "id": "bok_target_operating_model",
-    "type": "PATTERN",
-    "title": "Target operating model",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_technology_business_change_management",
-    "type": "CONCEPT",
-    "title": "Technology business change management",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_tender_evaluation",
-    "type": "CONCEPT",
-    "title": "Tender evaluation",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_testing_and_commissioning",
-    "type": "PROCEDURE",
-    "title": "Testing and commissioning",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Engineering commissioning, Commissioning management"
-    }
-  },
-  {
-    "id": "bok_value_engineering",
-    "type": "CONCEPT",
-    "title": "Value engineering",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_value_management",
-    "type": "CONCEPT",
-    "title": "Value management",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Earned value management, VM"
-    }
-  },
-  {
-    "id": "bok_whole_life_costing",
-    "type": "CONCEPT",
-    "title": "Whole life costing",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "BREEAM, Lifecycle modelling"
-    }
-  },
-  {
-    "id": "bok_programme_strategy_and_set_up",
-    "type": "PROCEDURE",
-    "title": "Programme strategy and set-up",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "3PO"
-    }
-  },
-  {
-    "id": "bok_quality_management",
-    "type": "CONCEPT",
-    "title": "Quality management",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "ISO 9001:2015"
-    }
-  },
-  {
-    "id": "bok_net_zero",
-    "type": "CONCEPT",
-    "title": "Net zero",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Counting to net zero"
-    }
-  },
-  {
-    "id": "bok_net_zero_strategy_and_roadmap",
-    "type": "PATTERN",
-    "title": "Net zero strategy and roadmap",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_carbon_accounting",
-    "type": "PATTERN",
-    "title": "Carbon accounting",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Whole life carbon, Operational carbon performance, Carbon assessment, Greenhouse gas assessment"
-    }
-  },
-  {
-    "id": "bok_net_zero_maturity_assessment",
-    "type": "PATTERN",
-    "title": "Net zero maturity assessment",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_climate_resilience",
-    "type": "CONCEPT",
-    "title": "Climate resilience",
-    "parentId": "bok_root",
-    "content": {
-      "Definition Summary": "Net Zero, Climate Risk"
-    }
-  },
-  {
-    "id": "bok_net_zero_programme_set_up",
-    "type": "PROCEDURE",
-    "title": "Net zero programme set-up",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_net_zero_funding_and_finance",
-    "type": "CONCEPT",
-    "title": "Net zero funding and finance",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_net_zero_capital_planning",
-    "type": "PROCEDURE",
-    "title": "Net zero capital planning",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_disclosure_and_esg_reporting",
-    "type": "PATTERN",
-    "title": "Disclosure and ESG reporting",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_sustainable_procurement",
-    "type": "PATTERN",
-    "title": "Sustainable procurement",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_net_zero_programme_delivery",
-    "type": "PROCEDURE",
-    "title": "Net zero programme delivery",
-    "parentId": "bok_root"
-  },
-  {
-    "id": "bok_net_zero_project_diagnostic",
-    "type": "PROCEDURE",
-    "title": "Net zero project diagnostic",
-    "parentId": "bok_root"
   },
   {
     "id": "reg_emea",
@@ -1363,6 +605,12 @@ export const MESHES = [
     "type": "CONCEPT",
     "title": "Americas",
     "parentId": "reg_root"
+  },
+  {
+    "id": "reg_la",
+    "type": "CONCEPT",
+    "title": "Latin America",
+    "parentId": "reg_americas"
   },
   {
     "id": "reg_usa",

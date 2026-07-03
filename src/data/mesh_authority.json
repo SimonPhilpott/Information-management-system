@@ -407,7 +407,11 @@
     "id": "ccm_interim_valuations",
     "type": "PROCEDURE",
     "title": "Interim valuations",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_contract_management",
+      "bok_contract_administration"
+    ]
   },
   {
     "id": "ccm_final_account",
@@ -419,13 +423,21 @@
     "id": "ccm_insolvency_management",
     "type": "PROCEDURE",
     "title": "Insolvency management",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_claims_management",
+      "bok_dispute_resolution"
+    ]
   },
   {
     "id": "ccm_claims_management",
     "type": "PROCEDURE",
     "title": "Claims management",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_claims_management",
+      "bok_dispute_resolution"
+    ]
   },
   {
     "id": "ccm_insurance_reinstatement",
@@ -443,7 +455,10 @@
     "id": "ccm_knowledge_data_insight",
     "type": "PROCEDURE",
     "title": "Knowledge, data and insight",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_management_information_and_reporting"
+    ]
   },
   {
     "id": "ccm_our_approach",
@@ -467,55 +482,86 @@
     "id": "ccm_order_of_cost_estimate",
     "type": "PROCEDURE",
     "title": "Order of cost estimate",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_cost_estimating",
+      "bok_capex_opex_and_lifecycle_estimating"
+    ]
   },
   {
     "id": "ccm_benchmarking",
     "type": "PROCEDURE",
     "title": "Benchmarking",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_cost_benchmarking"
+    ]
   },
   {
     "id": "ccm_value_engineering",
     "type": "PROCEDURE",
     "title": "Value engineering and value management",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_value_engineering",
+      "bok_value_management"
+    ]
   },
   {
     "id": "ccm_risk_management",
     "type": "PROCEDURE",
     "title": "Risk management",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_risk_management"
+    ]
   },
   {
     "id": "ccm_cost_planning",
     "type": "PROCEDURE",
     "title": "Cost planning",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_cost_planning_and_engineering"
+    ]
   },
   {
     "id": "ccm_procurement_contract_strategy",
     "type": "PROCEDURE",
     "title": "Procurement and contract strategy",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_procurement_and_contract_strategy"
+    ]
   },
   {
     "id": "ccm_tender_management_evaluation",
     "type": "PROCEDURE",
     "title": "Tender management and evaluation",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_tender_evaluation",
+      "bok_procurement_management"
+    ]
   },
   {
     "id": "ccm_contract_setup",
     "type": "PROCEDURE",
     "title": "Contract setup",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_contract_management",
+      "bok_contract_administration"
+    ]
   },
   {
     "id": "ccm_project_cost_control",
     "type": "PROCEDURE",
     "title": "Project cost control",
-    "parentId": "uki_ccm"
+    "parentId": "uki_ccm",
+    "secondaryLinks": [
+      "bok_cost_control"
+    ]
   },
   {
     "id": "prc_rail_est",

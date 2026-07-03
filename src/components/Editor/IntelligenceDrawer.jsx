@@ -57,7 +57,10 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const [suggestionPos, setSuggestionPos] = useState({ top: 0, left: 0 });
+  const [isReadMode, setIsReadMode] = useState(false);
   const isDark = theme !== 'light';
+  const prevIsReadMode = useRef(isReadMode);
+  const isLocalChange = useRef(false);
 
   const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -74,9 +77,6 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = formattedText;
 
-    const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-    // Collect all active bracket tags to avoid potential double parsing
     const activeTags = [];
     const bracketRegex = /\[\[(.*?)\|(.*?)\]\]/g;
     let match;
@@ -88,28 +88,147 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
       const text = textNode.textContent;
       if (!text.trim()) return;
 
-      let html = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      
-      html = html.replace(/\[\[(.*?)\|(.*?)\]\]/g, (m, id, title) => {
+      // 1. Process active bracket tags [[id|title]] first
+      const bracketMatch = /\[\[(.*?)\|(.*?)\]\]/.exec(text);
+      if (bracketMatch) {
+        const start = bracketMatch.index;
+        const end = start + bracketMatch[0].length;
+        const id = bracketMatch[1];
+        const title = bracketMatch[2];
+
+        const beforeText = text.slice(0, start);
+        const afterText = text.slice(end);
+
         const node = nodes.find(n => n.id === id);
         const color = ENTITY_TYPES[node?.type]?.color || '#fff';
         const isConnected = currentSecondaryLinks.includes(id);
         const typeLabel = ENTITY_TYPES[node?.type]?.label || 'Entity';
-        return `<span contenteditable="false" data-id="${id}" data-type="${typeLabel}" class="inline-tag active-tag" style="border: 1px solid ${color}88; background: ${color}22; color: ${color}; box-shadow: 0 0 10px ${color}22;">${title}<button class="tag-link-btn ${isConnected ? 'active' : ''}" data-id="${id}">${isConnected ? 'Linked' : 'Link'}</button></span>`;
-      });
+
+        const activeSpan = document.createElement('span');
+        activeSpan.contentEditable = 'false';
+        activeSpan.className = 'inline-tag active-tag';
+        activeSpan.setAttribute('data-id', id);
+        activeSpan.setAttribute('data-type', typeLabel);
+        activeSpan.style.border = `1px solid ${color}88`;
+        activeSpan.style.background = `${color}22`;
+        activeSpan.style.color = color;
+        activeSpan.style.boxShadow = `0 0 10px ${color}22`;
+        activeSpan.innerHTML = `${title}<button class="tag-link-btn ${isConnected ? 'active' : ''}" data-id="${id}">${isConnected ? 'Linked' : 'Link'}</button>`;
+
+        const nodesToInsert = [];
+        if (beforeText) nodesToInsert.push(document.createTextNode(beforeText));
+        nodesToInsert.push(activeSpan);
+        if (afterText) nodesToInsert.push(document.createTextNode(afterText));
+
+        textNode.replaceWith(...nodesToInsert);
+
+        // Recursively process the split text nodes
+        nodesToInsert.forEach(n => {
+          if (n.nodeType === Node.TEXT_NODE) {
+            processTextNode(n);
+          }
+        });
+        return;
+      }
+
+      // 2. Find the earliest potential keyword match
+      let bestMatch = null;
 
       nodes.forEach(node => {
         if (!node.title || activeTags.includes(node.title)) return;
-        const escapedTitle = escapeRegExp(node.title);
-        const regex = new RegExp(`(?<![\\w\\d])${escapedTitle}(?![\\w\\d])`, 'g');
-        const typeLabel = ENTITY_TYPES[node.type]?.label || 'Entity';
-        const textColor = '#000000';
-        const pulseColor = isDark ? 'rgba(0, 242, 255, 0.4)' : 'rgba(8, 145, 178, 0.4)';
-        const pulseBg = isDark ? 'rgba(0, 242, 255, 0.05)' : 'rgba(8, 145, 178, 0.05)';
         
-        html = html.replace(regex, (matchedWord) => {
-          return `<span contenteditable="false" data-id="${node.id}" data-type="${typeLabel}" class="inline-tag potential-tag" style="border: 1px dotted ${pulseColor}; background: ${pulseBg}; color: ${textColor}; box-shadow: inset 0 0 10px ${pulseBg};">${matchedWord}<div class="tag-actions"><button class="tag-promote-btn" data-id="${node.id}" title="Approve Entity">Promote</button><button class="tag-instant-link-btn" data-id="${node.id}" title="Approve & Link">Connect</button></div></span>`;
+        const escapedTitle = escapeRegExp(node.title);
+        const regex = new RegExp(`(?<![\\w\\d])${escapedTitle}(?![\\w\\d])`, 'i');
+        const m = regex.exec(text);
+        
+        if (m) {
+          const start = m.index;
+          const end = start + m[0].length;
+          
+          if (!bestMatch || start < bestMatch.start || (start === bestMatch.start && node.title.length > bestMatch.node.title.length)) {
+            bestMatch = { start, end, node, matchedText: m[0] };
+          }
+        }
+      });
+
+      if (bestMatch) {
+        const beforeText = text.slice(0, bestMatch.start);
+        const afterText = text.slice(bestMatch.end);
+
+        const typeLabel = ENTITY_TYPES[bestMatch.node.type]?.label || 'Entity';
+        const textColor = '#000000';
+        const pulseColor = 'rgba(217, 119, 6, 0.45)';
+        const pulseBg = 'rgba(245, 158, 11, 0.12)';
+
+        const potentialSpan = document.createElement('span');
+        potentialSpan.contentEditable = 'false';
+        potentialSpan.className = 'inline-tag potential-tag';
+        potentialSpan.setAttribute('data-id', bestMatch.node.id);
+        potentialSpan.setAttribute('data-type', typeLabel);
+        potentialSpan.style.border = `1.5px dashed ${pulseColor}`;
+        potentialSpan.style.background = pulseBg;
+        potentialSpan.style.color = textColor;
+        potentialSpan.style.boxShadow = `inset 0 0 8px rgba(245, 158, 11, 0.05)`;
+        potentialSpan.innerHTML = `${bestMatch.matchedText}<div class="tag-actions"><button class="tag-promote-btn" data-id="${bestMatch.node.id}" title="Approve Entity">Promote</button><button class="tag-instant-link-btn" data-id="${bestMatch.node.id}" title="Approve & Link">Connect</button></div>`;
+
+        const nodesToInsert = [];
+        if (beforeText) nodesToInsert.push(document.createTextNode(beforeText));
+        nodesToInsert.push(potentialSpan);
+        if (afterText) nodesToInsert.push(document.createTextNode(afterText));
+
+        textNode.replaceWith(...nodesToInsert);
+
+        // Recursively process the split text nodes
+        nodesToInsert.forEach(n => {
+          if (n.nodeType === Node.TEXT_NODE) {
+            processTextNode(n);
+          }
         });
+      }
+    };
+
+    const textNodes = [];
+    const collectTextNodes = (node) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        textNodes.push(node);
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        if (node.classList.contains('inline-tag')) return;
+        node.childNodes.forEach(collectTextNodes);
+      }
+    };
+
+    collectTextNodes(tempDiv);
+    textNodes.forEach(processTextNode);
+
+    return tempDiv.innerHTML;
+  };
+
+  const toReadHTML = (rawText) => {
+    if (!rawText) return '';
+    const isHTML = /<[a-z][\s\S]*>/i.test(rawText);
+    let formattedText = rawText;
+    if (!isHTML) {
+      formattedText = formattedText.replace(/\n/g, '<br/>');
+    }
+
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = formattedText;
+
+    const processTextNode = (textNode) => {
+      const text = textNode.textContent;
+      if (!text.trim()) return;
+
+      let html = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      
+      html = html.replace(/\[\[(.*?)\|(.*?)\]\]/g, (m, id, title) => {
+        const isConnected = currentSecondaryLinks.includes(id);
+        if (isConnected) {
+          const node = nodes.find(n => n.id === id);
+          const color = ENTITY_TYPES[node?.type]?.color || '#3b82f6';
+          return `<a href="#node-${id}" class="read-anchor-tag" style="color: ${color}; text-decoration: underline; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: all 0.2s;" onclick="event.preventDefault(); window.dispatchEvent(new CustomEvent('select-node', { detail: '${id}' }));">${title}</a>`;
+        } else {
+          return title;
+        }
       });
 
       if (html !== text) {
@@ -123,7 +242,7 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
       if (node.nodeType === Node.TEXT_NODE) {
         processTextNode(node);
       } else if (node.nodeType === Node.ELEMENT_NODE) {
-        if (node.classList.contains('inline-tag')) return;
+        if (node.classList.contains('read-anchor-tag')) return;
         const children = Array.from(node.childNodes);
         children.forEach(child => traverse(child));
       }
@@ -150,12 +269,36 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
 
   useEffect(() => {
     if (editorRef.current) {
-      const rawEditorText = toRawText(editorRef.current.innerHTML);
-      if (rawEditorText !== value) {
-        editorRef.current.innerHTML = toHTML(value);
+      if (isReadMode) {
+        editorRef.current.innerHTML = toReadHTML(value);
+      } else {
+        if (isLocalChange.current) {
+          isLocalChange.current = false;
+        } else {
+          editorRef.current.innerHTML = toHTML(value);
+        }
       }
     }
-  }, [value, currentSecondaryLinks]);
+    prevIsReadMode.current = isReadMode;
+  }, [value, isReadMode]);
+
+  useEffect(() => {
+    // Find all active tag IDs in the current raw text (value)
+    const activeTagIds = [];
+    const bracketRegex = /\[\[(.*?)\|(.*?)\]\]/g;
+    let match;
+    while ((match = bracketRegex.exec(value || '')) !== null) {
+      activeTagIds.push(match[1]);
+    }
+    
+    // Check if any id in currentSecondaryLinks is not in activeTagIds
+    currentSecondaryLinks.forEach(id => {
+      if (!activeTagIds.includes(id)) {
+        // The tag was deleted from the text! Remove it from active connections
+        onToggleConnection(id);
+      }
+    });
+  }, [value, currentSecondaryLinks, onToggleConnection]);
 
   useEffect(() => {
     const handleOutsideClick = (e) => {
@@ -285,6 +428,79 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
     } else if (pastedText) {
       document.execCommand('insertText', false, pastedText);
     }
+
+    // Process highlights immediately after paste finishes
+    setTimeout(() => {
+      if (editorRef.current) {
+        const raw = toRawText(editorRef.current.innerHTML);
+        onChange(raw);
+        editorRef.current.innerHTML = toHTML(raw);
+        
+        // Collapse selection to end of paste
+        const range = document.createRange();
+        const sel = window.getSelection();
+        if (sel) {
+          range.selectNodeContents(editorRef.current);
+          range.collapse(false);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      }
+    }, 20);
+  };
+
+  const saveSelection = (containerEl) => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0);
+      const preSelectionRange = range.cloneRange();
+      preSelectionRange.selectNodeContents(containerEl);
+      preSelectionRange.setEnd(range.startContainer, range.startOffset);
+      const start = preSelectionRange.toString().length;
+      return {
+        start: start,
+        end: start + range.toString().length
+      };
+    }
+    return null;
+  };
+
+  const restoreSelection = (containerEl, savedSel) => {
+    if (!savedSel) return;
+    const sel = window.getSelection();
+    if (!sel) return;
+    sel.removeAllRanges();
+    
+    let charIndex = 0;
+    const range = document.createRange();
+    range.setStart(containerEl, 0);
+    range.collapse(true);
+    
+    const nodeStack = [containerEl];
+    let node;
+    let foundStart = false;
+    let stop = false;
+    
+    while (!stop && (node = nodeStack.pop())) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const nextCharIndex = charIndex + node.length;
+        if (!foundStart && savedSel.start >= charIndex && savedSel.start <= nextCharIndex) {
+          range.setStart(node, savedSel.start - charIndex);
+          foundStart = true;
+        }
+        if (foundStart && savedSel.end >= charIndex && savedSel.end <= nextCharIndex) {
+          range.setEnd(node, savedSel.end - charIndex);
+          stop = true;
+        }
+        charIndex = nextCharIndex;
+      } else {
+        let i = node.childNodes.length;
+        while (i--) {
+          nodeStack.push(node.childNodes[i]);
+        }
+      }
+    }
+    sel.addRange(range);
   };
 
   const handleClick = (e) => {
@@ -293,34 +509,64 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
     const instantLinkBtn = e.target.closest('.tag-instant-link-btn');
 
     if (linkBtn) {
-       const id = linkBtn.getAttribute('data-id');
-       onToggleConnection(id);
-       const isNowActive = !linkBtn.classList.contains('active');
-       linkBtn.classList.toggle('active', isNowActive);
-       linkBtn.textContent = isNowActive ? 'Linked' : 'Link';
-     } else if (promoteBtn) {
-       const id = promoteBtn.getAttribute('data-id');
-       const node = nodes.find(n => n.id === id);
-       const raw = toRawText(editorRef.current.innerHTML);
-       const newRaw = raw.replace(node.title, `[[${id}|${node.title}]]`);
-       onChange(newRaw);
-       editorRef.current.innerHTML = toHTML(newRaw);
-     } else if (instantLinkBtn) {
-       const id = instantLinkBtn.getAttribute('data-id');
-       const node = nodes.find(n => n.id === id);
-       const raw = toRawText(editorRef.current.innerHTML);
-       const newRaw = raw.replace(node.title, `[[${id}|${node.title}]]`);
-       onChange(newRaw);
-       onToggleConnection(id);
-       editorRef.current.innerHTML = toHTML(newRaw);
-     }
+      const id = linkBtn.getAttribute('data-id');
+      onToggleConnection(id);
+      const isNowActive = !linkBtn.classList.contains('active');
+      linkBtn.classList.toggle('active', isNowActive);
+      linkBtn.textContent = isNowActive ? 'Linked' : 'Link';
+    } else if (promoteBtn) {
+      const id = promoteBtn.getAttribute('data-id');
+      const node = nodes.find(n => n.id === id);
+      const tagSpan = e.target.closest('.potential-tag');
+      if (tagSpan && node) {
+        const color = ENTITY_TYPES[node.type]?.color || '#fff';
+        const typeLabel = ENTITY_TYPES[node.type]?.label || 'Entity';
+        const isConnected = currentSecondaryLinks.includes(id);
+        
+        tagSpan.className = 'inline-tag active-tag';
+        tagSpan.setAttribute('data-id', id);
+        tagSpan.setAttribute('data-type', typeLabel);
+        tagSpan.style.border = `1px solid ${color}88`;
+        tagSpan.style.background = `${color}22`;
+        tagSpan.style.color = color;
+        tagSpan.style.boxShadow = `0 0 10px ${color}22`;
+        tagSpan.innerHTML = `${node.title}<button class="tag-link-btn ${isConnected ? 'active' : ''}" data-id="${id}">${isConnected ? 'Linked' : 'Link'}</button>`;
+        
+        const newRaw = toRawText(editorRef.current.innerHTML);
+        isLocalChange.current = true;
+        onChange(newRaw);
+      }
+    } else if (instantLinkBtn) {
+      const id = instantLinkBtn.getAttribute('data-id');
+      const node = nodes.find(n => n.id === id);
+      const tagSpan = e.target.closest('.potential-tag');
+      if (tagSpan && node) {
+        const color = ENTITY_TYPES[node.type]?.color || '#fff';
+        const typeLabel = ENTITY_TYPES[node.type]?.label || 'Entity';
+        
+        onToggleConnection(id);
+        
+        tagSpan.className = 'inline-tag active-tag';
+        tagSpan.setAttribute('data-id', id);
+        tagSpan.setAttribute('data-type', typeLabel);
+        tagSpan.style.border = `1px solid ${color}88`;
+        tagSpan.style.background = `${color}22`;
+        tagSpan.style.color = color;
+        tagSpan.style.boxShadow = `0 0 10px ${color}22`;
+        tagSpan.innerHTML = `${node.title}<button class="tag-link-btn active" data-id="${id}">Linked</button>`;
+        
+        const newRaw = toRawText(editorRef.current.innerHTML);
+        isLocalChange.current = true;
+        onChange(newRaw);
+      }
+    }
   };
 
   const handleInput = () => {
     const html = editorRef.current.innerHTML;
     const raw = toRawText(html);
     const selection = window.getSelection();
-    if (selection.rangeCount > 0) {
+    if (selection && selection.rangeCount > 0) {
       const range = selection.getRangeAt(0);
       const container = range.startContainer;
       const offset = range.startOffset;
@@ -328,7 +574,7 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
         const textBefore = container.textContent.slice(0, offset);
         const words = textBefore.split(/\s/);
         const lastWord = words[words.length - 1];
-        if (lastWord.length >= 2) {
+        if (lastWord.length >= 4) {
           const matches = nodes.filter(n => n.title.toLowerCase().includes(lastWord.toLowerCase())).slice(0, 5);
           if (matches.length > 0) {
             const rect = range.getBoundingClientRect();
@@ -340,24 +586,64 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
         } else { setShowSuggestions(false); }
       }
     }
+    isLocalChange.current = true;
     onChange(raw);
+
+    // Apply live highlights with selection preservation
+    const savedSel = saveSelection(editorRef.current);
+    const highlightedHtml = toHTML(raw);
+    if (editorRef.current.innerHTML !== highlightedHtml) {
+      editorRef.current.innerHTML = highlightedHtml;
+      restoreSelection(editorRef.current, savedSel);
+    }
   };
 
   const insertNodeTag = (node) => {
     const selection = window.getSelection();
-    if (selection.rangeCount > 0) {
+    if (selection && selection.rangeCount > 0) {
       const range = selection.getRangeAt(0);
       const textNode = range.startContainer;
       const offset = range.startOffset;
-      const beforePart = textNode.textContent.slice(0, offset);
-      const words = beforePart.split(/\s/);
-      words.pop();
-      const newBefore = words.join(' ') + (words.length > 0 ? ' ' : '');
-      const raw = toRawText(editorRef.current.innerHTML);
-      const newRaw = raw.replace(beforePart, newBefore + `[[${node.id}|${node.title}]]`);
-      onChange(newRaw);
-      editorRef.current.innerHTML = toHTML(newRaw);
-      setShowSuggestions(false);
+      if (textNode.nodeType === Node.TEXT_NODE) {
+        const beforePart = textNode.textContent.slice(0, offset);
+        const afterPart = textNode.textContent.slice(offset);
+        const words = beforePart.split(/\s/);
+        words.pop(); // Remove the typed characters
+        const newBefore = words.join(' ') + (words.length > 0 ? ' ' : '');
+        
+        const color = ENTITY_TYPES[node.type]?.color || '#fff';
+        const isConnected = currentSecondaryLinks.includes(node.id);
+        const typeLabel = ENTITY_TYPES[node.type]?.label || 'Entity';
+        
+        const activeSpan = document.createElement('span');
+        activeSpan.contentEditable = 'false';
+        activeSpan.className = 'inline-tag active-tag';
+        activeSpan.setAttribute('data-id', node.id);
+        activeSpan.setAttribute('data-type', typeLabel);
+        activeSpan.style.border = `1px solid ${color}88`;
+        activeSpan.style.background = `${color}22`;
+        activeSpan.style.color = color;
+        activeSpan.style.boxShadow = `0 0 10px ${color}22`;
+        activeSpan.innerHTML = `${node.title}<button class="tag-link-btn ${isConnected ? 'active' : ''}" data-id="${node.id}">${isConnected ? 'Linked' : 'Link'}</button>`;
+        
+        textNode.textContent = newBefore;
+        textNode.after(activeSpan);
+        
+        const trailingText = document.createTextNode(afterPart);
+        activeSpan.after(trailingText);
+        
+        // Position caret at the beginning of the trailing text
+        const newRange = document.createRange();
+        newRange.setStart(trailingText, 0);
+        newRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+        
+        const newRaw = toRawText(editorRef.current.innerHTML);
+        isLocalChange.current = true;
+        onChange(newRaw);
+        setShowSuggestions(false);
+      }
     }
   };
 
@@ -367,38 +653,68 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
+      {/* Read/Edit Toggle HUD */}
+      <div className="flex justify-between items-center px-1">
+        <span className="text-[10px] font-black tracking-widest uppercase text-[var(--text-muted)] transition-colors duration-300">
+          Mode: <span className={isReadMode ? "text-[var(--accent-indigo)] font-black" : "text-[var(--text-primary)]"}>{isReadMode ? "Read Only" : "Edit"}</span>
+        </span>
+        <div className="flex items-center gap-2">
+          <a
+            href="https://turntown.sharepoint.com/sites/SV-CAPABILITIES/SitePages/Project-management.aspx"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-1 rounded-xl text-xs font-bold transition-all border bg-slate-500/10 border-slate-500/30 text-slate-500 hover:bg-slate-500/20 hover:text-slate-700 flex items-center gap-1 active:scale-[0.98]"
+          >
+            <LinkIcon size={11} />
+            <span>Project Management Hub</span>
+          </a>
+          <button
+            onClick={() => setIsReadMode(!isReadMode)}
+            className={`px-3 py-1 rounded-xl text-xs font-bold transition-all border ${
+              isReadMode 
+                ? 'bg-[var(--accent-indigo)]/10 border-[var(--accent-indigo)]/30 text-[var(--accent-indigo)] hover:bg-[var(--accent-indigo)]/20' 
+                : 'bg-black/10 border-[var(--glass-border)] text-[var(--text-secondary)] hover:bg-black/20 hover:text-[var(--text-primary)]'
+            }`}
+          >
+            {isReadMode ? "Switch to Edit" : "Switch to Read Mode"}
+          </button>
+        </div>
+      </div>
+
       <div className="relative" ref={containerRef}>
         <div 
           ref={editorRef}
-          contentEditable
+          contentEditable={!isReadMode}
           onInput={handleInput}
           onClick={handleClick}
           onPaste={handlePaste}
-          className="rich-editor-content cyber-input min-h-[300px] p-6 rounded-[var(--radius-lg)] transition-all outline-none text-[13px] leading-relaxed border border-[var(--glass-border)] bg-white hover:border-[var(--glass-border-hover)] focus:border-[var(--accent-indigo)]/40 text-black"
+          className={`rich-editor-content cyber-input min-h-[300px] p-6 rounded-[var(--radius-lg)] transition-all outline-none text-[13px] leading-relaxed border border-[var(--glass-border)] text-black ${
+            isReadMode ? 'bg-[var(--bg-secondary)]/50 cursor-default opacity-90' : 'bg-white hover:border-[var(--glass-border-hover)] focus:border-[var(--accent-indigo)]/40'
+          }`}
           placeholder={placeholder}
         />
         <AnimatePresence>
-          {showSuggestions && (
+          {showSuggestions && !isReadMode && (
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
-              className="absolute z-[60000] backdrop-blur-2xl border rounded-2xl shadow-3xl overflow-hidden min-w-[240px] bg-[var(--bg-primary)] border-[var(--glass-border)]"
+              className="absolute z-[60000] backdrop-blur-2xl border rounded-2xl shadow-3xl overflow-hidden min-w-[260px] bg-[var(--bg-primary)] border-[var(--glass-border)]"
               style={{ top: suggestionPos.top, left: suggestionPos.left }}
             >
-              <div className="p-3 border-b flex items-center gap-2 border-[var(--glass-border)] bg-[var(--accent-indigo)]/5 text-[var(--accent-indigo)]">
-                 <Zap size={10} className="text-[var(--accent-indigo)]" />
-                 <span className="text-[9px] font-semibold tracking-wide">Predictive Entity Match</span>
+              <div className="p-3.5 border-b flex items-center gap-2.5 border-[var(--glass-border)] bg-[var(--accent-indigo)]/5 text-[var(--accent-indigo)]">
+                 <Zap size={12} className="text-[var(--accent-indigo)]" />
+                 <span className="text-[11px] font-bold tracking-wide uppercase">Predictive Entity Match</span>
                </div>
               {suggestions.map(s => (
                 <button 
                   key={s.id} 
-                  className="w-full p-4 flex items-center gap-3 transition-colors border-b last:border-0 border-[var(--glass-border)] hover:bg-[var(--glass-border)] group"
+                  className="w-full p-4.5 flex items-center gap-3.5 transition-colors border-b last:border-0 border-[var(--glass-border)] hover:bg-[var(--glass-border)] group"
                   onClick={() => insertNodeTag(s)}
                 >
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: ENTITY_TYPES[s.type]?.color }} />
+                  <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: ENTITY_TYPES[s.type]?.color }} />
                   <div className="flex flex-col items-start">
-                    <span className="text-[11px] font-bold text-[var(--text-primary)] group-hover:text-[var(--accent-indigo)] transition-colors">{s.title}</span>
-                    <span className="text-[8px] tracking-tight text-[var(--text-muted)]">{ENTITY_TYPES[s.type]?.label}</span>
+                    <span className="text-[13px] font-bold text-[var(--text-primary)] group-hover:text-[var(--accent-indigo)] transition-colors">{s.title}</span>
+                    <span className="text-[10px] tracking-tight text-[var(--text-muted)]">{ENTITY_TYPES[s.type]?.label}</span>
                   </div>
                 </button>
               ))}
@@ -419,6 +735,8 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
         .tag-actions { display: flex; gap: 4px; }
         .potential-tag { border-style: dotted !important; transition: all 0.3s; }
         .potential-tag:hover { background: rgba(0,143,168,0.1) !important; border-color: #008fa855 !important; }
+        .read-anchor-tag:hover { opacity: 0.8; text-decoration: underline !important; }
+
         .rich-editor-content h1 { font-size: 2.2rem; font-weight: 800; margin-top: 2rem; color: #000000; margin-bottom: 1.2rem; }
         .rich-editor-content h2 { font-size: 1.8rem; font-weight: 800; margin-top: 1.8rem; color: #000000; margin-bottom: 1.1rem; }
         .rich-editor-content h3 { font-size: 1.5rem; font-weight: 800; margin-top: 1.5rem; color: #000000; margin-bottom: 1rem; }

@@ -82,7 +82,11 @@
       "subFeatures": [
         "Path-based route detection for /demo",
         "Streamlined stats dashboard with quick analytics",
-        "Direct link to launch/embed Sunburst Canvas"
+        "Direct link to launch/embed Sunburst Canvas",
+        "Beta Views navigation dropdown menu providing access to experimental visualizations",
+        "Interactive Sankey Flow Chart mapping capability-to-region-to-BOK dependency paths with floating tooltips",
+        "Radial Dependency Wheel drawing neon chords between connected organizational and variant nodes",
+        "Centrality Analytics scatterplot plotting degree against frequency with side recommendation panels"
       ]
     }
   }

@@ -391,6 +391,30 @@
         "sunburstContainer": "w-full h-[650px] relative rounded-3xl overflow-hidden border border-white/5 shadow-2xl"
       }
     }
+  },
+  "SankeyView": {
+    "aesthetics": {
+      "layout": "p-6 rounded-2xl border flex flex-col h-full",
+      "nodes": "width 15px with rounded rx=3, vertical coordinates mapped by flow category heights",
+      "chords": "SVG cubic bezier curves with dynamic strokeWidth mapping volume and linearGradients matching start/end colors",
+      "tooltip": "absolute glassmorphic overlay with blur backdrop, border border-white/10, showing flow volume and traffic metrics"
+    }
+  },
+  "RadialWheelView": {
+    "aesthetics": {
+      "layout": "p-6 rounded-2xl border flex flex-col h-full",
+      "radialCenter": "radius 55px absolute hub with dynamic link chord counts and neon text updates",
+      "chords": "SVG quadratic bezier curves (Q to cx,cy) bowing towards center with dynamic opacities and neon drop-shadow glow filters",
+      "perimeterNodes": "rotational text placement on perimeter points color-coded by node metadata properties"
+    }
+  },
+  "CentralityView": {
+    "aesthetics": {
+      "layout": "grid grid-cols-1 lg:grid-cols-5 gap-6 min-h-[350px]",
+      "scatterplot": "lg:col-span-3 border border-white/5 rounded-xl bg-slate-950/20 with absolute overlay centrality grids",
+      "nodes": "pulsing glowing points with double-layered borders color-coded by node authority weightings",
+      "sidebar": "lg:col-span-2 rounded-xl border p-4 bg-slate-900/40 border-white/5 showing closeness degree metrics and connection recommendation buttons"
+    }
   }
 }
 

@@ -4,6 +4,9 @@ import { SunburstCanvas } from '../KnowledgeMesh/SunburstCanvas';
 import { SpatialCanvas } from '../KnowledgeMesh/SpatialCanvas';
 import { ENTITY_TYPES } from '../../data/nodes';
 import { IntelligenceDrawer, RichTaggingEditor, IMPORTANCE_TIERS } from '../Editor/IntelligenceDrawer';
+import SankeyView from './SankeyView';
+import RadialWheelView from './RadialWheelView';
+import CentralityView from './CentralityView';
 import { 
   Home, 
   Layers, 
@@ -20,7 +23,8 @@ import {
   Info,
   Cpu,
   Zap,
-  Shield
+  Shield,
+  ChevronDown
 } from 'lucide-react';
 
 export default function DemoPortal({ 
@@ -32,6 +36,8 @@ export default function DemoPortal({
 }) {
   const isDark = theme === 'dark';
   
+  const [showBetaDropdown, setShowBetaDropdown] = useState(false);
+
   // Derive initial tab from path
   const getTabFromPath = (path) => {
     if (path === '/demo/structuredview') {
@@ -42,6 +48,15 @@ export default function DemoPortal({
     }
     if (path === '/demo/tagger') {
       return 'tagger';
+    }
+    if (path === '/demo/sankey') {
+      return 'beta-sankey';
+    }
+    if (path === '/demo/radial') {
+      return 'beta-radial';
+    }
+    if (path === '/demo/centrality') {
+      return 'beta-centrality';
     }
     return 'dashboard';
   };
@@ -66,6 +81,12 @@ export default function DemoPortal({
       newPath = '/demo/spatialview';
     } else if (tab === 'tagger') {
       newPath = '/demo/tagger';
+    } else if (tab === 'beta-sankey') {
+      newPath = '/demo/sankey';
+    } else if (tab === 'beta-radial') {
+      newPath = '/demo/radial';
+    } else if (tab === 'beta-centrality') {
+      newPath = '/demo/centrality';
     }
     if (newPath !== currentPath) {
       window.history.pushState(null, '', newPath);
@@ -76,6 +97,10 @@ export default function DemoPortal({
   };
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedBetaNodeId, setSelectedBetaNodeId] = useState('srv_pm');
+  const [betaSearchQuery, setBetaSearchQuery] = useState('');
+  const [showBetaSuggestions, setShowBetaSuggestions] = useState(false);
+
   const [selectedNode, setSelectedNode] = useState(null);
   const [hoveredNodeId, setHoveredNodeId] = useState(null);
 
@@ -90,12 +115,47 @@ export default function DemoPortal({
     );
   };
 
+  // Parse all tag IDs from the editor text (both promoted and linked)
+  const textTagIds = useMemo(() => {
+    const ids = [];
+    const regex = /\[\[(.*?)\|(.*?)\]\]/g;
+    let match;
+    while ((match = regex.exec(editorText || '')) !== null) {
+      ids.push(match[1]);
+    }
+    return Array.from(new Set(ids));
+  }, [editorText]);
+
+  const handleRemoveTagConnection = (id) => {
+    // Revert [[id|Title]] to just Title inside editorText
+    const node = localNodes.find(n => n.id === id);
+    if (node) {
+      const escapedTitle = node.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`\\[\\[${id}\\|(${escapedTitle})\\]\\]`, 'gi');
+      const newEditorText = editorText.replace(regex, '$1');
+      setEditorText(newEditorText);
+    }
+    
+    // Also remove from active connections
+    if (taggerLinks.includes(id)) {
+      handleToggleConnectionTagger(id);
+    }
+  };
+
   // Local state for nodes so updates in the editor are reflected instantly
   const [localNodes, setLocalNodes] = useState(nodes);
   
   useEffect(() => {
     setLocalNodes(nodes);
   }, [nodes]);
+
+  useEffect(() => {
+    if (!betaSearchQuery.trim()) return;
+    const match = localNodes.find(n => n.title.toLowerCase() === betaSearchQuery.trim().toLowerCase());
+    if (match) {
+      setSelectedBetaNodeId(match.id);
+    }
+  }, [betaSearchQuery, localNodes]);
 
   // Intelligence Drawer states
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -139,6 +199,15 @@ export default function DemoPortal({
       ))
     ).slice(0, 10);
   }, [searchQuery, localNodes]);
+
+  const filteredBetaNodes = useMemo(() => {
+    if (!betaSearchQuery.trim()) return [];
+    const q = betaSearchQuery.toLowerCase();
+    return localNodes.filter(n => 
+      n.title.toLowerCase().includes(q) || 
+      n.id.toLowerCase().includes(q)
+    ).slice(0, 8);
+  }, [betaSearchQuery, localNodes]);
 
   const handleNodeClick = (node) => {
     setSelectedNode(node);
@@ -263,6 +332,76 @@ export default function DemoPortal({
             <Zap size={13} />
             <span>Interactive Tagger</span>
           </button>
+
+          {/* Beta Views Dropdown Tab */}
+          <div className="relative">
+            <button 
+              onClick={() => setShowBetaDropdown(!showBetaDropdown)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black tracking-wider uppercase transition-all flex items-center gap-1.5 active:scale-[0.98] ${
+                activeTab.startsWith('beta-')
+                  ? (isDark ? 'bg-brand-cyan/20 text-brand-cyan border border-brand-cyan/25' : 'bg-[#899981]/20 text-[#4E5A47] border border-[#899981]/30')
+                  : 'text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              <Compass size={13} />
+              <span>
+                {activeTab === 'beta-sankey' ? 'Sankey Flow' :
+                 activeTab === 'beta-radial' ? 'Radial Wheel' :
+                 activeTab === 'beta-centrality' ? 'Connection Analytics' :
+                 'Beta Views'}
+              </span>
+              <ChevronDown size={11} className={`transition-transform duration-200 ${showBetaDropdown ? 'rotate-180' : ''}`} />
+            </button>
+            
+            {showBetaDropdown && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowBetaDropdown(false)} />
+                <div className={`absolute top-full right-0 mt-1.5 w-44 rounded-xl border p-1 z-50 backdrop-blur-xl shadow-2xl flex flex-col gap-0.5 ${
+                  isDark ? 'bg-slate-950/90 border-white/10 text-slate-200' : 'bg-white/95 border-slate-200 text-slate-800'
+                }`}>
+                  <button
+                    onClick={() => {
+                      handleTabChange('beta-sankey');
+                      setShowBetaDropdown(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer ${
+                      activeTab === 'beta-sankey'
+                        ? (isDark ? 'bg-brand-cyan/15 text-brand-cyan' : 'bg-[#899981]/15 text-[#4E5A47]')
+                        : (isDark ? 'hover:bg-white/5' : 'hover:bg-slate-100')
+                    }`}
+                  >
+                    Sankey Flow Chart
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleTabChange('beta-radial');
+                      setShowBetaDropdown(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer ${
+                      activeTab === 'beta-radial'
+                        ? (isDark ? 'bg-brand-cyan/15 text-brand-cyan' : 'bg-[#899981]/15 text-[#4E5A47]')
+                        : (isDark ? 'hover:bg-white/5' : 'hover:bg-slate-100')
+                    }`}
+                  >
+                    Radial Connection Wheel
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleTabChange('beta-centrality');
+                      setShowBetaDropdown(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer ${
+                      activeTab === 'beta-centrality'
+                        ? (isDark ? 'bg-brand-cyan/15 text-brand-cyan' : 'bg-[#899981]/15 text-[#4E5A47]')
+                        : (isDark ? 'hover:bg-white/5' : 'hover:bg-slate-100')
+                    }`}
+                  >
+                    Connection Analytics
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {/* System Theme Toggles / Control */}
@@ -536,6 +675,105 @@ export default function DemoPortal({
               }}
             />
           </div>
+        ) : activeTab.startsWith('beta-') ? (
+          <div className="flex-1 w-full flex flex-col relative overflow-hidden">
+            {/* Shared Search Selector for Beta Views */}
+            <div className={`px-6 py-3 border-b flex items-center justify-between z-30 relative ${
+              isDark ? 'bg-slate-900/40 border-white/5' : 'bg-slate-50 border-slate-200'
+            }`}>
+              <div className="flex items-center gap-3 w-full max-w-md relative">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 whitespace-nowrap">
+                  Focused Node:
+                </span>
+                
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={betaSearchQuery}
+                    onChange={(e) => {
+                      setBetaSearchQuery(e.target.value);
+                      setShowBetaSuggestions(true);
+                    }}
+                    onFocus={() => setShowBetaSuggestions(true)}
+                    placeholder={
+                      localNodes.find(n => n.id === selectedBetaNodeId)?.title || "Search node to focus..."
+                    }
+                    className={`w-full px-3 py-1.5 rounded-xl border text-xs focus:outline-none transition-all ${
+                      isDark 
+                        ? 'bg-slate-950/60 border-white/10 text-white focus:border-brand-cyan/40 placeholder-slate-400' 
+                        : 'bg-white border-slate-200 text-slate-800 focus:border-[#4E5A47] placeholder-slate-500'
+                    }`}
+                  />
+                  
+                  {showBetaSuggestions && filteredBetaNodes.length > 0 && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setShowBetaSuggestions(false)} />
+                      <div className={`absolute top-full left-0 right-0 mt-1.5 max-h-60 overflow-y-auto rounded-xl border p-1 z-50 backdrop-blur-xl shadow-2xl flex flex-col gap-0.5 ${
+                        isDark ? 'bg-slate-950/95 border-white/10 text-slate-200' : 'bg-white border-slate-200 text-slate-800'
+                      }`}>
+                        {filteredBetaNodes.map(node => (
+                          <button
+                            key={node.id}
+                            onClick={() => {
+                              setSelectedBetaNodeId(node.id);
+                              setBetaSearchQuery('');
+                              setShowBetaSuggestions(false);
+                            }}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-between ${
+                              selectedBetaNodeId === node.id
+                                ? (isDark ? 'bg-brand-cyan/15 text-brand-cyan' : 'bg-[#899981]/15 text-[#4E5A47]')
+                                : (isDark ? 'hover:bg-white/5' : 'hover:bg-slate-100')
+                            }`}
+                          >
+                            <span className="truncate">{node.title}</span>
+                            <span 
+                              className="text-[8px] px-1.5 py-0.2 rounded border uppercase tracking-wider font-semibold flex-shrink-0"
+                              style={{
+                                borderColor: `${demoEntityTypes[node.type?.toUpperCase()]?.color || '#ccc'}40`,
+                                color: demoEntityTypes[node.type?.toUpperCase()]?.color || '#ccc',
+                                background: `${demoEntityTypes[node.type?.toUpperCase()]?.color || '#ccc'}10`
+                              }}
+                            >
+                              {node.type}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  Active Focus:
+                </span>
+                <span 
+                  className="px-2.5 py-0.8 text-[9px] font-black uppercase tracking-wider rounded border"
+                  style={{
+                    borderColor: `${demoEntityTypes[localNodes.find(n => n.id === selectedBetaNodeId)?.type?.toUpperCase()]?.color || '#00f2ff'}40`,
+                    color: demoEntityTypes[localNodes.find(n => n.id === selectedBetaNodeId)?.type?.toUpperCase()]?.color || '#00f2ff',
+                    background: `${demoEntityTypes[localNodes.find(n => n.id === selectedBetaNodeId)?.type?.toUpperCase()]?.color || '#00f2ff'}10`
+                  }}
+                >
+                  {localNodes.find(n => n.id === selectedBetaNodeId)?.title || 'None'}
+                </span>
+              </div>
+            </div>
+
+            {/* Embedded Sub-views */}
+            <div className="flex-1 w-full relative overflow-hidden">
+              {activeTab === 'beta-sankey' && (
+                <SankeyView theme={theme} focusedNodeId={selectedBetaNodeId} />
+              )}
+              {activeTab === 'beta-radial' && (
+                <RadialWheelView theme={theme} focusedNodeId={selectedBetaNodeId} />
+              )}
+              {activeTab === 'beta-centrality' && (
+                <CentralityView theme={theme} focusedNodeId={selectedBetaNodeId} />
+              )}
+            </div>
+          </div>
         ) : (
           /* Interactive Tagger Section */
           <div className="flex-1 w-full flex flex-col gap-6">
@@ -553,7 +791,7 @@ export default function DemoPortal({
               </div>
 
               {/* Rich Tagging Editor Container */}
-              <div className="rounded-2xl overflow-hidden border border-white/5 p-1 bg-white">
+              <div className="rounded-2xl relative overflow-visible border border-white/5 p-1 bg-white">
                 <RichTaggingEditor
                   value={editorText}
                   onChange={setEditorText}
@@ -568,30 +806,36 @@ export default function DemoPortal({
               {/* Active Connections HUD */}
               <div className="flex flex-col gap-3 pt-2">
                 <h3 className="text-xs font-black tracking-widest uppercase text-slate-500">
-                  Active tag term connection in the text ({taggerLinks.length})
+                  Active tag term connection in the text ({textTagIds.length})
                 </h3>
-                {taggerLinks.length === 0 ? (
+                {textTagIds.length === 0 ? (
                   <p className="text-xs text-slate-500 italic">No node connections established yet. Type a matching node name to see match suggestions.</p>
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    {taggerLinks.map(id => {
+                    {textTagIds.map(id => {
                       const node = localNodes.find(n => n.id === id);
                       if (!node) return null;
+                      const isLinked = taggerLinks.includes(id);
                       const color = demoEntityTypes[node.type?.toUpperCase()]?.color || '#505a60';
                       return (
                         <div
                           key={id}
                           className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all"
                           style={{
-                            borderColor: `${color}88`,
-                            background: `${color}15`,
-                            color: color
+                            borderColor: isLinked ? `${color}88` : `${color}44`,
+                            borderStyle: isLinked ? 'solid' : 'dashed',
+                            background: isLinked ? `${color}15` : 'transparent',
+                            color: isLinked ? color : `${color}b0`
                           }}
                         >
-                          <span>{node.title}</span>
+                          <span className="flex items-center gap-1.5 select-none">
+                            {node.title}
+                            {!isLinked && <span className="text-[10px] font-normal opacity-60">(Promoted)</span>}
+                          </span>
                           <button
-                            onClick={() => handleToggleConnectionTagger(id)}
-                            className="hover:text-red-500 font-extrabold ml-1 transition-colors"
+                            onClick={() => handleRemoveTagConnection(id)}
+                            className="hover:text-red-500 font-extrabold ml-1 transition-colors cursor-pointer"
+                            title="Remove tag reference"
                           >
                             ×
                           </button>
