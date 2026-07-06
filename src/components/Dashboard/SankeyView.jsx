@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Info, Sparkles } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 /**
  * SankeyView Component
@@ -7,6 +8,7 @@ import { Info, Sparkles } from 'lucide-react';
  */
 export default function SankeyView({ theme = 'dark', focusedNodeId = null, nodes = [] }) {
   const isDark = theme !== 'light';
+  const containerRef = useRef(null);
   const [hoveredPath, setHoveredPath] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [tooltipData, setTooltipData] = useState(null);
