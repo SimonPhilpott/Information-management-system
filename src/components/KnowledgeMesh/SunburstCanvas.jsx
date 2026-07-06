@@ -772,6 +772,31 @@ export const SunburstCanvas = ({
     }
   };
 
+  /**
+   * Positions the floating tooltip to follow the cursor for external connection
+   * nodes (dashed lines, dots, text labels).  Without this, the tooltip stays
+   * at left:-9999px because only handleSliceMouseMove ever repositions it.
+   */
+  const handleConnMouseMove = (e, node) => {
+    if (isPanning.current) return;
+    if (containerRef.current) {
+      const bounds = containerRef.current.getBoundingClientRect();
+      let tipX = e.clientX - bounds.left + 20;
+      let tipY = e.clientY - bounds.top  + 20;
+      if (tipX + 240 > bounds.width)  tipX = e.clientX - bounds.left - 252;
+      if (tipY + 220 > bounds.height) tipY = e.clientY - bounds.top  - 228;
+
+      const el = document.getElementById('sunburst-tooltip');
+      if (el) {
+        el.style.left = `${tipX}px`;
+        el.style.top  = `${tipY}px`;
+      }
+    }
+    if (hoveredNode?.id !== node.id) {
+      setHoveredNode(node);
+    }
+  };
+
   const activeFocusNode = nodes.find(n => n.id === currentRootId);
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -1030,7 +1055,7 @@ export const SunburstCanvas = ({
                       strokeWidth: 18,
                       fill: 'none',
                     }}
-                    onMouseEnter={() => setHoveredNode(conn.node)}
+                    onMouseMove={(e) => handleConnMouseMove(e, conn.node)}
                     onMouseLeave={() => setHoveredNode(null)}
                   />
 
@@ -1068,7 +1093,7 @@ export const SunburstCanvas = ({
                     cy={conn.y}
                     r={22}
                     style={{ fill: 'transparent', stroke: 'none' }}
-                    onMouseEnter={() => setHoveredNode(conn.node)}
+                    onMouseMove={(e) => handleConnMouseMove(e, conn.node)}
                     onMouseLeave={() => setHoveredNode(null)}
                   />
 
@@ -1100,7 +1125,7 @@ export const SunburstCanvas = ({
                     width={conn.node.title.length * 5.4}
                     height={18}
                     style={{ fill: 'transparent', stroke: 'none' }}
-                    onMouseEnter={() => setHoveredNode(conn.node)}
+                    onMouseMove={(e) => handleConnMouseMove(e, conn.node)}
                     onMouseLeave={() => setHoveredNode(null)}
                   />
                 </g>
