@@ -1019,6 +1019,20 @@ export const SunburstCanvas = ({
                       transition: 'stroke-width 0.2s, opacity 0.2s',
                     }}
                   />
+                  {/* Invisible wide hit-area line so the dashed line is easy to hover */}
+                  <line
+                    x1={conn.sliceX}
+                    y1={conn.sliceY}
+                    x2={conn.x}
+                    y2={conn.y}
+                    style={{
+                      stroke: 'transparent',
+                      strokeWidth: 18,
+                      fill: 'none',
+                    }}
+                    onMouseEnter={() => setHoveredNode(conn.node)}
+                    onMouseLeave={() => setHoveredNode(null)}
+                  />
 
                   {/* Outer Glow Ring on Hover */}
                   {isHov && (
@@ -1048,6 +1062,15 @@ export const SunburstCanvas = ({
                       transition: 'fill-opacity 0.2s, r 0.2s',
                     }}
                   />
+                  {/* Invisible oversized hit-area circle so dot hover is generous */}
+                  <circle
+                    cx={conn.x}
+                    cy={conn.y}
+                    r={22}
+                    style={{ fill: 'transparent', stroke: 'none' }}
+                    onMouseEnter={() => setHoveredNode(conn.node)}
+                    onMouseLeave={() => setHoveredNode(null)}
+                  />
 
                   {/* Connection Node Title */}
                   <text
@@ -1065,10 +1088,21 @@ export const SunburstCanvas = ({
                       stroke: isDark ? '#000000' : '#ece8dd',
                       strokeWidth: 3,
                       strokeLinejoin: 'round',
+                      pointerEvents: 'none',
                     }}
                   >
                     {conn.node.title}
                   </text>
+                  {/* Invisible rect hit-area behind the text label */}
+                  <rect
+                    x={labelSide === 'right' ? conn.x + 12 : conn.x - 12 - (conn.node.title.length * 5.4)}
+                    y={conn.y - 10}
+                    width={conn.node.title.length * 5.4}
+                    height={18}
+                    style={{ fill: 'transparent', stroke: 'none' }}
+                    onMouseEnter={() => setHoveredNode(conn.node)}
+                    onMouseLeave={() => setHoveredNode(null)}
+                  />
                 </g>
               );
             })}
