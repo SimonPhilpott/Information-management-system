@@ -1137,9 +1137,8 @@ export const SunburstCanvas = ({
           <g pointerEvents="none">
             {flatSlices.map(slice => {
               /**
-               * Word-wrap title to fit within maxChars per line.
-               * Returns at most maxLines lines; the last line gets an ellipsis
-               * if content was truncated.
+               * Word-wrap title into lines of at most maxChars each.
+               * Caps at maxLines; last line gets ellipsis if truncated.
                */
               const wrapLabel = (title, maxChars, maxLines) => {
                 if (title.length <= maxChars) return [title];
@@ -1151,7 +1150,6 @@ export const SunburstCanvas = ({
                     : w;
                   if (candidate.length > maxChars && lines[lines.length - 1]) {
                     if (lines.length >= maxLines) {
-                      // Truncate last line with ellipsis
                       lines[lines.length - 1] = lines[lines.length - 1].trimEnd() + '…';
                       break;
                     }
@@ -1190,30 +1188,28 @@ export const SunburstCanvas = ({
               const theta  = (slice.startAngle + slice.endAngle) / 2;
               const sweep  = slice.endAngle - slice.startAngle;
 
-              // Arc length along the mid-radius (tangential — this is what text runs along)
+              // arcLen = tangential length of the arc mid-band (limits how many lines stack)
               const rm     = (r0 + r1) / 2;
               const arcLen = rm * sweep;
-              if (arcLen < 8) return null;   // too tiny to label
+              if (arcLen < 8) return null;
 
-              const lx     = cx + rm * Math.cos(theta);
-              const ly     = cy + rm * Math.sin(theta);
+              const lx = cx + rm * Math.cos(theta);
+              const ly = cy + rm * Math.sin(theta);
 
-              // Rotate so text runs tangentially; flip in lower half so it's never upside-down
+              // Rotate text to run radially; flip lower-half so never upside-down
               let rotDeg = (theta * 180) / Math.PI;
               if (rotDeg > 90 && rotDeg < 270) rotDeg += 180;
 
-              // Font size: scale down for very short arcs but cap at 7.5px
-              const fontSize   = Math.max(5.5, Math.min(7.5, arcLen / 2.2));
-              // Line height proportional to font size (1.25× leading)
-              const LINE_H     = fontSize * 1.25;
+              // Font size scales with arc length (short slices get smaller text), capped at 7.5px
+              const fontSize = Math.max(5.5, Math.min(7.5, arcLen / 2.2));
+              // Line height: 1.25x leading, proportional to font size
+              const LINE_H   = fontSize * 1.25;
 
-              // Chars per line: how many characters fit ALONG the arc (tangential)
-              // ~0.55× width ratio for the font at this size
-              const charsPerLine = Math.max(4, Math.floor(arcLen / (fontSize * 0.56)));
+              // Each line runs RADIALLY — character capacity is determined by ringWidth (the radial depth)
+              const charsPerLine = Math.max(5, Math.floor(ringWidth / (fontSize * 0.56)));
 
-              // Max lines: how many lines fit inside the RADIAL ring width
-              // Use 80% of ringWidth to leave visual padding top and bottom
-              const maxLines = Math.max(1, Math.floor((ringWidth * 0.80) / LINE_H));
+              // Lines stack TANGENTIALLY — cap by how many fit in 80% of the arc length
+              const maxLines = Math.max(1, Math.floor((arcLen * 0.80) / LINE_H));
 
               const lines = wrapLabel(slice.title, charsPerLine, maxLines);
 
