@@ -245,6 +245,317 @@ export const MESHES = [
     "parentId": "pat_riba"
   },
   {
+    "id": "pat_int_proc",
+    "type": "PATTERN",
+    "title": "Internal process",
+    "parentId": "uki_pm"
+  },
+  {
+    "id": "proc_prep_project_start_up",
+    "type": "PROCEDURE",
+    "title": "Project start-up",
+    "parentId": "proc_prep"
+  },
+  {
+    "id": "proc_prep_governance_and_assurance",
+    "type": "PROCEDURE",
+    "title": "Governance and assurance",
+    "parentId": "proc_prep"
+  },
+  {
+    "id": "proc_prep_business_case_development",
+    "type": "PROCEDURE",
+    "title": "Business case development",
+    "parentId": "proc_prep"
+  },
+  {
+    "id": "proc_prep_options_appraisal",
+    "type": "PROCEDURE",
+    "title": "Options appraisal",
+    "parentId": "proc_prep"
+  },
+  {
+    "id": "proc_prep_baseline_development",
+    "type": "PROCEDURE",
+    "title": "Baseline development",
+    "parentId": "proc_prep"
+  },
+  {
+    "id": "proc_prep_project_brief_development",
+    "type": "PROCEDURE",
+    "title": "Project brief development",
+    "parentId": "proc_prep"
+  },
+  {
+    "id": "proc_prep_appointment_of_consultants",
+    "type": "PROCEDURE",
+    "title": "Appointment of consultants",
+    "parentId": "proc_prep"
+  },
+  {
+    "id": "proc_prep_schedule_management",
+    "type": "PROCEDURE",
+    "title": "Schedule management",
+    "parentId": "proc_prep"
+  },
+  {
+    "id": "proc_prep_supply_chain_strategy",
+    "type": "PROCEDURE",
+    "title": "Supply chain strategy",
+    "parentId": "proc_prep"
+  },
+  {
+    "id": "proc_prep_turnkey_principal_delivery",
+    "type": "PROCEDURE",
+    "title": "Turnkey / principal delivery",
+    "parentId": "proc_prep"
+  },
+  {
+    "id": "proc_prep",
+    "type": "PROCEDURE",
+    "title": "1 Preparation",
+    "parentId": "pat_int_proc",
+    "secondaryLinks": [
+      "ccm_procurement_contract_strategy"
+    ]
+  },
+  {
+    "id": "proc_design_design_management",
+    "type": "PROCEDURE",
+    "title": "Design management",
+    "parentId": "proc_design"
+  },
+  {
+    "id": "proc_design_full_procurement_strategy",
+    "type": "PROCEDURE",
+    "title": "Full procurement strategy",
+    "parentId": "proc_design"
+  },
+  {
+    "id": "proc_design_full_contract_strategy",
+    "type": "PROCEDURE",
+    "title": "Full contract strategy",
+    "parentId": "proc_design"
+  },
+  {
+    "id": "proc_design_multi_discipline_team_management",
+    "type": "PROCEDURE",
+    "title": "Multi discipline team management",
+    "parentId": "proc_design"
+  },
+  {
+    "id": "proc_design_management_of_statutory_consents",
+    "type": "PROCEDURE",
+    "title": "Management of statutory consents",
+    "parentId": "proc_design"
+  },
+  {
+    "id": "proc_design",
+    "type": "PROCEDURE",
+    "title": "2 Design",
+    "parentId": "pat_int_proc"
+  },
+  {
+    "id": "proc_pre_contract_procurement_management",
+    "type": "PROCEDURE",
+    "title": "Procurement management",
+    "parentId": "proc_pre_contract"
+  },
+  {
+    "id": "proc_pre_contract_production_information",
+    "type": "PROCEDURE",
+    "title": "Production information",
+    "parentId": "proc_pre_contract"
+  },
+  {
+    "id": "proc_pre_contract_contract_negotiation_and_award",
+    "type": "PROCEDURE",
+    "title": "Contract negotiation and award",
+    "parentId": "proc_pre_contract"
+  },
+  {
+    "id": "proc_pre_contract",
+    "type": "PROCEDURE",
+    "title": "3 Pre-contract",
+    "parentId": "pat_int_proc"
+  },
+  {
+    "id": "proc_construction_contract_administration",
+    "type": "PROCEDURE",
+    "title": "Contract administration",
+    "parentId": "proc_construction"
+  },
+  {
+    "id": "proc_construction_turnkey_pmc_contracts",
+    "type": "PROCEDURE",
+    "title": "Turnkey / PMC contracts",
+    "parentId": "proc_construction"
+  },
+  {
+    "id": "proc_construction_contract_management",
+    "type": "PROCEDURE",
+    "title": "Contract management",
+    "parentId": "proc_construction"
+  },
+  {
+    "id": "proc_construction_supply_chain_management",
+    "type": "PROCEDURE",
+    "title": "Supply chain management",
+    "parentId": "proc_construction"
+  },
+  {
+    "id": "proc_construction_testing_commissioning",
+    "type": "PROCEDURE",
+    "title": "Testing & commissioning",
+    "parentId": "proc_construction"
+  },
+  {
+    "id": "proc_construction_project_handover_close",
+    "type": "PROCEDURE",
+    "title": "Project handover & close",
+    "parentId": "proc_construction"
+  },
+  {
+    "id": "proc_construction",
+    "type": "PROCEDURE",
+    "title": "4 Construction",
+    "parentId": "pat_int_proc"
+  },
+  {
+    "id": "proc_use_operation_readiness_transition",
+    "type": "PROCEDURE",
+    "title": "Operation readiness & transition",
+    "parentId": "proc_use"
+  },
+  {
+    "id": "proc_use_final_report",
+    "type": "PROCEDURE",
+    "title": "Final report",
+    "parentId": "proc_use"
+  },
+  {
+    "id": "proc_use_post_project_review",
+    "type": "PROCEDURE",
+    "title": "Post project review",
+    "parentId": "proc_use"
+  },
+  {
+    "id": "proc_use_defects_management",
+    "type": "PROCEDURE",
+    "title": "Defects management",
+    "parentId": "proc_use"
+  },
+  {
+    "id": "proc_use_peer_review",
+    "type": "PROCEDURE",
+    "title": "Peer review",
+    "parentId": "proc_use"
+  },
+  {
+    "id": "proc_use",
+    "type": "PROCEDURE",
+    "title": "5 Use",
+    "parentId": "pat_int_proc",
+    "secondaryLinks": [
+      "ccm_final_account"
+    ]
+  },
+  {
+    "id": "proc_proj_act_digital_action_plan",
+    "type": "PROCEDURE",
+    "title": "Digital action plan",
+    "parentId": "proc_proj_act"
+  },
+  {
+    "id": "proc_proj_act_execution_planning",
+    "type": "PROCEDURE",
+    "title": "Execution planning",
+    "parentId": "proc_proj_act"
+  },
+  {
+    "id": "proc_proj_act_schedule_management",
+    "type": "PROCEDURE",
+    "title": "Schedule management",
+    "parentId": "proc_proj_act"
+  },
+  {
+    "id": "proc_proj_act_quality_management",
+    "type": "PROCEDURE",
+    "title": "Quality management",
+    "parentId": "proc_proj_act"
+  },
+  {
+    "id": "proc_proj_act_project_health_safety",
+    "type": "PROCEDURE",
+    "title": "Project health & safety",
+    "parentId": "proc_proj_act"
+  },
+  {
+    "id": "proc_proj_act_performance_reporting",
+    "type": "PROCEDURE",
+    "title": "Performance reporting",
+    "parentId": "proc_proj_act"
+  },
+  {
+    "id": "proc_proj_act_change_control",
+    "type": "PROCEDURE",
+    "title": "Change control",
+    "parentId": "proc_proj_act"
+  },
+  {
+    "id": "proc_proj_act_project_audit",
+    "type": "PROCEDURE",
+    "title": "Project audit",
+    "parentId": "proc_proj_act"
+  },
+  {
+    "id": "proc_proj_act_performance_assurance",
+    "type": "PROCEDURE",
+    "title": "Performance assurance",
+    "parentId": "proc_proj_act"
+  },
+  {
+    "id": "proc_proj_act_document_and_data_management",
+    "type": "PROCEDURE",
+    "title": "Document and data management",
+    "parentId": "proc_proj_act"
+  },
+  {
+    "id": "proc_proj_act_lessons_learnt",
+    "type": "PROCEDURE",
+    "title": "Lessons learnt",
+    "parentId": "proc_proj_act"
+  },
+  {
+    "id": "proc_proj_act_glossary",
+    "type": "PROCEDURE",
+    "title": "Glossary",
+    "parentId": "proc_proj_act"
+  },
+  {
+    "id": "proc_proj_act_bim",
+    "type": "PROCEDURE",
+    "title": "BIM",
+    "parentId": "proc_proj_act"
+  },
+  {
+    "id": "proc_proj_act_stakeholder_management",
+    "type": "PROCEDURE",
+    "title": "Stakeholder management",
+    "parentId": "proc_proj_act"
+  },
+  {
+    "id": "proc_proj_act",
+    "type": "PROCEDURE",
+    "title": "Project activities",
+    "parentId": "pat_int_proc",
+    "secondaryLinks": [
+      "ccm_risk_management",
+      "srv_sus",
+      "ccm_project_cost_control"
+    ]
+  },
+  {
     "id": "uki_ccm",
     "type": "VARIANT",
     "title": "UK Cost & Commercial Management",
