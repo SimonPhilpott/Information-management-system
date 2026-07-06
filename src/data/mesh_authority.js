@@ -185,27 +185,27 @@ export const MESHES = [
     "id": "uki_pm",
     "type": "VARIANT",
     "title": "UK Project Management",
-    "parentId": "loc_uk",
+    "parentId": "srv_pm",
     "secondaryLinks": [
-      "srv_pm"
+      "loc_uk"
     ]
   },
   {
     "id": "uki_ccm",
     "type": "VARIANT",
     "title": "UK Cost & Commercial Management",
-    "parentId": "loc_uk",
+    "parentId": "srv_ccm",
     "secondaryLinks": [
-      "srv_ccm"
+      "loc_uk"
     ]
   },
   {
     "id": "uki_dig",
     "type": "VARIANT",
     "title": "UK Digital Performance",
-    "parentId": "loc_uk",
+    "parentId": "srv_dig",
     "secondaryLinks": [
-      "srv_dig"
+      "loc_uk"
     ]
   },
   {
