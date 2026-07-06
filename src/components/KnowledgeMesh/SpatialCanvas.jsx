@@ -1210,11 +1210,41 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
     ).slice(0, 8);
   }, [searchQuery, nodes]);
 
+  const fallbackCopyToClipboard = (text) => {
+    try {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.top = "0";
+      textArea.style.left = "0";
+      textArea.style.position = "fixed";
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      if (successful) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    } catch (err) {
+      console.error('Fallback copy failed', err);
+    }
+  };
+
   const copyToClipboard = () => {
     if (!thumbprint) return;
-    navigator.clipboard.writeText(thumbprint);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(thumbprint)
+        .then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        })
+        .catch(() => {
+          fallbackCopyToClipboard(thumbprint);
+        });
+    } else {
+      fallbackCopyToClipboard(thumbprint);
+    }
   };
 
   const spatialNodes = useMemo(() => {
