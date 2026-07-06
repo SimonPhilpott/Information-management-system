@@ -1193,6 +1193,24 @@ export const SunburstCanvas = ({
               <h4 className={`text-xs font-black tracking-tight leading-snug ${textColor}`}>
                 {hoveredNode.title}
               </h4>
+              {hoveredNode.parentId && (() => {
+                const parentNode = nodes.find(n => n.id === hoveredNode.parentId);
+                return parentNode ? (
+                  <div className={`flex items-center gap-1 text-[8.5px] font-semibold ${mutedColor}`}>
+                    <span className="opacity-50">Part of</span>
+                    <span
+                      className="px-1.5 py-0.5 rounded border font-bold truncate max-w-[140px]"
+                      style={{
+                        color:           (ENTITY_TYPES[parentNode.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color,
+                        borderColor:     `${(ENTITY_TYPES[parentNode.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color}30`,
+                        backgroundColor: `${(ENTITY_TYPES[parentNode.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color}10`,
+                      }}
+                    >
+                      {parentNode.title}
+                    </span>
+                  </div>
+                ) : null;
+              })()}
               <p className={`text-[9.5px] leading-normal font-medium ${mutedColor}`}>
                 {getShortSummary(hoveredNode.content?.['Definition Summary']) || hoveredNode.content?.Summary || 'Hierarchy category branch.'}
               </p>
