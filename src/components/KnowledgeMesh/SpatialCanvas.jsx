@@ -1642,6 +1642,16 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
           )}
           <button 
             onClick={() => {
+              setShowTierList(!showTierList);
+              setShowSuggestions(false);
+            }}
+            className={`p-1 rounded transition-colors ${showTierList ? (isDark ? 'bg-white/20 text-[#00f2ff]' : 'bg-black/10 text-cyan-600') : 'text-slate-400 hover:text-white'}`}
+            title="Toggle Node Tier Listing"
+          >
+            <ListOrdered size={16} />
+          </button>
+          <button 
+            onClick={() => {
               setLocalShowHeatmap(!localShowHeatmap);
               setShowSuggestions(false);
             }}
