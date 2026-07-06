@@ -191,6 +191,60 @@
     ]
   },
   {
+    "id": "pat_riba",
+    "type": "PATTERN",
+    "title": "RIBA",
+    "parentId": "uki_pm"
+  },
+  {
+    "id": "proc_riba_0",
+    "type": "PROCEDURE",
+    "title": "RIBA 0: Strategic Definition",
+    "parentId": "pat_riba"
+  },
+  {
+    "id": "proc_riba_1",
+    "type": "PROCEDURE",
+    "title": "RIBA 1: Preparation and briefing",
+    "parentId": "pat_riba"
+  },
+  {
+    "id": "proc_riba_2",
+    "type": "PROCEDURE",
+    "title": "RIBA 2: Concept design",
+    "parentId": "pat_riba"
+  },
+  {
+    "id": "proc_riba_3",
+    "type": "PROCEDURE",
+    "title": "RIBA 3: Spatial co-ordination",
+    "parentId": "pat_riba"
+  },
+  {
+    "id": "proc_riba_4",
+    "type": "PROCEDURE",
+    "title": "RIBA 4: Technical design",
+    "parentId": "pat_riba"
+  },
+  {
+    "id": "proc_riba_5",
+    "type": "PROCEDURE",
+    "title": "RIBA 5: Manufacturing and construction",
+    "parentId": "pat_riba"
+  },
+  {
+    "id": "proc_riba_6",
+    "type": "PROCEDURE",
+    "title": "RIBA 6: Handover",
+    "parentId": "pat_riba"
+  },
+  {
+    "id": "proc_riba_7",
+    "type": "PROCEDURE",
+    "title": "RIBA 7: Occupation",
+    "parentId": "pat_riba"
+  },
+  {
     "id": "uki_ccm",
     "type": "VARIANT",
     "title": "UK Cost & Commercial Management",
