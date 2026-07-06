@@ -5,7 +5,7 @@ import { Info, Sparkles } from 'lucide-react';
  * SankeyView Component
  * Renders an interactive SVG-based Sankey diagram representing relationship flows
  */
-export default function SankeyView({ theme = 'dark', focusedNodeId = null }) {
+export default function SankeyView({ theme = 'dark', focusedNodeId = null, nodes = [] }) {
   const isDark = theme !== 'light';
   const [hoveredPath, setHoveredPath] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
@@ -31,6 +31,39 @@ export default function SankeyView({ theme = 'dark', focusedNodeId = null }) {
     if (s.includes('tender') || s.includes('bidding')) return 'r_tend';
     if (s.includes('insolvency')) return 'r_insol';
     return null;
+  };
+
+  const getStandardIdFromSankeyId = (sankeyId) => {
+    switch (sankeyId) {
+      case 'l_pm': return 'srv_pm';
+      case 'l_ccm': return 'srv_ccm';
+      case 'l_pa': return 'srv_pa';
+      case 'l_dp': return 'srv_dig';
+      
+      case 'm_uk': return 'loc_uk';
+      case 'm_us': return 'loc_usa';
+      case 'm_emea': return 'reg_emea';
+      case 'm_apac': return 'reg_apac';
+      
+      case 'r_risk': return 'bok_risk_management';
+      case 'r_cost': return 'bok_cost_planning_and_engineering';
+      case 'r_proc': return 'bok_procurement_and_contract_strategy';
+      case 'r_tend': return 'bok_tender_evaluation';
+      case 'r_insol': return 'bok_insolvency_management';
+      default: return null;
+    }
+  };
+
+  const getReferenceCount = (sankeyId) => {
+    if (!nodes || nodes.length === 0) return 0;
+    const stdId = getStandardIdFromSankeyId(sankeyId);
+    if (!stdId) return 0;
+    
+    const dbNode = nodes.find(n => n.id === stdId);
+    const outgoing = dbNode && dbNode.secondaryLinks ? dbNode.secondaryLinks.length : 0;
+    const incoming = nodes.filter(n => n.secondaryLinks && n.secondaryLinks.includes(stdId)).length;
+    
+    return outgoing + incoming;
   };
 
   const mappedFocusId = getSankeyMappedId(focusedNodeId);
@@ -84,11 +117,22 @@ export default function SankeyView({ theme = 'dark', focusedNodeId = null }) {
   ];
 
   const handleMouseMove = (e, link) => {
-    const rect = e.currentTarget.parentNode.getBoundingClientRect();
-    const x = e.clientX - rect.left + 15;
-    const y = e.clientY - rect.top + 15;
-    setTooltipPos({ x, y });
-    setTooltipData(link);
+    if (containerRef.current) {
+      const bounds = containerRef.current.getBoundingClientRect();
+      let x = e.clientX - bounds.left + 15;
+      let y = e.clientY - bounds.top + 15;
+      
+      // Prevent overflow
+      if (x + 240 > bounds.width) {
+        x = e.clientX - bounds.left - 250;
+      }
+      if (y + 130 > bounds.height) {
+        y = e.clientY - bounds.top - 145;
+      }
+      
+      setTooltipPos({ x, y });
+      setTooltipData(link);
+    }
   };
 
   return (
@@ -117,7 +161,7 @@ export default function SankeyView({ theme = 'dark', focusedNodeId = null }) {
         </div>
       </div>
 
-      <div className="flex-1 min-h-[380px] w-full relative flex items-center justify-center">
+      <div ref={containerRef} className="flex-1 min-h-[380px] w-full relative flex items-center justify-center">
         <svg viewBox="0 0 800 400" className="w-full h-full max-h-[380px] select-none">
           <defs>
             {links.map(link => {
@@ -253,53 +297,64 @@ export default function SankeyView({ theme = 'dark', focusedNodeId = null }) {
         </svg>
 
         {/* Premium connection summary box using the main app hover box look/style */}
-        {tooltipData && (
-          <div
-            className="absolute z-50 p-5 rounded-2xl border pointer-events-none backdrop-blur-xl shadow-2xl transition-all duration-75 flex flex-col gap-2 w-64 text-[10px] leading-relaxed"
-            style={{
-              top: tooltipPos.y,
-              left: tooltipPos.x,
-              borderColor: `${tooltipData.color || '#00f2ff'}35`,
-              background: isDark 
-                ? `linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(${((tooltipData.color || '#00f2ff').replace('#','').match(/.{2}/g) || ['00','f2','ff']).map(h=>parseInt(h,16)).join(',')}, 0.08) 100%)`
-                : `linear-gradient(135deg, rgba(255, 255, 255, 0.85) 0%, rgba(${((tooltipData.color || '#00f2ff').replace('#','').match(/.{2}/g) || ['00','f2','ff']).map(h=>parseInt(h,16)).join(',')}, 0.04) 100%)`,
-              color: isDark ? '#f8fafc' : '#0f172a'
-            }}
-          >
-            {/* Radial glow accent */}
-            <div
-              className="absolute inset-0 pointer-events-none"
-              style={{ background: `radial-gradient(circle at 20% 30%, ${tooltipData.color || '#00f2ff'}14, transparent 70%)` }}
-            />
+        <AnimatePresence>
+          {tooltipData && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.12 }}
+              className={`absolute pointer-events-none p-4 backdrop-blur-xl border rounded-[14px] shadow-3xl w-64 flex flex-col gap-1.5 text-left z-[500] ${
+                isDark ? 'bg-black/80 border-white/10 text-white' : 'bg-[#ece8dd]/95 border-[#2E2B27]/15 text-slate-800'
+              }`}
+              style={{
+                top: tooltipPos.y,
+                left: tooltipPos.x,
+              }}
+            >
+              {/* Radial glow accent */}
+              <div
+                className="absolute inset-0 pointer-events-none"
+                style={{ background: `radial-gradient(circle at 20% 30%, ${tooltipData.color || '#00f2ff'}14, transparent 70%)` }}
+              />
 
-            <div className="flex justify-between items-center border-b pb-2 mb-1 border-white/10 relative">
-              <span 
-                className="text-[8px] font-black uppercase tracking-[0.15em] px-2 py-0.5 rounded border"
-                style={{ 
-                  color: tooltipData.color || '#00f2ff', 
-                  borderColor: `${tooltipData.color || '#00f2ff'}35`, 
-                  background: `${tooltipData.color || '#00f2ff'}12` 
-                }}
-              >
-                Flow Connection
-              </span>
-              <span 
-                className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded"
-                style={{
-                  color: tooltipData.color || '#00f2ff',
-                  background: `${tooltipData.color || '#00f2ff'}20`
-                }}
-              >
-                {tooltipData.vol} Weight
-              </span>
-            </div>
-            <p className="font-semibold text-slate-200 text-xs relative">{tooltipData.label}</p>
-            <div className="flex justify-between items-center mt-2 pt-2 border-t border-white/10 text-[10px] text-slate-400 relative">
-              <span>Traffic Metric:</span>
-              <span className="font-black text-amber-400">{tooltipData.flow}</span>
-            </div>
-          </div>
-        )}
+              <div className="flex justify-between items-center border-b pb-1.5 mb-0.5 border-white/10 relative">
+                <span 
+                  className="text-[7.5px] font-black uppercase tracking-[0.15em] px-1.5 py-0.5 rounded border"
+                  style={{ 
+                    color: tooltipData.color || '#00f2ff', 
+                    borderColor: `${tooltipData.color || '#00f2ff'}30`, 
+                    background: `${tooltipData.color || '#00f2ff'}10` 
+                  }}
+                >
+                  Mesh Connection
+                </span>
+                <span 
+                  className="text-[7.5px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded"
+                  style={{
+                    color: tooltipData.color || '#00f2ff',
+                    background: `${tooltipData.color || '#00f2ff'}20`
+                  }}
+                >
+                  {tooltipData.vol} Strength
+                </span>
+              </div>
+              <h4 className="text-xs font-black tracking-tight leading-snug relative">
+                {tooltipData.label}
+              </h4>
+              <div className="flex flex-col gap-1 mt-1.5 pt-1.5 border-t border-white/10 text-[9px] text-slate-400 relative">
+                <div className="flex justify-between items-center">
+                  <span>Source References:</span>
+                  <span className="font-bold text-brand-cyan">{getReferenceCount(tooltipData.from)} Connections</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span>Target References:</span>
+                  <span className="font-bold text-amber-400">{getReferenceCount(tooltipData.to)} Connections</span>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <div className={`mt-4 p-3 rounded-xl border flex items-start gap-2.5 text-[10px] leading-relaxed ${
@@ -313,3 +368,4 @@ export default function SankeyView({ theme = 'dark', focusedNodeId = null }) {
     </div>
   );
 }
+

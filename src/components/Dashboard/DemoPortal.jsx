@@ -764,7 +764,7 @@ export default function DemoPortal({
             {/* Embedded Sub-views */}
             <div className="flex-1 w-full relative overflow-hidden">
               {activeTab === 'beta-sankey' && (
-                <SankeyView theme={theme} focusedNodeId={selectedBetaNodeId} />
+                <SankeyView theme={theme} focusedNodeId={selectedBetaNodeId} nodes={localNodes} />
               )}
               {activeTab === 'beta-radial' && (
                 <RadialWheelView theme={theme} focusedNodeId={selectedBetaNodeId} />
