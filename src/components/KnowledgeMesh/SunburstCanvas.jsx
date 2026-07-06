@@ -1136,29 +1136,39 @@ export const SunburstCanvas = ({
           {/* Labels — rotated tspan text centred in each arc slice */}
           <g pointerEvents="none">
             {flatSlices.map(slice => {
-              const wrapLabel = (title, maxChars) => {
+              /**
+               * Word-wrap title to fit within maxChars per line.
+               * Returns at most maxLines lines; the last line gets an ellipsis
+               * if content was truncated.
+               */
+              const wrapLabel = (title, maxChars, maxLines) => {
                 if (title.length <= maxChars) return [title];
                 const words = title.split(' ');
                 const lines = [''];
-                words.forEach(w => {
+                for (const w of words) {
                   const candidate = lines[lines.length - 1]
                     ? lines[lines.length - 1] + ' ' + w
                     : w;
                   if (candidate.length > maxChars && lines[lines.length - 1]) {
+                    if (lines.length >= maxLines) {
+                      // Truncate last line with ellipsis
+                      lines[lines.length - 1] = lines[lines.length - 1].trimEnd() + '…';
+                      break;
+                    }
                     lines.push(w);
                   } else {
                     lines[lines.length - 1] = candidate;
                   }
-                });
-                return lines.slice(0, 5);
+                }
+                return lines;
               };
 
               const fillStyle = { fill: isDark ? 'rgba(255,255,255,0.92)' : 'rgba(46,43,39,0.94)' };
-              const LINE_H    = 8.5;
 
               // ── Centre hub label ─────────────────────────────────────────
               if (slice.depth === 0) {
-                const lines = wrapLabel(slice.title, 14);
+                const LINE_H = 8.5;
+                const lines = wrapLabel(slice.title, 14, 4);
                 return (
                   <text
                     key={`lbl-${slice.id}`}
@@ -1180,7 +1190,7 @@ export const SunburstCanvas = ({
               const theta  = (slice.startAngle + slice.endAngle) / 2;
               const sweep  = slice.endAngle - slice.startAngle;
 
-              // Arc length available along the mid-radius
+              // Arc length along the mid-radius (tangential — this is what text runs along)
               const rm     = (r0 + r1) / 2;
               const arcLen = rm * sweep;
               if (arcLen < 8) return null;   // too tiny to label
@@ -1188,16 +1198,24 @@ export const SunburstCanvas = ({
               const lx     = cx + rm * Math.cos(theta);
               const ly     = cy + rm * Math.sin(theta);
 
-              // Rotate so text runs radially outward; flip in lower half so it's never upside-down
+              // Rotate so text runs tangentially; flip in lower half so it's never upside-down
               let rotDeg = (theta * 180) / Math.PI;
               if (rotDeg > 90 && rotDeg < 270) rotDeg += 180;
 
-              // Chars that fit across the ring width (radial direction after rotation)
-              // ringWidth is the radial depth; at 7px font ~0.55× char width ratio
-              const fontSize = Math.max(5.5, Math.min(7.5, arcLen / 2.2));
-              const charsPerLine = Math.max(5, Math.floor(ringWidth / (fontSize * 0.56)));
+              // Font size: scale down for very short arcs but cap at 7.5px
+              const fontSize   = Math.max(5.5, Math.min(7.5, arcLen / 2.2));
+              // Line height proportional to font size (1.25× leading)
+              const LINE_H     = fontSize * 1.25;
 
-              const lines = wrapLabel(slice.title, charsPerLine);
+              // Chars per line: how many characters fit ALONG the arc (tangential)
+              // ~0.55× width ratio for the font at this size
+              const charsPerLine = Math.max(4, Math.floor(arcLen / (fontSize * 0.56)));
+
+              // Max lines: how many lines fit inside the RADIAL ring width
+              // Use 80% of ringWidth to leave visual padding top and bottom
+              const maxLines = Math.max(1, Math.floor((ringWidth * 0.80) / LINE_H));
+
+              const lines = wrapLabel(slice.title, charsPerLine, maxLines);
 
               return (
                 <text
@@ -1220,6 +1238,7 @@ export const SunburstCanvas = ({
               );
             })}
           </g>
+
         </svg>
 
         {/* Floating tooltip — positioned in screen space relative to containerRef */}
