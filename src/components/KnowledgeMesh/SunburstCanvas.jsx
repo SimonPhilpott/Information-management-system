@@ -418,75 +418,124 @@ export const SunburstCanvas = ({
   const externalConnections = useMemo(() => {
     if (!flatSlices || flatSlices.length === 0) return [];
     const flatIds = new Set(flatSlices.map(s => s.id));
-    const connections = [];
 
     const maxDepth = Math.max(...flatSlices.map(s => s.depth));
-    const maxR = innerBaseRadius + (maxDepth > 0 ? maxDepth * ringWidth : 0);
-    const outerRadius = maxR + 90;
+    const maxR     = innerBaseRadius + (maxDepth > 0 ? maxDepth * ringWidth : 0);
+    const BASE_R   = maxR + 80;
 
-    const sliceToConn = {};
+    // ── Step 1: collect all (slice → external-node) pairs ─────────────────
+    // Key by external node id so the same node is never placed twice.
+    // We track all slice angles it connects to so we can pick the best one.
+    const nodeMap = {}; // nodeId → { node, angles: [], slices: [] }
 
     flatSlices.forEach(slice => {
       nodes.forEach(node => {
         if (flatIds.has(node.id)) return;
-
         const isConnected =
           (slice.secondaryLinks && slice.secondaryLinks.includes(node.id)) ||
-          (node.secondaryLinks && node.secondaryLinks.includes(slice.id));
+          (node.secondaryLinks  && node.secondaryLinks.includes(slice.id));
+        if (!isConnected) return;
 
-        if (isConnected) {
-          if (!sliceToConn[slice.id]) {
-            sliceToConn[slice.id] = [];
-          }
-          if (!sliceToConn[slice.id].some(n => n.id === node.id)) {
-            sliceToConn[slice.id].push(node);
-          }
+        if (!nodeMap[node.id]) {
+          nodeMap[node.id] = { node, slices: [] };
         }
+        nodeMap[node.id].slices.push(slice);
       });
     });
 
-    Object.keys(sliceToConn).forEach(sliceId => {
-      const slice = flatSlices.find(s => s.id === sliceId);
-      if (!slice) return;
+    // ── Step 2: assign initial angle and radius for each unique external node
+    // Use the mean angle of all slices that connect to it.
+    const placed = Object.values(nodeMap).map(({ node, slices }) => {
+      const midAngles = slices.map(s => (s.startAngle + s.endAngle) / 2);
+      // Circular mean to handle wraparound correctly
+      const sinSum = midAngles.reduce((a, t) => a + Math.sin(t), 0);
+      const cosSum = midAngles.reduce((a, t) => a + Math.cos(t), 0);
+      const angle  = Math.atan2(sinSum / midAngles.length, cosSum / midAngles.length);
 
-      const connNodes = sliceToConn[sliceId];
-      const K = connNodes.length;
-      const midAngle = (slice.startAngle + slice.endAngle) / 2;
+      return { node, slices, angle, radius: BASE_R };
+    });
 
-      // Spread angles slightly to prevent overlapping floating circles
-      const angularSpacing = 0.42;
-      connNodes.forEach((connNode, index) => {
-        const offset = (index - (K - 1) / 2) * angularSpacing;
-        const angle = midAngle + offset;
+    // Sort by angle so the collision pass works in order
+    placed.sort((a, b) => a.angle - b.angle);
 
-        // Stagger distance of nodes significantly to prevent text label overlap
-        const radialOffset = (index % 2 === 1) ? 90 : 0;
-        const radius = outerRadius + radialOffset;
+    // ── Step 3: global label collision resolution ──────────────────────────
+    // Estimate label width in SVG units (~5.4px per char at 9px font).
+    const FONT_PX  = 9;
+    const CHAR_W   = FONT_PX * 0.56;
+    const LABEL_H  = FONT_PX * 1.4;  // one line height
+    const PAD      = 6;               // minimum gap between labels
 
-        const x = cx + radius * Math.cos(angle);
-        const y = cy + radius * Math.sin(angle);
+    const labelBox = (p) => {
+      const w = p.node.title.length * CHAR_W + PAD * 2;
+      return { cx: p.x, cy: p.y, w, h: LABEL_H + PAD * 2 };
+    };
 
-        // Anchor the connection line origin radius exactly to the r1 outer edge of the slice depth it is linked to,
-        // using the matching connection angle offset so the line extends outward without crossing other inner text labels.
+    const overlaps = (a, b) => {
+      const ax = a.cx + (Math.cos(placed[placed.indexOf(a)].angle) > 0 ? 0 : -a.w);
+      const bx = b.cx + (Math.cos(placed[placed.indexOf(b)].angle) > 0 ? 0 : -b.w);
+      return Math.abs(a.cy - b.cy) < (a.h + b.h) / 2 &&
+             Math.abs(ax - bx)     < (a.w + b.w) / 2;
+    };
+
+    // Compute screen positions from angle + radius
+    const computeXY = (p) => {
+      p.x = cx + p.radius * Math.cos(p.angle);
+      p.y = cy + p.radius * Math.sin(p.angle);
+    };
+    placed.forEach(computeXY);
+
+    // Iterative radial push: nudge overlapping nodes outward, up to 5 passes
+    for (let pass = 0; pass < 5; pass++) {
+      let anyOverlap = false;
+      for (let i = 0; i < placed.length; i++) {
+        for (let j = i + 1; j < placed.length; j++) {
+          const a = placed[i], b = placed[j];
+          const ba = labelBox(a), bb = labelBox(b);
+          if (overlaps(ba, bb)) {
+            anyOverlap = true;
+            // Push the outer one further out
+            if (a.radius <= b.radius) {
+              b.radius += LABEL_H + PAD;
+            } else {
+              a.radius += LABEL_H + PAD;
+            }
+            computeXY(a);
+            computeXY(b);
+          }
+        }
+      }
+      if (!anyOverlap) break;
+    }
+
+    // ── Step 4: build final connection list ───────────────────────────────
+    // Each entry has one dot/label position but potentially multiple line origins.
+    const connections = [];
+    placed.forEach(p => {
+      p.slices.forEach(slice => {
         const { r1 } = getRadius(slice.depth);
-        const sliceX = cx + r1 * Math.cos(angle);
-        const sliceY = cy + r1 * Math.sin(angle);
+        const sliceAngle = (slice.startAngle + slice.endAngle) / 2;
+        const sliceX = cx + r1 * Math.cos(sliceAngle);
+        const sliceY = cy + r1 * Math.sin(sliceAngle);
 
         connections.push({
-          id: `ext-${slice.id}-${connNode.id}`,
+          id:     `ext-${slice.id}-${p.node.id}`,
           slice,
-          node: connNode,
-          x,
-          y,
+          node:   p.node,
+          x:      p.x,
+          y:      p.y,
           sliceX,
           sliceY,
-          angle,
+          angle:  p.angle,
+          // Flag first occurrence so dot + label are only rendered once per node
+          primary: slice.id === p.slices[0].id,
         });
       });
     });
 
     return connections;
   }, [flatSlices, nodes, innerBaseRadius, ringWidth]);
+
+
 
   // ── Search Logic & Memos ───────────────────────────────────────────────────
 
@@ -1030,7 +1079,7 @@ export const SunburstCanvas = ({
                   onMouseEnter={() => setHoveredNode(conn.node)}
                   onMouseLeave={() => setHoveredNode(null)}
                 >
-                  {/* Connecting Line */}
+                  {/* Connecting Line — drawn for every entry */}
                   <line
                     x1={conn.sliceX}
                     y1={conn.sliceY}
@@ -1050,88 +1099,77 @@ export const SunburstCanvas = ({
                     y1={conn.sliceY}
                     x2={conn.x}
                     y2={conn.y}
-                    style={{
-                      stroke: 'transparent',
-                      strokeWidth: 18,
-                      fill: 'none',
-                    }}
+                    style={{ stroke: 'transparent', strokeWidth: 18, fill: 'none' }}
                     onMouseMove={(e) => handleConnMouseMove(e, conn.node)}
                     onMouseLeave={() => setHoveredNode(null)}
                   />
 
-                  {/* Outer Glow Ring on Hover */}
-                  {isHov && (
-                    <circle
-                      cx={conn.x}
-                      cy={conn.y}
-                      r={14}
-                      style={{
-                        fill: 'none',
-                        stroke: entityColor,
-                        strokeWidth: 1.5,
-                        strokeOpacity: 0.5,
-                      }}
-                    />
+                  {/* Dot, label and hit areas — only rendered on the primary entry to avoid duplicates */}
+                  {conn.primary && (
+                    <>
+                      {/* Outer Glow Ring on Hover */}
+                      {isHov && (
+                        <circle
+                          cx={conn.x} cy={conn.y} r={14}
+                          style={{ fill: 'none', stroke: entityColor, strokeWidth: 1.5, strokeOpacity: 0.5 }}
+                        />
+                      )}
+
+                      {/* Connection Node Circle */}
+                      <circle
+                        cx={conn.x} cy={conn.y} r={7}
+                        style={{
+                          fill: entityColor,
+                          fillOpacity: isHov ? 1.0 : 0.8,
+                          stroke: isDark ? '#000000' : '#ffffff',
+                          strokeWidth: 1.5,
+                          transition: 'fill-opacity 0.2s',
+                        }}
+                      />
+                      {/* Invisible oversized hit-area circle */}
+                      <circle
+                        cx={conn.x} cy={conn.y} r={22}
+                        style={{ fill: 'transparent', stroke: 'none' }}
+                        onMouseMove={(e) => handleConnMouseMove(e, conn.node)}
+                        onMouseLeave={() => setHoveredNode(null)}
+                      />
+
+                      {/* Connection Node Title */}
+                      <text
+                        x={conn.x} y={conn.y}
+                        dx={textDx} dy="3"
+                        textAnchor={textAnchor}
+                        style={{
+                          fill: isDark ? 'rgba(255,255,255,0.95)' : 'rgba(46,43,39,0.98)',
+                          fontSize: '9px',
+                          fontWeight: 600,
+                          letterSpacing: '0.02em',
+                          paintOrder: 'stroke',
+                          stroke: isDark ? '#000000' : '#ece8dd',
+                          strokeWidth: 3,
+                          strokeLinejoin: 'round',
+                          pointerEvents: 'none',
+                        }}
+                      >
+                        {conn.node.title}
+                      </text>
+                      {/* Invisible rect hit-area behind the text label */}
+                      <rect
+                        x={labelSide === 'right' ? conn.x + 12 : conn.x - 12 - (conn.node.title.length * 5.4)}
+                        y={conn.y - 10}
+                        width={conn.node.title.length * 5.4}
+                        height={18}
+                        style={{ fill: 'transparent', stroke: 'none' }}
+                        onMouseMove={(e) => handleConnMouseMove(e, conn.node)}
+                        onMouseLeave={() => setHoveredNode(null)}
+                      />
+                    </>
                   )}
-
-                  {/* Connection Node Circle */}
-                  <circle
-                    cx={conn.x}
-                    cy={conn.y}
-                    r={7}
-                    style={{
-                      fill: entityColor,
-                      fillOpacity: isHov ? 1.0 : 0.8,
-                      stroke: isDark ? '#000000' : '#ffffff',
-                      strokeWidth: 1.5,
-                      transition: 'fill-opacity 0.2s, r 0.2s',
-                    }}
-                  />
-                  {/* Invisible oversized hit-area circle so dot hover is generous */}
-                  <circle
-                    cx={conn.x}
-                    cy={conn.y}
-                    r={22}
-                    style={{ fill: 'transparent', stroke: 'none' }}
-                    onMouseMove={(e) => handleConnMouseMove(e, conn.node)}
-                    onMouseLeave={() => setHoveredNode(null)}
-                  />
-
-                  {/* Connection Node Title */}
-                  <text
-                    x={conn.x}
-                    y={conn.y}
-                    dx={textDx}
-                    dy="3"
-                    textAnchor={textAnchor}
-                    style={{
-                      fill: isDark ? 'rgba(255,255,255,0.95)' : 'rgba(46,43,39,0.98)',
-                      fontSize: '9px',
-                      fontWeight: 600,
-                      letterSpacing: '0.02em',
-                      paintOrder: 'stroke',
-                      stroke: isDark ? '#000000' : '#ece8dd',
-                      strokeWidth: 3,
-                      strokeLinejoin: 'round',
-                      pointerEvents: 'none',
-                    }}
-                  >
-                    {conn.node.title}
-                  </text>
-                  {/* Invisible rect hit-area behind the text label */}
-                  <rect
-                    x={labelSide === 'right' ? conn.x + 12 : conn.x - 12 - (conn.node.title.length * 5.4)}
-                    y={conn.y - 10}
-                    width={conn.node.title.length * 5.4}
-                    height={18}
-                    style={{ fill: 'transparent', stroke: 'none' }}
-                    onMouseMove={(e) => handleConnMouseMove(e, conn.node)}
-                    onMouseLeave={() => setHoveredNode(null)}
-                  />
                 </g>
               );
             })}
           </g>
+
 
           {/* Labels — rotated tspan text centred in each arc slice */}
           <g pointerEvents="none">
