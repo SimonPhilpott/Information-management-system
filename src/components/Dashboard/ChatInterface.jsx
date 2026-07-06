@@ -58,6 +58,26 @@ export default function ChatInterface({
     e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
   };
 
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setSelectedImage(reader.result);
+          };
+          reader.readAsDataURL(file);
+          break;
+        }
+      }
+    }
+  };
+
   return (
     <div className="chat-container">
       {messages.length === 0 ? (
@@ -184,6 +204,7 @@ export default function ChatInterface({
             value={input}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder={selectedImage ? "Describe this image or ask a question..." : (appMode === 'kb' ? "Ask about your documents..." : "Ask Gemini anything...")}
             rows={1}
             disabled={isTyping}

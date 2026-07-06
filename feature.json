@@ -26,7 +26,8 @@
       "subFeatures": [
         "Interactive top header with model selection and usage tracking",
         "Dual-sidebar architecture with resize drag boundaries",
-        "Haptic active state feedback and viewport containment reliability"
+        "Haptic active state feedback and viewport containment reliability",
+        "Direct clipboard screenshot and image pasting support into the chat prompt"
       ]
     },
     "Topic Discovery & Session Panel": {
