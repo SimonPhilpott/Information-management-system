@@ -51,7 +51,7 @@ export const IMPORTANCE_TIERS = [
   },
 ];
 
-export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, currentSecondaryLinks = [], theme = 'dark', placeholder = "Analyse and document intelligence..." }) => {
+export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, currentSecondaryLinks = [], theme = 'dark', placeholder = "Analyse and document intelligence...", ignoredNodeIds = [] }) => {
   const editorRef = useRef(null);
   const containerRef = useRef(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -135,7 +135,7 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
       let bestMatch = null;
 
       nodes.forEach(node => {
-        if (!node.title || activeTags.includes(node.title)) return;
+        if (!node.title || activeTags.includes(node.title) || ignoredNodeIds.includes(node.id)) return;
         
         const escapedTitle = escapeRegExp(node.title);
         const regex = new RegExp(`(?<![\\w\\d])${escapedTitle}(?![\\w\\d])`, 'i');
@@ -660,15 +660,18 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
           Mode: <span className={isReadMode ? "text-[var(--accent-indigo)] font-black" : "text-[var(--text-primary)]"}>{isReadMode ? "Read Only" : "Edit"}</span>
         </span>
         <div className="flex items-center gap-2">
-          <a
-            href="https://turntown.sharepoint.com/sites/SV-CAPABILITIES/SitePages/Project-management.aspx"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={() => {
+              const demoText = "Our project management capability is anchored around leadership, integration and domain expertise. Project management integrates the wider functional capability of our service platform optimising performance and embedding industry leading expertise throughout the project lifecycles.";
+              onChange(demoText);
+            }}
+            type="button"
             className="px-3 py-1 rounded-xl text-xs font-bold transition-all border bg-slate-500/10 border-slate-500/30 text-slate-500 hover:bg-slate-500/20 hover:text-slate-700 flex items-center gap-1 active:scale-[0.98]"
+            title="Load project management demo text"
           >
             <LinkIcon size={11} />
             <span>Project Management Hub</span>
-          </a>
+          </button>
           <button
             onClick={() => setIsReadMode(!isReadMode)}
             className={`px-3 py-1 rounded-xl text-xs font-bold transition-all border ${

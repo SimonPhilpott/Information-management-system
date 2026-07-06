@@ -467,12 +467,12 @@ export const SunburstCanvas = ({
 
     const labelBox = (p) => {
       const w = p.node.title.length * CHAR_W + PAD * 2;
-      return { cx: p.x, cy: p.y, w, h: LABEL_H + PAD * 2 };
+      return { cx: p.x, cy: p.y, w, h: LABEL_H + PAD * 2, angle: p.angle };
     };
 
     const overlaps = (a, b) => {
-      const ax = a.cx + (Math.cos(placed[placed.indexOf(a)].angle) > 0 ? 0 : -a.w);
-      const bx = b.cx + (Math.cos(placed[placed.indexOf(b)].angle) > 0 ? 0 : -b.w);
+      const ax = a.cx + (Math.cos(a.angle) > 0 ? 0 : -a.w);
+      const bx = b.cx + (Math.cos(b.angle) > 0 ? 0 : -b.w);
       return Math.abs(a.cy - b.cy) < (a.h + b.h) / 2 &&
              Math.abs(ax - bx)     < (a.w + b.w) / 2;
     };

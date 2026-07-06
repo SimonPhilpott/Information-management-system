@@ -108,6 +108,14 @@ export default function DemoPortal({
   const [editorText, setEditorText] = useState('');
   const [taggerLinks, setTaggerLinks] = useState([]);
   const [activeTooltip, setActiveTooltip] = useState(null);
+  const [ignoredNodeIds, setIgnoredNodeIds] = useState([]);
+
+  // Reset ignored tags when text is cleared
+  useEffect(() => {
+    if (!editorText) {
+      setIgnoredNodeIds([]);
+    }
+  }, [editorText]);
 
   const handleToggleConnectionTagger = (id) => {
     setTaggerLinks(prev => 
@@ -134,6 +142,10 @@ export default function DemoPortal({
       const regex = new RegExp(`\\[\\[${id}\\|(${escapedTitle})\\]\\]`, 'gi');
       const newEditorText = editorText.replace(regex, '$1');
       setEditorText(newEditorText);
+      // Remember this node as ignored for auto-tagging
+      if (!ignoredNodeIds.includes(id)) {
+        setIgnoredNodeIds(prev => [...prev, id]);
+      }
     }
     
     // Also remove from active connections
@@ -800,6 +812,7 @@ export default function DemoPortal({
                   currentSecondaryLinks={taggerLinks}
                   theme={theme}
                   placeholder="Type or paste your text"
+                  ignoredNodeIds={ignoredNodeIds}
                 />
               </div>
 
