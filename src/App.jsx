@@ -1246,6 +1246,27 @@ export default function App() {
     return data;
   };
 
+  const handleGetMeshBackups = async () => {
+    const res = await fetch('/api/mesh-backups');
+    if (!res.ok) throw new Error('Failed to fetch mesh backups');
+    return await res.json();
+  };
+
+  const handleCreateMeshBackup = async () => {
+    const res = await fetch('/api/mesh-backups', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to create mesh backup');
+    return data;
+  };
+
+  const handleRestoreMeshBackup = async (filename) => {
+    const res = await fetch(`/api/mesh-backups/restore?filename=${encodeURIComponent(filename)}`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to restore mesh backup');
+    window.location.reload();
+    return data;
+  };
+
 
 
   if (loading) {
@@ -2058,6 +2079,9 @@ export default function App() {
              }} 
              onReset={resetLayout} 
              onBackup={handleBackup} 
+             onGetMeshBackups={handleGetMeshBackups}
+             onCreateMeshBackup={handleCreateMeshBackup}
+             onRestoreMeshBackup={handleRestoreMeshBackup}
              layoutRules={layoutRules} 
              setLayoutRules={setLayoutRules} 
              applyLayout={applyLayout} 

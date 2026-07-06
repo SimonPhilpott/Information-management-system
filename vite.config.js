@@ -101,6 +101,8 @@ const backupPlugin = () => ({
   name: 'backup-plugin',
   configureServer(server) {
     server.middlewares.use((req, res, next) => {
+      res.setHeader('Content-Type', 'application/json');
+      
       if (req.url === '/api/backup') {
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const backupDir = "D:/Information management system/backups";
@@ -112,7 +114,6 @@ const backupPlugin = () => ({
         `.trim().replace(/\n/g, ' ');
 
         exec(`powershell.exe -NoProfile -Command "${psCommand}"`, (err, stdout, stderr) => {
-          res.setHeader('Content-Type', 'application/json');
           if (err) {
             console.error('Backup Engine Error:', stderr);
             res.statusCode = 500;
@@ -121,7 +122,110 @@ const backupPlugin = () => ({
             res.end(JSON.stringify({ success: true, file: zipFile }));
           }
         });
+      } else if (req.url === '/api/mesh-backups' && req.method === 'GET') {
+        const registryPath = path.join(__dirname, 'backups/mesh_backups_registry.json');
+        if (!fs.existsSync(registryPath)) {
+          res.end(JSON.stringify([]));
+        } else {
+          try {
+            const registry = fs.readFileSync(registryPath, 'utf8');
+            res.end(registry);
+          } catch (e) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: e.message }));
+          }
+        }
+      } else if (req.url === '/api/mesh-backups' && req.method === 'POST') {
+        const backupDir = path.join(__dirname, 'backups');
+        if (!fs.existsSync(backupDir)) {
+          fs.mkdirSync(backupDir, { recursive: true });
+        }
+        
+        const authorityJsonFilePath = path.join(__dirname, 'src/data/mesh_authority.json');
+        if (!fs.existsSync(authorityJsonFilePath)) {
+          res.statusCode = 404;
+          res.end(JSON.stringify({ error: 'Authority JSON file not found' }));
+          return;
+        }
+
+        try {
+          const rawData = fs.readFileSync(authorityJsonFilePath, 'utf8');
+          const nodes = JSON.parse(rawData);
+
+          // Calculate stats
+          const nodeCount = nodes.length;
+          let connectionCount = 0;
+          nodes.forEach(n => {
+            if (n.parentId) connectionCount++;
+            if (n.secondaryLinks && Array.isArray(n.secondaryLinks)) {
+              connectionCount += n.secondaryLinks.length;
+            }
+          });
+
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const backupFilename = `mesh_backup_${timestamp}.json`;
+          const backupFilePath = path.join(backupDir, backupFilename);
+
+          // Save backup file
+          fs.writeFileSync(backupFilePath, rawData, 'utf8');
+
+          // Update registry
+          const registryPath = path.join(backupDir, 'mesh_backups_registry.json');
+          let registry = [];
+          if (fs.existsSync(registryPath)) {
+            registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+          }
+
+          const newBackup = {
+            filename: backupFilename,
+            timestamp: new Date().toISOString(),
+            nodeCount,
+            connectionCount
+          };
+          registry.unshift(newBackup);
+
+          fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2), 'utf8');
+          res.end(JSON.stringify({ success: true, backup: newBackup }));
+        } catch (e) {
+          res.statusCode = 500;
+          res.end(JSON.stringify({ error: e.message }));
+        }
+      } else if (req.url.startsWith('/api/mesh-backups/restore') && req.method === 'POST') {
+        const urlObj = new URL(req.url, 'http://localhost');
+        const filename = urlObj.searchParams.get('filename');
+
+        if (!filename) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ error: 'Missing filename parameter' }));
+          return;
+        }
+
+        const backupFilePath = path.join(__dirname, 'backups', filename);
+        if (!fs.existsSync(backupFilePath)) {
+          res.statusCode = 404;
+          res.end(JSON.stringify({ error: 'Backup file not found' }));
+          return;
+        }
+
+        try {
+          const rawData = fs.readFileSync(backupFilePath, 'utf8');
+          const authorityJsonFilePath = path.join(__dirname, 'src/data/mesh_authority.json');
+          const authorityJsFilePath = path.join(__dirname, 'src/data/mesh_authority.js');
+
+          // Overwrite JSON file
+          fs.writeFileSync(authorityJsonFilePath, rawData, 'utf8');
+
+          // Overwrite JS file
+          const jsContent = `export const MESHES = ${rawData};\n`;
+          fs.writeFileSync(authorityJsFilePath, jsContent, 'utf8');
+
+          res.end(JSON.stringify({ success: true }));
+        } catch (e) {
+          res.statusCode = 500;
+          res.end(JSON.stringify({ error: e.message }));
+        }
       } else {
+        res.setHeader('Content-Type', 'text/html'); // Restore default header for other requests
         next();
       }
     });
