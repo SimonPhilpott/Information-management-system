@@ -106,17 +106,17 @@ export default function App() {
   }, []);
 
   const [nodes, setNodes] = useState(() => {
-    // VERSIONED STORAGE KEY: hive_mesh_v14_corporate_hierarchy
-    // v14: bumped to force re-seed from updated mesh_authority.js (all T&T locations).
-    // Migrates any user-created nodes from v13 so custom work is not lost.
-    const STORAGE_KEY = 'hive_mesh_v14_corporate_hierarchy';
+    // VERSIONED STORAGE KEY: hive_mesh_v15_corporate_hierarchy
+    // v15: bumped to force re-seed from updated mesh_authority.js including restored BOK nodes.
+    // Migrates any user-created nodes from v14 so custom work is not lost.
+    const STORAGE_KEY = 'hive_mesh_v15_corporate_hierarchy';
     const saved = localStorage.getItem(STORAGE_KEY);
 
-    // Migration: pull in user-created nodes from previous v13 key so they are not lost.
+    // Migration: pull in user-created nodes from previous v14 key so they are not lost.
     let migratedUserNodes = [];
     if (!saved) {
       try {
-        const old = localStorage.getItem('hive_mesh_v13_corporate_hierarchy');
+        const old = localStorage.getItem('hive_mesh_v14_corporate_hierarchy');
         if (old) {
           const oldNodes = JSON.parse(old);
           const authorityIds = new Set(MESH_JSON_AUTHORITY.map(n => n.id));
