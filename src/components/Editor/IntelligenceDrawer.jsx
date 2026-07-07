@@ -169,7 +169,7 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
         potentialSpan.style.background = pulseBg;
         potentialSpan.style.color = textColor;
         potentialSpan.style.boxShadow = `inset 0 0 8px rgba(245, 158, 11, 0.05)`;
-        potentialSpan.innerHTML = `${bestMatch.matchedText}<div class="tag-actions"><button class="tag-promote-btn" data-id="${bestMatch.node.id}" title="Approve Entity">Promote</button><button class="tag-instant-link-btn" data-id="${bestMatch.node.id}" title="Approve & Link">Connect</button></div>`;
+        potentialSpan.innerHTML = `${bestMatch.matchedText}<div class="tag-actions"><button class="tag-instant-link-btn" data-id="${bestMatch.node.id}" title="Connect Entity">Connect</button></div>`;
 
         const nodesToInsert = [];
         if (beforeText) nodesToInsert.push(document.createTextNode(beforeText));
