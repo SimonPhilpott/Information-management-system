@@ -445,10 +445,24 @@ export const SunburstCanvas = ({
 
     // ── Step 2: assign initial angle and radius for each unique external node
     // Align each external node exactly with the radial angle of its primary slice
-    // so connection lines run straight out radially from their originating slices.
+    // but nudge it away from the cardinal axes (0, 90, 180, 270 degrees) to prevent text overlap.
     const placed = Object.values(nodeMap).map(({ node, slices }) => {
       const primarySlice = slices[0];
-      const angle = (primarySlice.startAngle + primarySlice.endAngle) / 2;
+      let angle = (primarySlice.startAngle + primarySlice.endAngle) / 2;
+
+      // Force angle to be diagonal, at least 0.28 radians (~16 degrees) away from the 4 main axes
+      angle = (angle + 2 * Math.PI) % (2 * Math.PI);
+      const axes = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2, 2 * Math.PI];
+      axes.forEach(axis => {
+        if (Math.abs(angle - axis) < 0.28) {
+          if (angle >= axis) {
+            angle = axis + 0.28;
+          } else {
+            angle = axis - 0.28;
+          }
+        }
+      });
+
       return { node, slices, angle, radius: BASE_R };
     });
 
@@ -509,9 +523,14 @@ export const SunburstCanvas = ({
     placed.forEach(p => {
       p.slices.forEach(slice => {
         const { r1 } = getRadius(slice.depth); // Line originates exactly from the outer edge (r1) of the slice
+        const sweep = slice.endAngle - slice.startAngle;
+        // Offset starting angle to the sector seam (38% from sliceAngle towards boundary)
+        // to ensure the line runs along sector boundary seams and never overlaps/crosses centered node text
         const sliceAngle = (slice.startAngle + slice.endAngle) / 2;
-        const sliceX = cx + r1 * Math.cos(sliceAngle);
-        const sliceY = cy + r1 * Math.sin(sliceAngle);
+        const lineStartAngle = sliceAngle + sweep * 0.38;
+        
+        const sliceX = cx + r1 * Math.cos(lineStartAngle);
+        const sliceY = cy + r1 * Math.sin(lineStartAngle);
 
         connections.push({
           id:     `ext-${slice.id}-${p.node.id}`,
@@ -1036,7 +1055,10 @@ export const SunburstCanvas = ({
           <g pointerEvents="none">
             {secondaryPaths.map(p => {
               let opacity = 0.55;
-              if (selectedNode && selectedNode.id !== 'tt_group' && selectedNode.id !== rootId) {
+              if (hoveredNode) {
+                const isLinkConnected = p.fromId === hoveredNode.id || p.toId === hoveredNode.id;
+                opacity = isLinkConnected ? 0.95 : 0.08;
+              } else if (selectedNode && selectedNode.id !== 'tt_group' && selectedNode.id !== rootId) {
                 const isLinkConnected = p.fromId === selectedNode.id || p.toId === selectedNode.id;
                 opacity = isLinkConnected ? 0.85 : 0.08;
               } else if (matchingNodeIds) {
@@ -1053,7 +1075,8 @@ export const SunburstCanvas = ({
           <g>
             {externalConnections.map(conn => {
               const entityColor = (ENTITY_TYPES[conn.node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color;
-              const isHov = hoveredNode?.id === conn.node.id;
+              // Highlight if hovering either the external node OR the connected slice
+              const isHov = hoveredNode?.id === conn.node.id || hoveredNode?.id === conn.slice.id;
               const labelSide = Math.cos(conn.angle) > 0 ? 'right' : 'left';
               const textAnchor = labelSide === 'right' ? 'start' : 'end';
               const textDx = labelSide === 'right' ? 12 : -12;
