@@ -444,42 +444,26 @@ export const SunburstCanvas = ({
     });
 
     // ── Step 2: assign initial angle and radius for each unique external node
-    // Group nodes by their primary slice to fan them out if multiple nodes connect to the same slice
-    const sliceGroups = {};
-    
+    // Align each external node with the radial angle of its primary slice
+    // but nudge it away from the cardinal axes (0, 90, 180, 270 degrees) to prevent text overlap.
     const placed = Object.values(nodeMap).map(({ node, slices }) => {
       const primarySlice = slices[0];
-      const sliceAngle = (primarySlice.startAngle + primarySlice.endAngle) / 2;
-      
-      const entry = { node, slices, sliceAngle, angle: sliceAngle, radius: BASE_R };
-      if (!sliceGroups[primarySlice.id]) {
-        sliceGroups[primarySlice.id] = [];
-      }
-      sliceGroups[primarySlice.id].push(entry);
-      return entry;
-    });
+      let angle = (primarySlice.startAngle + primarySlice.endAngle) / 2;
 
-    // Fan out angles within each slice group so their lines do not overlap
-    Object.values(sliceGroups).forEach(group => {
-      const K = group.length;
-      group.forEach((entry, idx) => {
-        // Fan out by 2.5 degrees (0.045 rad) per sibling
-        entry.angle = entry.sliceAngle + (idx - (K - 1) / 2) * 0.045;
-        
-        // Force angle to be diagonal, at least 0.28 radians (~16 degrees) away from the 4 main axes
-        let angle = (entry.angle + 2 * Math.PI) % (2 * Math.PI);
-        const axes = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2, 2 * Math.PI];
-        axes.forEach(axis => {
-          if (Math.abs(angle - axis) < 0.28) {
-            if (angle >= axis) {
-              angle = axis + 0.28;
-            } else {
-              angle = axis - 0.28;
-            }
+      // Force angle to be diagonal, at least 0.28 radians (~16 degrees) away from the 4 main axes
+      angle = (angle + 2 * Math.PI) % (2 * Math.PI);
+      const axes = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2, 2 * Math.PI];
+      axes.forEach(axis => {
+        if (Math.abs(angle - axis) < 0.28) {
+          if (angle >= axis) {
+            angle = axis + 0.28;
+          } else {
+            angle = axis - 0.28;
           }
-        });
-        entry.angle = angle;
+        }
       });
+
+      return { node, slices, angle, radius: BASE_R };
     });
 
     // Sort by angle so the collision pass works in order
@@ -545,15 +529,9 @@ export const SunburstCanvas = ({
     const connections = [];
     placed.forEach(p => {
       p.slices.forEach(slice => {
-        const { r1 } = getRadius(slice.depth); // Line originates exactly from the outer edge (r1) of the slice
-        const sweep = slice.endAngle - slice.startAngle;
-        // Offset starting angle to the sector seam (38% from sliceAngle towards boundary)
-        // to ensure the line runs along sector boundary seams and never overlaps/crosses centered node text
-        const sliceAngle = (slice.startAngle + slice.endAngle) / 2;
-        const lineStartAngle = sliceAngle + sweep * 0.38;
-        
-        const sliceX = cx + r1 * Math.cos(lineStartAngle);
-        const sliceY = cy + r1 * Math.sin(lineStartAngle);
+        // Line originates from the outer edge of the sunburst at p.angle to run radially and not cross slice labels
+        const sliceX = cx + (maxR + 6) * Math.cos(p.angle);
+        const sliceY = cy + (maxR + 6) * Math.sin(p.angle);
 
         connections.push({
           id:     `ext-${slice.id}-${p.node.id}`,
