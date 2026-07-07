@@ -113,7 +113,7 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
         activeSpan.style.background = `${color}22`;
         activeSpan.style.color = color;
         activeSpan.style.boxShadow = `0 0 10px ${color}22`;
-        activeSpan.innerHTML = `${title}<button class="tag-link-btn active" data-id="${id}">LINKED</button>`;
+        activeSpan.innerHTML = `${title}<button class="tag-link-btn active" data-id="${id}">CONNECTED</button>`;
 
         const nodesToInsert = [];
         if (beforeText) nodesToInsert.push(document.createTextNode(beforeText));
@@ -541,7 +541,7 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
         tagSpan.style.background = `${color}22`;
         tagSpan.style.color = color;
         tagSpan.style.boxShadow = `0 0 10px ${color}22`;
-        tagSpan.innerHTML = `${node.title}<button class="tag-link-btn active" data-id="${id}">LINKED</button>`;
+        tagSpan.innerHTML = `${node.title}<button class="tag-link-btn active" data-id="${id}">CONNECTED</button>`;
         
         const newRaw = toRawText(editorRef.current.innerHTML);
         isLocalChange.current = true;
@@ -564,7 +564,7 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
         tagSpan.style.background = `${color}22`;
         tagSpan.style.color = color;
         tagSpan.style.boxShadow = `0 0 10px ${color}22`;
-        tagSpan.innerHTML = `${node.title}<button class="tag-link-btn active" data-id="${id}">LINKED</button>`;
+        tagSpan.innerHTML = `${node.title}<button class="tag-link-btn active" data-id="${id}">CONNECTED</button>`;
         
         const newRaw = toRawText(editorRef.current.innerHTML);
         isLocalChange.current = true;
@@ -635,7 +635,7 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
         activeSpan.style.background = `${color}22`;
         activeSpan.style.color = color;
         activeSpan.style.boxShadow = `0 0 10px ${color}22`;
-        activeSpan.innerHTML = `${node.title}<button class="tag-link-btn active" data-id="${node.id}">LINKED</button>`;
+        activeSpan.innerHTML = `${node.title}<button class="tag-link-btn active" data-id="${node.id}">CONNECTED</button>`;
         
         textNode.textContent = newBefore;
         textNode.after(activeSpan);
