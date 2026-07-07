@@ -196,7 +196,7 @@ export default function DemoPortal({
   const [showLabels, setShowLabels] = useState(true);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showTierList, setShowTierList] = useState(false);
-  const [isBetaLayout, setIsBetaLayout] = useState(false);
+  const [isBetaLayout, setIsBetaLayout] = useState(true);
 
   // Custom entity types configuration for the demo portal
   const demoEntityTypes = useMemo(() => {

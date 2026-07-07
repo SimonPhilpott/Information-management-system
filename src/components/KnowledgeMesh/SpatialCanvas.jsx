@@ -1132,7 +1132,7 @@ const getSearchSummaryPath = (matchingNodes, allNodes) => {
   return serialize(tree);
 };
 
-export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, showLabels, labelStyle, setHoveredLinkData, onOpenDrawer, onZoomChange, onCoordsChange, theme = 'dark', setIs3DInteracting, layoutRules, showHeatmap = false, showTierList: showTierListProp = false, betaLayout = false }) => {
+export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, showLabels, labelStyle, setHoveredLinkData, onOpenDrawer, onZoomChange, onCoordsChange, theme = 'dark', setIs3DInteracting, layoutRules, showHeatmap = false, showTierList: showTierListProp = false, betaLayout = true }) => {
   const isDark = theme !== 'light';
   const bgColor = isDark ? '#000000' : '#ece8dd';
   const [cameraInstance, setCameraInstance] = useState(null);
