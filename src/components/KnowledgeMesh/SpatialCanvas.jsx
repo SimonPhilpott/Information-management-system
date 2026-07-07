@@ -1274,37 +1274,16 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
         pos = new THREE.Vector3(0, 0, 0);
       } else {
         if (betaLayout) {
-          // Outward growing step based on depth
-          const baseStep = (parentDistanceVal * 2.5) * Math.pow(0.88, depth - 1) + gapVal * 6.0;
-          const subtreeWeight = getSubtreeWeight(nid);
-          const weightScale = 1.0 + Math.log10(subtreeWeight) * 0.8;
+          // Match primary view step calculation exactly
+          const baseStep = (parentDistanceVal * 2.8) * Math.pow(0.85, depth - 1) + gapVal * 6.0;
+          let step = baseStep;
 
-          // Proximity to other deep structures: check sibling subtree weight sum
-          const siblings = nodes.filter(n => n.parentId === node.parentId && n.id !== nid);
-          const siblingSubtreeSum = siblings.reduce((acc, sib) => acc + getSubtreeWeight(sib.id), 0);
-          const proximityScale = 1.0 + Math.log10(1 + siblingSubtreeSum) * 0.45;
-
-          let step = baseStep * weightScale * proximityScale;
-
-          // Determine required fanning angle to prevent adjacent label overlaps (average label width ~320 units)
-          // Arc distance = step * coneAngle * (2 * PI / siblingCount)
-          // Required coneAngle = (320 * siblingCount) / (2 * PI * step)
-          const maxAllowedConeAngle = 0.85; // Capped at ~50 degrees to prevent fanning too wide
-          const requiredConeAngle = (320 * siblingCount) / (2 * Math.PI * step);
-
-          let useStaggering = false;
-          if (requiredConeAngle > maxAllowedConeAngle) {
-            calculatedConeAngle = maxAllowedConeAngle;
-            useStaggering = true;
-          } else {
-            calculatedConeAngle = Math.max(0.22, requiredConeAngle);
-          }
-
-          // Trigger alternating distances (radial staggering) only when fanning alone cannot prevent overlap
-          if (useStaggering) {
-            const shell = siblingIndex % 3;
-            const staggerFactor = 0.72 + shell * 0.36; // 0.72x, 1.08x, 1.44x
-            step = step * staggerFactor;
+          if (depth > 1) {
+            const subtreeWeight = getSubtreeWeight(nid);
+            const siblingCountVal = nodes.filter(n => n.parentId === node.parentId).length;
+            const siblingScale = siblingCountVal > 5 ? 1.0 + Math.sqrt(siblingCountVal - 5) * 0.22 : 1.0;
+            const weightScale = 1.0 + Math.log10(subtreeWeight) * 0.9;
+            step = baseStep * siblingScale * weightScale;
           }
 
           pos = parentPos.clone().addScaledVector(dir, step);
@@ -1391,10 +1370,9 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
                 walk(child.id, depth + 1, pos, childDir, childCone, i, N);
               });
             } else {
-              // Sector nesting: distribute children inside parent's allocated cone
-              // Using calculatedConeAngle derived from label overlap protection
-              const fanAngle = calculatedConeAngle;
-              const childCone = calculatedConeAngle * 0.38;
+              // Match primary fanning logic exactly
+              const baseConeAngle = Math.min(0.85, 0.18 + N * 0.035);
+              const coneAngle = baseConeAngle + (gapVal / 150) * 0.3; 
 
               children.forEach((child, i) => {
                 let childDir = new THREE.Vector3();
@@ -1402,14 +1380,14 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
                   childDir.copy(dir);
                 } else {
                   const theta = (2 * Math.PI * i) / N;
-                  const cosA = Math.cos(fanAngle);
-                  const sinA = Math.sin(fanAngle);
+                  const cosA = Math.cos(coneAngle);
+                  const sinA = Math.sin(coneAngle);
                   childDir.copy(dir).multiplyScalar(cosA)
                     .addScaledVector(u, sinA * Math.cos(theta))
                     .addScaledVector(v, sinA * Math.sin(theta))
                     .normalize();
                 }
-                walk(child.id, depth + 1, pos, childDir, childCone, i, N);
+                walk(child.id, depth + 1, pos, childDir, allocatedConeAngle, i, N);
               });
             }
           } else {
