@@ -526,13 +526,19 @@ export const SunburstCanvas = ({
 
     // ── Step 4: build final connection list ───────────────────────────────
     // Each entry has one dot/label position but potentially multiple line origins.
+    // The line origin uses p.angle (the floating node's radial placement angle) projected
+    // onto the outer radius of the connecting slice. This guarantees that ALL lines from
+    // the same floating node share the exact same start point, so they render as a single
+    // overlapping dashed ray regardless of how many slices the node connects to.
     const connections = [];
     placed.forEach(p => {
       p.slices.forEach(slice => {
-        // Line originates exactly at the outermost edge of the sunburst circle (maxR) at the label placement angle
-        // to ensure the line runs perfectly straight radially and reaches each outer node in the stack
-        const sliceX = cx + maxR * Math.cos(p.angle);
-        const sliceY = cy + maxR * Math.sin(p.angle);
+        // Outer radius of this specific slice
+        const sliceOuterR = innerBaseRadius + slice.depth * ringWidth;
+        // Use p.angle (the node's radial ray) so all lines from this node
+        // originate from the exact same point on the arc boundary.
+        const sliceX = cx + sliceOuterR * Math.cos(p.angle);
+        const sliceY = cy + sliceOuterR * Math.sin(p.angle);
 
         connections.push({
           id:     `ext-${slice.id}-${p.node.id}`,
@@ -550,7 +556,7 @@ export const SunburstCanvas = ({
     });
 
     return connections;
-  }, [flatSlices, nodes, innerBaseRadius, ringWidth]);
+  }, [flatSlices, nodes, innerBaseRadius, ringWidth, cx, cy]);
 
 
 
@@ -892,6 +898,46 @@ export const SunburstCanvas = ({
           preserveAspectRatio="xMidYMid meet"
           onMouseLeave={() => setHoveredNode(null)}
         >
+          {/* ┌─────────────────────────────────────────────────────
+               LAYER 0 — BOTTOM: External connection lines
+               Rendered FIRST so the arc fills (layers above) naturally mask
+               the inner segment of each radial line, giving a pixel-perfect
+               emergence from the sunburst outer edge with no offset hack.
+          └───────────────────────────────────────────────────── */}
+          <g>
+            {externalConnections.map(conn => {
+              const entityColor = (ENTITY_TYPES[conn.node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color;
+              const isHov = hoveredNode?.id === conn.node.id || hoveredNode?.id === conn.slice.id;
+              return (
+                <g key={`lines-${conn.id}`}>
+                  <line
+                    x1={conn.sliceX}
+                    y1={conn.sliceY}
+                    x2={conn.x}
+                    y2={conn.y}
+                    style={{
+                      stroke: entityColor,
+                      strokeWidth: isHov ? 2 : 1.2,
+                      strokeDasharray: '3,3',
+                      opacity: isHov ? 0.95 : 0.6,
+                      transition: 'stroke-width 0.2s, opacity 0.2s',
+                    }}
+                  />
+                  {/* Invisible wide hit-area so the dashed line is easy to hover */}
+                  <line
+                    x1={conn.sliceX}
+                    y1={conn.sliceY}
+                    x2={conn.x}
+                    y2={conn.y}
+                    style={{ stroke: 'transparent', strokeWidth: 18, fill: 'none' }}
+                    onMouseMove={(e) => handleConnMouseMove(e, conn.node)}
+                    onMouseLeave={() => setHoveredNode(null)}
+                  />
+                </g>
+              );
+            })}
+          </g>
+
           {/* Concentric guide rings */}
           <circle cx={cx} cy={cy} r={innerBaseRadius}               style={{ fill: 'none', stroke: isDark ? 'rgba(0,242,255,0.05)'  : 'rgba(78,90,71,0.08)',  strokeWidth: 0.5 }} />
           <circle cx={cx} cy={cy} r={innerBaseRadius + ringWidth}     style={{ fill: 'none', stroke: isDark ? 'rgba(0,242,255,0.03)'  : 'rgba(78,90,71,0.05)',  strokeWidth: 0.5 }} />
@@ -982,229 +1028,8 @@ export const SunburstCanvas = ({
             })}
           </g>
 
-           {/* Hover edge glow and '+' offshoot button on outer edge */}
-           {hoveredNode && (() => {
-             const slice = flatSlices.find(s => s.id === hoveredNode.id);
-             if (!slice) return null;
-             const { r0, r1 } = getRadius(slice.depth);
-             const pathD = getArcPath(r0, r1, slice.startAngle, slice.endAngle);
-             const color = (ENTITY_TYPES[slice.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color;
-
-             // Calculate '+' button coordinates on the outer edge of the slice
-             const midAngle = (slice.startAngle + slice.endAngle) / 2;
-             const buttonX = cx + r1 * Math.cos(midAngle);
-             const buttonY = cy + r1 * Math.sin(midAngle);
-
-             return (
-               <g>
-                 {/* Edge Glow */}
-                 <path d={pathD} style={{ fill: 'none', stroke: color, strokeWidth: 2, strokeOpacity: 0.9 }} pointerEvents="none" />
-                 
-                 {/* Offshoot Button (only on non-root nodes) */}
-                 {slice.depth > 0 && (
-                   <g 
-                     className="cursor-pointer group"
-                     onClick={(e) => {
-                       e.stopPropagation();
-                       if (onAddOffshoot) {
-                         onAddOffshoot(slice.id);
-                       }
-                     }}
-                   >
-                     {/* Background circle with drop shadow and hover scaling */}
-                     <circle 
-                       cx={buttonX} 
-                       cy={buttonY} 
-                       r={7.5} 
-                       style={{ 
-                         fill: isDark ? '#111318' : '#ffffff', 
-                         stroke: color, 
-                         strokeWidth: 1.5,
-                         filter: 'drop-shadow(0px 1px 3px rgba(0,0,0,0.4))',
-                         transformOrigin: `${buttonX}px ${buttonY}px`,
-                         transition: 'transform 0.2s ease'
-                       }} 
-                       className="group-hover:scale-125"
-                     />
-                     {/* Plus sign lines */}
-                     <line 
-                       x1={buttonX - 3} y1={buttonY} x2={buttonX + 3} y2={buttonY} 
-                       style={{ 
-                         stroke: color, 
-                         strokeWidth: 1.5,
-                         transformOrigin: `${buttonX}px ${buttonY}px`,
-                         transition: 'transform 0.2s ease'
-                       }} 
-                       className="group-hover:scale-125"
-                     />
-                     <line 
-                       x1={buttonX} y1={buttonY - 3} x2={buttonX} y2={buttonY + 3} 
-                       style={{ 
-                         stroke: color, 
-                         strokeWidth: 1.5,
-                         transformOrigin: `${buttonX}px ${buttonY}px`,
-                         transition: 'transform 0.2s ease'
-                       }} 
-                       className="group-hover:scale-125"
-                     />
-                   </g>
-                 )}
-               </g>
-             );
-           })()}
-
-          {/* Secondary transverse links */}
-          <g pointerEvents="none">
-            {secondaryPaths.map(p => {
-              let opacity = 0.55;
-              if (hoveredNode) {
-                const isLinkConnected = p.fromId === hoveredNode.id || p.toId === hoveredNode.id;
-                opacity = isLinkConnected ? 0.95 : 0.08;
-              } else if (selectedNode && selectedNode.id !== 'tt_group' && selectedNode.id !== rootId) {
-                const isLinkConnected = p.fromId === selectedNode.id || p.toId === selectedNode.id;
-                opacity = isLinkConnected ? 0.85 : 0.08;
-              } else if (matchingNodeIds) {
-                const bothMatch = matchingNodeIds.has(p.fromId) && matchingNodeIds.has(p.toId);
-                opacity = bothMatch ? 0.85 : 0.08;
-              }
-              return (
-                <path key={p.id} d={p.d} style={{ fill: 'none', stroke: p.color, strokeWidth: 1.5, strokeDasharray: '4,4', strokeOpacity: opacity }} />
-              );
-            })}
-          </g>
-
-          {/* External connections floating nodes */}
-          {/* 1. Connecting Lines — rendered first so they sit at the back */}
-          <g>
-            {externalConnections.map(conn => {
-              const entityColor = (ENTITY_TYPES[conn.node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color;
-              const isHov = hoveredNode?.id === conn.node.id || hoveredNode?.id === conn.slice.id;
-              return (
-                <g key={`lines-${conn.id}`}>
-                  <line
-                    x1={conn.sliceX}
-                    y1={conn.sliceY}
-                    x2={conn.x}
-                    y2={conn.y}
-                    style={{
-                      stroke: entityColor,
-                      strokeWidth: isHov ? 2 : 1.2,
-                      strokeDasharray: '3,3',
-                      opacity: isHov ? 0.95 : 0.6,
-                      transition: 'stroke-width 0.2s, opacity 0.2s',
-                    }}
-                  />
-                  {/* Invisible wide hit-area line so the dashed line is easy to hover */}
-                  <line
-                    x1={conn.sliceX}
-                    y1={conn.sliceY}
-                    x2={conn.x}
-                    y2={conn.y}
-                    style={{ stroke: 'transparent', strokeWidth: 18, fill: 'none' }}
-                    onMouseMove={(e) => handleConnMouseMove(e, conn.node)}
-                    onMouseLeave={() => setHoveredNode(null)}
-                  />
-                </g>
-              );
-            })}
-          </g>
-
-          {/* 2. Text Labels — rendered on top of lines */}
-          <g pointerEvents="none">
-            {externalConnections.filter(c => c.primary).map(conn => {
-              const labelSide = Math.cos(conn.angle) > 0 ? 'right' : 'left';
-              const textAnchor = labelSide === 'right' ? 'start' : 'end';
-              const textDx = labelSide === 'right' ? 12 : -12;
-              return (
-                <text
-                  key={`text-${conn.id}`}
-                  x={conn.x} y={conn.y}
-                  dx={textDx} dy="3"
-                  textAnchor={textAnchor}
-                  style={{
-                    fill: isDark ? 'rgba(255,255,255,0.95)' : 'rgba(46,43,39,0.98)',
-                    fontSize: '9px',
-                    fontWeight: 600,
-                    letterSpacing: '0.02em',
-                    paintOrder: 'stroke',
-                    stroke: isDark ? '#000000' : '#ece8dd',
-                    strokeWidth: 3,
-                    strokeLinejoin: 'round',
-                    pointerEvents: 'none',
-                  }}
-                >
-                  {conn.node.title}
-                </text>
-              );
-            })}
-          </g>
-
-          {/* 3. Connection Dots/Circles — rendered last to always sit on the absolute top */}
-          <g>
-            {externalConnections.filter(c => c.primary).map(conn => {
-              const entityColor = (ENTITY_TYPES[conn.node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color;
-              const isHov = hoveredNode?.id === conn.node.id || hoveredNode?.id === conn.slice.id;
-              const labelSide = Math.cos(conn.angle) > 0 ? 'right' : 'left';
-              return (
-                <g
-                  key={`dot-group-${conn.id}`}
-                  className="cursor-pointer"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const node = conn.node;
-                    if (node.children?.length || nodes.filter(n => n.parentId === node.id).length > 0) {
-                      setFocusNodeId(node.id);
-                    } else {
-                      setFocusNodeId(node.parentId || null);
-                    }
-                    if (onSelectNode) onSelectNode(node);
-                  }}
-                  onMouseEnter={() => setHoveredNode(conn.node)}
-                  onMouseLeave={() => setHoveredNode(null)}
-                >
-                  {/* Outer Glow Ring on Hover */}
-                  {isHov && (
-                    <circle
-                      cx={conn.x} cy={conn.y} r={14}
-                      style={{ fill: 'none', stroke: entityColor, strokeWidth: 1.5, strokeOpacity: 0.5 }}
-                    />
-                  )}
-
-                  {/* Connection Node Circle */}
-                  <circle
-                    cx={conn.x} cy={conn.y} r={7}
-                    style={{
-                      fill: entityColor,
-                      fillOpacity: isHov ? 1.0 : 0.8,
-                      stroke: isDark ? '#000000' : '#ffffff',
-                      strokeWidth: 1.5,
-                      transition: 'fill-opacity 0.2s',
-                    }}
-                  />
-                  {/* Invisible oversized hit-area circle */}
-                  <circle
-                    cx={conn.x} cy={conn.y} r={22}
-                    style={{ fill: 'transparent', stroke: 'none' }}
-                    onMouseMove={(e) => handleConnMouseMove(e, conn.node)}
-                    onMouseLeave={() => setHoveredNode(null)}
-                  />
-                  {/* Invisible rect hit-area behind the text label to trigger hover easily */}
-                  <rect
-                    x={labelSide === 'right' ? conn.x + 12 : conn.x - 12 - (conn.node.title.length * 5.4)}
-                    y={conn.y - 10}
-                    width={conn.node.title.length * 5.4}
-                    height={18}
-                    style={{ fill: 'transparent', stroke: 'none' }}
-                    onMouseMove={(e) => handleConnMouseMove(e, conn.node)}
-                    onMouseLeave={() => setHoveredNode(null)}
-                  />
-                </g>
-              );
-            })}
-          </g>
-
-
-          {/* Labels — rotated tspan text centred in each arc slice */}
+          {/* Slice text labels — rendered immediately after arc fills so
+              they sit INSIDE the sunburst and do NOT overdraw external floating nodes */}
           <g pointerEvents="none">
             {flatSlices.map(slice => {
               /**
@@ -1306,7 +1131,197 @@ export const SunburstCanvas = ({
             })}
           </g>
 
+           {/* Hover edge glow and '+' offshoot button on outer edge */}
+           {hoveredNode && (() => {
+             const slice = flatSlices.find(s => s.id === hoveredNode.id);
+             if (!slice) return null;
+             const { r0, r1 } = getRadius(slice.depth);
+             const pathD = getArcPath(r0, r1, slice.startAngle, slice.endAngle);
+             const color = (ENTITY_TYPES[slice.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color;
+
+             // Calculate '+' button coordinates on the outer edge of the slice
+             const midAngle = (slice.startAngle + slice.endAngle) / 2;
+             const buttonX = cx + r1 * Math.cos(midAngle);
+             const buttonY = cy + r1 * Math.sin(midAngle);
+
+             return (
+               <g>
+                 {/* Edge Glow */}
+                 <path d={pathD} style={{ fill: 'none', stroke: color, strokeWidth: 2, strokeOpacity: 0.9 }} pointerEvents="none" />
+                 
+                 {/* Offshoot Button (only on non-root nodes) */}
+                 {slice.depth > 0 && (
+                   <g 
+                     className="cursor-pointer group"
+                     onClick={(e) => {
+                       e.stopPropagation();
+                       if (onAddOffshoot) {
+                         onAddOffshoot(slice.id);
+                       }
+                     }}
+                   >
+                     {/* Background circle with drop shadow and hover scaling */}
+                     <circle 
+                       cx={buttonX} 
+                       cy={buttonY} 
+                       r={7.5} 
+                       style={{ 
+                         fill: isDark ? '#111318' : '#ffffff', 
+                         stroke: color, 
+                         strokeWidth: 1.5,
+                         filter: 'drop-shadow(0px 1px 3px rgba(0,0,0,0.4))',
+                         transformOrigin: `${buttonX}px ${buttonY}px`,
+                         transition: 'transform 0.2s ease'
+                       }} 
+                       className="group-hover:scale-125"
+                     />
+                     {/* Plus sign lines */}
+                     <line 
+                       x1={buttonX - 3} y1={buttonY} x2={buttonX + 3} y2={buttonY} 
+                       style={{ 
+                         stroke: color, 
+                         strokeWidth: 1.5,
+                         transformOrigin: `${buttonX}px ${buttonY}px`,
+                         transition: 'transform 0.2s ease'
+                       }} 
+                       className="group-hover:scale-125"
+                     />
+                     <line 
+                       x1={buttonX} y1={buttonY - 3} x2={buttonX} y2={buttonY + 3} 
+                       style={{ 
+                         stroke: color, 
+                         strokeWidth: 1.5,
+                         transformOrigin: `${buttonX}px ${buttonY}px`,
+                         transition: 'transform 0.2s ease'
+                       }} 
+                       className="group-hover:scale-125"
+                     />
+                   </g>
+                 )}
+               </g>
+             );
+           })()}
+
+          {/* Secondary transverse links — drawn after arc labels, below external connections */}
+          <g pointerEvents="none">
+            {secondaryPaths.map(p => {
+              let opacity = 0.55;
+              if (hoveredNode) {
+                const isLinkConnected = p.fromId === hoveredNode.id || p.toId === hoveredNode.id;
+                opacity = isLinkConnected ? 0.95 : 0.08;
+              } else if (selectedNode && selectedNode.id !== 'tt_group' && selectedNode.id !== rootId) {
+                const isLinkConnected = p.fromId === selectedNode.id || p.toId === selectedNode.id;
+                opacity = isLinkConnected ? 0.85 : 0.08;
+              } else if (matchingNodeIds) {
+                const bothMatch = matchingNodeIds.has(p.fromId) && matchingNodeIds.has(p.toId);
+                opacity = bothMatch ? 0.85 : 0.08;
+              }
+              return (
+                <path key={p.id} d={p.d} style={{ fill: 'none', stroke: p.color, strokeWidth: 1.5, strokeDasharray: '4,4', strokeOpacity: opacity }} />
+              );
+            })}
+          </g>
+
+          {/* External connections floating nodes */}
+          {/* Lines were moved to the SVG bottom layer above (before concentric rings).
+              Only floating labels, text and dots remain here at the top of the stack. */}
+
+          {/* 2. Text Labels — rendered on top of lines */}
+          <g pointerEvents="none">
+            {externalConnections.filter(c => c.primary).map(conn => {
+              const labelSide = Math.cos(conn.angle) > 0 ? 'right' : 'left';
+              const textAnchor = labelSide === 'right' ? 'start' : 'end';
+              const textDx = labelSide === 'right' ? 12 : -12;
+              return (
+                <text
+                  key={`text-${conn.id}`}
+                  x={conn.x} y={conn.y}
+                  dx={textDx} dy="3"
+                  textAnchor={textAnchor}
+                  style={{
+                    fill: isDark ? 'rgba(255,255,255,0.95)' : 'rgba(46,43,39,0.98)',
+                    fontSize: '9px',
+                    fontWeight: 600,
+                    letterSpacing: '0.02em',
+                    paintOrder: 'stroke',
+                    stroke: isDark ? '#000000' : '#ece8dd',
+                    strokeWidth: 3,
+                    strokeLinejoin: 'round',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  {conn.node.title}
+                </text>
+              );
+            })}
+          </g>
+
+          {/* 3. Connection Dots/Circles — rendered last to always sit on the absolute top */}
+          <g>
+            {externalConnections.filter(c => c.primary).map(conn => {
+              const entityColor = (ENTITY_TYPES[conn.node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color;
+              const isHov = hoveredNode?.id === conn.node.id || hoveredNode?.id === conn.slice.id;
+              const labelSide = Math.cos(conn.angle) > 0 ? 'right' : 'left';
+              return (
+                <g
+                  key={`dot-group-${conn.id}`}
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const node = conn.node;
+                    if (node.children?.length || nodes.filter(n => n.parentId === node.id).length > 0) {
+                      setFocusNodeId(node.id);
+                    } else {
+                      setFocusNodeId(node.parentId || null);
+                    }
+                    if (onSelectNode) onSelectNode(node);
+                  }}
+                  onMouseEnter={() => setHoveredNode(conn.node)}
+                  onMouseLeave={() => setHoveredNode(null)}
+                >
+                  {/* Outer Glow Ring on Hover */}
+                  {isHov && (
+                    <circle
+                      cx={conn.x} cy={conn.y} r={14}
+                      style={{ fill: 'none', stroke: entityColor, strokeWidth: 1.5, strokeOpacity: 0.5 }}
+                    />
+                  )}
+
+                  {/* Connection Node Circle */}
+                  <circle
+                    cx={conn.x} cy={conn.y} r={7}
+                    style={{
+                      fill: entityColor,
+                      fillOpacity: isHov ? 1.0 : 0.8,
+                      stroke: isDark ? '#000000' : '#ffffff',
+                      strokeWidth: 1.5,
+                      transition: 'fill-opacity 0.2s',
+                    }}
+                  />
+                  {/* Invisible oversized hit-area circle */}
+                  <circle
+                    cx={conn.x} cy={conn.y} r={22}
+                    style={{ fill: 'transparent', stroke: 'none' }}
+                    onMouseMove={(e) => handleConnMouseMove(e, conn.node)}
+                    onMouseLeave={() => setHoveredNode(null)}
+                  />
+                  {/* Invisible rect hit-area behind the text label to trigger hover easily */}
+                  <rect
+                    x={labelSide === 'right' ? conn.x + 12 : conn.x - 12 - (conn.node.title.length * 5.4)}
+                    y={conn.y - 10}
+                    width={conn.node.title.length * 5.4}
+                    height={18}
+                    style={{ fill: 'transparent', stroke: 'none' }}
+                    onMouseMove={(e) => handleConnMouseMove(e, conn.node)}
+                    onMouseLeave={() => setHoveredNode(null)}
+                  />
+                </g>
+              );
+            })}
+          </g>
+
         </svg>
+
 
         {/* Floating tooltip — positioned in screen space relative to containerRef */}
         <AnimatePresence>
@@ -1395,7 +1410,7 @@ export const SunburstCanvas = ({
                         <span className={`text-[7px] font-bold uppercase tracking-wider ${mutedColor}`}>
                           Connections ({connNodes.length})
                         </span>
-                        <div className="flex flex-wrap gap-1 max-h-[80px] overflow-y-auto pr-1">
+                        <div className="flex flex-wrap gap-1 pr-1">
                           {connNodes.map(cn => (
                             <span
                               key={cn.id}
