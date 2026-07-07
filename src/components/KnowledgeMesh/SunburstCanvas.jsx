@@ -444,26 +444,42 @@ export const SunburstCanvas = ({
     });
 
     // ── Step 2: assign initial angle and radius for each unique external node
-    // Align each external node exactly with the radial angle of its primary slice
-    // but nudge it away from the cardinal axes (0, 90, 180, 270 degrees) to prevent text overlap.
+    // Group nodes by their primary slice to fan them out if multiple nodes connect to the same slice
+    const sliceGroups = {};
+    
     const placed = Object.values(nodeMap).map(({ node, slices }) => {
       const primarySlice = slices[0];
-      let angle = (primarySlice.startAngle + primarySlice.endAngle) / 2;
+      const sliceAngle = (primarySlice.startAngle + primarySlice.endAngle) / 2;
+      
+      const entry = { node, slices, sliceAngle, angle: sliceAngle, radius: BASE_R };
+      if (!sliceGroups[primarySlice.id]) {
+        sliceGroups[primarySlice.id] = [];
+      }
+      sliceGroups[primarySlice.id].push(entry);
+      return entry;
+    });
 
-      // Force angle to be diagonal, at least 0.28 radians (~16 degrees) away from the 4 main axes
-      angle = (angle + 2 * Math.PI) % (2 * Math.PI);
-      const axes = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2, 2 * Math.PI];
-      axes.forEach(axis => {
-        if (Math.abs(angle - axis) < 0.28) {
-          if (angle >= axis) {
-            angle = axis + 0.28;
-          } else {
-            angle = axis - 0.28;
+    // Fan out angles within each slice group so their lines do not overlap
+    Object.values(sliceGroups).forEach(group => {
+      const K = group.length;
+      group.forEach((entry, idx) => {
+        // Fan out by 2.5 degrees (0.045 rad) per sibling
+        entry.angle = entry.sliceAngle + (idx - (K - 1) / 2) * 0.045;
+        
+        // Force angle to be diagonal, at least 0.28 radians (~16 degrees) away from the 4 main axes
+        let angle = (entry.angle + 2 * Math.PI) % (2 * Math.PI);
+        const axes = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2, 2 * Math.PI];
+        axes.forEach(axis => {
+          if (Math.abs(angle - axis) < 0.28) {
+            if (angle >= axis) {
+              angle = axis + 0.28;
+            } else {
+              angle = axis - 0.28;
+            }
           }
-        }
+        });
+        entry.angle = angle;
       });
-
-      return { node, slices, angle, radius: BASE_R };
     });
 
     // Sort by angle so the collision pass works in order
@@ -474,7 +490,7 @@ export const SunburstCanvas = ({
     const FONT_PX  = 9;
     const CHAR_W   = FONT_PX * 0.56;
     const LABEL_H  = FONT_PX * 1.4;  // one line height
-    const PAD      = 6;               // minimum gap between labels
+    const PAD      = 12;              // increased gap between connection text
 
     const labelBox = (p) => {
       const w = p.node.title.length * CHAR_W + PAD * 2;
@@ -482,10 +498,17 @@ export const SunburstCanvas = ({
     };
 
     const overlaps = (a, b) => {
-      const ax = a.cx + (Math.cos(a.angle) > 0 ? 0 : -a.w);
-      const bx = b.cx + (Math.cos(b.angle) > 0 ? 0 : -b.w);
-      return Math.abs(a.cy - b.cy) < (a.h + b.h) / 2 &&
-             Math.abs(ax - bx)     < (a.w + b.w) / 2;
+      // Bounding box intersection check with direction-aware x-offsets
+      const aLeft = a.cx + (Math.cos(a.angle) > 0 ? 12 : -12 - a.w);
+      const bLeft = b.cx + (Math.cos(b.angle) > 0 ? 12 : -12 - b.w);
+      const aRight = aLeft + a.w;
+      const bRight = bLeft + b.w;
+      const aTop = a.cy - a.h / 2;
+      const bTop = b.cy - b.h / 2;
+      const aBottom = a.cy + a.h / 2;
+      const bBottom = b.cy + b.h / 2;
+
+      return aLeft < bRight && bLeft < aRight && aTop < bBottom && bTop < aBottom;
     };
 
     // Compute screen positions from angle + radius
@@ -1072,33 +1095,13 @@ export const SunburstCanvas = ({
           </g>
 
           {/* External connections floating nodes */}
+          {/* 1. Connecting Lines — rendered first so they sit at the back */}
           <g>
             {externalConnections.map(conn => {
               const entityColor = (ENTITY_TYPES[conn.node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color;
-              // Highlight if hovering either the external node OR the connected slice
               const isHov = hoveredNode?.id === conn.node.id || hoveredNode?.id === conn.slice.id;
-              const labelSide = Math.cos(conn.angle) > 0 ? 'right' : 'left';
-              const textAnchor = labelSide === 'right' ? 'start' : 'end';
-              const textDx = labelSide === 'right' ? 12 : -12;
-
               return (
-                <g
-                  key={conn.id}
-                  className="cursor-pointer"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const node = conn.node;
-                    if (node.children?.length || nodes.filter(n => n.parentId === node.id).length > 0) {
-                      setFocusNodeId(node.id);
-                    } else {
-                      setFocusNodeId(node.parentId || null);
-                    }
-                    if (onSelectNode) onSelectNode(node);
-                  }}
-                  onMouseEnter={() => setHoveredNode(conn.node)}
-                  onMouseLeave={() => setHoveredNode(null)}
-                >
-                  {/* Connecting Line — drawn for every entry */}
+                <g key={`lines-${conn.id}`}>
                   <line
                     x1={conn.sliceX}
                     y1={conn.sliceY}
@@ -1122,68 +1125,100 @@ export const SunburstCanvas = ({
                     onMouseMove={(e) => handleConnMouseMove(e, conn.node)}
                     onMouseLeave={() => setHoveredNode(null)}
                   />
+                </g>
+              );
+            })}
+          </g>
 
-                  {/* Dot, label and hit areas — only rendered on the primary entry to avoid duplicates */}
-                  {conn.primary && (
-                    <>
-                      {/* Outer Glow Ring on Hover */}
-                      {isHov && (
-                        <circle
-                          cx={conn.x} cy={conn.y} r={14}
-                          style={{ fill: 'none', stroke: entityColor, strokeWidth: 1.5, strokeOpacity: 0.5 }}
-                        />
-                      )}
+          {/* 2. Text Labels — rendered on top of lines */}
+          <g pointerEvents="none">
+            {externalConnections.filter(c => c.primary).map(conn => {
+              const labelSide = Math.cos(conn.angle) > 0 ? 'right' : 'left';
+              const textAnchor = labelSide === 'right' ? 'start' : 'end';
+              const textDx = labelSide === 'right' ? 12 : -12;
+              return (
+                <text
+                  key={`text-${conn.id}`}
+                  x={conn.x} y={conn.y}
+                  dx={textDx} dy="3"
+                  textAnchor={textAnchor}
+                  style={{
+                    fill: isDark ? 'rgba(255,255,255,0.95)' : 'rgba(46,43,39,0.98)',
+                    fontSize: '9px',
+                    fontWeight: 600,
+                    letterSpacing: '0.02em',
+                    paintOrder: 'stroke',
+                    stroke: isDark ? '#000000' : '#ece8dd',
+                    strokeWidth: 3,
+                    strokeLinejoin: 'round',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  {conn.node.title}
+                </text>
+              );
+            })}
+          </g>
 
-                      {/* Connection Node Circle */}
-                      <circle
-                        cx={conn.x} cy={conn.y} r={7}
-                        style={{
-                          fill: entityColor,
-                          fillOpacity: isHov ? 1.0 : 0.8,
-                          stroke: isDark ? '#000000' : '#ffffff',
-                          strokeWidth: 1.5,
-                          transition: 'fill-opacity 0.2s',
-                        }}
-                      />
-                      {/* Invisible oversized hit-area circle */}
-                      <circle
-                        cx={conn.x} cy={conn.y} r={22}
-                        style={{ fill: 'transparent', stroke: 'none' }}
-                        onMouseMove={(e) => handleConnMouseMove(e, conn.node)}
-                        onMouseLeave={() => setHoveredNode(null)}
-                      />
-
-                      {/* Connection Node Title */}
-                      <text
-                        x={conn.x} y={conn.y}
-                        dx={textDx} dy="3"
-                        textAnchor={textAnchor}
-                        style={{
-                          fill: isDark ? 'rgba(255,255,255,0.95)' : 'rgba(46,43,39,0.98)',
-                          fontSize: '9px',
-                          fontWeight: 600,
-                          letterSpacing: '0.02em',
-                          paintOrder: 'stroke',
-                          stroke: isDark ? '#000000' : '#ece8dd',
-                          strokeWidth: 3,
-                          strokeLinejoin: 'round',
-                          pointerEvents: 'none',
-                        }}
-                      >
-                        {conn.node.title}
-                      </text>
-                      {/* Invisible rect hit-area behind the text label */}
-                      <rect
-                        x={labelSide === 'right' ? conn.x + 12 : conn.x - 12 - (conn.node.title.length * 5.4)}
-                        y={conn.y - 10}
-                        width={conn.node.title.length * 5.4}
-                        height={18}
-                        style={{ fill: 'transparent', stroke: 'none' }}
-                        onMouseMove={(e) => handleConnMouseMove(e, conn.node)}
-                        onMouseLeave={() => setHoveredNode(null)}
-                      />
-                    </>
+          {/* 3. Connection Dots/Circles — rendered last to always sit on the absolute top */}
+          <g>
+            {externalConnections.filter(c => c.primary).map(conn => {
+              const entityColor = (ENTITY_TYPES[conn.node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color;
+              const isHov = hoveredNode?.id === conn.node.id || hoveredNode?.id === conn.slice.id;
+              const labelSide = Math.cos(conn.angle) > 0 ? 'right' : 'left';
+              return (
+                <g
+                  key={`dot-group-${conn.id}`}
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const node = conn.node;
+                    if (node.children?.length || nodes.filter(n => n.parentId === node.id).length > 0) {
+                      setFocusNodeId(node.id);
+                    } else {
+                      setFocusNodeId(node.parentId || null);
+                    }
+                    if (onSelectNode) onSelectNode(node);
+                  }}
+                  onMouseEnter={() => setHoveredNode(conn.node)}
+                  onMouseLeave={() => setHoveredNode(null)}
+                >
+                  {/* Outer Glow Ring on Hover */}
+                  {isHov && (
+                    <circle
+                      cx={conn.x} cy={conn.y} r={14}
+                      style={{ fill: 'none', stroke: entityColor, strokeWidth: 1.5, strokeOpacity: 0.5 }}
+                    />
                   )}
+
+                  {/* Connection Node Circle */}
+                  <circle
+                    cx={conn.x} cy={conn.y} r={7}
+                    style={{
+                      fill: entityColor,
+                      fillOpacity: isHov ? 1.0 : 0.8,
+                      stroke: isDark ? '#000000' : '#ffffff',
+                      strokeWidth: 1.5,
+                      transition: 'fill-opacity 0.2s',
+                    }}
+                  />
+                  {/* Invisible oversized hit-area circle */}
+                  <circle
+                    cx={conn.x} cy={conn.y} r={22}
+                    style={{ fill: 'transparent', stroke: 'none' }}
+                    onMouseMove={(e) => handleConnMouseMove(e, conn.node)}
+                    onMouseLeave={() => setHoveredNode(null)}
+                  />
+                  {/* Invisible rect hit-area behind the text label to trigger hover easily */}
+                  <rect
+                    x={labelSide === 'right' ? conn.x + 12 : conn.x - 12 - (conn.node.title.length * 5.4)}
+                    y={conn.y - 10}
+                    width={conn.node.title.length * 5.4}
+                    height={18}
+                    style={{ fill: 'transparent', stroke: 'none' }}
+                    onMouseMove={(e) => handleConnMouseMove(e, conn.node)}
+                    onMouseLeave={() => setHoveredNode(null)}
+                  />
                 </g>
               );
             })}
