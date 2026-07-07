@@ -152,21 +152,23 @@ export default function DemoPortal({
 
   // Find all nodes that are present in the text as plain words (not inside brackets)
   const potentialMatchesInText = useMemo(() => {
+    const cleanText = (editorText || '').replace(/\u00a0/g, ' ').replace(/&nbsp;/g, ' ');
     return localNodes.filter(node => {
       // If it is already linked, it's not a potential match
       if (taggerLinks.includes(node.id)) return false;
       const escapedTitle = node.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const regex = new RegExp(`(?<!\\[\\[)(?<!\\|)\\b(${escapedTitle})\\b(?!\\]\\])(?!\\|)`, 'i');
-      return regex.test(editorText || '');
+      return regex.test(cleanText);
     });
   }, [taggerLinks, editorText, localNodes]);
 
   const handleRelinkTag = (id) => {
     const node = localNodes.find(n => n.id === id);
     if (node && editorText) {
+      const cleanText = editorText.replace(/\u00a0/g, ' ').replace(/&nbsp;/g, ' ');
       const escapedTitle = node.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const regex = new RegExp(`(?<!\\[\\[)(?<!\\|)\\b(${escapedTitle})\\b(?!\\]\\])(?!\\|)`, 'i');
-      const newEditorText = editorText.replace(regex, `[[${id}|$1]]`);
+      const newEditorText = cleanText.replace(regex, `[[${id}|$1]]`);
       setEditorText(newEditorText);
       
       // Add back to active connections

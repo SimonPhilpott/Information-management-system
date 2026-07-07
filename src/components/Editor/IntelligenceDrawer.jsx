@@ -67,9 +67,12 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
   const toHTML = (htmlText) => {
     if (!htmlText) return '';
     
+    // Normalize non-breaking spaces and &nbsp; to regular spaces
+    let cleanText = htmlText.replace(/\u00a0/g, ' ').replace(/&nbsp;/g, ' ');
+    
     // Check if the input is HTML or plain text; convert newlines to <br/> for plain text
-    const isHTML = /<[a-z][\s\S]*>/i.test(htmlText);
-    let formattedText = htmlText;
+    const isHTML = /<[a-z][\s\S]*>/i.test(cleanText);
+    let formattedText = cleanText;
     if (!isHTML) {
       formattedText = formattedText.replace(/\n/g, '<br/>');
     }
@@ -254,7 +257,8 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
 
   const toRawText = (html) => {
     const div = document.createElement('div');
-    div.innerHTML = html;
+    // Normalize spaces in the HTML
+    div.innerHTML = html.replace(/\u00a0/g, ' ').replace(/&nbsp;/g, ' ');
     div.querySelectorAll('.active-tag').forEach(tag => {
       const id = tag.getAttribute('data-id');
       const title = tag.firstChild.textContent.trim();
@@ -521,7 +525,7 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
         onToggleConnection(id);
         
         const newRaw = toRawText(editorRef.current.innerHTML);
-        isLocalChange.current = true;
+        isLocalChange.current = false; // Force re-run toHTML to highlight!
         onChange(newRaw);
       }
     } else if (promoteBtn) {
