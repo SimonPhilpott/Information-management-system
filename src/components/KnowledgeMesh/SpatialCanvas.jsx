@@ -1132,7 +1132,7 @@ const getSearchSummaryPath = (matchingNodes, allNodes) => {
   return serialize(tree);
 };
 
-export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, showLabels, labelStyle, setHoveredLinkData, onOpenDrawer, onZoomChange, onCoordsChange, theme = 'dark', setIs3DInteracting, layoutRules, showHeatmap = false, showTierList: showTierListProp = false }) => {
+export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, showLabels, labelStyle, setHoveredLinkData, onOpenDrawer, onZoomChange, onCoordsChange, theme = 'dark', setIs3DInteracting, layoutRules, showHeatmap = false, showTierList: showTierListProp = false, betaLayout = false }) => {
   const isDark = theme !== 'light';
   const bgColor = isDark ? '#000000' : '#ece8dd';
   const [cameraInstance, setCameraInstance] = useState(null);
@@ -1250,7 +1250,6 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
   const spatialNodes = useMemo(() => {
     const processed = [];
     const seen = new Set();
-    const beta = true;
 
     // Helper to calculate the cumulative weight (size) of a subtree recursively
     const getSubtreeWeight = (nodeId) => {
@@ -1259,7 +1258,7 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
       return 1 + children.reduce((acc, child) => acc + getSubtreeWeight(child.id), 0);
     };
 
-    const walk = (nid, depth = 0, parentPos = new THREE.Vector3(0, 0, 0), dir = new THREE.Vector3(0, 0, 1)) => {
+    const walk = (nid, depth = 0, parentPos = new THREE.Vector3(0, 0, 0), dir = new THREE.Vector3(0, 0, 1), allocatedConeAngle = Math.PI / 2) => {
       if (seen.has(nid)) return;
       const node = nodes.find(n => n.id === nid);
       if (!node) return;
@@ -1272,18 +1271,34 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
       if (depth === 0) {
         pos = new THREE.Vector3(0, 0, 0);
       } else {
-        const baseStep = (parentDistanceVal * 2.8) * Math.pow(0.85, depth - 1) + gapVal * 6.0;
-        let step = baseStep;
+        if (betaLayout) {
+          // Outward growing step: expand slightly at outer depths to resolve spacing/overlap
+          const baseStep = (parentDistanceVal * 2.5) * Math.pow(0.88, depth - 1) + gapVal * 6.0;
+          let step = baseStep;
 
-        if (depth > 1) {
-          const subtreeWeight = getSubtreeWeight(nid);
-          const siblingCount = nodes.filter(n => n.parentId === node.parentId).length;
-          const siblingScale = siblingCount > 5 ? 1.0 + Math.sqrt(siblingCount - 5) * 0.22 : 1.0;
-          const weightScale = 1.0 + Math.log10(subtreeWeight) * 0.9;
-          step = baseStep * siblingScale * weightScale;
+          if (depth > 1) {
+            const subtreeWeight = getSubtreeWeight(nid);
+            const siblingCount = nodes.filter(n => n.parentId === node.parentId).length;
+            const siblingScale = siblingCount > 5 ? 1.0 + Math.sqrt(siblingCount - 5) * 0.25 : 1.0;
+            const weightScale = 1.0 + Math.log10(subtreeWeight) * 0.8;
+            step = baseStep * siblingScale * weightScale;
+          }
+
+          pos = parentPos.clone().addScaledVector(dir, step);
+        } else {
+          const baseStep = (parentDistanceVal * 2.8) * Math.pow(0.85, depth - 1) + gapVal * 6.0;
+          let step = baseStep;
+
+          if (depth > 1) {
+            const subtreeWeight = getSubtreeWeight(nid);
+            const siblingCount = nodes.filter(n => n.parentId === node.parentId).length;
+            const siblingScale = siblingCount > 5 ? 1.0 + Math.sqrt(siblingCount - 5) * 0.22 : 1.0;
+            const weightScale = 1.0 + Math.log10(subtreeWeight) * 0.9;
+            step = baseStep * siblingScale * weightScale;
+          }
+
+          pos = parentPos.clone().addScaledVector(dir, step);
         }
-
-        pos = parentPos.clone().addScaledVector(dir, step);
       }
 
       let z_x = pos.x;
@@ -1303,7 +1318,6 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
       if (N > 0) {
         if (depth === 0) {
           // ── FIBONACCI SPHERE DISTRIBUTION FOR TIER 1 ──
-          // Distribute root children uniformly in all 3D directions around the central hub (0,0,0)
           const offset = 2.0 / N;
           const increment = Math.PI * (3.0 - Math.sqrt(5.0)); // golden angle
           
@@ -1315,11 +1329,14 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
             const z = Math.sin(phi) * r;
             
             const childDir = new THREE.Vector3(x, y, z).normalize();
-            walk(child.id, depth + 1, pos, childDir);
+            if (betaLayout) {
+              const childCone = Math.acos(Math.max(-0.9, 1 - 2 / N));
+              walk(child.id, depth + 1, pos, childDir, childCone);
+            } else {
+              walk(child.id, depth + 1, pos, childDir);
+            }
           });
         } else {
-          // ── DYNAMIC CONE FANNING FOR TIER 2+ ──
-          // Calculate orthogonal vectors to define fanning disk around parent line
           let u = new THREE.Vector3();
           let v = new THREE.Vector3();
           if (Math.abs(dir.x) < 0.9) {
@@ -1329,26 +1346,46 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
           }
           v.copy(dir).cross(u).normalize();
 
-          // Scale cone angle dynamically with number of siblings N to prevent wide spacing on small branches
-          const baseConeAngle = Math.min(0.85, 0.18 + N * 0.035);
-          const coneAngle = baseConeAngle + (gapVal / 150) * 0.3; 
+          if (betaLayout) {
+            // Sector nesting: distribute children inside parent's allocated cone
+            const fanAngle = allocatedConeAngle * 0.55;
+            const childCone = allocatedConeAngle * 0.35;
 
-          children.forEach((child, i) => {
-            let childDir = new THREE.Vector3();
-            if (N === 1) {
-              childDir.copy(dir);
-            } else {
-              // Distribute children in a cone around dir
-              const theta = (2 * Math.PI * i) / N;
-              const cosA = Math.cos(coneAngle);
-              const sinA = Math.sin(coneAngle);
-              childDir.copy(dir).multiplyScalar(cosA)
-                .addScaledVector(u, sinA * Math.cos(theta))
-                .addScaledVector(v, sinA * Math.sin(theta))
-                .normalize();
-            }
-            walk(child.id, depth + 1, pos, childDir);
-          });
+            children.forEach((child, i) => {
+              let childDir = new THREE.Vector3();
+              if (N === 1) {
+                childDir.copy(dir);
+              } else {
+                const theta = (2 * Math.PI * i) / N;
+                const cosA = Math.cos(fanAngle);
+                const sinA = Math.sin(fanAngle);
+                childDir.copy(dir).multiplyScalar(cosA)
+                  .addScaledVector(u, sinA * Math.cos(theta))
+                  .addScaledVector(v, sinA * Math.sin(theta))
+                  .normalize();
+              }
+              walk(child.id, depth + 1, pos, childDir, childCone);
+            });
+          } else {
+            const baseConeAngle = Math.min(0.85, 0.18 + N * 0.035);
+            const coneAngle = baseConeAngle + (gapVal / 150) * 0.3; 
+
+            children.forEach((child, i) => {
+              let childDir = new THREE.Vector3();
+              if (N === 1) {
+                childDir.copy(dir);
+              } else {
+                const theta = (2 * Math.PI * i) / N;
+                const cosA = Math.cos(coneAngle);
+                const sinA = Math.sin(coneAngle);
+                childDir.copy(dir).multiplyScalar(cosA)
+                  .addScaledVector(u, sinA * Math.cos(theta))
+                  .addScaledVector(v, sinA * Math.sin(theta))
+                  .normalize();
+              }
+              walk(child.id, depth + 1, pos, childDir);
+            });
+          }
         }
       }
     };
@@ -1360,7 +1397,7 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
       });
     }
     return processed;
-  }, [nodes, layoutRules]);
+  }, [nodes, layoutRules, betaLayout]);
 
   const matchingNodeIds = useMemo(() => {
     if (!activeSearchQuery?.trim()) return null;
