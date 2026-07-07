@@ -685,7 +685,7 @@ export const AdminPanel = ({
                               { n: 'Instant Backup', d: 'Saves a complete, secure snapshot of all files and folders to your computer in one click.' },
                               { n: 'Focus Mode', d: 'Dims and blurs unrelated items so you can focus on a specific node and its connections.' },
                               { n: 'Mini-map', d: 'A small preview window that lets you "scrub" across the entire enterprise structure.' },
-                              { n: 'Structural Audit', d: 'Analyze the deep file architecture and system dependencies directly from the Admin Panel.' }
+                              { n: 'Structural Audit', d: 'Analyse the deep file architecture and system dependencies directly from the Admin Panel.' }
                             ] 
                           },
                           { 

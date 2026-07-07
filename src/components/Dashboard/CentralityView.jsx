@@ -105,7 +105,7 @@ export default function CentralityView({ theme = 'dark', focusedNodeId = null })
             isDark ? 'bg-white/5 border-white/10 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'
           }`}>
             <TrendingUp size={11} className="text-amber-400" />
-            <span>Connection Optimizer</span>
+            <span>Connection Optimiser</span>
           </div>
         </div>
       </div>
@@ -261,7 +261,7 @@ export default function CentralityView({ theme = 'dark', focusedNodeId = null })
           </div>
 
           <div className="mt-5 border-t border-white/5 pt-3.5 text-[10px] text-slate-500 text-right uppercase tracking-wider font-semibold">
-            Connection Optimizer v0.1
+            Connection Optimiser v0.1
           </div>
         </div>
       </div>
