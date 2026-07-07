@@ -473,8 +473,8 @@ export const SunburstCanvas = ({
     // Estimate label width in SVG units (~5.4px per char at 9px font).
     const FONT_PX  = 9;
     const CHAR_W   = FONT_PX * 0.56;
-    const LABEL_H  = FONT_PX * 1.4;  // one line height
-    const PAD      = 12;              // gap between connection text
+    const LABEL_H  = FONT_PX * 1.8;  // increased height
+    const PAD      = 24;              // doubled padding to prevent text overlap
 
     const labelBox = (p) => {
       const w = p.node.title.length * CHAR_W + PAD * 2;
@@ -502,8 +502,8 @@ export const SunburstCanvas = ({
     };
     placed.forEach(computeXY);
 
-    // Iterative radial push: nudge overlapping nodes outward, up to 10 passes
-    for (let pass = 0; pass < 10; pass++) {
+    // Iterative radial push: nudge overlapping nodes outward, up to 50 passes to guarantee full resolution
+    for (let pass = 0; pass < 50; pass++) {
       let anyOverlap = false;
       for (let i = 0; i < placed.length; i++) {
         for (let j = i + 1; j < placed.length; j++) {
@@ -529,9 +529,11 @@ export const SunburstCanvas = ({
     const connections = [];
     placed.forEach(p => {
       p.slices.forEach(slice => {
-        // Line originates from the outer edge of the sunburst at p.angle to run radially and not cross slice labels
-        const sliceX = cx + (maxR + 6) * Math.cos(p.angle);
-        const sliceY = cy + (maxR + 6) * Math.sin(p.angle);
+        // Line originates exactly at the outermost edge of the sunburst circle (maxR) at the slice's center angle
+        // to prevent lines from cutting through inner slices and overlapping inner text
+        const sliceAngle = (slice.startAngle + slice.endAngle) / 2;
+        const sliceX = cx + maxR * Math.cos(sliceAngle);
+        const sliceY = cy + maxR * Math.sin(sliceAngle);
 
         connections.push({
           id:     `ext-${slice.id}-${p.node.id}`,
