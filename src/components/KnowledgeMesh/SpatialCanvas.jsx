@@ -1353,26 +1353,48 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
           v.copy(dir).cross(u).normalize();
 
           if (betaLayout) {
-            // Sector nesting: distribute children inside parent's allocated cone
-            // For large N, allow a wider fan angle (up to 1.3 radians) to resolve text overlaps
-            const fanAngle = N > 15 ? Math.min(1.3, allocatedConeAngle * 1.5) : allocatedConeAngle * 0.55;
-            const childCone = allocatedConeAngle * 0.35;
+            if (nid === 'cap_root') {
+              // Manually steer dense subtrees into widely separated 3D spaces
+              children.forEach((child, i) => {
+                let childDir = new THREE.Vector3();
+                if (child.id === 'srv_ccm') {
+                  // Cost & Commercial Management: rotate heavily to the right/up
+                  childDir.copy(dir).addScaledVector(u, 1.4).addScaledVector(v, 0.4).normalize();
+                } else if (child.id === 'srv_pm') {
+                  // Project Management: rotate heavily to the left/up
+                  childDir.copy(dir).addScaledVector(u, -1.4).addScaledVector(v, 0.8).normalize();
+                } else if (child.id === 'bok_root') {
+                  // Body of Knowledge: rotate downwards/forward
+                  childDir.copy(dir).addScaledVector(u, -0.2).addScaledVector(v, -1.2).normalize();
+                } else {
+                  const theta = (2 * Math.PI * i) / N;
+                  childDir.copy(dir).addScaledVector(u, 0.7 * Math.cos(theta)).addScaledVector(v, 0.7 * Math.sin(theta)).normalize();
+                }
+                const childCone = 1.3; // Generous fanning angle for large subtrees
+                walk(child.id, depth + 1, pos, childDir, childCone, i, N);
+              });
+            } else {
+              // Sector nesting: distribute children inside parent's allocated cone
+              // For large N, allow a wider fan angle (up to 1.3 radians) to resolve text overlaps
+              const fanAngle = N > 15 ? Math.min(1.3, allocatedConeAngle * 1.5) : allocatedConeAngle * 0.55;
+              const childCone = allocatedConeAngle * 0.35;
 
-            children.forEach((child, i) => {
-              let childDir = new THREE.Vector3();
-              if (N === 1) {
-                childDir.copy(dir);
-              } else {
-                const theta = (2 * Math.PI * i) / N;
-                const cosA = Math.cos(fanAngle);
-                const sinA = Math.sin(fanAngle);
-                childDir.copy(dir).multiplyScalar(cosA)
-                  .addScaledVector(u, sinA * Math.cos(theta))
-                  .addScaledVector(v, sinA * Math.sin(theta))
-                  .normalize();
-              }
-              walk(child.id, depth + 1, pos, childDir, childCone, i, N);
-            });
+              children.forEach((child, i) => {
+                let childDir = new THREE.Vector3();
+                if (N === 1) {
+                  childDir.copy(dir);
+                } else {
+                  const theta = (2 * Math.PI * i) / N;
+                  const cosA = Math.cos(fanAngle);
+                  const sinA = Math.sin(fanAngle);
+                  childDir.copy(dir).multiplyScalar(cosA)
+                    .addScaledVector(u, sinA * Math.cos(theta))
+                    .addScaledVector(v, sinA * Math.sin(theta))
+                    .normalize();
+                }
+                walk(child.id, depth + 1, pos, childDir, childCone, i, N);
+              });
+            }
           } else {
             const baseConeAngle = Math.min(0.85, 0.18 + N * 0.035);
             const coneAngle = baseConeAngle + (gapVal / 150) * 0.3; 
