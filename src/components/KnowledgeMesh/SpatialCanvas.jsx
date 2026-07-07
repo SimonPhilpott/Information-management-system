@@ -1258,7 +1258,7 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
       return 1 + children.reduce((acc, child) => acc + getSubtreeWeight(child.id), 0);
     };
 
-    const walk = (nid, depth = 0, parentPos = new THREE.Vector3(0, 0, 0), dir = new THREE.Vector3(0, 0, 1), allocatedConeAngle = Math.PI / 2) => {
+    const walk = (nid, depth = 0, parentPos = new THREE.Vector3(0, 0, 0), dir = new THREE.Vector3(0, 0, 1), allocatedConeAngle = Math.PI / 2, siblingIndex = 0, siblingCount = 1) => {
       if (seen.has(nid)) return;
       const node = nodes.find(n => n.id === nid);
       if (!node) return;
@@ -1278,10 +1278,16 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
 
           if (depth > 1) {
             const subtreeWeight = getSubtreeWeight(nid);
-            const siblingCount = nodes.filter(n => n.parentId === node.parentId).length;
             const siblingScale = siblingCount > 5 ? 1.0 + Math.sqrt(siblingCount - 5) * 0.25 : 1.0;
             const weightScale = 1.0 + Math.log10(subtreeWeight) * 0.8;
             step = baseStep * siblingScale * weightScale;
+          }
+
+          // Stagger distance for large sibling groups to prevent clumping/overlapping text
+          if (siblingCount > 5) {
+            const shell = siblingIndex % 3;
+            const staggerFactor = 0.7 + shell * 0.35; // staggers across 0.7x, 1.05x, and 1.4x distance shells
+            step = step * staggerFactor;
           }
 
           pos = parentPos.clone().addScaledVector(dir, step);
@@ -1291,8 +1297,8 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
 
           if (depth > 1) {
             const subtreeWeight = getSubtreeWeight(nid);
-            const siblingCount = nodes.filter(n => n.parentId === node.parentId).length;
-            const siblingScale = siblingCount > 5 ? 1.0 + Math.sqrt(siblingCount - 5) * 0.22 : 1.0;
+            const siblingCountVal = nodes.filter(n => n.parentId === node.parentId).length;
+            const siblingScale = siblingCountVal > 5 ? 1.0 + Math.sqrt(siblingCountVal - 5) * 0.22 : 1.0;
             const weightScale = 1.0 + Math.log10(subtreeWeight) * 0.9;
             step = baseStep * siblingScale * weightScale;
           }
@@ -1331,7 +1337,7 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
             const childDir = new THREE.Vector3(x, y, z).normalize();
             if (betaLayout) {
               const childCone = Math.acos(Math.max(-0.9, 1 - 2 / N));
-              walk(child.id, depth + 1, pos, childDir, childCone);
+              walk(child.id, depth + 1, pos, childDir, childCone, i, N);
             } else {
               walk(child.id, depth + 1, pos, childDir);
             }
@@ -1348,7 +1354,8 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
 
           if (betaLayout) {
             // Sector nesting: distribute children inside parent's allocated cone
-            const fanAngle = allocatedConeAngle * 0.55;
+            // For large N, allow a wider fan angle (up to 1.3 radians) to resolve text overlaps
+            const fanAngle = N > 15 ? Math.min(1.3, allocatedConeAngle * 1.5) : allocatedConeAngle * 0.55;
             const childCone = allocatedConeAngle * 0.35;
 
             children.forEach((child, i) => {
@@ -1364,7 +1371,7 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
                   .addScaledVector(v, sinA * Math.sin(theta))
                   .normalize();
               }
-              walk(child.id, depth + 1, pos, childDir, childCone);
+              walk(child.id, depth + 1, pos, childDir, childCone, i, N);
             });
           } else {
             const baseConeAngle = Math.min(0.85, 0.18 + N * 0.035);
