@@ -898,6 +898,20 @@ export const SunburstCanvas = ({
           preserveAspectRatio="xMidYMid meet"
           onMouseLeave={() => setHoveredNode(null)}
         >
+          {/* Background catch-all rect — clears hoveredNode when cursor
+              moves off any slice into empty canvas space.
+              fill="transparent" (not "none") is required: SVG only fires pointer
+              events on elements with a painted fill or stroke. This sits below
+              everything else in the stack so slice/dot events always win. */}
+          <rect
+            x={viewport.x}
+            y={viewport.y}
+            width={viewport.w}
+            height={viewport.h}
+            fill="transparent"
+            onMouseEnter={() => setHoveredNode(null)}
+          />
+
           {/* ┌─────────────────────────────────────────────────────
                LAYER 0 — BOTTOM: External connection lines
                Rendered FIRST so the arc fills (layers above) naturally mask
