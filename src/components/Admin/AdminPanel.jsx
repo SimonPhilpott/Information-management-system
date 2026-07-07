@@ -105,18 +105,55 @@ export const AdminPanel = ({
   useEffect(() => {
     if (!isOpen || activeTab !== 'sharing') return;
 
+    // Detect if we are already being accessed via the ngrok tunnel.
+    // If so, the tunnel is clearly active even if the API endpoint returns
+    // 'disconnected' (e.g. because the API call is being proxied through ngrok
+    // and the local server's state was reset).
+    const NGROK_DOMAIN = 'ngrok-free.app';
+    const isAccessedViaNgrok = window.location.hostname.includes(NGROK_DOMAIN) ||
+                                window.location.hostname.includes('ngrok.io');
+
     let active = true;
     const fetchStatus = async () => {
       try {
         const res = await fetch('/api/tunnel/status');
         const data = await res.json();
         if (active) {
-          setTunnelState(data);
+          // If the API says disconnected but we are on the ngrok URL, override
+          // the status to connected so the UI accurately reflects reality.
+          if (isAccessedViaNgrok && data.status === 'disconnected') {
+            setTunnelState(prev => ({
+              ...data,
+              status: 'connected',
+              url: data.url || window.location.origin,
+            }));
+          } else {
+            setTunnelState(data);
+          }
         }
       } catch (err) {
-        console.error('Error fetching tunnel status:', err);
+        // If the API call fails entirely but we're on ngrok, still show connected.
+        if (active && isAccessedViaNgrok) {
+          setTunnelState(prev => ({
+            ...prev,
+            status: 'connected',
+            url: prev.url || window.location.origin,
+          }));
+        } else {
+          console.error('Error fetching tunnel status:', err);
+        }
       }
     };
+
+    // Also seed connected state immediately if accessed via ngrok —
+    // avoids the flash of 'disconnected' while the first fetch resolves.
+    if (isAccessedViaNgrok) {
+      setTunnelState(prev => ({
+        ...prev,
+        status: 'connected',
+        url: prev.url || window.location.origin,
+      }));
+    }
 
     fetchStatus();
     const interval = setInterval(fetchStatus, 3000);
