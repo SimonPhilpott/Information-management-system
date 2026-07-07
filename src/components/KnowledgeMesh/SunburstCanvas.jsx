@@ -529,9 +529,10 @@ export const SunburstCanvas = ({
     const connections = [];
     placed.forEach(p => {
       p.slices.forEach(slice => {
-        // Line originates from the outer edge of the sunburst at p.angle to run radially and not cross slice labels
-        const sliceX = cx + (maxR + 6) * Math.cos(p.angle);
-        const sliceY = cy + (maxR + 6) * Math.sin(p.angle);
+        // Line originates from the outer edge of the actual slice at its own sliceAngle
+        const sliceAngle = (slice.startAngle + slice.endAngle) / 2;
+        const sliceX = cx + (maxR + 6) * Math.cos(sliceAngle);
+        const sliceY = cy + (maxR + 6) * Math.sin(sliceAngle);
 
         connections.push({
           id:     `ext-${slice.id}-${p.node.id}`,
