@@ -1268,25 +1268,42 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
       const parentDistanceVal = layoutRules?.parentDistance ?? 400;
 
       let pos;
+      let calculatedConeAngle = allocatedConeAngle;
+
       if (depth === 0) {
         pos = new THREE.Vector3(0, 0, 0);
       } else {
         if (betaLayout) {
-          // Outward growing step: expand slightly at outer depths to resolve spacing/overlap
+          // Outward growing step based on depth
           const baseStep = (parentDistanceVal * 2.5) * Math.pow(0.88, depth - 1) + gapVal * 6.0;
-          let step = baseStep;
+          const subtreeWeight = getSubtreeWeight(nid);
+          const weightScale = 1.0 + Math.log10(subtreeWeight) * 0.8;
 
-          if (depth > 1) {
-            const subtreeWeight = getSubtreeWeight(nid);
-            const siblingScale = siblingCount > 5 ? 1.0 + Math.sqrt(siblingCount - 5) * 0.25 : 1.0;
-            const weightScale = 1.0 + Math.log10(subtreeWeight) * 0.8;
-            step = baseStep * siblingScale * weightScale;
+          // Proximity to other deep structures: check sibling subtree weight sum
+          const siblings = nodes.filter(n => n.parentId === node.parentId && n.id !== nid);
+          const siblingSubtreeSum = siblings.reduce((acc, sib) => acc + getSubtreeWeight(sib.id), 0);
+          const proximityScale = 1.0 + Math.log10(1 + siblingSubtreeSum) * 0.45;
+
+          let step = baseStep * weightScale * proximityScale;
+
+          // Determine required fanning angle to prevent adjacent label overlaps (average label width ~320 units)
+          // Arc distance = step * coneAngle * (2 * PI / siblingCount)
+          // Required coneAngle = (320 * siblingCount) / (2 * PI * step)
+          const maxAllowedConeAngle = 0.85; // Capped at ~50 degrees to prevent fanning too wide
+          const requiredConeAngle = (320 * siblingCount) / (2 * Math.PI * step);
+
+          let useStaggering = false;
+          if (requiredConeAngle > maxAllowedConeAngle) {
+            calculatedConeAngle = maxAllowedConeAngle;
+            useStaggering = true;
+          } else {
+            calculatedConeAngle = Math.max(0.22, requiredConeAngle);
           }
 
-          // Stagger distance for large sibling groups to prevent clumping/overlapping text
-          if (siblingCount > 5) {
+          // Trigger alternating distances (radial staggering) only when fanning alone cannot prevent overlap
+          if (useStaggering) {
             const shell = siblingIndex % 3;
-            const staggerFactor = 0.7 + shell * 0.35; // staggers across 0.7x, 1.05x, and 1.4x distance shells
+            const staggerFactor = 0.72 + shell * 0.36; // 0.72x, 1.08x, 1.44x
             step = step * staggerFactor;
           }
 
@@ -1375,9 +1392,9 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
               });
             } else {
               // Sector nesting: distribute children inside parent's allocated cone
-              // For large N, allow a wider fan angle (up to 1.3 radians) to resolve text overlaps
-              const fanAngle = N > 15 ? Math.min(1.3, allocatedConeAngle * 1.5) : allocatedConeAngle * 0.55;
-              const childCone = allocatedConeAngle * 0.35;
+              // Using calculatedConeAngle derived from label overlap protection
+              const fanAngle = calculatedConeAngle;
+              const childCone = calculatedConeAngle * 0.38;
 
               children.forEach((child, i) => {
                 let childDir = new THREE.Vector3();
