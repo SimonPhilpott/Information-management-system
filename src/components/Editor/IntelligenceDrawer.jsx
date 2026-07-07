@@ -113,7 +113,7 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
         activeSpan.style.background = `${color}22`;
         activeSpan.style.color = color;
         activeSpan.style.boxShadow = `0 0 10px ${color}22`;
-        activeSpan.innerHTML = `${title}<button class="tag-link-btn ${isConnected ? 'active' : ''}" data-id="${id}">${isConnected ? 'Linked' : 'Link'}</button>`;
+        activeSpan.innerHTML = `${title}<button class="tag-link-btn active" data-id="${id}">LINKED</button>`;
 
         const nodesToInsert = [];
         if (beforeText) nodesToInsert.push(document.createTextNode(beforeText));
@@ -510,10 +510,20 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
 
     if (linkBtn) {
       const id = linkBtn.getAttribute('data-id');
-      onToggleConnection(id);
-      const isNowActive = !linkBtn.classList.contains('active');
-      linkBtn.classList.toggle('active', isNowActive);
-      linkBtn.textContent = isNowActive ? 'Linked' : 'Link';
+      const node = nodes.find(n => n.id === id);
+      const tagSpan = e.target.closest('.active-tag');
+      if (tagSpan && node) {
+        // Revert this tag to plain text, which will automatically trigger
+        // the live scanner to turn it back into a potential tag (State 1)
+        const textNode = document.createTextNode(node.title);
+        tagSpan.replaceWith(textNode);
+        
+        onToggleConnection(id);
+        
+        const newRaw = toRawText(editorRef.current.innerHTML);
+        isLocalChange.current = true;
+        onChange(newRaw);
+      }
     } else if (promoteBtn) {
       const id = promoteBtn.getAttribute('data-id');
       const node = nodes.find(n => n.id === id);
@@ -521,7 +531,8 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
       if (tagSpan && node) {
         const color = ENTITY_TYPES[node.type]?.color || '#fff';
         const typeLabel = ENTITY_TYPES[node.type]?.label || 'Entity';
-        const isConnected = currentSecondaryLinks.includes(id);
+        
+        onToggleConnection(id);
         
         tagSpan.className = 'inline-tag active-tag';
         tagSpan.setAttribute('data-id', id);
@@ -530,7 +541,7 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
         tagSpan.style.background = `${color}22`;
         tagSpan.style.color = color;
         tagSpan.style.boxShadow = `0 0 10px ${color}22`;
-        tagSpan.innerHTML = `${node.title}<button class="tag-link-btn ${isConnected ? 'active' : ''}" data-id="${id}">${isConnected ? 'Linked' : 'Link'}</button>`;
+        tagSpan.innerHTML = `${node.title}<button class="tag-link-btn active" data-id="${id}">LINKED</button>`;
         
         const newRaw = toRawText(editorRef.current.innerHTML);
         isLocalChange.current = true;
@@ -553,7 +564,7 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
         tagSpan.style.background = `${color}22`;
         tagSpan.style.color = color;
         tagSpan.style.boxShadow = `0 0 10px ${color}22`;
-        tagSpan.innerHTML = `${node.title}<button class="tag-link-btn active" data-id="${id}">Linked</button>`;
+        tagSpan.innerHTML = `${node.title}<button class="tag-link-btn active" data-id="${id}">LINKED</button>`;
         
         const newRaw = toRawText(editorRef.current.innerHTML);
         isLocalChange.current = true;
@@ -624,7 +635,7 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
         activeSpan.style.background = `${color}22`;
         activeSpan.style.color = color;
         activeSpan.style.boxShadow = `0 0 10px ${color}22`;
-        activeSpan.innerHTML = `${node.title}<button class="tag-link-btn ${isConnected ? 'active' : ''}" data-id="${node.id}">${isConnected ? 'Linked' : 'Link'}</button>`;
+        activeSpan.innerHTML = `${node.title}<button class="tag-link-btn active" data-id="${node.id}">LINKED</button>`;
         
         textNode.textContent = newBefore;
         textNode.after(activeSpan);

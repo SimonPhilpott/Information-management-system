@@ -115,14 +115,7 @@ export default function DemoPortal({
   const [editorText, setEditorText] = useState('');
   const [taggerLinks, setTaggerLinks] = useState([]);
   const [activeTooltip, setActiveTooltip] = useState(null);
-  const [ignoredNodeIds, setIgnoredNodeIds] = useState([]);
 
-  // Reset ignored tags when text is cleared
-  useEffect(() => {
-    if (!editorText) {
-      setIgnoredNodeIds([]);
-    }
-  }, [editorText]);
 
   const handleToggleConnectionTagger = (id) => {
     setTaggerLinks(prev => 
@@ -149,10 +142,6 @@ export default function DemoPortal({
       const regex = new RegExp(`\\[\\[${id}\\|(${escapedTitle})\\]\\]`, 'gi');
       const newEditorText = editorText.replace(regex, '$1');
       setEditorText(newEditorText);
-      // Remember this node as ignored for auto-tagging
-      if (!ignoredNodeIds.includes(id)) {
-        setIgnoredNodeIds(prev => [...prev, id]);
-      }
     }
     
     // Also remove from active connections
@@ -161,16 +150,16 @@ export default function DemoPortal({
     }
   };
 
-  // Find ignored nodes whose titles are still present in editorText
-  const ignoredMatchesInText = useMemo(() => {
-    return ignoredNodeIds.filter(id => {
-      const node = localNodes.find(n => n.id === id);
-      if (!node) return false;
+  // Find all nodes that are present in the text as plain words (not inside brackets)
+  const potentialMatchesInText = useMemo(() => {
+    return localNodes.filter(node => {
+      // If it is already linked, it's not a potential match
+      if (taggerLinks.includes(node.id)) return false;
       const escapedTitle = node.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const regex = new RegExp(`(?<!\\[\\[)(?<!\\|)\\b(${escapedTitle})\\b(?!\\]\\])(?!\\|)`, 'i');
       return regex.test(editorText || '');
     });
-  }, [ignoredNodeIds, editorText, localNodes]);
+  }, [taggerLinks, editorText, localNodes]);
 
   const handleRelinkTag = (id) => {
     const node = localNodes.find(n => n.id === id);
@@ -179,9 +168,6 @@ export default function DemoPortal({
       const regex = new RegExp(`(?<!\\[\\[)(?<!\\|)\\b(${escapedTitle})\\b(?!\\]\\])(?!\\|)`, 'i');
       const newEditorText = editorText.replace(regex, `[[${id}|$1]]`);
       setEditorText(newEditorText);
-      
-      // Remove from ignored
-      setIgnoredNodeIds(prev => prev.filter(x => x !== id));
       
       // Add back to active connections
       if (!taggerLinks.includes(id)) {
@@ -843,7 +829,6 @@ export default function DemoPortal({
                   currentSecondaryLinks={taggerLinks}
                   theme={theme}
                   placeholder="Type or paste your text"
-                  ignoredNodeIds={ignoredNodeIds}
                 />
               </div>
 
@@ -889,20 +874,18 @@ export default function DemoPortal({
                   </div>
                 )}
 
-                {/* Relink HUD for dismissed matches */}
-                {ignoredMatchesInText.length > 0 && (
+                {/* Relink HUD for potential/dismissed matches */}
+                {potentialMatchesInText.length > 0 && (
                   <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-slate-500/10">
                     <h4 className="text-[10px] font-black tracking-widest uppercase text-slate-400">
-                      Dismissed tags in text (click + to restore link)
+                      Unlinked matching terms in text (click + to link)
                     </h4>
                     <div className="flex flex-wrap gap-2">
-                      {ignoredMatchesInText.map(id => {
-                        const node = localNodes.find(n => n.id === id);
-                        if (!node) return null;
+                      {potentialMatchesInText.map(node => {
                         const color = demoEntityTypes[node.type?.toUpperCase()]?.color || '#505a60';
                         return (
                           <div
-                            key={id}
+                            key={node.id}
                             className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-dashed text-xs font-bold opacity-60 hover:opacity-100 transition-all"
                             style={{
                               borderColor: `${color}44`,
@@ -912,9 +895,9 @@ export default function DemoPortal({
                           >
                             <span>{node.title}</span>
                             <button
-                              onClick={() => handleRelinkTag(id)}
+                              onClick={() => handleRelinkTag(node.id)}
                               className="hover:text-green-500 hover:scale-115 font-black ml-1.5 transition-all cursor-pointer text-sm"
-                              title="Restore tag link connection"
+                              title="Link term"
                             >
                               +
                             </button>
