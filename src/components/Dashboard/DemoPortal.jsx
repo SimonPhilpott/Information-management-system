@@ -154,6 +154,35 @@ export default function DemoPortal({
     }
   };
 
+  // Find ignored nodes whose titles are still present in editorText
+  const ignoredMatchesInText = useMemo(() => {
+    return ignoredNodeIds.filter(id => {
+      const node = localNodes.find(n => n.id === id);
+      if (!node) return false;
+      const escapedTitle = node.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`(?<!\\[\\[)(?<!\\|)\\b(${escapedTitle})\\b(?!\\]\\])(?!\\|)`, 'i');
+      return regex.test(editorText || '');
+    });
+  }, [ignoredNodeIds, editorText, localNodes]);
+
+  const handleRelinkTag = (id) => {
+    const node = localNodes.find(n => n.id === id);
+    if (node && editorText) {
+      const escapedTitle = node.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`(?<!\\[\\[)(?<!\\|)\\b(${escapedTitle})\\b(?!\\]\\])(?!\\|)`, 'i');
+      const newEditorText = editorText.replace(regex, `[[${id}|$1]]`);
+      setEditorText(newEditorText);
+      
+      // Remove from ignored
+      setIgnoredNodeIds(prev => prev.filter(x => x !== id));
+      
+      // Add back to active connections
+      if (!taggerLinks.includes(id)) {
+        setTaggerLinks(prev => [...prev, id]);
+      }
+    }
+  };
+
   // Local state for nodes so updates in the editor are reflected instantly
   const [localNodes, setLocalNodes] = useState(nodes);
   
@@ -855,6 +884,42 @@ export default function DemoPortal({
                         </div>
                       );
                     })}
+                  </div>
+                )}
+
+                {/* Relink HUD for dismissed matches */}
+                {ignoredMatchesInText.length > 0 && (
+                  <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-slate-500/10">
+                    <h4 className="text-[10px] font-black tracking-widest uppercase text-slate-400">
+                      Dismissed tags in text (click + to restore link)
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {ignoredMatchesInText.map(id => {
+                        const node = localNodes.find(n => n.id === id);
+                        if (!node) return null;
+                        const color = demoEntityTypes[node.type?.toUpperCase()]?.color || '#505a60';
+                        return (
+                          <div
+                            key={id}
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-dashed text-xs font-bold opacity-60 hover:opacity-100 transition-all"
+                            style={{
+                              borderColor: `${color}44`,
+                              color: `${color}b0`,
+                              background: `${color}05`
+                            }}
+                          >
+                            <span>{node.title}</span>
+                            <button
+                              onClick={() => handleRelinkTag(id)}
+                              className="hover:text-green-500 hover:scale-115 font-black ml-1.5 transition-all cursor-pointer text-sm"
+                              title="Restore tag link connection"
+                            >
+                              +
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>

@@ -670,7 +670,7 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
             title="Load project management demo text"
           >
             <LinkIcon size={11} />
-            <span>Project Management Hub</span>
+            <span>Project management paste</span>
           </button>
           <button
             onClick={() => setIsReadMode(!isReadMode)}
