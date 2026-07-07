@@ -444,16 +444,18 @@ export const SunburstCanvas = ({
     });
 
     // ── Step 2: assign initial angle and radius for each unique external node
-    // Use the mean angle of all slices that connect to it.
+    // Use the center angle of the primary slice and bin to 20 discrete sectors (18 degrees each)
+    // to align neighboring nodes on straight radial lines and prevent crossing/fanning lines.
     const placed = Object.values(nodeMap).map(({ node, slices }) => {
-      const midAngles = slices.map(s => (s.startAngle + s.endAngle) / 2);
-      // Circular mean to handle wraparound correctly
-      const sinSum = midAngles.reduce((a, t) => a + Math.sin(t), 0);
-      const cosSum = midAngles.reduce((a, t) => a + Math.cos(t), 0);
-      let angle  = Math.atan2(sinSum / midAngles.length, cosSum / midAngles.length);
+      const primarySlice = slices[0];
+      let angle = (primarySlice.startAngle + primarySlice.endAngle) / 2;
+
+      // Bin the angle to the nearest 18 degrees (20 sectors around the circle)
+      const sectorStep = (2 * Math.PI) / 20;
+      angle = Math.round(angle / sectorStep) * sectorStep;
 
       // Nudge angle away from horizontal axis (0 and PI) to prevent overlapping stacked text labels
-      const HORIZ_THRESHOLD = 0.25; // ~14 degrees
+      const HORIZ_THRESHOLD = 0.28; // ~16 degrees
       if (Math.abs(angle) < HORIZ_THRESHOLD) {
         angle = angle >= 0 ? HORIZ_THRESHOLD : -HORIZ_THRESHOLD;
       } else if (Math.PI - Math.abs(angle) < HORIZ_THRESHOLD) {
@@ -492,8 +494,9 @@ export const SunburstCanvas = ({
     };
     placed.forEach(computeXY);
 
-    // Iterative radial push: nudge overlapping nodes outward, up to 5 passes
-    for (let pass = 0; pass < 5; pass++) {
+    // Iterative radial push: nudge overlapping nodes outward, up to 15 passes
+    // Aligning nodes to the exact same angle ensures they stack in a perfectly straight line
+    for (let pass = 0; pass < 15; pass++) {
       let anyOverlap = false;
       for (let i = 0; i < placed.length; i++) {
         for (let j = i + 1; j < placed.length; j++) {
@@ -501,11 +504,11 @@ export const SunburstCanvas = ({
           const ba = labelBox(a), bb = labelBox(b);
           if (overlaps(ba, bb)) {
             anyOverlap = true;
-            // Push the outer one further out
+            // Set radius directly to achieve mathematically identical even spacing
             if (a.radius <= b.radius) {
-              b.radius += LABEL_H + PAD;
+              b.radius = a.radius + LABEL_H + PAD;
             } else {
-              a.radius += LABEL_H + PAD;
+              a.radius = b.radius + LABEL_H + PAD;
             }
             computeXY(a);
             computeXY(b);
@@ -520,10 +523,11 @@ export const SunburstCanvas = ({
     const connections = [];
     placed.forEach(p => {
       p.slices.forEach(slice => {
+        const { r0, r1 } = getRadius(slice.depth);
+        const rm = (r0 + r1) / 2; // Midpoint of the originating slice to connect lines directly to it
         const sliceAngle = (slice.startAngle + slice.endAngle) / 2;
-        // Start lines from the outer radius of the outermost ring (maxR + 6) to avoid crossing any node text
-        const sliceX = cx + (maxR + 6) * Math.cos(sliceAngle);
-        const sliceY = cy + (maxR + 6) * Math.sin(sliceAngle);
+        const sliceX = cx + rm * Math.cos(sliceAngle);
+        const sliceY = cy + rm * Math.sin(sliceAngle);
 
         connections.push({
           id:     `ext-${slice.id}-${p.node.id}`,
