@@ -1306,22 +1306,82 @@ export const SunburstCanvas = ({
                 {hoveredNode.title}
               </h4>
               {hoveredNode.parentId && (() => {
-                const parentNode = nodes.find(n => n.id === hoveredNode.parentId);
-                return parentNode ? (
-                  <div className={`flex items-center gap-1 text-[8.5px] font-semibold ${mutedColor}`}>
+                const parentNode1 = nodes.find(n => n.id === hoveredNode.parentId);
+                if (!parentNode1) return null;
+                const parentNode2 = parentNode1.parentId ? nodes.find(n => n.id === parentNode1.parentId) : null;
+                const showParent2 = parentNode2 && parentNode2.id !== 'tt_group';
+
+                return (
+                  <div className={`flex flex-wrap items-center gap-1 text-[8.5px] font-semibold ${mutedColor}`}>
                     <span className="opacity-50">Part of</span>
+                    {showParent2 && (
+                      <>
+                        <span
+                          className="px-1.5 py-0.5 rounded border font-bold truncate max-w-[125px]"
+                          style={{
+                            color:           (ENTITY_TYPES[parentNode2.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color,
+                            borderColor:     `${(ENTITY_TYPES[parentNode2.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color}30`,
+                            backgroundColor: `${(ENTITY_TYPES[parentNode2.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color}10`,
+                          }}
+                        >
+                          {parentNode2.title}
+                        </span>
+                        <span className="opacity-45">/</span>
+                      </>
+                    )}
                     <span
-                      className="px-1.5 py-0.5 rounded border font-bold truncate max-w-[140px]"
+                      className="px-1.5 py-0.5 rounded border font-bold truncate max-w-[125px]"
                       style={{
-                        color:           (ENTITY_TYPES[parentNode.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color,
-                        borderColor:     `${(ENTITY_TYPES[parentNode.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color}30`,
-                        backgroundColor: `${(ENTITY_TYPES[parentNode.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color}10`,
+                        color:           (ENTITY_TYPES[parentNode1.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color,
+                        borderColor:     `${(ENTITY_TYPES[parentNode1.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color}30`,
+                        backgroundColor: `${(ENTITY_TYPES[parentNode1.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color}10`,
                       }}
                     >
-                      {parentNode.title}
+                      {parentNode1.title}
                     </span>
                   </div>
-                ) : null;
+                );
+              })()}
+              {(() => {
+                const connIds = new Set();
+                (hoveredNode.secondaryLinks || []).forEach(id => connIds.add(id));
+                nodes.forEach(n => {
+                  if (n.secondaryLinks && n.secondaryLinks.includes(hoveredNode.id)) {
+                    connIds.add(n.id);
+                  }
+                });
+
+                if (connIds.size > 0) {
+                  const connNodes = Array.from(connIds)
+                    .map(id => nodes.find(n => n.id === id))
+                    .filter(Boolean);
+
+                  if (connNodes.length > 0) {
+                    return (
+                      <div className="flex flex-col gap-1 border-t border-white/5 pt-1.5 mt-0.5">
+                        <span className={`text-[7px] font-bold uppercase tracking-wider ${mutedColor}`}>
+                          Connections ({connNodes.length})
+                        </span>
+                        <div className="flex flex-wrap gap-1 max-h-[80px] overflow-y-auto pr-1">
+                          {connNodes.map(cn => (
+                            <span
+                              key={cn.id}
+                              className="px-1 py-0.5 rounded border text-[7.5px] font-bold truncate max-w-[190px]"
+                              style={{
+                                color:           (ENTITY_TYPES[cn.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color,
+                                borderColor:     `${(ENTITY_TYPES[cn.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color}30`,
+                                backgroundColor: `${(ENTITY_TYPES[cn.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color}10`,
+                              }}
+                            >
+                              {cn.title}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
+                }
+                return null;
               })()}
               <p className={`text-[9.5px] leading-normal font-medium ${mutedColor}`}>
                 {getShortSummary(hoveredNode.content?.['Definition Summary']) || hoveredNode.content?.Summary || 'Hierarchy category branch.'}
