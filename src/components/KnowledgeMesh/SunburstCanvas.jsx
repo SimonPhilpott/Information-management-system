@@ -445,15 +445,15 @@ export const SunburstCanvas = ({
 
     // ── Step 2: assign initial angle and radius for each unique external node
     // Align each external node with the radial angle of its primary slice
-    // but nudge it away from the cardinal axes (0, 90, 180, 270 degrees) to prevent text overlap.
+    // but nudge it away from the horizontal axes (0 and PI) to prevent horizontal text overlap.
     const placed = Object.values(nodeMap).map(({ node, slices }) => {
       const primarySlice = slices[0];
       let angle = (primarySlice.startAngle + primarySlice.endAngle) / 2;
 
-      // Force angle to be diagonal, at least 0.28 radians (~16 degrees) away from the 4 main axes
+      // Force angle to be at least 0.28 radians (~16 degrees) away from horizontal axes (0, PI, 2*PI)
       angle = (angle + 2 * Math.PI) % (2 * Math.PI);
-      const axes = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2, 2 * Math.PI];
-      axes.forEach(axis => {
+      const horizAxes = [0, Math.PI, 2 * Math.PI];
+      horizAxes.forEach(axis => {
         if (Math.abs(angle - axis) < 0.28) {
           if (angle >= axis) {
             angle = axis + 0.28;
@@ -474,7 +474,7 @@ export const SunburstCanvas = ({
     const FONT_PX  = 9;
     const CHAR_W   = FONT_PX * 0.56;
     const LABEL_H  = FONT_PX * 1.4;  // one line height
-    const PAD      = 12;              // increased gap between connection text
+    const PAD      = 12;              // gap between connection text
 
     const labelBox = (p) => {
       const w = p.node.title.length * CHAR_W + PAD * 2;
@@ -529,10 +529,9 @@ export const SunburstCanvas = ({
     const connections = [];
     placed.forEach(p => {
       p.slices.forEach(slice => {
-        // Line originates from the outer edge of the actual slice at its own sliceAngle
-        const sliceAngle = (slice.startAngle + slice.endAngle) / 2;
-        const sliceX = cx + (maxR + 6) * Math.cos(sliceAngle);
-        const sliceY = cy + (maxR + 6) * Math.sin(sliceAngle);
+        // Line originates from the outer edge of the sunburst at p.angle to run radially and not cross slice labels
+        const sliceX = cx + (maxR + 6) * Math.cos(p.angle);
+        const sliceY = cy + (maxR + 6) * Math.sin(p.angle);
 
         connections.push({
           id:     `ext-${slice.id}-${p.node.id}`,
