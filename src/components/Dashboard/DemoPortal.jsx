@@ -96,6 +96,13 @@ export default function DemoPortal({
     }
   };
 
+  // Local state for nodes so updates in the editor are reflected instantly
+  const [localNodes, setLocalNodes] = useState(nodes);
+  
+  useEffect(() => {
+    setLocalNodes(nodes);
+  }, [nodes]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBetaNodeId, setSelectedBetaNodeId] = useState('srv_pm');
   const [betaSearchQuery, setBetaSearchQuery] = useState('');
@@ -183,12 +190,7 @@ export default function DemoPortal({
     }
   };
 
-  // Local state for nodes so updates in the editor are reflected instantly
-  const [localNodes, setLocalNodes] = useState(nodes);
-  
-  useEffect(() => {
-    setLocalNodes(nodes);
-  }, [nodes]);
+
 
   useEffect(() => {
     if (!betaSearchQuery.trim()) return;
