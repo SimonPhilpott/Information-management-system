@@ -450,7 +450,15 @@ export const SunburstCanvas = ({
       // Circular mean to handle wraparound correctly
       const sinSum = midAngles.reduce((a, t) => a + Math.sin(t), 0);
       const cosSum = midAngles.reduce((a, t) => a + Math.cos(t), 0);
-      const angle  = Math.atan2(sinSum / midAngles.length, cosSum / midAngles.length);
+      let angle  = Math.atan2(sinSum / midAngles.length, cosSum / midAngles.length);
+
+      // Nudge angle away from horizontal axis (0 and PI) to prevent overlapping stacked text labels
+      const HORIZ_THRESHOLD = 0.25; // ~14 degrees
+      if (Math.abs(angle) < HORIZ_THRESHOLD) {
+        angle = angle >= 0 ? HORIZ_THRESHOLD : -HORIZ_THRESHOLD;
+      } else if (Math.PI - Math.abs(angle) < HORIZ_THRESHOLD) {
+        angle = angle >= 0 ? Math.PI - HORIZ_THRESHOLD : -(Math.PI - HORIZ_THRESHOLD);
+      }
 
       return { node, slices, angle, radius: BASE_R };
     });
@@ -512,10 +520,10 @@ export const SunburstCanvas = ({
     const connections = [];
     placed.forEach(p => {
       p.slices.forEach(slice => {
-        const { r1 } = getRadius(slice.depth);
         const sliceAngle = (slice.startAngle + slice.endAngle) / 2;
-        const sliceX = cx + r1 * Math.cos(sliceAngle);
-        const sliceY = cy + r1 * Math.sin(sliceAngle);
+        // Start lines from the outer radius of the outermost ring (maxR + 6) to avoid crossing any node text
+        const sliceX = cx + (maxR + 6) * Math.cos(sliceAngle);
+        const sliceY = cy + (maxR + 6) * Math.sin(sliceAngle);
 
         connections.push({
           id:     `ext-${slice.id}-${p.node.id}`,
