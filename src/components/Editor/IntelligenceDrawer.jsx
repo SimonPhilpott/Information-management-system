@@ -138,7 +138,7 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
       let bestMatch = null;
 
       nodes.forEach(node => {
-        if (!node.title || activeTags.includes(node.title) || ignoredNodeIds.includes(node.id)) return;
+        if (!node.title) return;
         
         const escapedTitle = escapeRegExp(node.title);
         const regex = new RegExp(`(?<![\\w\\d])${escapedTitle}(?![\\w\\d])`, 'i');
@@ -522,7 +522,9 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
         const textNode = document.createTextNode(node.title);
         tagSpan.replaceWith(textNode);
         
-        onToggleConnection(id);
+        // We do NOT call onToggleConnection(id) directly here!
+        // The useEffect will automatically clean up the taggerLinks
+        // when value updates if there are no more active tags with this id.
         
         const newRaw = toRawText(editorRef.current.innerHTML);
         isLocalChange.current = false; // Force re-run toHTML to highlight!
@@ -536,7 +538,9 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
         const color = ENTITY_TYPES[node.type]?.color || '#fff';
         const typeLabel = ENTITY_TYPES[node.type]?.label || 'Entity';
         
-        onToggleConnection(id);
+        if (!currentSecondaryLinks.includes(id)) {
+          onToggleConnection(id);
+        }
         
         tagSpan.className = 'inline-tag active-tag';
         tagSpan.setAttribute('data-id', id);
@@ -559,7 +563,9 @@ export const RichTaggingEditor = ({ value, onChange, nodes, onToggleConnection, 
         const color = ENTITY_TYPES[node.type]?.color || '#fff';
         const typeLabel = ENTITY_TYPES[node.type]?.label || 'Entity';
         
-        onToggleConnection(id);
+        if (!currentSecondaryLinks.includes(id)) {
+          onToggleConnection(id);
+        }
         
         tagSpan.className = 'inline-tag active-tag';
         tagSpan.setAttribute('data-id', id);
