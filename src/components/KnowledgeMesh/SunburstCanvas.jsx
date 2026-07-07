@@ -529,11 +529,10 @@ export const SunburstCanvas = ({
     const connections = [];
     placed.forEach(p => {
       p.slices.forEach(slice => {
-        // Line originates exactly at the outermost edge of the sunburst circle (maxR) at the slice's center angle
-        // to prevent lines from cutting through inner slices and overlapping inner text
-        const sliceAngle = (slice.startAngle + slice.endAngle) / 2;
-        const sliceX = cx + maxR * Math.cos(sliceAngle);
-        const sliceY = cy + maxR * Math.sin(sliceAngle);
+        // Line originates exactly at the outermost edge of the sunburst circle (maxR) at the label placement angle
+        // to ensure the line runs perfectly straight radially and reaches each outer node in the stack
+        const sliceX = cx + maxR * Math.cos(p.angle);
+        const sliceY = cy + maxR * Math.sin(p.angle);
 
         connections.push({
           id:     `ext-${slice.id}-${p.node.id}`,
