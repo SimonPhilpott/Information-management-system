@@ -372,49 +372,100 @@ export const AdminPanel = ({
             <AnimatePresence mode="wait">
               {activeTab === 'spatial' ? (
                  <motion.div key="spatial-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-[var(--text-secondary)] space-y-6 text-sm leading-relaxed pb-20">
-                    <div className="bg-[var(--accent-cyan)]/5 border border-[var(--accent-cyan)]/20 rounded-xl p-6">
-                       <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2 italic tracking-tight">IMS Volumetric Architecture</h3>
-                       <p className="text-[var(--accent-cyan)]/80">Designing a 3D space for plotting radial relationship diagrams involves moving away from the traditional Cartesian grid (X, Y, Z) and instead thinking in terms of spherical coordinates and hierarchical orbits.</p>
-                       <p className="mt-4">In this kind of visualization—often referred to as a 3D radial tree or a 3D force-directed graph—the structural layout is built around a central focal point, and relationships radiate outward in three dimensions.</p>
+                    <div className="bg-[var(--accent-cyan)]/5 border border-[var(--accent-cyan)]/25 rounded-xl p-6">
+                       <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2 italic tracking-tight">IMS Graph Engine: Spatial Physics & Layout Variables</h3>
+                       <p className="text-[var(--accent-cyan)]/90">
+                         The Information Management System utilizes a multi-projection spatial layout engine to structure complex relational data. By mapping hierarchical entities to force-directed coordinate grids, concentric spheres, and radial sunburst orbits, the system translates mathematical relationship matrices into clean visual spaces.
+                       </p>
                     </div>
 
                     <div className="space-y-6 pl-2 pr-4">
                        <div>
-                          <h4 className="text-md font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-[var(--accent-cyan)] rounded-full"/>1. The Coordinate System: Spherical Geometry</h4>
-                          <p className="mb-2">To plot items radially in 3D space, you calculate their positions using three values:</p>
-                          <ul className="list-disc pl-6 space-y-2 text-[var(--text-secondary)]">
-                             <li><strong className="text-[var(--text-primary)]">Radius (r):</strong> The distance from the center. In a relationship diagram, the radius typically represents the hierarchical depth or "degrees of separation" from the central topic.</li>
-                             <li><strong className="text-[var(--text-primary)]">Polar Angle:</strong> The vertical tilt (like latitude on a globe).</li>
-                             <li><strong className="text-[var(--text-primary)]">Azimuthal Angle (f):</strong> The horizontal rotation around the center (like longitude on a globe).</li>
-                          </ul>
-                          <p className="mt-3 text-[var(--text-muted)]">By translating these spherical coordinates back into 3D space, you form concentric, invisible "shells" or spheres around the origin where your data points will live.</p>
+                          <h4 className="text-md font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-[var(--accent-cyan)] rounded-full"/>1. Layout Control Variables (How the Graph is Structured)</h4>
+                          <p className="mb-3">The layout rules can be adjusted live in the database config or panel controls. Here is a breakdown of the key mathematical variables and what they govern in human language:</p>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                             <div className="p-4 bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-xl space-y-1.5">
+                                <code className="text-xs text-[var(--accent-cyan)] font-bold font-mono">parentDistance (d)</code>
+                                <div className="text-[9px] font-black uppercase text-[var(--text-muted)] tracking-wider">Default: 700px</div>
+                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                                  <strong>Parent-to-Child Depth:</strong> This sets the radial distance between successive levels in the hierarchy. Higher values push child nodes further out from their parent nodes, creating spacious, expansive layers. Lower values compact the orbits into tighter concentric rings.
+                                </p>
+                             </div>
+
+                             <div className="p-4 bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-xl space-y-1.5">
+                                <code className="text-xs text-[var(--accent-cyan)] font-bold font-mono">childGap (g)</code>
+                                <div className="text-[9px] font-black uppercase text-[var(--text-muted)] tracking-wider">Default: 60px</div>
+                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                                  <strong>Angular Spread/Spacing:</strong> This controls the angular margin or gap buffer between sibling nodes at the same level. A higher child gap forces sibling branches apart to prevent overlap, while a lower child gap allows siblings to sit closer together in dense clusters.
+                                </p>
+                             </div>
+
+                             <div className="p-4 bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-xl space-y-1.5">
+                                <code className="text-xs text-[var(--accent-cyan)] font-bold font-mono">connectionTension (t)</code>
+                                <div className="text-[9px] font-black uppercase text-[var(--text-muted)] tracking-wider">Default: 60%</div>
+                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                                  <strong>Bezier Curve Stiffness:</strong> Governs the tension of the relationship lines connecting nodes. At <code className="font-mono text-[10px]">100%</code>, lines are straight. Lowering the percentage adds slack, causing lines to bend as smooth Bezier arcs. Lower values enhance aesthetics in 3D views by curving paths around concentric surfaces, preventing them from clipping through the central hub.
+                                </p>
+                             </div>
+
+                             <div className="p-4 bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-xl space-y-1.5">
+                                <code className="text-xs text-[var(--accent-cyan)] font-bold font-mono">siblingMultiplier (s)</code>
+                                <div className="text-[9px] font-black uppercase text-[var(--text-muted)] tracking-wider">Default: 0.32</div>
+                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                                  <strong>Sibling Spacing Scalar:</strong> Multiplies the spatial allocation reserved for adjacent nodes under the same parent. This acts as a lateral elastic repeller to ensure text labels and node dots have sufficient breathing room to remain readable in dense radial sectors.
+                                </p>
+                             </div>
+
+                             <div className="p-4 bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-xl space-y-1.5">
+                                <code className="text-xs text-[var(--accent-cyan)] font-bold font-mono">directionalLocking</code>
+                                <div className="text-[9px] font-black uppercase text-[var(--text-muted)] tracking-wider">Default: True</div>
+                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                                  <strong>Path Stabilization:</strong> Restricts node drift to their computed branch vector. When enabled, nodes remain locked in a structured radial ray; when disabled, the physics engine permits branches to float and sway dynamically in response to mouse interactions.
+                                </p>
+                             </div>
+
+                             <div className="p-4 bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-xl space-y-1.5">
+                                <code className="text-xs text-[var(--accent-cyan)] font-bold font-mono">unifiedSyncPoints</code>
+                                <div className="text-[9px] font-black uppercase text-[var(--text-muted)] tracking-wider">Default: True</div>
+                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                                  <strong>Route Consolidation:</strong> Merges multiple external relationship paths originating from a single node into a shared, overlapping trajectory. This eliminates chaotic criss-crossing lines by forcing connections to follow clean, unified routes.
+                                </p>
+                             </div>
+                          </div>
                        </div>
 
                        <div>
-                          <h4 className="text-md font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-[var(--accent-cyan)] rounded-full"/>2. Plotting the Entities (Nodes)</h4>
-                          <ul className="list-disc pl-6 space-y-2 text-[var(--text-secondary)]">
-                             <li><strong className="text-[var(--text-primary)]">The Central Hub:</strong> The core concept or root node is plotted at the exact origin of the 3D space <code className="bg-[var(--bg-elevated)] border border-[var(--glass-border)] px-1.5 py-0.5 rounded font-mono text-[var(--text-primary)]">0, 0, 0</code>.</li>
-                             <li><strong className="text-[var(--text-primary)]">Concentric Layers:</strong> First-degree connections are plotted on the smallest inner sphere. Second-degree connections are plotted on a larger, outer sphere, and so on.</li>
-                             <li><strong className="text-[var(--text-primary)]">Spatial Distribution:</strong> To prevent nodes from overlapping on these spherical shells, algorithms (like the Fibonacci lattice or force-directed repulsion) are used to evenly distribute the points across the surface area of their respective orbital layers.</li>
+                          <h4 className="text-md font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-[var(--accent-cyan)] rounded-full"/>2. Spherical & Radial Math (How Coordinates are Calculated)</h4>
+                          <p className="mb-3">To build a three-dimensional radial graph, the coordinate system uses Spherical Geometry. Nodes are first calculated in spherical coords <code className="font-mono text-xs">(r, θ, φ)</code> and then translated into Cartesian coordinates <code className="font-mono text-xs">(x, y, z)</code> for screen rendering:</p>
+                          <ul className="list-disc pl-6 space-y-3 text-[var(--text-secondary)]">
+                             <li>
+                               <strong>Radius (r):</strong> Calculated as <code className="font-mono text-xs">depth * parentDistance</code>. This positions layers on concentric, nested spherical shells.
+                             </li>
+                             <li>
+                               <strong>Polar Angle (θ - vertical tilt):</strong> Distributed evenly from <code className="font-mono text-xs">0</code> (north pole) to <code className="font-mono text-xs">π</code> (south pole) to fan branches vertically.
+                             </li>
+                             <li>
+                               <strong>Azimuthal Angle (φ - horizontal rotation):</strong> Distributed around the center from <code className="font-mono text-xs">0</code> to <code className="font-mono text-xs">2π</code> based on the node's sibling index and the <code className="font-mono text-xs">childGap</code> setting.
+                             </li>
+                             <li>
+                               <strong>Translation Formula:</strong>
+                               <div className="bg-black/30 p-3 rounded-lg border border-[var(--glass-border)] font-mono text-[10px] my-2 text-[var(--accent-cyan)] space-y-1">
+                                  <div>X = r * sin(θ) * cos(φ)</div>
+                                  <div>Y = r * sin(θ) * sin(φ)</div>
+                                  <div>Z = r * cos(θ)</div>
+                               </div>
+                               This formula projects nodes onto a spherical boundary, distributing them evenly in a sphere rather than forcing them onto a flat, overlapping pane.
+                             </li>
                           </ul>
                        </div>
 
                        <div>
-                          <h4 className="text-md font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-[var(--accent-cyan)] rounded-full"/>3. Plotting the Relationships (Connecting Lines)</h4>
-                          <p className="mb-2">Connecting lines (edges) are crucial for showing the web of relationships. In a 3D space, plotting lines requires specific techniques to avoid visual clutter:</p>
+                          <h4 className="text-md font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-[var(--accent-cyan)] rounded-full"/>3. Curved Relationship Links & Tension Logic</h4>
+                          <p className="mb-2">Drawing straight lines through a spherical diagram creates a chaotic cluster at the core. The engine uses Quadratic and Cubic Bezier curves to route lines along outer boundaries:</p>
                           <ul className="list-disc pl-6 space-y-2 text-[var(--text-secondary)]">
-                             <li><strong className="text-[var(--text-primary)]">Hierarchical Links:</strong> These lines connect the central hub to the first layer, and the first layer to the second layer. They form the "spokes" of the radial design.</li>
-                             <li><strong className="text-[var(--text-primary)]">Lateral Links:</strong> These lines connect nodes that exist on the same spherical layer (e.g., two related sub-topics that share the same parent).</li>
-                             <li><strong className="text-[var(--text-primary)]">Arcing versus Straight Lines:</strong> While straight lines are computationally cheaper, 3D diagrams often use Bezier curves (arcing lines) for connections. If you draw straight lines between two nodes on opposite sides of a sphere, the line cuts right through the center, creating a messy core. Arcing the lines so they curve along the surface of the imaginary sphere keeps the center hollow and readable.</li>
-                          </ul>
-                       </div>
-
-                       <div>
-                          <h4 className="text-md font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-[var(--accent-cyan)] rounded-full"/>4. Navigational Mechanics</h4>
-                          <p className="mb-2">Because 3D space suffers from occlusion (nodes in the front blocking nodes in the back), the space must inherently support interaction:</p>
-                          <ul className="list-disc pl-6 space-y-2 text-[var(--text-secondary)]">
-                             <li><strong className="text-[var(--text-primary)]">Orbit Controls:</strong> The camera must be able to pan and rotate 360 degrees around the central origin.</li>
-                             <li><strong className="text-[var(--text-primary)]">Depth Filtering:</strong> The ability to hide outer layers or fade out unselected branches, allowing the user to focus on a specific structural path without getting overwhelmed by the "hairball" effect of too many crossing lines.</li>
+                             <li><strong>Bezier Interpolation:</strong> Points along the curve are interpolated using a control point pulled outward radially. The control point's distance is scaled directly by the <code className="font-mono text-xs">connectionTension</code> variable.</li>
+                             <li><strong>Tension Dampening:</strong> High tension pulls the control point closer to the direct line path, tightening the curve. Low tension pushes the control point away, bowing the curve outward into a sweeping orbit. This ensures connection lines follow the contours of the layout rather than clipping through node text and unrelated layers.</li>
                           </ul>
                        </div>
                     </div>
