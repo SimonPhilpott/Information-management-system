@@ -102,6 +102,12 @@ export const AdminPanel = ({
   });
   const [isTunnelActionLoading, setIsTunnelActionLoading] = useState(false);
 
+  // Spatial Simulator Playground states
+  const [pgParentDistance, setPgParentDistance] = useState(65);
+  const [pgChildGap, setPgChildGap] = useState(45);
+  const [pgSiblingMultiplier, setPgSiblingMultiplier] = useState(0.35);
+  const [pgConnectionTension, setPgConnectionTension] = useState(60);
+
   useEffect(() => {
     if (!isOpen || activeTab !== 'sharing') return;
 
@@ -373,100 +379,233 @@ export const AdminPanel = ({
               {activeTab === 'spatial' ? (
                  <motion.div key="spatial-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-[var(--text-secondary)] space-y-6 text-sm leading-relaxed pb-20">
                     <div className="bg-[var(--accent-cyan)]/5 border border-[var(--accent-cyan)]/25 rounded-xl p-6">
-                       <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2 italic tracking-tight">IMS Graph Engine: Spatial Physics & Layout Variables</h3>
+                       <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2 italic tracking-tight">IMS Graph Engine: Spatial Physics & Layout Simulator</h3>
                        <p className="text-[var(--accent-cyan)]/90">
-                         The Information Management System utilizes a multi-projection spatial layout engine to structure complex relational data. By mapping hierarchical entities to force-directed coordinate grids, concentric spheres, and radial sunburst orbits, the system translates mathematical relationship matrices into clean visual spaces.
+                         This interactive playground simulates the layout physics of the multi-projection spatial engines. Adjust the sliders below to visualize how the coordinate system transforms spherical orbits, distributes sibling nodes, and shapes connection tension curves.
                        </p>
                     </div>
 
-                    <div className="space-y-6 pl-2 pr-4">
-                       <div>
-                          <h4 className="text-md font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-[var(--accent-cyan)] rounded-full"/>1. Layout Control Variables (How the Graph is Structured)</h4>
-                          <p className="mb-3">The layout rules can be adjusted live in the database config or panel controls. Here is a breakdown of the key mathematical variables and what they govern in human language:</p>
+                    <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start pl-2 pr-4">
+                       {/* LEFT PANEL: Variables, Sliders & Math */}
+                       <div className="xl:col-span-6 space-y-6">
                           
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                             <div className="p-4 bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-xl space-y-1.5">
-                                <code className="text-xs text-[var(--accent-cyan)] font-bold font-mono">parentDistance (d)</code>
-                                <div className="text-[9px] font-black uppercase text-[var(--text-muted)] tracking-wider">Default: 700px</div>
-                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                                  <strong>Parent-to-Child Depth:</strong> This sets the radial distance between successive levels in the hierarchy. Higher values push child nodes further out from their parent nodes, creating spacious, expansive layers. Lower values compact the orbits into tighter concentric rings.
+                          {/* Interactive Sliders */}
+                          <div className="p-6 bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-2xl space-y-6">
+                             <h4 className="text-xs font-black uppercase tracking-widest text-[var(--text-primary)] border-b border-[var(--glass-border)] pb-2 flex items-center gap-2">
+                                <Zap size={12} className="text-[var(--accent-cyan)]" /> Layout Physics Controls
+                             </h4>
+
+                             {/* Slider: Parent Distance */}
+                             <div className="space-y-2">
+                                <div className="flex justify-between items-center text-xs">
+                                   <span className="font-bold text-[var(--text-primary)] font-mono">parentDistance (d)</span>
+                                   <span className="text-[var(--accent-cyan)] font-mono font-bold bg-[var(--accent-cyan)]/10 px-2 py-0.5 rounded">{pgParentDistance}px</span>
+                                </div>
+                                <input 
+                                   type="range" 
+                                   min="30" 
+                                   max="120" 
+                                   value={pgParentDistance} 
+                                   onChange={(e) => setPgParentDistance(Number(e.target.value))}
+                                   className="w-full h-1 bg-[var(--glass-border)] rounded-lg appearance-none cursor-pointer accent-[var(--accent-cyan)] outline-none"
+                                />
+                                <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
+                                   Governs the radial distance (orbital depth) between hierarchical levels (Root → Level 1 → Level 2).
                                 </p>
                              </div>
 
-                             <div className="p-4 bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-xl space-y-1.5">
-                                <code className="text-xs text-[var(--accent-cyan)] font-bold font-mono">childGap (g)</code>
-                                <div className="text-[9px] font-black uppercase text-[var(--text-muted)] tracking-wider">Default: 60px</div>
-                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                                  <strong>Angular Spread/Spacing:</strong> This controls the angular margin or gap buffer between sibling nodes at the same level. A higher child gap forces sibling branches apart to prevent overlap, while a lower child gap allows siblings to sit closer together in dense clusters.
+                             {/* Slider: Child Gap */}
+                             <div className="space-y-2">
+                                <div className="flex justify-between items-center text-xs">
+                                   <span className="font-bold text-[var(--text-primary)] font-mono">childGap (g)</span>
+                                   <span className="text-[var(--accent-cyan)] font-mono font-bold bg-[var(--accent-cyan)]/10 px-2 py-0.5 rounded">{pgChildGap}°</span>
+                                </div>
+                                <input 
+                                   type="range" 
+                                   min="15" 
+                                   max="90" 
+                                   value={pgChildGap} 
+                                   onChange={(e) => setPgChildGap(Number(e.target.value))}
+                                   className="w-full h-1 bg-[var(--glass-border)] rounded-lg appearance-none cursor-pointer accent-[var(--accent-cyan)] outline-none"
+                                />
+                                <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
+                                   Governs the baseline angular sector separation (degrees) between sibling nodes under the same parent.
                                 </p>
                              </div>
 
-                             <div className="p-4 bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-xl space-y-1.5">
-                                <code className="text-xs text-[var(--accent-cyan)] font-bold font-mono">connectionTension (t)</code>
-                                <div className="text-[9px] font-black uppercase text-[var(--text-muted)] tracking-wider">Default: 60%</div>
-                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                                  <strong>Bezier Curve Stiffness:</strong> Governs the tension of the relationship lines connecting nodes. At <code className="font-mono text-[10px]">100%</code>, lines are straight. Lowering the percentage adds slack, causing lines to bend as smooth Bezier arcs. Lower values enhance aesthetics in 3D views by curving paths around concentric surfaces, preventing them from clipping through the central hub.
+                             {/* Slider: Sibling Multiplier */}
+                             <div className="space-y-2">
+                                <div className="flex justify-between items-center text-xs">
+                                   <span className="font-bold text-[var(--text-primary)] font-mono">siblingMultiplier (s)</span>
+                                   <span className="text-[var(--accent-cyan)] font-mono font-bold bg-[var(--accent-cyan)]/10 px-2 py-0.5 rounded">{(pgSiblingMultiplier).toFixed(2)}x</span>
+                                </div>
+                                <input 
+                                   type="range" 
+                                   min="10" 
+                                   max="80" 
+                                   value={pgSiblingMultiplier * 100} 
+                                   onChange={(e) => setPgSiblingMultiplier(Number(e.target.value) / 100)}
+                                   className="w-full h-1 bg-[var(--glass-border)] rounded-lg appearance-none cursor-pointer accent-[var(--accent-cyan)] outline-none"
+                                />
+                                <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
+                                   Governs the lateral repelling scalar to expand angular distance for dense sibling nodes, preventing overlapping.
                                 </p>
                              </div>
 
-                             <div className="p-4 bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-xl space-y-1.5">
-                                <code className="text-xs text-[var(--accent-cyan)] font-bold font-mono">siblingMultiplier (s)</code>
-                                <div className="text-[9px] font-black uppercase text-[var(--text-muted)] tracking-wider">Default: 0.32</div>
-                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                                  <strong>Sibling Spacing Scalar:</strong> Multiplies the spatial allocation reserved for adjacent nodes under the same parent. This acts as a lateral elastic repeller to ensure text labels and node dots have sufficient breathing room to remain readable in dense radial sectors.
-                                </p>
-                             </div>
-
-                             <div className="p-4 bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-xl space-y-1.5">
-                                <code className="text-xs text-[var(--accent-cyan)] font-bold font-mono">directionalLocking</code>
-                                <div className="text-[9px] font-black uppercase text-[var(--text-muted)] tracking-wider">Default: True</div>
-                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                                  <strong>Path Stabilization:</strong> Restricts node drift to their computed branch vector. When enabled, nodes remain locked in a structured radial ray; when disabled, the physics engine permits branches to float and sway dynamically in response to mouse interactions.
-                                </p>
-                             </div>
-
-                             <div className="p-4 bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-xl space-y-1.5">
-                                <code className="text-xs text-[var(--accent-cyan)] font-bold font-mono">unifiedSyncPoints</code>
-                                <div className="text-[9px] font-black uppercase text-[var(--text-muted)] tracking-wider">Default: True</div>
-                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                                  <strong>Route Consolidation:</strong> Merges multiple external relationship paths originating from a single node into a shared, overlapping trajectory. This eliminates chaotic criss-crossing lines by forcing connections to follow clean, unified routes.
+                             {/* Slider: Connection Tension */}
+                             <div className="space-y-2">
+                                <div className="flex justify-between items-center text-xs">
+                                   <span className="font-bold text-[var(--text-primary)] font-mono">connectionTension (t)</span>
+                                   <span className="text-[var(--accent-cyan)] font-mono font-bold bg-[var(--accent-cyan)]/10 px-2 py-0.5 rounded">{pgConnectionTension}%</span>
+                                </div>
+                                <input 
+                                   type="range" 
+                                   min="0" 
+                                   max="100" 
+                                   value={pgConnectionTension} 
+                                   onChange={(e) => setPgConnectionTension(Number(e.target.value))}
+                                   className="w-full h-1 bg-[var(--glass-border)] rounded-lg appearance-none cursor-pointer accent-[var(--accent-cyan)] outline-none"
+                                />
+                                <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
+                                   Stiffness of relation links. 100% is straight, lower percentages bow curves into elegant Bezier arcs.
                                 </p>
                              </div>
                           </div>
+
+                          {/* Coordinate Math HUD */}
+                          <div className="p-6 bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-2xl space-y-4">
+                             <h4 className="text-xs font-black uppercase tracking-widest text-[var(--text-primary)] border-b border-[var(--glass-border)] pb-2">
+                                Spherical Coordinate Translation Formula
+                             </h4>
+                             <p className="text-xs text-[var(--text-secondary)]">
+                                In 3D space, coordinates are mapped using spherical tilts and horizontal spins, then projected into Cartesian space:
+                             </p>
+                             <div className="bg-black/40 p-4 rounded-xl border border-[var(--glass-border)] font-mono text-[10px] text-[var(--accent-cyan)] space-y-2">
+                                <div>r = depth * parentDistance <span className="text-[var(--text-muted)]">// Depth level radius</span></div>
+                                <div>X = r * sin(θ) * cos(φ)</div>
+                                <div>Y = r * sin(θ) * sin(φ)</div>
+                                <div>Z = r * cos(θ)</div>
+                             </div>
+                          </div>
+
                        </div>
 
-                       <div>
-                          <h4 className="text-md font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-[var(--accent-cyan)] rounded-full"/>2. Spherical & Radial Math (How Coordinates are Calculated)</h4>
-                          <p className="mb-3">To build a three-dimensional radial graph, the coordinate system uses Spherical Geometry. Nodes are first calculated in spherical coords <code className="font-mono text-xs">(r, θ, φ)</code> and then translated into Cartesian coordinates <code className="font-mono text-xs">(x, y, z)</code> for screen rendering:</p>
-                          <ul className="list-disc pl-6 space-y-3 text-[var(--text-secondary)]">
-                             <li>
-                               <strong>Radius (r):</strong> Calculated as <code className="font-mono text-xs">depth * parentDistance</code>. This positions layers on concentric, nested spherical shells.
-                             </li>
-                             <li>
-                               <strong>Polar Angle (θ - vertical tilt):</strong> Distributed evenly from <code className="font-mono text-xs">0</code> (north pole) to <code className="font-mono text-xs">π</code> (south pole) to fan branches vertically.
-                             </li>
-                             <li>
-                               <strong>Azimuthal Angle (φ - horizontal rotation):</strong> Distributed around the center from <code className="font-mono text-xs">0</code> to <code className="font-mono text-xs">2π</code> based on the node's sibling index and the <code className="font-mono text-xs">childGap</code> setting.
-                             </li>
-                             <li>
-                               <strong>Translation Formula:</strong>
-                               <div className="bg-black/30 p-3 rounded-lg border border-[var(--glass-border)] font-mono text-[10px] my-2 text-[var(--accent-cyan)] space-y-1">
-                                  <div>X = r * sin(θ) * cos(φ)</div>
-                                  <div>Y = r * sin(θ) * sin(φ)</div>
-                                  <div>Z = r * cos(θ)</div>
-                               </div>
-                               This formula projects nodes onto a spherical boundary, distributing them evenly in a sphere rather than forcing them onto a flat, overlapping pane.
-                             </li>
-                          </ul>
-                       </div>
+                       {/* RIGHT PANEL: Interactive SVG Simulator Canvas */}
+                       <div className="xl:col-span-6 space-y-4">
+                          <div className="p-4 bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-2xl flex flex-col justify-between items-center relative overflow-hidden h-[540px] bg-radial-gradient">
+                             {/* Floating HUD info */}
+                             <div className="absolute top-4 left-4 z-10 p-3 bg-black/60 border border-[var(--glass-border)] rounded-xl backdrop-blur-md pointer-events-none space-y-1.5 font-mono text-[9px] text-[var(--text-secondary)]">
+                                <div className="text-[var(--accent-cyan)] font-bold uppercase tracking-wider text-[10px] mb-1">Simulator HUD</div>
+                                <div>Radial Spread Angle: <span className="text-white font-bold">{pgChildGap}°</span></div>
+                                <div>Tension Stiffness: <span className="text-white font-bold">{(pgConnectionTension / 100).toFixed(2)}</span></div>
+                                <div>Math Mode: <span className="text-[var(--accent-cyan)]">Bezier Orthogonal</span></div>
+                             </div>
 
-                       <div>
-                          <h4 className="text-md font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-[var(--accent-cyan)] rounded-full"/>3. Curved Relationship Links & Tension Logic</h4>
-                          <p className="mb-2">Drawing straight lines through a spherical diagram creates a chaotic cluster at the core. The engine uses Quadratic and Cubic Bezier curves to route lines along outer boundaries:</p>
-                          <ul className="list-disc pl-6 space-y-2 text-[var(--text-secondary)]">
-                             <li><strong>Bezier Interpolation:</strong> Points along the curve are interpolated using a control point pulled outward radially. The control point's distance is scaled directly by the <code className="font-mono text-xs">connectionTension</code> variable.</li>
-                             <li><strong>Tension Dampening:</strong> High tension pulls the control point closer to the direct line path, tightening the curve. Low tension pushes the control point away, bowing the curve outward into a sweeping orbit. This ensures connection lines follow the contours of the layout rather than clipping through node text and unrelated layers.</li>
-                          </ul>
+                             {/* SVG Canvas Simulator */}
+                             <svg viewBox="-250 -250 500 500" className="w-full h-full select-none cursor-grab active:cursor-grabbing">
+                                {/* Grid rings */}
+                                <circle cx="0" cy="0" r={pgParentDistance} fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="1" strokeDasharray="3,3" />
+                                <circle cx="0" cy="0" r={pgParentDistance * 2} fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="1" strokeDasharray="3,3" />
+
+                                {/* Render Connection Lines first (so nodes stack on top) */}
+                                {(() => {
+                                   const renderBezierLink = (x1, y1, x2, y2) => {
+                                      if (pgConnectionTension === 100) {
+                                         return <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--accent-cyan)" strokeWidth="1.5" strokeOpacity="0.4" strokeDasharray="3,3" />;
+                                      }
+                                      // Compute Bezier control point based on connection tension
+                                      const mx = (x1 + x2) / 2;
+                                      const my = (y1 + y2) / 2;
+                                      
+                                      // Project control point outwards orthogonally
+                                      const dx = x2 - x1;
+                                      const dy = y2 - y1;
+                                      const len = Math.sqrt(dx*dx + dy*dy);
+                                      const ux = -dy / (len || 1);
+                                      const uy = dx / (len || 1);
+                                      
+                                      const tensionFactor = (100 - pgConnectionTension) * 0.45;
+                                      const cx = mx + ux * tensionFactor;
+                                      const cy = my + uy * tensionFactor;
+
+                                      return <path d={`M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`} fill="none" stroke="var(--accent-cyan)" strokeWidth="1.5" strokeOpacity="0.55" strokeDasharray="3,3" />;
+                                   };
+
+                                   // Root (0,0) -> Level 1 (3 children)
+                                   const links = [];
+                                   const l1Count = 3;
+                                   const l2Count = 2; // grandchildren per child
+
+                                   for (let i = 0; i < l1Count; i++) {
+                                      // Level 1 positions
+                                      const angle1 = (i * 120 * Math.PI) / 180;
+                                      const x1 = pgParentDistance * Math.cos(angle1);
+                                      const y1 = pgParentDistance * Math.sin(angle1);
+                                      
+                                      links.push(renderBezierLink(0, 0, x1, y1));
+
+                                      // Level 2 (grandchildren fanning from level 1)
+                                      for (let j = 0; j < l2Count; j++) {
+                                         const fanOffset = (j === 0 ? -1 : 1) * pgChildGap * (1 + pgSiblingMultiplier) * Math.PI / 180;
+                                         const angle2 = angle1 + fanOffset;
+                                         const x2 = (pgParentDistance * 2) * Math.cos(angle2);
+                                         const y2 = (pgParentDistance * 2) * Math.sin(angle2);
+
+                                         links.push(renderBezierLink(x1, y1, x2, y2));
+                                      }
+                                   }
+                                   return links;
+                                })()}
+
+                                {/* Render Nodes & Labels */}
+                                {(() => {
+                                   const nodes = [];
+                                   const l1Count = 3;
+                                   const l2Count = 2;
+
+                                   // 1. Root Node
+                                   nodes.push(
+                                      <g key="root">
+                                         <circle cx="0" cy="0" r="10" fill="var(--accent-cyan)" className="animate-pulse shadow-lg" />
+                                         <text x="0" y="-18" textAnchor="middle" fill="white" className="text-[10px] font-black uppercase font-sans">Root Hub</text>
+                                      </g>
+                                   );
+
+                                   // 2. Level 1 & 2
+                                   for (let i = 0; i < l1Count; i++) {
+                                      const angle1 = (i * 120 * Math.PI) / 180;
+                                      const x1 = pgParentDistance * Math.cos(angle1);
+                                      const y1 = pgParentDistance * Math.sin(angle1);
+
+                                      nodes.push(
+                                         <g key={`l1-${i}`}>
+                                            <circle cx={x1} cy={y1} r="7" fill="var(--accent-indigo)" stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
+                                            <text x={x1} y={y1 - 12} textAnchor="middle" fill="var(--text-primary)" className="text-[8px] font-bold">Node L1-{i + 1}</text>
+                                         </g>
+                                      );
+
+                                      for (let j = 0; j < l2Count; j++) {
+                                         const fanOffset = (j === 0 ? -1 : 1) * pgChildGap * (1 + pgSiblingMultiplier) * Math.PI / 180;
+                                         const angle2 = angle1 + fanOffset;
+                                         const x2 = (pgParentDistance * 2) * Math.cos(angle2);
+                                         const y2 = (pgParentDistance * 2) * Math.sin(angle2);
+
+                                         nodes.push(
+                                            <g key={`l2-${i}-${j}`}>
+                                               <circle cx={x2} cy={y2} r="5" fill="var(--bg-elevated)" stroke="var(--accent-cyan)" strokeWidth="1.5" />
+                                               <text x={x2} y={y2 + 12} textAnchor="middle" fill="var(--text-muted)" className="text-[7px] font-mono">L2-{i+1}-{j+1}</text>
+                                            </g>
+                                         );
+                                      }
+                                   }
+                                   return nodes;
+                                })()}
+                             </svg>
+                             
+                             <div className="w-full text-center text-[10px] text-[var(--text-muted)] italic pb-2">
+                                Live physics simulation rendering coordinate translation, Bezier interpolation, and sibling repulsion.
+                             </div>
+                          </div>
                        </div>
                     </div>
                  </motion.div>
