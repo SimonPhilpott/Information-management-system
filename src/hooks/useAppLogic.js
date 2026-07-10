@@ -299,8 +299,8 @@ export function useAppLogic() {
    * @param {string} forceModel Force a specific model target.
    * @param {string} image Base64 representation of attached visual imagery context.
    */
-  const sendMessage = useCallback(async (text, forceModel, image = null) => {
-    if (!text.trim() && !image) return;
+  const sendMessage = useCallback(async (text, forceModel, image = null, attachments = null) => {
+    if (!text.trim() && !image && (!attachments || attachments.length === 0)) return;
 
     if (usage && usage.percentage >= 95) {
       setShowCapWarning(true);
@@ -309,7 +309,7 @@ export function useAppLogic() {
     }
 
     const modelToUse = forceModel || currentModel;
-    setMessages(prev => [...prev, { role: 'user', content: text, image }]);
+    setMessages(prev => [...prev, { role: 'user', content: text, image, attachments }]);
     setIsTyping(true);
 
     try {
@@ -324,6 +324,7 @@ export function useAppLogic() {
           appMode: appMode,
           tone: chatTone,
           image: image,
+          attachments: attachments,
           showCitations: showCitations
         })
       });

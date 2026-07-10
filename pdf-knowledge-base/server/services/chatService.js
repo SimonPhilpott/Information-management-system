@@ -6,6 +6,7 @@ import { logUsage, isNearSpendCap } from './usageService.js';
 import { generateImage } from './imageService.js';
 import db from '../db/database.js';
 import { v4 as uuidv4 } from 'uuid';
+import { parseAttachment } from './attachmentParser.js';
 
 const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
 
@@ -61,7 +62,7 @@ const TONE_INSTRUCTIONS = {
 /**
  * Process a chat message through the RAG pipeline or general chat
  */
-export async function processMessage(message, sessionId, subjects = [], modelChoice = 'flash', appMode = 'kb', imageData = null, tone = 'friendly') {
+export async function processMessage(message, sessionId, subjects = [], modelChoice = 'flash', appMode = 'kb', imageData = null, tone = 'friendly', attachments = null) {
   // Check spend cap
   const capStatus = isNearSpendCap();
   if (capStatus.nearCap) {
@@ -112,10 +113,30 @@ export async function processMessage(message, sessionId, subjects = [], modelCho
   // Step 5: Build the prompt parts (multimodal support)
   const promptParts = [];
   
+  // Extract and append text from attachments (TXT, PDF, PPTX)
+  let attachmentContext = '';
+  if (attachments && attachments.length > 0) {
+    const parsedParts = [];
+    for (const att of attachments) {
+      try {
+        const text = await parseAttachment(att);
+        if (text) {
+          parsedParts.push(`ATTACHED FILE ("${att.name}"):\n${text}`);
+        }
+      } catch (err) {
+        console.error(`Failed to parse attachment ${att.name}:`, err.message);
+        parsedParts.push(`ATTACHED FILE ("${att.name}"): [Parsing Failed: ${err.message}]`);
+      }
+    }
+    if (parsedParts.length > 0) {
+      attachmentContext = `\n\nADDITIONAL USER ATTACHMENTS:\n\n${parsedParts.join('\n\n---\n\n')}`;
+    }
+  }
+
   if (isGeneral) {
-    promptParts.push({ text: `USER QUESTION: ${message}` });
+    promptParts.push({ text: `USER QUESTION: ${message}${attachmentContext}` });
   } else {
-    promptParts.push({ text: `CONTEXT FROM USER'S PDF LIBRARY:\n\n${context}\n\n---\n\nUSER QUESTION: ${message}` });
+    promptParts.push({ text: `CONTEXT FROM USER'S PDF LIBRARY:\n\n${context}${attachmentContext}\n\n---\n\nUSER QUESTION: ${message}` });
   }
 
   if (imageData) {

@@ -8,10 +8,10 @@ const router = Router();
  */
 router.post('/', async (req, res) => {
   try {
-    const { message, sessionId, subjects, model, appMode, image, tone } = req.body;
+    const { message, sessionId, subjects, model, appMode, image, tone, attachments } = req.body;
 
-    if ((!message || !message.trim()) && !image) {
-      return res.status(400).json({ error: 'Message or image is required' });
+    if ((!message || !message.trim()) && !image && (!attachments || attachments.length === 0)) {
+      return res.status(400).json({ error: 'Message, image, or attachment is required' });
     }
 
     const result = await processMessage(
@@ -21,7 +21,8 @@ router.post('/', async (req, res) => {
       model || 'flash',
       appMode || 'kb',
       image || null,
-      tone || 'friendly'
+      tone || 'friendly',
+      attachments || null
     );
 
     res.json(result);

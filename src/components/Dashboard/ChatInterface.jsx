@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, BookOpen, Bot, Sparkles, Image as ImageIcon, Camera, X, Mic, Volume2, VolumeX, MicOff } from 'lucide-react';
+import { Send, BookOpen, Bot, Sparkles, Image as ImageIcon, Camera, X, Mic, Volume2, VolumeX, MicOff, FileText } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 import { Tooltip } from './CursorHover';
 
@@ -12,6 +12,7 @@ export default function ChatInterface({
 }) {
   const [input, setInput] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
+  const [attachedFiles, setAttachedFiles] = useState([]);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -22,24 +23,49 @@ export default function ChatInterface({
     }
   }, [messages.length, isTyping]);
 
-  const handleImageSelect = (e) => {
+  const handleFileSelect = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
+    if (!file) return;
+
+    // Check size limit: 5MB
+    if (file.size > 5 * 1024 * 1024) {
+      alert("File size exceeds 5MB limit. Please upload a smaller document.");
+      return;
+    }
+
+    const reader = new FileReader();
+    
+    if (file.type.startsWith('image/')) {
       reader.onloadend = () => {
         setSelectedImage(reader.result);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      // Document file (txt, pdf, pptx)
+      reader.onloadend = () => {
+        const base64Data = reader.result.split(',')[1];
+        setAttachedFiles(prev => [...prev, {
+          name: file.name,
+          mimeType: file.type || 'text/plain',
+          data: base64Data
+        }]);
       };
       reader.readAsDataURL(file);
     }
   };
 
+  const removeAttachedFile = (index) => {
+    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    if ((!input.trim() && !selectedImage) || isTyping) return;
+    if ((!input.trim() && !selectedImage && attachedFiles.length === 0) || isTyping) return;
     
-    onSendMessage(input.trim(), null, selectedImage);
+    onSendMessage(input.trim(), null, selectedImage, attachedFiles);
     setInput('');
     setSelectedImage(null);
+    setAttachedFiles([]);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
@@ -184,6 +210,27 @@ export default function ChatInterface({
             </div>
           </div>
         )}
+
+        {attachedFiles.length > 0 && (
+          <div className="flex flex-wrap gap-2 p-2.5 bg-[var(--bg-elevated)] border-b border-[var(--glass-border)]">
+            {attachedFiles.map((file, index) => (
+              <div 
+                key={index} 
+                className="flex items-center gap-2 px-3 py-1.5 bg-[var(--bg-primary)] border border-[var(--glass-border)] rounded-xl text-[10px] text-[var(--text-secondary)] font-medium max-w-[200px]"
+              >
+                <FileText size={12} className="text-[var(--accent-cyan)] flex-shrink-0" />
+                <span className="truncate flex-1">{file.name}</span>
+                <button 
+                  type="button" 
+                  onClick={() => removeAttachedFile(index)}
+                  className="p-0.5 hover:bg-[var(--glass-border)] rounded transition-colors text-[var(--text-muted)] hover:text-white"
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         
         <form 
           onSubmit={handleSubmit} 
@@ -193,8 +240,8 @@ export default function ChatInterface({
           <input 
             type="file" 
             ref={fileInputRef} 
-            onChange={handleImageSelect} 
-            accept="image/*" 
+            onChange={handleFileSelect} 
+            accept="image/*,.txt,.pdf,.pptx" 
             style={{ display: 'none' }} 
           />
           
