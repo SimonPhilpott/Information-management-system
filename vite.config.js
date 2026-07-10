@@ -282,108 +282,144 @@ const tunnelPlugin = () => {
     name: 'tunnel-plugin',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        if (req.url === '/api/tunnel/status') {
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({
-            status: tunnelStatus,
-            url: tunnelUrl,
-            error: tunnelError,
-            logs: tunnelLogs.slice(-20)
-          }));
-        } else if (req.url === '/api/tunnel/start' && req.method === 'POST') {
-          res.setHeader('Content-Type', 'application/json');
-          if (tunnelProcess) {
-            res.end(JSON.stringify({ success: true, status: tunnelStatus, url: tunnelUrl }));
-            return;
-          }
+        // Wrap in async IIFE so we can use await for ngrok API checks
+        // without changing the synchronous Vite middleware signature.
+        (async () => {
+          if (req.url === '/api/tunnel/status') {
+            res.setHeader('Content-Type', 'application/json');
+            // Cross-check against the live ngrok agent API (port 4040) so the
+            // status is accurate even after a Vite restart that orphaned the
+            // previous ngrok process (tunnelProcess would be null but ngrok.exe
+            // could still be running and serving the static domain).
+            const liveCheck = await fetchTunnelUrl();
+            if (liveCheck && tunnelStatus === 'disconnected') {
+              tunnelStatus = 'connected';
+              tunnelUrl = liveCheck;
+            } else if (!liveCheck && tunnelStatus === 'connected') {
+              tunnelStatus = 'disconnected';
+            }
+            res.end(JSON.stringify({
+              status: tunnelStatus,
+              url: tunnelUrl,
+              error: tunnelError,
+              logs: tunnelLogs.slice(-20)
+            }));
 
-          try {
-            tunnelStatus = 'connecting';
-            tunnelError = '';
-            tunnelLogs = [`[System] Starting ngrok Tunnel to port ${ports.ims.port}...`];
-
-            const authtoken = getNgrokAuthToken();
-            const spawnEnv = { ...process.env };
-            if (authtoken) {
-              spawnEnv.NGROK_AUTHTOKEN = authtoken;
-              tunnelLogs.push('[System] Custom NGROK_AUTHTOKEN environment variable loaded.');
-            } else {
-              tunnelLogs.push('[System] Warning: No NGROK_AUTHTOKEN found in .env file.');
+          } else if (req.url === '/api/tunnel/start' && req.method === 'POST') {
+            res.setHeader('Content-Type', 'application/json');
+            if (tunnelProcess) {
+              res.end(JSON.stringify({ success: true, status: tunnelStatus, url: tunnelUrl }));
+              return;
             }
 
-            // Spawn ngrok CLI with custom static URL
-            tunnelProcess = spawn('ngrok', [
-              'http',
-              ports.ims.port.toString(),
-              '--url=https://simon-ims.ngrok-free.app'
-            ], { env: spawnEnv });
+            try {
+              tunnelStatus = 'connecting';
+              tunnelError = '';
+              tunnelLogs = [`[System] Starting ngrok Tunnel to port ${ports.ims.port}...`];
 
-            let checkCount = 0;
-            const checkInterval = setInterval(async () => {
-              if (!tunnelProcess) {
-                clearInterval(checkInterval);
-                return;
+              const authtoken = getNgrokAuthToken();
+              const spawnEnv = { ...process.env };
+              if (authtoken) {
+                spawnEnv.NGROK_AUTHTOKEN = authtoken;
+                tunnelLogs.push('[System] Custom NGROK_AUTHTOKEN environment variable loaded.');
+              } else {
+                tunnelLogs.push('[System] Warning: No NGROK_AUTHTOKEN found in .env file.');
               }
-              const url = await fetchTunnelUrl();
-              if (url) {
-                tunnelUrl = url;
-                tunnelStatus = 'connected';
-                tunnelLogs.push(`[System] Tunnel running at: ${tunnelUrl}`);
-                clearInterval(checkInterval);
-              } else if (checkCount > 15) {
-                clearInterval(checkInterval);
-                if (tunnelStatus === 'connecting') {
-                  tunnelStatus = 'error';
-                  tunnelError = 'Timed out waiting for ngrok public URL';
-                  tunnelLogs.push('[System] Error: Timed out waiting for ngrok public URL');
+
+              // Spawn ngrok CLI with custom static URL
+              tunnelProcess = spawn('ngrok', [
+                'http',
+                ports.ims.port.toString(),
+                '--url=https://simon-ims.ngrok-free.app'
+              ], { env: spawnEnv });
+
+              let checkCount = 0;
+              const checkInterval = setInterval(async () => {
+                if (!tunnelProcess) {
+                  clearInterval(checkInterval);
+                  return;
                 }
-              }
-              checkCount++;
-            }, 1000);
+                const url = await fetchTunnelUrl();
+                if (url) {
+                  tunnelUrl = url;
+                  tunnelStatus = 'connected';
+                  tunnelLogs.push(`[System] Tunnel running at: ${tunnelUrl}`);
+                  clearInterval(checkInterval);
+                } else if (checkCount > 15) {
+                  clearInterval(checkInterval);
+                  if (tunnelStatus === 'connecting') {
+                    tunnelStatus = 'error';
+                    tunnelError = 'Timed out waiting for ngrok public URL';
+                    tunnelLogs.push('[System] Error: Timed out waiting for ngrok public URL');
+                  }
+                }
+                checkCount++;
+              }, 1000);
 
-            tunnelProcess.stdout.on('data', (data) => {
-              tunnelLogs.push(data.toString());
-              if (tunnelLogs.length > 100) tunnelLogs.shift();
-            });
+              tunnelProcess.stdout.on('data', (data) => {
+                tunnelLogs.push(data.toString());
+                if (tunnelLogs.length > 100) tunnelLogs.shift();
+              });
 
-            tunnelProcess.stderr.on('data', (data) => {
-              tunnelLogs.push(data.toString());
-              if (tunnelLogs.length > 100) tunnelLogs.shift();
-            });
+              tunnelProcess.stderr.on('data', (data) => {
+                tunnelLogs.push(data.toString());
+                if (tunnelLogs.length > 100) tunnelLogs.shift();
+              });
 
-            tunnelProcess.on('close', (code) => {
-              tunnelProcess = null;
-              tunnelStatus = 'disconnected';
-              tunnelLogs.push(`[System] Process closed with exit code ${code}`);
-            });
+              tunnelProcess.on('close', (code) => {
+                tunnelProcess = null;
+                tunnelStatus = 'disconnected';
+                tunnelLogs.push(`[System] Process closed with exit code ${code}`);
+              });
 
-            tunnelProcess.on('error', (err) => {
+              tunnelProcess.on('error', (err) => {
+                tunnelStatus = 'error';
+                tunnelError = err.message;
+                tunnelProcess = null;
+                tunnelLogs.push(`[System] Error: ${err.message}`);
+              });
+
+              res.end(JSON.stringify({ success: true, status: tunnelStatus }));
+            } catch (e) {
               tunnelStatus = 'error';
-              tunnelError = err.message;
+              tunnelError = e.message;
               tunnelProcess = null;
-              tunnelLogs.push(`[System] Error: ${err.message}`);
-            });
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: e.message }));
+            }
 
-            res.end(JSON.stringify({ success: true, status: tunnelStatus }));
-          } catch (e) {
-            tunnelStatus = 'error';
-            tunnelError = e.message;
-            tunnelProcess = null;
-            res.statusCode = 500;
-            res.end(JSON.stringify({ error: e.message }));
-          }
-        } else if (req.url === '/api/tunnel/stop' && req.method === 'POST') {
-          res.setHeader('Content-Type', 'application/json');
-          if (tunnelProcess) {
+          } else if (req.url === '/api/tunnel/stop' && req.method === 'POST') {
+            res.setHeader('Content-Type', 'application/json');
             tunnelLogs.push('[System] Stopping ngrok tunnel...');
-            tunnelProcess.kill('SIGKILL');
-            tunnelProcess = null;
+
+            // 1. Kill the tracked child process if present.
+            if (tunnelProcess) {
+              try { tunnelProcess.kill('SIGKILL'); } catch (e) { /* ignore */ }
+              tunnelProcess = null;
+            }
+
+            // 2. Kill ALL system-level ngrok.exe processes so orphaned instances
+            //    from previous Vite sessions are also terminated. taskkill exits
+            //    with a non-zero code if no matching process exists — that is fine.
+            try {
+              const { execSync } = await import('child_process');
+              execSync('taskkill /F /IM ngrok.exe', { stdio: 'ignore' });
+              tunnelLogs.push('[System] All ngrok processes terminated via taskkill.');
+            } catch (e) {
+              tunnelLogs.push('[System] No additional ngrok processes found.');
+            }
+
             tunnelStatus = 'disconnected';
+            tunnelUrl = '';
+            res.end(JSON.stringify({ success: true, status: 'disconnected' }));
+
+          } else {
+            next();
           }
-          res.end(JSON.stringify({ success: true, status: 'disconnected' }));
-        } else {
-          next();
-        }
+        })().catch((err) => {
+          console.error('[tunnel-plugin] Middleware error:', err);
+          next(err);
+        });
       });
 
       server.httpServer?.on('close', () => {
