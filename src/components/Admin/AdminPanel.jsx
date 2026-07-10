@@ -769,7 +769,7 @@ export const AdminPanel = ({
                      <div className="space-y-2">
                         <div className="flex justify-between text-[11px] p-4 border border-[var(--glass-border)] rounded-xl bg-[var(--bg-elevated)] italic">
                            <span className="text-[var(--text-muted)]">backup_path</span>
-                           <span className="text-[var(--accent-cyan)] font-bold truncate max-w-[200px]">D:/backups/...</span>
+                           <span className="text-[var(--accent-cyan)] font-bold truncate max-w-[300px]">d:\Information management system\backups</span>
                         </div>
                         <div className="flex justify-between text-[11px] p-4 border border-[var(--glass-border)] rounded-xl bg-[var(--bg-elevated)] italic">
                            <span className="text-[var(--text-muted)]">engine_status</span>
@@ -788,15 +788,18 @@ export const AdminPanel = ({
                            { 
                              cat: 'Application Core', 
                              files: [
-                               { n: 'App.jsx', d: 'The System Brain. Orchestrates state management, the radial layout engine, and viewport transitions.' },
+                               { n: 'App.jsx', d: 'The System Brain. Orchestrates state management, the radial layout engines, and viewport transitions.' },
                                { n: 'index.css', d: 'The Aesthetic Core. Defines the design system tokens, glassmorphic effects, and motion physics.' },
                                { n: 'ThemeContext.jsx', d: 'Theme Provider. Persists user interface preferences and color identity across the component tree.' }
                              ] 
                            },
                            { 
-                             cat: 'Mesh & Canvas', 
+                             cat: 'Mesh & Canvas Renderers', 
                              files: [
-                               { n: 'MeshCanvas.jsx', d: 'The Interaction Engine. High-performance canvas renderer for enterprise hierarchy and connection physics.' },
+                               { n: 'SunburstCanvas.jsx', d: 'The Sunburst Engine. Primary concentric nested radial layout canvas with custom arc masking.' },
+                               { n: 'InstancedSpatialCanvas.jsx', d: 'The 3D Instanced Engine. High-performance GPU-instanced 3D force-directed canvas.' },
+                               { n: 'SpatialCanvas.jsx', d: 'The 3D Standard Engine. Force-directed 3D canvas with full node labels and orbital controls.' },
+                               { n: 'MeshCanvas.jsx', d: 'The 2D Engine. High-performance 2D canvas with physics-based nodes and lateral links.' },
                                { n: 'OrbitalNav.jsx', d: 'The Spatial Pilot. Implements HUD-based thumbstick controls and map-scale navigation.' }
                              ] 
                            },
