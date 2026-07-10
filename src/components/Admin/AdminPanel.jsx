@@ -410,7 +410,7 @@ export const AdminPanel = ({
                                    className="w-full h-1 bg-[var(--glass-border)] rounded-lg appearance-none cursor-pointer accent-[var(--accent-cyan)] outline-none"
                                 />
                                 <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
-                                   Governs the radial distance (orbital depth) between hierarchical levels (Root → Level 1 → Level 2).
+                                   <strong>Level Spacing:</strong> Sets how far child nodes are pushed away from their parent folders. Widen this if you want a more spread-out tree.
                                 </p>
                              </div>
 
@@ -429,7 +429,7 @@ export const AdminPanel = ({
                                    className="w-full h-1 bg-[var(--glass-border)] rounded-lg appearance-none cursor-pointer accent-[var(--accent-cyan)] outline-none"
                                 />
                                 <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
-                                   Governs the baseline angular sector separation (degrees) between sibling nodes under the same parent.
+                                   <strong>Fanning Angle:</strong> Controls the angle/spread between sibling items. A higher angle fans them out widely, while a smaller angle clusters them tightly.
                                 </p>
                              </div>
 
@@ -448,7 +448,7 @@ export const AdminPanel = ({
                                    className="w-full h-1 bg-[var(--glass-border)] rounded-lg appearance-none cursor-pointer accent-[var(--accent-cyan)] outline-none"
                                 />
                                 <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
-                                   Governs the lateral repelling scalar to expand angular distance for dense sibling nodes, preventing overlapping.
+                                   <strong>Extra Overlap Cushion:</strong> Adds a spacing buffer between neighboring text labels to make sure names don't write over each other.
                                 </p>
                              </div>
 
@@ -467,7 +467,7 @@ export const AdminPanel = ({
                                    className="w-full h-1 bg-[var(--glass-border)] rounded-lg appearance-none cursor-pointer accent-[var(--accent-cyan)] outline-none"
                                 />
                                 <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
-                                   Stiffness of relation links. 100% is straight, lower percentages bow curves into elegant Bezier arcs.
+                                   <strong>Line Straightness:</strong> At 100%, links are straight lines. Lowering this bows the lines into smooth, looping arcs to prevent them from cutting through the central hub.
                                 </p>
                              </div>
                           </div>
@@ -610,51 +610,48 @@ export const AdminPanel = ({
                              <div>
                                 <h4 className="text-md font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
                                    <div className="w-1.5 h-1.5 bg-[var(--accent-cyan)] rounded-full"/>
-                                   1. Plotted Coordinate Calculations & Concentric Shells
+                                   1. How Node Positions Are Calculated (Concentric Orbits)
                                 </h4>
-                                <p className="mb-2 text-xs text-[var(--text-secondary)]">
-                                   The layout engine uses spherical projection to organize nodes in three dimensions. Radii are computed directly as:
+                                <p className="mb-2 text-xs text-[var(--text-secondary)] leading-relaxed">
+                                   Instead of using a simple flat grid, the layout engine arranges items in circular orbits (concentric layers) fanning outward from the center. The distance of each level from the center is calculated as:
                                 </p>
                                 <div className="bg-black/30 p-3 rounded-lg border border-[var(--glass-border)] font-mono text-[10px] my-2 text-[var(--accent-cyan)] max-w-md">
-                                   r = depth * parentDistance
+                                   radius = depth * parentDistance
                                 </div>
                                 <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                                   This places root hubs at <code className="font-mono text-xs">0,0,0</code>, Level 1 sub-topics on a shell at radius <code className="font-mono text-xs">1 * parentDistance</code>, and Level 2 child nodes on an outer shell at radius <code className="font-mono text-xs">2 * parentDistance</code>. Polar tilts (vertical alignment) are distributed evenly to fan branches vertically, while horizontal azimuth rotation is calculated using node sibling offsets.
+                                   This places the Root Hub at the exact center (coordinate <code className="font-mono text-xs">0, 0, 0</code>), Level-1 child nodes on a ring at <code className="font-mono text-xs">1 * parentDistance</code>, and Level-2 grandchild nodes on a wider outer ring at <code className="font-mono text-xs">2 * parentDistance</code>. The direction a node points is determined by fanning them out evenly.
                                 </p>
                              </div>
 
                              <div>
                                 <h4 className="text-md font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
                                    <div className="w-1.5 h-1.5 bg-[var(--accent-cyan)] rounded-full"/>
-                                   2. Sibling Repulsion & Overlap Prevention
+                                   2. Overlap Prevention (Sibling Spacing)
                                 </h4>
                                 <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                                   To prevent text labels and nodes from bunching up, the engine applies sibling margins. The horizontal fan angle between child nodes is fanned out dynamically by:
+                                   To ensure text labels don't overlap, the engine calculates a spacing buffer between neighboring items. The angle offset between child nodes is fanned out using:
                                 </p>
                                 <div className="bg-black/30 p-3 rounded-lg border border-[var(--glass-border)] font-mono text-[10px] my-2 text-[var(--accent-cyan)] max-w-md">
-                                   Δφ = childGap * (1 + siblingMultiplier)
+                                   Spread Angle = childGap * (1 + siblingMultiplier)
                                 </div>
                                 <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                                   As you increase `siblingMultiplier (s)`, the lateral repulsion widens the angular spread, pushing adjacent sibling nodes apart. This ensures that text labels remain legible and do not overlap.
+                                   Increasing `siblingMultiplier (s)` widens this angle, pushing neighboring nodes and text labels apart so they stay readable even when there are many items.
                                 </p>
                              </div>
 
                              <div>
                                 <h4 className="text-md font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
                                    <div className="w-1.5 h-1.5 bg-[var(--accent-cyan)] rounded-full"/>
-                                   3. Bezier Link Curve Interpolation & Connection Tension
+                                   3. Connection Curves & Tension
                                 </h4>
                                 <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                                   To avoid visual wire clutter cutting through the center of the spheres, the engine uses Bezier curves to route lines along outer boundaries. The control point `(cx, cy)` of a quadratic link is calculated using:
+                                   To prevent connection lines from crossing straight through the center and cluttering the graph, the engine draws curved paths (Bezier curves). The peak curve height is controlled by `connectionTension`:
                                 </p>
                                 <div className="bg-black/30 p-3 rounded-lg border border-[var(--glass-border)] font-mono text-[10px] my-2 text-[var(--accent-cyan)] max-w-md">
-                                   <div>mx = (x1 + x2) / 2, my = (y1 + y2) / 2</div>
-                                   <div>tensionFactor = (100 - connectionTension) * scale</div>
-                                   <div>cx = mx + orthogonalUnitX * tensionFactor</div>
-                                   <div>cy = my + orthogonalUnitY * tensionFactor</div>
+                                   Curve Depth = (100 - connectionTension) * scale
                                 </div>
                                 <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                                   At <code className="font-mono text-xs">100%</code> tension, the `tensionFactor` drops to `0`, producing straight lines. Reducing the tension bows the curves outward orthogonally to follow the spheres' contours, keeping the central core clean and readable.
+                                   At 100% tension, the curve depth becomes zero (completely straight lines). Reducing the tension pulls the curve outward, bowing the line into a smooth, elegant arc that wraps nicely around the center.
                                 </p>
                              </div>
                           </div>
