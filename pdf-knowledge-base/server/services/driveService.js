@@ -75,6 +75,8 @@ export function storeTokens(tokens, userInfo) {
     userInfo?.name || null
   );
   lastAuthError = null; // Clear error on successful token storage
+  syncProgress.error = null;
+  syncProgress.phase = '';
 }
 
 /**
