@@ -35,6 +35,47 @@ export function useAppLogic() {
   const [isTyping, setIsTyping] = useState(false);
   const [gems, setGems] = useState([]);
 
+  /**
+   * Left sidebar drag-to-resize.
+   * The resizer handle sits between the sidebar and the main content area.
+   * clientX directly maps to the desired sidebar width.
+   */
+  useEffect(() => {
+    if (!isResizing) return;
+    const handleMouseMove = (e) => {
+      // Clamp between 200px and 480px so the sidebar stays usable.
+      setSidebarWidth(Math.max(200, Math.min(480, e.clientX)));
+    };
+    const handleMouseUp = () => setIsResizing(false);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
+
+  /**
+   * Right topics panel drag-to-resize.
+   * The resizer sits on the LEFT edge of the right panel, so the width is
+   * window.innerWidth minus the cursor's clientX position.
+   */
+  useEffect(() => {
+    if (!isResizingTopics) return;
+    const handleMouseMove = (e) => {
+      const newWidth = window.innerWidth - e.clientX;
+      setTopicsWidth(Math.max(240, Math.min(600, newWidth)));
+    };
+    const handleMouseUp = () => setIsResizingTopics(false);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizingTopics]);
+
+
   // Catalog Filter settings
   const [subjects, setSubjects] = useState(null);
   const [selectedSubjects, setSelectedSubjects] = useState([]);

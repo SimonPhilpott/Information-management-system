@@ -1041,6 +1041,18 @@ a:hover {
   transition: background var(--transition-fast);
   z-index: 20;
   position: relative;
+  flex-shrink: 0;
+}
+
+/* Expand the drag target without widening the visual bar */
+.sidebar-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -6px;
+  right: -6px;
+  cursor: col-resize;
 }
 
 .sidebar-resizer:hover,
