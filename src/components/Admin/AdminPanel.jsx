@@ -473,21 +473,20 @@ export const AdminPanel = ({
                           </div>
 
                           {/* Coordinate Math HUD */}
-                          <div className="p-6 bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-2xl space-y-4">
-                             <h4 className="text-xs font-black uppercase tracking-widest text-[var(--text-primary)] border-b border-[var(--glass-border)] pb-2">
-                                Spherical Coordinate Translation Formula
-                             </h4>
-                             <p className="text-xs text-[var(--text-secondary)]">
-                                In 3D space, coordinates are mapped using spherical tilts and horizontal spins, then projected into Cartesian space:
-                             </p>
-                             <div className="bg-black/40 p-4 rounded-xl border border-[var(--glass-border)] font-mono text-[10px] text-[var(--accent-cyan)] space-y-2">
-                                <div>r = depth * parentDistance <span className="text-[var(--text-muted)]">// Depth level radius</span></div>
-                                <div>X = r * sin(θ) * cos(φ)</div>
-                                <div>Y = r * sin(θ) * sin(φ)</div>
-                                <div>Z = r * cos(θ)</div>
-                             </div>
-                          </div>
-
+                           <div className="p-6 bg-[var(--bg-elevated)] border border-[var(--glass-border)] rounded-2xl space-y-4">
+                              <h4 className="text-xs font-black uppercase tracking-widest text-[var(--text-primary)] border-b border-[var(--glass-border)] pb-2">
+                                 Spherical Coordinate Translation Formula
+                              </h4>
+                              <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                                 In the 3D radial mesh system, node placements are first calculated as spherical coordinates (a radius $r$, a vertical polar angle $\theta$ representing vertical tilt, and a horizontal azimuthal angle $\phi$ representing horizontal rotation around the center), then mapped to Cartesian 3D coordinates $(X, Y, Z)$ for viewport rendering:
+                              </p>
+                              <div className="bg-black/40 p-4 rounded-xl border border-[var(--glass-border)] font-mono text-[10px] text-[var(--accent-cyan)] space-y-2">
+                                 <div>r = depth * parentDistance <span className="text-[var(--text-muted)]">// Concentric layer radius</span></div>
+                                 <div>X = r * sin(θ) * cos(φ)</div>
+                                 <div>Y = r * sin(θ) * sin(φ)</div>
+                                 <div>Z = r * cos(θ)</div>
+                              </div>
+                           </div>
                        </div>
 
                        {/* RIGHT PANEL: Interactive SVG Simulator Canvas */}
@@ -601,9 +600,62 @@ export const AdminPanel = ({
                                    return nodes;
                                 })()}
                              </svg>
-                             
                              <div className="w-full text-center text-[10px] text-[var(--text-muted)] italic pb-2">
                                 Live physics simulation rendering coordinate translation, Bezier interpolation, and sibling repulsion.
+                             </div>
+                          </div>
+
+                          {/* Detailed Mathematical Explanations (Appended Below Playground) */}
+                          <div className="border-t border-[var(--glass-border)] pt-8 mt-4 space-y-6">
+                             <div>
+                                <h4 className="text-md font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
+                                   <div className="w-1.5 h-1.5 bg-[var(--accent-cyan)] rounded-full"/>
+                                   1. Plotted Coordinate Calculations & Concentric Shells
+                                </h4>
+                                <p className="mb-2 text-xs text-[var(--text-secondary)]">
+                                   The layout engine uses spherical projection to organize nodes in three dimensions. Radii are computed directly as:
+                                </p>
+                                <div className="bg-black/30 p-3 rounded-lg border border-[var(--glass-border)] font-mono text-[10px] my-2 text-[var(--accent-cyan)] max-w-md">
+                                   r = depth * parentDistance
+                                </div>
+                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                                   This places root hubs at <code className="font-mono text-xs">0,0,0</code>, Level 1 sub-topics on a shell at radius <code className="font-mono text-xs">1 * parentDistance</code>, and Level 2 child nodes on an outer shell at radius <code className="font-mono text-xs">2 * parentDistance</code>. Polar tilts (vertical alignment) are distributed evenly to fan branches vertically, while horizontal azimuth rotation is calculated using node sibling offsets.
+                                </p>
+                             </div>
+
+                             <div>
+                                <h4 className="text-md font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
+                                   <div className="w-1.5 h-1.5 bg-[var(--accent-cyan)] rounded-full"/>
+                                   2. Sibling Repulsion & Overlap Prevention
+                                </h4>
+                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                                   To prevent text labels and nodes from bunching up, the engine applies sibling margins. The horizontal fan angle between child nodes is fanned out dynamically by:
+                                </p>
+                                <div className="bg-black/30 p-3 rounded-lg border border-[var(--glass-border)] font-mono text-[10px] my-2 text-[var(--accent-cyan)] max-w-md">
+                                   Δφ = childGap * (1 + siblingMultiplier)
+                                </div>
+                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                                   As you increase `siblingMultiplier (s)`, the lateral repulsion widens the angular spread, pushing adjacent sibling nodes apart. This ensures that text labels remain legible and do not overlap.
+                                </p>
+                             </div>
+
+                             <div>
+                                <h4 className="text-md font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
+                                   <div className="w-1.5 h-1.5 bg-[var(--accent-cyan)] rounded-full"/>
+                                   3. Bezier Link Curve Interpolation & Connection Tension
+                                </h4>
+                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                                   To avoid visual wire clutter cutting through the center of the spheres, the engine uses Bezier curves to route lines along outer boundaries. The control point `(cx, cy)` of a quadratic link is calculated using:
+                                </p>
+                                <div className="bg-black/30 p-3 rounded-lg border border-[var(--glass-border)] font-mono text-[10px] my-2 text-[var(--accent-cyan)] max-w-md">
+                                   <div>mx = (x1 + x2) / 2, my = (y1 + y2) / 2</div>
+                                   <div>tensionFactor = (100 - connectionTension) * scale</div>
+                                   <div>cx = mx + orthogonalUnitX * tensionFactor</div>
+                                   <div>cy = my + orthogonalUnitY * tensionFactor</div>
+                                </div>
+                                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                                   At <code className="font-mono text-xs">100%</code> tension, the `tensionFactor` drops to `0`, producing straight lines. Reducing the tension bows the curves outward orthogonally to follow the spheres' contours, keeping the central core clean and readable.
+                                </p>
                              </div>
                           </div>
                        </div>
