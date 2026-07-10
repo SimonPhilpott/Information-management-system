@@ -5,6 +5,7 @@ import { ENTITY_TYPES } from '../../data/nodes';
 import { ImportManager } from './ImportManager';
 import { URLMapper } from './URLMapper';
 import { IMPORTANCE_TIERS } from '../Editor/IntelligenceDrawer';
+import { Tooltip } from '../Dashboard/CursorHover';
 
 const TreeItem = ({ node, nodes, level = 0, onSelect }) => {
   const [isOpen, setIsOpen] = useState(level < 1);
@@ -987,14 +988,11 @@ export const AdminPanel = ({
                               <div className="text-[8px] font-black text-[var(--accent-cyan)] mb-2 uppercase tracking-tighter bg-[var(--accent-cyan)]/5 px-2 py-1 rounded-md inline-block">{f.cat}</div>
                               <div className="flex flex-wrap gap-2">
                                  {f.items.map(i => (
-                                     <div 
-                                       key={i.n} 
-                                       onMouseEnter={() => setHoveredFeature(i)}
-                                       onMouseLeave={() => setHoveredFeature(null)}
-                                       className="text-[9px] text-[var(--text-secondary)] bg-[var(--bg-primary)] px-2.5 py-1.5 rounded-lg cursor-help hover:bg-[var(--accent-cyan)]/10 hover:text-[var(--accent-cyan)] hover:border-[var(--accent-cyan)]/30 transition-all border border-[var(--glass-border)] font-bold"
-                                     >
-                                       {i.n}
-                                     </div>
+                                    <Tooltip key={i.n} text={i.d}>
+                                      <div className="text-[9px] text-[var(--text-secondary)] bg-[var(--bg-primary)] px-2.5 py-1.5 rounded-lg cursor-help hover:bg-[var(--accent-cyan)]/10 hover:text-[var(--accent-cyan)] hover:border-[var(--accent-cyan)]/30 transition-all border border-[var(--glass-border)] font-bold">
+                                        {i.n}
+                                      </div>
+                                    </Tooltip>
                                  ))}
                               </div>
                            </div>
@@ -1061,15 +1059,12 @@ export const AdminPanel = ({
                               <div className="text-[8px] font-black text-[var(--accent-cyan)] uppercase tracking-widest">{group.cat}</div>
                               <div className="flex flex-col gap-1.5">
                                  {group.files.map(f => (
-                                   <div 
-                                     key={f.n}
-                                     onMouseEnter={() => setHoveredFeature(f)}
-                                     onMouseLeave={() => setHoveredFeature(null)}
-                                     className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-[var(--bg-elevated)] border border-transparent hover:border-[var(--glass-border)] transition-all group cursor-help"
-                                   >
-                                      <Box size={14} className="text-[var(--text-muted)] group-hover:text-[var(--accent-cyan)] transition-colors" />
-                                      <span className="text-[11px] font-bold text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">{f.n}</span>
-                                   </div>
+                                   <Tooltip key={f.n} text={f.d}>
+                                     <div className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-[var(--bg-elevated)] border border-transparent hover:border-[var(--glass-border)] transition-all group cursor-help">
+                                        <Box size={14} className="text-[var(--text-muted)] group-hover:text-[var(--accent-cyan)] transition-colors" />
+                                        <span className="text-[11px] font-bold text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">{f.n}</span>
+                                     </div>
+                                   </Tooltip>
                                  ))}
                               </div>
                            </div>
@@ -1204,22 +1199,6 @@ export const AdminPanel = ({
                          <p className="text-[10px] font-black uppercase tracking-[0.2em] italic">Waste Bin Empty</p>
                       </div>
                    )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Side-Car Help Pane */}
-            <AnimatePresence>
-              {hoveredFeature && (
-                <motion.div 
-                   initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
-                   className="absolute bottom-20 left-6 right-6 p-5 bg-[var(--bg-tertiary)] border border-[var(--glass-border)] rounded-2xl shadow-2xl z-50 pointer-events-none"
-                >
-                   <div className="flex items-center gap-2 mb-2">
-                     <Info size={10} className="text-[var(--accent-cyan)]" />
-                     <span className="text-[10px] font-extrabold uppercase tracking-widest text-[var(--accent-cyan)]">{hoveredFeature.n}</span>
-                   </div>
-                   <p className="text-[11px] text-[var(--text-primary)] leading-relaxed italic">{hoveredFeature.d}</p>
                 </motion.div>
               )}
             </AnimatePresence>
