@@ -140,7 +140,26 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_usage_timestamp ON token_usage(timestamp);
   CREATE INDEX IF NOT EXISTS idx_toc_document ON toc_items(document_id);
   CREATE INDEX IF NOT EXISTS idx_toc_parent ON toc_items(parent_id);
+
+  CREATE TABLE IF NOT EXISTS validated_qas (
+    id TEXT PRIMARY KEY,
+    question TEXT UNIQUE,
+    answer TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
+
+// Migrations: Add confidence_score and validation_status to chat_messages if missing
+try {
+  db.exec("ALTER TABLE chat_messages ADD COLUMN confidence_score INTEGER DEFAULT NULL");
+} catch (e) {
+  // Column already exists
+}
+try {
+  db.exec("ALTER TABLE chat_messages ADD COLUMN validation_status TEXT DEFAULT NULL");
+} catch (e) {
+  // Column already exists
+}
 
 // Helper functions
 export function getSetting(key) {

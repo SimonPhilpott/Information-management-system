@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import fs from 'fs';
-import { syncPdfs, getSyncProgress, listDriveFolders, getCatalogStructure, deleteDocuments, moveDocument, findDuplicates, getCachedPdfPath } from '../services/driveService.js';
+import { syncPdfs, getSyncProgress, listDriveFolders, getCatalogStructure, deleteDocuments, moveDocument, findDuplicates, getCachedPdfPath, registerAuthCallback } from '../services/driveService.js';
 import { autoCategoriseBooks } from '../services/categorisationService.js';
 import { extractPdfText, chunkText, getPageImage, extractOutline } from '../services/pdfService.js';
 import { generateEmbeddings } from '../services/embeddingService.js';
@@ -16,6 +16,11 @@ const router = Router();
 
 // Track indexing progress
 let indexProgress = { active: false, total: 0, current: 0, currentFile: '', phase: '' };
+
+// Register authentication callback to reset local indexing progress
+registerAuthCallback(() => {
+  indexProgress = { active: false, total: 0, current: 0, currentFile: '', phase: '' };
+});
 
 /**
  * POST /api/drive/sync - Sync PDFs from Google Drive and index them

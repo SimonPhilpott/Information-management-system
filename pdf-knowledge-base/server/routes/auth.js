@@ -32,9 +32,15 @@ router.get('/url', (req, res) => {
  * GET /api/auth/callback - Handle OAuth callback
  */
 router.get('/callback', async (req, res) => {
-  const { code } = req.query;
-  if (!code) {
-    return res.status(400).send('Missing authorization code');
+  // If request is made directly to backend (3001) instead of frontend proxy (6001),
+  // redirect through the client proxy so cookies are set on the correct origin.
+  const host = req.headers.host || '';
+  const xForwardedHost = req.headers['x-forwarded-host'];
+  
+  if (host.includes('3001') && !xForwardedHost) {
+    const clientUrl = config.clientUrl || 'http://localhost:6001';
+    console.log(`[Auth] Direct backend request to port 3001. Redirecting through client proxy at: ${clientUrl}`);
+    return res.redirect(`${clientUrl}/api/auth/callback?code=${code}`);
   }
 
   // Use the redirect URI stored in the session, or fallback to config

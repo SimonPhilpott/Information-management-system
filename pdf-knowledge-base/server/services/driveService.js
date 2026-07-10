@@ -14,7 +14,13 @@ const PDF_CACHE_DIR = path.join(__dirname, '..', 'data', 'pdfs');
 fs.mkdirSync(PDF_CACHE_DIR, { recursive: true });
 
 let syncProgress = { active: false, total: 0, current: 0, currentFile: '', phase: '', error: null };
+let indexProgress = { active: false, total: 0, current: 0, currentFile: '', phase: '' };
 let lastAuthError = null;
+let authCallbacks = [];
+
+export function registerAuthCallback(cb) {
+  authCallbacks.push(cb);
+}
 
 /**
  * Create an OAuth2 client
@@ -77,6 +83,10 @@ export function storeTokens(tokens, userInfo) {
   lastAuthError = null; // Clear error on successful token storage
   syncProgress.error = null;
   syncProgress.phase = '';
+  resetIndexProgress();
+  authCallbacks.forEach(cb => {
+    try { cb(); } catch (e) { console.error('Auth callback failed:', e); }
+  });
 }
 
 /**
@@ -241,6 +251,27 @@ async function downloadPdf(drive, fileId, filename) {
  */
 export function getSyncProgress() {
   return { ...syncProgress };
+}
+
+/**
+ * Get the current indexing progress
+ */
+export function getIndexProgress() {
+  return { ...indexProgress };
+}
+
+/**
+ * Update current indexing progress
+ */
+export function updateIndexProgress(updates) {
+  indexProgress = { ...indexProgress, ...updates };
+}
+
+/**
+ * Reset indexing progress
+ */
+export function resetIndexProgress() {
+  indexProgress = { active: false, total: 0, current: 0, currentFile: '', phase: '' };
 }
 
 /**

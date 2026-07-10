@@ -4,9 +4,18 @@ import CitationCard from './CitationCard';
 import { Tooltip } from './CursorHover';
 
 export default function MessageBubble({ message, onOpenPdf, onPin, pinnedItems = [], onOpenCanvas, showCitations }) {
-  const { role, content, citations, model, canvasUpdate, id } = message;
+  const { role, content, citations, model, canvasUpdate, id, confidenceScore, validationStatus } = message;
+  
+  const [localConfidenceScore, setLocalConfidenceScore] = React.useState(confidenceScore);
+  const [localValidationStatus, setLocalValidationStatus] = React.useState(validationStatus);
+  const [validationReport, setValidationReport] = React.useState(null);
+  const [isValidating, setIsValidating] = React.useState(false);
+  
   const [verification, setVerification] = React.useState(null);
   const [isVerifying, setIsVerifying] = React.useState(false);
+  const [isSaved, setIsSaved] = React.useState(false);
+  const [isSaving, setIsSaving] = React.useState(false);
+  const [questionText, setQuestionText] = React.useState('');
 
   const handleVerify = async () => {
     setIsVerifying(true);
@@ -22,6 +31,76 @@ export default function MessageBubble({ message, onOpenPdf, onPin, pinnedItems =
       console.error('Verification failed:', err);
     } finally {
       setIsVerifying(false);
+    }
+  };
+
+  const handleValidate = async () => {
+    setIsValidating(true);
+    try {
+      const res = await fetch('/api/chat/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId: id })
+      });
+      const data = await res.json();
+      setValidationReport(data);
+      setLocalConfidenceScore(data.confidenceScore);
+      setLocalValidationStatus(data.validationStatus);
+      if (data.question) {
+        setQuestionText(data.question);
+      }
+    } catch (err) {
+      console.error('Validation failed:', err);
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  const handleSaveValidated = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    
+    // Fallback to try and find question from DB if questionText is empty
+    let qText = questionText;
+    if (!qText) {
+      try {
+        const checkRes = await fetch('/api/chat/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messageId: id })
+        });
+        const checkData = await checkRes.json();
+        if (checkData.question) {
+          qText = checkData.question;
+          setQuestionText(qText);
+        }
+      } catch (e) {
+        console.error('Failed to resolve question text:', e);
+      }
+    }
+
+    if (!qText) {
+      alert('Could not resolve original question text to save.');
+      setIsSaving(false);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/chat/save-validated', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: qText, answer: content })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIsSaved(true);
+        setLocalConfidenceScore(100);
+        setLocalValidationStatus('verified');
+      }
+    } catch (err) {
+      console.error('Failed to save validated answer:', err);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -370,17 +449,116 @@ export default function MessageBubble({ message, onOpenPdf, onPin, pinnedItems =
         )}
 
         {role === 'assistant' && (
-          <div className="message-actions">
+          <div className="message-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {localConfidenceScore !== null && localConfidenceScore !== undefined && (
+              <div className="confidence-rating" style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontSize: '11px',
+                color: localConfidenceScore >= 80 ? '#10b981' : (localConfidenceScore >= 50 ? '#f59e0b' : '#ef4444'),
+                fontWeight: '700',
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid var(--glass-border)',
+                padding: '4px 8px',
+                borderRadius: 'var(--radius-sm)',
+                whiteSpace: 'nowrap'
+              }}>
+                <span>Rating: {localConfidenceScore}% Confidence</span>
+              </div>
+            )}
+
+            <Tooltip text="Audit response against your local PDF library docs">
+              <button 
+                className={`verify-btn ${isValidating ? 'loading' : ''}`} 
+                onClick={handleValidate}
+                disabled={isValidating}
+              >
+                {isValidating ? <Loader2 size={12} className="animate-spin" /> : <ShieldCheck size={12} />}
+                <span>{isValidating ? 'Auditing...' : 'Validate Response'}</span>
+              </button>
+            </Tooltip>
+
             <Tooltip text="Double-Check with Google Search">
               <button 
                 className={`verify-btn ${isVerifying ? 'loading' : ''}`} 
                 onClick={handleVerify}
                 disabled={isVerifying}
               >
-                {isVerifying ? <Loader2 size={12} className="animate-spin" /> : <ShieldCheck size={12} />}
-                <span>{isVerifying ? 'Verifying...' : 'Verify Response'}</span>
+                {isVerifying ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                <span>{isVerifying ? 'Verifying...' : 'Search Check'}</span>
               </button>
             </Tooltip>
+          </div>
+        )}
+
+        {validationReport && (
+          <div className="verification-report animate-fadeIn" style={{
+            marginTop: '12px',
+            background: localValidationStatus === 'verified' ? 'rgba(16, 185, 129, 0.05)' : (localValidationStatus === 'partially_verified' ? 'rgba(245, 158, 11, 0.05)' : 'rgba(239, 68, 68, 0.05)'),
+            borderColor: localValidationStatus === 'verified' ? 'rgba(16, 185, 129, 0.2)' : (localValidationStatus === 'partially_verified' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(239, 68, 68, 0.2)'),
+            borderStyle: 'solid',
+            borderWidth: '1px',
+            borderRadius: 'var(--radius-md)',
+            padding: '12px'
+          }}>
+            <div className="verification-header" style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontWeight: '600',
+              color: localValidationStatus === 'verified' ? '#10b981' : (localValidationStatus === 'partially_verified' ? '#f59e0b' : '#ef4444'),
+              marginBottom: '8px',
+              fontSize: '11px',
+              textTransform: 'none',
+              letterSpacing: '0.05em'
+            }}>
+              <ShieldCheck size={14} />
+              <span>Library Validation Audit: {localValidationStatus === 'verified' ? 'Fully Grounded' : (localValidationStatus === 'partially_verified' ? 'Partially Grounded' : 'Ungrounded')}</span>
+            </div>
+            <div className="verification-content" style={{ color: 'var(--text-secondary)', lineHeight: '1.5', fontSize: '12px' }}>
+              {validationReport.explanation}
+            </div>
+            {validationReport.matches && validationReport.matches.length > 0 && (
+              <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <div style={{ fontSize: '10px', fontWeight: 'bold', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Audited Sources Match:</div>
+                {validationReport.matches.map((m, idx) => (
+                  <div key={idx} style={{ fontSize: '11px', display: 'flex', gap: '6px', color: 'var(--text-secondary)', alignItems: 'flex-start' }}>
+                    <span style={{ color: 'var(--accent-cyan)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>[{m.filename}, Page {m.pageNum}]</span>
+                    <span style={{ fontStyle: 'italic', opacity: 0.8 }}>{m.text}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ marginTop: '12px', borderTop: '1px solid var(--glass-border)', paddingTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
+              {isSaved ? (
+                <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Check size={12} /> Saved as Validated Q&A (100% Match)
+                </span>
+              ) : (
+                <button
+                  onClick={handleSaveValidated}
+                  disabled={isSaving}
+                  style={{
+                    padding: '4px 10px',
+                    background: 'var(--accent-indigo)',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'opacity 0.2s'
+                  }}
+                >
+                  {isSaving ? <Loader2 size={10} className="animate-spin" /> : <ShieldCheck size={10} />}
+                  Register as Ground-Truth (100% Match)
+                </button>
+              )}
+            </div>
           </div>
         )}
 

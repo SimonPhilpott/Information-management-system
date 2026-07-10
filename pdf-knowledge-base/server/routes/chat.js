@@ -1,5 +1,7 @@
 import { Router } from 'express';
-import { processMessage, getChatSessions, getSessionMessages, deleteSession, verifyMessage, clearAllSessions } from '../services/chatService.js';
+import { processMessage, getChatSessions, getSessionMessages, deleteSession, verifyMessage, clearAllSessions, validateMessage } from '../services/chatService.js';
+import db from '../db/database.js';
+import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
@@ -87,6 +89,73 @@ router.post('/verify', async (req, res) => {
     const result = await verifyMessage(content);
     res.json(result);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Validation endpoint (Auditing against local PDF library)
+router.post('/validate', async (req, res) => {
+  try {
+    const { messageId, prompt, responseText, subjects } = req.body;
+    let targetPrompt = prompt;
+    let targetResponse = responseText;
+    
+    if (messageId && (!targetPrompt || !targetResponse)) {
+      const msg = db.prepare('SELECT session_id, content, created_at FROM chat_messages WHERE id = ?').get(messageId);
+      if (msg) {
+        if (!targetResponse) targetResponse = msg.content;
+        const promptMsg = db.prepare(`
+          SELECT content FROM chat_messages 
+          WHERE session_id = ? AND role = 'user' AND created_at < ? 
+          ORDER BY created_at DESC LIMIT 1
+        `).get(msg.session_id, msg.created_at);
+        if (promptMsg && !targetPrompt) {
+          targetPrompt = promptMsg.content;
+        }
+      }
+    }
+
+    if (!targetPrompt || !targetResponse) {
+      return res.status(400).json({ error: 'Unable to locate prompt or response content for validation' });
+    }
+
+    const result = await validateMessage(targetPrompt, targetResponse, subjects || []);
+    
+    // Update the message in database with the newly audited confidence score and status
+    if (messageId) {
+      db.prepare(`
+        UPDATE chat_messages 
+        SET confidence_score = ?, validation_status = ? 
+        WHERE id = ?
+      `).run(result.confidenceScore, result.validationStatus, messageId);
+    }
+    
+    res.json({
+      ...result,
+      question: targetPrompt
+    });
+  } catch (err) {
+    console.error('Validation error on route:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Save a validated answer (Ground Truth Q&A)
+router.post('/save-validated', async (req, res) => {
+  try {
+    const { question, answer } = req.body;
+    if (!question || !answer) {
+      return res.status(400).json({ error: 'Question and answer are required' });
+    }
+
+    db.prepare(`
+      INSERT OR REPLACE INTO validated_qas (id, question, answer)
+      VALUES (?, ?, ?)
+    `).run(uuidv4(), question.trim(), answer.trim());
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Save validated Q&A error:', err);
     res.status(500).json({ error: err.message });
   }
 });

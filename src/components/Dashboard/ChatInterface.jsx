@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, BookOpen, Bot, Sparkles, Image as ImageIcon, Camera, X, Mic, Volume2, VolumeX, MicOff, FileText } from 'lucide-react';
+import { Send, BookOpen, Bot, Sparkles, Image as ImageIcon, Camera, X, Mic, Volume2, VolumeX, MicOff, FileText, Paperclip } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 import { Tooltip } from './CursorHover';
 
@@ -15,7 +15,8 @@ export default function ChatInterface({
   const [attachedFiles, setAttachedFiles] = useState([]);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const imageInputRef = useRef(null);
+  const docInputRef = useRef(null);
 
   useEffect(() => {
     if (messages.length > 0 || isTyping) {
@@ -30,6 +31,7 @@ export default function ChatInterface({
     // Check size limit: 5MB
     if (file.size > 5 * 1024 * 1024) {
       alert("File size exceeds 5MB limit. Please upload a smaller document.");
+      e.target.value = '';
       return;
     }
 
@@ -38,6 +40,7 @@ export default function ChatInterface({
     if (file.type.startsWith('image/')) {
       reader.onloadend = () => {
         setSelectedImage(reader.result);
+        e.target.value = '';
       };
       reader.readAsDataURL(file);
     } else {
@@ -49,6 +52,7 @@ export default function ChatInterface({
           mimeType: file.type || 'text/plain',
           data: base64Data
         }]);
+        e.target.value = '';
       };
       reader.readAsDataURL(file);
     }
@@ -239,9 +243,16 @@ export default function ChatInterface({
         >
           <input 
             type="file" 
-            ref={fileInputRef} 
+            ref={imageInputRef} 
             onChange={handleFileSelect} 
-            accept="image/*,.txt,.pdf,.pptx" 
+            accept="image/*" 
+            style={{ display: 'none' }} 
+          />
+          <input 
+            type="file" 
+            ref={docInputRef} 
+            onChange={handleFileSelect} 
+            accept=".txt,.pdf,.pptx" 
             style={{ display: 'none' }} 
           />
           
@@ -262,11 +273,21 @@ export default function ChatInterface({
             className="input-tools"
             style={window.innerWidth <= 768 ? { borderRight: 'none', flex: 1, paddingRight: 0, marginRight: 0 } : {}}
           >
+            <Tooltip text="Attach Document (.txt, .pdf, .pptx)">
+              <button 
+                type="button" 
+                className="tool-btn" 
+                onClick={() => docInputRef.current?.click()}
+              >
+                <Paperclip size={16} />
+              </button>
+            </Tooltip>
+
             <Tooltip text="Take Photo / Upload Image">
               <button 
                 type="button" 
                 className="tool-btn" 
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => imageInputRef.current?.click()}
               >
                 <Camera size={16} />
               </button>
