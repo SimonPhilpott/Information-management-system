@@ -3,6 +3,37 @@ import { RefreshCw, CheckCircle2, AlertCircle, FileText, Loader2, Shield } from 
 
 export default function SyncStatus({ syncStatus, onSync, compact = false, onLogin, authStatus }) {
   const [showSuccess, setShowSuccess] = React.useState(false);
+  const [portsStatus, setPortsStatus] = React.useState({
+    mainApp: 'checking',
+    authServer: 'checking',
+    kbClient: 'checking'
+  });
+
+  React.useEffect(() => {
+    const checkPort = async (url) => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1500);
+        await fetch(url, { mode: 'no-cors', signal: controller.signal, cache: 'no-cache' });
+        clearTimeout(timeoutId);
+        return 'online';
+      } catch (e) {
+        return 'offline';
+      }
+    };
+
+    const runChecks = async () => {
+      const hostname = window.location.hostname || 'localhost';
+      const mainApp = await checkPort(`http://${hostname}:6001/`);
+      const authServer = await checkPort(`http://${hostname}:3001/api/auth/status`);
+      const kbClient = await checkPort(`http://${hostname}:5173/`);
+      setPortsStatus({ mainApp, authServer, kbClient });
+    };
+
+    runChecks();
+    const interval = setInterval(runChecks, 5000);
+    return () => clearInterval(interval);
+  }, []);
   const isSyncing = syncStatus?.drive?.active || syncStatus?.indexing?.active;
   const stats = syncStatus?.stats;
   const progress = syncStatus?.indexing;
@@ -183,6 +214,59 @@ export default function SyncStatus({ syncStatus, onSync, compact = false, onLogi
               Last sync: {formatTimeAgo(stats.lastSynced)}
             </div>
           )}
+
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '12px', 
+            marginRight: '8px',
+            background: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid var(--glass-border)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '4px 10px',
+            backdropFilter: 'blur(4px)',
+            userSelect: 'none'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div 
+                style={{ 
+                  width: '6px', 
+                  height: '6px', 
+                  borderRadius: '50%', 
+                  backgroundColor: portsStatus.mainApp === 'online' ? '#10b981' : (portsStatus.mainApp === 'checking' ? '#f59e0b' : '#ef4444'),
+                  boxShadow: portsStatus.mainApp === 'online' ? '0 0 6px #10b981' : (portsStatus.mainApp === 'checking' ? '0 0 6px #f59e0b' : '0 0 6px #ef4444'),
+                  transition: 'background-color 0.3s, box-shadow 0.3s'
+                }} 
+              />
+              <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)' }}>App: 6001</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div 
+                style={{ 
+                  width: '6px', 
+                  height: '6px', 
+                  borderRadius: '50%', 
+                  backgroundColor: portsStatus.authServer === 'online' ? '#10b981' : (portsStatus.authServer === 'checking' ? '#f59e0b' : '#ef4444'),
+                  boxShadow: portsStatus.authServer === 'online' ? '0 0 6px #10b981' : (portsStatus.authServer === 'checking' ? '0 0 6px #f59e0b' : '0 0 6px #ef4444'),
+                  transition: 'background-color 0.3s, box-shadow 0.3s'
+                }} 
+              />
+              <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)' }}>Auth: 3001</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div 
+                style={{ 
+                  width: '6px', 
+                  height: '6px', 
+                  borderRadius: '50%', 
+                  backgroundColor: portsStatus.kbClient === 'online' ? '#10b981' : (portsStatus.kbClient === 'checking' ? '#f59e0b' : '#ef4444'),
+                  boxShadow: portsStatus.kbClient === 'online' ? '0 0 6px #10b981' : (portsStatus.kbClient === 'checking' ? '0 0 6px #f59e0b' : '0 0 6px #ef4444'),
+                  transition: 'background-color 0.3s, box-shadow 0.3s'
+                }} 
+              />
+              <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)' }}>KB: 5173</span>
+            </div>
+          </div>
 
           <button
             onClick={handleClick}
