@@ -1,12 +1,14 @@
 import React from 'react';
 import { RefreshCw, CheckCircle2, AlertCircle, FileText, Loader2, Shield } from 'lucide-react';
+import { Tooltip } from './CursorHover';
 
 export default function SyncStatus({ syncStatus, onSync, compact = false, onLogin, authStatus }) {
   const [showSuccess, setShowSuccess] = React.useState(false);
   const [portsStatus, setPortsStatus] = React.useState({
     mainApp: 'checking',
     authServer: 'checking',
-    kbClient: 'checking'
+    kbClient: 'checking',
+    ngrok: 'checking'
   });
 
   React.useEffect(() => {
@@ -22,12 +24,31 @@ export default function SyncStatus({ syncStatus, onSync, compact = false, onLogi
       }
     };
 
+    const checkNgrok = async () => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1500);
+        const res = await fetch('http://localhost:4040/api/tunnels', { signal: controller.signal, cache: 'no-cache' });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const data = await res.json();
+          const hasTunnel = data.tunnels?.some(t => t.public_url?.includes('simon-ims') || t.public_url?.includes('ngrok'));
+          return hasTunnel ? 'online' : 'offline';
+        }
+        return 'offline';
+      } catch (e) {
+        const tcpCheck = await checkPort('http://localhost:4040/');
+        return tcpCheck === 'online' ? 'online' : 'offline';
+      }
+    };
+
     const runChecks = async () => {
       const hostname = window.location.hostname || 'localhost';
       const mainApp = await checkPort(`http://${hostname}:6001/`);
       const authServer = await checkPort(`http://${hostname}:3001/api/auth/status`);
       const kbClient = await checkPort(`http://${hostname}:5173/`);
-      setPortsStatus({ mainApp, authServer, kbClient });
+      const ngrok = await checkNgrok();
+      setPortsStatus({ mainApp, authServer, kbClient, ngrok });
     };
 
     runChecks();
@@ -215,59 +236,7 @@ export default function SyncStatus({ syncStatus, onSync, compact = false, onLogi
             </div>
           )}
 
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '12px', 
-            marginRight: '8px',
-            background: 'rgba(255, 255, 255, 0.03)',
-            border: '1px solid var(--glass-border)',
-            borderRadius: 'var(--radius-sm)',
-            padding: '4px 10px',
-            backdropFilter: 'blur(4px)',
-            userSelect: 'none'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div 
-                style={{ 
-                  width: '6px', 
-                  height: '6px', 
-                  borderRadius: '50%', 
-                  backgroundColor: portsStatus.mainApp === 'online' ? '#10b981' : (portsStatus.mainApp === 'checking' ? '#f59e0b' : '#ef4444'),
-                  boxShadow: portsStatus.mainApp === 'online' ? '0 0 6px #10b981' : (portsStatus.mainApp === 'checking' ? '0 0 6px #f59e0b' : '0 0 6px #ef4444'),
-                  transition: 'background-color 0.3s, box-shadow 0.3s'
-                }} 
-              />
-              <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)' }}>App: 6001</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div 
-                style={{ 
-                  width: '6px', 
-                  height: '6px', 
-                  borderRadius: '50%', 
-                  backgroundColor: portsStatus.authServer === 'online' ? '#10b981' : (portsStatus.authServer === 'checking' ? '#f59e0b' : '#ef4444'),
-                  boxShadow: portsStatus.authServer === 'online' ? '0 0 6px #10b981' : (portsStatus.authServer === 'checking' ? '0 0 6px #f59e0b' : '0 0 6px #ef4444'),
-                  transition: 'background-color 0.3s, box-shadow 0.3s'
-                }} 
-              />
-              <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)' }}>Auth: 3001</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div 
-                style={{ 
-                  width: '6px', 
-                  height: '6px', 
-                  borderRadius: '50%', 
-                  backgroundColor: portsStatus.kbClient === 'online' ? '#10b981' : (portsStatus.kbClient === 'checking' ? '#f59e0b' : '#ef4444'),
-                  boxShadow: portsStatus.kbClient === 'online' ? '0 0 6px #10b981' : (portsStatus.kbClient === 'checking' ? '0 0 6px #f59e0b' : '0 0 6px #ef4444'),
-                  transition: 'background-color 0.3s, box-shadow 0.3s'
-                }} 
-              />
-              <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)' }}>KB: 5173</span>
-            </div>
-          </div>
-
+          {/* Sync Now button placed next to last synced text */}
           <button
             onClick={handleClick}
             disabled={isSyncing}
@@ -284,6 +253,112 @@ export default function SyncStatus({ syncStatus, onSync, compact = false, onLogi
               {isSyncing ? 'Syncing...' : (showSuccess ? 'Synced!' : 'Sync Now')}
             </span>
           </button>
+
+          {/* Pulse warning banner for offline ports (only App, Auth, or KB) */}
+          {(portsStatus.mainApp === 'offline' || portsStatus.authServer === 'offline' || portsStatus.kbClient === 'offline') && (
+            <div 
+              style={{ 
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                color: '#ef4444', 
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '4px 10px',
+                fontSize: '11px',
+                fontWeight: 600,
+                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+              }}
+              title="A critical service port has stopped. Click sync to retry or check your developer terminal window."
+            >
+              <AlertCircle size={13} />
+              <span>
+                Offline: {[
+                  portsStatus.mainApp === 'offline' && 'App:6001',
+                  portsStatus.authServer === 'offline' && 'Auth:3001 (Critical)',
+                  portsStatus.kbClient === 'offline' && 'KB:5173'
+                ].filter(Boolean).join(', ')}
+              </span>
+            </div>
+          )}
+
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '12px', 
+            marginRight: '8px',
+            background: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid var(--glass-border)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '4px 10px',
+            backdropFilter: 'blur(4px)',
+            userSelect: 'none'
+          }}>
+            <Tooltip text={`Main UI Dashboard (Port 6001)\nStatus: ${portsStatus.mainApp === 'online' ? 'Online' : 'Offline'}\nServes the frontend user interface and layout navigations.`}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'help' }}>
+                <div 
+                  style={{ 
+                    width: '6px', 
+                    height: '6px', 
+                    borderRadius: '50%', 
+                    backgroundColor: portsStatus.mainApp === 'online' ? '#10b981' : (portsStatus.mainApp === 'checking' ? '#f59e0b' : '#ef4444'),
+                    boxShadow: portsStatus.mainApp === 'online' ? '0 0 6px #10b981' : (portsStatus.mainApp === 'checking' ? '0 0 6px #f59e0b' : '0 0 6px #ef4444'),
+                    transition: 'background-color 0.3s, box-shadow 0.3s'
+                  }} 
+                />
+                <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)' }}>App: 6001</span>
+              </div>
+            </Tooltip>
+
+            <Tooltip text={`Authentication & API Server (Port 3001)\nStatus: ${portsStatus.authServer === 'online' ? 'Online' : 'Offline'}\nManages Google OAuth logins, document storage, and vector database API services.`}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'help' }}>
+                <div 
+                  style={{ 
+                    width: '6px', 
+                    height: '6px', 
+                    borderRadius: '50%', 
+                    backgroundColor: portsStatus.authServer === 'online' ? '#10b981' : (portsStatus.authServer === 'checking' ? '#f59e0b' : '#ef4444'),
+                    boxShadow: portsStatus.authServer === 'online' ? '0 0 6px #10b981' : (portsStatus.authServer === 'checking' ? '0 0 6px #f59e0b' : '0 0 6px #ef4444'),
+                    transition: 'background-color 0.3s, box-shadow 0.3s'
+                  }} 
+                />
+                <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)' }}>Auth: 3001</span>
+              </div>
+            </Tooltip>
+
+            <Tooltip text={`Knowledge Base Dev Client (Port 5173)\nStatus: ${portsStatus.kbClient === 'online' ? 'Online' : 'Offline'}\nProvides hot-reloaded development rendering for the PDF parser module.`}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'help' }}>
+                <div 
+                  style={{ 
+                    width: '6px', 
+                    height: '6px', 
+                    borderRadius: '50%', 
+                    backgroundColor: portsStatus.kbClient === 'online' ? '#10b981' : (portsStatus.kbClient === 'checking' ? '#f59e0b' : '#ef4444'),
+                    boxShadow: portsStatus.kbClient === 'online' ? '0 0 6px #10b981' : (portsStatus.kbClient === 'checking' ? '0 0 6px #f59e0b' : '0 0 6px #ef4444'),
+                    transition: 'background-color 0.3s, box-shadow 0.3s'
+                  }} 
+                />
+                <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)' }}>KB: 5173</span>
+              </div>
+            </Tooltip>
+
+            <Tooltip text={`IMS Public Tunnel (Ngrok)\nStatus: ${portsStatus.ngrok === 'online' ? 'Online' : 'Offline'}\nExposes the dashboard secure URL https://simon-ims.ngrok-free.app for external access.`}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'help' }}>
+                <div 
+                  style={{ 
+                    width: '6px', 
+                    height: '6px', 
+                    borderRadius: '50%', 
+                    backgroundColor: portsStatus.ngrok === 'online' ? '#10b981' : (portsStatus.ngrok === 'checking' ? '#f59e0b' : '#ef4444'),
+                    boxShadow: portsStatus.ngrok === 'online' ? '0 0 6px #10b981' : (portsStatus.ngrok === 'checking' ? '0 0 6px #f59e0b' : '0 0 6px #ef4444'),
+                    transition: 'background-color 0.3s, box-shadow 0.3s'
+                  }} 
+                />
+                <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)' }}>ngrok</span>
+              </div>
+            </Tooltip>
+          </div>
         </>
       )}
     </div>
