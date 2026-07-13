@@ -559,9 +559,9 @@ const CanvasTexturePillLabel = React.memo(({ title, isSubject, isSelected, scale
   );
 });
 
-const NodeLabel = React.memo(({ node, isHovered, onHover, onClick, showLabels, labelStyle, onOpenDrawer, isDark, layoutRules, isDimmed }) => {
+const NodeLabel = React.memo(({ node, isHovered, onHover, onClick, showLabels, labelStyle, onOpenDrawer, isDark, layoutRules, isDimmed, showSearchPath }) => {
   const beta = true;
-  const scaleVal = beta ? (0.85 + Math.min(node.degree || 0, 8) * 0.12) : 1.0;
+  const scaleVal = (showSearchPath && node.isPathNode) ? 1.0 : (beta ? (0.85 + Math.min(node.degree || 0, 8) * 0.12) : 1.0);
 
   return (
     <group 
@@ -929,6 +929,7 @@ const NeuralMesh = ({ onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNod
           let isNodeDimmed = false;
           if (showSearchPath) {
             isNodeDimmed = !node.isPathNode;
+            if (isNodeDimmed) return null;
           } else if (selectedNode) {
             isNodeDimmed = !connectedNodeIds.has(node.id);
           } else if (matchingNodeIds) {
@@ -946,6 +947,7 @@ const NeuralMesh = ({ onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNod
                   isDark={isDark}
                   layoutRules={layoutRules}
                   isDimmed={isNodeDimmed}
+                  showSearchPath={showSearchPath}
                 />
             </group>
           );
@@ -1906,7 +1908,7 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
         <OrbitControls 
           makeDefault enableDamping dampingFactor={0.2}
           maxDistance={150000} minDistance={100}
-          target={[-2236, -2205, 1871]}
+          target={showSearchPath ? [0, 0, 0] : [-2236, -2205, 1871]}
           onStart={() => setIs3DInteracting && setIs3DInteracting(true)}
           onEnd={() => setIs3DInteracting && setIs3DInteracting(false)}
         />
