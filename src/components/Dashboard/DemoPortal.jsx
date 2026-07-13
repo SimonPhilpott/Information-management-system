@@ -24,7 +24,9 @@ import {
   Cpu,
   Zap,
   Shield,
-  ChevronDown
+  ChevronDown,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 export default function DemoPortal({ 
@@ -198,6 +200,7 @@ export default function DemoPortal({
   const [showTierList, setShowTierList] = useState(false);
   const [isBetaLayout, setIsBetaLayout] = useState(true);
   const [showSearchPath, setShowSearchPath] = useState(false);
+  const [isScreenshotMode, setIsScreenshotMode] = useState(false);
 
   // Custom entity types configuration for the demo portal
   const demoEntityTypes = useMemo(() => {
@@ -300,9 +303,10 @@ export default function DemoPortal({
       isDark ? 'bg-[#030712] text-[#f3f4f6]' : 'bg-[#f4efed] text-[#1f2937]'
     }`}>
       {/* Premium Top Navigation Bar */}
-      <header className={`px-6 py-4 flex items-center justify-between border-b backdrop-blur-xl sticky top-0 z-50 transition-colors duration-300 ${
-        isDark ? 'bg-[#030712]/80 border-white/5' : 'bg-[#f4efed]/80 border-[#2E2B27]/10'
-      }`}>
+      {!isScreenshotMode && (
+        <header className={`px-6 py-4 flex items-center justify-between border-b backdrop-blur-xl sticky top-0 z-50 transition-colors duration-300 ${
+          isDark ? 'bg-[#030712]/80 border-white/5' : 'bg-[#f4efed]/80 border-[#2E2B27]/10'
+        }`}>
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-xl bg-gradient-to-tr from-brand-cyan to-indigo-500 shadow-[0_0_15px_rgba(0,242,255,0.25)]">
             <Activity size={18} className="text-white" />
@@ -460,11 +464,12 @@ export default function DemoPortal({
           </a>
         </div>
       </header>
+      )}
 
       {/* Main Content Area */}
       <main className={activeTab === 'dashboard' || activeTab === 'tagger'
         ? "flex-1 w-full max-w-7xl mx-auto p-6 flex flex-col gap-6" 
-        : "h-[calc(100vh-76px)] w-full flex flex-col relative"
+        : (isScreenshotMode ? "h-screen w-full flex flex-col relative" : "h-[calc(100vh-76px)] w-full flex flex-col relative")
       }>
         {activeTab === 'dashboard' ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -653,58 +658,60 @@ export default function DemoPortal({
           /* Embedded Spatial Graph View */
           <div className="flex-1 w-full flex flex-col relative overflow-hidden">
             {/* Float control overlay for toggling labels & heatmap */}
-            <div className="absolute top-4 left-4 z-50 flex items-center gap-2 pointer-events-auto">
-              <button
-                onClick={() => setShowLabels(!showLabels)}
-                className={`px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer active:scale-95 shadow-md flex items-center gap-1.5 ${
-                  showLabels
-                    ? (isDark ? 'bg-brand-cyan/20 border-brand-cyan/40 text-brand-cyan shadow-[0_0_10px_rgba(0,242,255,0.15)]' : 'bg-[#899981]/25 border-[#899981]/50 text-[#4E5A47]')
-                    : (isDark ? 'bg-slate-900/80 border-white/10 text-slate-400 hover:text-white' : 'bg-white/80 border-black/10 text-slate-600 hover:text-black')
-                }`}
-              >
-                <span>Labels: {showLabels ? 'ON' : 'OFF'}</span>
-              </button>
-              <button
-                onClick={() => setShowHeatmap(!showHeatmap)}
-                className={`px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer active:scale-95 shadow-md flex items-center gap-1.5 ${
-                  showHeatmap
-                    ? (isDark ? 'bg-orange-500/20 border-orange-500/40 text-orange-400 shadow-[0_0_10px_rgba(249,115,22,0.15)]' : 'bg-orange-500/15 border-orange-500/30 text-orange-700')
-                    : (isDark ? 'bg-slate-900/80 border-white/10 text-slate-400 hover:text-white' : 'bg-white/80 border-black/10 text-slate-600 hover:text-black')
-                }`}
-              >
-                <span>Heatmap: {showHeatmap ? 'ON' : 'OFF'}</span>
-              </button>
-              <button
-                onClick={() => setShowTierList(!showTierList)}
-                className={`px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer active:scale-95 shadow-md flex items-center gap-1.5 ${
-                  showTierList
-                    ? (isDark ? 'bg-brand-cyan/20 border-brand-cyan/40 text-brand-cyan shadow-[0_0_10px_rgba(0,242,255,0.15)]' : 'bg-[#899981]/25 border-[#899981]/50 text-[#4E5A47]')
-                    : (isDark ? 'bg-slate-900/80 border-white/10 text-slate-400 hover:text-white' : 'bg-white/80 border-black/10 text-slate-600 hover:text-black')
-                }`}
-              >
-                <span>Tier: {showTierList ? 'ON' : 'OFF'}</span>
-              </button>
-              <button
-                onClick={() => setIsBetaLayout(!isBetaLayout)}
-                className={`px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer active:scale-95 shadow-md flex items-center gap-1.5 ${
-                  isBetaLayout
-                    ? (isDark ? 'bg-brand-cyan/20 border-brand-cyan/40 text-brand-cyan shadow-[0_0_10px_rgba(0,242,255,0.15)]' : 'bg-[#899981]/25 border-[#899981]/50 text-[#4E5A47]')
-                    : (isDark ? 'bg-slate-900/80 border-white/10 text-slate-400 hover:text-white' : 'bg-white/80 border-black/10 text-slate-600 hover:text-black')
-                }`}
-              >
-                <span>Beta Layout: {isBetaLayout ? 'ON' : 'OFF'}</span>
-              </button>
-              <button
-                onClick={() => setShowSearchPath(!showSearchPath)}
-                className={`px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer active:scale-95 shadow-md flex items-center gap-1.5 ${
-                  showSearchPath
-                    ? (isDark ? 'bg-brand-cyan/20 border-brand-cyan/40 text-brand-cyan shadow-[0_0_10px_rgba(0,242,255,0.15)]' : 'bg-[#899981]/25 border-[#899981]/50 text-[#4E5A47]')
-                    : (isDark ? 'bg-slate-900/80 border-white/10 text-slate-400 hover:text-white' : 'bg-white/80 border-black/10 text-slate-600 hover:text-black')
-                }`}
-              >
-                <span>Search Path: {showSearchPath ? 'ON' : 'OFF'}</span>
-              </button>
-            </div>
+            {!isScreenshotMode && (
+              <div className="absolute top-4 left-4 z-50 flex items-center gap-2 pointer-events-auto">
+                <button
+                  onClick={() => setShowLabels(!showLabels)}
+                  className={`px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer active:scale-95 shadow-md flex items-center gap-1.5 ${
+                    showLabels
+                      ? (isDark ? 'bg-brand-cyan/20 border-brand-cyan/40 text-brand-cyan shadow-[0_0_10px_rgba(0,242,255,0.15)]' : 'bg-[#899981]/25 border-[#899981]/50 text-[#4E5A47]')
+                      : (isDark ? 'bg-slate-900/80 border-white/10 text-slate-400 hover:text-white' : 'bg-white/80 border-black/10 text-slate-600 hover:text-black')
+                  }`}
+                >
+                  <span>Labels: {showLabels ? 'ON' : 'OFF'}</span>
+                </button>
+                <button
+                  onClick={() => setShowHeatmap(!showHeatmap)}
+                  className={`px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer active:scale-95 shadow-md flex items-center gap-1.5 ${
+                    showHeatmap
+                      ? (isDark ? 'bg-orange-500/20 border-orange-500/40 text-orange-400 shadow-[0_0_10px_rgba(249,115,22,0.15)]' : 'bg-orange-500/15 border-orange-500/30 text-orange-700')
+                      : (isDark ? 'bg-slate-900/80 border-white/10 text-slate-400 hover:text-white' : 'bg-white/80 border-black/10 text-slate-600 hover:text-black')
+                  }`}
+                >
+                  <span>Heatmap: {showHeatmap ? 'ON' : 'OFF'}</span>
+                </button>
+                <button
+                  onClick={() => setShowTierList(!showTierList)}
+                  className={`px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer active:scale-95 shadow-md flex items-center gap-1.5 ${
+                    showTierList
+                      ? (isDark ? 'bg-brand-cyan/20 border-brand-cyan/40 text-brand-cyan shadow-[0_0_10px_rgba(0,242,255,0.15)]' : 'bg-[#899981]/25 border-[#899981]/50 text-[#4E5A47]')
+                      : (isDark ? 'bg-slate-900/80 border-white/10 text-slate-400 hover:text-white' : 'bg-white/80 border-black/10 text-slate-600 hover:text-black')
+                  }`}
+                >
+                  <span>Tier: {showTierList ? 'ON' : 'OFF'}</span>
+                </button>
+                <button
+                  onClick={() => setIsBetaLayout(!isBetaLayout)}
+                  className={`px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer active:scale-95 shadow-md flex items-center gap-1.5 ${
+                    isBetaLayout
+                      ? (isDark ? 'bg-brand-cyan/20 border-brand-cyan/40 text-brand-cyan shadow-[0_0_10px_rgba(0,242,255,0.15)]' : 'bg-[#899981]/25 border-[#899981]/50 text-[#4E5A47]')
+                      : (isDark ? 'bg-slate-900/80 border-white/10 text-slate-400 hover:text-white' : 'bg-white/80 border-black/10 text-slate-600 hover:text-black')
+                  }`}
+                >
+                  <span>Beta Layout: {isBetaLayout ? 'ON' : 'OFF'}</span>
+                </button>
+                <button
+                  onClick={() => setShowSearchPath(!showSearchPath)}
+                  className={`px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer active:scale-95 shadow-md flex items-center gap-1.5 ${
+                    showSearchPath
+                      ? (isDark ? 'bg-brand-cyan/20 border-brand-cyan/40 text-brand-cyan shadow-[0_0_10px_rgba(0,242,255,0.15)]' : 'bg-[#899981]/25 border-[#899981]/50 text-[#4E5A47]')
+                      : (isDark ? 'bg-slate-900/80 border-white/10 text-slate-400 hover:text-white' : 'bg-white/80 border-black/10 text-slate-600 hover:text-black')
+                  }`}
+                >
+                  <span>Search Path: {showSearchPath ? 'ON' : 'OFF'}</span>
+                </button>
+              </div>
+            )}
             <SpatialCanvas 
               nodes={localNodes}
               selectedNode={selectedNode}
@@ -719,6 +726,7 @@ export default function DemoPortal({
               showTierList={showTierList}
               betaLayout={isBetaLayout}
               showSearchPath={showSearchPath}
+              screenshotMode={isScreenshotMode}
               labelStyle="standard"
               onZoomChange={() => {}}
               onCoordsChange={() => {}}
@@ -729,6 +737,34 @@ export default function DemoPortal({
                 siblingMultiplier: 0.32
               }}
             />
+
+            {/* Absolute bottom-right eye icon for screenshot mode toggling */}
+            <button
+              onClick={() => setIsScreenshotMode(!isScreenshotMode)}
+              style={{
+                position: 'absolute',
+                bottom: '24px',
+                right: '24px',
+                zIndex: 100,
+                background: isScreenshotMode ? '#ffffff' : (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'),
+                border: '1px solid ' + (isScreenshotMode ? '#e2e8f0' : (isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)')),
+                borderRadius: '50%',
+                width: '40px',
+                height: '40px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                backdropFilter: 'blur(8px)',
+                color: isScreenshotMode ? '#0f172a' : (isDark ? '#ffffff' : '#0f172a'),
+                transition: 'all 0.2s'
+              }}
+              className="hover:scale-105 active:scale-95 pointer-events-auto"
+              title={isScreenshotMode ? "Show UI" : "Screenshot Mode"}
+            >
+              {isScreenshotMode ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
           </div>
         ) : activeTab.startsWith('beta-') ? (
           <div className="flex-1 w-full flex flex-col relative overflow-hidden">

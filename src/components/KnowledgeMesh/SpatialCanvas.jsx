@@ -559,7 +559,7 @@ const CanvasTexturePillLabel = React.memo(({ title, isSubject, isSelected, scale
   );
 });
 
-const NodeLabel = React.memo(({ node, isHovered, onHover, onClick, showLabels, labelStyle, onOpenDrawer, isDark, layoutRules, isDimmed, showSearchPath }) => {
+const NodeLabel = React.memo(({ node, isHovered, onHover, onClick, showLabels, labelStyle, onOpenDrawer, isDark, layoutRules, isDimmed, showSearchPath, screenshotMode }) => {
   const beta = true;
   const scaleVal = (showSearchPath && node.isPathNode) ? 1.0 : (beta ? (0.85 + Math.min(node.degree || 0, 8) * 0.12) : 1.0);
 
@@ -583,7 +583,7 @@ const NodeLabel = React.memo(({ node, isHovered, onHover, onClick, showLabels, l
             title={node.title} 
             isSubject={node.depth === 0} 
             scale={scaleVal}
-            isDark={isDark}
+            isDark={screenshotMode ? false : isDark}
             nodeColor={(ENTITY_TYPES[node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color}
             isDimmed={isDimmed}
           />
@@ -596,7 +596,7 @@ const NodeLabel = React.memo(({ node, isHovered, onHover, onClick, showLabels, l
             isSubject={node.depth === 0} 
             isSelected={isHovered}
             scale={scaleVal}
-            isDark={isDark}
+            isDark={screenshotMode ? false : isDark}
             nodeColor={(ENTITY_TYPES[node.type?.toUpperCase()] || ENTITY_TYPES.CONCEPT).color}
             isDimmed={isDimmed}
           />
@@ -948,6 +948,7 @@ const NeuralMesh = ({ onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNod
                   layoutRules={layoutRules}
                   isDimmed={isNodeDimmed}
                   showSearchPath={showSearchPath}
+                  screenshotMode={showSearchPath ? true : false} // Force screenshot contrast adjustment for search path
                 />
             </group>
           );
@@ -1161,9 +1162,9 @@ const getSearchSummaryPath = (matchingNodes, allNodes) => {
   return serialize(tree);
 };
 
-export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, showLabels, labelStyle, setHoveredLinkData, onOpenDrawer, onZoomChange, onCoordsChange, theme = 'dark', setIs3DInteracting, layoutRules, showHeatmap = false, showTierList: showTierListProp = false, betaLayout = true, showSearchPath = false }) => {
+export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, showLabels, labelStyle, setHoveredLinkData, onOpenDrawer, onZoomChange, onCoordsChange, theme = 'dark', setIs3DInteracting, layoutRules, showHeatmap = false, showTierList: showTierListProp = false, betaLayout = true, showSearchPath = false, screenshotMode = false }) => {
   const isDark = theme !== 'light';
-  const bgColor = isDark ? '#000000' : '#ece8dd';
+  const bgColor = screenshotMode ? '#ffffff' : (isDark ? '#000000' : '#ece8dd');
   const [cameraInstance, setCameraInstance] = useState(null);
   const [controlsInstance, setControlsInstance] = useState(null);
 
@@ -1500,13 +1501,14 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
         }
       });
 
-      // Post-process path coordinates (align them in a readable wavy line along X-axis, Z=0)
+      // Post-process path coordinates (align them in a readable diagonal from top-left to bottom-right)
       const count = pathNodes.length;
-      const spacing = 380;
-      const waveAmplitude = 90;
+      const spacingX = 480;
+      const spacingY = 240;
       pathNodes.forEach((n, i) => {
-        n.z_x = (i - (count - 1) / 2) * spacing;
-        n.z_y = Math.sin(i * 1.5) * waveAmplitude;
+        const offset = i - (count - 1) / 2;
+        n.z_x = offset * spacingX;
+        n.z_y = -offset * spacingY;
         n.z_z = 0;
         n.isPathNode = true;
         n.pathIndex = i;
@@ -1738,11 +1740,12 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
       )}
 
       {/* Search Bar & Thumbprint Overlay */}
-      <div 
-        ref={searchRef}
-        className="absolute top-8 left-1/2 -translate-x-1/2 z-[2000] flex flex-col items-center gap-2 pointer-events-auto"
-        style={{ width: '420px' }}
-      >
+      {!screenshotMode && (
+        <div 
+          ref={searchRef}
+          className="absolute top-8 left-1/2 -translate-x-1/2 z-[2000] flex flex-col items-center gap-2 pointer-events-auto"
+          style={{ width: '420px' }}
+        >
         {/* Search Bar Input Container */}
         <div 
           className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border transition-all duration-300"
@@ -1895,6 +1898,7 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
           </div>
         )}
       </div>
+      )}
 
       <Canvas shadows camera={{ position: [-2236, -2205, 19771], fov: 32, near: 10, far: 500000 }}>
         <WebGLMemoryDisposer />
@@ -1920,7 +1924,7 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
         <Environment preset="night" />
       </Canvas>
 
-      {cameraInstance && controlsInstance && (
+      {cameraInstance && controlsInstance && !screenshotMode && (
         <MiniMap 
           spatialNodes={spatialNodes} 
           camera={cameraInstance} 
