@@ -757,7 +757,7 @@ const NeuralLine = React.memo(({ start, end, color, isHovered, isSecondary = fal
 });
 
 
-const NeuralMesh = ({ onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, spatialNodes, showLabels, labelStyle, setHoveredLinkData, onOpenDrawer, isDark, layoutRules, activeSearchQuery, searchQuery, showHeatmap }) => {
+const NeuralMesh = ({ onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, spatialNodes, showLabels, labelStyle, setHoveredLinkData, onOpenDrawer, isDark, layoutRules, activeSearchQuery, searchQuery, showHeatmap, showSearchPath }) => {
   const meshGroup = useRef();
   const { controls } = useThree();
   const [userInteracted, setUserInteracted] = useState(false);
@@ -869,6 +869,13 @@ const NeuralMesh = ({ onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNod
     return l;
   }, [spatialNodes, isDark]);
 
+  const journeyPoints = useMemo(() => {
+    if (!showSearchPath) return [];
+    const pathNodes = spatialNodes.filter(n => n.isPathNode);
+    pathNodes.sort((a, b) => (a.pathIndex || 0) - (b.pathIndex || 0));
+    return pathNodes.map(n => new THREE.Vector3(n.z_x || 0, n.z_y || 0, n.z_z || 0));
+  }, [spatialNodes, showSearchPath]);
+
   return (
     <group ref={meshGroup}>
       <group>
@@ -876,7 +883,9 @@ const NeuralMesh = ({ onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNod
           const isLinkConnected = selectedNode && (link.from.id === selectedNode.id || link.to.id === selectedNode.id);
           
           let isLinkDimmed = false;
-          if (selectedNode) {
+          if (showSearchPath) {
+            isLinkDimmed = true;
+          } else if (selectedNode) {
             isLinkDimmed = !isLinkConnected;
           } else if (matchingNodeIds) {
             isLinkDimmed = !(matchingNodeIds.has(link.from.id) && matchingNodeIds.has(link.to.id));
@@ -900,9 +909,27 @@ const NeuralMesh = ({ onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNod
           );
         })}
 
+        {showSearchPath && journeyPoints.length > 1 && (
+          <Line
+            points={journeyPoints}
+            color="#FF3B30"
+            lineWidth={6.0}
+            dashed={true}
+            dashScale={1.5}
+            dashSize={18}
+            gapSize={12}
+            transparent={true}
+            opacity={0.9}
+            depthTest={true}
+            renderOrder={10}
+          />
+        )}
+
         {spatialNodes.map(node => {
           let isNodeDimmed = false;
-          if (selectedNode) {
+          if (showSearchPath) {
+            isNodeDimmed = !node.isPathNode;
+          } else if (selectedNode) {
             isNodeDimmed = !connectedNodeIds.has(node.id);
           } else if (matchingNodeIds) {
             isNodeDimmed = !matchingNodeIds.has(node.id);
@@ -1132,7 +1159,7 @@ const getSearchSummaryPath = (matchingNodes, allNodes) => {
   return serialize(tree);
 };
 
-export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, showLabels, labelStyle, setHoveredLinkData, onOpenDrawer, onZoomChange, onCoordsChange, theme = 'dark', setIs3DInteracting, layoutRules, showHeatmap = false, showTierList: showTierListProp = false, betaLayout = true }) => {
+export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNodeId, selectedNode, showLabels, labelStyle, setHoveredLinkData, onOpenDrawer, onZoomChange, onCoordsChange, theme = 'dark', setIs3DInteracting, layoutRules, showHeatmap = false, showTierList: showTierListProp = false, betaLayout = true, showSearchPath = false }) => {
   const isDark = theme !== 'light';
   const bgColor = isDark ? '#000000' : '#ece8dd';
   const [cameraInstance, setCameraInstance] = useState(null);
@@ -1420,8 +1447,72 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
         walk(root.id, 0, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 1));
       });
     }
+
+    if (showSearchPath) {
+      const q = (activeSearchQuery || searchQuery || '').toLowerCase().trim();
+      const matched = processed.filter(n => 
+        n.title.toLowerCase().includes(q) || 
+        n.id.toLowerCase().includes(q) ||
+        (n.content && Object.values(n.content).some(val => 
+          typeof val === 'string' && val.toLowerCase().includes(q)
+        ))
+      );
+
+      const getTier = (type) => {
+        const t = type?.toUpperCase() || '';
+        if (t === 'CONCEPT') return 1;
+        if (t === 'PROCEDURE') return 2;
+        if (t === 'PATTERN') return 3;
+        if (t === 'VARIANT') return 4;
+        if (t === 'SCENARIO') return 5;
+        return 5;
+      };
+
+      const getChronologicalIndex = (nodeId) => nodes.findIndex(n => n.id === nodeId);
+
+      matched.sort((a, b) => {
+        const tierA = getTier(a.type);
+        const tierB = getTier(b.type);
+        if (tierA !== tierB) return tierA - tierB;
+        return getChronologicalIndex(a.id) - getChronologicalIndex(b.id);
+      });
+
+      const startNode = processed.find(n => n.id === 'tt_group');
+      const endNode = processed.find(n => n.id === 'uki_pm');
+      const middleNodes = matched.filter(n => n.id !== 'tt_group' && n.id !== 'uki_pm');
+
+      const pathNodes = [];
+      if (startNode) pathNodes.push(startNode);
+      pathNodes.push(...middleNodes);
+      if (endNode) pathNodes.push(endNode);
+
+      const pathIds = new Set(pathNodes.map(n => n.id));
+
+      // Post-process non-path coordinates (pull closer to center)
+      processed.forEach(n => {
+        if (!pathIds.has(n.id)) {
+          n.z_x *= 0.15;
+          n.z_y *= 0.15;
+          n.z_z *= 0.15;
+          n.isPathDimmed = true;
+        }
+      });
+
+      // Post-process path coordinates (align them in a readable wavy line along X-axis, Z=0)
+      const count = pathNodes.length;
+      const spacing = 380;
+      const waveAmplitude = 90;
+      pathNodes.forEach((n, i) => {
+        n.z_x = (i - (count - 1) / 2) * spacing;
+        n.z_y = Math.sin(i * 1.5) * waveAmplitude;
+        n.z_z = 0;
+        n.isPathNode = true;
+        n.pathIndex = i;
+      });
+    }
+
     return processed;
-  }, [nodes, layoutRules, betaLayout]);
+  }, [nodes, layoutRules, betaLayout, showSearchPath, activeSearchQuery, searchQuery]);
 
   const matchingNodeIds = useMemo(() => {
     if (!activeSearchQuery?.trim()) return null;
@@ -1822,7 +1913,7 @@ export const SpatialCanvas = ({ nodes, onSelectNode, hoveredNodeId, setHoveredNo
         <CursorPivot />
         
         <CameraController targetNode={selectedNode ? spatialNodes.find(n => n.id === selectedNode.id) : null} spatialNodes={spatialNodes} />
-        <NeuralMesh onSelectNode={onSelectNode} hoveredNodeId={hoveredNodeId} setHoveredNodeId={setHoveredNodeId} selectedNode={selectedNode} spatialNodes={spatialNodes} showLabels={showLabels} labelStyle={labelStyle} setHoveredLinkData={setHoveredLinkData} onOpenDrawer={onOpenDrawer} isDark={isDark} layoutRules={layoutRules} activeSearchQuery={activeSearchQuery} searchQuery={searchQuery} showHeatmap={localShowHeatmap} />
+        <NeuralMesh onSelectNode={onSelectNode} hoveredNodeId={hoveredNodeId} setHoveredNodeId={setHoveredNodeId} selectedNode={selectedNode} spatialNodes={spatialNodes} showLabels={showLabels} labelStyle={labelStyle} setHoveredLinkData={setHoveredLinkData} onOpenDrawer={onOpenDrawer} isDark={isDark} layoutRules={layoutRules} activeSearchQuery={activeSearchQuery} searchQuery={searchQuery} showHeatmap={localShowHeatmap} showSearchPath={showSearchPath} />
         
         <Environment preset="night" />
       </Canvas>
