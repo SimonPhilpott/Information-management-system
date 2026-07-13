@@ -293,10 +293,12 @@ export default function SyncStatus({ syncStatus, onSync, compact = false, onLogi
             borderRadius: 'var(--radius-sm)',
             padding: '4px 10px',
             backdropFilter: 'blur(4px)',
-            userSelect: 'none'
+            userSelect: 'none',
+            whiteSpace: 'nowrap',
+            flexShrink: 0
           }}>
             <Tooltip text={`Main UI Dashboard (Port 6001)\nStatus: ${portsStatus.mainApp === 'online' ? 'Online' : 'Offline'}\nServes the frontend user interface and layout navigations.`}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'help' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'help', whiteSpace: 'nowrap', flexShrink: 0 }}>
                 <div 
                   style={{ 
                     width: '6px', 
@@ -304,15 +306,16 @@ export default function SyncStatus({ syncStatus, onSync, compact = false, onLogi
                     borderRadius: '50%', 
                     backgroundColor: portsStatus.mainApp === 'online' ? '#10b981' : (portsStatus.mainApp === 'checking' ? '#f59e0b' : '#ef4444'),
                     boxShadow: portsStatus.mainApp === 'online' ? '0 0 6px #10b981' : (portsStatus.mainApp === 'checking' ? '0 0 6px #f59e0b' : '0 0 6px #ef4444'),
-                    transition: 'background-color 0.3s, box-shadow 0.3s'
+                    transition: 'background-color 0.3s, box-shadow 0.3s',
+                    flexShrink: 0
                   }} 
                 />
-                <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)' }}>App: 6001</span>
+                <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap', flexShrink: 0 }}>App: 6001</span>
               </div>
             </Tooltip>
 
             <Tooltip text={`Authentication & API Server (Port 3001)\nStatus: ${portsStatus.authServer === 'online' ? 'Online' : 'Offline'}\nManages Google OAuth logins, document storage, and vector database API services.`}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'help' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'help', whiteSpace: 'nowrap', flexShrink: 0 }}>
                 <div 
                   style={{ 
                     width: '6px', 
@@ -320,15 +323,16 @@ export default function SyncStatus({ syncStatus, onSync, compact = false, onLogi
                     borderRadius: '50%', 
                     backgroundColor: portsStatus.authServer === 'online' ? '#10b981' : (portsStatus.authServer === 'checking' ? '#f59e0b' : '#ef4444'),
                     boxShadow: portsStatus.authServer === 'online' ? '0 0 6px #10b981' : (portsStatus.authServer === 'checking' ? '0 0 6px #f59e0b' : '0 0 6px #ef4444'),
-                    transition: 'background-color 0.3s, box-shadow 0.3s'
+                    transition: 'background-color 0.3s, box-shadow 0.3s',
+                    flexShrink: 0
                   }} 
                 />
-                <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)' }}>Auth: 3001</span>
+                <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap', flexShrink: 0 }}>Auth: 3001</span>
               </div>
             </Tooltip>
 
             <Tooltip text={`Knowledge Base Dev Client (Port 5173)\nStatus: ${portsStatus.kbClient === 'online' ? 'Online' : 'Offline'}\nProvides hot-reloaded development rendering for the PDF parser module.`}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'help' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'help', whiteSpace: 'nowrap', flexShrink: 0 }}>
                 <div 
                   style={{ 
                     width: '6px', 
@@ -336,15 +340,16 @@ export default function SyncStatus({ syncStatus, onSync, compact = false, onLogi
                     borderRadius: '50%', 
                     backgroundColor: portsStatus.kbClient === 'online' ? '#10b981' : (portsStatus.kbClient === 'checking' ? '#f59e0b' : '#ef4444'),
                     boxShadow: portsStatus.kbClient === 'online' ? '0 0 6px #10b981' : (portsStatus.kbClient === 'checking' ? '0 0 6px #f59e0b' : '0 0 6px #ef4444'),
-                    transition: 'background-color 0.3s, box-shadow 0.3s'
+                    transition: 'background-color 0.3s, box-shadow 0.3s',
+                    flexShrink: 0
                   }} 
                 />
-                <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)' }}>KB: 5173</span>
+                <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap', flexShrink: 0 }}>KB: 5173</span>
               </div>
             </Tooltip>
 
             <Tooltip text={`IMS Public Tunnel (Ngrok)\nStatus: ${portsStatus.ngrok === 'online' ? 'Online' : 'Offline'}\nExposes the dashboard secure URL https://simon-ims.ngrok-free.app for external access.`}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'help' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'help', whiteSpace: 'nowrap', flexShrink: 0 }}>
                 <div 
                   style={{ 
                     width: '6px', 
@@ -352,10 +357,11 @@ export default function SyncStatus({ syncStatus, onSync, compact = false, onLogi
                     borderRadius: '50%', 
                     backgroundColor: portsStatus.ngrok === 'online' ? '#10b981' : (portsStatus.ngrok === 'checking' ? '#f59e0b' : '#ef4444'),
                     boxShadow: portsStatus.ngrok === 'online' ? '0 0 6px #10b981' : (portsStatus.ngrok === 'checking' ? '0 0 6px #f59e0b' : '0 0 6px #ef4444'),
-                    transition: 'background-color 0.3s, box-shadow 0.3s'
+                    transition: 'background-color 0.3s, box-shadow 0.3s',
+                    flexShrink: 0
                   }} 
                 />
-                <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)' }}>ngrok</span>
+                <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap', flexShrink: 0 }}>ngrok</span>
               </div>
             </Tooltip>
           </div>
