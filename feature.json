@@ -90,5 +90,17 @@
         "Centrality Analytics scatterplot plotting degree against frequency with side recommendation panels"
       ]
     }
+    },
+    "Port Status Service": {
+      "status": "enabled",
+      "description": "Server-side port and ngrok tunnel health check endpoint at GET /api/port-status. Probes all local service ports from the Node.js process so the status is accurate whether the frontend is accessed locally or via an ngrok tunnel. Replaces the previous client-side browser-based port probing which failed when accessed remotely.",
+      "subFeatures": [
+        "Vite portStatusPlugin middleware probes ports 6001, 3001, 5173 server-side using Node.js http.get",
+        "Ngrok tunnel status checked via localhost:4040/api/tunnels agent API from the server",
+        "Relative /api/port-status URL works transparently through the ngrok tunnel proxy",
+        "Proxy bypass rules prevent the /api/port-status route from being forwarded to the backend at port 3001",
+        "SyncStatus.jsx polls /api/port-status every 5s instead of attempting client-side port probes"
+      ]
+    }
   }
 }

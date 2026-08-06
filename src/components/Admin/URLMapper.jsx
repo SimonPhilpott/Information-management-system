@@ -209,12 +209,12 @@ const MapperTreeItem = ({ node, nodes, urls, onSaveUrls, onSync, onScan, isSynci
               {isSyncing === node.id ? 'Syncing...' : 'Content Sync'}
            </button>
            <button 
-             onClick={() => onScan(node)}
-             disabled={!rawUrl}
-             className="py-1 px-2 rounded bg-[var(--accent-cyan)]/10 text-[var(--accent-cyan)] hover:bg-[var(--accent-cyan)] hover:text-white transition-all border-none cursor-pointer text-[8px] font-black uppercase"
-           >
-              Nav Scan
-           </button>
+              onClick={() => onScan(node)}
+              disabled={!rawUrl}
+              className={`py-1 px-2 rounded transition-all border-none text-[8px] font-black uppercase ${!rawUrl ? 'bg-[var(--glass-border)] text-[var(--text-muted)] opacity-40 cursor-not-allowed' : 'bg-[var(--accent-cyan)]/10 text-[var(--accent-cyan)] hover:bg-[var(--accent-cyan)] hover:text-white cursor-pointer'}`}
+            >
+               Nav Scan
+            </button>
         </div>
       </div>
 
@@ -266,7 +266,10 @@ export function URLMapper({ nodes, onUpdateNodes, onReviewSync }) {
   const [scanSource, setScanSource] = useState(null); // 'live' | 'fallback' | 'mock'
   const [xmlText, setXmlText] = useState('');
   const [isEditingXml, setIsEditingXml] = useState(true);
-  const [xmlTab, setXmlTab] = useState('raw'); // 'raw' | 'tree'
+  const [xmlTab, setXmlTab] = useState('live'); // 'raw' | 'tree' | 'live'
+  const [liveJsonText, setLiveJsonText] = useState('');
+  const [liveError, setLiveError] = useState('');
+  const [isFetchingLive, setIsFetchingLive] = useState(false);
 
   // Connection lookup states
   const [lookups, setLookups] = useState({});
@@ -469,24 +472,18 @@ export function URLMapper({ nodes, onUpdateNodes, onReviewSync }) {
     return uniqueItems;
   };
 
-  const handleScan = (node) => {
-    const url = urls[node.id];
-    if (!url) return;
-    setScanningNode(node);
-    setShowScanModal(true);
-    setLookups({});
-    setLookupResults([]);
-    setActiveLookupNodeId(null);
-    setScanSource('xml');
-    setXmlTab('raw');
-    
-    // Load preserved XML from localStorage
-    const savedXml = localStorage.getItem('hive_nav_xml_' + node.id) || '';
-    setXmlText(savedXml);
-    
-    if (savedXml.trim()) {
-      const parsed = parseNavigationXML(savedXml);
+  const handleClipboardImport = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text || !text.trim()) {
+        alert("Clipboard is empty. Please open the API tab, copy the JSON (Ctrl+A then Ctrl+C), and try again.");
+        return;
+      }
+      
+      const parsed = parseNavigationXML(text);
       if (parsed.length > 0) {
+        setLiveJsonText(text);
+        setLiveError('');
         setDiscoveredItems(parsed.map((it, idx) => ({
           ...it,
           url: getAbsoluteUrl(it.url),
@@ -495,13 +492,63 @@ export function URLMapper({ nodes, onUpdateNodes, onReviewSync }) {
           connections: getSuggestedConnections(it.title),
           type: 'CONCEPT'
         })));
-        setIsEditingXml(false); // Show the checklist directly since we have data
-        return;
+        setIsEditingXml(false);
+      } else {
+        alert("Could not parse navigation items from your clipboard text. Make sure you copied the correct JSON menu response.");
       }
+    } catch (err) {
+      console.error("Clipboard access failed:", err);
+      alert("Failed to read from clipboard. Please allow clipboard permissions, or paste the content manually in the RAW Copy-Paste tab.");
     }
-    
-    setDiscoveredItems([]);
-    setIsEditingXml(true); // Open the XML paste area by default
+  };
+
+  const handleScan = (node) => {
+    const url = urls[node.id];
+    if (!url) return;
+    const absoluteUrl = getAbsoluteUrl(url);
+
+    setScanningNode(node);
+    setShowScanModal(true);
+    setLookups({});
+    setLookupResults([]);
+    setActiveLookupNodeId(null);
+    setScanSource('live');
+    setXmlTab('live');
+    setLiveJsonText('');
+    setLiveError('');
+    setIsFetchingLive(true);
+    setIsEditingXml(true);
+
+    fetch(`/api/sharepoint-nav?siteUrl=${encodeURIComponent(absoluteUrl)}`)
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`HTTP Error ${res.status}: ${res.statusText || 'Fetch failed'}`);
+        }
+        return res.text();
+      })
+      .then((text) => {
+        setLiveJsonText(text);
+        setIsFetchingLive(false);
+
+        // Auto-parse the retrieved JSON/XML navigation tree
+        const parsed = parseNavigationXML(text);
+        if (parsed.length > 0) {
+          setDiscoveredItems(parsed.map((it, idx) => ({
+            ...it,
+            url: getAbsoluteUrl(it.url),
+            id: `discovered_${idx}`,
+            checked: true,
+            connections: getSuggestedConnections(it.title),
+            type: 'CONCEPT'
+          })));
+          setIsEditingXml(false); // Go straight to tree check list if successful
+        }
+      })
+      .catch((err) => {
+        console.error("Live Scan Error:", err);
+        setLiveError(err.message || 'Failed to connect to SharePoint Navigation API');
+        setIsFetchingLive(false);
+      });
   };
 
   const handleProcessXML = () => {
@@ -710,13 +757,13 @@ export function URLMapper({ nodes, onUpdateNodes, onReviewSync }) {
                               <span>Sync</span>
                             </button>
                             <button 
-                              onClick={() => handleScan(node)}
-                              disabled={!urls[node.id]}
-                              className="py-2 px-3 rounded-lg bg-[var(--accent-cyan)]/10 text-[var(--accent-cyan)] hover:bg-[var(--accent-cyan)] hover:text-white transition-all border-none cursor-pointer text-[9px] font-black uppercase tracking-wider flex items-center gap-1"
-                            >
-                              <Search size={10} />
-                              <span>Scan Nav</span>
-                            </button>
+                               onClick={() => handleScan(node)}
+                               disabled={!urls[node.id]}
+                               className={`py-2 px-3 rounded-lg flex items-center gap-1 transition-all border-none text-[9px] font-black uppercase tracking-wider ${!urls[node.id] ? 'bg-[var(--glass-border)] text-[var(--text-muted)] opacity-40 cursor-not-allowed' : 'bg-[var(--accent-cyan)]/10 text-[var(--accent-cyan)] hover:bg-[var(--accent-cyan)] hover:text-white cursor-pointer'}`}
+                             >
+                               <Search size={10} />
+                               <span>Scan Nav</span>
+                             </button>
                          </div>
                       </div>
                    </div>
@@ -811,10 +858,16 @@ export function URLMapper({ nodes, onUpdateNodes, onReviewSync }) {
                            {/* Tab Bar */}
                            <div className="flex gap-2 border-b border-[var(--glass-border)] pb-2 mb-2">
                               <button 
+                                onClick={() => setXmlTab('live')}
+                                className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border cursor-pointer ${xmlTab === 'live' ? 'bg-[var(--accent-cyan)]/25 border-[var(--accent-cyan)] text-[var(--accent-cyan)]' : 'bg-transparent border-transparent text-[var(--text-muted)] hover:text-white'}`}
+                              >
+                                Live JSON Response
+                              </button>
+                              <button 
                                 onClick={() => setXmlTab('raw')}
                                 className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border cursor-pointer ${xmlTab === 'raw' ? 'bg-[var(--accent-cyan)]/25 border-[var(--accent-cyan)] text-[var(--accent-cyan)]' : 'bg-transparent border-transparent text-[var(--text-muted)] hover:text-white'}`}
                               >
-                                RAW Input
+                                RAW Copy-Paste
                               </button>
                               <button 
                                 onClick={() => setXmlTab('tree')}
@@ -824,7 +877,65 @@ export function URLMapper({ nodes, onUpdateNodes, onReviewSync }) {
                               </button>
                            </div>
 
-                           {xmlTab === 'raw' ? (
+                           {xmlTab === 'live' ? (
+                              <div className="w-full h-72 rounded-xl border border-gray-300 bg-white text-black font-mono text-[10px] overflow-hidden flex flex-col">
+                                {isFetchingLive ? (
+                                   <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-500">
+                                     <RefreshCw size={20} className="animate-spin text-[var(--accent-cyan)]" />
+                                     <span className="text-[9px] uppercase font-black tracking-wider">Fetching live SharePoint Navigation JSON...</span>
+                                   </div>
+                                ) : liveError ? (
+                                   <div className="flex-1 p-6 flex flex-col items-center justify-center gap-3 text-center bg-gray-50">
+                                      <span className="text-xl">🔒</span>
+                                      <span className="font-bold text-gray-700">SharePoint Authentication Required</span>
+                                      <p className="text-[9px] text-gray-500 max-w-[380px] leading-relaxed font-sans">
+                                        The background scan returned a <strong>Forbidden</strong> error. Since you are logged in on another tab, you can import the navigation in two quick steps:
+                                      </p>
+                                      
+                                      <div className="flex gap-2 mt-2">
+                                        <button 
+                                          onClick={() => {
+                                            const navUrl = getNavApiUrl(urls[scanningNode.id]);
+                                            if (navUrl) window.open(navUrl, '_blank');
+                                          }}
+                                          className="px-3 py-2 rounded-lg bg-[var(--accent-indigo)]/10 text-[var(--accent-indigo)] hover:bg-[var(--accent-indigo)] hover:text-white border border-[var(--accent-indigo)]/20 text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer"
+                                          title="Open navigation menustate API in a new browser tab to view JSON"
+                                        >
+                                          1. Open API Link
+                                        </button>
+                                        <button 
+                                          onClick={handleClipboardImport}
+                                          className="px-3 py-2 rounded-lg bg-[var(--accent-cyan)] text-white hover:bg-[var(--accent-cyan)]/80 text-[9px] font-black uppercase tracking-wider border-none cursor-pointer flex items-center gap-1.5 shadow-md"
+                                          title="Read the JSON response from your clipboard"
+                                        >
+                                          <span>2. Paste Clipboard</span>
+                                        </button>
+                                      </div>
+
+                                      <button 
+                                        onClick={() => handleScan(scanningNode)}
+                                        className="mt-4 text-[8px] font-bold text-gray-400 hover:text-gray-600 underline border-none bg-transparent cursor-pointer uppercase tracking-wider"
+                                      >
+                                        Retry Live Scan
+                                      </button>
+                                   </div>
+                                ) : liveJsonText ? (
+                                   <pre className="flex-1 p-4 overflow-auto leading-relaxed select-text select-all">
+                                     {(() => {
+                                       try {
+                                         return JSON.stringify(JSON.parse(liveJsonText), null, 2);
+                                       } catch {
+                                         return liveJsonText;
+                                       }
+                                     })()}
+                                   </pre>
+                                ) : (
+                                   <div className="flex-1 flex items-center justify-center text-gray-400 italic">
+                                     No data fetched. Click "Retry Live Scan" to request navigation.
+                                   </div>
+                                )}
+                              </div>
+                           ) : xmlTab === 'raw' ? (
                               <textarea
                                 value={xmlText}
                                 onChange={(e) => {
@@ -836,11 +947,11 @@ export function URLMapper({ nodes, onUpdateNodes, onReviewSync }) {
                                 spellCheck={false}
                               />
                            ) : (() => {
-                              const parsed = parseNavigationXML(xmlText);
+                              const parsed = parseNavigationXML(xmlText || liveJsonText);
                               if (parsed.length === 0) {
                                  return (
                                     <div className="w-full h-72 rounded-xl border border-gray-300 bg-white text-gray-500 font-mono text-[10px] flex items-center justify-center p-6 italic">
-                                       No navigation nodes parsed. Please paste raw XML or JSON menu state first in RAW Input tab.
+                                       No navigation nodes parsed. Please fetch from Live JSON Response tab or paste raw content in RAW Copy-Paste tab.
                                     </div>
                                  );
                               }
@@ -970,14 +1081,25 @@ export function URLMapper({ nodes, onUpdateNodes, onReviewSync }) {
                      </button>
                      
                      {isEditingXml ? (
-                        <button 
-                          onClick={handleProcessXML}
-                          disabled={!xmlText.trim()}
-                          className={`px-5 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-lg flex items-center gap-1.5 transition-all border-none cursor-pointer ${xmlText.trim() ? 'bg-[var(--accent-cyan)] text-white hover:bg-[var(--accent-cyan)]/80' : 'bg-[var(--glass-border)] text-[var(--text-muted)]/30'}`}
-                        >
-                          <Search size={12} />
-                          <span>Scan XML</span>
-                        </button>
+                        xmlTab === 'live' ? (
+                          <button 
+                            onClick={() => handleScan(scanningNode)}
+                            disabled={isFetchingLive}
+                            className={`px-5 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-lg flex items-center gap-1.5 transition-all border-none cursor-pointer ${!isFetchingLive ? 'bg-[var(--accent-cyan)] text-white hover:bg-[var(--accent-cyan)]/80' : 'bg-[var(--glass-border)] text-[var(--text-muted)]/30'}`}
+                          >
+                            <RefreshCw size={12} className={isFetchingLive ? "animate-spin" : ""} />
+                            <span>{isFetchingLive ? 'Fetching...' : 'Retry Live Scan'}</span>
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={handleProcessXML}
+                            disabled={!xmlText.trim()}
+                            className={`px-5 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-lg flex items-center gap-1.5 transition-all border-none cursor-pointer ${xmlText.trim() ? 'bg-[var(--accent-cyan)] text-white hover:bg-[var(--accent-cyan)]/80' : 'bg-[var(--glass-border)] text-[var(--text-muted)]/30'}`}
+                          >
+                            <Search size={12} />
+                            <span>Scan XML</span>
+                          </button>
+                        )
                      ) : (
                         <button 
                           onClick={handleImportScannedItems}

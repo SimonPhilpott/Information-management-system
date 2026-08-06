@@ -12,43 +12,33 @@ export default function SyncStatus({ syncStatus, onSync, compact = false, onLogi
   });
 
   React.useEffect(() => {
-    const checkPort = async (url) => {
+    /**
+     * Fetch port and tunnel status from the server-side endpoint.
+     * Using a relative URL ensures this works whether the app is accessed
+     * locally (localhost:6001) or via the ngrok tunnel — the Vite dev server
+     * handles the request in Node.js where all local ports are reachable.
+     */
+    const runChecks = async () => {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1500);
-        await fetch(url, { mode: 'no-cors', signal: controller.signal, cache: 'no-cache' });
-        clearTimeout(timeoutId);
-        return 'online';
-      } catch (e) {
-        return 'offline';
-      }
-    };
-
-    const checkNgrok = async () => {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1500);
-        const res = await fetch('http://localhost:4040/api/tunnels', { signal: controller.signal, cache: 'no-cache' });
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch('/ims/port-status', {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
         clearTimeout(timeoutId);
         if (res.ok) {
           const data = await res.json();
-          const hasTunnel = data.tunnels?.some(t => t.public_url?.includes('simon-ims') || t.public_url?.includes('ngrok'));
-          return hasTunnel ? 'online' : 'offline';
+          setPortsStatus({
+            mainApp: data.mainApp ?? 'offline',
+            authServer: data.authServer ?? 'offline',
+            kbClient: data.kbClient ?? 'offline',
+            ngrok: data.ngrok ?? 'offline',
+          });
         }
-        return 'offline';
-      } catch (e) {
-        const tcpCheck = await checkPort('http://localhost:4040/');
-        return tcpCheck === 'online' ? 'online' : 'offline';
+      } catch {
+        // Network failure — keep current state rather than flipping to offline
       }
-    };
-
-    const runChecks = async () => {
-      const hostname = window.location.hostname || 'localhost';
-      const mainApp = await checkPort(`http://${hostname}:6001/`);
-      const authServer = await checkPort(`http://${hostname}:3001/api/auth/status`);
-      const kbClient = await checkPort(`http://${hostname}:5173/`);
-      const ngrok = await checkNgrok();
-      setPortsStatus({ mainApp, authServer, kbClient, ngrok });
     };
 
     runChecks();

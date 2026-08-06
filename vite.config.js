@@ -224,12 +224,177 @@ const backupPlugin = () => ({
           res.statusCode = 500;
           res.end(JSON.stringify({ error: e.message }));
         }
+      } else if (req.url.startsWith('/api/sharepoint-nav') && req.method === 'GET') {
+        const urlObj = new URL(req.url, 'http://localhost');
+        const siteUrl = urlObj.searchParams.get('siteUrl');
+        if (!siteUrl) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ error: 'Missing siteUrl parameter' }));
+          return;
+        }
+
+        let targetUrl = siteUrl.trim();
+        if (targetUrl.endsWith('/')) {
+          targetUrl = targetUrl.slice(0, -1);
+        }
+        targetUrl = `${targetUrl}/_api/navigation/menustate`;
+
+        const targetObj = new URL(targetUrl);
+        const protocol = targetObj.protocol === 'https:' ? import('https') : import('http');
+
+        protocol.then((client) => {
+          const request = client.get({
+            hostname: targetObj.hostname,
+            port: targetObj.port || (targetObj.protocol === 'https:' ? 443 : 80),
+            path: targetObj.pathname + targetObj.search,
+            headers: {
+              'Accept': 'application/json;odata=nometadata',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+          }, (response) => {
+            let body = '';
+            response.on('data', (chunk) => { body += chunk; });
+            response.on('end', () => {
+              res.statusCode = response.statusCode || 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(body);
+            });
+          });
+
+          request.on('error', (err) => {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: err.message }));
+          });
+        }).catch((err) => {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: err.message }));
+        });
       } else {
         res.setHeader('Content-Type', 'text/html'); // Restore default header for other requests
         next();
       }
     });
   }
+});
+
+/**
+ * portStatusPlugin — Vite dev-server middleware that probes all local service
+ * ports from the Node.js process (where localhost is always the server) and
+ * returns a unified status JSON at GET /api/port-status.
+ *
+ * This is the correct approach when the frontend may be accessed via an ngrok
+ * tunnel: the browser cannot reach localhost ports on the remote server, but
+ * a relative API call to /api/port-status is transparently forwarded through
+ * the tunnel and the check runs server-side where all ports are reachable.
+ */
+const portStatusPlugin = () => ({
+  name: 'port-status-plugin',
+  configureServer(server) {
+    server.middlewares.use((req, res, next) => {
+      if (req.url !== '/ims/port-status') {
+        next();
+        return;
+      }
+
+      /**
+       * Probe a single local HTTP endpoint with a tight timeout.
+       * Returns 'online' if we receive any HTTP response (even an error code),
+       * 'offline' if the connection is refused or times out.
+       *
+       * @param {string} host
+       * @param {number} port
+       * @param {string} [path='/']
+       * @returns {Promise<'online'|'offline'>}
+       */
+      const probePort = (host, port, path = '/') =>
+        new Promise((resolve) => {
+          const timeoutId = setTimeout(() => {
+            req_.destroy();
+            resolve('offline');
+          }, 1500);
+
+          const req_ = http.get({ host, port, path, headers: { connection: 'close' } }, () => {
+            clearTimeout(timeoutId);
+            req_.destroy();
+            resolve('online');
+          });
+
+          req_.on('error', () => {
+            clearTimeout(timeoutId);
+            resolve('offline');
+          });
+        });
+
+      /**
+       * Query the ngrok local agent API to confirm an active tunnel exists.
+       * Falls back to a raw TCP probe of port 4040 if the JSON parse fails.
+       *
+       * @returns {Promise<'online'|'offline'>}
+       */
+      const probeNgrok = async () => {
+        try {
+          const status = await new Promise((resolve) => {
+            const timeoutId = setTimeout(() => {
+              req_.destroy();
+              resolve('offline');
+            }, 1500);
+
+            const req_ = http.get(
+              { host: '127.0.0.1', port: 4040, path: '/api/tunnels', headers: { connection: 'close' } },
+              (ngrokRes) => {
+                let body = '';
+                ngrokRes.on('data', (chunk) => { body += chunk; });
+                ngrokRes.on('end', () => {
+                  clearTimeout(timeoutId);
+                  try {
+                    const parsed = JSON.parse(body);
+                    const hasTunnel = parsed.tunnels?.some(
+                      (t) => t.public_url?.includes('simon-ims') || t.public_url?.includes('ngrok')
+                    );
+                    resolve(hasTunnel ? 'online' : 'offline');
+                  } catch {
+                    // Agent responded but body wasn't JSON — still counts as online
+                    resolve('online');
+                  }
+                });
+              }
+            );
+
+            req_.on('error', () => {
+              clearTimeout(timeoutId);
+              resolve('offline');
+            });
+          });
+
+          return status;
+        } catch {
+          return 'offline';
+        }
+      };
+
+      (async () => {
+        const [mainApp, authServer, kbClient, ngrok] = await Promise.all([
+          probePort('127.0.0.1', ports.ims.port),
+          probePort('127.0.0.1', ports.pdf_knowledge_base.server.port, '/api/auth/status'),
+          probePort('127.0.0.1', ports.pdf_knowledge_base.client.port),
+          probeNgrok(),
+        ]);
+
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        // Respond directly — this route intentionally bypasses the /api proxy.
+        res.end(JSON.stringify({ mainApp, authServer, kbClient, ngrok }));
+      })().catch((err) => {
+        console.error('[port-status-plugin] Error:', err);
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: err.message }));
+      });
+    });
+  },
 });
 
 const tunnelPlugin = () => {
@@ -437,7 +602,7 @@ const tunnelPlugin = () => {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), backupPlugin(), tunnelPlugin()],
+  plugins: [react(), backupPlugin(), portStatusPlugin(), tunnelPlugin()],
   server: {
     host: true,
     port: ports.ims.port,
@@ -453,6 +618,17 @@ export default defineConfig({
       '/api': {
         target: `http://127.0.0.1:${ports.pdf_knowledge_base.server.port}`,
         changeOrigin: true,
+        bypass(req) {
+          // These endpoints are handled by Vite plugin middleware — do not proxy them.
+          if (
+            req.url.startsWith('/api/tunnel') ||
+            req.url.startsWith('/api/backup') ||
+            req.url.startsWith('/api/mesh-backups') ||
+            req.url.startsWith('/api/sharepoint-nav')
+          ) {
+            return req.url;
+          }
+        },
         configure: (proxy, _options) => {
           proxy.on('error', (err, _req, _res) => {
             console.error('Vite Proxy Error:', err);

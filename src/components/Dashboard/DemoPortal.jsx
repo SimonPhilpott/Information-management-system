@@ -39,6 +39,8 @@ export default function DemoPortal({
   const isDark = theme === 'dark';
   
   const [showBetaDropdown, setShowBetaDropdown] = useState(false);
+  /** Controls the full-screen slides overlay */
+  const [showSlides, setShowSlides] = useState(false);
 
   // Derive initial tab from path
   const getTabFromPath = (path) => {
@@ -452,6 +454,24 @@ export default function DemoPortal({
           >
             {isDark ? <Sun size={15} /> : <Moon size={15} />}
           </button>
+
+          {/* Category vs Tier presentation launcher */}
+          <button
+            onClick={() => setShowSlides(true)}
+            className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md active:scale-[0.98] flex items-center gap-1.5 ${
+              isDark
+                ? 'bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-brand-cyan hover:border-brand-cyan/30'
+                : 'bg-[#2E2B27]/5 border border-[#2E2B27]/10 text-slate-600 hover:bg-[#2E2B27]/10'
+            }`}
+            title="Category vs Tier — slide presentation"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2"/>
+              <path d="M8 21h8M12 17v4"/>
+            </svg>
+            <span>Slides</span>
+          </button>
+
           <a
             href="/"
             className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md active:scale-[0.98] ${
@@ -996,6 +1016,123 @@ export default function DemoPortal({
           />
         )}
       </AnimatePresence>
+
+      {/* ── Category vs Tier Slides Overlay ─────────────────────────────
+           Opens the pre-built HTML presentation in a full-screen iframe.
+           Dismissible via × button or Escape key.
+      ──────────────────────────────────────────────────────────────── */}
+      {showSlides && (
+        <SlidesModal onClose={() => setShowSlides(false)} isDark={isDark} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * SlidesModal — Full-screen overlay that renders the Category vs Tier
+ * HTML presentation inside an iframe. Dismissible via the × button or
+ * the Escape key.
+ *
+ * @param {{ onClose: () => void, isDark: boolean }} props
+ */
+function SlidesModal({ onClose, isDark }) {
+  const iframeRef = React.useRef(null);
+
+  // Escape listener on the parent window
+  React.useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  // Also attach to the iframe's own window once it loads, so Escape
+  // works even when focus is inside the iframe content.
+  const handleIframeLoad = () => {
+    try {
+      const iframeWin = iframeRef.current?.contentWindow;
+      if (!iframeWin) return;
+      const handler = (e) => { if (e.key === 'Escape') onClose(); };
+      iframeWin.addEventListener('keydown', handler);
+      // Cleanup is handled when the modal unmounts and the iframe is removed from DOM
+    } catch {
+      // Cross-origin frames would throw — safe to ignore
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'rgba(3, 7, 18, 0.92)',
+        backdropFilter: 'blur(16px)',
+        animation: 'slidesModalFadeIn 0.25s ease',
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      {/* Top chrome bar */}
+      <div style={{
+        height: '48px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 20px',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        flexShrink: 0,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0090DC" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2"/>
+            <path d="M8 21h8M12 17v4"/>
+          </svg>
+          <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#7a8196' }}>
+            Category vs Tier — Knowledge Graph Explainer
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '10px', color: '#3a3f52', letterSpacing: '0.1em' }}>ESC to close</span>
+          <button
+            onClick={onClose}
+            style={{
+              width: '30px', height: '30px',
+              borderRadius: '8px',
+              border: '1px solid rgba(255,255,255,0.08)',
+              background: 'rgba(255,255,255,0.05)',
+              color: '#7a8196',
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '18px', lineHeight: 1,
+              transition: 'background 0.15s, color 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,59,48,0.15)'; e.currentTarget.style.color = '#FF3B30'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = '#7a8196'; }}
+            title="Close (Esc)"
+            aria-label="Close presentation"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+
+      {/* Iframe fills remaining space */}
+      <iframe
+        ref={iframeRef}
+        src="/category-vs-tier-slides.html"
+        title="Category vs Tier — IMS Knowledge Graph Explainer"
+        style={{ flex: 1, width: '100%', border: 'none', display: 'block' }}
+        allow="fullscreen"
+        onLoad={handleIframeLoad}
+      />
+
+      <style>{`
+        @keyframes slidesModalFadeIn {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }
