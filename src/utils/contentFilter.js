@@ -17,10 +17,10 @@ export const checkIsEntertainment = (text) => {
 };
 
 /**
- * Filters a hierarchical tree node based on chat tone.
- * If tone is 'professional', it prunes entertainment branches.
+ * Filters a hierarchical tree node based on chat tone and personal visibility setting.
+ * If showPersonal is false, it prunes entertainment/RPG branches.
  */
-export const filterTreeNode = (node, chatTone, searchQuery = '') => {
+export const filterTreeNode = (node, chatTone, searchQuery = '', showPersonal = false) => {
   if (!node) return null;
   
   const isProfessional = chatTone === 'professional';
@@ -28,8 +28,8 @@ export const filterTreeNode = (node, chatTone, searchQuery = '') => {
 
   // Helper for recursive filtering
   const processNode = (n) => {
-    // 1. Unconditionally skip entertainment/RPG nodes
-    if (checkIsEntertainment(n.name) || checkIsEntertainment(n.subject)) {
+    // 1. Skip entertainment/RPG nodes only if showPersonal is false
+    if (!showPersonal && (checkIsEntertainment(n.name) || checkIsEntertainment(n.subject))) {
       return null;
     }
 

@@ -31,8 +31,21 @@ function cosineSimilarity(a, b) {
 /**
  * Sanitize subject name for use as filename
  */
+/**
+ * Sanitize subject name for use as filename
+ */
 function subjectToFilename(subject) {
   return subject.replace(/[^a-zA-Z0-9-_ ]/g, '_').replace(/\s+/g, '_').toLowerCase();
+}
+
+/**
+ * Checks if a string contains RPG/entertainment/gaming terminology.
+ */
+function isEntertainment(text) {
+  if (!text) return false;
+  const n = text.toLowerCase();
+  const entertainmentRegex = /\b(rpg|roleplaying|role-playing|role playing|boardgame|board game|gaming|tabletop|hobby|fantasy|dungeon|dragon|quest|campaign|rulebook|playbook|adventure|scenario|starter set|wargame|miniature|games|wargaming|character|dice|encounter|bestiary|grimoire|warband|bushido|campfire|dead world|parsec|borderland|no quarter|starship|gang warfare|salvage crew|cyberpunk|osr|pbt|d20|fate core|savage worlds|cthulhu|pathfinder|warhammer|d&d|dungeons)\w*/i;
+  return entertainmentRegex.test(n);
 }
 
 /**
@@ -76,8 +89,9 @@ export function storeEmbeddings(subject, documentId, driveFileId, filename, embe
  * @param {number[]} queryEmbedding - The query embedding vector
  * @param {string[]} subjects - Optional filter by subjects (empty = all)
  * @param {number} topK - Number of results to return
+ * @param {boolean} showPersonal - Toggle to include/exclude personal (RPG) books
  */
-export function searchSimilar(queryEmbedding, subjects = [], topK = 8) {
+export function searchSimilar(queryEmbedding, subjects = [], topK = 8, showPersonal = false) {
   const results = [];
 
   // Get vector files to search
@@ -92,14 +106,16 @@ export function searchSimilar(queryEmbedding, subjects = [], topK = 8) {
       WHERE subject IN (${placeholders}) OR folder_path IN (${placeholders})
     `).all(...subjects, ...subjects);
     
-    allowedDriveFileIds = new Set(docs.map(d => d.drive_file_id));
-    const uniqueSubjects = [...new Set(docs.map(d => d.subject))];
+    const filteredDocs = showPersonal ? docs : docs.filter(d => !isEntertainment(d.subject));
+    allowedDriveFileIds = new Set(filteredDocs.map(d => d.drive_file_id));
+    const uniqueSubjects = [...new Set(filteredDocs.map(d => d.subject))];
     vectorFiles = uniqueSubjects.map(s => path.join(VECTORS_DIR, `${subjectToFilename(s)}.json`));
   } else {
     // Search all subjects
     if (!fs.existsSync(VECTORS_DIR)) return [];
     vectorFiles = fs.readdirSync(VECTORS_DIR)
       .filter(f => f.endsWith('.json'))
+      .filter(f => showPersonal || !isEntertainment(f))
       .map(f => path.join(VECTORS_DIR, f));
   }
 
@@ -112,6 +128,9 @@ export function searchSimilar(queryEmbedding, subjects = [], topK = 8) {
       for (const chunk of chunks) {
         // Filter by driveFileId if we have a target list
         if (allowedDriveFileIds && !allowedDriveFileIds.has(chunk.driveFileId)) continue;
+        
+        // Secondary check inside chunks if personal files are disabled
+        if (!showPersonal && (isEntertainment(chunk.subject) || isEntertainment(chunk.filename))) continue;
         
         const similarity = cosineSimilarity(queryEmbedding, chunk.embedding);
         results.push({

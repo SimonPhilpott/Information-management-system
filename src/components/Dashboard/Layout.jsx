@@ -38,6 +38,8 @@ export default function Layout({
   onClearPins,
   onOpenGraph,
   showGraph,
+  showPersonal,
+  onTogglePersonal,
 }) {
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -258,7 +260,9 @@ export default function Layout({
             deletingSessionIds={deletingSessionIds}
             showGraph={showGraph}
             onOpenGraph={onOpenGraph}
-          />
+            showPersonal={showPersonal}
+            onTogglePersonal={onTogglePersonal}
+           />
         </div>
 
         <div

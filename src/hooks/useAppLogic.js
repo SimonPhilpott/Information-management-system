@@ -94,6 +94,14 @@ export function useAppLogic() {
     console.log('[Action] Tone Change:', tone);
     _setChatTone(tone);
   }, []);
+
+  const [showPersonal, _setShowPersonal] = useState(() => localStorage.getItem('kb-show-personal') === 'true');
+  
+  const setShowPersonal = useCallback((val) => {
+    const newVal = typeof val === 'function' ? val(showPersonal) : val;
+    localStorage.setItem('kb-show-personal', newVal);
+    _setShowPersonal(newVal);
+  }, [showPersonal]);
   
   const [canvasContent, setCanvasContent] = useState(null);
   const [isCanvasVisible, setIsCanvasVisible] = useState(false);
@@ -105,18 +113,18 @@ export function useAppLogic() {
   // Drive/Storage synchronisation indicators
   const [syncStatus, setSyncStatus] = useState(null);
 
-  // Global Filter: Prune RPG/Entertainment content unconditionally
+  // Global Filter: Prune RPG/Entertainment content conditionally based on showPersonal state
   const filteredSubjects = useMemo(() => {
     if (!subjects) return null;
 
     try {
-      const result = filterTreeNode(subjects, 'professional');
+      const result = filterTreeNode(subjects, 'professional', '', showPersonal);
       return result || subjects;
     } catch (err) {
       console.error('[Filtering] Subjects filter crashed:', err);
       return subjects;
     }
-  }, [subjects]);
+  }, [subjects, showPersonal]);
 
   /**
    * Filters the suggestions list to remove any entry that contains entertainment/RPG content
@@ -126,6 +134,7 @@ export function useAppLogic() {
   const filteredSuggestions = useMemo(() => {
     try {
       return suggestions.filter(s => {
+        if (showPersonal) return true;
         if (typeof s === 'string') return !checkIsEntertainment(s);
         // Check every relevant field independently — do NOT use || which short-circuits
         const isEntertainment = (
@@ -140,7 +149,7 @@ export function useAppLogic() {
       console.error('[Filtering] Suggestions filter crashed:', err);
       return suggestions;
     }
-  }, [suggestions]);
+  }, [suggestions, showPersonal]);
 
   /**
    * Filters the topics map to remove any subject group or individual topic entry
@@ -152,9 +161,10 @@ export function useAppLogic() {
     try {
       const newTopics = {};
       Object.keys(topics).forEach(subjectKey => {
-        // Exclude entire subject group if the key itself is entertainment-related
-        if (checkIsEntertainment(subjectKey)) return;
+        // Exclude entire subject group if the key itself is entertainment-related and showPersonal is false
+        if (!showPersonal && checkIsEntertainment(subjectKey)) return;
         const cleanItems = topics[subjectKey].filter(t => {
+          if (showPersonal) return true;
           // Check each field independently — do NOT use || which short-circuits
           const isEntertainment = (
             checkIsEntertainment(t.topic || '') ||
@@ -173,7 +183,7 @@ export function useAppLogic() {
       console.error('[Filtering] Topics filter crashed:', err);
       return topics;
     }
-  }, [topics]);
+  }, [topics, showPersonal]);
 
   // PDF splits and notebook pins
   const [pdfViewer, setPdfViewer] = useState(null);
@@ -325,7 +335,8 @@ export function useAppLogic() {
           tone: chatTone,
           image: image,
           attachments: attachments,
-          showCitations: showCitations
+          showCitations: showCitations,
+          showPersonal: showPersonal
         })
       });
       if (!res.ok) {
@@ -654,7 +665,7 @@ export function useAppLogic() {
       syncStatus, pdfViewer, pinnedItems, showCapWarning,
       pendingMessage, showCatalog, showAdmin, isRefining, refineProgress, theme,
       gems, isClearingHistory, showCitations, topicsWidth, isResizingTopics, showGraph,
-      subjectSource, deletingSessionIds
+      subjectSource, deletingSessionIds, showPersonal
     },
 
     actions: {
@@ -667,7 +678,7 @@ export function useAppLogic() {
       setRefineProgress, loadAppData, sendMessage, triggerSync,
       refineAllLibrary, abortRefinement, loadSession, deleteSession, clearAllHistory, updateModel, handlePin, clearAllPins,
       handleLogin, handleLogout, toggleTheme, toggleCitations, activateGem, refreshSuggestions,
-      setTopicsWidth, setIsResizingTopics, setShowGraph,
+      setTopicsWidth, setIsResizingTopics, setShowGraph, setShowPersonal,
       voiceEngine
     }
   };

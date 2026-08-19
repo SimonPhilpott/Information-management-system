@@ -62,7 +62,7 @@ const TONE_INSTRUCTIONS = {
 /**
  * Process a chat message through the RAG pipeline or general chat
  */
-export async function processMessage(message, sessionId, subjects = [], modelChoice = 'flash', appMode = 'kb', imageData = null, tone = 'friendly', attachments = null) {
+export async function processMessage(message, sessionId, subjects = [], modelChoice = 'flash', appMode = 'kb', imageData = null, tone = 'friendly', attachments = null, showPersonal = false) {
   // Check if we have a 100% validated answer for this exact prompt in our database
   const validatedMatch = db.prepare('SELECT answer FROM validated_qas WHERE LOWER(TRIM(question)) = LOWER(TRIM(?))').get(message);
   if (validatedMatch) {
@@ -119,7 +119,7 @@ export async function processMessage(message, sessionId, subjects = [], modelCho
 
   if (!isGeneral) {
     const queryEmbedding = await generateQueryEmbedding(expandedQuery);
-    relevantChunks = searchSimilar(queryEmbedding, subjects, config.defaults.topK);
+    relevantChunks = searchSimilar(queryEmbedding, subjects, config.defaults.topK, showPersonal);
     
     const contextParts = relevantChunks.map((chunk, i) => {
       const imgNote = chunk.hasImages ? " [PAGE HAS IMAGES/DIAGRAMS]" : "";

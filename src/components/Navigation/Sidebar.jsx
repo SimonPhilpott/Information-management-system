@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Library, Bookmark, Trash2, FileText, Settings, Eye, EyeOff, Check, X, Compass, MessageSquare } from 'lucide-react';
+import { Sparkles, Library, Bookmark, Trash2, FileText, Settings, Eye, EyeOff, Check, X, Compass, MessageSquare, User, UserX } from 'lucide-react';
 import { Tooltip } from '../Dashboard/CursorHover';
 import SubjectFilter from '../Dashboard/SubjectFilter';
 import ChatHistory from '../Dashboard/ChatHistory';
@@ -29,6 +29,8 @@ export default function Sidebar({
   onClearPins,
   showGraph,
   onOpenGraph,
+  showPersonal,
+  onTogglePersonal,
 }) {
   const [isConfirmingClearPins, setIsConfirmingClearPins] = useState(false);
 
@@ -145,6 +147,29 @@ export default function Sidebar({
                   >
                     <MessageSquare size={12} />
                     <span>Chat</span>
+                  </div>
+                </Tooltip>
+              </div>
+            </div>
+
+            <div className="citation-toggle-section" style={{ marginTop: '0px' }}>
+              <div className="mode-switcher" style={{ width: '100%' }}>
+                <Tooltip text="Include personal RPG and entertainment books in index and search">
+                  <div
+                    className={`mode-item ${showPersonal ? 'active' : ''}`}
+                    onClick={onTogglePersonal}
+                  >
+                    <User size={12} />
+                    <span>Personal</span>
+                  </div>
+                </Tooltip>
+                <Tooltip text="Hide personal books and restrict to professional content only">
+                  <div
+                    className={`mode-item ${!showPersonal ? 'active' : ''}`}
+                    onClick={onTogglePersonal}
+                  >
+                    <UserX size={12} />
+                    <span>Professional</span>
                   </div>
                 </Tooltip>
               </div>

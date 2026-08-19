@@ -1280,6 +1280,11 @@ export default function App() {
     );
   }
 
+  if (currentPath === '/slides' || currentPath === '/slides/') {
+    window.location.href = '/category-vs-tier-slides.html';
+    return null;
+  }
+
   if (currentPath === '/demo' || currentPath.startsWith('/demo/')) {
     return (
       <DemoPortal 
@@ -1487,6 +1492,8 @@ export default function App() {
         onClearPins={actions.clearAllPins}
         onOpenGraph={() => actions.setShowGraph(!state.showGraph)}
         showGraph={state.showGraph}
+        showPersonal={state.showPersonal}
+        onTogglePersonal={() => actions.setShowPersonal(!state.showPersonal)}
       >
         {state.showGraph ? (
           <section 

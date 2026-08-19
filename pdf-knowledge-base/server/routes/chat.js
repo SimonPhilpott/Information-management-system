@@ -10,7 +10,7 @@ const router = Router();
  */
 router.post('/', async (req, res) => {
   try {
-    const { message, sessionId, subjects, model, appMode, image, tone, attachments } = req.body;
+    const { message, sessionId, subjects, model, appMode, image, tone, attachments, showPersonal } = req.body;
 
     if ((!message || !message.trim()) && !image && (!attachments || attachments.length === 0)) {
       return res.status(400).json({ error: 'Message, image, or attachment is required' });
@@ -24,7 +24,8 @@ router.post('/', async (req, res) => {
       appMode || 'kb',
       image || null,
       tone || 'friendly',
-      attachments || null
+      attachments || null,
+      showPersonal || false
     );
 
     res.json(result);
