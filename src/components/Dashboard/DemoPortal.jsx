@@ -7,6 +7,8 @@ import { IntelligenceDrawer, RichTaggingEditor, IMPORTANCE_TIERS } from '../Edit
 import SankeyView from './SankeyView';
 import RadialWheelView from './RadialWheelView';
 import CentralityView from './CentralityView';
+import ConcentricClusterView from './ConcentricClusterView';
+import ChromaticSpokeView from './ChromaticSpokeView';
 import { 
   Home, 
   Layers, 
@@ -387,6 +389,8 @@ export default function DemoPortal({
                 {activeTab === 'beta-sankey' ? 'Sankey Flow' :
                  activeTab === 'beta-radial' ? 'Radial Wheel' :
                  activeTab === 'beta-centrality' ? 'Connection Analytics' :
+                 activeTab === 'beta-concentric' ? 'Concentric Orbit' :
+                 activeTab === 'beta-chromatic' ? 'Chromatic Spectrum' :
                  'Beta Views'}
               </span>
               <ChevronDown size={11} className={`transition-transform duration-200 ${showBetaDropdown ? 'rotate-180' : ''}`} />
@@ -437,6 +441,32 @@ export default function DemoPortal({
                   >
                     Connection Analytics
                   </button>
+                  <button
+                    onClick={() => {
+                      handleTabChange('beta-concentric');
+                      setShowBetaDropdown(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer ${
+                      activeTab === 'beta-concentric'
+                        ? (isDark ? 'bg-brand-cyan/15 text-brand-cyan' : 'bg-[#899981]/15 text-[#4E5A47]')
+                        : (isDark ? 'hover:bg-white/5' : 'hover:bg-slate-100')
+                    }`}
+                  >
+                    Concentric Orbit (Image 1)
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleTabChange('beta-chromatic');
+                      setShowBetaDropdown(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer ${
+                      activeTab === 'beta-chromatic'
+                        ? (isDark ? 'bg-brand-cyan/15 text-brand-cyan' : 'bg-[#899981]/15 text-[#4E5A47]')
+                        : (isDark ? 'hover:bg-white/5' : 'hover:bg-slate-100')
+                    }`}
+                  >
+                    Chromatic Spectrum (Image 2)
+                  </button>
                 </div>
               </>
             )}
@@ -456,8 +486,8 @@ export default function DemoPortal({
           </button>
 
           {/* Category vs Tier presentation launcher */}
-          <button
-            onClick={() => setShowSlides(true)}
+          <a
+            href="/slides"
             className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md active:scale-[0.98] flex items-center gap-1.5 ${
               isDark
                 ? 'bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-brand-cyan hover:border-brand-cyan/30'
@@ -470,7 +500,7 @@ export default function DemoPortal({
               <path d="M8 21h8M12 17v4"/>
             </svg>
             <span>Slides</span>
-          </button>
+          </a>
 
           <a
             href="/"
@@ -882,6 +912,12 @@ export default function DemoPortal({
               )}
               {activeTab === 'beta-centrality' && (
                 <CentralityView theme={theme} focusedNodeId={selectedBetaNodeId} />
+              )}
+              {activeTab === 'beta-concentric' && (
+                <ConcentricClusterView theme={theme} focusedNodeId={selectedBetaNodeId} nodes={localNodes} />
+              )}
+              {activeTab === 'beta-chromatic' && (
+                <ChromaticSpokeView theme={theme} focusedNodeId={selectedBetaNodeId} nodes={localNodes} />
               )}
             </div>
           </div>

@@ -615,6 +615,11 @@ export default defineConfig({
       '127.0.0.1'
     ],
     proxy: {
+      '/api/live': {
+        target: `ws://127.0.0.1:${ports.pdf_knowledge_base.server.port}`,
+        ws: true,
+        changeOrigin: true
+      },
       '/api': {
         target: `http://127.0.0.1:${ports.pdf_knowledge_base.server.port}`,
         changeOrigin: true,

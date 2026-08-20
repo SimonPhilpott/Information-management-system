@@ -1,1044 +1,1268 @@
 <!DOCTYPE html>
-<html lang="en-GB">
+<html lang="en-GB" data-theme="light">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Category vs Tier — IMS Knowledge Graph</title>
+<title>Category vs Tier : IMS Knowledge Graph</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+ *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  :root {
-    --bg:        #0d0f14;
-    --surface:   #13161e;
-    --glass:     rgba(255,255,255,0.04);
-    --border:    rgba(255,255,255,0.08);
-    --border-hi: rgba(255,255,255,0.14);
-    --text:      #e8eaf0;
-    --muted:     #7a8196;
-    --faint:     #3a3f52;
+ :root {
+ /* Default: Oatmeal Light Mode (matching application index.css) */
+ --bg: #F1EFE9;
+ --surface: #F8F7F3;
+ --glass: #F8F7F3;
+ --border: rgba(46, 43, 39, 0.12);
+ --border-hi: rgba(46, 43, 39, 0.22);
+ --text: #2E2B27;
+ --muted: #5a544d;
+ --faint: rgba(46, 43, 39, 0.15);
 
-    --cyan:      #0090DC;
-    --purple:    #9B59E0;
-    --orange:    #D55C17;
-    --grey:      #6c7580;
-    --red:       #C0392B;
-    --green:     #00A000;
+ --cyan: #0891B2;
+ --purple: #4F46E5;
+ --orange: #EA580C;
+ --grey: #6A645D;
+ --red: #DC2626;
+ --green: #059669;
 
-    --t1: #FF3B30;
-    --t2: #FF9500;
-    --t3: #34C759;
-    --t4: #5AC8FA;
-    --t5: #8E8E93;
+ --t1: #DC2626;
+ --t2: #EA580C;
+ --t3: #059669;
+ --t4: #0891B2;
+ --t5: #6A645D;
 
-    --accent:    #0090DC;
-  }
+ --accent: #899981;
 
-  html, body {
-    height: 100%;
-    font-family: 'Inter', system-ui, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    overflow: hidden;
-  }
+ --nav-bg: rgba(248, 247, 243, 0.95);
+ --nav-border: rgba(46, 43, 39, 0.15);
+ --nav-btn-bg: rgba(46, 43, 39, 0.05);
+ --nav-btn-border: rgba(46, 43, 39, 0.15);
+ --nav-btn-hover: rgba(46, 43, 39, 0.10);
+ --nav-dot-inactive: rgba(46, 43, 39, 0.25);
+ }
 
-  /* ── Slide Shell ─────────────────────────────────────────── */
-  .deck { width: 100vw; height: 100vh; position: relative; overflow: hidden; }
+ [data-theme="dark"] {
+ --bg: #0d0f14;
+ --surface: #13161e;
+ --glass: rgba(255,255,255,0.04);
+ --border: rgba(255,255,255,0.08);
+ --border-hi: rgba(255,255,255,0.14);
+ --text: #e8eaf0;
+ --muted: #7a8196;
+ --faint: #3a3f52;
 
-  .slide {
-    position: absolute; inset: 0;
-    display: flex; flex-direction: column;
-    padding: 40px 56px 32px;
-    opacity: 0; pointer-events: none;
-    transition: opacity 0.5s ease;
-  }
-  .slide.active { opacity: 1; pointer-events: all; }
+ --cyan: #0090DC;
+ --purple: #9B59E0;
+ --orange: #D55C17;
+ --grey: #6c7580;
+ --red: #C0392B;
+ --green: #00A000;
 
-  /* Ambient glow blobs */
-  .slide::before, .slide::after {
-    content: '';
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(120px);
-    pointer-events: none;
-    z-index: 0;
-  }
-  #s1::before { width: 600px; height: 400px; background: rgba(0,144,220,0.12); top: -80px; right: -100px; }
-  #s1::after  { width: 500px; height: 300px; background: rgba(155,89,224,0.10); bottom: -60px; left: -80px; }
-  #s2::before { width: 600px; height: 400px; background: rgba(0,160,0,0.10);   top: -80px; left: -100px; }
-  #s2::after  { width: 500px; height: 300px; background: rgba(213,92,23,0.10); bottom: -60px; right: -80px; }
+ --t1: #FF3B30;
+ --t2: #FF9500;
+ --t3: #34C759;
+ --t4: #5AC8FA;
+ --t5: #8E8E93;
 
-  .slide > * { position: relative; z-index: 1; }
+ --accent: #0090DC;
 
-  /* ── Header ──────────────────────────────────────────────── */
-  .slide-header {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 28px;
-  }
-  .slide-label {
-    font-size: 10px; font-weight: 700; letter-spacing: 0.14em;
-    text-transform: uppercase; color: var(--muted);
-  }
-  .slide-counter {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px; color: var(--muted);
-  }
+ --nav-bg: rgba(19,22,30,0.92);
+ --nav-border: rgba(255,255,255,0.14);
+ --nav-btn-bg: rgba(255,255,255,0.06);
+ --nav-btn-border: rgba(255,255,255,0.14);
+ --nav-btn-hover: rgba(255,255,255,0.12);
+ --nav-dot-inactive: rgba(255,255,255,0.25);
+ }
 
-  /* ── Title block ─────────────────────────────────────────── */
-  .slide-title {
-    font-size: 28px; font-weight: 800; line-height: 1.15;
-    margin-bottom: 8px; letter-spacing: -0.5px;
-  }
-  .slide-subtitle {
-    font-size: 13px; color: var(--muted); font-weight: 400;
-    margin-bottom: 28px;
-  }
+ html, body {
+ height: 100%;
+ font-family: 'Inter', system-ui, apple-system, BlinkMacSystemFont, sans-serif;
+ background: var(--bg);
+ color: var(--text);
+ overflow: hidden;
+ }
 
-  /* ── Divider ─────────────────────────────────────────────── */
-  .divider {
-    height: 1px; background: var(--border);
-    margin-bottom: 28px;
-  }
+ /* ── Slide Shell ─────────────────────────────────────────── */
+ .deck { width: 100vw; height: 100vh; position: relative; overflow: hidden; }
 
-  /* ── Glass card ──────────────────────────────────────────── */
-  .card {
-    background: var(--glass);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 18px 22px;
-    backdrop-filter: blur(8px);
-  }
+ .slide {
+ position: absolute; inset: 0;
+ display: flex; flex-direction: column;
+ padding: 36px 56px 85px;
+ opacity: 0; pointer-events: none;
+ transition: opacity 0.5s ease;
+ overflow: hidden; /* Prevent unwanted window scrollbars */
+ box-sizing: border-box;
+ }
+ .slide.active { opacity: 1; pointer-events: all; }
 
-  /* ════════════════════════════════════════════════════════════
-     SLIDE 1 LAYOUT
-  ════════════════════════════════════════════════════════════ */
-  .s1-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 16px;
-    margin-bottom: 20px;
-  }
+ /* Ambient glow blobs */
+ .slide::before, .slide::after {
+ content: '';
+ position: absolute;
+ border-radius: 50%;
+ filter: blur(120px);
+ pointer-events: none;
+ z-index: 0;
+ }
+ #s1::before { width: 600px; height: 400px; background: rgba(8,145,178,0.12); top: 80px; right: 100px; }
+ #s1::after { width: 500px; height: 300px; background: rgba(79,70,229,0.10); bottom: 60px; left: 80px; }
+ #s2::before { width: 600px; height: 400px; background: rgba(5,150,105,0.10); top: 80px; left: 100px; }
+ #s2::after { width: 500px; height: 300px; background: rgba(234,88,12,0.10); bottom: 60px; right: 80px; }
+ #so::before { width: 600px; height: 400px; background: rgba(8,145,178,0.12); top: 80px; left: 100px; }
+ #so::after { width: 500px; height: 300px; background: rgba(5,150,105,0.10); bottom: 60px; right: 80px; }
 
-  /* Category/Tier comparison cards */
-  .axis-card {
-    border-radius: 14px;
-    padding: 20px 22px;
-    border: 1px solid var(--border-hi);
-    position: relative;
-    overflow: hidden;
-  }
-  .axis-card::before {
-    content: '';
-    position: absolute; inset: 0;
-    border-radius: inherit;
-    opacity: 0.06;
-  }
-  .axis-card.cat::before  { background: linear-gradient(135deg, var(--cyan), var(--purple)); }
-  .axis-card.tier::before { background: linear-gradient(135deg, var(--t1), var(--t3)); }
-  .axis-card.path::before { background: linear-gradient(135deg, #ffffff, #4a6fa5); }
+ /* Minimal Vector SVG Icon Styles */
+ .svg-icon {
+ width: 20px;
+ height: 20px;
+ stroke-width: 2;
+ stroke-linecap: round;
+ stroke-linejoin: round;
+ fill: none;
+ flex-shrink: 0;
+ }
 
-  .axis-icon {
-    width: 32px; height: 32px; border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 16px; margin-bottom: 12px;
-  }
-  .axis-icon.cat  { background: rgba(0,144,220,0.15); }
-  .axis-icon.tier { background: rgba(255,59,48,0.15); }
-  .axis-icon.path { background: rgba(255,255,255,0.08); }
+ /* ── Typography & Elements ────────────────────────────────── */
+ .slide-header {
+ display: flex; align-items: center; justify-content: space-between;
+ margin-bottom: 6px; z-index: 1;
+ }
+ .slide-label {
+ font size: 12px; font weight: 700; letter-spacing: 0.12em;
+ text-transform: uppercase; color: var(--accent);
+ }
+ .slide-counter {
+ font size: 12px; font weight: 600; color: var(--muted);
+ font-family: 'JetBrains Mono', monospace;
+ }
 
-  .axis-q {
-    font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
-    text-transform: uppercase; margin-bottom: 4px;
-  }
-  .axis-q.cat  { color: var(--cyan); }
-  .axis-q.tier { color: var(--t2); }
-  .axis-q.path { color: var(--t4); }
+ .slide-title {
+ font size: 28px; font weight: 800; letter-spacing: 0.02em;
+ color: var(--text); z-index: 1;
+ }
+ .slide-subtitle {
+ font size: 14px; color: var(--muted); margin-top: 4px; margin-bottom: 12px;
+ z-index: 1; max-width: 960px; line-height: 1.5;
+ }
+ .divider {
+ height: 1px; background: var(--border); margin-bottom: 14px;
+ width: 100%; z-index: 1;
+ }
 
-  .axis-title {
-    font-size: 17px; font-weight: 800; margin-bottom: 8px;
-  }
-  .axis-body {
-    font-size: 12px; color: var(--muted); line-height: 1.6;
-  }
-  .axis-body strong { color: var(--text); font-weight: 600; }
+ .card {
+ background: var(--glass);
+ --border: 1px solid var(--border-hi);
+ border-radius: 12px;
+ z-index: 1;
+ transition: border-color 0.2s;
+ }
+ .card:hover { border-color: var(--border-hi); }
 
-  /* Pill badges */
-  .pill {
-    display: inline-flex; align-items: center; gap: 5px;
-    padding: 3px 9px; border-radius: 20px;
-    font-size: 10px; font-weight: 700;
-    margin: 3px 3px 3px 0;
-  }
-  .pill .dot { width: 5px; height: 5px; border-radius: 50%; }
+ .pill {
+ font size: 10px; font weight: 800; padding: 3px 8px; border-radius: 4px;
+ display: inline block; letter-spacing: 0.05em;
+ }
 
-  /* The "same node, different tier" explainer */
-  .node-example {
-    display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px;
-    align-items: center; margin-top: 12px;
-  }
-  .node-box {
-    border-radius: 10px; padding: 10px 14px;
-    border: 1px solid var(--border-hi);
-    background: rgba(255,255,255,0.03);
-    text-align: center;
-  }
-  .node-box .nb-cat {
-    font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
-    text-transform: uppercase; margin-bottom: 4px;
-  }
-  .node-box .nb-title { font-size: 12px; font-weight: 700; margin-bottom: 6px; }
-  .node-box .nb-tier {
-    font-size: 9px; font-weight: 700; padding: 2px 7px;
-    border-radius: 4px; display: inline-block;
-  }
-  .vs {
-    font-size: 18px; font-weight: 900; color: var(--faint);
-    text-align: center;
-  }
+ /* ── Slide 1 Grids ────────────────────────────────────────── */
+ .s1-grid {
+ display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 14px;
+ flex: 1; margin-bottom: 10px;
+ }
+ .axis-card {
+ border-radius: 12px; padding: 12px 14px;
+ background: var(--glass); border: 1px solid var(--border-hi);
+ display: flex; flex-direction: column;
+ }
+ .axis-icon { font size: 20px; margin-bottom: 4px; }
+ .axis-q {
+ font size: 11px; font weight: 800; letter-spacing: 0.1em;
+ text-transform: uppercase; margin-bottom: 3px;
+ }
+ .axis-q.cat { color: var(--cyan); }
+ .axis-q.tier { color: var(--t2); }
+ .axis-q.path { color: var(--green); }
+ .axis-title { font size: 14px; font weight: 800; margin-bottom: 6px; line-height: 1.35; }
+ .axis-body { font size: 11.5px; color: var(--muted); line-height: 1.45; }
 
-  /* Pathway section */
-  .pathway-row {
-    display: flex; align-items: center; gap: 0;
-    margin-top: 10px;
-  }
-  .path-node {
-    display: flex; flex-direction: column; align-items: center; gap: 4px;
-    min-width: 90px;
-  }
-  .path-badge {
-    font-size: 8px; font-weight: 700; letter-spacing: 0.08em;
-    text-transform: uppercase; padding: 2px 7px; border-radius: 4px;
-  }
-  .path-label {
-    font-size: 10px; font-weight: 600; text-align: center;
-    max-width: 88px; line-height: 1.3;
-  }
-  .path-tier {
-    font-size: 8px; font-weight: 700; padding: 1px 6px;
-    border-radius: 3px; margin-top: 1px;
-  }
-  .path-arrow {
-    flex: 1; display: flex; flex-direction: column; align-items: center;
-    gap: 2px; padding: 0 4px;
-  }
-  .path-arrow-line {
-    height: 1px; width: 100%; background: var(--border-hi);
-    position: relative;
-  }
-  .path-arrow-line::after {
-    content: '▶';
-    position: absolute; right: -6px; top: -6px;
-    font-size: 9px; color: var(--muted);
-  }
-  .path-arrow-label {
-    font-size: 8px; color: var(--muted); white-space: nowrap;
-  }
+ .node-example {
+ display: flex; align-items: center; gap: 8px;
+ border-radius: 8px; padding: 6px 10px;
+ background: var(--surface); border: 1px solid var(--border);
+ }
+ .node-box { flex: 1; }
+ .node-box .nb-cat { font size: 9px; font weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+ .node-box .nb-title { font size: 11.5px; font weight: 700; margin: 1px 0; }
+ .node-box .nb-tier { font size: 9px; font weight: 800; padding: 2px 6px; border-radius: 3px; display: inline block; }
+ .vs { font size: 10px; font weight: 900; color: var(--muted); }
 
-  /* AI output callout */
-  .ai-callout {
-    background: rgba(0,144,220,0.06);
-    border: 1px solid rgba(0,144,220,0.2);
-    border-radius: 10px; padding: 10px 14px;
-    margin-top: 10px;
-    display: flex; align-items: flex-start; gap: 10px;
-  }
-  .ai-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
-  .ai-text { font-size: 11px; color: var(--muted); line-height: 1.55; }
-  .ai-text strong { color: var(--cyan); }
+ .path-node {
+ border-radius: 6px; padding: 4px 8px; text-align: center;
+ --border: 1px solid var(--border-hi); background: var(--glass);
+ }
+ .path-arrow {
+ display: flex; flex-direction: column; align-items: center; padding: 0 3px;
+ }
+ .path-arrow line { width: 14px; height: 1px; background: var(--muted); }
+ .path-arrow label { font size: 8px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
 
-  /* ════════════════════════════════════════════════════════════
-     SLIDE 2 LAYOUT
-  ════════════════════════════════════════════════════════════ */
-  .s2-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-    flex: 1;
-  }
+ .ai-callout {
+ border-radius: 8px; padding: 7px 10px;
+ background: rgba(8,145,178,0.08); border: 1px solid rgba(8,145,178,0.22);
+ display: flex; gap: 8px; align-items: flex-start;
+ }
+ .ai-callout .ai-icon { font size: 12px; }
+ .ai-callout .ai-text { font size: 11px; color: var(--text); line-height: 1.45; }
 
-  .example-card {
-    border-radius: 16px; padding: 20px 22px;
-    border: 1px solid var(--border-hi);
-    background: rgba(255,255,255,0.025);
-    display: flex; flex-direction: column; gap: 14px;
-    position: relative; overflow: hidden;
-  }
-  .example-card::before {
-    content: '';
-    position: absolute; top: 0; left: 0; right: 0; height: 3px;
-  }
-  .example-card.ex1::before { background: linear-gradient(90deg, var(--orange), var(--t1)); }
-  .example-card.ex2::before { background: linear-gradient(90deg, var(--cyan), var(--purple)); }
+ /* ── Slide 2 Examples ─────────────────────────────────────── */
+ .s2-grid {
+ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 10px;
+ }
+ .example-card {
+ border-radius: 12px; padding: 14px;
+ background: var(--glass); border: 1px solid var(--border-hi);
+ display: flex; flex-direction: column; gap: 8px;
+ }
+ .ex-header { display: flex; align-items: center; gap: 10px; }
+ .ex-num {
+ width: 26px; height: 26px; border-radius: 50%;
+ display: flex; align-items: center; justify-content: center;
+ font size: 13px; font weight: 900; flex-shrink: 0;
+ }
+ .ex1 .ex-num { background: rgba(234,88,12,0.15); color: var(--orange); border: 1px solid rgba(234,88,12,0.3); }
+ .ex2 .ex-num { background: rgba(8,145,178,0.15); color: var(--cyan); border: 1px solid rgba(8,145,178,0.3); }
+ .ex-label { font size: 9px; font weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+ .ex-title { font size: 14px; font weight: 800; }
 
-  .ex-header {
-    display: flex; align-items: flex-start; gap: 12px;
-  }
-  .ex-num {
-    width: 28px; height: 28px; border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 13px; font-weight: 800; flex-shrink: 0;
-  }
-  .ex1 .ex-num { background: rgba(213,92,23,0.2); color: var(--orange); }
-  .ex2 .ex-num { background: rgba(0,144,220,0.2); color: var(--cyan); }
+ .node-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+ .np-card {
+ border-radius: 8px; padding: 8px 10px;
+ background: var(--surface); border: 1px solid var(--border);
+ }
+ .np-cat-row { display: flex; align-items: center; gap: 4px; margin-bottom: 3px; }
+ .np-cat-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+ .np-cat-label { font size: 9px; font weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+ .np-name { font size: 11.5px; font weight: 700; margin-bottom: 5px; line-height: 1.3; }
+ .np-tier-badge {
+ font size: 9px; font weight: 800; padding: 2px 6px; border-radius: 4px;
+ display: inline block; letter-spacing: 0.05em;
+ }
+ .np-insight { font size: 10.5px; color: var(--muted); margin-top: 5px; line-height: 1.4; }
 
-  .ex-label { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
-  .ex-title { font-size: 15px; font-weight: 800; }
+ .chain {
+ display: flex; align-items: stretch; gap: 0;
+ background: rgba(255,255,255,0.02); border: 1px solid var(--border);
+ border-radius: 8px; overflow: hidden;
+ }
+ .chain-node {
+ flex: 1; padding: 8px 10px;
+ border-right: 1px solid var(--border);
+ display: flex; flex-direction: column; gap: 3px;
+ }
+ .chain-node:last child { border-right: none; }
+ .chain-cat { font size: 7.5px; font weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+ .chain-name { font size: 9.5px; font weight: 700; line-height: 1.3; }
+ .chain-tier { font size: 7.5px; font weight: 700; padding: 1px 5px; border-radius: 3px; display: inline block; margin-top: 2px; }
+ .chain-ai { font size: 8.5px; color: var(--muted); margin-top: 2px; line-height: 1.35; font style: italic; }
+ .chain-arrow { display: flex; align-items: center; justify-content: center; padding: 0 4px; color: var(--muted); font size: 11px; background: rgba(255,255,255,0.02); }
 
-  /* Node pair comparison */
-  .node-pair {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
-  }
-  .np-card {
-    border-radius: 10px; padding: 12px 14px;
-    border: 1px solid var(--border);
-    background: rgba(255,255,255,0.025);
-  }
-  .np-cat-row {
-    display: flex; align-items: center; gap: 6px;
-    margin-bottom: 6px;
-  }
-  .np-cat-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .np-cat-label { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
-  .np-name { font-size: 12px; font-weight: 700; margin-bottom: 8px; line-height: 1.3; }
-  .np-tier-badge {
-    font-size: 9px; font-weight: 800; padding: 3px 8px; border-radius: 5px;
-    display: inline-block; letter-spacing: 0.05em;
-  }
-  .np-insight {
-    font-size: 10px; color: var(--muted); margin-top: 7px; line-height: 1.5;
-  }
+ .ex-insight {
+ border-radius: 8px; padding: 8px 11px;
+ font size: 10px; line-height: 1.5;
+ }
+ .ex1 .ex-insight { background: rgba(213,92,23,0.08); border: 1px solid rgba(213,92,23,0.2); color: #e0995a; }
+ .ex2 .ex-insight { background: rgba(0,144,220,0.08); border: 1px solid rgba(0,144,220,0.2); color: #5ab4e0; }
+ .ex-insight strong { color: inherit; font weight: 700; }
 
-  /* Pathway chain for example 2 */
-  .chain {
-    display: flex; align-items: stretch; gap: 0;
-    background: rgba(255,255,255,0.02);
-    border: 1px solid var(--border);
-    border-radius: 10px; overflow: hidden;
-  }
-  .chain-node {
-    flex: 1; padding: 10px 12px;
-    border-right: 1px solid var(--border);
-    display: flex; flex-direction: column; gap: 4px;
-  }
-  .chain-node:last-child { border-right: none; }
-  .chain-cat { font-size: 8px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
-  .chain-name { font-size: 10px; font-weight: 700; line-height: 1.3; }
-  .chain-tier { font-size: 8px; font-weight: 700; padding: 2px 6px; border-radius: 3px; display: inline-block; margin-top: 2px; }
-  .chain-ai { font-size: 9px; color: var(--muted); margin-top: 3px; line-height: 1.4; font-style: italic; }
-
-  .chain-arrow {
-    display: flex; align-items: center; justify-content: center;
-    padding: 0 6px; color: var(--muted); font-size: 12px;
-    background: rgba(255,255,255,0.02);
-  }
-
-  .ex-insight {
-    border-radius: 8px; padding: 9px 13px;
-    font-size: 11px; line-height: 1.55;
-  }
-  .ex1 .ex-insight { background: rgba(213,92,23,0.08); border: 1px solid rgba(213,92,23,0.2); color: #e0995a; }
-  .ex2 .ex-insight { background: rgba(0,144,220,0.08); border: 1px solid rgba(0,144,220,0.2); color: #5ab4e0; }
-  .ex-insight strong { color: inherit; font-weight: 700; }
-
-  /* ── Navigation ──────────────────────────────────────────── */
-  .nav {
-    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
-    display: flex; align-items: center; gap: 16px;
-    background: rgba(19,22,30,0.9);
-    border: 1px solid var(--border-hi);
-    backdrop-filter: blur(16px);
-    border-radius: 40px; padding: 8px 16px;
-    z-index: 100;
-  }
-  .nav-btn {
-    width: 32px; height: 32px; border-radius: 50%;
-    border: 1px solid var(--border-hi);
-    background: var(--glass);
-    color: var(--text);
-    font-size: 14px; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: background 0.2s, border-color 0.2s;
-  }
-  .nav-btn:hover { background: rgba(255,255,255,0.1); border-color: var(--accent); }
-  .nav-dots { display: flex; gap: 8px; align-items: center; }
-  .nav-dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--faint); cursor: pointer;
-    transition: background 0.2s, transform 0.2s;
-  }
-  .nav-dot.active { background: var(--accent); transform: scale(1.4); }
-  .nav-label {
-    font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace;
-    min-width: 36px; text-align: center;
-  }
+ /* ── Navigation ──────────────────────────────────────────── */
+ .nav {
+ position: fixed; bottom: 24px; left: 50%; transform: translateX( 50%);
+ display: flex; align-items: center; gap: 14px;
+ background: var(--nav-bg);
+ --border: 1px solid var(--nav-border);
+ backdrop filter: blur(20px);
+ webkit backdrop filter: blur(20px);
+ border-radius: 40px; padding: 7px 14px;
+ z-index: 200;
+ transition: background 0.3s, border-color 0.3s;
+ box shadow: 0 4px 24px rgba(0,0,0,0.25);
+ }
+ .nav-btn {
+ width: 30px; height: 30px; border-radius: 50%;
+ --border: 1px solid var(--nav-btn-border);
+ background: var(--nav-btn-bg);
+ color: var(--text);
+ font size: 14px; cursor: pointer;
+ display: flex; align-items: center; justify-content: center;
+ transition: background 0.2s, border-color 0.2s, color 0.2s;
+ }
+ .nav-btn:hover { background: var(--nav-btn-hover); border-color: var(--accent); }
+ .nav-dots { display: flex; gap: 6px; align-items: center; }
+ .nav-dot {
+ width: 6px; height: 6px; border-radius: 50%;
+ background: var(--nav-dot-inactive); cursor: pointer;
+ transition: background 0.2s, transform 0.2s;
+ }
+ .nav-dot.active { background: var(--accent); transform: scale(1.5); }
+ .nav-label {
+ font size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace;
+ min-width: 36px; text-align: center;
+ }
+ .nav-theme {
+ width: 30px; height: 30px; border-radius: 50%;
+ --border: 1px solid var(--nav-btn-border);
+ background: var(--nav-btn-bg);
+ color: var(--text); font size: 14px; cursor: pointer;
+ display: flex; align-items: center; justify-content: center;
+ transition: background 0.2s, border-color 0.2s, transform 0.3s;
+ }
+ .nav-theme:hover { background: var(--nav-btn-hover); border-color: var(--accent); }
+ .nav-sep { width: 1px; height: 18px; background: var(--nav-border); margin: 0 2px; }
 </style>
 </head>
 <body>
 
 <div class="deck">
 
-  <!-- ═══════════════════════════════════════════════════════════
-       SLIDE 1 — THE DISTINCTION
+ <!-- ═══════════════════════════════════════════════════════════
+       SLIDE 1 — WHAT IS A KNOWLEDGE GRAPH DATABASE (SURREALDB)
   ═══════════════════════════════════════════════════════════ -->
-  <div class="slide active" id="s1">
+ <div class="slide active" id="s1">
 
-    <div class="slide-header">
-      <span class="slide-label">IMS Knowledge Graph — Core Concepts</span>
-      <span class="slide-counter">01 / 04</span>
-    </div>
+ <div class="slide-header">
+ <span class="slide-label">IMS Architecture : Foundation</span>
+ <span class="slide-counter">01 / 06</span>
+ </div>
 
-    <div class="slide-title">Category vs Tier — Two Independent Dimensions</div>
-    <div class="slide-subtitle">Every node carries both a <em>type of knowledge</em> and a <em>level of importance</em> — these are orthogonal axes, not the same thing.</div>
-    <div class="divider"></div>
+ <div class="slide-title">What is a Knowledge Graph Database (IMS &amp; AI Integration)?</div>
+ <div class="slide-subtitle">Inspired by modern multi model graph architecture (SurrealDB) : how structured relationships power deterministic, hallucination free AI reasoning.</div>
+ <div class="divider"></div>
 
-    <!-- Three axis cards -->
-    <div class="s1-grid">
+ <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:16px;flex:1;margin-bottom:10px;">
+ 
+ <!-- LEFT: CORE ARCHITECTURE & THREE PILLARS -->
+ <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+ <div style="font-size:11px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:var(--cyan);">The Core Problem with Standard RAG</div>
+ <div style="font-size:11.5px;color:var(--muted);line-height:1.5;">
+ Traditional Vector Databases search by raw text similarity (unstructured embeddings). They find related words, but <strong>do not understand business rules, structural dependencies, or strict hierarchy</strong> : leading to AI hallucinations and out of context answers.
+ </div>
 
-      <!-- CATEGORY -->
-      <div class="axis-card cat">
-        <div class="axis-icon cat">🏷</div>
-        <div class="axis-q cat">Category</div>
-        <div class="axis-title">What <em>role</em> does this node play?</div>
-        <div class="axis-body" style="margin-bottom:10px;">
-          Category describes the <strong>nature and function</strong> of a node — how the AI should use it when building a response. Each type occupies a distinct position in the reasoning chain:
-        </div>
+ <div style="font-size:11px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:var(--green);margin-top:2px;">Knowledge Graph DB Pillars (SurrealDB Architecture)</div>
+ 
+ <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+ <div style="border-radius:8px;padding:10px;background:rgba(8,145,178,0.08);border:1px solid rgba(8,145,178,0.2);">
+ <div style="font-size:11px;font-weight:800;color:var(--cyan);margin-bottom:4px;">1. Nodes &amp; Edges</div>
+ <div style="font-size:10px;color:var(--muted);line-height:1.4;">Entities (Nodes) are explicitly linked to procedures &amp; rules via typed relationships (Edges).</div>
+ </div>
+ <div style="border-radius:8px;padding:10px;background:rgba(79,70,229,0.08);border:1px solid rgba(79,70,229,0.2);">
+ <div style="font-size:11px;font-weight:800;color:var(--purple);margin-bottom:4px;">2. Multi Model Graph</div>
+ <div style="font-size:10px;color:var(--muted);line-height:1.4;">Combines Graph relationships + Document schemas + Full text &amp; Vector Search in one query engine.</div>
+ </div>
+ <div style="border-radius:8px;padding:8px;background:rgba(5,150,105,0.08);border:1.5px solid rgba(5,150,105,0.2);">
+ <div style="font-size:11px;font-weight:800;color:var(--green);margin-bottom:4px;">3. Deterministic RAG</div>
+ <div style="font-size:10px;color:var(--muted);line-height:1.4;">The AI traverses verified paths (<code style="font-family:monospace;font-size:9px;">Concept &rarr; Pattern &rarr; Rule</code>) to retrieve exact, structured context.</div>
+ </div>
+ </div>
 
-        <!-- 6-type grid -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
-          <div style="border-radius:7px;padding:7px 9px;background:rgba(0,144,220,0.08);border:1px solid rgba(0,144,220,0.18);">
-            <div style="font-size:9px;font-weight:800;color:#0090DC;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:2px;">● Concept — WHAT</div>
-            <div style="font-size:10px;color:var(--muted);line-height:1.45;">Broad domain topics &amp; capabilities. Parent anchors that frame the whole answer.</div>
-          </div>
-          <div style="border-radius:7px;padding:7px 9px;background:rgba(155,89,224,0.08);border:1px solid rgba(155,89,224,0.18);">
-            <div style="font-size:9px;font-weight:800;color:#9B59E0;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:2px;">● Pattern — HOW WE STRUCTURE</div>
-            <div style="font-size:10px;color:var(--muted);line-height:1.45;">Repeatable blueprints &amp; delivery models. The standard shape before local changes.</div>
-          </div>
-          <div style="border-radius:7px;padding:7px 9px;background:rgba(213,92,23,0.08);border:1px solid rgba(213,92,23,0.18);">
-            <div style="font-size:9px;font-weight:800;color:#D55C17;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:2px;">● Procedure — HOW WE EXECUTE</div>
-            <div style="font-size:10px;color:var(--muted);line-height:1.45;">Step-by-step workflows &amp; deliverables. Where the actual work happens.</div>
-          </div>
-          <div style="border-radius:7px;padding:7px 9px;background:rgba(108,117,128,0.08);border:1px solid rgba(108,117,128,0.18);">
-            <div style="font-size:9px;font-weight:800;color:#9aa4b0;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:2px;">● Variant — WHERE IT DEVIATES</div>
-            <div style="font-size:10px;color:var(--muted);line-height:1.45;">Regional, legal or client overrides. Localises the standard without replacing it.</div>
-          </div>
-          <div style="border-radius:7px;padding:7px 9px;background:rgba(192,57,43,0.08);border:1px solid rgba(192,57,43,0.18);">
-            <div style="font-size:9px;font-weight:800;color:#C0392B;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:2px;">● Scenario — WHEN RISK OCCURS</div>
-            <div style="font-size:10px;color:var(--muted);line-height:1.45;">Real-world cases &amp; stress tests. Shows how the standard flexes under pressure.</div>
-          </div>
-          <div style="border-radius:7px;padding:7px 9px;background:rgba(0,160,0,0.08);border:1px solid rgba(0,160,0,0.18);">
-            <div style="font-size:9px;font-weight:800;color:#00A000;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:2px;">● Rule — WHAT WE CANNOT DO</div>
-            <div style="font-size:10px;color:var(--muted);line-height:1.45;">Non-negotiable limits &amp; compliance guardrails. Restricts the AI to compliant pathways.</div>
-          </div>
-        </div>
-      </div>
+ <!-- Technical Deep Dive Box -->
+ <div style="background:rgba(8,145,178,0.06);border:1px solid rgba(8,145,178,0.2);border-radius:10px;padding:10px 12px;">
+ <div style="font-size:10px;font-weight:800;color:var(--cyan);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">Why Multi Model Graph beats Pure Vector Databases</div>
+ <div style="font-size:10.5px;color:var(--text);line-height:1.45;">
+ In a Knowledge Graph, relationships are <strong>first class data citizens</strong>. Instead of recalculating cosine distances across million token vector spaces, the Graph DB follows pre computed pointers (<code style="font-family:monospace;font-size:9px;">&rarr;has_pattern&rarr;governed_by</code>) instantly. This allows LLMs to query complex multi hop dependencies without losing context.
+ </div>
+ </div>
 
-      <!-- TIER -->
-      <div class="axis-card tier">
-        <div class="axis-icon tier">⚡</div>
-        <div class="axis-q tier">Tier</div>
-        <div class="axis-title">How <em>important</em> is this — and how loudly should it speak?</div>
-        <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
-          <span class="pill" style="background:rgba(255,59,48,0.15);color:var(--t1);">T1 Critical</span>
-          <span class="pill" style="background:rgba(255,149,0,0.15);color:var(--t2);">T2 High</span>
-          <span class="pill" style="background:rgba(52,199,89,0.15);color:var(--t3);">T3 Standard</span>
-          <span class="pill" style="background:rgba(90,200,250,0.15);color:var(--t4);">T4 Low</span>
-          <span class="pill" style="background:rgba(142,142,147,0.15);color:var(--t5);">T5 Info</span>
-        </div>
+ <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border-hi);border-radius:10px;padding:10px 12px;">
+ <div style="font-size:10px;font-weight:800;color:var(--text);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">SurrealDB Graph Retrieval Query Pattern</div>
+ <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--cyan);line-height:1.5;background:rgba(0,0,0,0.2);padding:6px 10px;border-radius:6px;">
+ SELECT &gt;has_pattern &gt;pattern &gt;governed_by &gt;rule<br/>
+ FROM concept:cost_management<br/>
+ WHERE tier &lt;= 2 PARALLEL;
+ </div>
+ </div>
+ </div>
 
-        <div class="axis-body" style="margin-top:8px;">
-          Tier controls <strong>context weight</strong> — how prominently a node appears in the AI's reasoning regardless of its depth in the graph.
-        </div>
+ <!-- RIGHT: WHY IMS USES GRAPH FOR AI -->
+ <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:10px;">
+ <div style="font-size:11px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:var(--t2);">Why IMS Built a Graph DB for AI</div>
 
-        <!-- Depth promotion callout -->
-        <div style="background:rgba(255,149,0,0.07);border:1px solid rgba(255,149,0,0.25);border-radius:9px;padding:9px 12px;margin-top:10px;">
-          <div style="font-size:9px;font-weight:800;color:var(--t2);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:5px;">⬆ Depth Promotion</div>
-          <div style="font-size:10px;color:var(--muted);line-height:1.55;">
-            A node can sit <strong style="color:var(--text);">4 levels deep</strong> in the hierarchy yet carry <strong style="color:var(--t1);">T1 Critical</strong>. Without tier, the AI would only encounter it after traversing many parent nodes. With T1, it is <strong style="color:var(--text);">surfaced immediately</strong> — promoted above its structural position into the primary context window.
-          </div>
-          <!-- Visual: deep node promoted -->
-          <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
-            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;opacity:0.45;">
-              <div style="font-size:8px;color:var(--muted);font-style:italic;">structural depth</div>
-              <div style="width:2px;height:28px;background:linear-gradient(to bottom,var(--border-hi),transparent);"></div>
-              <div style="font-size:8px;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,0.05);color:var(--muted);">L4 node</div>
-            </div>
-            <div style="font-size:16px;color:var(--t1);">→</div>
-            <div style="flex:1;border-radius:7px;padding:6px 10px;background:rgba(255,59,48,0.12);border:1px solid rgba(255,59,48,0.3);">
-              <div style="font-size:8px;font-weight:800;color:var(--t1);margin-bottom:1px;">T1 CRITICAL — PROMOTED</div>
-              <div style="font-size:10px;color:var(--text);font-weight:600;">Pay Less Notice statutory deadline</div>
-              <div style="font-size:9px;color:var(--muted);">Must issue &gt;7 days before final date for payment. Legal exposure.</div>
-            </div>
-          </div>
-        </div>
+ <div style="display:flex;flex-direction:column;gap:8px;">
+ <div style="border-radius:8px;padding:9px 12px;background:var(--surface);border:1px solid var(--border);">
+ <div style="font-size:11px;font-weight:700;color:var(--text);">1. Full Contextual Recall</div>
+ <div style="font-size:10px;color:var(--muted);margin-top:2px;">When a user asks a complex question, the AI pulls both the high level policy and deep statutory limits in a single traversal pass.</div>
+ </div>
 
-        <!-- Same category, different tier example -->
-        <div class="node-example" style="margin-top:10px;">
-          <div class="node-box">
-            <div class="nb-cat" style="color:var(--orange);">● Procedure</div>
-            <div class="nb-title">Loss &amp; Expense Assessment</div>
-            <div class="nb-tier" style="background:rgba(255,59,48,0.2);color:var(--t1);">T1 · Critical</div>
-          </div>
-          <div class="vs">≠</div>
-          <div class="node-box">
-            <div class="nb-cat" style="color:var(--orange);">● Procedure</div>
-            <div class="nb-title">Cost Code Allocation Update</div>
-            <div class="nb-tier" style="background:rgba(90,200,250,0.15);color:var(--t4);">T4 · Low</div>
-          </div>
-        </div>
-      </div>
+ <div style="border-radius:8px;padding:9px 12px;background:var(--surface);border:1px solid var(--border);">
+ <div style="font-size:11px;font-weight:700;color:var(--text);">2. Zero Hallucination Bounds</div>
+ <div style="font-size:10px;color:var(--muted);margin-top:2px;">Rules are hard constraints (T1 Critical). The Graph explicitly tells the LLM: <em>"You cannot override this limit."</em></div>
+ </div>
 
-      <!-- GRAPH STRUCTURE / PATHWAY -->
-      <div class="axis-card path">
-        <div class="axis-icon path">🔗</div>
-        <div class="axis-q path">Graph Structure</div>
-        <div class="axis-title">Two types of connection shape the AI pathway</div>
-        <div class="axis-body" style="margin-bottom:10px;">
-          The graph provides two dimensions of context beyond category and tier:
-        </div>
+ <div style="border-radius:8px;padding:9px 12px;background:var(--surface);border:1px solid var(--border);">
+ <div style="font-size:11px;font-weight:700;color:var(--text);">3. Dynamic Schema &amp; Cross Domain Links</div>
+ <div style="font-size:10px;color:var(--muted);margin-top:2px;">Connects Cost Management seamlessly to Safety, Quality, and NEC Contracts without breaking domain boundaries.</div>
+ </div>
 
-        <!-- Connection type 1: Parent-child -->
-        <div style="border-radius:8px;padding:8px 11px;background:rgba(90,200,250,0.06);border:1px solid rgba(90,200,250,0.18);margin-bottom:8px;">
-          <div style="font-size:9px;font-weight:800;color:var(--t4);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:5px;">① Parent–Child Path — Structural Hierarchy</div>
-          <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:6px;">The <strong style="color:var(--text);">vertical lineage</strong> from root to leaf. Each node inherits the context of every ancestor above it — the AI reads the path top-down to build a layered, coherent answer.</div>
-          <div style="display:flex;align-items:center;gap:0;">
-            <div class="path-node" style="min-width:72px;">
-              <div class="path-badge" style="background:rgba(0,144,220,0.15);color:var(--cyan);font-size:7px;">Concept</div>
-              <div class="path-label" style="font-size:9px;">Risk Mgmt</div>
-              <div class="path-tier" style="background:rgba(255,149,0,0.15);color:var(--t2);font-size:7px;">T2</div>
-            </div>
-            <div class="path-arrow"><div class="path-arrow-line"></div><div class="path-arrow-label">child</div></div>
-            <div class="path-node" style="min-width:72px;">
-              <div class="path-badge" style="background:rgba(155,89,224,0.15);color:var(--purple);font-size:7px;">Pattern</div>
-              <div class="path-label" style="font-size:9px;">QRA Framework</div>
-              <div class="path-tier" style="background:rgba(255,149,0,0.15);color:var(--t2);font-size:7px;">T2</div>
-            </div>
-            <div class="path-arrow"><div class="path-arrow-line"></div><div class="path-arrow-label">child</div></div>
-            <div class="path-node" style="min-width:72px;">
-              <div class="path-badge" style="background:rgba(213,92,23,0.15);color:var(--orange);font-size:7px;">Procedure</div>
-              <div class="path-label" style="font-size:9px;">Monte Carlo Run</div>
-              <div class="path-tier" style="background:rgba(52,199,89,0.15);color:var(--t3);font-size:7px;">T3</div>
-            </div>
-          </div>
-        </div>
+ <div style="border-radius:8px;padding:9px 12px;background:var(--surface);border:1px solid var(--border);">
+ <div style="font-size:11px;font-weight:700;color:var(--text);">4. Sub Millisecond Pointer Traversal</div>
+ <div style="font-size:10px;color:var(--muted);margin-top:2px;">Indexless adjacencies enable graph traversal in constant time $O(1)$ regardless of total database size.</div>
+ </div>
+ </div>
 
-        <!-- Connection type 2: Secondary cross-links -->
-        <div style="border-radius:8px;padding:8px 11px;background:rgba(0,160,0,0.06);border:1px solid rgba(0,160,0,0.22);margin-bottom:8px;">
-          <div style="font-size:9px;font-weight:800;color:var(--green);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:5px;">② Secondary Links — Cross-Structure Connections</div>
-          <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:6px;">Nodes can also link <strong style="color:var(--text);">horizontally</strong> across different branches. A Procedure in Cost Management may link to a Rule in Compliance — the AI pulls <strong style="color:var(--text);">both branches</strong> into context, connecting knowledge that doesn't share a common parent.</div>
-          <!-- Cross-link diagram -->
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
-            <div style="border-radius:7px;padding:6px 8px;background:rgba(213,92,23,0.1);border:1px solid rgba(213,92,23,0.2);text-align:center;flex:1;">
-              <div style="font-size:8px;font-weight:700;color:var(--orange);">Procedure</div>
-              <div style="font-size:9px;font-weight:600;color:var(--text);">Monthly Cost Report</div>
-              <div style="font-size:7px;color:var(--muted);">Cost Management branch</div>
-            </div>
-            <div style="display:flex;flex-direction:column;align-items:center;gap:1px;">
-              <div style="font-size:9px;color:var(--green);">⟷</div>
-              <div style="font-size:7px;color:var(--green);font-weight:700;white-space:nowrap;">secondary link</div>
-            </div>
-            <div style="border-radius:7px;padding:6px 8px;background:rgba(0,160,0,0.1);border:1px solid rgba(0,160,0,0.25);text-align:center;flex:1;">
-              <div style="font-size:8px;font-weight:700;color:var(--green);">Rule</div>
-              <div style="font-size:9px;font-weight:600;color:var(--text);">Budget Approval Limit</div>
-              <div style="font-size:7px;color:var(--muted);">Governance branch</div>
-            </div>
-          </div>
-        </div>
+ <div style="margin-top:auto;padding:10px;border-radius:8px;background:rgba(234,88,12,0.08);border:1px solid rgba(234,88,12,0.22);font-size:10.5px;color:var(--text);line-height:1.45;">
+ <strong>Key Takeaway:</strong> The Graph Database acts as the AI's <strong>"Long Term Enterprise Memory"</strong> : converting isolated documents into an interconnected web of actionable intelligence.
+ </div>
+ </div>
 
-        <div class="ai-callout" style="margin-top:0;padding:8px 11px;">
-          <div class="ai-icon" style="font-size:13px;">🤖</div>
-          <div class="ai-text" style="font-size:10px;">
-            The AI receives <strong>both pathways simultaneously</strong> — the parent-child chain provides depth; secondary links provide <strong>cross-domain relevance</strong>. Together they prevent siloed, incomplete answers.
-          </div>
-        </div>
-      </div>
+ </div>
 
-    </div>
+ <!-- Summary footer -->
+ <div class="card" style="display:flex;align-items:center;gap:20px;padding:10px 22px;">
+ <span style="font-size:11px;color:var(--muted);flex:1;line-height:1.4;">
+ <strong style="color:var(--text);">Foundation:</strong> The Graph DB sets up the structural network. The following slides detail the <strong>Category vs Tier rules</strong> and the <strong>6 Layer Op Model</strong> that govern how IMS operates.
+ </span>
+ </div>
 
-    <!-- Summary bar -->
-    <div class="card" style="display:flex;align-items:center;gap:20px;padding:12px 22px;">
-      <span style="font-size:11px;color:var(--muted);flex:1;line-height:1.55;">
-        <strong style="color:var(--text);">In short:</strong>
-        <strong style="color:var(--cyan);">Category</strong> defines the role of each node in the reasoning chain (WHAT → HOW → LIMITS). 
-        <strong style="color:var(--t2);">Tier</strong> controls contextual weight — promoting critical knowledge above its structural depth. 
-        <strong style="color:var(--t4);">Graph structure</strong> provides both a vertical parent-child pathway for depth and horizontal secondary links for cross-domain relevance.
-        Together they produce <strong style="color:var(--text);">structured, prioritised, multi-dimensional context</strong> for AI-generated responses.
-      </span>
-    </div>
-
-  </div><!-- /slide 1 -->
+ </div><!-- /slide 1 -->
 
 
-  <!-- ═══════════════════════════════════════════════════════════
+ <!-- ═══════════════════════════════════════════════════════════
+       SLIDE 2 — THE DISTINCTION
+  ═══════════════════════════════════════════════════════════ -->
+ <div class="slide" id="s2">
+
+ <div class="slide-header">
+ <span class="slide-label">IMS Knowledge Graph : Core Concepts</span>
+ <span class="slide-counter">02 / 06</span>
+ </div>
+
+ <div class="slide-title">Category vs Tier : Two Independent Dimensions</div>
+ <div class="slide-subtitle">Every node carries both a <em>type of knowledge</em> and a <em>level of importance</em> : these are orthogonal axes, not the same thing.</div>
+ <div class="divider"></div>
+
+ <!-- Three axis cards -->
+ <div class="s1-grid">
+
+ <!-- CATEGORY -->
+ <div class="axis-card cat">
+ <div class="axis-icon cat">
+ <svg class="svg-icon" style="stroke:var(--cyan);" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
+ </div>
+ <div class="axis-q cat">Category</div>
+ <div class="axis-title">What <em>role</em> does this node play?</div>
+ <div class="axis-body" style="margin-bottom:10px;">
+ Category describes the <strong>nature and function</strong> of a node : how the AI should use it when building a response. Each type occupies a distinct position in the reasoning chain:
+ </div>
+
+ <!-- 6-type grid -->
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+ <div style="border-radius:7px;padding:7px 9px;background:rgba(0,144,220,0.08);border:1px solid rgba(0,144,220,0.18);">
+ <div style="font-size:9px;font-weight:800;color:#0090DC;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:2px;">● Concept : WHAT</div>
+ <div style="font-size:10px;color:var(--muted);line-height:1.45;">Broad domain topics &amp; capabilities. Parent anchors that frame the whole answer.</div>
+ </div>
+ <div style="border-radius:7px;padding:7px 9px;background:rgba(155,89,224,0.08);border:1px solid rgba(155,89,224,0.18);">
+ <div style="font-size:9px;font-weight:800;color:#9B59E0;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:2px;">● Pattern : HOW WE STRUCTURE</div>
+ <div style="font-size:10px;color:var(--muted);line-height:1.45;">Repeatable blueprints &amp; delivery models. The standard shape before local changes.</div>
+ </div>
+ <div style="border-radius:7px;padding:7px 9px;background:rgba(213,92,23,0.08);border:1px solid rgba(213,92,23,0.18);">
+ <div style="font-size:9px;font-weight:800;color:#D55C17;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:2px;">● Procedure : HOW WE EXECUTE</div>
+ <div style="font-size:10px;color:var(--muted);line-height:1.45;">Step by step workflows &amp; deliverables. Where the actual work happens.</div>
+ </div>
+ <div style="border-radius:7px;padding:7px 9px;background:rgba(108,117,128,0.08);border:1px solid rgba(108,117,128,0.18);">
+ <div style="font-size:9px;font-weight:800;color:#9aa4b0;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:2px;">● Variant : WHERE IT DEVIATES</div>
+ <div style="font-size:10px;color:var(--muted);line-height:1.45;">Regional, legal or client overrides. Localises the standard without replacing it.</div>
+ </div>
+ <div style="border-radius:7px;padding:7px 9px;background:rgba(192,57,43,0.08);border:1px solid rgba(192,57,43,0.18);">
+ <div style="font-size:9px;font-weight:800;color:#C0392B;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:2px;">● Scenario : WHEN RISK OCCURS</div>
+ <div style="font-size:10px;color:var(--muted);line-height:1.45;">Real world cases &amp; stress tests. Shows how the standard flexes under pressure.</div>
+ </div>
+ <div style="border-radius:7px;padding:7px 9px;background:rgba(0,160,0,0.08);border:1px solid rgba(0,160,0,0.18);">
+ <div style="font-size:9px;font-weight:800;color:#00A000;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:2px;">● Rule : WHAT WE CANNOT DO</div>
+ <div style="font-size:10px;color:var(--muted);line-height:1.45;">Non negotiable limits &amp; compliance guardrails. Restricts the AI to compliant pathways.</div>
+ </div>
+ </div>
+ </div>
+
+ <!-- TIER -->
+ <div class="axis-card tier">
+ <div class="axis-icon tier">
+ <svg class="svg-icon" style="stroke:var(--t2);" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+ </div>
+ <div class="axis-q tier">Tier</div>
+ <div class="axis-title">How <em>important</em> is this : and how loudly should it speak?</div>
+ <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
+ <span class="pill" style="background:rgba(255,59,48,0.15);color:var(--t1);">T1 Critical</span>
+ <span class="pill" style="background:rgba(255,149,0,0.15);color:var(--t2);">T2 High</span>
+ <span class="pill" style="background:rgba(52,199,89,0.15);color:var(--t3);">T3 Standard</span>
+ <span class="pill" style="background:rgba(90,200,250,0.15);color:var(--t4);">T4 Low</span>
+ <span class="pill" style="background:rgba(142,142,147,0.15);color:var(--t5);">T5 Info</span>
+ </div>
+
+ <div class="axis-body" style="margin-top:8px;">
+ Tier controls <strong>context weight</strong> : how prominently a node appears in the AI's reasoning regardless of its depth in the graph.
+ </div>
+
+ <!-- Depth promotion callout -->
+ <div style="background:rgba(255,149,0,0.07);border:1px solid rgba(255,149,0,0.25);border-radius:9px;padding:9px 12px;margin-top:10px;">
+ <div style="font-size:9px;font-weight:800;color:var(--t2);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:5px;">⬆ Depth Promotion</div>
+ <div style="font-size:10px;color:var(--muted);line-height:1.55;">
+ A node can sit <strong style="color:var(--text);">4 levels deep</strong> in the hierarchy yet carry <strong style="color:var(--t1);">T1 Critical</strong>. Without tier, the AI would only encounter it after traversing many parent nodes. With T1, it is <strong style="color:var(--text);">surfaced immediately</strong> : promoted above its structural position into the primary context window.
+ </div>
+ <!-- Visual: deep node promoted -->
+ <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
+ <div style="display:flex;flex-direction:column;align-items:center;gap:2px;opacity:0.45;">
+ <div style="font-size:8px;color:var(--muted);font-style:italic;">structural depth</div>
+ <div style="width:2px;height:28px;background:linear-gradient(to bottom,var(--border-hi),transparent);"></div>
+ <div style="font-size:8px;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,0.05);color:var(--muted);">L4 node</div>
+ </div>
+ <div style="font-size:16px;color:var(--t1);">→</div>
+ <div style="flex:1;border-radius:7px;padding:6px 10px;background:rgba(255,59,48,0.12);border:1px solid rgba(255,59,48,0.3);">
+ <div style="font-size:8px;font-weight:800;color:var(--t1);margin-bottom:1px;">T1 CRITICAL : PROMOTED</div>
+ <div style="font-size:10px;color:var(--text);font-weight:600;">Pay Less Notice statutory deadline</div>
+ <div style="font-size:9px;color:var(--muted);">Must issue &gt;7 days before final date for payment. Legal exposure.</div>
+ </div>
+ </div>
+ </div>
+
+ <!-- Same category, different tier example -->
+ <div class="node-example" style="margin-top:10px;">
+ <div class="node-box">
+ <div class="nb-cat" style="color:var(--orange);">● Procedure</div>
+ <div class="nb-title">Loss &amp; Expense Assessment</div>
+ <div class="nb-tier" style="background:rgba(255,59,48,0.2);color:var(--t1);">T1 · Critical</div>
+ </div>
+ <div class="vs">≠</div>
+ <div class="node-box">
+ <div class="nb-cat" style="color:var(--orange);">● Procedure</div>
+ <div class="nb-title">Cost Code Allocation Update</div>
+ <div class="nb-tier" style="background:rgba(90,200,250,0.15);color:var(--t4);">T4 · Low</div>
+ </div>
+ </div>
+ </div>
+
+ <!-- GRAPH STRUCTURE / PATHWAY -->
+ <div class="axis-card path">
+ <div class="axis-icon path">
+ <svg class="svg-icon" style="stroke:var(--green);" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+ </div>
+ <div class="axis-q path">Graph Structure</div>
+ <div class="axis-title">Two types of connection shape the AI pathway</div>
+ <div class="axis-body" style="margin-bottom:10px;">
+ The graph provides two dimensions of context beyond category and tier:
+ </div>
+
+ <!-- Connection type 1: Parent-child -->
+ <div style="border-radius:8px;padding:8px 11px;background:rgba(90,200,250,0.06);border:1px solid rgba(90,200,250,0.18);margin-bottom:8px;">
+ <div style="font-size:9px;font-weight:800;color:var(--t4);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:5px;">① Parent Child Path : Structural Hierarchy</div>
+ <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:6px;">The <strong style="color:var(--text);">vertical lineage</strong> from root to leaf. Each node inherits the context of every ancestor above it : the AI reads the path top&ndash;down to build a layered, coherent answer.</div>
+ <div style="display:flex;align-items:center;gap:0;">
+ <div class="path-node" style="min-width:72px;">
+ <div class="path-badge" style="background:rgba(0,144,220,0.15);color:var(--cyan);font-size:7px;">Concept</div>
+ <div class="path-label" style="font-size:9px;">Risk Mgmt</div>
+ <div class="path-tier" style="background:rgba(255,149,0,0.15);color:var(--t2);font-size:7px;">T2</div>
+ </div>
+ <div class="path-arrow"><div class="path-arrow-line"></div><div class="path-arrow-label">child</div></div>
+ <div class="path-node" style="min-width:72px;">
+ <div class="path-badge" style="background:rgba(155,89,224,0.15);color:var(--purple);font-size:7px;">Pattern</div>
+ <div class="path-label" style="font-size:9px;">QRA Framework</div>
+ <div class="path-tier" style="background:rgba(255,149,0,0.15);color:var(--t2);font-size:7px;">T2</div>
+ </div>
+ <div class="path-arrow"><div class="path-arrow-line"></div><div class="path-arrow-label">child</div></div>
+ <div class="path-node" style="min-width:72px;">
+ <div class="path-badge" style="background:rgba(213,92,23,0.15);color:var(--orange);font-size:7px;">Procedure</div>
+ <div class="path-label" style="font-size:9px;">Monte Carlo Run</div>
+ <div class="path-tier" style="background:rgba(52,199,89,0.15);color:var(--t3);font-size:7px;">T3</div>
+ </div>
+ </div>
+ </div>
+
+ <!-- Connection type 2: Secondary cross-links -->
+ <div style="border-radius:8px;padding:8px 11px;background:rgba(0,160,0,0.06);border:1px solid rgba(0,160,0,0.22);margin-bottom:8px;">
+ <div style="font-size:9px;font-weight:800;color:var(--green);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:5px;">② Secondary Links : Cross Structure Connections</div>
+ <div style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:6px;">Nodes can also link <strong style="color:var(--text);">horizontally</strong> across different branches. A Procedure in Cost Management may link to a Rule in Compliance : the AI pulls <strong style="color:var(--text);">both branches</strong> into context, connecting knowledge that doesn't share a common parent.</div>
+ <!-- Cross-link diagram -->
+ <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+ <div style="border-radius:7px;padding:6px 8px;background:rgba(213,92,23,0.1);border:1px solid rgba(213,92,23,0.2);text-align:center;flex:1;">
+ <div style="font-size:8px;font-weight:700;color:var(--orange);">Procedure</div>
+ <div style="font-size:9px;font-weight:600;color:var(--text);">Monthly Cost Report</div>
+ <div style="font-size:7px;color:var(--muted);">Cost Management branch</div>
+ </div>
+ <div style="display:flex;flex-direction:column;align-items:center;gap:1px;">
+ <div style="font-size:9px;color:var(--green);">⟷</div>
+ <div style="font-size:7px;color:var(--green);font-weight:700;white-space:nowrap;">secondary link</div>
+ </div>
+ <div style="border-radius:7px;padding:6px 8px;background:rgba(0,160,0,0.1);border:1px solid rgba(0,160,0,0.25);text-align:center;flex:1;">
+ <div style="font-size:8px;font-weight:700;color:var(--green);">Rule</div>
+ <div style="font-size:9px;font-weight:600;color:var(--text);">Budget Approval Limit</div>
+ <div style="font-size:7px;color:var(--muted);">Governance branch</div>
+ </div>
+ </div>
+ </div>
+
+ <div class="ai-callout" style="margin-top:0;padding:8px 11px;">
+ <div class="ai-icon" style="font-size:13px;">
+ <svg class="svg-icon" style="stroke:var(--cyan);" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="12" rx="2"></rect><path d="M12 2v6"></path></svg>
+ </div>
+ <div class="ai-text" style="font-size:10px;">
+ The AI receives <strong>both pathways simultaneously</strong> : the parent child chain provides depth; secondary links provide <strong>cross domain relevance</strong>. Together they prevent siloed, incomplete answers.
+ </div>
+ </div>
+ </div>
+
+ </div>
+
+ <!-- Summary bar -->
+ <div class="card" style="display:flex;align-items:center;gap:20px;padding:12px 22px;">
+ <span style="font-size:11px;color:var(--muted);flex:1;line-height:1.55;">
+ <strong style="color:var(--text);">In short:</strong>
+ <strong style="color:var(--cyan);">Category</strong> defines the role of each node in the reasoning chain (WHAT → HOW → LIMITS). 
+ <strong style="color:var(--t2);">Tier</strong> controls contextual weight : promoting critical knowledge above its structural depth. 
+ <strong style="color:var(--t4);">Graph structure</strong> provides both a vertical parent child pathway for depth and horizontal secondary links for cross domain relevance.
+ Together they produce <strong style="color:var(--text);">structured, prioritised, multi dimensional context</strong> for AI generated responses.
+ </span>
+ </div>
+
+ </div><!-- /slide 1 -->
+
+
+ <!-- ═══════════════════════════════════════════════════════════
        SLIDE 2 — TWO EXAMPLES
   ═══════════════════════════════════════════════════════════ -->
-  <div class="slide" id="s2">
+ <div class="slide" id="s2">
 
-    <div class="slide-header">
-      <span class="slide-label">IMS Knowledge Graph — Worked Examples</span>
-      <span class="slide-counter">02 / 04</span>
-    </div>
+ <div class="slide-header">
+ <span class="slide-label">IMS Knowledge Graph : Worked Examples</span>
+ <span class="slide-counter">03 / 06</span>
+ </div>
 
-    <div class="slide-title">Two Examples in Practice</div>
-    <div class="slide-subtitle">The same category classification can carry very different tiers — and graph structure determines how the AI pieces the answer together.</div>
-    <div class="divider"></div>
+ <div class="slide-title">Two Examples in Practice</div>
+ <div class="slide-subtitle">The same category classification can carry very different tiers : and graph structure determines how the AI pieces the answer together.</div>
+ <div class="divider"></div>
 
-    <div class="s2-grid" style="flex:1;">
+ <div class="s2-grid" style="flex:1;">
 
-      <!-- EXAMPLE 1 — Same category, wildly different tier -->
-      <div class="example-card ex1">
-        <div class="ex-header">
-          <div class="ex-num">1</div>
-          <div>
-            <div class="ex-label">Category held constant · Tier varies</div>
-            <div class="ex-title">Two Procedures — Worlds Apart in Importance</div>
-          </div>
-        </div>
+ <!-- EXAMPLE 1 — Same category, wildly different tier -->
+ <div class="example-card ex1">
+ <div class="ex-header">
+ <div class="ex-num">1</div>
+ <div>
+ <div class="ex-label">Category held constant · Tier varies</div>
+ <div class="ex-title">Two Procedures : Worlds Apart in Importance</div>
+ </div>
+ </div>
 
-        <div class="node-pair">
-          <div class="np-card">
-            <div class="np-cat-row">
-              <div class="np-cat-dot" style="background:var(--orange);"></div>
-              <div class="np-cat-label" style="color:var(--orange);">Procedure</div>
-            </div>
-            <div class="np-name">Fire &amp; Life Safety Evacuation Protocol</div>
-            <div class="np-tier-badge" style="background:rgba(255,59,48,0.2);color:var(--t1);">T1 · Critical</div>
-            <div class="np-insight">Non-negotiable. If queried, AI <strong>must</strong> surface this first — it overrides all other execution guidance.</div>
-          </div>
-          <div class="np-card">
-            <div class="np-cat-row">
-              <div class="np-cat-dot" style="background:var(--orange);"></div>
-              <div class="np-cat-label" style="color:var(--orange);">Procedure</div>
-            </div>
-            <div class="np-name">Legacy Document Archiving &amp; Indexing Steps</div>
-            <div class="np-tier-badge" style="background:rgba(90,200,250,0.15);color:var(--t4);">T4 · Low</div>
-            <div class="np-insight">Useful background. AI may include this if space allows, but <strong>never</strong> at the expense of higher-tier content.</div>
-          </div>
-        </div>
+ <div class="node-pair">
+ <div class="np-card">
+ <div class="np-cat-row">
+ <div class="np-cat-dot" style="background:var(--orange);"></div>
+ <div class="np-cat-label" style="color:var(--orange);">Procedure</div>
+ </div>
+ <div class="np-name">Fire &amp; Life Safety Evacuation Protocol</div>
+ <div class="np-tier-badge" style="background:rgba(255,59,48,0.2);color:var(--t1);">T1 · Critical</div>
+ <div class="np-insight">Non negotiable. If queried, AI <strong>must</strong> surface this first : it overrides all other execution guidance.</div>
+ </div>
+ <div class="np-card">
+ <div class="np-cat-row">
+ <div class="np-cat-dot" style="background:var(--orange);"></div>
+ <div class="np-cat-label" style="color:var(--orange);">Procedure</div>
+ </div>
+ <div class="np-name">Legacy Document Archiving &amp; Indexing Steps</div>
+ <div class="np-tier-badge" style="background:rgba(90,200,250,0.15);color:var(--t4);">T4 · Low</div>
+ <div class="np-insight">Useful background. AI may include this if space allows, but <strong>never</strong> at the expense of higher tier content.</div>
+ </div>
+ </div>
 
-        <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:9px;padding:10px 14px;">
-          <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">What changes between them?</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            <div style="font-size:10px;color:var(--muted);line-height:1.5;">
-              <strong style="color:var(--text);">Category</strong> = identical (both Procedure).<br/>
-              The AI knows both describe "how to do something step-by-step."
-            </div>
-            <div style="font-size:10px;color:var(--muted);line-height:1.5;">
-              <strong style="color:var(--text);">Tier</strong> = completely different.<br/>
-              T1 is mandatory context. T4 is optional enrichment. The AI sorts them accordingly.
-            </div>
-          </div>
-        </div>
+ <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:9px;padding:10px 14px;">
+ <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">What changes between them?</div>
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+ <div style="font-size:10px;color:var(--muted);line-height:1.5;">
+ <strong style="color:var(--text);">Category</strong> = identical (both Procedure).<br/>
+ The AI knows both describe "how to do something step&ndash;by&ndash;step."
+ </div>
+ <div style="font-size:10px;color:var(--muted);line-height:1.5;">
+ <strong style="color:var(--text);">Tier</strong> = completely different.<br/>
+ T1 is mandatory context. T4 is optional enrichment. The AI sorts them accordingly.
+ </div>
+ </div>
+ </div>
 
-        <div class="ex-insight">
-          <strong>Key insight:</strong> A query about "site safety" would return the T1 Procedure first and prominently. The archiving T4 Procedure would never appear in that answer — the tier filter prevents irrelevant noise entering the AI context window.
-        </div>
-      </div>
+ <div class="ex-insight">
+ <strong>Key insight:</strong> A query about "site safety" would return the T1 Procedure first and prominently. The archiving T4 Procedure would never appear in that answer : the tier filter prevents irrelevant noise entering the AI context window.
+ </div>
+ </div>
 
-      <!-- EXAMPLE 2 — Graph pathway producing structured AI output -->
-      <div class="example-card ex2">
-        <div class="ex-header">
-          <div class="ex-num">2</div>
-          <div>
-            <div class="ex-label">Graph structure · Pathway to AI output</div>
-            <div class="ex-title">How Three Different Categories Build One Complete Answer</div>
-          </div>
-        </div>
+ <!-- EXAMPLE 2 — Graph pathway producing structured AI output -->
+ <div class="example-card ex2">
+ <div class="ex-header">
+ <div class="ex-num">2</div>
+ <div>
+ <div class="ex-label">Graph structure · Pathway to AI output</div>
+ <div class="ex-title">How Three Different Categories Build One Complete Answer</div>
+ </div>
+ </div>
 
-        <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:2px;">
-          Query: <strong style="color:var(--text); font-style:italic;">"How does Turner &amp; Townsend approach Procurement on an Infrastructure project?"</strong>
-        </div>
+ <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:2px;">
+ Query: <strong style="color:var(--text); font-style:italic;">"How does Turner &amp; Townsend approach Procurement on an Infrastructure project?"</strong>
+ </div>
 
-        <!-- Chain -->
-        <div class="chain">
-          <div class="chain-node">
-            <div class="chain-cat" style="color:var(--cyan);">● Concept</div>
-            <div class="chain-name">Infrastructure &amp; Transport</div>
-            <div class="chain-tier" style="background:rgba(255,149,0,0.15);color:var(--t2);">T2 · High</div>
-            <div class="chain-ai">Sets the sector domain. AI knows the answer is infrastructure-specific, not generic.</div>
-          </div>
-          <div class="chain-arrow">→</div>
-          <div class="chain-node">
-            <div class="chain-cat" style="color:var(--purple);">● Pattern</div>
-            <div class="chain-name">Procurement Strategy Framework</div>
-            <div class="chain-tier" style="background:rgba(255,149,0,0.15);color:var(--t2);">T2 · High</div>
-            <div class="chain-ai">Injects the standard blueprint. AI structures its answer around the repeatable model.</div>
-          </div>
-          <div class="chain-arrow">→</div>
-          <div class="chain-node">
-            <div class="chain-cat" style="color:var(--orange);">● Procedure</div>
-            <div class="chain-name">Tender Evaluation &amp; Award Process</div>
-            <div class="chain-tier" style="background:rgba(52,199,89,0.15);color:var(--t3);">T3 · Std</div>
-            <div class="chain-ai">Provides the step-by-step execution. AI details specific deliverables and workflows.</div>
-          </div>
-          <div class="chain-arrow">→</div>
-          <div class="chain-node">
-            <div class="chain-cat" style="color:var(--grey);">● Variant</div>
-            <div class="chain-name">UK PCR 2015 Override</div>
-            <div class="chain-tier" style="background:rgba(255,59,48,0.2);color:var(--t1);">T1 · Critical</div>
-            <div class="chain-ai">Overrides with UK regulatory constraint. AI appends mandatory compliance note.</div>
-          </div>
-        </div>
+ <!-- Chain -->
+ <div class="chain">
+ <div class="chain-node">
+ <div class="chain-cat" style="color:var(--cyan);">● Concept</div>
+ <div class="chain-name">Infrastructure &amp; Transport</div>
+ <div class="chain-tier" style="background:rgba(255,149,0,0.15);color:var(--t2);">T2 · High</div>
+ <div class="chain-ai">Sets the sector domain. AI knows the answer is infrastructure specific, not generic.</div>
+ </div>
+ <div class="chain-arrow">→</div>
+ <div class="chain-node">
+ <div class="chain-cat" style="color:var(--purple);">● Pattern</div>
+ <div class="chain-name">Procurement Strategy Framework</div>
+ <div class="chain-tier" style="background:rgba(255,149,0,0.15);color:var(--t2);">T2 · High</div>
+ <div class="chain-ai">Injects the standard blueprint. AI structures its answer around the repeatable model.</div>
+ </div>
+ <div class="chain-arrow">→</div>
+ <div class="chain-node">
+ <div class="chain-cat" style="color:var(--orange);">● Procedure</div>
+ <div class="chain-name">Tender Evaluation &amp; Award Process</div>
+ <div class="chain-tier" style="background:rgba(52,199,89,0.15);color:var(--t3);">T3 · Std</div>
+ <div class="chain-ai">Provides the step&ndash;by&ndash;step execution. AI details specific deliverables and workflows.</div>
+ </div>
+ <div class="chain-arrow">→</div>
+ <div class="chain-node">
+ <div class="chain-cat" style="color:var(--grey);">● Variant</div>
+ <div class="chain-name">UK PCR 2015 Override</div>
+ <div class="chain-tier" style="background:rgba(255,59,48,0.2);color:var(--t1);">T1 · Critical</div>
+ <div class="chain-ai">Overrides with UK regulatory constraint. AI appends mandatory compliance note.</div>
+ </div>
+ </div>
 
-        <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:9px;padding:10px 14px;">
-          <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">What the AI receives (simplified pathway string)</div>
-          <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);line-height:1.8;">
-            <span style="color:var(--cyan);">[CONCEPT:T2]</span> Infrastructure &amp; Transport
-            <span style="color:var(--muted);"> → </span>
-            <span style="color:var(--purple);">[PATTERN:T2]</span> Procurement Strategy
-            <span style="color:var(--muted);"> → </span>
-            <span style="color:var(--orange);">[PROCEDURE:T3]</span> Tender Evaluation
-            <span style="color:var(--muted);"> → </span>
-            <span style="color:#9aa4b0;">[VARIANT:T1]</span> UK PCR 2015
-          </div>
-        </div>
+ <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:9px;padding:10px 14px;">
+ <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">What the AI receives (simplified pathway string)</div>
+ <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);line-height:1.8;">
+ <span style="color:var(--cyan);">[CONCEPT:T2]</span> Infrastructure &amp; Transport
+ <span style="color:var(--muted);"> → </span>
+ <span style="color:var(--purple);">[PATTERN:T2]</span> Procurement Strategy
+ <span style="color:var(--muted);"> → </span>
+ <span style="color:var(--orange);">[PROCEDURE:T3]</span> Tender Evaluation
+ <span style="color:var(--muted);"> → </span>
+ <span style="color:#9aa4b0;">[VARIANT:T1]</span> UK PCR 2015
+ </div>
+ </div>
 
-        <div class="ex-insight">
-          <strong>Key insight:</strong> Four different categories work together in path order to build a <strong>layered, structured answer</strong>. The Tier on the Variant (T1) ensures the UK regulatory constraint is always flagged regardless of its position in the chain — graph depth without tier would miss this.
-        </div>
-      </div>
+ <div class="ex-insight">
+ <strong>Key insight:</strong> Four different categories work together in path order to build a <strong>layered, structured answer</strong>. The Tier on the Variant (T1) ensures the UK regulatory constraint is always flagged regardless of its position in the chain : graph depth without tier would miss this.
+ </div>
+ </div>
 
-    </div>
-  </div><!-- /slide 2 -->
+ </div>
+ </div><!-- /slide 2 -->
 
 
-  <!-- ═══════════════════════════════════════════════════════════
+ <!-- ═══════════════════════════════════════════════════════════
        SLIDE 3 — FULL STRUCTURE EXAMPLE
   ═══════════════════════════════════════════════════════════ -->
-  <div class="slide" id="s3">
+ <div class="slide" id="s3">
 
-    <div class="slide-header">
-      <span class="slide-label">IMS Knowledge Graph — Structure Example</span>
-      <span class="slide-counter">03 / 04</span>
-    </div>
+ <div class="slide-header">
+ <span class="slide-label">IMS Knowledge Graph : Structure Example</span>
+ <span class="slide-counter">04 / 06</span>
+ </div>
 
-    <div class="slide-title">A Complete Category Structure in Practice</div>
-    <div class="slide-subtitle">One Concept anchors two delivery branches (Pattern + Procedure). Each branch carries its own Rules, Variants, and Scenarios — showing how all six types work together.</div>
-    <div class="divider"></div>
+ <div class="slide-title">A Complete Category Structure in Practice</div>
+ <div class="slide-subtitle">One Concept anchors two delivery branches (Pattern + Procedure). Each branch carries its own Rules, Variants, and Scenarios : showing how all six types work together.</div>
+ <div class="divider"></div>
 
-    <!-- TREE LAYOUT -->
-    <div style="flex:1;display:flex;flex-direction:column;gap:0;overflow:hidden;">
+ <!-- TREE LAYOUT WITH JS-MEASURED EXACT CANVAS OVERLAY -->
+ <div id="treeContainer" style="flex:1;display:flex;flex-direction:column;align-items:center;position:relative;padding-top:4px;width:100%;">
 
-      <!-- ROOT: CONCEPT -->
-      <div style="display:flex;justify-content:center;margin-bottom:0;">
-        <div style="border-radius:12px;padding:12px 28px;background:rgba(0,144,220,0.1);border:2px solid rgba(0,144,220,0.35);text-align:center;position:relative;">
-          <div style="font-size:9px;font-weight:800;color:var(--cyan);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:3px;">● Concept</div>
-          <div style="font-size:16px;font-weight:800;color:var(--text);">Cost Management</div>
-          <div style="font-size:10px;color:var(--muted);margin-top:2px;">The domain anchor — WHAT this whole branch is about</div>
-          <div style="margin-top:6px;display:inline-block;font-size:8px;font-weight:800;padding:2px 9px;border-radius:4px;background:rgba(255,149,0,0.18);color:var(--t2);">T2 · High</div>
-        </div>
-      </div>
+ <!-- SVG DYNAMIC TREE OVERLAY -->
+ <svg id="treeSvg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1;overflow:visible;">
+ <path id="pathRootToSplit" stroke="var(--border-hi)" stroke-width="2" fill="none" />
+ <path id="pathPatternChildren" stroke="var(--border-hi)" stroke-width="2" fill="none" />
+ <path id="pathProcedureChildren" stroke="var(--border-hi)" stroke-width="2" fill="none" />
+ </svg>
 
-      <!-- Connector from concept down -->
-      <div style="display:flex;justify-content:center;">
-        <div style="width:2px;height:20px;background:linear-gradient(to bottom,rgba(0,144,220,0.5),rgba(255,255,255,0.12));"></div>
-      </div>
+ <!-- ROOT: CONCEPT -->
+ <div id="boxConcept" style="border-radius:12px;padding:10px 28px;background:rgba(8,145,178,0.1);border:2px solid var(--cyan);text-align:center;position:relative;z-index:2;width:340px;margin-bottom:28px;">
+ <div style="font-size:10px;font-weight:800;color:var(--cyan);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:2px;">● Concept</div>
+ <div style="font-size:16px;font-weight:800;color:var(--text);">Cost Management</div>
+ <div style="font-size:11px;color:var(--muted);margin-top:2px;">The domain anchor : WHAT this whole branch is about</div>
+ <div style="margin-top:5px;display:inline-block;font-size:9px;font-weight:800;padding:2px 8px;border-radius:4px;background:rgba(234,88,12,0.15);color:var(--t2);">T2 · High</div>
+ </div>
 
-      <!-- Horizontal split line -->
-      <div style="display:flex;align-items:flex-start;justify-content:center;gap:0;position:relative;">
-        <div style="position:absolute;top:0;left:calc(50% - 160px);right:calc(50% - 160px);height:2px;background:rgba(255,255,255,0.08);"></div>
+ <!-- MAIN BRANCH ROW: PATTERN & PROCEDURE -->
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;width:100%;position:relative;z-index:2;margin-bottom:28px;">
 
-        <!-- LEFT BRANCH: PATTERN -->
-        <div style="flex:1;max-width:48%;display:flex;flex-direction:column;align-items:center;padding-top:2px;">
-          <!-- Branch connector down -->
-          <div style="width:2px;height:18px;background:rgba(155,89,224,0.4);"></div>
+ <!-- PATTERN COLUMN -->
+ <div style="display:flex;flex-direction:column;align-items:center;">
+ <!-- PATTERN BOX -->
+ <div id="boxPattern" style="border-radius:10px;padding:10px 18px;background:rgba(79,70,229,0.1);border:2px solid var(--purple);text-align:center;width:90%;position:relative;z-index:2;margin-bottom:28px;">
+ <div style="font-size:10px;font-weight:800;color:var(--purple);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:2px;">● Pattern</div>
+ <div style="font-size:14px;font-weight:800;color:var(--text);">Cost Planning Framework</div>
+ <div style="font-size:11px;color:var(--muted);margin-top:1px;">The repeatable blueprint : HOW WE STRUCTURE cost delivery</div>
+ <div style="margin-top:5px;display:inline-block;font-size:9px;font-weight:800;padding:2px 8px;border-radius:4px;background:rgba(234,88,12,0.15);color:var(--t2);">T2 · High</div>
+ </div>
 
-          <!-- PATTERN node -->
-          <div style="border-radius:10px;padding:10px 18px;background:rgba(155,89,224,0.1);border:2px solid rgba(155,89,224,0.3);text-align:center;width:88%;margin-bottom:0;">
-            <div style="font-size:9px;font-weight:800;color:var(--purple);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:2px;">● Pattern</div>
-            <div style="font-size:13px;font-weight:800;color:var(--text);">Cost Planning Framework</div>
-            <div style="font-size:10px;color:var(--muted);margin-top:1px;">The repeatable blueprint — HOW WE STRUCTURE cost delivery</div>
-            <div style="margin-top:5px;display:inline-block;font-size:8px;font-weight:800;padding:2px 8px;border-radius:4px;background:rgba(255,149,0,0.18);color:var(--t2);">T2 · High</div>
-          </div>
+ <!-- PATTERN CHILDREN GRID -->
+ <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;width:100%;position:relative;z-index:2;">
+ <!-- Rule for Pattern -->
+ <div id="boxPatRule" style="border-radius:8px;padding:8px 10px;background:rgba(5,150,105,0.08);border:1.5px solid var(--green);text-align:center;">
+ <div style="font-size:9px;font-weight:800;color:var(--green);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:3px;">● Rule</div>
+ <div style="font-size:11px;font-weight:700;color:var(--text);line-height:1.3;">Budget Threshold Limits</div>
+ <div style="font-size:9.5px;color:var(--muted);margin-top:3px;line-height:1.35;">Max contingency % and approval authority levels. Cannot be overridden.</div>
+ <div style="margin-top:5px;display:inline-block;font-size:8px;font-weight:800;padding:2px 6px;border-radius:3px;background:rgba(220,38,38,0.15);color:var(--t1);">T1 · Critical</div>
+ </div>
 
-          <!-- Connectors to Pattern children -->
-          <div style="width:2px;height:14px;background:rgba(255,255,255,0.1);"></div>
-          <div style="width:90%;height:2px;background:rgba(255,255,255,0.07);position:relative;"></div>
+ <!-- Variant for Pattern -->
+ <div id="boxPatVariant" style="border-radius:8px;padding:8px 10px;background:rgba(106,100,93,0.08);border:1.5px solid var(--border-hi);text-align:center;">
+ <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:3px;">● Variant</div>
+ <div style="font-size:11px;font-weight:700;color:var(--text);line-height:1.3;">Public Sector Framework</div>
+ <div style="font-size:9.5px;color:var(--muted);margin-top:3px;line-height:1.35;">NEC contract adjustments for government clients. Localises the standard model.</div>
+ <div style="margin-top:5px;display:inline-block;font-size:8px;font-weight:800;padding:2px 6px;border-radius:3px;background:rgba(234,88,12,0.15);color:var(--t2);">T2 · High</div>
+ </div>
 
-          <!-- Pattern children: Rule / Variant / Scenario -->
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;width:93%;margin-top:0;padding-top:0;">
+ <!-- Scenario for Pattern -->
+ <div id="boxPatScenario" style="border-radius:8px;padding:8px 10px;background:rgba(220,38,38,0.08);border:1.5px solid var(--red);text-align:center;">
+ <div style="font-size:9px;font-weight:800;color:var(--red);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:3px;">● Scenario</div>
+ <div style="font-size:11px;font-weight:700;color:var(--text);line-height:1.3;">High Inflation Response</div>
+ <div style="font-size:9.5px;color:var(--muted);margin-top:3px;line-height:1.35;">How the framework adapts when material costs exceed 15% escalation.</div>
+ <div style="margin-top:5px;display:inline-block;font-size:8px;font-weight:800;padding:2px 6px;border-radius:3px;background:rgba(5,150,105,0.15);color:var(--t3);">T3 · Standard</div>
+ </div>
+ </div>
+ </div>
 
-            <!-- Rule for Pattern -->
-            <div style="display:flex;flex-direction:column;align-items:center;">
-              <div style="width:2px;height:12px;background:rgba(0,160,0,0.4);"></div>
-              <div style="border-radius:8px;padding:8px 10px;background:rgba(0,160,0,0.08);border:1px solid rgba(0,160,0,0.3);text-align:center;width:100%;">
-                <div style="font-size:8px;font-weight:800;color:var(--green);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:3px;">● Rule</div>
-                <div style="font-size:10px;font-weight:700;color:var(--text);line-height:1.3;">Budget Threshold Limits</div>
-                <div style="font-size:9px;color:var(--muted);margin-top:3px;line-height:1.35;">Max contingency % and approval authority levels. Cannot be overridden.</div>
-                <div style="margin-top:5px;display:inline-block;font-size:7px;font-weight:800;padding:2px 6px;border-radius:3px;background:rgba(255,59,48,0.18);color:var(--t1);">T1 · Critical</div>
-              </div>
-            </div>
+ <!-- PROCEDURE COLUMN -->
+ <div style="display:flex;flex-direction:column;align-items:center;">
+ <!-- PROCEDURE BOX -->
+ <div id="boxProcedure" style="border-radius:10px;padding:10px 18px;background:rgba(234,88,12,0.1);border:2px solid var(--orange);text-align:center;width:90%;position:relative;z-index:2;margin-bottom:28px;">
+ <div style="font-size:10px;font-weight:800;color:var(--orange);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:2px;">● Procedure</div>
+ <div style="font-size:14px;font-weight:800;color:var(--text);">Monthly Cost Reporting</div>
+ <div style="font-size:11px;color:var(--muted);margin-top:1px;">The step&ndash;by&ndash;step execution : HOW WE EXECUTE cost tracking</div>
+ <div style="margin-top:5px;display:inline-block;font-size:9px;font-weight:800;padding:2px 8px;border-radius:4px;background:rgba(5,150,105,0.15);color:var(--t3);">T3 · Standard</div>
+ </div>
 
-            <!-- Variant for Pattern -->
-            <div style="display:flex;flex-direction:column;align-items:center;">
-              <div style="width:2px;height:12px;background:rgba(108,117,128,0.4);"></div>
-              <div style="border-radius:8px;padding:8px 10px;background:rgba(108,117,128,0.08);border:1px solid rgba(108,117,128,0.25);text-align:center;width:100%;">
-                <div style="font-size:8px;font-weight:800;color:#9aa4b0;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:3px;">● Variant</div>
-                <div style="font-size:10px;font-weight:700;color:var(--text);line-height:1.3;">Public Sector Framework</div>
-                <div style="font-size:9px;color:var(--muted);margin-top:3px;line-height:1.35;">NEC contract adjustments for government clients. Localises the standard model.</div>
-                <div style="margin-top:5px;display:inline-block;font-size:7px;font-weight:800;padding:2px 6px;border-radius:3px;background:rgba(255,149,0,0.15);color:var(--t2);">T2 · High</div>
-              </div>
-            </div>
+ <!-- PROCEDURE CHILDREN GRID -->
+ <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;width:100%;position:relative;z-index:2;">
+ <!-- Rule for Procedure -->
+ <div id="boxProcRule" style="border-radius:8px;padding:8px 10px;background:rgba(5,150,105,0.08);border:1.5px solid var(--green);text-align:center;">
+ <div style="font-size:9px;font-weight:800;color:var(--green);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:3px;">● Rule</div>
+ <div style="font-size:11px;font-weight:700;color:var(--text);line-height:1.3;">Approval Authority Matrix</div>
+ <div style="font-size:9.5px;color:var(--muted);margin-top:3px;line-height:1.35;">Who must sign off cost reports at each value band. Non negotiable.</div>
+ <div style="margin-top:5px;display:inline-block;font-size:8px;font-weight:800;padding:2px 6px;border-radius:3px;background:rgba(220,38,38,0.15);color:var(--t1);">T1 · Critical</div>
+ </div>
 
-            <!-- Scenario for Pattern -->
-            <div style="display:flex;flex-direction:column;align-items:center;">
-              <div style="width:2px;height:12px;background:rgba(192,57,43,0.4);"></div>
-              <div style="border-radius:8px;padding:8px 10px;background:rgba(192,57,43,0.08);border:1px solid rgba(192,57,43,0.25);text-align:center;width:100%;">
-                <div style="font-size:8px;font-weight:800;color:var(--red);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:3px;">● Scenario</div>
-                <div style="font-size:10px;font-weight:700;color:var(--text);line-height:1.3;">High Inflation Response</div>
-                <div style="font-size:9px;color:var(--muted);margin-top:3px;line-height:1.35;">How the framework adapts when material costs exceed 15% escalation.</div>
-                <div style="margin-top:5px;display:inline-block;font-size:7px;font-weight:800;padding:2px 6px;border-radius:3px;background:rgba(52,199,89,0.12);color:var(--t3);">T3 · Standard</div>
-              </div>
-            </div>
+ <!-- Variant for Procedure -->
+ <div id="boxProcVariant" style="border-radius:8px;padding:8px 10px;background:rgba(106,100,93,0.08);border:1.5px solid var(--border-hi);text-align:center;">
+ <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:3px;">● Variant</div>
+ <div style="font-size:11px;font-weight:700;color:var(--text);line-height:1.3;">Client&ndash;Specific Format</div>
+ <div style="font-size:9.5px;color:var(--muted);margin-top:3px;line-height:1.35;">Shell requires a bespoke cost code structure. Overrides the standard template.</div>
+ <div style="margin-top:5px;display:inline-block;font-size:8px;font-weight:800;padding:2px 6px;border-radius:3px;background:rgba(8,145,178,0.15);color:var(--t4);">T4 · Low</div>
+ </div>
 
-          </div>
-        </div>
+ <!-- Scenario for Procedure -->
+ <div id="boxProcScenario" style="border-radius:8px;padding:8px 10px;background:rgba(220,38,38,0.08);border:1.5px solid var(--red);text-align:center;">
+ <div style="font-size:9px;font-weight:800;color:var(--red);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:3px;">● Scenario</div>
+ <div style="font-size:11px;font-weight:700;color:var(--text);line-height:1.3;">Budget Overrun Response</div>
+ <div style="font-size:9.5px;color:var(--muted);margin-top:3px;line-height:1.35;">Steps taken when reported spend exceeds the approved cost plan by &gt;5%.</div>
+ <div style="margin-top:5px;display:inline-block;font-size:8px;font-weight:800;padding:2px 6px;border-radius:3px;background:rgba(234,88,12,0.15);color:var(--t2);">T2 · High</div>
+ </div>
+ </div>
+ </div>
 
-        <!-- CENTRE SPACER -->
-        <div style="width:40px;flex-shrink:0;"></div>
+ </div>
 
-        <!-- RIGHT BRANCH: PROCEDURE -->
-        <div style="flex:1;max-width:48%;display:flex;flex-direction:column;align-items:center;padding-top:2px;">
-          <!-- Branch connector down -->
-          <div style="width:2px;height:18px;background:rgba(213,92,23,0.4);"></div>
+ </div>
 
-          <!-- PROCEDURE node -->
-          <div style="border-radius:10px;padding:10px 18px;background:rgba(213,92,23,0.1);border:2px solid rgba(213,92,23,0.3);text-align:center;width:88%;margin-bottom:0;">
-            <div style="font-size:9px;font-weight:800;color:var(--orange);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:2px;">● Procedure</div>
-            <div style="font-size:13px;font-weight:800;color:var(--text);">Monthly Cost Reporting</div>
-            <div style="font-size:10px;color:var(--muted);margin-top:1px;">The step-by-step execution — HOW WE EXECUTE cost tracking</div>
-            <div style="margin-top:5px;display:inline-block;font-size:8px;font-weight:800;padding:2px 8px;border-radius:4px;background:rgba(52,199,89,0.12);color:var(--t3);">T3 · Standard</div>
-          </div>
+ <!-- Legend / reading guide -->
+ <div style="margin-top:auto;padding-top:14px;">
+ <div class="card" style="padding:11px 20px;display:flex;align-items:flex-start;gap:28px;">
 
-          <!-- Connectors to Procedure children -->
-          <div style="width:2px;height:14px;background:rgba(255,255,255,0.1);"></div>
-          <div style="width:90%;height:2px;background:rgba(255,255,255,0.07);"></div>
+ <div style="flex:1;">
+ <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Reading the structure</div>
+ <div style="font-size:11px;color:var(--muted);line-height:1.6;">
+ <span style="color:var(--cyan);font-weight:700;">Concept</span> = the domain. Ask: <em>"What area are we in?"</em>&nbsp;&nbsp;
+ <span style="color:var(--purple);font-weight:700;">Pattern</span> = the blueprint. Ask: <em>"What's the standard shape?"</em>&nbsp;&nbsp;
+ <span style="color:var(--orange);font-weight:700;">Procedure</span> = the execution. Ask: <em>"What do we actually do?"</em>
+ </div>
+ </div>
 
-          <!-- Procedure children: Rule / Variant / Scenario -->
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;width:93%;margin-top:0;padding-top:0;">
+ <div style="flex:1;border-left:1px solid var(--border);padding-left:20px;">
+ <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Modifiers attached to each branch</div>
+ <div style="font-size:11px;color:var(--muted);line-height:1.6;">
+ <span style="color:var(--green);font-weight:700;">Rule</span> = hard limit (always T1). Ask: <em>"What can't change?"</em>&nbsp;&nbsp;
+ <span style="color:#9aa4b0;font-weight:700;">Variant</span> = local override. Ask: <em>"Where does this differ?"</em>&nbsp;&nbsp;
+ <span style="color:var(--red);font-weight:700;">Scenario</span> = risk case. Ask: <em>"What if this goes wrong?"</em>
+ </div>
+ </div>
 
-            <!-- Rule for Procedure -->
-            <div style="display:flex;flex-direction:column;align-items:center;">
-              <div style="width:2px;height:12px;background:rgba(0,160,0,0.4);"></div>
-              <div style="border-radius:8px;padding:8px 10px;background:rgba(0,160,0,0.08);border:1px solid rgba(0,160,0,0.3);text-align:center;width:100%;">
-                <div style="font-size:8px;font-weight:800;color:var(--green);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:3px;">● Rule</div>
-                <div style="font-size:10px;font-weight:700;color:var(--text);line-height:1.3;">Approval Authority Matrix</div>
-                <div style="font-size:9px;color:var(--muted);margin-top:3px;line-height:1.35;">Who must sign off cost reports at each value band. Non-negotiable.</div>
-                <div style="margin-top:5px;display:inline-block;font-size:7px;font-weight:800;padding:2px 6px;border-radius:3px;background:rgba(255,59,48,0.18);color:var(--t1);">T1 · Critical</div>
-              </div>
-            </div>
+ <div style="flex:1;border-left:1px solid var(--border);padding-left:20px;">
+ <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Why tier varies across the tree</div>
+ <div style="font-size:11px;color:var(--muted);line-height:1.6;">
+ Notice that both Rules are <strong style="color:var(--t1);">T1 Critical</strong> even though they sit at depth 3. Tier promotes them above the T3 Procedure above. The Scenario for a budget overrun is <strong style="color:var(--t2);">T2</strong> : more important than the client format Variant at <strong style="color:var(--t4);">T4</strong>.
+ </div>
+ </div>
 
-            <!-- Variant for Procedure -->
-            <div style="display:flex;flex-direction:column;align-items:center;">
-              <div style="width:2px;height:12px;background:rgba(108,117,128,0.4);"></div>
-              <div style="border-radius:8px;padding:8px 10px;background:rgba(108,117,128,0.08);border:1px solid rgba(108,117,128,0.25);text-align:center;width:100%;">
-                <div style="font-size:8px;font-weight:800;color:#9aa4b0;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:3px;">● Variant</div>
-                <div style="font-size:10px;font-weight:700;color:var(--text);line-height:1.3;">Client-Specific Format</div>
-                <div style="font-size:9px;color:var(--muted);margin-top:3px;line-height:1.35;">Shell requires a bespoke cost code structure. Overrides the standard template.</div>
-                <div style="margin-top:5px;display:inline-block;font-size:7px;font-weight:800;padding:2px 6px;border-radius:3px;background:rgba(90,200,250,0.12);color:var(--t4);">T4 · Low</div>
-              </div>
-            </div>
+ </div>
+ </div>
+ </div>
 
-            <!-- Scenario for Procedure -->
-            <div style="display:flex;flex-direction:column;align-items:center;">
-              <div style="width:2px;height:12px;background:rgba(192,57,43,0.4);"></div>
-              <div style="border-radius:8px;padding:8px 10px;background:rgba(192,57,43,0.08);border:1px solid rgba(192,57,43,0.25);text-align:center;width:100%;">
-                <div style="font-size:8px;font-weight:800;color:var(--red);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:3px;">● Scenario</div>
-                <div style="font-size:10px;font-weight:700;color:var(--text);line-height:1.3;">Budget Overrun Response</div>
-                <div style="font-size:9px;color:var(--muted);margin-top:3px;line-height:1.35;">Steps taken when reported spend exceeds the approved cost plan by &gt;5%.</div>
-                <div style="margin-top:5px;display:inline-block;font-size:7px;font-weight:800;padding:2px 6px;border-radius:3px;background:rgba(255,149,0,0.15);color:var(--t2);">T2 · High</div>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </div>
-
-      <!-- Legend / reading guide -->
-      <div style="margin-top:auto;padding-top:14px;">
-        <div class="card" style="padding:11px 20px;display:flex;align-items:flex-start;gap:28px;">
-
-          <div style="flex:1;">
-            <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Reading the structure</div>
-            <div style="font-size:11px;color:var(--muted);line-height:1.6;">
-              <span style="color:var(--cyan);font-weight:700;">Concept</span> = the domain. Ask: <em>"What area are we in?"</em>&nbsp;&nbsp;
-              <span style="color:var(--purple);font-weight:700;">Pattern</span> = the blueprint. Ask: <em>"What's the standard shape?"</em>&nbsp;&nbsp;
-              <span style="color:var(--orange);font-weight:700;">Procedure</span> = the execution. Ask: <em>"What do we actually do?"</em>
-            </div>
-          </div>
-
-          <div style="flex:1;border-left:1px solid var(--border);padding-left:20px;">
-            <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Modifiers attached to each branch</div>
-            <div style="font-size:11px;color:var(--muted);line-height:1.6;">
-              <span style="color:var(--green);font-weight:700;">Rule</span> = hard limit (always T1). Ask: <em>"What can't change?"</em>&nbsp;&nbsp;
-              <span style="color:#9aa4b0;font-weight:700;">Variant</span> = local override. Ask: <em>"Where does this differ?"</em>&nbsp;&nbsp;
-              <span style="color:var(--red);font-weight:700;">Scenario</span> = risk case. Ask: <em>"What if this goes wrong?"</em>
-            </div>
-          </div>
-
-          <div style="flex:1;border-left:1px solid var(--border);padding-left:20px;">
-            <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Why tier varies across the tree</div>
-            <div style="font-size:11px;color:var(--muted);line-height:1.6;">
-              Notice that both Rules are <strong style="color:var(--t1);">T1 Critical</strong> even though they sit at depth 3. Tier promotes them above the T3 Procedure above. The Scenario for a budget overrun is <strong style="color:var(--t2);">T2</strong> — more important than the client format Variant at <strong style="color:var(--t4);">T4</strong>.
-            </div>
-          </div>
-
-        </div>
-      </div>
-    </div>
-
-  </div><!-- /slide 3 -->
+ </div><!-- /slide 3 -->
 
 
-  <!-- ═══════════════════════════════════════════════════════════
+ <!-- ═══════════════════════════════════════════════════════════
        SLIDE 4 — PATTERN vs PROCEDURE
   ═══════════════════════════════════════════════════════════ -->
-  <div class="slide" id="s4">
+ <div class="slide" id="s4">
 
-    <div class="slide-header">
-      <span class="slide-label">IMS Knowledge Graph — Common Question</span>
-      <span class="slide-counter">04 / 04</span>
-    </div>
+ <div class="slide-header">
+ <span class="slide-label">IMS Knowledge Graph : Common Question</span>
+ <span class="slide-counter">04 / 06</span>
+ </div>
 
-    <div class="slide-title">Pattern vs Procedure — Aren’t They Both About “How”?</div>
-    <div class="slide-subtitle">They both start with “How” — but they answer very different questions. The distinction is architecture vs action.</div>
-    <div class="divider"></div>
+ <div class="slide-title">Pattern vs Procedure : Aren’t They Both About “How”?</div>
+ <div class="slide-subtitle">They both start with “How” : but they answer very different questions. The distinction is architecture vs action.</div>
+ <div class="divider"></div>
 
-    <!-- Main two-column comparison -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:16px;">
+ <!-- Main two-column comparison -->
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:16px;">
 
-      <!-- PATTERN -->
-      <div style="border-radius:14px;padding:22px 24px;background:rgba(155,89,224,0.07);border:2px solid rgba(155,89,224,0.28);display:flex;flex-direction:column;gap:12px;position:relative;overflow:hidden;">
-        <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--purple),rgba(155,89,224,0.3));"></div>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <div style="width:34px;height:34px;border-radius:9px;background:rgba(155,89,224,0.18);display:flex;align-items:center;justify-content:center;font-size:16px;">&#128204;</div>
-          <div>
-            <div style="font-size:9px;font-weight:800;color:var(--purple);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:1px;">Pattern</div>
-            <div style="font-size:17px;font-weight:800;color:var(--text);">The Framework</div>
-          </div>
-        </div>
-        <div style="font-size:13px;color:var(--muted);line-height:1.65;">
-          A Pattern defines the <strong style="color:var(--text);">shape and architecture</strong> of how something is organised — <em>before any work begins</em>. It’s the repeatable model you reach for when scoping a piece of work.
-        </div>
-        <div style="border-radius:9px;padding:11px 14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);">
-          <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:5px;">It answers…</div>
-          <div style="font-size:13px;font-weight:700;color:var(--purple);font-style:italic;">&ldquo;What is our standard approach for this type of engagement?&rdquo;</div>
-        </div>
-        <div style="border-radius:9px;padding:11px 14px;background:rgba(155,89,224,0.06);border:1px solid rgba(155,89,224,0.15);">
-          <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px;">Example</div>
-          <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;">Cost Planning Framework</div>
-          <div style="font-size:11px;color:var(--muted);line-height:1.55;">Defines that cost delivery is structured around early benchmarking → control estimate → Stage 3 definitive plan. This is the <strong style="color:var(--text);">template</strong> applied to every cost management engagement. You could hand it to a new joiner and they’d understand the overall shape of the work — without knowing a single specific step.</div>
-        </div>
-        <div style="font-size:11px;color:var(--muted);line-height:1.5;border-top:1px solid rgba(255,255,255,0.06);padding-top:10px;">
-          💡 <strong style="color:var(--text);">Abstract</strong> — describes structure, not Tuesday’s task list. Think of it as the <em>stage</em> the work is performed on.
-        </div>
-      </div>
+ <!-- PATTERN -->
+ <div style="border-radius:14px;padding:22px 24px;background:rgba(155,89,224,0.07);border:2px solid rgba(155,89,224,0.28);display:flex;flex-direction:column;gap:12px;position:relative;overflow:hidden;">
+ <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--purple),rgba(155,89,224,0.3));"></div>
+ <div style="display:flex;align-items:center;gap:10px;">
+ <div style="width:34px;height:34px;border-radius:9px;background:rgba(155,89,224,0.18);display:flex;align-items:center;justify-content:center;">
+ <svg class="svg-icon" style="stroke:var(--purple);" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+ </div>
+ <div>
+ <div style="font-size:9px;font-weight:800;color:var(--purple);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:1px;">Pattern</div>
+ <div style="font-size:17px;font-weight:800;color:var(--text);">The Framework</div>
+ </div>
+ </div>
+ <div style="font-size:13px;color:var(--muted);line-height:1.65;">
+ A Pattern defines the <strong style="color:var(--text);">shape and architecture</strong> of how something is organised : <em>before any work begins</em>. It’s the repeatable model you reach for when scoping a piece of work.
+ </div>
+ <div style="border-radius:9px;padding:11px 14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);">
+ <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:5px;">It answers…</div>
+ <div style="font-size:13px;font-weight:700;color:var(--purple);font-style:italic;">&ldquo;What is our standard approach for this type of engagement?&rdquo;</div>
+ </div>
+ <div style="border-radius:9px;padding:11px 14px;background:rgba(155,89,224,0.06);border:1px solid rgba(155,89,224,0.15);">
+ <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px;">Example</div>
+ <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;">Cost Planning Framework</div>
+ <div style="font-size:11px;color:var(--muted);line-height:1.55;">Defines that cost delivery is structured around early benchmarking → control estimate → Stage 3 definitive plan. This is the <strong style="color:var(--text);">template</strong> applied to every cost management engagement. You could hand it to a new joiner and they’d understand the overall shape of the work : without knowing a single specific step.</div>
+ </div>
+ <div style="font-size:11px;color:var(--muted);line-height:1.5;border-top:1px solid rgba(255,255,255,0.06);padding-top:10px;">
+ 💡 <strong style="color:var(--text);">Abstract</strong> : describes structure, not Tuesday’s task list. Think of it as the <em>stage</em> the work is performed on.
+ </div>
+ </div>
 
-      <!-- PROCEDURE -->
-      <div style="border-radius:14px;padding:22px 24px;background:rgba(213,92,23,0.07);border:2px solid rgba(213,92,23,0.28);display:flex;flex-direction:column;gap:12px;position:relative;overflow:hidden;">
-        <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--orange),rgba(213,92,23,0.3));"></div>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <div style="width:34px;height:34px;border-radius:9px;background:rgba(213,92,23,0.18);display:flex;align-items:center;justify-content:center;font-size:16px;">&#9654;</div>
-          <div>
-            <div style="font-size:9px;font-weight:800;color:var(--orange);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:1px;">Procedure</div>
-            <div style="font-size:17px;font-weight:800;color:var(--text);">The Workflow</div>
-          </div>
-        </div>
-        <div style="font-size:13px;color:var(--muted);line-height:1.65;">
-          A Procedure defines the <strong style="color:var(--text);">specific steps</strong> you carry out within that framework — concrete, sequential, and actionable.
-        </div>
-        <div style="border-radius:9px;padding:11px 14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);">
-          <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:5px;">It answers…</div>
-          <div style="font-size:13px;font-weight:700;color:var(--orange);font-style:italic;">&ldquo;What exactly do we do, in what order, to complete this task?&rdquo;</div>
-        </div>
-        <div style="border-radius:9px;padding:11px 14px;background:rgba(213,92,23,0.06);border:1px solid rgba(213,92,23,0.15);">
-          <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px;">Example</div>
-          <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;">Monthly Cost Report</div>
-          <div style="font-size:11px;color:var(--muted);line-height:1.55;">Pull the programme → reconcile committed spend → update the forecast → apply variance commentary → submit by the 5th. These are the <strong style="color:var(--text);">actual steps</strong> a team member follows. Specific, executable, in a defined order.</div>
-        </div>
-        <div style="font-size:11px;color:var(--muted);line-height:1.5;border-top:1px solid rgba(255,255,255,0.06);padding-top:10px;">
-          💡 <strong style="color:var(--text);">Concrete</strong> — tells you what to do on Tuesday morning. Think of it as the <em>performance</em> on the stage.
-        </div>
-      </div>
+ <!-- PROCEDURE -->
+ <div style="border-radius:14px;padding:22px 24px;background:rgba(213,92,23,0.07);border:2px solid rgba(213,92,23,0.28);display:flex;flex-direction:column;gap:12px;position:relative;overflow:hidden;">
+ <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--orange),rgba(213,92,23,0.3));"></div>
+ <div style="display:flex;align-items:center;gap:10px;">
+ <div style="width:34px;height:34px;border-radius:9px;background:rgba(213,92,23,0.18);display:flex;align-items:center;justify-content:center;">
+ <svg class="svg-icon" style="stroke:var(--orange);" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+ </div>
+ <div>
+ <div style="font-size:9px;font-weight:800;color:var(--orange);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:1px;">Procedure</div>
+ <div style="font-size:17px;font-weight:800;color:var(--text);">The Workflow</div>
+ </div>
+ </div>
+ <div style="font-size:13px;color:var(--muted);line-height:1.65;">
+ A Procedure defines the <strong style="color:var(--text);">specific steps</strong> you carry out within that framework &mdash; concrete, sequential, and actionable.
+ </div>
+ <div style="border-radius:9px;padding:11px 14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);">
+ <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:5px;">It answers…</div>
+ <div style="font-size:13px;font-weight:700;color:var(--orange);font-style:italic;">&ldquo;What exactly do we do, in what order, to complete this task?&rdquo;</div>
+ </div>
+ <div style="border-radius:9px;padding:11px 14px;background:rgba(213,92,23,0.06);border:1px solid rgba(213,92,23,0.15);">
+ <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px;">Example</div>
+ <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;">Monthly Cost Report</div>
+ <div style="font-size:11px;color:var(--muted);line-height:1.55;">Pull the programme → reconcile committed spend → update the forecast → apply variance commentary → submit by the 5th. These are the <strong style="color:var(--text);">actual steps</strong> a team member follows. Specific, executable, in a defined order.</div>
+ </div>
+ <div style="font-size:11px;color:var(--muted);line-height:1.5;border-top:1px solid rgba(255,255,255,0.06);padding-top:10px;">
+ 💡 <strong style="color:var(--text);">Concrete</strong> : tells you what to do on Tuesday morning. Think of it as the <em>performance</em> on the stage.
+ </div>
+ </div>
 
-    </div>
+ </div>
 
-    <!-- Analogy row -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:14px;">
+ <!-- Analogy row -->
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:14px;">
 
-      <!-- Building analogy -->
-      <div class="card" style="padding:14px 18px;">
-        <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;">&#127963; Analogy — A Building Project</div>
-        <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:start;">
-          <div style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:4px;background:rgba(155,89,224,0.15);color:var(--purple);white-space:nowrap;">Pattern</div>
-          <div style="font-size:11px;color:var(--muted);line-height:1.5;">&ldquo;We follow RIBA stages for all construction projects&rdquo; — sets the <strong style="color:var(--text);">delivery structure</strong></div>
-          <div style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:4px;background:rgba(213,92,23,0.15);color:var(--orange);white-space:nowrap;">Procedure</div>
-          <div style="font-size:11px;color:var(--muted);line-height:1.5;">&ldquo;At RIBA Stage 3: run cost planning workshop → produce Stage 3 estimate → submit for approval&rdquo; — the <strong style="color:var(--text);">actual steps</strong></div>
-        </div>
-      </div>
+ <!-- Building analogy -->
+ <div class="card" style="padding:14px 18px;">
+ <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;">Analogy : A Building Project</div>
+ <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:start;">
+ <div style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:4px;background:rgba(155,89,224,0.15);color:var(--purple);white-space:nowrap;">Pattern</div>
+ <div style="font-size:11px;color:var(--muted);line-height:1.5;">&ldquo;We follow RIBA stages for all construction projects&rdquo; : sets the <strong style="color:var(--text);">delivery structure</strong></div>
+ <div style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:4px;background:rgba(213,92,23,0.15);color:var(--orange);white-space:nowrap;">Procedure</div>
+ <div style="font-size:11px;color:var(--muted);line-height:1.5;">&ldquo;At RIBA Stage 3: run cost planning workshop → produce Stage 3 estimate → submit for approval&rdquo; : the <strong style="color:var(--text);">actual steps</strong></div>
+ </div>
+ </div>
 
-      <!-- Why both exist -->
-      <div class="card" style="padding:14px 18px;">
-        <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;">&#129504; Why both must exist in the graph</div>
-        <div style="font-size:11px;color:var(--muted);line-height:1.6;">
-          Without <strong style="color:var(--purple);">Patterns</strong>, all Procedures become a flat list with no sense of <em>which delivery model</em> they belong to. The AI knows how to run a tender evaluation but has no context that it sits within Procurement rather than Cost Management.
-          <br/><br/>
-          Without <strong style="color:var(--orange);">Procedures</strong>, the AI understands the shape of work but has no executable steps to reference when asked <em>&ldquo;what do we actually do?&rdquo;</em>
-          <br/><br/>
-          One Pattern typically has <strong style="color:var(--text);">many Procedures</strong> beneath it — the Pattern is the container; the Procedures are the content.
-        </div>
-      </div>
+ <!-- Why both exist -->
+ <div class="card" style="padding:14px 18px;">
+ <div style="font-size:9px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;">Why both must exist in the graph</div>
+ <div style="font-size:11px;color:var(--muted);line-height:1.6;">
+ Without <strong style="color:var(--purple);">Patterns</strong>, all Procedures become a flat list with no sense of <em>which delivery model</em> they belong to. The AI knows how to run a tender evaluation but has no context that it sits within Procurement rather than Cost Management.
+ <br/><br/>
+ Without <strong style="color:var(--orange);">Procedures</strong>, the AI understands the shape of work but has no executable steps to reference when asked <em>&ldquo;what do we actually do?&rdquo;</em>
+ <br/><br/>
+ One Pattern typically has <strong style="color:var(--text);">many Procedures</strong> beneath it : the Pattern is the container; the Procedures are the content.
+ </div>
+ </div>
 
-    </div>
+ </div>
 
-    <!-- Summary callout -->
-    <div style="border-radius:10px;padding:11px 20px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;gap:16px;">
-      <div style="font-size:20px;">&#127919;</div>
-      <div style="font-size:12px;color:var(--muted);line-height:1.6;">
-        <strong style="color:var(--text);">If in doubt:</strong> &nbsp;
-        <strong style="color:var(--purple);">Pattern</strong> = <em>&ldquo;what shape does our delivery take?&rdquo;</em> (the container/framework) &nbsp;&mdash;&nbsp;
-        <strong style="color:var(--orange);">Procedure</strong> = <em>&ldquo;what steps do we follow?&rdquo;</em> (the content/execution). &nbsp;
-        Both start with “How” — but Pattern is the <em>architecture</em>, Procedure is the <em>action</em>.
-      </div>
-    </div>
+ <!-- Summary callout -->
+ <div style="border-radius:10px;padding:11px 20px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;gap:16px;">
+ <svg class="svg-icon" style="stroke:var(--cyan);" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+ <div style="font-size:12px;color:var(--muted);line-height:1.6;">
+ <strong style="color:var(--text);">If in doubt:</strong> &nbsp;
+ <strong style="color:var(--purple);">Pattern</strong> = <em>&ldquo;what shape does our delivery take?&rdquo;</em> (the container/framework) &nbsp;&mdash;&nbsp;
+ <strong style="color:var(--orange);">Procedure</strong> = <em>&ldquo;what steps do we follow?&rdquo;</em> (the content/execution). &nbsp;
+ Both start with “How” : but Pattern is the <em>architecture</em>, Procedure is the <em>action</em>.
+ </div>
+ </div>
 
-  </div><!-- /slide 4 -->
+ </div><!-- /slide 4 -->
+
+ <!-- ═══════════════════════════════════════════════════════════
+       SLIDE O — OPERATING MODEL INTEGRATION
+  ═══════════════════════════════════════════════════════════ -->
+ <div class="slide" id="so">
+
+ <div class="slide-header">
+ <span class="slide-label">IMS Knowledge Graph : Operating Model</span>
+ <span class="slide-counter">06 / 06</span>
+ </div>
+
+ <div class="slide-title">Operating Model Integration : The 6 Layers in the IMS</div>
+ <div class="slide-subtitle">The Operating Model defines a 6 layer structure stack to prevent definition drift and data fragmentation. The IMS directly operationalises this stack inside the Knowledge Graph.</div>
+ <div class="divider"></div>
+
+ <!-- 6 Layers Mapping Grid -->
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;flex:1;">
+
+ <!-- Layer 1 -->
+ <div class="card" style="padding:14px 18px;border-left:4px solid var(--cyan);">
+ <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+ <span style="font-size:10px;font-weight:800;color:var(--cyan);letter-spacing:0.12em;text-transform:uppercase;">Layer 1 · Identifiers</span>
+ <span class="pill" style="background:rgba(0,144,220,0.12);color:var(--cyan);">UUID &amp; Node Key</span>
+ </div>
+ <div style="font-size:13px;font-weight:800;margin-bottom:4px;">Op Model: Immutable, meaningless IDs</div>
+ <div style="font-size:11px;color:var(--muted);line-height:1.6;">
+ <strong style="color:var(--text);">IMS Implementation:</strong> Every node carries a permanent UUID URI. Identifiers contain zero business logic or region codes : preventing broken graph linkages when departments, regions, or service lines restructure.
+ <br/><span style="color:var(--red);font-size:10px;">⚠️ Fails when:</span> IDs carry meaning (e.g. region codes) and break when items move.
+ </div>
+ </div>
+
+ <!-- Layer 2 -->
+ <div class="card" style="padding:14px 18px;border-left:4px solid var(--purple);">
+ <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+ <span style="font-size:10px;font-weight:800;color:var(--purple);letter-spacing:0.12em;text-transform:uppercase;">Layer 2 · Reference Data</span>
+ <span class="pill" style="background:rgba(155,89,224,0.12);color:var(--purple);">Closed Vocabularies</span>
+ </div>
+ <div style="font-size:13px;font-weight:800;margin-bottom:4px;">Op Model: Closed permitted lists</div>
+ <div style="font-size:11px;color:var(--muted);line-height:1.6;">
+ <strong style="color:var(--text);">IMS Implementation:</strong> Service lines, delivery stages, and regions are enforced enum nodes. Prevents silent vocabulary drift across offices (e.g., "Data Centre" vs "DC" vs "datacentre").
+ <br/><span style="color:var(--red);font-size:10px;">⚠️ Fails when:</span> Permitted lists are copied into local spreadsheets and quietly drift apart.
+ </div>
+ </div>
+
+ <!-- Layer 3 -->
+ <div class="card" style="padding:14px 18px;border-left:4px solid var(--orange);">
+ <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+ <span style="font-size:10px;font-weight:800;color:var(--orange);letter-spacing:0.12em;text-transform:uppercase;">Layer 3 · Taxonomies</span>
+ <span class="pill" style="background:rgba(213,92,23,0.12);color:var(--orange);">Concept Hierarchy</span>
+ </div>
+ <div style="font-size:13px;font-weight:800;margin-bottom:4px;">Op Model: Parent child roll ups</div>
+ <div style="font-size:11px;color:var(--muted);line-height:1.6;">
+ <strong style="color:var(--text);">IMS Implementation:</strong> Parent child graph edges enforce strict lineage (Sector &rarr; Concept &rarr; Pattern &rarr; Procedure). Allows instant portfolio roll&ndash;up reporting without double counting or skipped parent levels.
+ <br/><span style="color:var(--red);font-size:10px;">⚠️ Fails when:</span> Levels are skipped or mixed, causing portfolio totals to double&ndash;count.
+ </div>
+ </div>
+
+ <!-- Layer 4 -->
+ <div class="card" style="padding:14px 18px;border-left:4px solid var(--green);">
+ <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+ <span style="font-size:10px;font-weight:800;color:var(--green);letter-spacing:0.12em;text-transform:uppercase;">Layer 4 · Relationships</span>
+ <span class="pill" style="background:rgba(0,160,0,0.12);color:var(--green);">Graph Edges</span>
+ </div>
+ <div style="font-size:13px;font-weight:800;margin-bottom:4px;">Op Model: Cross system links</div>
+ <div style="font-size:11px;color:var(--muted);line-height:1.6;">
+ <strong style="color:var(--text);">IMS Implementation:</strong> Connects Project &rarr; Person &rarr; Solution &rarr; Client via explicit graph edges rather than static PDFs. Enables multi&ndash;domain AI queries across operational silos.
+ <br/><span style="color:var(--red);font-size:10px;">⚠️ Fails when:</span> Connections live only in text documents, making cross&ndash;project queries impossible.
+ </div>
+ </div>
+
+ <!-- Layer 5 -->
+ <div class="card" style="padding:14px 18px;border-left:4px solid var(--red);">
+ <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+ <span style="font-size:10px;font-weight:800;color:var(--red);letter-spacing:0.12em;text-transform:uppercase;">Layer 5 · Schemas</span>
+ <span class="pill" style="background:rgba(192,57,43,0.12);color:var(--red);">Mandatory Metadata</span>
+ </div>
+ <div style="font-size:13px;font-weight:800;margin-bottom:4px;">Op Model: Record rules &amp; validation</div>
+ <div style="font-size:11px;color:var(--muted);line-height:1.6;">
+ <strong style="color:var(--text);">IMS Implementation:</strong> Every node schema strictly mandates Category and Tier (T1 T5) metadata. Required fields prevent empty or unvalidated nodes from entering the AI retrieval pipeline.
+ <br/><span style="color:var(--red);font-size:10px;">⚠️ Fails when:</span> Fields are optional, producing incomplete records that make AI context untrustworthy.
+ </div>
+ </div>
+
+ <!-- Layer 6 -->
+ <div class="card" style="padding:14px 18px;border-left:4px solid #9aa4b0;">
+ <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+ <span style="font-size:10px;font-weight:800;color:#9aa4b0;letter-spacing:0.12em;text-transform:uppercase;">Layer 6 · Standards &amp; Mappings</span>
+ <span class="pill" style="background:rgba(108,117,128,0.15);color:#9aa4b0;">Variant Mapping</span>
+ </div>
+ <div style="font-size:13px;font-weight:800;margin-bottom:4px;">Op Model: External &amp; client alignment</div>
+ <div style="font-size:11px;color:var(--muted);line-height:1.6;">
+ <strong style="color:var(--text);">IMS Implementation:</strong> Variant nodes crosswalk external client cost codes and regional statutory rules to internal standards without breaking global comparability across commissions.
+ <br/><span style="color:var(--red);font-size:10px;">⚠️ Fails when:</span> A client's structure is adopted wholesale instead of mapped, destroying internal benchmarking.
+ </div>
+ </div>
+
+ </div>
+
+ <!-- Strategic Impact Callout -->
+ <div class="card" style="padding:12px 20px;display:flex;align-items:center;gap:14px;">
+ <svg class="svg-icon" style="stroke:var(--cyan);" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+ <span style="font-size:11px;color:var(--muted);line-height:1.6;">
+ <strong style="color:var(--text);">Strategic Outcome:</strong> The IMS transforms the Operating Model from a static slide into an <strong style="color:var(--cyan);">active, machine&ndash;enforced governance engine</strong>. It ensures business knowledge is captured once, structured globally, and retrieved flawlessly by AI.
+ </span>
+ </div>
+
+ </div><!-- /slide O -->
 
 </div><!-- /deck -->
 
 <!-- Navigation -->
 <div class="nav">
-  <button class="nav-btn" id="prevBtn" onclick="goTo(current-1)">‹</button>
-  <div class="nav-dots">
-    <div class="nav-dot active" onclick="goTo(0)"></div>
-    <div class="nav-dot" onclick="goTo(1)"></div>
-    <div class="nav-dot" onclick="goTo(2)"></div>
-    <div class="nav-dot" onclick="goTo(3)"></div>
-  </div>
-  <button class="nav-btn" id="nextBtn" onclick="goTo(current+1)">›</button>
-  <span class="nav-label" id="navLabel">01/04</span>
+ <button class="nav-btn" id="prevBtn" onclick="goTo(current-1)">‹</button>
+ <div class="nav-dots">
+ <div class="nav-dot active" onclick="goTo(0)"></div>
+ <div class="nav-dot" onclick="goTo(1)"></div>
+ <div class="nav-dot" onclick="goTo(2)"></div>
+ <div class="nav-dot" onclick="goTo(3)"></div>
+ <div class="nav-dot" onclick="goTo(4)"></div>
+ <div class="nav-dot" onclick="goTo(5)"></div>
+ </div>
+ <button class="nav-btn" id="nextBtn" onclick="goTo(current+1)">›</button>
+ <span class="nav-label" id="navLabel">01/06</span>
+ <div class="nav-sep"></div>
+ <button class="nav-theme" id="themeBtn" title="Switch to light mode">
+ <svg class="svg-icon" style="width:14px;height:14px;stroke:currentColor;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.07" x2="5.64" y2="17.65"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+ </button>
 </div>
 
 <script>
-  let current = 0;
-  const slides = document.querySelectorAll('.slide');
-  const dots   = document.querySelectorAll('.nav-dot');
-  const label  = document.getElementById('navLabel');
+ let current = 0;
+ const slides = document.querySelectorAll('.slide');
+ const dots = document.querySelectorAll('.nav-dot');
+ const label = document.getElementById('navLabel');
+ const themeBtn = document.getElementById('themeBtn');
 
-  function goTo(idx) {
-    idx = Math.max(0, Math.min(slides.length - 1, idx));
-    slides[current].classList.remove('active');
-    dots[current].classList.remove('active');
-    current = idx;
-    slides[current].classList.add('active');
-    dots[current].classList.add('active');
-    label.textContent = `0${current+1}/0${slides.length}`;
-  }
+ function goTo(idx) {
+ idx = Math.max(0, Math.min(slides.length - 1, idx));
+ slides[current].classList.remove('active');
+ dots[current].classList.remove('active');
+ current = idx;
+ slides[current].classList.add('active');
+ dots[current].classList.add('active');
+ const n = current + 1;
+ const t = slides.length;
+ label.textContent = `${String(n).padStart(2,'0')}/${String(t).padStart(2,'0')}`;
+ if (current === 3) {
+ setTimeout(updateTreeOverlay, 50);
+ }
+ }
 
-  document.addEventListener('keydown', e => {
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown')  goTo(current + 1);
-    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')    goTo(current - 1);
-  });
+ let isDark = false;
+ themeBtn.addEventListener('click', () => {
+ isDark = !isDark;
+ document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+ themeBtn.innerHTML = isDark 
+ ? '<svg class="svg-icon" style="width:14px;height:14px;stroke:currentColor;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.07" x2="5.64" y2="17.65"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>'
+ : '<svg class="svg-icon" style="width:14px;height:14px;stroke:currentColor;" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
+ themeBtn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+ });
+
+ document.addEventListener('keydown', e => {
+ if (e.key === 'ArrowRight' || e.key === 'ArrowDown') goTo(current + 1);
+ if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') goTo(current - 1);
+ });
+
+ // Dynamic Tree Connector Measurement Logic
+ function updateTreeOverlay() {
+ const container = document.getElementById('treeContainer');
+ if (!container) return;
+ const cRect = container.getBoundingClientRect();
+
+ const getMidTop = id => {
+ const el = document.getElementById(id);
+ if (!el) return { x: 0, y: 0 };
+ const r = el.getBoundingClientRect();
+ return { x: r.left + r.width / 2 - cRect.left, y: r.top - cRect.top };
+ };
+
+ const getMidBottom = id => {
+ const el = document.getElementById(id);
+ if (!el) return { x: 0, y: 0 };
+ const r = el.getBoundingClientRect();
+ return { x: r.left + r.width / 2 - cRect.left, y: r.bottom - cRect.top };
+ };
+
+ // Concept &rarr; Pattern & Procedure
+ const conceptBot = getMidBottom('boxConcept');
+ const patTop = getMidTop('boxPattern');
+ const procTop = getMidTop('boxProcedure');
+ const midY1 = conceptBot.y + (patTop.y - conceptBot.y) / 2;
+
+ const pathRoot = `M ${conceptBot.x} ${conceptBot.y} ` +
+ `V ${midY1} ` +
+ `H ${patTop.x} V ${patTop.y} ` +
+ `M ${conceptBot.x} ${midY1} ` +
+ `H ${procTop.x} V ${procTop.y}`;
+ document.getElementById('pathRootToSplit').setAttribute('d', pathRoot);
+
+ // Pattern &rarr; Pattern Children
+ const patBot = getMidBottom('boxPattern');
+ const pRule = getMidTop('boxPatRule');
+ const pVar = getMidTop('boxPatVariant');
+ const pScen = getMidTop('boxPatScenario');
+ const midY2 = patBot.y + (pRule.y - patBot.y) / 2;
+
+ const pathPat = `M ${patBot.x} ${patBot.y} ` +
+ `V ${midY2} ` +
+ `H ${pRule.x} V ${pRule.y} ` +
+ `M ${patBot.x} ${midY2} ` +
+ `H ${pVar.x} V ${pVar.y} ` +
+ `M ${patBot.x} ${midY2} ` +
+ `H ${pScen.x} V ${pScen.y}`;
+ document.getElementById('pathPatternChildren').setAttribute('d', pathPat);
+
+ // Procedure &rarr; Procedure Children
+ const procBot = getMidBottom('boxProcedure');
+ const prRule = getMidTop('boxProcRule');
+ const prVar = getMidTop('boxProcVariant');
+ const prScen = getMidTop('boxProcScenario');
+ const midY3 = procBot.y + (prRule.y - procBot.y) / 2;
+
+ const pathProc = `M ${procBot.x} ${procBot.y} ` +
+ `V ${midY3} ` +
+ `H ${prRule.x} V ${prRule.y} ` +
+ `M ${procBot.x} ${midY3} ` +
+ `H ${prVar.x} V ${prVar.y} ` +
+ `M ${procBot.x} ${midY3} ` +
+ `H ${prScen.x} V ${prScen.y}`;
+ document.getElementById('pathProcedureChildren').setAttribute('d', pathProc);
+ }
+
+ window.addEventListener('resize', updateTreeOverlay);
+ window.addEventListener('load', updateTreeOverlay);
+ setTimeout(updateTreeOverlay, 100);
+ setTimeout(updateTreeOverlay, 500);
 </script>
 
 </body>

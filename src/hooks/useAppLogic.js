@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useVoiceEngine } from './useVoiceEngine';
+import { useGeminiLive } from './useGeminiLive';
 import { checkIsEntertainment, filterTreeNode } from '../utils/contentFilter';
 
 const API = '';
@@ -102,6 +103,11 @@ export function useAppLogic() {
     localStorage.setItem('kb-show-personal', newVal);
     _setShowPersonal(newVal);
   }, [showPersonal]);
+
+  const geminiLive = useGeminiLive({
+    selectedSubjects,
+    showPersonal
+  });
   
   const [canvasContent, setCanvasContent] = useState(null);
   const [isCanvasVisible, setIsCanvasVisible] = useState(false);
@@ -679,7 +685,7 @@ export function useAppLogic() {
       refineAllLibrary, abortRefinement, loadSession, deleteSession, clearAllHistory, updateModel, handlePin, clearAllPins,
       handleLogin, handleLogout, toggleTheme, toggleCitations, activateGem, refreshSuggestions,
       setTopicsWidth, setIsResizingTopics, setShowGraph, setShowPersonal,
-      voiceEngine
+      voiceEngine, geminiLive
     }
   };
 }

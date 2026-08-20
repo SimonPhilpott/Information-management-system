@@ -4,6 +4,7 @@ import session from 'express-session';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { WebSocketServer, WebSocket } from 'ws';
 import config from './config.js';
 
 // Import routes
@@ -114,7 +115,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(config.port, async () => {
+const server = app.listen(config.port, async () => {
   console.log(`\n🚀 PDF Knowledge Base server running on http://localhost:${config.port}`);
   console.log(`📡 Client expected at ${config.clientUrl}\n`);
   
@@ -135,4 +136,129 @@ app.listen(config.port, async () => {
   } catch (err) {
     console.warn('[ModelCheck] Validation failed, but server starting anyway.');
   }
+});
+
+// WebSocket Server for Gemini Live Proxy
+const wss = new WebSocketServer({ noServer: true });
+
+server.on('upgrade', (request, socket, head) => {
+  const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+  if (pathname === '/api/live') {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
+});
+
+wss.on('connection', (ws) => {
+  console.log('[LiveProxy] Client connected');
+  
+  const apiKey = process.env.GEMINI_API_KEY || config.gemini?.apiKey;
+  if (!apiKey) {
+    console.error('[LiveProxy] Gemini API key not found in environment');
+    ws.close(1011, 'Gemini API key not configured on server');
+    return;
+  }
+
+  const geminiUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+  const geminiWs = new WebSocket(geminiUrl);
+
+  // Message queue for outbound messages to Gemini while connection is opening
+  const outboundQueue = [];
+
+  geminiWs.on('open', () => {
+    console.log('[LiveProxy] Connected to Gemini Live');
+    // Flush queued messages
+    while (outboundQueue.length > 0) {
+      const msg = outboundQueue.shift();
+      console.log('[LiveProxy] Flushing queued message to Gemini...');
+      geminiWs.send(msg);
+    }
+  });
+
+  geminiWs.on('message', (data) => {
+    const msgStr = data.toString();
+    try {
+      const parsed = JSON.parse(msgStr);
+      const keys = Object.keys(parsed);
+      console.log('[LiveProxy] ← Gemini msg keys:', keys, '| client ws state:', ws.readyState, '(1=OPEN)');
+    } catch (e) { /* non-JSON binary frame */ }
+
+    if (ws.readyState === ws.OPEN) {
+      ws.send(msgStr);
+    } else {
+      console.warn('[LiveProxy] ⚠️ Cannot forward to client — ws state:', ws.readyState);
+    }
+  });
+
+  geminiWs.on('close', (code, reason) => {
+    // Convert reason Buffer to string safely
+    const reasonStr = reason ? reason.toString() : '';
+    console.log(`[LiveProxy] Gemini Live closed connection: ${code} - ${reasonStr}`);
+    try {
+      // Code 1005 (no status) cannot be sent - remap to 1000 (normal closure)
+      const safeCode = (code === 1005 || code === 1006) ? 1000 : code;
+      if (ws.readyState === ws.OPEN) {
+        ws.close(safeCode, reasonStr || 'Gemini session ended');
+      }
+    } catch (err) {
+      console.error('[LiveProxy] Error closing client ws after Gemini closed:', err.message);
+    }
+  });
+
+  geminiWs.on('error', (err) => {
+    console.error('[LiveProxy] Gemini Live WebSocket error:', err.message);
+    try {
+      if (ws.readyState === ws.OPEN) ws.close(1011, 'Error communicating with Gemini');
+    } catch (closeErr) {
+      console.error('[LiveProxy] Error closing client ws after Gemini error:', closeErr.message);
+    }
+  });
+
+  ws.on('message', (message) => {
+    const msgStr = message.toString();
+    if (msgStr.includes('realtimeInput')) {
+      // Audio chunks: log periodically to avoid flood
+      if (Math.random() < 0.05) {
+        console.log('[LiveProxy] Forwarding audio stream chunks...');
+      }
+    } else {
+      console.log('[LiveProxy] Forwarding non-audio control message:', msgStr.slice(0, 300));
+    }
+    if (geminiWs.readyState === geminiWs.OPEN) {
+      geminiWs.send(msgStr);
+    } else if (geminiWs.readyState === geminiWs.CONNECTING) {
+      console.log('[LiveProxy] Queueing outbound message (Gemini connection is CONNECTING)...');
+      outboundQueue.push(msgStr);
+    } else {
+      console.warn('[LiveProxy] Dropping message, Gemini socket state:', geminiWs.readyState);
+    }
+  });
+
+  ws.on('close', (code, reason) => {
+    const reasonStr = reason ? reason.toString() : '';
+    console.log(`[LiveProxy] Client closed connection: ${code} - ${reasonStr}`);
+    try {
+      if (geminiWs.readyState === geminiWs.OPEN || geminiWs.readyState === geminiWs.CONNECTING) {
+        // Code 1005 cannot be forwarded to ws library — use 1000
+        const safeCode = (code === 1005 || code === 1006) ? 1000 : code;
+        geminiWs.close(safeCode, reasonStr || 'Client disconnected');
+      }
+    } catch (err) {
+      console.error('[LiveProxy] Error closing Gemini ws after client closed:', err.message);
+    }
+  });
+
+  ws.on('error', (err) => {
+    console.error('[LiveProxy] Client WebSocket error:', err.message);
+    try {
+      if (geminiWs.readyState === geminiWs.OPEN || geminiWs.readyState === geminiWs.CONNECTING) {
+        geminiWs.close(1011, 'Client socket error');
+      }
+    } catch (closeErr) {
+      console.error('[LiveProxy] Error closing Gemini ws after client error:', closeErr.message);
+    }
+  });
 });

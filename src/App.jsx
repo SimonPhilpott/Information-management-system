@@ -1998,6 +1998,7 @@ export default function App() {
               onPin={actions.handlePin}
               pinnedItems={state.pinnedItems}
               voiceEngine={actions.voiceEngine}
+              geminiLive={actions.geminiLive}
               showCitations={state.showCitations}
             />
           </div>

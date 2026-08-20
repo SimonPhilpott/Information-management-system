@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { processMessage, getChatSessions, getSessionMessages, deleteSession, verifyMessage, clearAllSessions, validateMessage } from '../services/chatService.js';
+import { generateQueryEmbedding } from '../services/embeddingService.js';
+import { searchSimilar } from '../services/vectorStore.js';
 import db from '../db/database.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -157,6 +159,31 @@ router.post('/save-validated', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Save validated Q&A error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/chat/search - Semantic vector search for libraries
+ */
+router.post('/search', async (req, res) => {
+  try {
+    const { query, subjects, showPersonal } = req.body;
+    if (!query || !query.trim()) {
+      return res.status(400).json({ error: 'Search query is required' });
+    }
+
+    const queryEmbedding = await generateQueryEmbedding(query.trim());
+    const chunks = searchSimilar(queryEmbedding, subjects || [], 8, showPersonal || false);
+
+    // Format simple text response context for Gemini Live to consume easily
+    const formattedText = chunks
+      .map((chunk, i) => `[Source ${i + 1}: "${chunk.filename}", Page ${chunk.pageNum}]\n${chunk.text}`)
+      .join('\n\n---\n\n');
+
+    res.json({ chunks, formattedText });
+  } catch (err) {
+    console.error('Search API error:', err);
     res.status(500).json({ error: err.message });
   }
 });
