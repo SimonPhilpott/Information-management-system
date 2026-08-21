@@ -89,7 +89,6 @@
         "Radial Dependency Wheel drawing neon chords between connected organizational and variant nodes",
         "Centrality Analytics scatterplot plotting degree against frequency with side recommendation panels"
       ]
-    }
     },
     "Port Status Service": {
       "status": "enabled",
@@ -100,6 +99,29 @@
         "Relative /api/port-status URL works transparently through the ngrok tunnel proxy",
         "Proxy bypass rules prevent the /api/port-status route from being forwarded to the backend at port 3001",
         "SyncStatus.jsx polls /api/port-status every 5s instead of attempting client-side port probes"
+      ]
+    },
+    "HNSW Vector Index Acceleration": {
+      "status": "enabled",
+      "description": "High-performance in-process Hierarchical Navigable Small World (HNSW) vector index graph with live streaming SSE build progress bar, sub-millisecond similarity lookups (~1-2ms), and memory-cached fallback.",
+      "subFeatures": [
+        "In-process C++ binding via hnswlib-node for 768-dimensional embeddings",
+        "Real-time Server-Sent Events (SSE) progress bar streaming file and vector indexing counters",
+        "HnswIndexModal interactive acceleration dashboard with telemetry statistics",
+        "Automatic fallback to linear vector search when index is invalidated or unbuilt",
+        "Boot-time automatic disk loading of hnsw_index.bin and hnsw_meta.json",
+        "Automatic background HNSW graph compilation upon sync and document indexing completion"
+      ]
+    },
+    "Gemini Voice Lock & Session Persistence": {
+      "status": "enabled",
+      "description": "Interactive lock toggle button next to the voice selection dropdown preventing accidental changes and persisting choice across browser sessions via localStorage.",
+      "subFeatures": [
+        "Interactive Lock/Unlock icon button next to voice dropdown",
+        "Disabled voice menu and dropdown chevron when locked",
+        "Persistent localStorage storage under 'gemini-live-voice-locked' and 'gemini-live-voice'",
+        "Amber visual indicator badge when voice lock is engaged",
+        "30-second silence inactivity auto-close with 'hang on' / 'wait' keep-alive tool extension (extendKeepAlive)"
       ]
     }
   }

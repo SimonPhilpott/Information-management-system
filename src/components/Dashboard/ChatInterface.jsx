@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, BookOpen, Bot, Sparkles, Image as ImageIcon, Camera, X, AudioLines, Volume2, VolumeX, MicOff, FileText, Paperclip, Play } from 'lucide-react';
+import { Send, BookOpen, Bot, Sparkles, Image as ImageIcon, Camera, X, AudioLines, Volume2, VolumeX, MicOff, FileText, Paperclip, Play, Lock, Unlock } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 import { Tooltip } from './CursorHover';
 
@@ -427,17 +427,42 @@ export default function ChatInterface({
                     ) : <AudioLines size={16} />}
                   </button>
                 </Tooltip>
-                
-                <div className="relative" ref={voiceMenuRef} style={{ display: 'inline-block' }}>
-                  <Tooltip text="Change Gemini Voice">
+                <div className="relative flex items-center gap-1" ref={voiceMenuRef} style={{ display: 'inline-flex' }}>
+                  <Tooltip text={geminiLive.isVoiceLocked ? "Voice Choice is Locked (Click to Unlock)" : "Change Gemini Voice"}>
                     <button
                       type="button"
-                      className="tool-btn flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] hover:bg-[var(--glass-bg-hover)] transition-all text-[11px] font-semibold text-[var(--text-secondary)]"
-                      onClick={() => setShowVoiceMenu(!showVoiceMenu)}
+                      disabled={geminiLive.isVoiceLocked}
+                      className={`tool-btn flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] transition-all text-[11px] font-semibold ${
+                        geminiLive.isVoiceLocked 
+                          ? 'opacity-75 cursor-not-allowed bg-[var(--glass-bg)] text-[var(--text-muted)]' 
+                          : 'hover:bg-[var(--glass-bg-hover)] text-[var(--text-secondary)]'
+                      }`}
+                      onClick={() => !geminiLive.isVoiceLocked && setShowVoiceMenu(!showVoiceMenu)}
                       style={{ height: '24px', border: '1px solid var(--glass-border)', background: 'var(--glass-bg)', outline: 'none' }}
                     >
                       <span className="capitalize">{geminiLive.voiceName || 'Puck'}</span>
-                      <span className="text-[8px] opacity-60">▼</span>
+                      {!geminiLive.isVoiceLocked && <span className="text-[8px] opacity-60">▼</span>}
+                    </button>
+                  </Tooltip>
+
+                  <Tooltip text={geminiLive.isVoiceLocked ? "Voice Locked (Click to Unlock)" : "Lock Current Voice Choice"}>
+                    <button
+                      type="button"
+                      className={`tool-btn flex items-center justify-center p-1 rounded-[4px] transition-all ${
+                        geminiLive.isVoiceLocked 
+                          ? 'text-amber-500 bg-amber-500/10 border border-amber-500/30 shadow-sm' 
+                          : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-hover)] border border-transparent'
+                      }`}
+                      onClick={() => {
+                        geminiLive.toggleVoiceLock();
+                        if (!geminiLive.isVoiceLocked) {
+                          setShowVoiceMenu(false);
+                        }
+                      }}
+                      style={{ height: '24px', width: '24px', outline: 'none' }}
+                      title={geminiLive.isVoiceLocked ? "Unlock Voice Choice" : "Lock Voice Choice"}
+                    >
+                      {geminiLive.isVoiceLocked ? <Lock size={12} className="text-amber-500" /> : <Unlock size={12} className="opacity-60" />}
                     </button>
                   </Tooltip>
 

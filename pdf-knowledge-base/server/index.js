@@ -51,6 +51,7 @@ import graphRoutes from './routes/graph.js';
 import voiceRoutes from './routes/voice.js';
 import { getAuthStatus } from './services/driveService.js';
 import { validateConfiguredModels } from './services/modelService.js';
+import { loadHnswFromDisk } from './services/hnswService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -164,6 +165,13 @@ const server = app.listen(config.port, async () => {
     await validateConfiguredModels();
   } catch (err) {
     console.warn('[ModelCheck] Validation failed, but server starting anyway.');
+  }
+
+  // Load HNSW vector index into memory if built
+  try {
+    await loadHnswFromDisk();
+  } catch (err) {
+    console.warn('[HNSW] Index load failed at startup:', err.message);
   }
 });
 

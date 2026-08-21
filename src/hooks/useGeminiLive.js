@@ -30,6 +30,7 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
    */
   const [liveStatus, setLiveStatus] = useState('idle');
   const [voiceName, setVoiceName] = useState(() => localStorage.getItem('gemini-live-voice') || 'Puck');
+  const [isVoiceLocked, setIsVoiceLocked] = useState(() => localStorage.getItem('gemini-live-voice-locked') === 'true');
   const [isSearching, setIsSearching] = useState(false);
   const liveStatusRef = useRef(liveStatus);
 
@@ -50,6 +51,10 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
   const isInSpeechTurnRef = useRef(false);
   // Silence timer: fires turnComplete after sustained silence
   const silenceTimerRef = useRef(null);
+  // Audio drain debounce timer
+  const drainTimerRef = useRef(null);
+  // Inactivity auto-close timer (30 seconds default)
+  const inactivityTimerRef = useRef(null);
   // Volume smoothing
   const smoothVolumeRef = useRef(0);
 
@@ -78,10 +83,19 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
     localStorage.setItem('gemini-live-voice', voiceName);
   }, [voiceName]);
 
+  useEffect(() => {
+    localStorage.setItem('gemini-live-voice-locked', String(isVoiceLocked));
+  }, [isVoiceLocked]);
+
+  const toggleVoiceLock = useCallback(() => {
+    setIsVoiceLocked(prev => !prev);
+  }, []);
+
   const changeVoiceName = useCallback((name) => {
+    if (isVoiceLocked) return;
     setVoiceName(name);
     speakIntroRef.current = true;
-  }, []);
+  }, [isVoiceLocked]);
 
   const pendingConnectRef = useRef(false);
 
@@ -146,10 +160,18 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
   };
 
   /**
-   * Plays a 24kHz PCM chunk received from Gemini Live
+   * Plays a 24kHz PCM chunk received from Gemini Live with a robust jitter buffer
    */
+  const JITTER_LEAD_TIME = 0.18; // 180ms lead time to absorb packet network jitter and prevent stutter
+
   const playAudioChunk = useCallback((base64Data) => {
     if (!audioCtxRef.current || isMutedRef.current) return;
+
+    // Clear any pending speaking drain timeout
+    if (drainTimerRef.current) {
+      clearTimeout(drainTimerRef.current);
+      drainTimerRef.current = null;
+    }
 
     const binary = atob(base64Data);
     const len = binary.length;
@@ -177,7 +199,11 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
     source.connect(gainNodeRef.current);
 
     const now = audioCtxRef.current.currentTime;
-    const playTime = Math.max(nextPlayTimeRef.current, now);
+    // If starting a fresh speech response, add jitter lead time to prevent packet underrun
+    const playTime = (nextPlayTimeRef.current <= now) 
+      ? (now + JITTER_LEAD_TIME) 
+      : nextPlayTimeRef.current;
+
     source.start(playTime);
     nextPlayTimeRef.current = playTime + audioBuffer.duration;
     activeSourcesRef.current.push(source);
@@ -187,12 +213,57 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
     source.onended = () => {
       activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== source);
       if (activeSourcesRef.current.length === 0) {
-        setIsSpeaking(false);
-        setModelVolume(0);
-        setLiveStatus(prev => prev === 'speaking' ? 'idle' : prev);
+        // Small 150ms debounce before resetting speaking state to prevent stutter on consecutive phrases
+        if (drainTimerRef.current) clearTimeout(drainTimerRef.current);
+        drainTimerRef.current = setTimeout(() => {
+          if (activeSourcesRef.current.length === 0) {
+            setIsSpeaking(false);
+            setModelVolume(0);
+            setLiveStatus(prev => prev === 'speaking' ? 'idle' : prev);
+          }
+        }, 150);
       }
     };
   }, []);
+
+  /**
+   * Resets the inactivity timeout (default 30 seconds).
+   * If the user remains completely silent for 30s without saying "hang on",
+   * the live voice session will automatically close.
+   */
+  const DEFAULT_INACTIVITY_TIMEOUT_MS = 30000; // 30 seconds
+
+  const resetInactivityTimer = useCallback((durationMs = DEFAULT_INACTIVITY_TIMEOUT_MS) => {
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = null;
+    }
+    inactivityTimerRef.current = setTimeout(() => {
+      console.log(`[GeminiLive] Inactivity timeout (${durationMs / 1000}s) reached with no speech. Auto-closing voice session.`);
+      disconnectRef.current?.();
+    }, durationMs);
+  }, []);
+
+  /**
+   * Handles keep-alive extension when the user says "hang on", "hold on", "wait", etc.
+   */
+  const handleExtendKeepAlive = useCallback((call) => {
+    const minutes = (call.args && call.args.minutes) ? Number(call.args.minutes) : 3;
+    const durationMs = Math.max(60000, minutes * 60 * 1000);
+    console.log(`[GeminiLive] User requested pause/hold on. Extending voice keep-alive to ${minutes} minute(s).`);
+    resetInactivityTimer(durationMs);
+
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        toolResponse: {
+          functionResponses: [{
+            response: { output: { status: 'extended', durationMinutes: minutes, message: `Voice session kept open for ${minutes} minutes.` } },
+            id: call.id
+          }]
+        }
+      }));
+    }
+  }, [resetInactivityTimer]);
 
   /**
    * Handles custom library search tool execution request from Gemini
@@ -200,6 +271,7 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
   const handleSearchTool = useCallback(async (call) => {
     setIsSearching(true);
     setLiveStatus('thinking');
+    resetInactivityTimer();
     try {
       const query = call.args.query;
       console.log(`[GeminiLive] Running tool searchLibrary for query: "${query}"`);
@@ -232,8 +304,9 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
       console.error('[GeminiLive] Tool execution failed:', err);
     } finally {
       setIsSearching(false);
+      resetInactivityTimer();
     }
-  }, []);
+  }, [resetInactivityTimer]);
 
   /**
    * Sends a clientContent turnComplete message to Gemini.
@@ -244,6 +317,16 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
    * clientContent is the documented mechanism for manual turn completion.
    */
   const sendTurnComplete = useCallback(() => {
+    // If model is already responding/speaking, never inject a turnComplete into active generation
+    if (liveStatusRef.current === 'speaking' || activeSourcesRef.current.length > 0) {
+      isInSpeechTurnRef.current = false;
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+      return;
+    }
+
     if (
       socketRef.current &&
       socketRef.current.readyState === WebSocket.OPEN &&
@@ -306,24 +389,39 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
             },
             systemInstruction: {
               parts: [{
-                text: "You are a helpful RPG and book research assistant. You speak in British English with a friendly conversational tone. You have access to a tool named `searchLibrary` that lets you query the user's PDF books to retrieve relevant context. Always call `searchLibrary` when the user asks a question about their books or RPG campaigns. Keep responses concise and natural for spoken conversation."
+                text: "You are a helpful RPG and book research assistant. You speak in British English with a friendly conversational tone. You have access to a tool named `searchLibrary` to query the user's PDF books. If the user says 'hang on', 'wait a second', 'hold on', 'give me a moment', or asks you to pause/wait, ALWAYS call the `extendKeepAlive` tool to prevent the voice session from closing and verbally acknowledge that you will wait for them. Keep responses concise and natural for spoken conversation."
               }]
             },
             tools: [{
-              functionDeclarations: [{
-                name: 'searchLibrary',
-                description: "Searches the user's local PDF library of professional and personal RPG books for relevant text chunks using semantic search.",
-                parameters: {
-                  type: 'OBJECT',
-                  properties: {
-                    query: {
-                      type: 'STRING',
-                      description: 'The search query to match against book contents.'
+              functionDeclarations: [
+                {
+                  name: 'searchLibrary',
+                  description: "Searches the user's local PDF library of professional and personal RPG books for relevant text chunks using semantic search.",
+                  parameters: {
+                    type: 'OBJECT',
+                    properties: {
+                      query: {
+                        type: 'STRING',
+                        description: 'The search query to match against book contents.'
+                      }
+                    },
+                    required: ['query']
+                  }
+                },
+                {
+                  name: 'extendKeepAlive',
+                  description: 'Extends the voice inactivity timeout when the user says "hang on", "hold on", "wait a minute", "give me a second", or asks to pause.',
+                  parameters: {
+                    type: 'OBJECT',
+                    properties: {
+                      minutes: {
+                        type: 'NUMBER',
+                        description: 'Number of minutes to keep the voice session active while waiting (default 3).'
+                      }
                     }
-                  },
-                  required: ['query']
+                  }
                 }
-              }]
+              ]
             }]
           }
         };
@@ -362,6 +460,7 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
             if (socket._setupTimeoutId) clearTimeout(socket._setupTimeoutId);
             setIsListening(true);
             setLiveStatus('idle');
+            resetInactivityTimer();
 
             if (speakIntroRef.current) {
               speakIntroRef.current = false;
@@ -393,6 +492,14 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
 
           // Handle incoming audio chunk response
           if (rawData.serverContent?.modelTurn?.parts) {
+            // Cancel any pending turnComplete silence timer immediately on receiving model response
+            if (silenceTimerRef.current) {
+              clearTimeout(silenceTimerRef.current);
+              silenceTimerRef.current = null;
+            }
+            isInSpeechTurnRef.current = false;
+            resetInactivityTimer();
+
             for (const part of rawData.serverContent.modelTurn.parts) {
               if (part.inlineData?.mimeType?.startsWith('audio/') && part.inlineData.data) {
                 playAudioChunk(part.inlineData.data);
@@ -403,12 +510,14 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
           // Model finished its turn — clear any pending silence timers
           if (rawData.serverContent?.turnComplete) {
             console.log('[GeminiLive] Model turn complete');
+            resetInactivityTimer();
           }
 
           // Handle barge-in: user starts speaking while model is responding
           if (rawData.serverContent?.interrupted) {
             console.log('[GeminiLive] Model response interrupted by user');
             stopPlayback();
+            resetInactivityTimer();
           }
 
           // Handle function calling request from Gemini
@@ -416,6 +525,8 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
             for (const call of rawData.toolCall.functionCalls) {
               if (call.name === 'searchLibrary') {
                 await handleSearchTool(call);
+              } else if (call.name === 'extendKeepAlive') {
+                handleExtendKeepAlive(call);
               }
             }
           }
@@ -433,24 +544,33 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
         console.error('[GeminiLive] Socket error:', err);
       };
 
-      // 3. Initialise Mic recording (16kHz Mono PCM streaming)
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      // 3. Initialise Mic recording with Hardware Echo Cancellation and Noise Suppression
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+          sampleRate: 16000
+        }, 
+        video: false 
+      });
       micStreamRef.current = stream;
 
       const micSource = audioCtx.createMediaStreamSource(stream);
-      // Buffer size 4096 gives ~85ms latency at 48kHz — balances responsiveness with VAD accuracy
+      // Buffer size 4096 gives ~85ms latency at 48kHz
       const processor = audioCtx.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
 
       // Silence detection thresholds
-      // Threshold tuned to typical mic background noise floor
-      const SPEECH_THRESHOLD = 0.015;    // RMS above this = speech
-      const SILENCE_TIMEOUT_MS = 800;    // ms of silence before sending turnComplete
+      const SPEECH_THRESHOLD = 0.015;    // RMS above this = genuine user speech
+      const BARGE_IN_THRESHOLD = 0.065;  // Higher threshold while model is speaking to prevent self-interruption
+      const SILENCE_TIMEOUT_MS = 900;    // ms of silence before sending turnComplete
 
       processor.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
 
-        // Always calculate volume for visualiser — even before setup is confirmed
+        // Always calculate volume for visualiser
         let sumVis = 0;
         for (let i = 0; i < inputData.length; i++) sumVis += inputData[i] * inputData[i];
         const rmsVis = Math.sqrt(sumVis / inputData.length);
@@ -461,20 +581,23 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
         // Gate audio streaming and VAD signals until setup is confirmed
         if (!isSetupCompleteRef.current) return;
 
+        const isModelSpeaking = liveStatusRef.current === 'speaking' || activeSourcesRef.current.length > 0;
+        const activeThreshold = isModelSpeaking ? BARGE_IN_THRESHOLD : SPEECH_THRESHOLD;
+
         // Manual VAD: track speech start / silence boundaries
-        if (smoothVolumeRef.current > SPEECH_THRESHOLD) {
-          // User is speaking
-            // Speech started: flag turn and barge-in on model
-            if (!isInSpeechTurnRef.current && liveStatusRef.current !== 'thinking') {
-              isInSpeechTurnRef.current = true;
-              if (silenceTimerRef.current) {
-                clearTimeout(silenceTimerRef.current);
-                silenceTimerRef.current = null;
-              }
-              stopPlayback(true);
-              setLiveStatus('listening');
-              console.log('[GeminiLive] Speech started');
+        if (smoothVolumeRef.current > activeThreshold) {
+          // Genuine user speech detected
+          resetInactivityTimer();
+          if (!isInSpeechTurnRef.current && liveStatusRef.current !== 'thinking') {
+            isInSpeechTurnRef.current = true;
+            if (silenceTimerRef.current) {
+              clearTimeout(silenceTimerRef.current);
+              silenceTimerRef.current = null;
             }
+            stopPlayback(true);
+            setLiveStatus('listening');
+            console.log('[GeminiLive] Speech started (barge-in confirmed)');
+          }
 
           // Reset silence timer on each speech frame
           if (silenceTimerRef.current) {
@@ -482,8 +605,8 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
             silenceTimerRef.current = null;
           }
         } else {
-          // Silence detected — start silence timeout to trigger Gemini response
-          if (isInSpeechTurnRef.current && !silenceTimerRef.current) {
+          // Silence detected — start silence timeout to trigger Gemini response (only if model is not already speaking/thinking)
+          if (isInSpeechTurnRef.current && !isModelSpeaking && !silenceTimerRef.current && liveStatusRef.current !== 'speaking' && liveStatusRef.current !== 'thinking') {
             silenceTimerRef.current = setTimeout(() => {
               silenceTimerRef.current = null;
               sendTurnComplete();
@@ -491,19 +614,21 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
           }
         }
 
-        // Always stream audio when connected and setup complete
+        // Stream audio to Gemini — only when user is speaking or listening (suppress speaker bleed)
         if (socket.readyState === WebSocket.OPEN) {
-          const downsampled = downsampleTo16kHz(inputData, audioCtx.sampleRate);
-          const base64 = int16ArrayToBase64(downsampled);
+          if (!isModelSpeaking || smoothVolumeRef.current > BARGE_IN_THRESHOLD) {
+            const downsampled = downsampleTo16kHz(inputData, audioCtx.sampleRate);
+            const base64 = int16ArrayToBase64(downsampled);
 
-          socket.send(JSON.stringify({
-            realtimeInput: {
-              audio: {
-                mimeType: 'audio/pcm;rate=16000',
-                data: base64
+            socket.send(JSON.stringify({
+              realtimeInput: {
+                audio: {
+                  mimeType: 'audio/pcm;rate=16000',
+                  data: base64
+                }
               }
-            }
-          }));
+            }));
+          }
         }
       };
 
@@ -516,16 +641,20 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
       alert('Could not start live voice stream. Please check mic permissions.');
       disconnectLive();
     }
-  }, [isConnected, playAudioChunk, handleSearchTool, stopPlayback, sendTurnComplete]);
+  }, [isConnected, playAudioChunk, handleSearchTool, handleExtendKeepAlive, resetInactivityTimer, stopPlayback, sendTurnComplete]);
 
   /**
    * Ends real-time session and releases hardware devices
    */
   const disconnectLive = useCallback(() => {
-    // Clear any pending silence timer
+    // Clear any pending silence or inactivity timers
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
+    }
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = null;
     }
 
     stopPlayback();
@@ -611,6 +740,8 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
     modelVolume,
     voiceName,
     setVoiceName: changeVoiceName,
+    isVoiceLocked,
+    toggleVoiceLock,
     isSearching,
     connectLive,
     disconnectLive,

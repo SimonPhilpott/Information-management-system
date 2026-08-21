@@ -119,7 +119,7 @@ export async function processMessage(message, sessionId, subjects = [], modelCho
 
   if (!isGeneral) {
     const queryEmbedding = await generateQueryEmbedding(expandedQuery);
-    relevantChunks = searchSimilar(queryEmbedding, subjects, config.defaults.topK, showPersonal);
+    relevantChunks = await searchSimilar(queryEmbedding, subjects, config.defaults.topK, showPersonal);
     
     const contextParts = relevantChunks.map((chunk, i) => {
       const imgNote = chunk.hasImages ? " [PAGE HAS IMAGES/DIAGRAMS]" : "";
@@ -492,7 +492,7 @@ export async function verifyMessage(content) {
 export async function validateMessage(messageText, responseText, subjects = []) {
   try {
     const queryEmbedding = await generateQueryEmbedding(messageText);
-    const relevantChunks = searchSimilar(queryEmbedding, subjects, 5);
+    const relevantChunks = await searchSimilar(queryEmbedding, subjects, 5);
     
     if (relevantChunks.length === 0) {
       return {

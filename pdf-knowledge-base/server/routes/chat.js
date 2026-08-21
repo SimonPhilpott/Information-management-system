@@ -174,7 +174,7 @@ router.post('/search', async (req, res) => {
     }
 
     const queryEmbedding = await generateQueryEmbedding(query.trim());
-    const chunks = searchSimilar(queryEmbedding, subjects || [], 8, showPersonal || false);
+    const chunks = await searchSimilar(queryEmbedding, subjects || [], 8, showPersonal || false);
 
     // Format simple text response context for Gemini Live to consume easily
     const formattedText = chunks

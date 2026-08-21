@@ -1,8 +1,8 @@
 import React from 'react';
-import { RefreshCw, CheckCircle2, AlertCircle, FileText, Loader2, Shield } from 'lucide-react';
+import { RefreshCw, CheckCircle2, AlertCircle, FileText, Loader2, Shield, Zap } from 'lucide-react';
 import { Tooltip } from './CursorHover';
 
-export default function SyncStatus({ syncStatus, onSync, compact = false, onLogin, authStatus }) {
+export default function SyncStatus({ syncStatus, onSync, compact = false, onLogin, authStatus, onOpenHnsw }) {
   const [showSuccess, setShowSuccess] = React.useState(false);
   const [portsStatus, setPortsStatus] = React.useState({
     mainApp: 'checking',
@@ -96,23 +96,40 @@ export default function SyncStatus({ syncStatus, onSync, compact = false, onLogi
 
   if (compact) {
     return (
-      <button
-        onClick={handleClick}
-        disabled={isSyncing}
-        className={`sync-btn ${isSyncing ? 'active' : ''} ${showSuccess ? 'success' : ''}`}
-        title="Sync Library"
-        style={{ 
-          margin: 0,
-          background: showSuccess ? 'rgba(34, 197, 94, 0.15)' : undefined,
-          color: showSuccess ? '#22C55E' : undefined,
-          borderColor: showSuccess ? 'rgba(34, 197, 94, 0.3)' : undefined
-        }}
-      >
-        {showSuccess ? <CheckCircle2 size={14} /> : <RefreshCw size={14} className={isSyncing ? 'spin' : ''} />}
-        <span className="mobile-hide">
-          {isSyncing ? 'Syncing...' : (showSuccess ? 'Synced!' : 'Sync Now')}
-        </span>
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <button
+          onClick={handleClick}
+          disabled={isSyncing}
+          className={`sync-btn ${isSyncing ? 'active' : ''} ${showSuccess ? 'success' : ''}`}
+          title="Sync Library"
+          style={{ 
+            margin: 0,
+            background: showSuccess ? 'rgba(34, 197, 94, 0.15)' : undefined,
+            color: showSuccess ? '#22C55E' : undefined,
+            borderColor: showSuccess ? 'rgba(34, 197, 94, 0.3)' : undefined
+          }}
+        >
+          {showSuccess ? <CheckCircle2 size={14} /> : <RefreshCw size={14} className={isSyncing ? 'spin' : ''} />}
+          <span className="mobile-hide">
+            {isSyncing ? 'Syncing...' : (showSuccess ? 'Synced!' : 'Sync Now')}
+          </span>
+        </button>
+        {onOpenHnsw && (
+          <button
+            onClick={onOpenHnsw}
+            className="sync-btn"
+            title="Fast Vector Index (HNSW)"
+            style={{
+              margin: 0,
+              background: 'rgba(16, 185, 129, 0.12)',
+              color: '#10B981',
+              borderColor: 'rgba(16, 185, 129, 0.25)'
+            }}
+          >
+            <Zap size={13} />
+          </button>
+        )}
+      </div>
     );
   }
 
@@ -243,6 +260,26 @@ export default function SyncStatus({ syncStatus, onSync, compact = false, onLogi
               {isSyncing ? 'Syncing...' : (showSuccess ? 'Synced!' : 'Sync Now')}
             </span>
           </button>
+
+          {/* Fast Vector Index (HNSW) Button */}
+          {onOpenHnsw && (
+            <button
+              onClick={onOpenHnsw}
+              className="sync-btn"
+              title="Open HNSW Vector Index Acceleration Monitor"
+              style={{
+                background: 'rgba(16, 185, 129, 0.12)',
+                color: '#10B981',
+                borderColor: 'rgba(16, 185, 129, 0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <Zap size={13} style={{ color: '#10B981' }} />
+              <span className="mobile-hide">Fast Index (HNSW)</span>
+            </button>
+          )}
 
           {/* Pulse warning banner for offline ports (only App, Auth, or KB) */}
           {(portsStatus.mainApp === 'offline' || portsStatus.authServer === 'offline' || portsStatus.kbClient === 'offline') && (

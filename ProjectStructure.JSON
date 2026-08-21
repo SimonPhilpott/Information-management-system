@@ -54,6 +54,10 @@
       "dependencies": [
         "src/components/KnowledgeMesh/SunburstCanvas.jsx"
       ]
+    },
+    "src/components/Dashboard/HnswIndexModal.jsx": {
+      "description": "High-performance vector acceleration modal with real-time SSE progress bar, latency telemetry metrics, and binary index builder trigger.",
+      "dependencies": []
     }
   }
 }

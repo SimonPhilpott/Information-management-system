@@ -6,6 +6,7 @@ import db from '../db/database.js';
 import { v4 as uuidv4 } from 'uuid';
 import ngrok from '@ngrok/ngrok';
 import config from '../config.js';
+import { getHnswStatus, buildIndex } from '../services/hnswService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = express.Router();
@@ -237,6 +238,48 @@ router.post('/ngrok/toggle', async (req, res) => {
     } else {
       res.status(400).json({ error: 'Invalid action' });
     }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8. HNSW Vector Index Management
+router.get('/hnsw/status', (req, res) => {
+  try {
+    const status = getHnswStatus();
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/hnsw/build-stream', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  if (res.flushHeaders) res.flushHeaders();
+
+  const sendEvent = (data) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    sendEvent({ phase: 'init', progress: 0, total: 100, message: 'Initialising HNSW builder...' });
+    const result = await buildIndex((progress) => {
+      sendEvent(progress);
+    });
+    sendEvent({ phase: 'complete', ...result, message: 'HNSW index built successfully!' });
+    res.end();
+  } catch (err) {
+    sendEvent({ phase: 'error', message: err.message });
+    res.end();
+  }
+});
+
+router.post('/hnsw/build', async (req, res) => {
+  try {
+    const result = await buildIndex();
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

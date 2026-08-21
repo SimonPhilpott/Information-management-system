@@ -2895,7 +2895,7 @@ a:hover {
   display: flex;
   align-items: center; gap: 8px;
   justify-content: center;
-  z-index: 1000;
+  z-index: 70000;
   animation: fadeIn 0.2s ease-out;
 }
 

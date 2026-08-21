@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import db from '../db/database.js';
+import { searchHnsw, invalidateIndex } from './hnswService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const VECTORS_DIR = path.join(__dirname, '..', 'data', 'vectors');
@@ -134,6 +135,8 @@ export function storeEmbeddings(subject, documentId, driveFileId, filename, embe
   
   // Invalidate cache entry on write so future queries reload the fresh data
   vectorCache.delete(filePath);
+  // Mark HNSW index as needing rebuild
+  invalidateIndex();
 }
 
 /**
@@ -152,14 +155,9 @@ export function storeEmbeddings(subject, documentId, driveFileId, filename, embe
  * @returns {Promise<Array>}
  */
 export async function searchSimilar(queryEmbedding, subjects = [], topK = 8, showPersonal = false) {
-  const results = [];
-
-  // Get vector files to search
-  let vectorFiles;
+  // Resolve allowed drive file IDs if filtered by subjects
   let allowedDriveFileIds = null;
-
   if (subjects.length > 0) {
-    // Resolve which documents match these subjects (searching both columns)
     const placeholders = subjects.map(() => '?').join(',');
     const docs = db.prepare(`
       SELECT drive_file_id, subject FROM documents 
@@ -168,6 +166,26 @@ export async function searchSimilar(queryEmbedding, subjects = [], topK = 8, sho
     
     const filteredDocs = showPersonal ? docs : docs.filter(d => !isEntertainment(d.subject));
     allowedDriveFileIds = new Set(filteredDocs.map(d => d.drive_file_id));
+  }
+
+  // 1. Try ultra-fast HNSW Approximate Nearest Neighbour search (1-2ms)
+  const hnswResults = searchHnsw(queryEmbedding, topK, allowedDriveFileIds, showPersonal);
+  if (hnswResults && hnswResults.length > 0) {
+    return hnswResults;
+  }
+
+  // 2. Fallback: Memory-cached linear cosine similarity scan if HNSW index is not built
+  const results = [];
+  let vectorFiles;
+
+  if (subjects.length > 0) {
+    const placeholders = subjects.map(() => '?').join(',');
+    const docs = db.prepare(`
+      SELECT drive_file_id, subject FROM documents 
+      WHERE subject IN (${placeholders}) OR folder_path IN (${placeholders})
+    `).all(...subjects, ...subjects);
+    
+    const filteredDocs = showPersonal ? docs : docs.filter(d => !isEntertainment(d.subject));
     const uniqueSubjects = [...new Set(filteredDocs.map(d => d.subject))];
     vectorFiles = uniqueSubjects.map(s => path.join(VECTORS_DIR, `${subjectToFilename(s)}.json`));
   } else {

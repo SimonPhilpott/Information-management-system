@@ -22,7 +22,7 @@ export default function Layout({
   pdfViewer, onOpenPdf, onClosePdf,
   settings, authStatus,
   onOpenCatalog, onRefineAll,
-  onOpenAdmin,
+  onOpenAdmin, onOpenHnsw,
   sidebarWidth, isResizing, onResizeStart,
   topicsWidth, isResizingTopics, onTopicsResizeStart,
   onLogin, onLogout,
@@ -343,7 +343,7 @@ export default function Layout({
 
         <div className="statusbar-content">
           <div className="mobile-full-width">
-            <SyncStatus syncStatus={syncStatus} onSync={onSync} onLogin={onLogin} authStatus={authStatus} />
+            <SyncStatus syncStatus={syncStatus} onSync={onSync} onLogin={onLogin} authStatus={authStatus} onOpenHnsw={onOpenHnsw} />
           </div>
 
           {authStatus?.authenticated ? (
@@ -359,7 +359,7 @@ export default function Layout({
                   {authStatus.email}
                 </span>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <SyncStatus syncStatus={syncStatus} onSync={onSync} compact={true} onLogin={onLogin} authStatus={authStatus} />
+                  <SyncStatus syncStatus={syncStatus} onSync={onSync} compact={true} onLogin={onLogin} authStatus={authStatus} onOpenHnsw={onOpenHnsw} />
                   <Tooltip text="Sign out of your account">
                     <button className="auth-btn logout" onClick={onLogout}>Logout</button>
                   </Tooltip>

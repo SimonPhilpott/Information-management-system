@@ -5,6 +5,7 @@ import { autoCategoriseBooks } from '../services/categorisationService.js';
 import { extractPdfText, chunkText, getPageImage, extractOutline } from '../services/pdfService.js';
 import { generateEmbeddings } from '../services/embeddingService.js';
 import { storeEmbeddings, isDocumentIndexed } from '../services/vectorStore.js';
+import { buildIndex } from '../services/hnswService.js';
 import { extractTopicsFromDocument } from '../services/topicService.js';
 import db from '../db/database.js';
 import config from '../config.js';
@@ -134,6 +135,13 @@ router.post('/sync', async (req, res) => {
         }
       }
       indexProgress = { active: false, total: 0, current: 0, currentFile: '', phase: 'Complete' };
+
+      // Auto-compile fresh HNSW index in background so new books are immediately accelerated
+      buildIndex().then(res => {
+        console.log(`[Sync] Background HNSW graph updated with ${res.totalVectors.toLocaleString()} vectors.`);
+      }).catch(err => {
+        console.warn(`[Sync] Background HNSW auto-build notice: ${err.message}`);
+      });
     } catch (err) {
       console.error('Background sync error:', err);
       // Propagate auth errors so the UI shows the Re-authenticate button.

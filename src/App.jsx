@@ -10,6 +10,7 @@ import ChatInterface from './components/Dashboard/ChatInterface';
 import { IntelligenceDrawer } from './components/Editor/IntelligenceDrawer';
 import { AdminPanel } from './components/Admin/AdminPanel';
 import CatalogBrowser from './components/Dashboard/CatalogBrowser';
+import HnswIndexModal from './components/Dashboard/HnswIndexModal';
 import { SpatialCanvas } from './components/KnowledgeMesh/SpatialCanvas';
 import { InstancedSpatialCanvas } from './components/KnowledgeMesh/InstancedSpatialCanvas';
 import { SunburstCanvas } from './components/KnowledgeMesh/SunburstCanvas';
@@ -48,6 +49,7 @@ export default function App() {
   const { state, actions } = useAppLogic();
   const { authStatus, settings, loading } = state;
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
+  const [showHnswModal, setShowHnswModal] = useState(false);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -1466,8 +1468,12 @@ export default function App() {
         settings={state.settings}
         authStatus={state.authStatus}
         onOpenCatalog={() => actions.setShowCatalog(true)}
+        onOpenHnsw={() => setShowHnswModal(true)}
         onRefineAll={actions.refineAllLibrary}
-        onOpenAdmin={() => setIsAdminOpen(true)}
+        onOpenAdmin={() => {
+          setIsAdminOpen(true);
+          actions.setShowAdmin(true);
+        }}
         sidebarWidth={state.sidebarWidth}
         isResizing={state.isResizing}
         onResizeStart={() => actions.setIsResizing(true)}
@@ -2006,7 +2012,7 @@ export default function App() {
         )}
       </Layout>
       <AnimatePresence>
-         {(isEditorOpen || isAdminOpen || state.showCatalog) && (
+         {(isEditorOpen || isAdminOpen || state.showAdmin) && (
             <motion.div 
               initial={{ opacity: 0 }} animate={{ opacity: 0 }} exit={{ opacity: 0 }}
               className="fixed inset-0 z-[65000] bg-transparent cursor-default select-none pointer-events-auto"
@@ -2016,7 +2022,7 @@ export default function App() {
                  else {
                     setIsEditorOpen(false);
                     setIsAdminOpen(false);
-                    actions.setShowCatalog(false);
+                    actions.setShowAdmin(false);
                   }
               }}
               onPointerDown={e => {
@@ -2062,15 +2068,18 @@ export default function App() {
               }} 
             />
          )}
-         {isAdminOpen && (
+         {(isAdminOpen || state.showAdmin) && (
             <AdminPanel 
               nodes={nodes} 
               onUpdateNodes={setNodes} 
               onAddEntityType={handleAddEntityType}
               deletedNodes={deletedNodes} 
-              isOpen={isAdminOpen} 
+              isOpen={isAdminOpen || state.showAdmin} 
               theme={state.theme}
-              onClose={() => setIsAdminOpen(false)} 
+              onClose={() => {
+                setIsAdminOpen(false);
+                actions.setShowAdmin(false);
+              }} 
               onFocusNode={(n) => { 
                  centerOnNode(n); 
                  setEditingNode(n); 
@@ -2108,6 +2117,13 @@ export default function App() {
               chatTone={state.chatTone}
             />
          )}
+         <HnswIndexModal 
+            isOpen={showHnswModal}
+            onClose={() => setShowHnswModal(false)}
+            onIndexBuilt={() => {
+              if (actions.triggerSync) actions.triggerSync();
+            }}
+          />
       </AnimatePresence>
     </>
   );

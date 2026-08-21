@@ -65,7 +65,12 @@
   "ChatInterface": {
     "aesthetics": {
       "alignment": "Strictly centered layout with 480px overflow protection",
-      "preWrap": "Full-text pre-wrap without truncation for tooltips and hover modals"
+      "preWrap": "Full-text pre-wrap without truncation for tooltips and hover modals",
+      "voiceLock": {
+        "locked": "text-amber-500 bg-amber-500/10 border border-amber-500/30 shadow-sm",
+        "unlocked": "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-bg-hover)] border border-transparent",
+        "dimensions": "height: 24px, width: 24px, rounded: 4px"
+      }
     }
   },
   "ChatHistory": {
@@ -415,6 +420,19 @@
       "nodes": "pulsing glowing points with double-layered borders color-coded by node authority weightings",
       "sidebar": "lg:col-span-2 rounded-xl border p-4 bg-slate-900/40 border-white/5 showing closeness degree metrics and connection recommendation buttons"
     }
+  },
+  "HnswIndexModal": {
+    "aesthetics": {
+      "overlay": "fixed inset-0 bg-black/65 backdrop-blur-md z-[9999] flex items-center justify-center p-5",
+      "container": "relative w-full max-w-[680px] rounded-[var(--radius-xl)] shadow-2xl flex flex-col overflow-hidden border border-[var(--glass-border)] bg-[var(--bg-overlay)] backdrop-blur-[30px]",
+      "header": "px-6 py-5 border-b border-[var(--glass-border)] flex items-center justify-between bg-white/[0.02]",
+      "telemetryGrid": "grid grid-cols-3 gap-3 p-0",
+      "metricCard": "p-3 rounded-xl bg-white/[0.03] border border-[var(--glass-border)] flex flex-col gap-1",
+      "progressBar": {
+        "track": "h-2 w-full bg-white/[0.08] rounded-full overflow-hidden relative",
+        "fill": "h-full bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full transition-all duration-300 shadow-[0_0_12px_rgba(16,185,129,0.5)]"
+      },
+      "actionButton": "px-5 py-2 rounded-lg bg-[var(--gradient-primary)] text-white text-xs font-bold shadow-[0_4px_14px_rgba(16,185,129,0.35)] flex items-center gap-2 hover:brightness-105 active:scale-[0.98]"
+    }
   }
 }
-
