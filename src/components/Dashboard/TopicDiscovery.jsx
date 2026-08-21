@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, Lightbulb, Dice5, X, Compass, MessageSquare } from 'lucide-react';
+import { Search, Lightbulb, Dice5, X, Compass, MessageSquare, RotateCcw } from 'lucide-react';
 import { Tooltip } from './CursorHover';
 
 const formatSubject = (subject) => {
@@ -98,7 +98,11 @@ export default function TopicDiscovery({ topics, suggestions, onTopicClick, onRe
               <select 
                 className="subject-dropdown"
                 value={selectedSubject}
-                onChange={(e) => setSelectedSubject(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedSubject(val);
+                  if (onRefresh) onRefresh(val);
+                }}
                 style={{
                   width: '100%',
                   background: 'var(--bg-tertiary)',
@@ -136,9 +140,39 @@ export default function TopicDiscovery({ topics, suggestions, onTopicClick, onRe
             </div>
 
             {showSuggestions && (
-              <div className="topic-subject-name" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '0' }}>
+              <div className="topic-subject-name" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '0', width: '100%' }}>
                 <Lightbulb size={12} />
-                Suggested Questions
+                <span>Suggested Questions</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onRefresh) onRefresh(selectedSubject);
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '2px',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '50%',
+                    marginLeft: 'auto',
+                    transition: 'color 0.2s, background-color 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = 'var(--accent-indigo)';
+                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = 'var(--text-muted)';
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                  title="Regenerate suggestions"
+                >
+                  <RotateCcw size={11} />
+                </button>
               </div>
             )}
           </>

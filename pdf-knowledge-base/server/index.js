@@ -7,6 +7,35 @@ import fs from 'fs';
 import { WebSocketServer, WebSocket } from 'ws';
 import config from './config.js';
 
+// ---------------------------------------------------------------------------
+// PROCESS-LEVEL CRASH GUARDS
+// Without these, any unhandled promise rejection (e.g. from a Gemini API
+// timeout during a voice search tool call) will kill the entire Node process
+// and take port 3001 offline until the server is manually restarted.
+// ---------------------------------------------------------------------------
+process.on('uncaughtException', (err) => {
+  console.error('[Server] ❌ UNCAUGHT EXCEPTION — server kept alive:', err.message);
+  console.error(err.stack);
+  // Do NOT call process.exit() — we want the server to stay online.
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Server] ❌ UNHANDLED PROMISE REJECTION — server kept alive:');
+  console.error('  Promise:', promise);
+  console.error('  Reason:', reason);
+  // Do NOT call process.exit() — we want the server to stay online.
+});
+
+// Graceful shutdown ONLY on explicit termination signals
+process.on('SIGTERM', () => {
+  console.log('[Server] SIGTERM received — shutting down gracefully.');
+  process.exit(0);
+});
+process.on('SIGINT', () => {
+  console.log('[Server] SIGINT received — shutting down gracefully.');
+  process.exit(0);
+});
+
 // Import routes
 import authRoutes from './routes/auth.js';
 import driveRoutes from './routes/drive.js';

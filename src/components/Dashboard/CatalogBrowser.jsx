@@ -4,7 +4,7 @@ import {
   ExternalLink, Trash2, Move, Plus, Search, CheckSquare, Square,
   AlertCircle, ChevronLeft, Sparkles, Brain, RotateCcw
 } from 'lucide-react';
-import { checkIsEntertainment } from '../utils/contentFilter';
+import { checkIsEntertainment } from '../../utils/contentFilter';
 
 const CatalogItem = ({ 
   item, level = 0, onOpenFile, onToggleSelect, isSelected, 

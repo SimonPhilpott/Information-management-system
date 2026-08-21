@@ -136,7 +136,21 @@ router.post('/sync', async (req, res) => {
       indexProgress = { active: false, total: 0, current: 0, currentFile: '', phase: 'Complete' };
     } catch (err) {
       console.error('Background sync error:', err);
-      indexProgress = { active: false, total: 0, current: 0, currentFile: '', phase: `Error: ${err.message}` };
+      // Propagate auth errors so the UI shows the Re-authenticate button.
+      // driveService.js already sets syncProgress.error for invalid_grant, but
+      // we mirror it into indexProgress so the status endpoint surfaces it.
+      const isAuthError = err.message?.includes('invalid_grant') ||
+                          err.message?.includes('Token has been expired') ||
+                          err.message?.includes('Session Expired') ||
+                          err.message?.includes('No refresh token');
+      indexProgress = {
+        active: false,
+        total: 0,
+        current: 0,
+        currentFile: '',
+        phase: isAuthError ? 'Error: Session Expired' : `Error: ${err.message}`,
+        error: isAuthError ? 'Session Expired' : err.message
+      };
     }
   })();
 });

@@ -9,6 +9,7 @@ import Layout from './components/Dashboard/Layout';
 import ChatInterface from './components/Dashboard/ChatInterface';
 import { IntelligenceDrawer } from './components/Editor/IntelligenceDrawer';
 import { AdminPanel } from './components/Admin/AdminPanel';
+import CatalogBrowser from './components/Dashboard/CatalogBrowser';
 import { SpatialCanvas } from './components/KnowledgeMesh/SpatialCanvas';
 import { InstancedSpatialCanvas } from './components/KnowledgeMesh/InstancedSpatialCanvas';
 import { SunburstCanvas } from './components/KnowledgeMesh/SunburstCanvas';
@@ -2004,98 +2005,108 @@ export default function App() {
           </div>
         )}
       </Layout>
-
       <AnimatePresence>
-         {(isEditorOpen || isAdminOpen) && (
-           <motion.div 
-             initial={{ opacity: 0 }} animate={{ opacity: 0 }} exit={{ opacity: 0 }}
-             className="fixed inset-0 z-[65000] bg-transparent cursor-default select-none pointer-events-auto"
-             onMouseDown={e => {
-                const isR = e.clientX > window.innerWidth - (window.innerWidth * 0.66);
-                if (isR) e.stopPropagation();
-                else {
-                   setIsEditorOpen(false);
-                   setIsAdminOpen(false);
-                 }
-             }}
-             onPointerDown={e => {
-                const isR = e.clientX > window.innerWidth - (window.innerWidth * 0.66);
-                if (isR) e.stopPropagation();
-             }}
-           />
+         {(isEditorOpen || isAdminOpen || state.showCatalog) && (
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 0 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[65000] bg-transparent cursor-default select-none pointer-events-auto"
+              onMouseDown={e => {
+                 const isR = e.clientX > window.innerWidth - (window.innerWidth * 0.66);
+                 if (isR) e.stopPropagation();
+                 else {
+                    setIsEditorOpen(false);
+                    setIsAdminOpen(false);
+                    actions.setShowCatalog(false);
+                  }
+              }}
+              onPointerDown={e => {
+                 const isR = e.clientX > window.innerWidth - (window.innerWidth * 0.66);
+                 if (isR) e.stopPropagation();
+              }}
+            />
          )}
          {isEditorOpen && (
-           <IntelligenceDrawer 
-             key={editingNode?.id || 'new'}
-             isOpen={isEditorOpen} 
-             theme={state.theme}
-             onClose={() => setIsEditorOpen(false)} 
-             nodes={nodes} 
-             editingNode={editingNode} 
-             currentType={currentType} 
-             setCurrentType={setCurrentType} 
-             formData={formData} 
-             setFormData={setFormData} 
-             onSelectNode={handleOpenDrawer} 
-             onSave={(u) => { 
-                if (editingNode) {
-                    const updatedNode = { ...editingNode, ...u, title: formData.title, type: currentType, tier: formData.tier || 3 };
-                    setNodes(prev => prev.map(n => n.id === editingNode.id ? updatedNode : n)); 
-                    setSelectedNode(updatedNode);
-                 } else { 
-                    const id = `node_${Date.now()}`; 
-                    const p = nodes.find(n => n.id === activeParentId); 
-                    const nn = { id, parentId: activeParentId, x: p ? p.x + 300 : 1000, y: p ? p.y + 100 : 500, title: formData.title, type: currentType, content: formData.content, tier: formData.tier || 3, ox: p ? p.x + 300 : 1000, oy: p ? p.y + 100 : 500 }; 
-                    setNodes(prev => [...prev, nn]); 
-                 } 
+            <IntelligenceDrawer 
+              key={editingNode?.id || 'new'}
+              isOpen={isEditorOpen} 
+              theme={state.theme}
+              onClose={() => setIsEditorOpen(false)} 
+              nodes={nodes} 
+              editingNode={editingNode} 
+              currentType={currentType} 
+              setCurrentType={setCurrentType} 
+              formData={formData} 
+              setFormData={setFormData} 
+              onSelectNode={handleOpenDrawer} 
+              onSave={(u) => { 
+                 if (editingNode) {
+                     const updatedNode = { ...editingNode, ...u, title: formData.title, type: currentType, tier: formData.tier || 3 };
+                     setNodes(prev => prev.map(n => n.id === editingNode.id ? updatedNode : n)); 
+                     setSelectedNode(updatedNode);
+                  } else { 
+                     const id = `node_${Date.now()}`; 
+                     const p = nodes.find(n => n.id === activeParentId); 
+                     const nn = { id, parentId: activeParentId, x: p ? p.x + 300 : 1000, y: p ? p.y + 100 : 500, title: formData.title, type: currentType, content: formData.content, tier: formData.tier || 3, ox: p ? p.x + 300 : 1000, oy: p ? p.y + 100 : 500 }; 
+                     setNodes(prev => [...prev, nn]); 
+                  } 
+                  setIsEditorOpen(false); 
+              }} 
+              onToggleConnection={(tid) => { 
+                 if (!editingNode) return; 
+                 setNodes(prev => prev.map(n => (n.id === editingNode.id) ? { ...n, secondaryLinks: (n.secondaryLinks || []).includes(tid) ? n.secondaryLinks.filter(l => l !== tid) : [...(n.secondaryLinks || []), tid] } : n)); 
+              }} 
+              onDeleteNode={(nid) => { 
+                 setDeletedNodes(prev => [...prev, nodes.find(n => n.id === nid)]); 
+                 setNodes(prev => prev.filter(n => n.id !== nid)); 
                  setIsEditorOpen(false); 
-             }} 
-             onToggleConnection={(tid) => { 
-                if (!editingNode) return; 
-                setNodes(prev => prev.map(n => (n.id === editingNode.id) ? { ...n, secondaryLinks: (n.secondaryLinks || []).includes(tid) ? n.secondaryLinks.filter(l => l !== tid) : [...(n.secondaryLinks || []), tid] } : n)); 
-             }} 
-             onDeleteNode={(nid) => { 
-                setDeletedNodes(prev => [...prev, nodes.find(n => n.id === nid)]); 
-                setNodes(prev => prev.filter(n => n.id !== nid)); 
-                setIsEditorOpen(false); 
-             }} 
-           />
+              }} 
+            />
          )}
          {isAdminOpen && (
-           <AdminPanel 
-             nodes={nodes} 
-             onUpdateNodes={setNodes} 
-             onAddEntityType={handleAddEntityType}
-             deletedNodes={deletedNodes} 
-             isOpen={isAdminOpen} 
-             theme={state.theme}
-             onClose={() => setIsAdminOpen(false)} 
-             onFocusNode={(n) => { 
-                centerOnNode(n); 
-                setEditingNode(n); 
-                setCurrentType(n.type); 
-                setFormData({ title: n.title, content: n.content || {}, tier: n.tier || 3 });
-                // We keep Admin Panel open now as per user request
-                setIsEditorOpen(true); 
-             }} 
-             onRestoreNode={(nid) => { 
-                const r = deletedNodes.find(n => n.id === nid); 
-                if (r) { 
-                   setNodes(prev => [...prev, r]); 
-                   setDeletedNodes(prev => prev.filter(n => n.id !== nid)); 
-                } 
-             }} 
-             onReset={resetLayout} 
-             onBackup={handleBackup} 
-             onGetMeshBackups={handleGetMeshBackups}
-             onCreateMeshBackup={handleCreateMeshBackup}
-             onRestoreMeshBackup={handleRestoreMeshBackup}
-             layoutRules={layoutRules} 
-             setLayoutRules={setLayoutRules} 
-             applyLayout={applyLayout} 
-             onApplyAIProposal={handleApplyAIProposal}
-             onReviewSync={handleReviewSync}
-           />
+            <AdminPanel 
+              nodes={nodes} 
+              onUpdateNodes={setNodes} 
+              onAddEntityType={handleAddEntityType}
+              deletedNodes={deletedNodes} 
+              isOpen={isAdminOpen} 
+              theme={state.theme}
+              onClose={() => setIsAdminOpen(false)} 
+              onFocusNode={(n) => { 
+                 centerOnNode(n); 
+                 setEditingNode(n); 
+                 setCurrentType(n.type); 
+                 setFormData({ title: n.title, content: n.content || {}, tier: n.tier || 3 });
+                 // We keep Admin Panel open now as per user request
+                 setIsEditorOpen(true); 
+              }} 
+              onRestoreNode={(nid) => { 
+                 const r = deletedNodes.find(n => n.id === nid); 
+                 if (r) { 
+                    setNodes(prev => [...prev, r]); 
+                    setDeletedNodes(prev => prev.filter(n => n.id !== nid)); 
+                 } 
+              }} 
+              onReset={resetLayout} 
+              onBackup={handleBackup} 
+              onGetMeshBackups={handleGetMeshBackups}
+              onCreateMeshBackup={handleCreateMeshBackup}
+              onRestoreMeshBackup={handleRestoreMeshBackup}
+              layoutRules={layoutRules} 
+              setLayoutRules={setLayoutRules} 
+              applyLayout={applyLayout} 
+              onApplyAIProposal={handleApplyAIProposal}
+              onReviewSync={handleReviewSync}
+            />
+         )}
+         {state.showCatalog && (
+            <CatalogBrowser 
+              onClose={() => actions.setShowCatalog(false)}
+              onOpenFile={(id, page, name) => {
+                 actions.setPdfViewer({ driveFileId: id, pageNum: page, filename: name });
+                 actions.setShowCatalog(false);
+              }}
+              chatTone={state.chatTone}
+            />
          )}
       </AnimatePresence>
     </>

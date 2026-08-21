@@ -1962,6 +1962,8 @@ a:hover {
   letter-spacing: 0.08em;
   color: var(--text-muted);
   margin-bottom: var(--space-sm);
+  align-self: flex-start;
+  width: 100%;
 }
 
 .topic-search-wrapper {

@@ -618,7 +618,15 @@ export default defineConfig({
       '/api/live': {
         target: `ws://127.0.0.1:${ports.pdf_knowledge_base.server.port}`,
         ws: true,
-        changeOrigin: true
+        changeOrigin: true,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            // Silence noisy ECONNRESET warnings on backend hot-reload restarts
+            if (err.code !== 'ECONNRESET') {
+              console.error('Vite WS Proxy Error:', err);
+            }
+          });
+        }
       },
       '/api': {
         target: `http://127.0.0.1:${ports.pdf_knowledge_base.server.port}`,

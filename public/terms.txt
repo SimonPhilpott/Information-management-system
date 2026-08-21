@@ -1,0 +1,29 @@
+Terms of Service for Information Management System
+
+Last updated: August 21, 2026
+
+Please read these Terms of Service ("Terms") carefully before using the Information Management System ("Application").
+
+1. Acceptance of Terms
+By accessing or using the Application, you agree to be bound by these Terms. If you do not agree to all terms, you may not use the Application.
+
+2. Description of Service
+The Application is a personal document management and analysis system that integrates with Google Drive and Gemini APIs to index and search user-provided PDF files.
+
+3. Use of Google Services
+The Application integrates with Google API Services (specifically Google Drive and Google Auth). Your use of these integrations is governed by Google's Terms of Service and APIs Terms of Service. You must ensure you grant the required scopes for the app to function properly.
+
+4. Account Security
+The Application stores sensitive access tokens locally. You are responsible for safeguarding your local workspace, database files, and environment configurations.
+
+5. Disclaimer of Warranties
+The Application is provided "as is" without warranty of any kind, express or implied. We do not guarantee that the Application will be error-free or uninterrupted.
+
+6. Limitation of Liability
+In no event shall we be liable for any indirect, incidental, special, or consequential damages arising out of your use or inability to use the Application.
+
+7. Modifications to Terms
+We reserve the right to modify these Terms at any time. Your continued use of the Application after changes are posted constitutes acceptance of the new Terms.
+
+8. Contact
+For any questions regarding these Terms, please contact sideburnt@gmail.com.

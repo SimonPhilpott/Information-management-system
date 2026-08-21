@@ -89,6 +89,36 @@ export function storeTokens(tokens, userInfo) {
   });
 }
 
+let lastTokenCheckTime = 0;
+const TOKEN_CHECK_INTERVAL = 15 * 60 * 1000; // 15 minutes
+
+/**
+ * Check if the Google OAuth token is still valid.
+ * Refreshes in the background and marks lastAuthError if invalid.
+ */
+export async function checkTokenHealth() {
+  const now = Date.now();
+  if (now - lastTokenCheckTime < TOKEN_CHECK_INTERVAL) {
+    return;
+  }
+  lastTokenCheckTime = now;
+
+  const auth = getAuthenticatedClient();
+  if (!auth) return;
+
+  try {
+    await auth.getAccessToken();
+    if (lastAuthError === 'Session Expired') {
+      lastAuthError = null;
+    }
+  } catch (err) {
+    console.warn('[Auth Health Check] Token verification failed:', err.message);
+    if (err.message?.includes('invalid_grant') || err.message?.includes('Token has been expired')) {
+      lastAuthError = 'Session Expired';
+    }
+  }
+}
+
 /**
  * Get auth status
  */
@@ -275,6 +305,35 @@ export function resetIndexProgress() {
 }
 
 /**
+ * Verify Drive token is valid and has the correct scope.
+ * Throws with a clear message if not — call before any Drive operation.
+ */
+export async function verifyDriveAccess() {
+  const auth = getAuthenticatedClient();
+  if (!auth) throw new Error('Not authenticated. Please sign in with Google.');
+
+  const rootFolderId = getSetting('drive_root_folder_id');
+  if (!rootFolderId) throw new Error('No Drive folder configured.');
+
+  const drive = google.drive({ version: 'v3', auth });
+  try {
+    await drive.files.get({
+      fileId: rootFolderId,
+      fields: 'id, name',
+      supportsAllDrives: true
+    });
+  } catch (err) {
+    if (err.message?.includes('invalid_grant') || err.message?.includes('Token has been expired')) {
+      throw new Error('Session Expired');
+    }
+    if (err.message?.includes('Insufficient Permission') || err.status === 403) {
+      throw new Error('Drive permission not granted. Please re-authenticate and ensure the Drive checkbox is ticked.');
+    }
+    throw err;
+  }
+}
+
+/**
  * Sync all PDFs from the configured Drive folder
  */
 export async function syncPdfs() {
@@ -288,8 +347,11 @@ export async function syncPdfs() {
     return;
   }
 
+  // Proactive token + permission check — fails fast with a clear error
+  // rather than scanning and returning 0 results silently.
+  await verifyDriveAccess();
+
   const auth = getAuthenticatedClient();
-  if (!auth) throw new Error('Not authenticated');
   const drive = google.drive({ version: 'v3', auth });
 
   syncProgress = { active: true, total: 0, current: 0, currentFile: '', phase: 'Initializing...', error: null };

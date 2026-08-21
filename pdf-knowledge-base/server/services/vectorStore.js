@@ -48,6 +48,55 @@ function isEntertainment(text) {
   return entertainmentRegex.test(n);
 }
 
+// In-memory Vector Cache to prevent synchronous disk I/O and JSON parsing on large files
+const vectorCache = new Map(); // filePath -> { chunks, size, lastUsed }
+const MAX_CACHE_SIZE_BYTES = 200 * 1024 * 1024; // Limit cache to 200MB of raw file size (approx. 400-600MB parsed JS objects)
+
+/**
+ * Load vector chunks from cache or disk (async to avoid blocking event loop).
+ * LRU eviction is applied when the total cached size exceeds MAX_CACHE_SIZE_BYTES.
+ * @param {string} filePath
+ * @returns {Promise<Array>}
+ */
+async function getCachedChunks(filePath) {
+  const cached = vectorCache.get(filePath);
+  if (cached) {
+    cached.lastUsed = Date.now();
+    return cached.chunks;
+  }
+
+  const stats = fs.statSync(filePath);
+  const size = stats.size;
+
+  // Calculate current cache size
+  let currentCacheSize = 0;
+  for (const entry of vectorCache.values()) {
+    currentCacheSize += entry.size;
+  }
+
+  // LRU Eviction if memory limit exceeded
+  if (currentCacheSize + size > MAX_CACHE_SIZE_BYTES) {
+    const entries = [...vectorCache.entries()].sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+    for (const [key, entry] of entries) {
+      vectorCache.delete(key);
+      currentCacheSize -= entry.size;
+      console.log(`[Vector Cache] Evicted cached vector file due to memory limit: ${path.basename(key)}`);
+      if (currentCacheSize + size <= MAX_CACHE_SIZE_BYTES) break;
+    }
+  }
+
+  // Use async file read so we don't block the event loop on large files (e.g. 330MB AI vector files)
+  const raw = await fs.promises.readFile(filePath, 'utf-8');
+  const chunks = JSON.parse(raw);
+  vectorCache.set(filePath, {
+    chunks,
+    size,
+    lastUsed: Date.now()
+  });
+  console.log(`[Vector Cache] Cached vector file: ${path.basename(filePath)} (${(size / (1024 * 1024)).toFixed(2)} MB)`);
+  return chunks;
+}
+
 /**
  * Store embeddings for a document (grouped by subject)
  */
@@ -82,6 +131,9 @@ export function storeEmbeddings(subject, documentId, driveFileId, filename, embe
   }
 
   fs.writeFileSync(filePath, JSON.stringify(existing));
+  
+  // Invalidate cache entry on write so future queries reload the fresh data
+  vectorCache.delete(filePath);
 }
 
 /**
@@ -91,7 +143,15 @@ export function storeEmbeddings(subject, documentId, driveFileId, filename, embe
  * @param {number} topK - Number of results to return
  * @param {boolean} showPersonal - Toggle to include/exclude personal (RPG) books
  */
-export function searchSimilar(queryEmbedding, subjects = [], topK = 8, showPersonal = false) {
+/**
+ * Search for similar chunks across subjects
+ * @param {number[]} queryEmbedding - The query embedding vector
+ * @param {string[]} subjects - Optional filter by subjects (empty = all)
+ * @param {number} topK - Number of results to return
+ * @param {boolean} showPersonal - Toggle to include/exclude personal (RPG) books
+ * @returns {Promise<Array>}
+ */
+export async function searchSimilar(queryEmbedding, subjects = [], topK = 8, showPersonal = false) {
   const results = [];
 
   // Get vector files to search
@@ -123,7 +183,9 @@ export function searchSimilar(queryEmbedding, subjects = [], topK = 8, showPerso
     if (!fs.existsSync(filePath)) continue;
 
     try {
-      const chunks = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      // Async cache load — does not block the event loop even on first read of large files
+      const chunks = await getCachedChunks(filePath);
+      let chunkCounter = 0;
 
       for (const chunk of chunks) {
         // Filter by driveFileId if we have a target list
@@ -138,6 +200,11 @@ export function searchSimilar(queryEmbedding, subjects = [], topK = 8, showPerso
           similarity,
           embedding: undefined // Don't return the embedding vector
         });
+
+        // Yield event loop every 50k iterations to keep the server responsive
+        if (++chunkCounter % 50000 === 0) {
+          await new Promise(resolve => setImmediate(resolve));
+        }
       }
     } catch (err) {
       console.warn(`Warning: Could not read vector file ${filePath}:`, err.message);

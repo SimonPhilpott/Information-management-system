@@ -35,3 +35,14 @@ pdf-knowledge-base/server/db/*.db
 pdf-knowledge-base/server/db/*.sqlite
 pdf-knowledge-base/client-fixed/
 
+# Local backups and scratch work
+backups/
+scratch/
+*.pptx
+*.ppt
+*.xlsx
+*.xls
+
+# Test utility scripts
+pdf-knowledge-base/test_live_setup.js
+

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { google } from 'googleapis';
-import { createOAuth2Client, storeTokens, getAuthStatus } from '../services/driveService.js';
+import { createOAuth2Client, storeTokens, getAuthStatus, checkTokenHealth } from '../services/driveService.js';
 import config from '../config.js';
 
 const router = Router();
@@ -32,19 +32,20 @@ router.get('/url', (req, res) => {
  * GET /api/auth/callback - Handle OAuth callback
  */
 router.get('/callback', async (req, res) => {
-  // If request is made directly to backend (3001) instead of frontend proxy (6001),
-  // redirect through the client proxy so cookies are set on the correct origin.
-  const host = req.headers.host || '';
-  const xForwardedHost = req.headers['x-forwarded-host'];
-  
-  if (host.includes('3001') && !xForwardedHost) {
-    const clientUrl = config.clientUrl || 'http://localhost:6001';
-    console.log(`[Auth] Direct backend request to port 3001. Redirecting through client proxy at: ${clientUrl}`);
-    return res.redirect(`${clientUrl}/api/auth/callback?code=${code}`);
+  const { code, error } = req.query;
+
+  // Handle user denying access
+  if (error) {
+    console.warn('[Auth] OAuth error:', error);
+    return res.redirect(`${config.clientUrl}?auth=error&message=${encodeURIComponent(error)}`);
+  }
+
+  if (!code) {
+    return res.redirect(`${config.clientUrl}?auth=error&message=${encodeURIComponent('No authorisation code received')}`);
   }
 
   // Use the redirect URI stored in the session, or fallback to config
-  const redirectUri = req.session.redirectUri || config.google.redirectUri;
+  const redirectUri = req.session?.redirectUri || config.google.redirectUri;
 
   try {
     const oauth2Client = new google.auth.OAuth2(
@@ -60,10 +61,13 @@ router.get('/callback', async (req, res) => {
     const userInfo = await oauth2.userinfo.get();
     const userEmail = userInfo.data.email;
 
-    // RESTRICTION: Only allow the configured admin email
-    if (config.adminEmail && userEmail !== config.adminEmail) {
-      console.warn(`Unauthorized login attempt from: ${userEmail}`);
-      return res.redirect(`${config.clientUrl}?auth=error&message=${encodeURIComponent('Unauthorized: This application is restricted to a specific user.')}`);
+    // RESTRICTION: Only allow the configured admin email list
+    if (config.adminEmail) {
+      const approvedEmails = config.adminEmail.split(',').map(email => email.trim().toLowerCase());
+      if (!approvedEmails.includes(userEmail.toLowerCase())) {
+        console.warn(`Unauthorized login attempt from: ${userEmail}`);
+        return res.redirect(`${config.clientUrl}?auth=error&message=${encodeURIComponent('Unauthorized: This application is restricted to approved users.')}`);
+      }
     }
 
     req.session.user = {
@@ -86,8 +90,12 @@ router.get('/callback', async (req, res) => {
  * GET /api/auth/status - Check authentication status
  */
 router.get('/status', (req, res) => {
+  // Trigger background health check (async, non-blocking)
+  checkTokenHealth().catch(err => console.error('[Auth Status] Health check failed:', err));
+
   const status = getAuthStatus();
-  const isAdmin = !config.adminEmail || status.email === config.adminEmail;
+  const approvedEmails = config.adminEmail ? config.adminEmail.split(',').map(email => email.trim().toLowerCase()) : [];
+  const isAdmin = !config.adminEmail || (status.email && approvedEmails.includes(status.email.toLowerCase()));
 
   res.json({
     ...status,

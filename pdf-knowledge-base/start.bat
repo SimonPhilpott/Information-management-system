@@ -3,7 +3,7 @@ TITLE PDF Knowledge Base - Startup
 SETLOCAL
 
 :: Set the working directory to your project's absolute path
-cd /d "c:\Users\sideb\.gemini\antigravity\scratch\pdf-knowledge-base"
+cd /d "d:\Information management system\pdf-knowledge-base"
 
 echo ==========================================
 echo   PDF Knowledge Base - Starting Services

@@ -1,0 +1,28 @@
+Privacy Policy for Information Management System
+
+Last updated: August 21, 2026
+
+This Privacy Policy describes how the Information Management System ("we", "our", or "us") handles your personal data when you use our application.
+
+1. Information We Collect
+We only access and collect information necessary to authenticate your account and sync your document library. This includes:
+- Your Google primary email address and account profile information (name, profile picture).
+- PDF documents stored in the Google Drive folder that you explicitly configure as the root folder for this application.
+
+2. How We Use Your Information
+We use the collected information solely for the following purposes:
+- To authenticate you and secure your access to this private system.
+- To scan, download, and index the PDF documents from your configured Google Drive folder.
+- To generate vector embeddings and index text content locally within your system instance to enable search and analysis capabilities.
+
+3. Data Storage and Transfer
+- All authentication tokens, metadata, and document database indexes are stored locally on your system.
+- We do not transmit your data or document contents to any external servers, except for necessary API requests to Google (to fetch Drive content) and Gemini (to generate embeddings and execute AI chat queries).
+- Your data is never sold, shared, or distributed to third parties.
+
+4. Data Retention and Deletion
+- We keep your tokens and database contents as long as you use the application.
+- You can revoke access at any time through your Google Account security settings or by logging out/clearing tokens inside the application.
+
+5. Contact
+For any questions regarding this privacy policy, please contact sideburnt@gmail.com.
