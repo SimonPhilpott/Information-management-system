@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ChevronRight, ChevronDown, Search, Database, RefreshCw, Layers, Trash2, RotateCcw, Box, Palette, Info, Zap, Link2, CheckCircle2, Globe, History, Shield } from 'lucide-react';
+import { X, ChevronRight, ChevronDown, Search, Database, RefreshCw, Layers, Trash2, RotateCcw, Box, Palette, Info, Zap, Link2, CheckCircle2, Globe, History, Shield, Sparkles, Cpu, Mic, Radio, Check, Terminal } from 'lucide-react';
 import { ENTITY_TYPES } from '../../data/nodes';
 import { ImportManager } from './ImportManager';
 import { URLMapper } from './URLMapper';
+import { RulebookScraper } from './RulebookScraper';
 import { IMPORTANCE_TIERS } from '../Editor/IntelligenceDrawer';
 import { Tooltip } from '../Dashboard/CursorHover';
+import { useDraggableScroll } from '../../hooks/useDraggableScroll';
 
 const TreeItem = ({ node, nodes, level = 0, onSelect }) => {
   const [isOpen, setIsOpen] = useState(level < 1);
@@ -37,8 +39,8 @@ const TreeItem = ({ node, nodes, level = 0, onSelect }) => {
       
       {hasChildren && isOpen && (
         <div className="border-l border-[var(--glass-border)] ml-4">
-          {children.map(child => (
-            <TreeItem key={child.id} node={child} nodes={nodes} level={level + 1} onSelect={onSelect} />
+          {children.map((child, idx) => (
+            <TreeItem key={`node-${child.id || 'c'}-${level + 1}-${idx}`} node={child} nodes={nodes} level={level + 1} onSelect={onSelect} />
           ))}
         </div>
       )}
@@ -65,6 +67,7 @@ export const AdminPanel = ({
   onCreateMeshBackup,
   onRestoreMeshBackup
 }) => {
+  const { scrollRef, isDragging, handlers } = useDraggableScroll();
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [backupStatus, setBackupStatus] = useState(null); // 'success' | 'error' | null
   const [hoveredFeature, setHoveredFeature] = useState(null);
@@ -209,7 +212,7 @@ export const AdminPanel = ({
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-        className="relative w-full max-w-6xl h-[85vh] rounded-[var(--radius-xl)] shadow-2xl flex flex-col overflow-hidden border border-[var(--glass-border)] bg-[var(--bg-secondary)] backdrop-blur-[40px] z-10 text-[var(--text-primary)]"
+        className="relative w-[calc(100vw-100px)] h-[calc(100vh-100px)] max-w-none rounded-[var(--radius-xl)] shadow-2xl flex flex-col overflow-hidden border border-[var(--glass-border)] bg-[var(--bg-secondary)] backdrop-blur-[40px] z-10 text-[var(--text-primary)]"
         onMouseDown={e => e.stopPropagation()}
         onPointerDown={e => e.stopPropagation()}
         onClick={e => e.stopPropagation()}
@@ -226,75 +229,100 @@ export const AdminPanel = ({
         </div>
 
         {/* Tab Selector Mode Switcher */}
-        <div className="px-6 py-4 border-b border-[var(--glass-border)] bg-[var(--bg-secondary)]/50">
-           <div className="mode-switcher p-1 rounded-full flex gap-1 bg-[var(--bg-tertiary)] border border-[var(--glass-border)] w-full overflow-x-auto scrollbar-none" style={{ maxWidth: 'none' }}>
-              <div 
-                onClick={() => setActiveTab('tree')}
-                className={`mode-item ${activeTab === 'tree' ? 'active' : ''}`}
-              >
-                <Layers size={14} />
-                <span>Hierarchy</span>
-              </div>
-              <div 
-                onClick={() => setActiveTab('map')}
-                className={`mode-item ${activeTab === 'map' ? 'active' : ''}`}
-              >
-                <Link2 size={14} />
-                <span>Map URLs</span>
-              </div>
-              <div 
-                onClick={() => setActiveTab('ingest')}
-                className={`mode-item ${activeTab === 'ingest' ? 'active' : ''}`}
-              >
-                <Database size={14} />
-                <span>Ingest</span>
-              </div>
-              <div 
-                onClick={() => setActiveTab('sharing')}
-                className={`mode-item ${activeTab === 'sharing' ? 'active' : ''}`}
-              >
-                <Globe size={14} />
-                <span>External Share</span>
-              </div>
-              <div 
-                onClick={() => setActiveTab('defs')}
-                className={`mode-item ${activeTab === 'defs' ? 'active' : ''}`}
-              >
-                <Info size={14} />
-                <span>Node Definitions</span>
-              </div>
-              <div 
-                onClick={() => setActiveTab('bin')}
-                className={`mode-item ${activeTab === 'bin' ? 'active' : ''}`}
-                style={activeTab === 'bin' ? { background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#ef4444' } : {}}
-              >
-                <Trash2 size={14} />
-                <span>Deleted</span>
-              </div>
-              <div 
-                onClick={() => setActiveTab('system')}
-                className={`mode-item ${activeTab === 'system' ? 'active' : ''}`}
-              >
-                <Box size={14} />
-                <span>Structure</span>
-              </div>
-              <div 
-                onClick={() => setActiveTab('spatial')}
-                className={`mode-item ${activeTab === 'spatial' ? 'active' : ''}`}
-              >
-                <Zap size={14} />
-                <span>Spatial Logic</span>
-              </div>
-              <div 
-                onClick={() => setActiveTab('checkpoints')}
-                className={`mode-item ${activeTab === 'checkpoints' ? 'active' : ''}`}
-                style={activeTab === 'checkpoints' ? { background: 'rgba(6, 182, 212, 0.15)', border: '1px solid rgba(6, 182, 212, 0.25)', color: '#06b6d4' } : {}}
-              >
-                <History size={14} />
-                <span>Checkpoints</span>
-              </div>
-           </div>
-        </div>
+         <div className="px-6 py-4 border-b border-[var(--glass-border)] bg-[var(--bg-secondary)]/50">
+            <div 
+               ref={scrollRef}
+               {...handlers}
+               className="mode-switcher p-1 rounded-full flex gap-1 bg-[var(--bg-tertiary)] border border-[var(--glass-border)] w-full overflow-x-auto scrollbar-none" 
+               style={{ 
+                 maxWidth: 'none',
+                 cursor: isDragging ? 'grabbing' : 'grab',
+                 userSelect: 'none'
+               }}
+            >
+               <div 
+                 onClick={() => !isDragging && setActiveTab('features')}
+                 className={`mode-item ${activeTab === 'features' ? 'active' : ''}`}
+                 style={activeTab === 'features' ? { background: 'rgba(168, 85, 247, 0.15)', border: '1px solid rgba(168, 85, 247, 0.35)', color: '#c084fc' } : {}}
+               >
+                 <Sparkles size={14} />
+                 <span>Features</span>
+               </div>
+               <div 
+                 onClick={() => !isDragging && setActiveTab('tree')}
+                 className={`mode-item ${activeTab === 'tree' ? 'active' : ''}`}
+               >
+                 <Layers size={14} />
+                 <span>Hierarchy</span>
+               </div>
+               <div 
+                 onClick={() => !isDragging && setActiveTab('map')}
+                 className={`mode-item ${activeTab === 'map' ? 'active' : ''}`}
+               >
+                 <Link2 size={14} />
+                 <span>Map URLs</span>
+               </div>
+               <div 
+                 onClick={() => !isDragging && setActiveTab('ingest')}
+                 className={`mode-item ${activeTab === 'ingest' ? 'active' : ''}`}
+               >
+                 <Database size={14} />
+                 <span>Ingest</span>
+               </div>
+               <div 
+                 onClick={() => !isDragging && setActiveTab('scraper')}
+                 className={`mode-item ${activeTab === 'scraper' ? 'active' : ''}`}
+                 style={activeTab === 'scraper' ? { background: 'rgba(6, 182, 212, 0.15)', border: '1px solid rgba(6, 182, 212, 0.25)', color: '#06b6d4' } : {}}
+               >
+                 <Terminal size={14} />
+                 <span>Rulebooks</span>
+               </div>
+               <div 
+                 onClick={() => !isDragging && setActiveTab('sharing')}
+                 className={`mode-item ${activeTab === 'sharing' ? 'active' : ''}`}
+               >
+                 <Globe size={14} />
+                 <span>External Share</span>
+               </div>
+               <div 
+                 onClick={() => !isDragging && setActiveTab('defs')}
+                 className={`mode-item ${activeTab === 'defs' ? 'active' : ''}`}
+               >
+                 <Info size={14} />
+                 <span>Node Definitions</span>
+               </div>
+               <div 
+                 onClick={() => !isDragging && setActiveTab('bin')}
+                 className={`mode-item ${activeTab === 'bin' ? 'active' : ''}`}
+                 style={activeTab === 'bin' ? { background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#ef4444' } : {}}
+               >
+                 <Trash2 size={14} />
+                 <span>Deleted</span>
+               </div>
+               <div 
+                 onClick={() => !isDragging && setActiveTab('system')}
+                 className={`mode-item ${activeTab === 'system' ? 'active' : ''}`}
+               >
+                 <Box size={14} />
+                 <span>Structure</span>
+               </div>
+               <div 
+                 onClick={() => !isDragging && setActiveTab('spatial')}
+                 className={`mode-item ${activeTab === 'spatial' ? 'active' : ''}`}
+               >
+                 <Zap size={14} />
+                 <span>Spatial Logic</span>
+               </div>
+               <div 
+                 onClick={() => !isDragging && setActiveTab('checkpoints')}
+                 className={`mode-item ${activeTab === 'checkpoints' ? 'active' : ''}`}
+                 style={activeTab === 'checkpoints' ? { background: 'rgba(6, 182, 212, 0.15)', border: '1px solid rgba(6, 182, 212, 0.25)', color: '#06b6d4' } : {}}
+               >
+                 <History size={14} />
+                 <span>Checkpoints</span>
+               </div>
+            </div>
+         </div>
 
         {(activeTab === 'tree' || activeTab === 'bin') && (
             <div className="p-6 space-y-4">
@@ -749,7 +777,7 @@ export const AdminPanel = ({
                                  <div key={index} className="whitespace-pre-wrap leading-relaxed border-b border-white/[0.02] pb-1 font-mono">{log}</div>
                                ))
                              ) : (
-                               <div className="text-[var(--text-muted)] italic text-center py-10">Waiting for tunnel session initialization...</div>
+                                 <div className="text-[var(--text-muted)] italic text-center py-10">Waiting for tunnel session initialization...</div>
                              )}
                           </div>
                        </div>
@@ -758,6 +786,10 @@ export const AdminPanel = ({
               ) : activeTab === 'ingest' ? (
                  <motion.div key="ingest-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                     <ImportManager nodes={nodes} onApplyChanges={onApplyAIProposal} />
+                 </motion.div>
+              ) : activeTab === 'scraper' ? (
+                 <motion.div key="scraper-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                    <RulebookScraper />
                  </motion.div>
               ) : activeTab === 'map' ? (
                  <motion.div key="map-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -914,6 +946,252 @@ export const AdminPanel = ({
                       })}
                     </div>
                  </motion.div>
+              ) : activeTab === 'features' ? (
+                 <motion.div key="features-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6 pb-32">
+                    <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-3">
+                       <div className="flex items-center gap-2.5">
+                          <Sparkles size={16} className="text-purple-400" />
+                          <span className="text-[11px] font-black uppercase tracking-widest text-[var(--text-primary)]">Platform Features & Capabilities Registry</span>
+                       </div>
+                       <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/25">10 Active Core Engines</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                       {[
+                         {
+                           title: 'HNSW Vector Index Acceleration',
+                           tag: 'AI & SEMANTIC SEARCH',
+                           status: 'ACCELERATED',
+                           color: '#06b6d4',
+                           description: 'High-performance in-process Hierarchical Navigable Small World (HNSW) vector graph with sub-millisecond similarity lookups and real-time SSE progress streaming.',
+                           bullets: [
+                             'In-process C++ binding via hnswlib-node for 768-dimensional embeddings',
+                             'Real-time SSE progress bar streaming file & vector counters',
+                             'Automatic background HNSW graph compilation upon sync and document indexing',
+                             'Auto disk persistence loading (hnsw_index.bin & hnsw_meta.json)',
+                             'Sub-millisecond query lookups (~1.2ms) with linear search fallback'
+                           ]
+                         },
+                         {
+                           title: 'Gemini Live Multimodal Voice Engine',
+                           tag: 'AUDIO & CONVERSATION',
+                           status: 'LIVE STREAM',
+                           color: '#a855f7',
+                           description: 'Bidirectional real-time voice streaming with Gemini 3.1 Flash Live, hardware acoustic echo cancellation, and conversational tool calling.',
+                           bullets: [
+                             'Interactive Lock/Unlock toggle persisting voice choice across sessions',
+                             'Robust 180ms jitter lead-time buffer preventing packet underrun pauses',
+                             '30-second silence inactivity auto-close watchdog',
+                             'extendKeepAlive tool for "hang on" / "wait a moment" pauses',
+                             'Natural farewell auto-disconnect for "bye", "take it easy", "goodbye"'
+                           ]
+                         },
+                         {
+                           title: 'Port Status & Tunnel Probing Service',
+                           tag: 'INFRASTRUCTURE',
+                           status: 'OPERATIONAL',
+                           color: '#10b981',
+                           description: 'Server-side multi-service health checking endpoint at GET /api/port-status ensuring accurate diagnostics locally and over ngrok tunnels.',
+                           bullets: [
+                             'Vite portStatusPlugin probes ports 6001, 3001, 5173 server-side',
+                             'Ngrok tunnel status monitored via agent API (localhost:4040)',
+                             'Relative /api/port-status routing works transparently via tunnel',
+                             'Proxy bypass rules preventing collision with port 3001 backend',
+                             'SyncStatus.jsx polling telemetry indicator in dashboard bottom bar'
+                           ]
+                         },
+                         {
+                           title: '3D Spatial Knowledge Graph',
+                           tag: 'VISUALISATION',
+                           status: 'ACTIVE',
+                           color: '#3b82f6',
+                           description: '3D network mesh visualizing parent-child organizational hierarchy, secondary transverse links, and interactive entity nodes.',
+                           bullets: [
+                             'Three.js / React Three Fiber force-directed canvas',
+                             'Entity-type coloured pill label borders with depth scaling',
+                             'Curved outward-bowing transverse bezier connections',
+                             'Top-right 2D minimap navigation control and scrub viewport',
+                             'Floating toolbar with projection, layout, and appearance toggles'
+                           ]
+                         },
+                         {
+                           title: 'Hierarchical SVG Sunburst Visualisation',
+                           tag: 'EXPLORATION',
+                           status: 'ACTIVE',
+                           color: '#f59e0b',
+                           description: 'Interactive concentric nested radial SVG chart showcasing node hierarchy, clicked-based zoom/drill-down, and curved secondary transverse links.',
+                           bullets: [
+                             'Concentric ring layers (depth 0 to 4) representing entity-type hierarchies',
+                             'Proportional sector angular sweep based on subtree weights',
+                             'Click-to-zoom interactive drill-down focus pivoting',
+                             'Hover glassmorphic metadata cards and title path tooltip popups',
+                             'Flipped rotated text labels ensuring zero upside-down rendering'
+                           ]
+                         },
+                         {
+                           title: 'SharePoint Portal View',
+                           tag: 'ENTERPRISE UI',
+                           status: 'ACTIVE',
+                           color: '#0284c7',
+                           description: 'SharePoint Portal View for the Node Information Panel/Drawer with hierarchical navigation menus and child node inheritance.',
+                           bullets: [
+                             'Toggle control between Standard View and SharePoint Portal View',
+                             'Dynamic deep-blue hierarchical navigation bar with multi-level dropdowns',
+                             'Parent node title and node type badge indicators',
+                             'Large prominent blue card depicting the node definition summary',
+                             'Child node text area cards inheriting descending definitions'
+                           ]
+                         },
+                         {
+                           title: 'PDF Research Workspace & RAG',
+                           tag: 'KNOWLEDGE BASE',
+                           status: 'ACTIVE',
+                           color: '#ef4444',
+                           description: 'Split-screen document viewer integrating react-pdf for rendering reference sources side-by-side with chat or mesh graph.',
+                           bullets: [
+                             'Interactive citations opening specific PDF page targets',
+                             'Synchronised page transitions with string integer parsing checks',
+                             'Drag-resizable split-pane partition using the global layout resizer',
+                             'Isolated topic and table of contents outline extraction'
+                           ]
+                         },
+                         {
+                           title: 'Topic Discovery & Session Vault',
+                           tag: 'RESEARCH WORKSPACE',
+                           status: 'ACTIVE',
+                           color: '#8b5cf6',
+                           description: 'Dedicated control panel managing research sessions, document library categorization and AI synthesis triggers.',
+                           bullets: [
+                             'Auto-generated session chat logs and conversation vault',
+                             'Topic tag filtering and suggested prompts',
+                             'Notebook clipboard for pinning references and drive file sync indicator',
+                             'Individual and bulk session deletion with double confirmation safeguards'
+                           ]
+                         },
+                         {
+                           title: 'Simplified Demo Portal',
+                           tag: 'ANALYTICS',
+                           status: 'ACTIVE',
+                           color: '#ec4899',
+                           description: 'Simplified dashboard portal accessible via /demo route with node catalog overview and embedded Sunburst structure view.',
+                           bullets: [
+                             'Interactive Sankey Flow Chart mapping capability-to-region paths',
+                             'Radial Dependency Wheel drawing neon chords between connected nodes',
+                             'Centrality Analytics scatterplot plotting degree against frequency',
+                             'Beta Views navigation dropdown providing access to experimental visualizations'
+                           ]
+                         },
+                         {
+                           title: 'Oatmeal Premium Theme Layout',
+                           tag: 'DESIGN SYSTEM',
+                           status: 'ACTIVE',
+                           color: '#14b8a6',
+                           description: 'Premium theme layout wrapping featuring glassmorphism, responsive sidebar layout with resize handles, and GBP regionalisation.',
+                           bullets: [
+                             'Interactive top header with model selection and cost telemetry',
+                             'Dual-sidebar architecture with resize drag boundaries',
+                             'Strict British English (en-GB) and GBP (£) regionalisation',
+                             'Direct clipboard screenshot and image pasting support into chat prompt'
+                           ]
+                         }
+                       ].map(feat => (
+                          <div key={feat.title} className="p-4 bg-[var(--bg-elevated)] rounded-2xl border border-[var(--glass-border)] space-y-3 hover:border-[var(--glass-border-hover)] transition-all">
+                             <div className="flex items-start justify-between gap-2">
+                                <div className="space-y-0.5">
+                                   <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md" style={{ backgroundColor: `${feat.color}15`, color: feat.color, border: `1px solid ${feat.color}30` }}>
+                                      {feat.tag}
+                                   </span>
+                                   <h3 className="text-[12px] font-bold text-[var(--text-primary)] mt-1.5">{feat.title}</h3>
+                                </div>
+                                <span className="text-[8px] font-mono font-bold px-2 py-0.5 rounded-full bg-[var(--bg-tertiary)] border border-[var(--glass-border)] text-[var(--text-secondary)]">
+                                   {feat.status}
+                                </span>
+                             </div>
+
+                             <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">{feat.description}</p>
+
+                             <div className="pt-2 border-t border-[var(--glass-border)] space-y-1.5">
+                                {feat.bullets.map((b, idx) => (
+                                   <div key={idx} className="flex items-center gap-2 text-[9px] text-[var(--text-muted)]">
+                                      <Check size={11} className="text-emerald-400 flex-shrink-0" />
+                                      <span>{b}</span>
+                                   </div>
+                                ))}
+                             </div>
+                          </div>
+                       ))}
+                    </div>
+                 </motion.div>
+               ) : activeTab === 'system' ? (
+                 <motion.div key="system-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8 pb-32">
+                    <div className="space-y-4">
+                       <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest block border-b border-[var(--glass-border)] pb-2">Core System Architecture & Modules</span>
+                       
+                       <div className="grid grid-cols-1 gap-2">
+                          {[
+                            { 
+                              cat: 'Application Core', 
+                              files: [
+                                { n: 'App.jsx', d: 'The System Brain. Orchestrates state management, the radial layout engines, and viewport transitions.' },
+                                { n: 'index.css', d: 'The Aesthetic Core. Defines design system tokens, glassmorphic effects, and motion physics.' },
+                                { n: 'ThemeContext.jsx', d: 'Theme Provider. Persists user interface preferences and color identity across the component tree.' }
+                              ] 
+                            },
+                            { 
+                              cat: 'AI, Live Voice & Vector Acceleration', 
+                              files: [
+                                { n: 'hnswService.js', d: 'In-Process C++ HNSW Vector Graph Engine. Sub-millisecond similarity lookups (~1.2ms) across 41,000+ chunks.' },
+                                { n: 'HnswIndexModal.jsx', d: 'Vector Acceleration Dashboard. Real-time Server-Sent Events (SSE) progress bar and index telemetry.' },
+                                { n: 'useGeminiLive.js', d: 'Multimodal Live Voice Engine. Real-time bidirectional streaming, VAD anti-stutter, and farewell auto-disconnect.' },
+                                { n: 'ChatInterface.jsx', d: 'Chat & Spoken Interaction UI. Includes voice choice locking, prompt actions, and topic synthesis.' }
+                              ] 
+                            },
+                            { 
+                              cat: 'Mesh & Canvas Renderers', 
+                              files: [
+                                { n: 'SunburstCanvas.jsx', d: 'The Sunburst Engine. Primary concentric nested radial layout canvas with custom arc masking.' },
+                                { n: 'InstancedSpatialCanvas.jsx', d: 'The 3D Instanced Engine. High-performance GPU-instanced 3D force-directed canvas.' },
+                                { n: 'SpatialCanvas.jsx', d: 'The 3D Standard Engine. Force-directed 3D canvas with full node labels and orbital controls.' },
+                                { n: 'MeshCanvas.jsx', d: 'The 2D Engine. High-performance 2D canvas with physics-based nodes and lateral links.' },
+                                { n: 'OrbitalNav.jsx', d: 'The Spatial Pilot. Implements HUD-based thumbstick controls and map-scale navigation.' }
+                              ] 
+                            },
+                            { 
+                              cat: 'Knowledge Intelligence & Infrastructure', 
+                              files: [
+                                { n: 'IntelligenceDrawer.jsx', d: 'The Knowledge Forge. Rich-text editor for node semantic metadata and hierarchical tagging.' },
+                                { n: 'CatalogBrowser.jsx', d: 'Drive Library Explorer. Interactive document catalog and book subject categorization.' },
+                                { n: 'SyncStatus.jsx', d: 'Port Health Telemetry. Server-side multi-port status probing and ngrok tunnel health bar.' },
+                                { n: 'AdminPanel.jsx', d: 'Architectural Controller. Provides tools for hierarchy auditing, data sync, and system archival.' }
+                              ] 
+                            },
+                            { 
+                              cat: 'Data Fabric & Backend Services', 
+                              files: [
+                                { n: 'vectorStore.js', d: 'Vector Storage & Auto-Indexing Sync. Manages JSON vector files and HNSW invalidation/rebuild.' },
+                                { n: 'driveService.js', d: 'Google Drive Sync Fabric. Handles PDF retrieval, background caching, and auto-categorization.' },
+                                { n: 'mesh_authority.js', d: 'The Golden Source. Authoritative enterprise hierarchy definition in JavaScript format.' },
+                                { n: 'nodes.js', d: 'Entity Blueprints. Defines internal schema and visual identity for all node types.' }
+                              ] 
+                            }
+                          ].map(group => (
+                            <div key={group.cat} className="p-4 bg-[var(--bg-elevated)] rounded-xl border border-[var(--glass-border)] space-y-3">
+                               <div className="text-[8px] font-black text-[var(--accent-cyan)] uppercase tracking-widest">{group.cat}</div>
+                               <div className="flex flex-col gap-1.5">
+                                  {group.files.map(f => (
+                                    <Tooltip key={f.n} text={f.d}>
+                                      <div className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-[var(--bg-elevated)] border border-transparent hover:border-[var(--glass-border)] transition-all group cursor-help">
+                                         <Box size={14} className="text-[var(--text-muted)] group-hover:text-[var(--accent-cyan)] transition-colors" />
+                                         <span className="text-[11px] font-bold text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">{f.n}</span>
+                                      </div>
+                                    </Tooltip>
+                                  ))}
+                               </div>
+                            </div>
+                          ))}
+                       </div>
+                    </div>
+                 </motion.div>
               ) : activeTab === 'tree' ? (
                 <motion.div key="tree-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8 pb-32">
                   {/* Structure Section */}
@@ -935,9 +1213,9 @@ export const AdminPanel = ({
                            )}
                        </div>
                      ) : (
-                       rootNodes.map(root => (
-                           <TreeItem key={root.id} node={root} nodes={nodes} onSelect={onFocusNode} />
-                       ))
+                        rootNodes.map((root, idx) => (
+                            <TreeItem key={`root-${root.id || idx}-${idx}`} node={root} nodes={nodes} onSelect={onFocusNode} />
+                        ))
                      )}
                   </div>
 
@@ -1009,68 +1287,19 @@ export const AdminPanel = ({
                            <span className="text-[var(--accent-cyan)] font-bold truncate max-w-[300px]">d:\Information management system\backups</span>
                         </div>
                         <div className="flex justify-between text-[11px] p-4 border border-[var(--glass-border)] rounded-xl bg-[var(--bg-elevated)] italic">
+                           <span className="text-[var(--text-muted)]">hnsw_vector_engine</span>
+                           <span className="text-[var(--accent-cyan)] font-bold">In-Process C++ (41,092+ Vectors)</span>
+                        </div>
+                        <div className="flex justify-between text-[11px] p-4 border border-[var(--glass-border)] rounded-xl bg-[var(--bg-elevated)] italic">
+                           <span className="text-[var(--text-muted)]">gemini_live_voice</span>
+                           <span className="text-[var(--accent-cyan)] font-bold">Multimodal Live Bidi (180ms Jitter Guard)</span>
+                        </div>
+                        <div className="flex justify-between text-[11px] p-4 border border-[var(--glass-border)] rounded-xl bg-[var(--bg-elevated)] italic">
                            <span className="text-[var(--text-muted)]">engine_status</span>
                            <span className="text-[var(--accent-cyan)] font-bold">Fluid (60fps)</span>
                         </div>
                      </div>
                   </div>
-                </motion.div>
-              ) : activeTab === 'system' ? (
-                <motion.div key="system-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8 pb-32">
-                   <div className="space-y-4">
-                      <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest block border-b border-[var(--glass-border)] pb-2">Core System Architecture</span>
-                      
-                      <div className="grid grid-cols-1 gap-2">
-                         {[
-                           { 
-                             cat: 'Application Core', 
-                             files: [
-                               { n: 'App.jsx', d: 'The System Brain. Orchestrates state management, the radial layout engines, and viewport transitions.' },
-                               { n: 'index.css', d: 'The Aesthetic Core. Defines the design system tokens, glassmorphic effects, and motion physics.' },
-                               { n: 'ThemeContext.jsx', d: 'Theme Provider. Persists user interface preferences and color identity across the component tree.' }
-                             ] 
-                           },
-                           { 
-                             cat: 'Mesh & Canvas Renderers', 
-                             files: [
-                               { n: 'SunburstCanvas.jsx', d: 'The Sunburst Engine. Primary concentric nested radial layout canvas with custom arc masking.' },
-                               { n: 'InstancedSpatialCanvas.jsx', d: 'The 3D Instanced Engine. High-performance GPU-instanced 3D force-directed canvas.' },
-                               { n: 'SpatialCanvas.jsx', d: 'The 3D Standard Engine. Force-directed 3D canvas with full node labels and orbital controls.' },
-                               { n: 'MeshCanvas.jsx', d: 'The 2D Engine. High-performance 2D canvas with physics-based nodes and lateral links.' },
-                               { n: 'OrbitalNav.jsx', d: 'The Spatial Pilot. Implements HUD-based thumbstick controls and map-scale navigation.' }
-                             ] 
-                           },
-                           { 
-                             cat: 'Knowledge Intelligence', 
-                             files: [
-                               { n: 'IntelligenceDrawer.jsx', d: 'The Knowledge Forge. Rich-text editor for node semantic metadata and hierarchical tagging.' },
-                               { n: 'AdminPanel.jsx', d: 'Architectural Controller. Provides tools for hierarchy auditing, data sync, and system archival.' }
-                             ] 
-                           },
-                           { 
-                             cat: 'Data Fabric', 
-                             files: [
-                               { n: 'mesh_authority.js', d: 'The Golden Source. Authoritative enterprise hierarchy definition in JavaScript format.' },
-                               { n: 'nodes.js', d: 'Entity Blueprints. Defines the internal schema and visual identity for all node types.' }
-                             ] 
-                           }
-                         ].map(group => (
-                           <div key={group.cat} className="p-4 bg-[var(--bg-elevated)] rounded-xl border border-[var(--glass-border)] space-y-3">
-                              <div className="text-[8px] font-black text-[var(--accent-cyan)] uppercase tracking-widest">{group.cat}</div>
-                              <div className="flex flex-col gap-1.5">
-                                 {group.files.map(f => (
-                                   <Tooltip key={f.n} text={f.d}>
-                                     <div className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-[var(--bg-elevated)] border border-transparent hover:border-[var(--glass-border)] transition-all group cursor-help">
-                                        <Box size={14} className="text-[var(--text-muted)] group-hover:text-[var(--accent-cyan)] transition-colors" />
-                                        <span className="text-[11px] font-bold text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">{f.n}</span>
-                                     </div>
-                                   </Tooltip>
-                                 ))}
-                              </div>
-                           </div>
-                         ))}
-                      </div>
-                   </div>
                 </motion.div>
               ) : activeTab === 'checkpoints' ? (
                 <motion.div key="checkpoints-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6 pb-32">

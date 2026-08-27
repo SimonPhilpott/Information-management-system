@@ -1,9 +1,14 @@
-import React from 'react';
-import { RefreshCw, CheckCircle2, AlertCircle, FileText, Loader2, Shield, Zap } from 'lucide-react';
+import React, { useRef } from 'react';
+import { RefreshCw, CheckCircle2, AlertCircle, FileText, Loader2, Shield, Zap, Database, Layers, Hash } from 'lucide-react';
 import { Tooltip } from './CursorHover';
+import { createPortal } from 'react-dom';
 
 export default function SyncStatus({ syncStatus, onSync, compact = false, onLogin, authStatus, onOpenHnsw }) {
   const [showSuccess, setShowSuccess] = React.useState(false);
+  const [hnswHover, setHnswHover] = React.useState(false);
+  const [hnswStats, setHnswStats] = React.useState(null);
+  const [hnswBtnRect, setHnswBtnRect] = React.useState(null);
+  const hnswBtnRef = useRef(null);
   const [portsStatus, setPortsStatus] = React.useState({
     mainApp: 'checking',
     authServer: 'checking',
@@ -261,27 +266,143 @@ export default function SyncStatus({ syncStatus, onSync, compact = false, onLogi
             </span>
           </button>
 
-          {/* Fast Vector Index (HNSW) Button */}
+          {/* Fast Vector Index (HNSW) Button with hover popup */}
           {onOpenHnsw && (
-            <button
-              onClick={onOpenHnsw}
-              className="sync-btn"
-              title="Open HNSW Vector Index Acceleration Monitor"
+            <div
+              ref={hnswBtnRef}
+              style={{ position: 'relative', display: 'inline-flex' }}
+              onMouseEnter={async () => {
+                if (hnswBtnRef.current) {
+                  setHnswBtnRect(hnswBtnRef.current.getBoundingClientRect());
+                }
+                setHnswHover(true);
+                try {
+                  const res = await fetch('/api/admin/hnsw/status');
+                  if (res.ok) {
+                    const data = await res.json();
+                    setHnswStats(data);
+                  }
+                } catch {}
+              }}
+              onMouseLeave={() => setHnswHover(false)}
+            >
+              <button
+                onClick={onOpenHnsw}
+                className="sync-btn"
+                title="Open HNSW Vector Index Acceleration Monitor"
+                style={{
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  color: '#10B981',
+                  borderColor: 'rgba(16, 185, 129, 0.25)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <Zap size={13} style={{ color: '#10B981' }} />
+                <span className="mobile-hide">Fast Index (HNSW)</span>
+              </button>
+            </div>
+          )}
+          {hnswHover && hnswBtnRect && createPortal(
+            <div
               style={{
-                background: 'rgba(16, 185, 129, 0.12)',
-                color: '#10B981',
-                borderColor: 'rgba(16, 185, 129, 0.25)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
+                position: 'fixed',
+                left: Math.max(8, Math.min(window.innerWidth - 496, hnswBtnRect.left)),
+                top: hnswBtnRect.top - 8,
+                transform: 'translateY(-100%)',
+                width: '480px',
+                background: 'var(--bg-secondary)',
+                backdropFilter: 'blur(40px)',
+                border: '1px solid var(--glass-border)',
+                borderRadius: 'var(--radius-xl, 12px)',
+                boxShadow: 'var(--shadow-xl, 0 25px 50px rgba(0,0,0,0.5))',
+                zIndex: 2147483647,
+                pointerEvents: 'none',
+                overflow: 'hidden'
               }}
             >
-              <Zap size={13} style={{ color: '#10B981' }} />
-              <span className="mobile-hide">Fast Index (HNSW)</span>
-            </button>
+              {/* Header */}
+              <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--glass-border)', background: 'rgba(255,255,255,0.02)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '4px', height: '12px', background: '#10B981', borderRadius: '2px' }} />
+                <span style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-muted)' }}>HNSW Vector Index</span>
+              </div>
+
+              <div style={{ padding: '14px' }}>
+                {hnswStats ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {/* Status badge */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: hnswStats.isBuilt ? '#10B981' : '#f59e0b', boxShadow: hnswStats.isBuilt ? '0 0 6px #10B981' : '0 0 6px #f59e0b' }} />
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: hnswStats.isBuilt ? '#10B981' : '#f59e0b' }}>
+                        {hnswStats.isBuilt ? 'Index Active — Sub-millisecond ready' : 'Index not built — rebuild required'}
+                      </span>
+                    </div>
+
+                    {/* Stats grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                      <div style={{ padding: '8px 10px', background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
+                          <Hash size={10} style={{ color: '#10B981' }} />
+                          <span style={{ fontSize: '9px', fontWeight: 800, color: '#10B981', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Vectors</span>
+                        </div>
+                        <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
+                          {hnswStats.totalVectors ? hnswStats.totalVectors.toLocaleString('en-GB') : '—'}
+                        </div>
+                      </div>
+
+                      <div style={{ padding: '8px 10px', background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
+                          <Database size={10} style={{ color: '#818cf8' }} />
+                          <span style={{ fontSize: '9px', fontWeight: 800, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Dimensions</span>
+                        </div>
+                        <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>768</div>
+                      </div>
+
+                      <div style={{ padding: '8px 10px', background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
+                          <Layers size={10} style={{ color: '#fbbf24' }} />
+                          <span style={{ fontSize: '9px', fontWeight: 800, color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Graph Layers</span>
+                        </div>
+                        <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>3</div>
+                      </div>
+                    </div>
+
+                    {/* Index size estimate */}
+                    <div style={{ padding: '8px 10px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--glass-border)', borderRadius: '8px' }}>
+                      <div style={{ fontSize: '9px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>Estimated Index Size</div>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
+                        {hnswStats.totalVectors
+                          ? `≈ ${((hnswStats.totalVectors * 768 * 4) / (1024 ** 3)).toFixed(3)} GB`
+                          : '—'}
+                      </div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        768 dims × 4 bytes (float32) × {hnswStats.totalVectors?.toLocaleString('en-GB') || '0'} vectors
+                      </div>
+                    </div>
+
+                    {/* Algorithm info */}
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                      <strong style={{ color: 'var(--text-secondary)' }}>Algorithm:</strong> Hierarchical Navigable Small World (HNSW) · Cosine similarity · <em>O(log N)</em> queries
+                      {hnswStats.lastBuilt && (
+                        <div style={{ marginTop: '2px' }}>Last built: {new Date(hnswStats.lastBuilt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Loading index stats…</div>
+                )}
+              </div>
+
+              <div style={{ padding: '6px 14px', background: 'rgba(0,0,0,0.1)', fontSize: '9px', color: 'var(--text-muted)', textAlign: 'right', borderTop: '1px solid var(--glass-border)' }}>
+                System Intelligence Hover Protocol v1.0
+              </div>
+            </div>,
+            document.body
           )}
 
           {/* Pulse warning banner for offline ports (only App, Auth, or KB) */}
+
           {(portsStatus.mainApp === 'offline' || portsStatus.authServer === 'offline' || portsStatus.kbClient === 'offline') && (
             <div 
               style={{ 

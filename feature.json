@@ -110,7 +110,10 @@
         "HnswIndexModal interactive acceleration dashboard with telemetry statistics",
         "Automatic fallback to linear vector search when index is invalidated or unbuilt",
         "Boot-time automatic disk loading of hnsw_index.bin and hnsw_meta.json",
-        "Automatic background HNSW graph compilation upon sync and document indexing completion"
+        "Automatic background HNSW graph compilation upon sync and document indexing completion",
+        "Integration inside the Library Management modal (CatalogBrowser) to directly trigger document indexing and run/rebuild the HNSW vector graph.",
+        "Thorough Global Library Manifest including subjects and themes injected directly into model prompt contexts for high-fidelity aggregate/counting questions.",
+        "Dynamic Top-K Scaling increasing retrieval window (topK = 30) for collection-wide and general library queries."
       ]
     },
     "Gemini Voice Lock & Session Persistence": {
@@ -121,7 +124,20 @@
         "Disabled voice menu and dropdown chevron when locked",
         "Persistent localStorage storage under 'gemini-live-voice-locked' and 'gemini-live-voice'",
         "Amber visual indicator badge when voice lock is engaged",
-        "30-second silence inactivity auto-close with 'hang on' / 'wait' keep-alive tool extension (extendKeepAlive)"
+        "30-second silence inactivity auto-close with 'hang on' / 'wait' keep-alive tool extension (extendKeepAlive)",
+        "Voice farewell auto-close when saying 'bye', 'goodbye', 'take it easy', 'take care', 'see you later', 'catch you later', or 'exit' (closeSession tool)",
+        "Mobile & desktop Screen WakeLock API (navigator.wakeLock) keeping screen awake and preventing OS sleep/lock during active voice sessions"
+      ]
+    },
+    "Rulebook Search & Downloader Scraper": {
+      "status": "enabled",
+      "description": "Premium admin panel tab to scrape, download, and catalog board game rulebook PDFs via Gemini Grounding search tools.",
+      "subFeatures": [
+        "Interactive play/stop scraper controls with live execution state toggles",
+        "Live tqdm terminal scroll console parsed via backend regex into progress percentage counters",
+        "Server-Sent Events (SSE) log & status stream subscription",
+        "Downloaded files registry view displaying size and timestamp parameters",
+        "Graceful process termination handling utilizing SIGINT execution interruptions"
       ]
     }
   }

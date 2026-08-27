@@ -2115,6 +2115,9 @@ export default function App() {
                  actions.setShowCatalog(false);
               }}
               chatTone={state.chatTone}
+              syncStatus={state.syncStatus}
+              onSync={actions.triggerSync}
+              onOpenHnsw={() => setShowHnswModal(true)}
             />
          )}
          <HnswIndexModal 

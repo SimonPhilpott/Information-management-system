@@ -215,7 +215,7 @@
   "AdminPanelCenteredModal": {
     "aesthetics": {
       "overlay": "absolute inset-0 bg-black/60 backdrop-blur-[30px]",
-      "container": "relative w-full max-w-6xl h-[85vh] rounded-[var(--radius-xl)] shadow-2xl flex flex-col overflow-hidden border border-[var(--glass-border)] bg-[var(--bg-overlay)] backdrop-blur-[40px]",
+      "container": "relative w-[calc(100vw-100px)] h-[calc(100vh-100px)] max-w-none rounded-[var(--radius-xl)] shadow-2xl flex flex-col overflow-hidden border border-[var(--glass-border)] bg-[var(--bg-overlay)] backdrop-blur-[40px]",
       "tabsHeader": "flex items-center bg-[var(--bg-elevated)] p-[3px] rounded-full border border-[var(--glass-border)] gap-[2px] overflow-x-auto scrollbar-none",
       "bentoCards": {
         "layout": "grid layout panels with border border-[var(--glass-border)] bg-[var(--bg-secondary)] rounded-[var(--radius-lg)] p-5 shadow-sm shadow-inner textareas/inputs",
@@ -433,6 +433,39 @@
         "fill": "h-full bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full transition-all duration-300 shadow-[0_0_12px_rgba(16,185,129,0.5)]"
       },
       "actionButton": "px-5 py-2 rounded-lg bg-[var(--gradient-primary)] text-white text-xs font-bold shadow-[0_4px_14px_rgba(16,185,129,0.35)] flex items-center gap-2 hover:brightness-105 active:scale-[0.98]"
+    }
+  },
+  "AdminPanelFeatures": {
+    "aesthetics": {
+      "tabBadge": "background: rgba(168, 85, 247, 0.15), border: 1px solid rgba(168, 85, 247, 0.35), color: #c084fc",
+      "grid": "grid grid-cols-1 md:grid-cols-2 gap-4",
+      "featureCard": "p-4 bg-[var(--bg-elevated)] rounded-2xl border border-[var(--glass-border)] space-y-3 hover:border-[var(--glass-border-hover)] transition-all",
+      "categoryTag": "text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md",
+      "statusBadge": "text-[8px] font-mono font-bold px-2 py-0.5 rounded-full bg-[var(--bg-tertiary)] border border-[var(--glass-border)] text-[var(--text-secondary)]",
+      "bulletRow": "flex items-center gap-2 text-[9px] text-[var(--text-muted)]"
+    }
+  },
+  "RulebookScraper": {
+    "aesthetics": {
+      "tabBadge": "background: rgba(6, 182, 212, 0.15), border: 1px solid rgba(6, 182, 212, 0.25), color: #06b6d4",
+      "terminal": "bg-black/60 border border-[var(--glass-border)] rounded-2xl h-[320px] font-mono text-[10px] leading-relaxed",
+      "progressBar": "h-2 w-full bg-[var(--bg-primary)] rounded-full overflow-hidden border border-[var(--glass-border)] fill-gradient",
+      "introCard": "bg-[var(--accent-cyan)]/5 border border-[var(--accent-cyan)]/25 rounded-2xl p-6",
+      "bggCredentialsCard": "p-6 bg-[var(--bg-secondary)]/30 backdrop-blur-xl border border-[var(--glass-border)] rounded-2xl grid inputs for username and password"
+    }
+  },
+  "CatalogBrowser": {
+    "aesthetics": {
+      "translucency": "glassmorphic modal with expanded layout sizing options and backblur",
+      "toolbar": {
+        "layout": "flex container with wrap support for mobile viewports, separate left and right alignment",
+        "buttons": {
+          "primary": "gradient primary color block with bold styling",
+          "danger": "rose red border and hover text with soft pink translucency backgrounds",
+          "sync": "emerald status styling showing spin animations and active syncing labels",
+          "hnsw": "emerald lightning styling with matching translucent active highlights"
+        }
+      }
     }
   }
 }

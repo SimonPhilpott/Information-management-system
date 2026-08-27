@@ -58,6 +58,36 @@
     "src/components/Dashboard/HnswIndexModal.jsx": {
       "description": "High-performance vector acceleration modal with real-time SSE progress bar, latency telemetry metrics, and binary index builder trigger.",
       "dependencies": []
+    },
+    "src/components/Admin/AdminPanel.jsx": {
+      "description": "Architectural Controller providing Features Registry, Hierarchy tree audit, URL mapping, Node definitions, Checkpoints, and Rulebooks Scraper.",
+      "dependencies": [
+        "src/components/Admin/RulebookScraper.jsx"
+      ]
+    },
+    "src/components/Admin/RulebookScraper.jsx": {
+      "description": "React component for triggering the Python scraper, monitoring progress via SSE, and displaying downloaded PDFs.",
+      "dependencies": []
+    },
+    "src/components/Dashboard/SyncStatus.jsx": {
+      "description": "Port health and ngrok tunnel telemetry indicator polling /api/port-status.",
+      "dependencies": []
+    },
+    "src/components/Dashboard/CatalogBrowser.jsx": {
+      "description": "Interactive Google Drive file explorer and catalog management modal with search, subject filters, and options to run sync indexing and trigger HNSW builds.",
+      "dependencies": []
+    },
+    "src/hooks/useGeminiLive.js": {
+      "description": "Multimodal Gemini Live Web Audio streaming hook with hardware echo cancellation, anti-stutter buffer, and voice keep-alive/farewell tools.",
+      "dependencies": []
+    },
+    "pdf-knowledge-base/server/services/hnswService.js": {
+      "description": "In-process C++ HNSW vector index graph engine providing sub-millisecond similarity lookups and SSE build events.",
+      "dependencies": []
+    },
+    "pdf-knowledge-base/server/services/chatService.js": {
+      "description": "Core conversation service handling query expansions, semantic matches, global library manifests, and Gemini chat processing.",
+      "dependencies": []
     }
   }
 }

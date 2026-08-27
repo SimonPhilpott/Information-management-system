@@ -55,6 +55,9 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
   const drainTimerRef = useRef(null);
   // Inactivity auto-close timer (30 seconds default)
   const inactivityTimerRef = useRef(null);
+  const lastActivityTimeRef = useRef(Date.now());
+  // Mobile & Desktop Screen WakeLock reference to prevent screen sleep/lock
+  const wakeLockRef = useRef(null);
   // Volume smoothing
   const smoothVolumeRef = useRef(0);
 
@@ -227,21 +230,63 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
   }, []);
 
   /**
-   * Resets the inactivity timeout (default 30 seconds).
-   * If the user remains completely silent for 30s without saying "hang on",
-   * the live voice session will automatically close.
+   * Resets the inactivity timeout (default 30 seconds of pure idle silence).
+   * Will NEVER disconnect while Gemini is speaking, thinking, or while the user is speaking.
    */
   const DEFAULT_INACTIVITY_TIMEOUT_MS = 30000; // 30 seconds
 
   const resetInactivityTimer = useCallback((durationMs = DEFAULT_INACTIVITY_TIMEOUT_MS) => {
+    lastActivityTimeRef.current = Date.now();
     if (inactivityTimerRef.current) {
       clearTimeout(inactivityTimerRef.current);
       inactivityTimerRef.current = null;
     }
+
     inactivityTimerRef.current = setTimeout(() => {
-      console.log(`[GeminiLive] Inactivity timeout (${durationMs / 1000}s) reached with no speech. Auto-closing voice session.`);
-      disconnectRef.current?.();
+      // Safety check: verify the session is genuinely in idle silence
+      const isSpeaking = activeSourcesRef.current.length > 0 || liveStatusRef.current === 'speaking';
+      const isThinking = liveStatusRef.current === 'thinking';
+      const isUserSpeaking = isInSpeechTurnRef.current;
+      const elapsedSinceActivity = Date.now() - lastActivityTimeRef.current;
+
+      // Only disconnect if genuinely idle with >= durationMs of dead silence
+      if (!isSpeaking && !isThinking && !isUserSpeaking && elapsedSinceActivity >= (durationMs - 500)) {
+        console.log(`[GeminiLive] 30s of uninterrupted idle silence reached. Auto-closing voice session.`);
+        disconnectRef.current?.();
+      } else {
+        // Voice is actively in use or model is responding — re-arm timer safely
+        resetInactivityTimer(durationMs);
+      }
     }, durationMs);
+  }, []);
+
+  /**
+   * Acquires a Screen WakeLock to prevent mobile/desktop screens from turning off or sleeping
+   */
+  const acquireWakeLock = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+      try {
+        wakeLockRef.current = await navigator.wakeLock.request('screen');
+        console.log('[GeminiLive] 📱 Screen WakeLock acquired (display will stay awake during voice)');
+        wakeLockRef.current.addEventListener('release', () => {
+          console.log('[GeminiLive] 📱 Screen WakeLock released');
+        });
+      } catch (err) {
+        console.warn('[GeminiLive] WakeLock request notice:', err.message);
+      }
+    }
+  }, []);
+
+  /**
+   * Releases Screen WakeLock
+   */
+  const releaseWakeLock = useCallback(() => {
+    if (wakeLockRef.current) {
+      try {
+        wakeLockRef.current.release();
+      } catch (e) {}
+      wakeLockRef.current = null;
+    }
   }, []);
 
   /**
@@ -264,6 +309,27 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
       }));
     }
   }, [resetInactivityTimer]);
+
+  /**
+   * Handles session closure when the user says "bye", "goodbye", "exit", etc.
+   */
+  const handleCloseSession = useCallback((call) => {
+    console.log('[GeminiLive] User said farewell / requested exit ("bye"). Closing session.');
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        toolResponse: {
+          functionResponses: [{
+            response: { output: { status: 'closing', message: 'Session will disconnect.' } },
+            id: call.id
+          }]
+        }
+      }));
+    }
+    // Allow brief farewell audio to finish, then cleanly disconnect
+    setTimeout(() => {
+      disconnectRef.current?.();
+    }, 1800);
+  }, []);
 
   /**
    * Handles custom library search tool execution request from Gemini
@@ -366,6 +432,7 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
       socket.onopen = () => {
         setIsConnected(true);
         console.log('[GeminiLive] Connected successfully');
+        acquireWakeLock();
 
         /**
          * Setup message — key configuration:
@@ -389,7 +456,7 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
             },
             systemInstruction: {
               parts: [{
-                text: "You are a helpful RPG and book research assistant. You speak in British English with a friendly conversational tone. You have access to a tool named `searchLibrary` to query the user's PDF books. If the user says 'hang on', 'wait a second', 'hold on', 'give me a moment', or asks you to pause/wait, ALWAYS call the `extendKeepAlive` tool to prevent the voice session from closing and verbally acknowledge that you will wait for them. Keep responses concise and natural for spoken conversation."
+                text: "You are a helpful RPG and book research assistant. You speak in British English with a friendly conversational tone. You have access to three tools: 1) `searchLibrary` to query the user's PDF books; 2) `extendKeepAlive` if the user says 'hang on', 'wait a second', 'hold on', or asks you to pause; 3) `closeSession` if the user says 'bye', 'goodbye', 'take it easy', 'take care', 'see you later', 'catch you later', 'exit', 'quit', or asks you to close/stop the voice session. When the user says goodbye or 'take it easy', ALWAYS call the `closeSession` tool, say a warm, brief farewell (e.g., 'Take it easy! Speak soon.', 'Goodbye! Cheers!'), and the voice session will automatically close."
               }]
             },
             tools: [{
@@ -417,6 +484,19 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
                       minutes: {
                         type: 'NUMBER',
                         description: 'Number of minutes to keep the voice session active while waiting (default 3).'
+                      }
+                    }
+                  }
+                },
+                {
+                  name: 'closeSession',
+                  description: 'Closes and disconnects the Gemini Live voice session when the user says "bye", "goodbye", "take it easy", "take care", "see you later", "catch you later", "exit", "quit", or asks to close voice.',
+                  parameters: {
+                    type: 'OBJECT',
+                    properties: {
+                      reason: {
+                        type: 'STRING',
+                        description: 'Reason for closing (e.g. user farewell).'
                       }
                     }
                   }
@@ -527,6 +607,8 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
                 await handleSearchTool(call);
               } else if (call.name === 'extendKeepAlive') {
                 handleExtendKeepAlive(call);
+              } else if (call.name === 'closeSession') {
+                handleCloseSession(call);
               }
             }
           }
@@ -641,7 +723,7 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
       alert('Could not start live voice stream. Please check mic permissions.');
       disconnectLive();
     }
-  }, [isConnected, playAudioChunk, handleSearchTool, handleExtendKeepAlive, resetInactivityTimer, stopPlayback, sendTurnComplete]);
+  }, [isConnected, playAudioChunk, handleSearchTool, handleExtendKeepAlive, handleCloseSession, resetInactivityTimer, stopPlayback, sendTurnComplete]);
 
   /**
    * Ends real-time session and releases hardware devices
@@ -657,6 +739,7 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
       inactivityTimerRef.current = null;
     }
 
+    releaseWakeLock();
     stopPlayback();
     isInSpeechTurnRef.current = false;
 
@@ -688,6 +771,21 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false }) {
     isSetupCompleteRef.current = false;
     smoothVolumeRef.current = 0;
   }, [stopPlayback]);
+
+  // Visibility change & WakeLock re-acquisition listener
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (isConnected && document.visibilityState === 'visible') {
+        acquireWakeLock();
+        // Resume audio context if mobile browser suspended it during tab switch
+        if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+          audioCtxRef.current.resume();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isConnected, acquireWakeLock]);
 
   // Keep disconnectRef pointing at the latest version without causing effect re-runs
   useEffect(() => { disconnectRef.current = disconnectLive; }, [disconnectLive]);

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Folder, File, ChevronRight, ChevronDown, X, BookOpen, 
   ExternalLink, Trash2, Move, Plus, Search, CheckSquare, Square,
-  AlertCircle, ChevronLeft, Sparkles, Brain, RotateCcw
+  AlertCircle, ChevronLeft, Sparkles, Brain, RotateCcw, RefreshCw, Zap
 } from 'lucide-react';
 import { checkIsEntertainment } from '../utils/contentFilter';
 
@@ -120,7 +120,7 @@ const CatalogItem = ({
   );
 };
 
-export default function CatalogBrowser({ onClose, onOpenFile, chatTone = 'friendly' }) {
+export default function CatalogBrowser({ onClose, onOpenFile, chatTone = 'friendly', syncStatus, onSync, onOpenHnsw }) {
   const [catalog, setCatalog] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -134,6 +134,7 @@ export default function CatalogBrowser({ onClose, onOpenFile, chatTone = 'friend
   const [deletionProgress, setDeletionProgress] = useState({ current: 0, total: 0, lastFile: '' });
   const [abortDeletion, setAbortDeletion] = useState(false);
   const [showIndexSummary, setShowIndexSummary] = useState(false);
+  const isSyncing = syncStatus?.drive?.active || syncStatus?.indexing?.active;
 
   const loadCatalog = useCallback(() => {
     setLoading(true);
@@ -401,6 +402,35 @@ export default function CatalogBrowser({ onClose, onOpenFile, chatTone = 'friend
               <RotateCcw size={14} />
               <span>Retry Failed</span>
             </button>
+            {onSync && (
+              <button 
+                className={`toolbar-btn ${isSyncing ? 'active' : ''}`}
+                onClick={onSync}
+                disabled={isSyncing}
+                style={{
+                  background: isSyncing ? 'rgba(34, 197, 94, 0.15)' : undefined,
+                  color: isSyncing ? '#22C55E' : undefined,
+                  borderColor: isSyncing ? 'rgba(34, 197, 94, 0.3)' : undefined
+                }}
+              >
+                <RefreshCw size={14} className={isSyncing ? 'spin' : ''} />
+                <span>{isSyncing ? 'Syncing...' : 'Sync & Index'}</span>
+              </button>
+            )}
+            {onOpenHnsw && (
+              <button 
+                className="toolbar-btn"
+                onClick={onOpenHnsw}
+                style={{
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  color: '#10B981',
+                  borderColor: 'rgba(16, 185, 129, 0.25)'
+                }}
+              >
+                <Zap size={14} />
+                <span>Fast Index (HNSW)</span>
+              </button>
+            )}
           </div>
           
           <div className="catalog-toolbar-right">

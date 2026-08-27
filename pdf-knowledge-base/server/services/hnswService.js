@@ -179,6 +179,12 @@ export function searchHnsw(queryEmbedding, topK = 8, allowedDriveFileIds = null,
     const fetchK = allowedDriveFileIds 
       ? Math.min(Math.max(topK * 50, 500), _totalVectors)
       : Math.min(Math.max(topK * 5, 50), _totalVectors);
+
+    // Widen the search beam so the greedy graph walk explores more candidates.
+    // ef defaults to the same value as K (very narrow). Setting it to at least
+    // efConstruction (200) significantly improves recall with no index rebuild.
+    _index.setEf(Math.max(200, fetchK));
+
     const { neighbors, distances } = _index.searchKnn(queryEmbedding, fetchK);
     const results = [];
     for (let i = 0; i < neighbors.length; i++) {

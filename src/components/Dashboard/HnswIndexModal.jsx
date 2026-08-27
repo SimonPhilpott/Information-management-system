@@ -140,7 +140,7 @@ export default function HnswIndexModal({ isOpen, onClose, onIndexBuilt }) {
         inset: 0,
         backgroundColor: 'rgba(0, 0, 0, 0.65)',
         backdropFilter: 'blur(16px)',
-        zIndex: 9999,
+        zIndex: 100000,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

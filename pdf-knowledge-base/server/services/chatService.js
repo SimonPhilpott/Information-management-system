@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import config from '../config.js';
 import { generateQueryEmbedding } from './embeddingService.js';
-import { searchSimilar } from './vectorStore.js';
+import { searchSimilar, searchSimilarMultiQuery } from './vectorStore.js';
 import { logUsage, isNearSpendCap } from './usageService.js';
 import { generateImage } from './imageService.js';
 import db from '../db/database.js';
@@ -60,8 +60,101 @@ const TONE_INSTRUCTIONS = {
 };
 
 /**
- * Process a chat message through the RAG pipeline or general chat
+ * Build synonym query variants from a user query to improve thematic recall.
+ *
+ * Strategy: attach up to 3 semantically different rephrasing angles to the
+ * original. The embeddings of each variant will cover different regions of the
+ * vector space, so niche rulebook vocabulary ("Eastern Front", "D-Day",
+ * "Wehrmacht") gets captured even when the user typed "WW2".
+ *
+ * @param {string} query
+ * @returns {string[]} - Array of 2-4 distinct query strings
  */
+function expandQueryVariants(query) {
+  const q = query.trim();
+  const variants = new Set([q]);
+
+  const expansionMap = [
+    // WW2 / historical war themes
+    [/\b(ww2|world war 2|world war ii|wwii|second world war)\b/i,
+      ['World War 2 1939 1945 Allied Axis warfare', 'Second World War Germany France Pacific Eastern Front', 'WWII D-Day Normandy Operation Overlord']],
+    // WW1
+    [/\b(ww1|world war 1|world war i|wwi|first world war|great war)\b/i,
+      ['World War 1 1914 1918 trenches Western Front', 'Great War Somme Verdun artillery']],
+    // Fantasy / dungeon
+    [/\b(fantasy|dungeon|dragon|magic|wizard|elf|dwarf)\b/i,
+      ['fantasy adventure dungeon crawl monsters spells', 'medieval high fantasy swords sorcery']],
+    // Sci-fi / space
+    [/\b(sci.?fi|space|starship|alien|futuristic|cyberpunk)\b/i,
+      ['science fiction space exploration alien encounter', 'futuristic technology starship crew cyberpunk']],
+    // Rules / how to play
+    [/\b(how to play|rules|rulebook|setup|turns|mechanics)\b/i,
+      ['game rules setup turn order mechanics', 'how to play game instructions phases rounds']],
+    // Horror / Cthulhu
+    [/\b(horror|cthulhu|lovecraft|eldritch|cosmic|sanity)\b/i,
+      ['Lovecraftian horror eldritch cosmic dread sanity', 'Cthulhu mythos investigators occult']],
+    // Napoleonic / historical
+    [/\b(napoleon|napoleonic|waterloo|1815|empire)\b/i,
+      ['Napoleonic Wars 1815 Waterloo French Empire infantry', 'Napoleonic era cannon musket cavalry']],
+  ];
+
+  for (const [pattern, expansions] of expansionMap) {
+    if (pattern.test(q)) {
+      for (const expansion of expansions) {
+        // Combine original query context with the expansion phrase
+        variants.add(`${q} ${expansion}`);
+      }
+      break; // Only one expansion block per query to keep token use bounded
+    }
+  }
+
+  // Always add a "list of games" framing variant when the query asks for games/titles
+  if (/\b(games?|titles?|rulebooks?|what.*have|which.*have|do i have)\b/i.test(q)) {
+    variants.add(`list of board games tabletop games rulebooks ${q}`);
+  }
+
+  return [...variants].slice(0, 4); // Max 4 variants to bound embedding API cost
+}
+
+/**
+ * Builds a thorough Global Library Manifest listing all indexed documents
+ * along with their subject categories, page counts, and extracted themes/topics.
+ *
+ * @returns {string} - Formatted manifest string for prompt context injection
+ */
+function buildLibraryManifest() {
+  try {
+    const docs = db.prepare('SELECT id, filename, subject, page_count FROM documents WHERE indexed = 1').all();
+    if (docs.length === 0) {
+      return 'No documents currently indexed in the library.';
+    }
+
+    const topics = db.prepare('SELECT document_id, topic, description FROM topics').all();
+    
+    // Group topics by document ID
+    const topicsByDoc = {};
+    for (const t of topics) {
+      if (!topicsByDoc[t.document_id]) {
+        topicsByDoc[t.document_id] = [];
+      }
+      topicsByDoc[t.document_id].push(`${t.topic}${t.description ? `: ${t.description}` : ''}`);
+    }
+
+    const manifestParts = docs.map((doc, idx) => {
+      const docTopics = topicsByDoc[doc.id] || [];
+      const topicsStr = docTopics.length > 0 
+        ? docTopics.map(topic => `"${topic}"`).join(', ') 
+        : 'None extracted';
+      return `${idx + 1}. Document: "${doc.filename}"\n   Subject/Category: ${doc.subject}\n   Total Pages: ${doc.page_count}\n   Key Themes/Topics: ${topicsStr}`;
+    });
+
+    return manifestParts.join('\n\n');
+  } catch (err) {
+    console.error('[Manifest] Failed to build library manifest:', err);
+    return 'Library Manifest temporarily unavailable.';
+  }
+}
+
 export async function processMessage(message, sessionId, subjects = [], modelChoice = 'flash', appMode = 'kb', imageData = null, tone = 'friendly', attachments = null, showPersonal = false) {
   // Check if we have a 100% validated answer for this exact prompt in our database
   const validatedMatch = db.prepare('SELECT answer FROM validated_qas WHERE LOWER(TRIM(question)) = LOWER(TRIM(?))').get(message);
@@ -118,8 +211,25 @@ export async function processMessage(message, sessionId, subjects = [], modelCho
   let relevantChunks = [];
 
   if (!isGeneral) {
-    const queryEmbedding = await generateQueryEmbedding(expandedQuery);
-    relevantChunks = await searchSimilar(queryEmbedding, subjects, config.defaults.topK, showPersonal);
+    const queryVariants = expandQueryVariants(expandedQuery);
+    console.log(`[Chat] Multi-query expansion: ${queryVariants.length} variant(s) for: "${expandedQuery.slice(0, 80)}"`);
+
+    // Detect if this is a general collection/library question or count query
+    const isLibraryQuestion = /\b(how many|list|all|collection|themes?|genre|what.*have|count|games?|rulebooks?|do i have)\b/i.test(message);
+    const topK = isLibraryQuestion ? 30 : config.defaults.topK;
+    if (isLibraryQuestion) {
+      console.log(`[Chat] Dynamic Top-K enabled: Scaling retrieval topK to ${topK} for library/aggregation query.`);
+    }
+
+    if (queryVariants.length === 1) {
+      // Single variant — no expansion needed, use original fast path
+      const queryEmbedding = await generateQueryEmbedding(queryVariants[0]);
+      relevantChunks = await searchSimilar(queryEmbedding, subjects, topK, showPersonal);
+    } else {
+      // Multiple variants — embed all in parallel and merge results
+      const queryEmbeddings = await Promise.all(queryVariants.map(v => generateQueryEmbedding(v)));
+      relevantChunks = await searchSimilarMultiQuery(queryEmbeddings, subjects, topK, showPersonal);
+    }
     
     const contextParts = relevantChunks.map((chunk, i) => {
       const imgNote = chunk.hasImages ? " [PAGE HAS IMAGES/DIAGRAMS]" : "";
@@ -160,7 +270,10 @@ export async function processMessage(message, sessionId, subjects = [], modelCho
   if (isGeneral) {
     promptParts.push({ text: `USER QUESTION: ${message}${attachmentContext}` });
   } else {
-    promptParts.push({ text: `CONTEXT FROM USER'S PDF LIBRARY:\n\n${context}${attachmentContext}\n\n---\n\nUSER QUESTION: ${message}` });
+    const manifest = buildLibraryManifest();
+    promptParts.push({ 
+      text: `GLOBAL LIBRARY MANIFEST (All rulebooks and their themes in your collection):\n\n${manifest}\n\n---\n\nCONTEXT FROM USER'S PDF LIBRARY (MATCHED PAGES):\n\n${context}${attachmentContext}\n\n---\n\nUSER QUESTION: ${message}` 
+    });
   }
 
   if (imageData) {

@@ -238,6 +238,47 @@ export async function searchSimilar(queryEmbedding, subjects = [], topK = 8, sho
 }
 
 /**
+ * Multi-query semantic search: fires several synonym embeddings in parallel and
+ * merges results. This dramatically improves recall for thematic queries where
+ * rulebook vocabulary (e.g. "Normandy", "D-Day") doesn't align with the user's
+ * phrase (e.g. "WW2 games").
+ *
+ * @param {number[][]} queryEmbeddings - Array of embedding vectors (one per query variant)
+ * @param {string[]} subjects - Optional subject filter
+ * @param {number} topK - Number of final results to return
+ * @param {boolean} showPersonal - Include personal/entertainment content
+ * @returns {Promise<Array>}
+ */
+export async function searchSimilarMultiQuery(queryEmbeddings, subjects = [], topK = 8, showPersonal = false) {
+  // Fire all query variants in parallel — they share the same HNSW index
+  const allResultSets = await Promise.all(
+    queryEmbeddings.map(embedding => searchSimilar(embedding, subjects, topK * 3, showPersonal))
+  );
+
+  // Merge: keep the highest-scoring chunk per unique (driveFileId, chunkIndex) pair.
+  // Using driveFileId+chunkIndex as the dedup key ensures the same text passage
+  // from the same document is only counted once, even if two variants find it.
+  const bestByKey = new Map();
+
+  for (const resultSet of allResultSets) {
+    if (!resultSet) continue;
+    for (const chunk of resultSet) {
+      const key = `${chunk.driveFileId}::${chunk.chunkIndex ?? chunk.pageNum}`;
+      const existing = bestByKey.get(key);
+      if (!existing || chunk.similarity > existing.similarity) {
+        bestByKey.set(key, chunk);
+      }
+    }
+  }
+
+  // Sort merged set and return top-K
+  return [...bestByKey.values()]
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, topK);
+}
+
+
+/**
  * Get list of all indexed subjects
  */
 export function getIndexedSubjects() {
