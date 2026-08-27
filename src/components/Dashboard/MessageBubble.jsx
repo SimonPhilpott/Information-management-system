@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { User, Bot, Zap, Brain, Sparkles, Copy, Check, ShieldCheck, Info, Loader2 } from 'lucide-react';
+import { User, Bot, Zap, Brain, Sparkles, Copy, Check, ShieldCheck, Info, Loader2, Volume2, AudioLines } from 'lucide-react';
 import CitationCard from './CitationCard';
 import { Tooltip } from './CursorHover';
 
-export default function MessageBubble({ message, onOpenPdf, onPin, pinnedItems = [], onOpenCanvas, showCitations }) {
-  const { role, content, citations, model, canvasUpdate, id, confidenceScore, validationStatus } = message;
+export default function MessageBubble({ message, onOpenPdf, onPin, pinnedItems = [], onOpenCanvas, showCitations, onAskGeneralChat }) {
+  const { role, content, citations, model, canvasUpdate, id, confidenceScore, validationStatus, isLiveVoice } = message;
   
   const [localConfidenceScore, setLocalConfidenceScore] = React.useState(confidenceScore);
   const [localValidationStatus, setLocalValidationStatus] = React.useState(validationStatus);
@@ -404,9 +404,23 @@ export default function MessageBubble({ message, onOpenPdf, onPin, pinnedItems =
   };
 
   return (
-    <div className={`message ${role}`}>
-      <div className="message-avatar">
-        {role === 'user' ? <User size={16} /> : <Bot size={16} />}
+    <div className={`message ${role} ${isLiveVoice ? 'live-voice-message' : ''}`}>
+      <div className="message-avatar" style={isLiveVoice ? {
+        background: role === 'user' ? 'rgba(6, 182, 212, 0.15)' : 'rgba(99, 102, 241, 0.15)',
+        border: role === 'user' ? '1px solid rgba(6, 182, 212, 0.3)' : '1px solid rgba(99, 102, 241, 0.3)',
+        color: role === 'user' ? 'var(--accent-cyan)' : 'var(--accent-indigo)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: '50%',
+        width: '32px',
+        height: '32px'
+      } : {}}>
+        {isLiveVoice ? (
+          role === 'user' ? <AudioLines size={14} className="animate-pulse" /> : <Volume2 size={14} className="animate-pulse" />
+        ) : (
+          role === 'user' ? <User size={16} /> : <Bot size={16} />
+        )}
       </div>
       <div className="message-content">
         {message.image && (
@@ -448,8 +462,40 @@ export default function MessageBubble({ message, onOpenPdf, onPin, pinnedItems =
           </div>
         )}
 
+        {role === 'user' && isLiveVoice && onAskGeneralChat && (
+          <div className="message-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+            <Tooltip text="Submit this voice prompt to the general text chat agent">
+              <button 
+                className="verify-btn" 
+                onClick={() => onAskGeneralChat(content)}
+              >
+                <Bot size={12} />
+                <span>Ask General Chat</span>
+              </button>
+            </Tooltip>
+          </div>
+        )}
+
         {role === 'assistant' && (
           <div className="message-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {isLiveVoice && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontSize: '11px',
+                color: 'var(--accent-cyan)',
+                fontWeight: '700',
+                background: 'rgba(6, 182, 212, 0.05)',
+                border: '1px solid rgba(6, 182, 212, 0.2)',
+                padding: '4px 8px',
+                borderRadius: 'var(--radius-sm)',
+                whiteSpace: 'nowrap'
+              }}>
+                <Volume2 size={12} />
+                <span>Voice Response</span>
+              </div>
+            )}
             {localConfidenceScore !== null && localConfidenceScore !== undefined && (
               <div className="confidence-rating" style={{
                 display: 'flex',

@@ -254,6 +254,7 @@ export default function ChatInterface({
               pinnedItems={pinnedItems}
               onOpenCanvas={onOpenCanvas}
               showCitations={showCitations}
+              onAskGeneralChat={onSendMessage}
             />
           ))}
           {isTyping && (
@@ -341,18 +342,22 @@ export default function ChatInterface({
                 </span>
                 <span className={`text-[13px] font-semibold ${p.textCls} truncate`}>{p.label}</span>
               </div>
-              <div className="flex items-center justify-center relative w-9 h-9 z-10 mr-1 flex-shrink-0">
-                <div className={`absolute rounded-full border ${p.ring} transition-transform duration-75`} style={{ width: '100%', height: '100%', transform: `scale(${1 + liveActiveVol / 55})`, opacity: liveActiveVol > 4 ? 0.9 : 0 }} />
-                <div className={`absolute rounded-full border ${p.ring} transition-transform duration-100`} style={{ width: '100%', height: '100%', transform: `scale(${1.25 + liveActiveVol / 38})`, opacity: liveActiveVol > 8 ? 0.4 : 0 }} />
-                {liveStatus === 'thinking' ? (
-                  <div className={`rounded-full flex items-center justify-center ${isSearching ? 'bg-purple-500' : 'bg-amber-500'}`} style={{ width: '22px', height: '22px', boxShadow: `0 0 14px ${p.glow}`, animation: 'spin 1s linear infinite' }}>
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4" /></svg>
-                  </div>
-                ) : (
-                  <div className={`rounded-full transition-all duration-75 flex items-center justify-center ${p.dot}`} style={{ width: `${20 + liveActiveVol / 5}px`, height: `${20 + liveActiveVol / 5}px`, boxShadow: `0 0 12px ${p.glow}` }}>
-                    <AudioLines size={10} className="text-white" />
-                  </div>
-                )}
+              
+              {/* Live Audio Visualizer Pulse */}
+              <div className="flex items-center gap-2.5 z-10 flex-shrink-0">
+                <div className="flex items-center justify-center relative w-9 h-9 flex-shrink-0">
+                  <div className={`absolute rounded-full border ${p.ring} transition-transform duration-75`} style={{ width: '100%', height: '100%', transform: `scale(${1 + liveActiveVol / 55})`, opacity: liveActiveVol > 4 ? 0.9 : 0 }} />
+                  <div className={`absolute rounded-full border ${p.ring} transition-transform duration-100`} style={{ width: '100%', height: '100%', transform: `scale(${1.25 + liveActiveVol / 38})`, opacity: liveActiveVol > 8 ? 0.4 : 0 }} />
+                  {liveStatus === 'thinking' ? (
+                    <div className={`rounded-full flex items-center justify-center ${isSearching ? 'bg-purple-500' : 'bg-amber-500'}`} style={{ width: '22px', height: '22px', boxShadow: `0 0 14px ${p.glow}`, animation: 'spin 1s linear infinite' }}>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4" /></svg>
+                    </div>
+                  ) : (
+                    <div className={`rounded-full transition-all duration-75 flex items-center justify-center ${p.dot}`} style={{ width: `${20 + liveActiveVol / 5}px`, height: `${20 + liveActiveVol / 5}px`, boxShadow: `0 0 12px ${p.glow}` }}>
+                      <AudioLines size={10} className="text-white" />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           ) : (
