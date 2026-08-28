@@ -175,8 +175,9 @@ const server = app.listen(config.port, async () => {
   }
 });
 
-// WebSocket Server for Gemini Live Proxy
+// WebSocket Server for Gemini Live Proxy (Strict Single Connection Enforced)
 const wss = new WebSocketServer({ noServer: true });
+let activeSession = null;
 
 server.on('upgrade', (request, socket, head) => {
   const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
@@ -192,6 +193,21 @@ server.on('upgrade', (request, socket, head) => {
 wss.on('connection', (ws) => {
   console.log('[LiveProxy] Client connected');
   
+  // Terminate any previous lingering session immediately to prevent overlapping audio streams
+  if (activeSession) {
+    console.warn('[LiveProxy] ⚠️ Terminating previous lingering session to ensure single clean stream');
+    try {
+      if (activeSession.geminiWs && (activeSession.geminiWs.readyState === WebSocket.OPEN || activeSession.geminiWs.readyState === WebSocket.CONNECTING)) {
+        activeSession.geminiWs.close(1000, 'Replaced by new session');
+      }
+      if (activeSession.clientWs && activeSession.clientWs.readyState === WebSocket.OPEN) {
+        activeSession.clientWs.close(1000, 'Replaced by new session');
+      }
+    } catch (e) {
+      console.error('[LiveProxy] Error closing prior session:', e);
+    }
+  }
+
   const apiKey = process.env.GEMINI_API_KEY || config.gemini?.apiKey;
   if (!apiKey) {
     console.error('[LiveProxy] Gemini API key not found in environment');
@@ -201,6 +217,7 @@ wss.on('connection', (ws) => {
 
   const geminiUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
   const geminiWs = new WebSocket(geminiUrl);
+  activeSession = { clientWs: ws, geminiWs };
 
   // Message queue for outbound messages to Gemini while connection is opening
   const outboundQueue = [];
@@ -215,12 +232,41 @@ wss.on('connection', (ws) => {
     }
   });
 
+  // Direct Raw Packet Capture: Stream recording to WAV on disk
+  const capturesDir = path.join(__dirname, 'audio_captures');
+  if (!fs.existsSync(capturesDir)) fs.mkdirSync(capturesDir, { recursive: true });
+  const captureFilename = `raw_gemini_audio_${Date.now()}.wav`;
+  const capturePath = path.join(capturesDir, captureFilename);
+  const audioChunks = [];
+  const captureStartTime = Date.now();
+  console.log(`[AudioCapture] 🎙️ Initialised raw packet capture: ${capturePath}`);
+
   geminiWs.on('message', (data) => {
     const msgStr = data.toString();
     try {
       const parsed = JSON.parse(msgStr);
       const keys = Object.keys(parsed);
-      console.log('[LiveProxy] ← Gemini msg keys:', keys, '| client ws state:', ws.readyState, '(1=OPEN)');
+      
+      // Check for incoming audio parts
+      if (parsed.serverContent?.modelTurn?.parts) {
+        for (const part of parsed.serverContent.modelTurn.parts) {
+          if (part.inlineData?.mimeType?.startsWith('audio/') && part.inlineData.data) {
+            const rawBytes = Buffer.from(part.inlineData.data, 'base64');
+            audioChunks.push(rawBytes);
+            const elapsedSec = ((Date.now() - captureStartTime) / 1000).toFixed(2);
+            console.log(`[AudioCapture] [${elapsedSec}s] Captured raw chunk: ${rawBytes.length} bytes (Total: ${audioChunks.reduce((a, c) => a + c.length, 0)} bytes)`);
+          }
+        }
+      }
+
+      // Check for native text parts
+      if (parsed.serverContent?.modelTurn?.parts) {
+        for (const part of parsed.serverContent.modelTurn.parts) {
+          if (part.text) {
+            console.log(`[LiveTranscript] Text received from Gemini:`, part.text);
+          }
+        }
+      }
     } catch (e) { /* non-JSON binary frame */ }
 
     if (ws.readyState === ws.OPEN) {
@@ -230,8 +276,43 @@ wss.on('connection', (ws) => {
     }
   });
 
+  const flushWavToDisk = () => {
+    if (audioChunks.length === 0) return;
+    try {
+      const totalPcmBytes = audioChunks.reduce((acc, c) => acc + c.length, 0);
+      // WAV header (44 bytes) for 24kHz, 16-bit mono PCM
+      const wavHeader = Buffer.alloc(44);
+      const sampleRate = 24000;
+      const numChannels = 1;
+      const bitsPerSample = 16;
+      const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+      const blockAlign = numChannels * (bitsPerSample / 8);
+
+      wavHeader.write('RIFF', 0);
+      wavHeader.writeUInt32LE(36 + totalPcmBytes, 4);
+      wavHeader.write('WAVE', 8);
+      wavHeader.write('fmt ', 12);
+      wavHeader.writeUInt32LE(16, 16); // Subchunk1Size (16 for PCM)
+      wavHeader.writeUInt16LE(1, 20);  // AudioFormat (1 for PCM)
+      wavHeader.writeUInt16LE(numChannels, 22);
+      wavHeader.writeUInt32LE(sampleRate, 24);
+      wavHeader.writeUInt32LE(byteRate, 28);
+      wavHeader.writeUInt16LE(blockAlign, 32);
+      wavHeader.writeUInt16LE(bitsPerSample, 34);
+      wavHeader.write('data', 36);
+      wavHeader.writeUInt32LE(totalPcmBytes, 40);
+
+      const finalWav = Buffer.concat([wavHeader, ...audioChunks]);
+      fs.writeFileSync(capturePath, finalWav);
+      const durationSec = (totalPcmBytes / byteRate).toFixed(2);
+      console.log(`[AudioCapture] 💾 SAVED RAW WAV: ${capturePath} (${durationSec}s of audio, ${finalWav.length} bytes)`);
+    } catch (err) {
+      console.error('[AudioCapture] Error saving WAV:', err);
+    }
+  };
+
   geminiWs.on('close', (code, reason) => {
-    // Convert reason Buffer to string safely
+    flushWavToDisk();
     const reasonStr = reason ? reason.toString() : '';
     console.log(`[LiveProxy] Gemini Live closed connection: ${code} - ${reasonStr}`);
     try {

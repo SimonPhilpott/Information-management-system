@@ -104,9 +104,51 @@ export function useAppLogic() {
     _setShowPersonal(newVal);
   }, [showPersonal]);
 
+  // Live voice prompt handler: records spoken user questions into chat history
+  const handleUserLiveTranscript = useCallback((userText) => {
+    if (!userText) return;
+    setMessages(prev => [
+      ...prev,
+      {
+        id: `live_user_${Date.now()}`,
+        role: 'user',
+        content: userText,
+        isLiveVoice: true,
+        timestamp: new Date().toISOString()
+      }
+    ]);
+  }, []);
+
+  // Live voice response handler: streams model voice answers into chat history
+  const handleModelLiveTranscript = useCallback((textChunk) => {
+    if (!textChunk) return;
+    setMessages(prev => {
+      const last = prev[prev.length - 1];
+      if (last && last.role === 'assistant' && last.isLiveVoice) {
+        return [
+          ...prev.slice(0, -1),
+          { ...last, content: (last.content || '') + textChunk }
+        ];
+      }
+      return [
+        ...prev,
+        {
+          id: `live_assistant_${Date.now()}`,
+          role: 'assistant',
+          content: textChunk,
+          isLiveVoice: true,
+          model: 'Gemini Live',
+          timestamp: new Date().toISOString()
+        }
+      ];
+    });
+  }, []);
+
   const geminiLive = useGeminiLive({
     selectedSubjects,
-    showPersonal
+    showPersonal,
+    onUserTranscript: handleUserLiveTranscript,
+    onModelTranscript: handleModelLiveTranscript
   });
   
   const [canvasContent, setCanvasContent] = useState(null);
