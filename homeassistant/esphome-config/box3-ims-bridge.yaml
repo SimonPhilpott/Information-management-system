@@ -1,0 +1,105 @@
+esphome:
+  name: box3-ims-bridge
+  friendly_name: Box3 IMS Bridge
+
+esp32:
+  board: esp32s3box
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+  level: DEBUG
+
+api:
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: "XXX"
+  password: "XXX"
+
+external_components:
+  - source:
+      type: local
+      path: components
+
+# --- Audio hardware: proven-working pin mapping for ESP32-S3-BOX-3, taken
+# from LovyanGFX's official board_ESP32_S3_BOX_V3 profile and a working
+# ESPHome config for this exact board (AlmostInteractive/ESP32-S3-Box-3-
+# Voice-Assistant-Sensor-Dock) - confirmed working end-to-end via the Home
+# Assistant Voice Satellite pipeline earlier this session.
+i2c:
+  - id: bus_a
+    sda: GPIO08
+    scl: GPIO18
+    frequency: 100kHz
+
+# Using the unmerged full_duplex feature from
+# https://github.com/esphome/esphome/pull/16882 instead of the two-bus
+# master/slave workaround, which never got the driver past "Parent bus is
+# busy" on this board. full_duplex allocates the RX and TX channels TOGETHER
+# on ONE bus, which is what the underlying ESP-IDF driver actually requires
+# for this exact scenario - not a hand-rolled workaround.
+i2s_audio:
+  - id: i2s_bus
+    i2s_mclk_pin: GPIO2
+    i2s_bclk_pin: GPIO17
+    i2s_lrclk_pin: GPIO45
+    full_duplex: true
+
+# No explicit sample_rate/bits_per_sample here, matching the reference
+# project exactly - defaults naturally align to the mic-master's 16kHz bus,
+# rather than risking a mismatched explicit declaration on a secondary/slave
+# that (per i2s_audio_speaker_standard.cpp) can't run its own clock rate.
+audio_adc:
+  - id: es7210_adc
+    platform: es7210
+    i2c_id: bus_a
+
+audio_dac:
+  - id: es8311_dac
+    platform: es8311
+    i2c_id: bus_a
+    sample_rate: 16000
+
+microphone:
+  - platform: i2s_audio
+    id: box_mic
+    i2s_audio_id: i2s_bus
+    i2s_din_pin: GPIO16
+    bits_per_sample: 16bit
+    adc_type: external
+
+speaker:
+  - platform: i2s_audio
+    id: box_speaker
+    i2s_audio_id: i2s_bus
+    i2s_dout_pin: GPIO15
+    dac_type: external
+    audio_dac: es8311_dac
+    timeout: never
+    buffer_duration: 100ms
+
+  # Gemini Live sends 24kHz PCM; box_speaker runs at 16kHz to match the mic -
+  # this resampler converts between the two. Our component declares the real
+  # incoming format at runtime via set_audio_stream_info().
+  - platform: resampler
+    id: gemini_speaker
+    output_speaker: box_speaker
+    sample_rate: 16000
+    num_channels: 1
+
+# --- The actual point of this whole file: stream mic/speaker straight to
+# the IMS backend's Gemini Live proxy over a plain TCP socket.
+ims_bridge:
+  microphone: box_mic
+  speaker: gemini_speaker
+  host: "192.168.1.78"
+  port: 3002

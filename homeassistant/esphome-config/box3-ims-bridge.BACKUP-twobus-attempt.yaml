@@ -1,0 +1,129 @@
+esphome:
+  name: box3-ims-bridge
+  friendly_name: Box3 IMS Bridge
+
+esp32:
+  board: esp32s3box
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+  level: DEBUG
+
+api:
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: "XXX"
+  password: "XXX"
+
+external_components:
+  - source:
+      type: local
+      path: components
+
+# --- Audio hardware: proven-working pin mapping for ESP32-S3-BOX-3, taken
+# from LovyanGFX's official board_ESP32_S3_BOX_V3 profile and a working
+# ESPHome config for this exact board (AlmostInteractive/ESP32-S3-Box-3-
+# Voice-Assistant-Sensor-Dock) - confirmed working end-to-end via the Home
+# Assistant Voice Satellite pipeline earlier this session.
+i2c:
+  - id: bus_a
+    sda: GPIO08
+    scl: GPIO18
+    frequency: 100kHz
+
+# Two SEPARATE i2s_audio buses sharing the same physical BCLK/LRCLK pins,
+# rather than one shared bus - ESPHome's i2s_audio can't have a mic and a
+# speaker both independently own one bus (fails with "Parent bus is busy",
+# a known limitation: https://github.com/esphome/esphome/issues/16043).
+# The proven workaround (community project: MichalZaniewicz/esphome-
+# waveshare-esp32-s3-audio-va) is for the mic to be I2S master - it's always
+# capturing, so it drives a continuous clock - while the speaker bus is a
+# slave that just reads that same clock instead of also trying to own it.
+i2s_audio:
+  - id: i2s_input
+    i2s_mclk_pin: GPIO2
+    i2s_bclk_pin:
+      number: GPIO17
+      allow_other_uses: true
+    i2s_lrclk_pin:
+      number: GPIO45
+      allow_other_uses: true
+  - id: i2s_output
+    i2s_bclk_pin:
+      number: GPIO17
+      allow_other_uses: true
+    i2s_lrclk_pin:
+      number: GPIO45
+      allow_other_uses: true
+
+# No explicit sample_rate/bits_per_sample here, matching the reference
+# project exactly - defaults naturally align to the mic-master's 16kHz bus,
+# rather than risking a mismatched explicit declaration on a secondary/slave
+# that (per i2s_audio_speaker_standard.cpp) can't run its own clock rate.
+audio_adc:
+  - id: es7210_adc
+    platform: es7210
+    i2c_id: bus_a
+
+audio_dac:
+  - id: es8311_dac
+    platform: es8311
+    i2c_id: bus_a
+    sample_rate: 16000
+
+microphone:
+  - platform: i2s_audio
+    id: box_mic
+    i2s_audio_id: i2s_input
+    i2s_din_pin: GPIO16
+    # default i2s_mode is "primary" (master) - as master, the mic defines the
+    # shared bus's frame/slot width, so it must be 16-bit (i2s_audio's
+    # default is 32-bit) to match the 16-bit ES8311/speaker side, or
+    # playback comes out as noise.
+    bits_per_sample: 16bit
+    adc_type: external
+
+speaker:
+  - platform: i2s_audio
+    id: box_speaker
+    i2s_audio_id: i2s_output
+    i2s_mode: secondary # slave to the mic bus's clock
+    i2s_dout_pin: GPIO15
+    dac_type: external
+    audio_dac: es8311_dac
+    timeout: never
+    buffer_duration: 100ms
+
+  # The reference project never writes raw audio straight to a secondary/
+  # slave speaker (which is locked to the mic-master's 16kHz clock) - it
+  # always goes through a resampler first. Gemini Live sends 24kHz PCM, so
+  # this is what actually converts it down to the bus's real 16kHz rate,
+  # instead of the mismatched direct sample_rate declaration that was
+  # likely contributing to the "Parent bus is busy" failures.
+  - platform: resampler
+    id: gemini_speaker
+    output_speaker: box_speaker
+    # box_speaker is a secondary/slave locked to the mic-master's 16000Hz -
+    # this must match that, not Gemini's real 24000Hz output. Our component
+    # tells the resampler the real incoming format at runtime via
+    # set_audio_stream_info() instead, which is what resamplers are for.
+    sample_rate: 16000
+    num_channels: 1
+
+# --- The actual point of this whole file: stream mic/speaker straight to
+# the IMS backend's Gemini Live proxy over a plain TCP socket.
+ims_bridge:
+  microphone: box_mic
+  speaker: gemini_speaker
+  host: "192.168.1.78"
+  port: 3002

@@ -4,6 +4,8 @@ import session from 'express-session';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import net from 'net';
+import { EventEmitter } from 'events';
 import { WebSocketServer, WebSocket } from 'ws';
 import config from './config.js';
 
@@ -52,6 +54,7 @@ import voiceRoutes from './routes/voice.js';
 import { getAuthStatus } from './services/driveService.js';
 import { validateConfiguredModels } from './services/modelService.js';
 import { loadHnswFromDisk } from './services/hnswService.js';
+import { executeHardwareRAGSearch } from './services/hardwareClientService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -66,10 +69,10 @@ for (const dir of dataDirs) {
 app.use(cors({
   origin: function (origin, callback) {
     // Allow localhost, local network IPs, nip.io domains, ngrok domains, or fallback
-    if (!origin || 
-        origin.match(/^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)(:\d+)?$/) || 
-        origin.match(/^http:\/\/192\.168\.\d+\.\d+\.nip\.io(:\d+)?$/) ||
-        origin.match(/^https:\/\/[a-zA-Z0-9-]+\.(ngrok-free\.app|ngrok-free\.dev)$/)) {
+    if (!origin ||
+      origin.match(/^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)(:\d+)?$/) ||
+      origin.match(/^http:\/\/192\.168\.\d+\.\d+\.nip\.io(:\d+)?$/) ||
+      origin.match(/^https:\/\/[a-zA-Z0-9-]+\.(ngrok-free\.app|ngrok-free\.dev)$/)) {
       callback(null, true);
     } else {
       callback(null, config.clientUrl);
@@ -148,7 +151,7 @@ app.use((err, req, res, next) => {
 const server = app.listen(config.port, async () => {
   console.log(`\n🚀 PDF Knowledge Base server running on http://localhost:${config.port}`);
   console.log(`📡 Client expected at ${config.clientUrl}\n`);
-  
+
   // Start Ngrok if it was previously enabled
   // We add a small delay to ensure external activation scripts (like enable-ngrok.js) have finished
   setTimeout(async () => {
@@ -159,7 +162,7 @@ const server = app.listen(config.port, async () => {
       console.error('[Ngrok] Startup error:', err.message);
     }
   }, 3000);
-  
+
   // Validate models on startup
   try {
     await validateConfiguredModels();
@@ -175,62 +178,82 @@ const server = app.listen(config.port, async () => {
   }
 });
 
-// WebSocket Server for Gemini Live Proxy (Strict Single Connection Enforced)
-const wss = new WebSocketServer({ noServer: true });
-let activeSession = null;
+// WebSocket Servers for Gemini Live Proxy (Dedicated Browser vs Hardware Endpoints)
+const browserWss = new WebSocketServer({ noServer: true });
+const hardwareWss = new WebSocketServer({ noServer: true });
+let activeBrowserSession = null;
+let activeHardwareSession = null;
 
 server.on('upgrade', (request, socket, head) => {
   const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
   if (pathname === '/api/live') {
-    wss.handleUpgrade(request, socket, head, (ws) => {
-      wss.emit('connection', ws, request);
+    browserWss.handleUpgrade(request, socket, head, (ws) => {
+      browserWss.emit('connection', ws, request);
+    });
+  } else if (pathname === '/api/hardware-live') {
+    hardwareWss.handleUpgrade(request, socket, head, (ws) => {
+      hardwareWss.emit('connection', ws, request);
     });
   } else {
     socket.destroy();
   }
 });
 
-wss.on('connection', (ws) => {
-  console.log('[LiveProxy] Client connected');
-  
-  // Terminate any previous lingering session immediately to prevent overlapping audio streams
-  if (activeSession) {
-    console.warn('[LiveProxy] ⚠️ Terminating previous lingering session to ensure single clean stream');
-    try {
-      if (activeSession.geminiWs && (activeSession.geminiWs.readyState === WebSocket.OPEN || activeSession.geminiWs.readyState === WebSocket.CONNECTING)) {
-        activeSession.geminiWs.close(1000, 'Replaced by new session');
+function handleLiveProxyConnection(ws, isHardware = false) {
+  const tag = isHardware ? '[HardwareLive]' : '[BrowserLive]';
+  console.log(`${tag} Client connected`);
+  if (isHardware) ws.isHardwareClient = true;
+
+  // Terminate only the prior session for THIS client type (browser vs hardware do not stomp each other)
+  if (isHardware) {
+    if (activeHardwareSession && activeHardwareSession.clientWs !== ws) {
+      console.warn(`${tag} ⚠️ Terminating previous hardware session`);
+      try {
+        if (activeHardwareSession.geminiWs && (activeHardwareSession.geminiWs.readyState === WebSocket.OPEN || activeHardwareSession.geminiWs.readyState === WebSocket.CONNECTING)) {
+          activeHardwareSession.geminiWs.close(1000, 'Replaced by new hardware session');
+        }
+        if (activeHardwareSession.clientWs && activeHardwareSession.clientWs.readyState === WebSocket.OPEN) {
+          activeHardwareSession.clientWs.close(1000, 'Replaced by new hardware session');
+        }
+      } catch (e) {
+        console.error(`${tag} Error closing prior hardware session:`, e);
       }
-      if (activeSession.clientWs && activeSession.clientWs.readyState === WebSocket.OPEN) {
-        activeSession.clientWs.close(1000, 'Replaced by new session');
+    }
+  } else {
+    if (activeBrowserSession && activeBrowserSession.clientWs !== ws) {
+      console.warn(`${tag} ⚠️ Terminating previous browser session`);
+      try {
+        if (activeBrowserSession.geminiWs && (activeBrowserSession.geminiWs.readyState === WebSocket.OPEN || activeBrowserSession.geminiWs.readyState === WebSocket.CONNECTING)) {
+          activeBrowserSession.geminiWs.close(1000, 'Replaced by new browser session');
+        }
+        if (activeBrowserSession.clientWs && activeBrowserSession.clientWs.readyState === WebSocket.OPEN) {
+          activeBrowserSession.clientWs.close(1000, 'Replaced by new browser session');
+        }
+      } catch (e) {
+        console.error(`${tag} Error closing prior browser session:`, e);
       }
-    } catch (e) {
-      console.error('[LiveProxy] Error closing prior session:', e);
     }
   }
 
   const apiKey = process.env.GEMINI_API_KEY || config.gemini?.apiKey;
   if (!apiKey) {
-    console.error('[LiveProxy] Gemini API key not found in environment');
+    console.error(`${tag} Gemini API key not found in environment`);
     ws.close(1011, 'Gemini API key not configured on server');
     return;
   }
 
   const geminiUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
-  const geminiWs = new WebSocket(geminiUrl);
-  activeSession = { clientWs: ws, geminiWs };
+  console.log(`${tag} Connecting to Gemini Live with key prefix: ${apiKey ? apiKey.slice(0, 6) : 'MISSING'}, url length: ${geminiUrl.length}`);
+  try {
+    fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+      `[${new Date().toISOString()}] ${tag} CONNECTING GEMINI keyPrefix=${apiKey ? apiKey.slice(0, 6) : 'MISSING'}\n`);
+  } catch (_) { }
 
-  // Message queue for outbound messages to Gemini while connection is opening
+  let currentGeminiWs = null;
+  let cachedSetupMsg = null;
+  let isClientClosed = false;
   const outboundQueue = [];
-
-  geminiWs.on('open', () => {
-    console.log('[LiveProxy] Connected to Gemini Live');
-    // Flush queued messages
-    while (outboundQueue.length > 0) {
-      const msg = outboundQueue.shift();
-      console.log('[LiveProxy] Flushing queued message to Gemini...');
-      geminiWs.send(msg);
-    }
-  });
+  let geminiFirstMessageLogged = false;
 
   // Direct Raw Packet Capture: Stream recording to WAV on disk
   const capturesDir = path.join(__dirname, 'audio_captures');
@@ -240,41 +263,6 @@ wss.on('connection', (ws) => {
   const audioChunks = [];
   const captureStartTime = Date.now();
   console.log(`[AudioCapture] 🎙️ Initialised raw packet capture: ${capturePath}`);
-
-  geminiWs.on('message', (data) => {
-    const msgStr = data.toString();
-    try {
-      const parsed = JSON.parse(msgStr);
-      const keys = Object.keys(parsed);
-      
-      // Check for incoming audio parts
-      if (parsed.serverContent?.modelTurn?.parts) {
-        for (const part of parsed.serverContent.modelTurn.parts) {
-          if (part.inlineData?.mimeType?.startsWith('audio/') && part.inlineData.data) {
-            const rawBytes = Buffer.from(part.inlineData.data, 'base64');
-            audioChunks.push(rawBytes);
-            const elapsedSec = ((Date.now() - captureStartTime) / 1000).toFixed(2);
-            console.log(`[AudioCapture] [${elapsedSec}s] Captured raw chunk: ${rawBytes.length} bytes (Total: ${audioChunks.reduce((a, c) => a + c.length, 0)} bytes)`);
-          }
-        }
-      }
-
-      // Check for native text parts
-      if (parsed.serverContent?.modelTurn?.parts) {
-        for (const part of parsed.serverContent.modelTurn.parts) {
-          if (part.text) {
-            console.log(`[LiveTranscript] Text received from Gemini:`, part.text);
-          }
-        }
-      }
-    } catch (e) { /* non-JSON binary frame */ }
-
-    if (ws.readyState === ws.OPEN) {
-      ws.send(msgStr);
-    } else {
-      console.warn('[LiveProxy] ⚠️ Cannot forward to client — ws state:', ws.readyState);
-    }
-  });
 
   const flushWavToDisk = () => {
     if (audioChunks.length === 0) return;
@@ -311,72 +299,379 @@ wss.on('connection', (ws) => {
     }
   };
 
-  geminiWs.on('close', (code, reason) => {
-    flushWavToDisk();
-    const reasonStr = reason ? reason.toString() : '';
-    console.log(`[LiveProxy] Gemini Live closed connection: ${code} - ${reasonStr}`);
-    try {
-      // Code 1005 (no status) cannot be sent - remap to 1000 (normal closure)
-      const safeCode = (code === 1005 || code === 1006) ? 1000 : code;
-      if (ws.readyState === ws.OPEN) {
-        ws.close(safeCode, reasonStr || 'Gemini session ended');
+  const createGeminiSocket = () => {
+    if (isClientClosed) return null;
+    const gWs = new WebSocket(geminiUrl);
+
+    if (isHardware) {
+      activeHardwareSession = { clientWs: ws, geminiWs: gWs };
+    } else {
+      activeBrowserSession = { clientWs: ws, geminiWs: gWs };
+    }
+
+    gWs.on('open', () => {
+      console.log(`${tag} Connected to Gemini Live upstream`);
+      // If we cached a setup handshake from the client, re-send it on new socket ONLY if outboundQueue doesn't already contain one
+      const hasQueuedSetup = outboundQueue.some(m => typeof m === 'string' && m.includes('"setup"'));
+      if (cachedSetupMsg && !hasQueuedSetup) {
+        console.log(`${tag} Replaying cached setup handshake to Gemini...`);
+        gWs.send(cachedSetupMsg);
       }
-    } catch (err) {
-      console.error('[LiveProxy] Error closing client ws after Gemini closed:', err.message);
-    }
-  });
+      // Flush queued messages
+      while (outboundQueue.length > 0) {
+        const msg = outboundQueue.shift();
+        console.log(`${tag} Flushing queued message to Gemini...`);
+        gWs.send(msg);
+      }
+    });
 
-  geminiWs.on('error', (err) => {
-    console.error('[LiveProxy] Gemini Live WebSocket error:', err.message);
-    try {
-      if (ws.readyState === ws.OPEN) ws.close(1011, 'Error communicating with Gemini');
-    } catch (closeErr) {
-      console.error('[LiveProxy] Error closing client ws after Gemini error:', closeErr.message);
-    }
-  });
+    gWs.on('message', (data) => {
+      if (!geminiFirstMessageLogged) {
+        geminiFirstMessageLogged = true;
+        const preview = data.toString().slice(0, 500);
+        console.log(`${tag} First Gemini message received:`, preview);
+        try {
+          fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+            `[${new Date().toISOString()}] ${tag} GEMINI FIRST MSG: ${preview}\n`);
+        } catch (_) { }
+      }
+      const msgStr = data.toString();
+      let parsedAudioBytes = null;
+      let parsed = null;
+      try {
+        parsed = JSON.parse(msgStr);
 
-  ws.on('message', (message) => {
+        // Check for incoming audio parts
+        if (parsed.serverContent?.modelTurn?.parts) {
+          for (const part of parsed.serverContent.modelTurn.parts) {
+            if (part.inlineData?.mimeType?.startsWith('audio/') && part.inlineData.data) {
+              const rawBytes = Buffer.from(part.inlineData.data, 'base64');
+              parsedAudioBytes = rawBytes;
+              audioChunks.push(rawBytes);
+              const elapsedSec = ((Date.now() - captureStartTime) / 1000).toFixed(2);
+              console.log(`[AudioCapture] [${elapsedSec}s] Captured raw chunk: ${rawBytes.length} bytes (Total: ${audioChunks.reduce((a, c) => a + c.length, 0)} bytes)`);
+            }
+          }
+        }
+
+        // Check for native text parts
+        if (parsed.serverContent?.modelTurn?.parts) {
+          for (const part of parsed.serverContent.modelTurn.parts) {
+            if (part.text) {
+              console.log(`${tag} [LiveTranscript] Text received from Gemini:`, part.text);
+            }
+          }
+        }
+
+        // If tool call is issued by Gemini, handle searchLibrary automatically for hardware clients only.
+        // Browser clients run their own handleSearchTool() in useGeminiLive.js and respond themselves -
+        // auto-responding here too raced it with a second, less-formatted toolResponse for the same
+        // call.id, degrading library answers and destabilizing the turn-taking/interrupt state.
+        if (isHardware && parsed.toolCall?.functionCalls) {
+          for (const call of parsed.toolCall.functionCalls) {
+            if (call.name === 'searchLibrary') {
+              console.log(`${tag} 🔍 Executing searchLibrary RAG tool for client: "${call.args?.query}"`);
+              executeHardwareRAGSearch(call.args?.query || '').then((contextText) => {
+                if (gWs.readyState === WebSocket.OPEN) {
+                  gWs.send(JSON.stringify({
+                    toolResponse: {
+                      functionResponses: [{
+                        response: { output: { text: contextText } },
+                        id: call.id
+                      }]
+                    }
+                  }));
+                  console.log(`${tag} ✅ Sent RAG context back to Gemini for hardware client`);
+                }
+              }).catch((err) => {
+                console.error(`${tag} RAG tool execution error:`, err);
+              });
+            }
+          }
+        }
+      } catch (e) { /* non-JSON binary frame */ }
+
+      if (ws.readyState === ws.OPEN) {
+        if (ws.isHardwareClient) {
+          // Hardware clients have limited WebSocket RX buffers (typically 2-4KB).
+          // NEVER forward raw Gemini JSON messages (which contain 60KB+ base64 audio and trigger 1009 error).
+          // Chunk binary audio into small frames (1024 bytes) so the ESP32 WebSocket buffer never overflows (1009)
+          if (parsedAudioBytes) {
+            const CHUNK_SIZE = 1024;
+            for (let i = 0; i < parsedAudioBytes.length; i += CHUNK_SIZE) {
+              const subChunk = parsedAudioBytes.subarray(i, i + CHUNK_SIZE);
+              ws.send(subChunk, { binary: true });
+            }
+          }
+          // Forward lightweight text snippet if available:
+          if (parsed?.serverContent?.modelTurn?.parts) {
+            for (const part of parsed.serverContent.modelTurn.parts) {
+              if (part.text) {
+                ws.send(JSON.stringify({ text: part.text }));
+              }
+            }
+          }
+          if (parsed?.setupComplete) {
+            ws.send(JSON.stringify({ setupComplete: {} }));
+          }
+          if (parsed?.serverContent?.turnComplete) {
+            ws.send(JSON.stringify({ turnComplete: true }));
+          }
+        } else {
+          // Forward standard text JSON frame to web browser client
+          ws.send(msgStr);
+        }
+      } else {
+        console.warn(`${tag} ⚠️ Cannot forward to client — ws state:`, ws.readyState);
+      }
+    });
+
+    gWs.on('close', (code, reason) => {
+      flushWavToDisk();
+      const reasonStr = reason ? reason.toString() : '';
+      console.log(`${tag} Gemini Live closed connection: ${code} - ${reasonStr}`);
+      try {
+        fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+          `[${new Date().toISOString()}] ${tag} GEMINI CLOSE: code=${code} reason="${reasonStr}"\n`);
+      } catch (_) { }
+
+      // Code 1000 is a normal WebSocket close (turn completed / idle duration reached).
+      // If the client socket is still active (especially hardware terminal awaiting next voice turn),
+      // do NOT drop the client socket. Reconnect to Gemini Live upstream transparently.
+      if (!isClientClosed && ws.readyState === WebSocket.OPEN && (code === 1000 || code === 1005)) {
+        console.log(`${tag} Gracefully handling code ${code} from Gemini. Keeping client socket open and preparing seamless upstream reconnect.`);
+        currentGeminiWs = null;
+        return;
+      }
+
+      // If unexpected fatal close (or client is already gone), close the client
+      try {
+        const safeCode = (code === 1005 || code === 1006) ? 1000 : code;
+        if (ws.readyState === ws.OPEN) {
+          ws.close(safeCode, reasonStr || 'Gemini session ended');
+        }
+      } catch (err) {
+        console.error(`${tag} Error closing client ws after Gemini closed:`, err.message);
+      }
+    });
+
+    gWs.on('error', (err) => {
+      console.error(`${tag} Gemini Live WebSocket error:`, err.message);
+      try {
+        fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+          `[${new Date().toISOString()}] ${tag} GEMINI ERROR: ${err.message}\n`);
+      } catch (_) { }
+      try {
+        if (ws.readyState === ws.OPEN) ws.close(1011, 'Error communicating with Gemini');
+      } catch (closeErr) {
+        console.error(`${tag} Error closing client ws after Gemini error:`, closeErr.message);
+      }
+    });
+
+    return gWs;
+  };
+
+  currentGeminiWs = createGeminiSocket();
+
+  const ensureGeminiSocket = () => {
+    if (!currentGeminiWs || currentGeminiWs.readyState === WebSocket.CLOSED || currentGeminiWs.readyState === WebSocket.CLOSING) {
+      console.log(`${tag} Re-establishing upstream Gemini Live connection on demand...`);
+      currentGeminiWs = createGeminiSocket();
+    }
+    return currentGeminiWs;
+  };
+
+  ws.on('message', (message, isBinary) => {
+    // Hardware firmware debug telemetry ({"debug":"..."}) - log only, never
+    // forward to Gemini (it would reject these as malformed clientContent).
+    if (!isBinary) {
+      try {
+        const maybeDebug = JSON.parse(message.toString());
+        if (typeof maybeDebug.debug === 'string') {
+          console.log(`${tag} [DEBUG] ${maybeDebug.debug}`);
+          return;
+        }
+      } catch (_) { }
+    }
+
+    const gWs = ensureGeminiSocket();
+
+    // In ws library, message is ALWAYS a Buffer. ONLY isBinary indicates an opcode 0x02 binary frame.
+    if (isBinary) {
+      ws.isHardwareClient = true;
+      const base64Audio = Buffer.from(message).toString('base64');
+      const realtimePayload = JSON.stringify({
+        realtimeInput: {
+          audio: {
+            mimeType: 'audio/pcm;rate=16000',
+            data: base64Audio
+          }
+        }
+      });
+      if (gWs && gWs.readyState === WebSocket.OPEN) {
+        gWs.send(realtimePayload);
+      } else if (gWs && gWs.readyState === WebSocket.CONNECTING) {
+        outboundQueue.push(realtimePayload);
+      }
+      return;
+    }
+
     const msgStr = message.toString();
     if (msgStr.includes('realtimeInput')) {
-      // Audio chunks: log periodically to avoid flood
       if (Math.random() < 0.05) {
-        console.log('[LiveProxy] Forwarding audio stream chunks...');
+        console.log(`${tag} Forwarding audio stream chunks...`);
       }
     } else {
-      console.log('[LiveProxy] Forwarding non-audio control message:', msgStr.slice(0, 300));
+      // Prevent forwarding malformed/empty turns like {"clientContent":{"turns":[],"turnComplete":true}}
+      // which Gemini rejects with 1007 "Request contains an invalid argument."
+      try {
+        const parsedCtrl = JSON.parse(msgStr);
+        if (parsedCtrl.clientContent && Array.isArray(parsedCtrl.clientContent.turns) && parsedCtrl.clientContent.turns.length === 0) {
+          console.warn(`${tag} ⚠️ Suppressed empty clientContent turns to prevent Gemini 1007 rejection.`);
+          return;
+        }
+      } catch (_) { }
+
+      console.log(`${tag} Forwarding control message:`, msgStr);
+      try {
+        fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+          `[${new Date().toISOString()}] ${tag} CLIENT MSG: ${msgStr}\n`);
+      } catch (_) { }
+
+      // Cache client setup handshake so we can auto-replay if Gemini closes with 1000
+      try {
+        const parsed = JSON.parse(msgStr);
+        if (parsed.setup) {
+          cachedSetupMsg = msgStr;
+          console.log(`${tag} Cached setup handshake for resilient reconnection.`);
+        }
+      } catch (_) { }
     }
-    if (geminiWs.readyState === geminiWs.OPEN) {
-      geminiWs.send(msgStr);
-    } else if (geminiWs.readyState === geminiWs.CONNECTING) {
-      console.log('[LiveProxy] Queueing outbound message (Gemini connection is CONNECTING)...');
+
+    if (gWs && gWs.readyState === WebSocket.OPEN) {
+      gWs.send(msgStr);
+    } else if (gWs && gWs.readyState === WebSocket.CONNECTING) {
+      console.log(`${tag} Queueing outbound message (Gemini connection is CONNECTING)...`);
       outboundQueue.push(msgStr);
     } else {
-      console.warn('[LiveProxy] Dropping message, Gemini socket state:', geminiWs.readyState);
+      console.warn(`${tag} Dropping message, Gemini socket state:`, gWs ? gWs.readyState : 'null');
     }
   });
 
   ws.on('close', (code, reason) => {
+    isClientClosed = true;
     const reasonStr = reason ? reason.toString() : '';
-    console.log(`[LiveProxy] Client closed connection: ${code} - ${reasonStr}`);
+    console.log(`${tag} Client closed connection: ${code} - ${reasonStr}`);
+    if (isHardware && activeHardwareSession?.clientWs === ws) {
+      activeHardwareSession = null;
+    } else if (!isHardware && activeBrowserSession?.clientWs === ws) {
+      activeBrowserSession = null;
+    }
     try {
-      if (geminiWs.readyState === geminiWs.OPEN || geminiWs.readyState === geminiWs.CONNECTING) {
-        // Code 1005 cannot be forwarded to ws library — use 1000
+      if (currentGeminiWs && (currentGeminiWs.readyState === WebSocket.OPEN || currentGeminiWs.readyState === WebSocket.CONNECTING)) {
         const safeCode = (code === 1005 || code === 1006) ? 1000 : code;
-        geminiWs.close(safeCode, reasonStr || 'Client disconnected');
+        currentGeminiWs.close(safeCode, reasonStr || 'Client disconnected');
       }
     } catch (err) {
-      console.error('[LiveProxy] Error closing Gemini ws after client closed:', err.message);
+      console.error(`${tag} Error closing Gemini ws after client closed:`, err.message);
     }
   });
 
   ws.on('error', (err) => {
-    console.error('[LiveProxy] Client WebSocket error:', err.message);
+    isClientClosed = true;
+    console.error(`${tag} Client WebSocket error:`, err.message);
     try {
-      if (geminiWs.readyState === geminiWs.OPEN || geminiWs.readyState === geminiWs.CONNECTING) {
-        geminiWs.close(1011, 'Client socket error');
+      if (currentGeminiWs && (currentGeminiWs.readyState === WebSocket.OPEN || currentGeminiWs.readyState === WebSocket.CONNECTING)) {
+        currentGeminiWs.close(1011, 'Client socket error');
       }
     } catch (closeErr) {
-      console.error('[LiveProxy] Error closing Gemini ws after client error:', closeErr.message);
+      console.error(`${tag} Error closing Gemini ws after client error:`, closeErr.message);
     }
   });
+}
+
+browserWss.on('connection', (ws) => handleLiveProxyConnection(ws, false));
+hardwareWss.on('connection', (ws) => handleLiveProxyConnection(ws, true));
+
+// ---------------------------------------------------------------------------
+// RAW TCP HARDWARE ENDPOINT (for the ESPHome custom component)
+// ESPHome has no built-in WebSocket client, so this ESP32 path speaks a much
+// simpler framed protocol over a plain TCP socket instead of real WebSocket
+// framing: each message is [1 byte type: 0x00 text / 0x01 binary][4 bytes
+// big-endian payload length][payload]. HardwareTcpClient below wraps a raw
+// net.Socket in the same minimal API surface (.on('message'/'close'/'error'),
+// .send(), .close(), .readyState, .OPEN/etc.) that handleLiveProxyConnection
+// already uses for the WebSocket-based hardware/browser paths, so this reuses
+// that exact same Gemini Live proxy + RAG tool logic with no duplication.
+// ---------------------------------------------------------------------------
+const HARDWARE_TCP_PORT = process.env.HARDWARE_TCP_PORT || 3002;
+
+class HardwareTcpClient extends EventEmitter {
+  constructor(socket) {
+    super();
+    this.socket = socket;
+    this.readyState = HardwareTcpClient.OPEN;
+    this._closed = false;
+    this._buffer = Buffer.alloc(0);
+
+    socket.on('data', (chunk) => this._onData(chunk));
+    socket.on('close', () => this._finishClose(1006, ''));
+    socket.on('error', (err) => this.emit('error', err));
+  }
+
+  _onData(chunk) {
+    this._buffer = Buffer.concat([this._buffer, chunk]);
+    // A single TCP chunk can contain multiple frames, or a partial one -
+    // drain every complete frame currently buffered, then wait for more.
+    while (this._buffer.length >= 5) {
+      const type = this._buffer[0];
+      const len = this._buffer.readUInt32BE(1);
+      if (this._buffer.length < 5 + len) break;
+      const payload = this._buffer.subarray(5, 5 + len);
+      this._buffer = this._buffer.subarray(5 + len);
+      this.emit('message', Buffer.from(payload), type === 1);
+    }
+  }
+
+  send(data, opts) {
+    if (this.readyState !== HardwareTcpClient.OPEN) return;
+    const isBinary = Buffer.isBuffer(data) || !!(opts && opts.binary);
+    const payload = Buffer.isBuffer(data) ? data : Buffer.from(String(data));
+    const header = Buffer.alloc(5);
+    header[0] = isBinary ? 1 : 0;
+    header.writeUInt32BE(payload.length, 1);
+    try {
+      this.socket.write(Buffer.concat([header, payload]));
+    } catch (err) {
+      console.error('[HardwareTCP] Write failed:', err.message);
+    }
+  }
+
+  close(code, reason) {
+    this._finishClose(code || 1000, reason || '');
+    try { this.socket.end(); } catch (_) { }
+    try { this.socket.destroy(); } catch (_) { }
+  }
+
+  _finishClose(code, reason) {
+    if (this._closed) return;
+    this._closed = true;
+    this.readyState = HardwareTcpClient.CLOSED;
+    this.emit('close', code, Buffer.from(String(reason || '')));
+  }
+}
+HardwareTcpClient.CONNECTING = 0;
+HardwareTcpClient.OPEN = 1;
+HardwareTcpClient.CLOSING = 2;
+HardwareTcpClient.CLOSED = 3;
+
+const hardwareTcpServer = net.createServer((socket) => {
+  socket.setNoDelay(true);
+  const client = new HardwareTcpClient(socket);
+  handleLiveProxyConnection(client, true);
 });
+
+hardwareTcpServer.listen(HARDWARE_TCP_PORT, () => {
+  console.log(`[HardwareTCP] Raw TCP hardware endpoint listening on port ${HARDWARE_TCP_PORT}`);
+});
+

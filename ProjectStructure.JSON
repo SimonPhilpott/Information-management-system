@@ -88,6 +88,16 @@
     "pdf-knowledge-base/server/services/chatService.js": {
       "description": "Core conversation service handling query expansions, semantic matches, global library manifests, and Gemini chat processing.",
       "dependencies": []
+    },
+    "pdf-knowledge-base/server/services/hardwareClientService.js": {
+      "description": "Hardware bridge service executing automated RAG tool searches and crafting setup handshakes for embedded voice devices.",
+      "dependencies": []
+    },
+    "firmware/esp32-s3-box-3/src/main.cpp": {
+      "description": "FreeRTOS firmware for ESP32-S3-BOX-3 streaming I2S mic audio and outputting 24kHz speaker audio over WebSocket.",
+      "dependencies": [
+        "firmware/esp32-s3-box-3/include/config.h"
+      ]
     }
   }
 }

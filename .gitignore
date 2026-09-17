@@ -35,6 +35,16 @@ pdf-knowledge-base/server/db/*.db
 pdf-knowledge-base/server/db/*.sqlite
 pdf-knowledge-base/client-fixed/
 
+# Home Assistant's own runtime data (live DB, auth tokens, cached icons) -
+# not source code, and contains secrets/state that shouldn't be committed.
+# Only homeassistant/esphome-config/ (our actual YAML + component source)
+# is meant to be tracked.
+homeassistant/config/
+
+# Raw voice recordings captured during hardware testing - privacy-sensitive
+# runtime output, not source.
+pdf-knowledge-base/server/audio_captures/
+
 # Local backups and scratch work
 backups/
 scratch/

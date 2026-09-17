@@ -22,9 +22,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 export function useGeminiLive({ selectedSubjects = [], showPersonal = false, onUserTranscript = null, onModelTranscript = null }) {
   const [isConnected, setIsConnected] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [isSpeaking,  setIsSpeaking]  = useState(false);
-  const [isMuted,     setIsMuted]     = useState(false);
-  const [userVolume,  setUserVolume]  = useState(0);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [userVolume, setUserVolume] = useState(0);
   const [modelVolume, setModelVolume] = useState(0);
   /**
    * liveStatus: 4-phase visual indicator for UI
@@ -135,6 +135,7 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false, onU
   const changeVoiceName = useCallback((name) => {
     if (isVoiceLocked) return;
     setVoiceName(name);
+    voiceNameRef.current = name;
     speakIntroRef.current = true;
   }, [isVoiceLocked]);
 
@@ -296,7 +297,7 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false, onU
     if (wakeLockRef.current) {
       try {
         wakeLockRef.current.release();
-      } catch (e) {}
+      } catch (e) { }
       wakeLockRef.current = null;
     }
   }, []);
@@ -605,8 +606,8 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false, onU
                 playAudioChunk(part.inlineData.data);
               }
               // Text transcript
-              if (part.text && onTranscriptRef.current) {
-                onTranscriptRef.current(part.text);
+              if (part.text && onModelTranscriptRef.current) {
+                onModelTranscriptRef.current(part.text);
               }
             }
           }
@@ -681,7 +682,7 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false, onU
       }
 
       // 4. Initialise Mic recording with Hardware Echo Cancellation and Noise Suppression
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: { ideal: true },
           noiseSuppression: { ideal: true },
@@ -692,8 +693,8 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false, onU
           googHighpassFilter: { ideal: true },
           channelCount: 1,
           sampleRate: 16000
-        }, 
-        video: false 
+        },
+        video: false
       });
       micStreamRef.current = stream;
 
@@ -774,19 +775,19 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false, onU
     isInSpeechTurnRef.current = false;
 
     if (processorRef.current) {
-      try { processorRef.current.disconnect(); } catch (e) {}
+      try { processorRef.current.disconnect(); } catch (e) { }
       processorRef.current = null;
     }
 
     if (workletNodeRef.current) {
-      try { workletNodeRef.current.disconnect(); } catch (e) {}
+      try { workletNodeRef.current.disconnect(); } catch (e) { }
       workletNodeRef.current = null;
     }
 
     if (speechRecognitionRef.current) {
       try {
         speechRecognitionRef.current.stop();
-      } catch (e) {}
+      } catch (e) { }
       speechRecognitionRef.current = null;
     }
 
@@ -796,12 +797,12 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false, onU
     }
 
     if (socketRef.current) {
-      try { socketRef.current.close(); } catch (e) {}
+      try { socketRef.current.close(); } catch (e) { }
       socketRef.current = null;
     }
 
     if (audioCtxRef.current) {
-      try { audioCtxRef.current.close(); } catch (e) {}
+      try { audioCtxRef.current.close(); } catch (e) { }
       audioCtxRef.current = null;
     }
 
@@ -843,8 +844,8 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false, onU
 
   // Auto-reconnect on voice change when connected
   useEffect(() => {
-    if (isConnected && voiceName !== activeVoiceRef.current) {
-      console.log('[GeminiLive] Voice changed while connected. Reconnecting to apply new voice...');
+    if (isConnected && isSetupCompleteRef.current && voiceName && voiceName !== activeVoiceRef.current) {
+      console.log(`[GeminiLive] Voice changed from ${activeVoiceRef.current} to ${voiceName} while connected. Reconnecting...`);
       activeVoiceRef.current = voiceName;
       speakIntroRef.current = true;
       pendingConnectRef.current = true;

@@ -139,6 +139,18 @@
         "Downloaded files registry view displaying size and timestamp parameters",
         "Graceful process termination handling utilizing SIGINT execution interruptions"
       ]
+    },
+    "ESP32-S3-BOX-3 Hardware Voice Terminal": {
+      "status": "enabled",
+      "description": "Hardware conversational AI terminal utilizing ESP32-S3-BOX-3 with dual I2S microphones and speaker streaming bidirectional PCM audio over WebSocket directly into IMS Gemini Live proxy.",
+      "subFeatures": [
+        "Bidirectional WebSocket audio streaming client over ws:// and wss:// (Ngrok)",
+        "Raw 16kHz 16-bit PCM microphone streaming without base64 overhead on microcontroller",
+        "Direct 24kHz PCM speaker audio streaming through ES8311 DAC",
+        "Automatic server-side RAG searchLibrary tool execution forwarding grounded PDF knowledge back into Gemini Live",
+        "FreeRTOS dual-core task architecture (Core 0 audio I2S, Core 1 networking & WebSocket)",
+        "Visual terminal state management (Listening, Thinking, Speaking, Idle)"
+      ]
     }
   }
 }

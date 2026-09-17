@@ -16,7 +16,7 @@ const parseSharePointXml = (xmlStr) => {
   while (true) {
     const entryStart = xmlStr.indexOf('<entry>', pos);
     if (entryStart === -1) break;
-    
+
     let entryEnd = -1;
     let depth = 0;
     let scanPos = entryStart;
@@ -44,12 +44,12 @@ const parseSharePointXml = (xmlStr) => {
     const titleMatch = entryContent.match(/<d:Title[^>]*>([\s\S]*?)<\/d:Title>/);
     const urlMatch = entryContent.match(/<d:Url[^>]*>([\s\S]*?)<\/d:Url>/);
     const idMatch = entryContent.match(/<d:Id[^>]*>([\s\S]*?)<\/d:Id>/);
-    
+
     if (titleMatch && urlMatch) {
       const title = titleMatch[1].replace(/&amp;/g, '&').trim();
       const url = urlMatch[1].trim();
       const id = idMatch ? idMatch[1].trim() : '';
-      
+
       const item = { id, title, url, children: [] };
       const inlineStart = entryContent.indexOf('<m:inline>');
       const inlineEnd = entryContent.indexOf('</m:inline>');
@@ -102,12 +102,12 @@ const backupPlugin = () => ({
   configureServer(server) {
     server.middlewares.use((req, res, next) => {
       res.setHeader('Content-Type', 'application/json');
-      
+
       if (req.url === '/api/backup') {
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const backupDir = "D:/Information management system/backups";
         const zipFile = `${backupDir}/hive_mesh_checkpoint_${timestamp}.zip`;
-        
+
         const psCommand = `
           if (!(Test-Path '${backupDir}')) { New-Item -ItemType Directory -Path '${backupDir}' };
           Compress-Archive -Path src, index.html, package.json, tailwind.config.js, vite.config.js, public -DestinationPath '${zipFile}' -Force
@@ -140,7 +140,7 @@ const backupPlugin = () => ({
         if (!fs.existsSync(backupDir)) {
           fs.mkdirSync(backupDir, { recursive: true });
         }
-        
+
         const authorityJsonFilePath = path.join(__dirname, 'src/data/mesh_authority.json');
         if (!fs.existsSync(authorityJsonFilePath)) {
           res.statusCode = 404;
@@ -624,6 +624,18 @@ export default defineConfig({
             // Silence noisy ECONNRESET warnings on backend hot-reload restarts
             if (err.code !== 'ECONNRESET') {
               console.error('Vite WS Proxy Error:', err);
+            }
+          });
+        }
+      },
+      '/api/hardware-live': {
+        target: `ws://127.0.0.1:${ports.pdf_knowledge_base.server.port}`,
+        ws: true,
+        changeOrigin: true,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            if (err.code !== 'ECONNRESET') {
+              console.error('Vite WS Hardware Proxy Error:', err);
             }
           });
         }
