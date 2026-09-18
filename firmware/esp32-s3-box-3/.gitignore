@@ -3,3 +3,8 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# Real WiFi credentials live only here, never in config.h itself - keeps a
+# repeat of the plaintext-credential mistake from before the GitHub push
+# structurally impossible rather than relying on remembering to scrub it.
+include/secrets.h

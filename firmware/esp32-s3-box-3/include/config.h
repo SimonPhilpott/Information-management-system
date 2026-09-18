@@ -4,26 +4,21 @@
 // Information Management System (IMS) - ESP32-S3-BOX-3 Hardware Configuration
 // ============================================================================
 
-// 1. Wi-Fi Configuration
-#define WIFI_SSID "XXX"
-#define WIFI_PASSWORD "XXX"
+// 1. Wi-Fi Configuration - real values live in secrets.h (gitignored, never
+// committed - see secrets.h.example). Copy that file to secrets.h and fill
+// in your real WiFi name/password there, not here.
+#include "secrets.h"
 
-// 2. IMS Backend Configuration (Automatic Primary Local LAN with Public Ngrok
-// Fallback) Primary: Local LAN for sub-millisecond network latency inside your
-// house
+// 2. IMS Backend Configuration - raw TCP, NOT WebSocket. Arduino's
+// WebSocketsClient (Links2004) hard-caps messages at 15KB (a real project -
+// github.com/mk14ray/RIO-ESP32-S3-Gemini-Live-Voice-Assistant - hit this
+// exact wall with 41KB+ Gemini messages and had to hand-roll a client to work
+// around it). Our backend already exposes a plain TCP endpoint
+// (HardwareTcpClient in index.js) speaking a simple framed protocol instead:
+// [1 byte type: 0x00 text/0x01 binary][4 bytes big-endian length][payload] -
+// no WebSocket handshake, no size limit, no extra library needed.
 #define IMS_PRIMARY_HOST "192.168.1.78"
-#define IMS_PRIMARY_PORT 3001
-#define IMS_PRIMARY_PATH "/api/hardware-live"
-#define IMS_PRIMARY_SSL false
-
-// Fallback: Public Ngrok URL (routes through Vite proxy port 6001 over wss://)
-#define IMS_FALLBACK_HOST "simon-ims.ngrok-free.app"
-#define IMS_FALLBACK_PORT 443
-#define IMS_FALLBACK_PATH "/api/hardware-live"
-#define IMS_FALLBACK_SSL true
-
-// Max connection retry attempts on primary before switching to fallback
-#define MAX_PRIMARY_RETRIES 3
+#define IMS_TCP_PORT 3002
 
 // 3. Audio Codec Hardware Pinout (ESP32-S3-BOX-3)
 // ES7210 (Dual Microphone ADC) & ES8311 (Speaker DAC)

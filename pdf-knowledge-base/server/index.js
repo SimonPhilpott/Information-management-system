@@ -264,6 +264,52 @@ function handleLiveProxyConnection(ws, isHardware = false) {
   const captureStartTime = Date.now();
   console.log(`[AudioCapture] 🎙️ Initialised raw packet capture: ${capturePath}`);
 
+  // Mirror capture for the OTHER direction (hardware mic -> Gemini) - the
+  // existing AudioCapture above only ever recorded Gemini's spoken replies.
+  // Added purely to directly listen to what the ESP32 mic is actually
+  // sending, since RMS telemetry alone can't distinguish real intelligible
+  // speech from non-zero but garbled/distorted audio, and Gemini's own VAD
+  // has been silently failing to ever respond to it.
+  // Stereo A/B test concluded (L and R sounded identical, ruling out a
+  // channel-mapping bug) - firmware is back to mono capture, so this is a
+  // plain single-channel WAV writer again.
+  const micAudioChunks = [];
+  const micCapturePath = path.join(capturesDir, `raw_mic_audio_${Date.now()}.wav`);
+  const flushMicWavToDisk = () => {
+    if (!isHardware || micAudioChunks.length === 0) return;
+    try {
+      const totalPcmBytes = micAudioChunks.reduce((acc, c) => acc + c.length, 0);
+      const wavHeader = Buffer.alloc(44);
+      const sampleRate = 16000;
+      const numChannels = 1;
+      const bitsPerSample = 16;
+      const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+      const blockAlign = numChannels * (bitsPerSample / 8);
+      wavHeader.write('RIFF', 0);
+      wavHeader.writeUInt32LE(36 + totalPcmBytes, 4);
+      wavHeader.write('WAVE', 8);
+      wavHeader.write('fmt ', 12);
+      wavHeader.writeUInt32LE(16, 16);
+      wavHeader.writeUInt16LE(1, 20);
+      wavHeader.writeUInt16LE(numChannels, 22);
+      wavHeader.writeUInt32LE(sampleRate, 24);
+      wavHeader.writeUInt32LE(byteRate, 28);
+      wavHeader.writeUInt16LE(blockAlign, 32);
+      wavHeader.writeUInt16LE(bitsPerSample, 34);
+      wavHeader.write('data', 36);
+      wavHeader.writeUInt32LE(totalPcmBytes, 40);
+      const finalWav = Buffer.concat([wavHeader, ...micAudioChunks]);
+      fs.writeFileSync(micCapturePath, finalWav);
+      console.log(`[MicCapture] 💾 SAVED RAW MIC WAV: ${micCapturePath} (${(totalPcmBytes / byteRate).toFixed(2)}s, ${finalWav.length} bytes)`);
+    } catch (err) {
+      console.error('[MicCapture] Error saving WAV:', err);
+    }
+  };
+  // Flush periodically too, not just on close - a session that never
+  // cleanly closes (still connected, or the server restarts) would
+  // otherwise never produce a listenable file at all.
+  const micFlushInterval = setInterval(flushMicWavToDisk, 5000);
+
   const flushWavToDisk = () => {
     if (audioChunks.length === 0) return;
     try {
@@ -428,6 +474,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
 
     gWs.on('close', (code, reason) => {
       flushWavToDisk();
+      flushMicWavToDisk();
       const reasonStr = reason ? reason.toString() : '';
       console.log(`${tag} Gemini Live closed connection: ${code} - ${reasonStr}`);
       try {
@@ -499,6 +546,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
     // In ws library, message is ALWAYS a Buffer. ONLY isBinary indicates an opcode 0x02 binary frame.
     if (isBinary) {
       ws.isHardwareClient = true;
+      if (isHardware) micAudioChunks.push(Buffer.from(message));
       const base64Audio = Buffer.from(message).toString('base64');
       const realtimePayload = JSON.stringify({
         realtimeInput: {
@@ -560,6 +608,8 @@ function handleLiveProxyConnection(ws, isHardware = false) {
 
   ws.on('close', (code, reason) => {
     isClientClosed = true;
+    flushMicWavToDisk();
+    clearInterval(micFlushInterval);
     const reasonStr = reason ? reason.toString() : '';
     console.log(`${tag} Client closed connection: ${code} - ${reasonStr}`);
     if (isHardware && activeHardwareSession?.clientWs === ws) {
@@ -660,10 +710,17 @@ class HardwareTcpClient extends EventEmitter {
     this.emit('close', code, Buffer.from(String(reason || '')));
   }
 }
-HardwareTcpClient.CONNECTING = 0;
-HardwareTcpClient.OPEN = 1;
-HardwareTcpClient.CLOSING = 2;
-HardwareTcpClient.CLOSED = 3;
+// Set on both the class (static, e.g. HardwareTcpClient.OPEN) and the
+// prototype (instance-accessible, e.g. client.OPEN) - handleLiveProxyConnection
+// checks `ws.readyState === ws.OPEN` on the instance itself (mirroring how
+// the real 'ws' library exposes these constants both ways), and a
+// static-only assignment left every ws.OPEN read on our instances
+// `undefined`, silently dropping every outbound message to hardware clients
+// including the initial setupComplete ACK.
+HardwareTcpClient.CONNECTING = HardwareTcpClient.prototype.CONNECTING = 0;
+HardwareTcpClient.OPEN = HardwareTcpClient.prototype.OPEN = 1;
+HardwareTcpClient.CLOSING = HardwareTcpClient.prototype.CLOSING = 2;
+HardwareTcpClient.CLOSED = HardwareTcpClient.prototype.CLOSED = 3;
 
 const hardwareTcpServer = net.createServer((socket) => {
   socket.setNoDelay(true);
