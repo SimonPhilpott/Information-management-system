@@ -10,7 +10,14 @@
 #include <WiFiClient.h>
 #include <cstring>
 #include <driver/i2c.h> // for the I2C_NUM_0 port-number type only
-#include <driver/i2s.h>
+// Migrated from the legacy driver/i2s.h (deprecated, and only capable of a
+// software channel-select "fake mono" over a physically stereo frame) to
+// the newer channel-based i2s_std driver, which supports a genuine hardware
+// I2S_SLOT_MODE_MONO - matching Espressif's own validated ESP32-S3-BOX-3
+// BSP (espressif/esp-bsp, bsp/esp-box-3/esp-box-3_idf5.c) exactly, after
+// their factory test firmware proved the mic hardware itself is fine and
+// our own legacy-driver mic capture was still full of static.
+#include <driver/i2s_std.h>
 
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
@@ -110,6 +117,11 @@ enum TerminalState {
 
 volatile TerminalState currentState = STATE_CONNECTING_WIFI;
 TerminalState lastRenderedState = (TerminalState)-1;
+// i2s_std channel handles (see initAudioHardware()) - separate TX/RX handles
+// even though they share one physical I2S peripheral/clock, matching
+// Espressif's own BSP pattern (one i2s_new_channel() call returns both).
+i2s_chan_handle_t i2sTxChan = NULL;
+i2s_chan_handle_t i2sRxChan = NULL;
 // Raw TCP, not WebSocket - see config.h for why. Speaks the same simple
 // framed protocol as the ESPHome ims_bridge component and the backend's
 // HardwareTcpClient shim: [1 byte type][4 bytes big-endian length][payload].
@@ -119,7 +131,21 @@ bool isSetupAcknowledged = false;
 volatile bool geminiSetupComplete =
     false; // Set true only after Gemini sends setupComplete ACK
 String lastTranscript = "Tap screen to ask a question";
-unsigned long lastSpeechTimestamp = 0;
+// volatile: written by beginListening()/audioMicTask() on Core 1 and Core 0
+// respectively, read from both - a plain unsigned long here let a stale
+// cached value on one core survive well past a fresh beginListening() reset
+// on the other, which was firing the silence-detected turnComplete logic
+// (below) within ~100ms of a touch instead of the intended 1.2s+.
+volatile unsigned long lastSpeechTimestamp = 0;
+// Reset by beginListening() at the start of every session so a session
+// aborted mid-flight (e.g. by a Gemini-side disconnect) can never leave
+// isSpeakingDetected/speechStartTime stale for the NEXT session - audioMicTask
+// used to own these as function-local variables that persisted for the whole
+// device uptime, so a leftover "already speaking, already 1.2s in" state from
+// an interrupted prior session could trip an instant bogus turn-complete on
+// the very next tap.
+volatile bool isSpeakingDetected = false;
+volatile unsigned long speechStartTime = 0;
 const unsigned long SESSION_IDLE_TIMEOUT_MS = 14000;
 bool textQuerySentOnce = false; // Mic-free "Hi, how are you" diagnostic, once per boot
 
@@ -399,56 +425,67 @@ void initCodecChips() {
   // its post-reset word width (24-bit) while the ESP32 I2S peripheral
   // reads 16-bit words, silently desynchronizing every sample - exactly
   // the flat-zero symptom observed.
-  writeCodecReg(0x40, 0x00, 0xFF); // Reset all registers
+  // REWRITTEN to exactly mirror Espressif's actual es7210_open() +
+  // es7210_mic_select() (esp_codec_dev's es7210_new.c, the codec driver
+  // esp-bsp's validated ESP32-S3-BOX-3 example uses), byte-for-byte and in
+  // the same order, instead of our own hand-assembled sequence. Reading the
+  // real source turned up several concrete deviations we'd been carrying
+  // for the whole "static" investigation:
+  //  - We wrote registers 0x47-0x4A (individual mic channel power) at init;
+  //    the official driver never touches them at all in open()/mic_select().
+  //  - We wrote register 0x06=0x04 ("power down DLL") during bring-up; that
+  //    register is only ever written during es7210_close() (shutdown) in
+  //    the official driver, not init - writing it at bring-up was
+  //    backwards.
+  //  - We wrote register 0x00=0x71 then 0x41 ("enable device") at the very
+  //    end; the official open() never revisits register 0x00 after the
+  //    initial reset at all.
+  //  - Default gain was 24dB (0x18); the official default is 30dB - see
+  //    es7210_gain_value_t, GAIN_30DB=10=0x0A, so register value
+  //    0x10(enable) | 0x0A = 0x1A.
+  //  - Register 0x03 (MCLK source) is only ever written in MASTER mode; we
+  //    are in SLAVE mode (ESP32 drives the I2S clock), where the official
+  //    driver never touches it at all - a prior attempt to write it here
+  //    was based on a misread of the clock coefficient table and has been
+  //    removed again.
+  writeCodecReg(0x40, 0x00, 0xFF); // RESET_REG00: full reset
   delay(20);
-  writeCodecReg(0x40, 0x00, 0x41); // Reset configuration
-  writeCodecReg(0x40, 0x01, 0x3F); // Clock off during configuration
-  writeCodecReg(0x40, 0x09, 0x30); // Time control 0
-  writeCodecReg(0x40, 0x0A, 0x30); // Time control 1
-  writeCodecReg(0x40, 0x23, 0x2A); // ADC1/2 high-pass filter 1
-  writeCodecReg(0x40, 0x22, 0x0A); // ADC1/2 high-pass filter 2
-  writeCodecReg(0x40, 0x21, 0x2A); // ADC3/4 high-pass filter 1
-  writeCodecReg(0x40, 0x20, 0x0A); // ADC3/4 high-pass filter 2
-  writeCodecReg(0x40, 0x08, 0x00); // Slave mode - ESP32 already drives I2S clock
-  writeCodecReg(0x40, 0x40, 0x43); // Analog front-end power up
-  writeCodecReg(0x40, 0x47, 0x08); // MIC1 channel power
-  writeCodecReg(0x40, 0x48, 0x08); // MIC2 channel power
-  writeCodecReg(0x40, 0x49, 0x08); // MIC3 channel power (unused, harmless)
-  writeCodecReg(0x40, 0x4A, 0x08); // MIC4 channel power (unused, harmless)
-  writeCodecReg(0x40, 0x06, 0x04); // Power down DLL (required bring-up step)
-  writeCodecReg(0x40, 0x4B, 0x00); // MIC1/2 power enable (reference's final value - was 0x0F)
-  writeCodecReg(0x40, 0x4C, 0xFF); // MIC3/4 stay fully powered down (unused)
-  // I2S format: standard I2S(0x00) | 16-bit(0x60), non-TDM (single mono RX
-  // channel) - register 0x11 is the REAL SDP interface1 register.
-  writeCodecReg(0x40, 0x11, 0x60); // SDP interface1: I2S fmt | 16-bit width
-  writeCodecReg(0x40, 0x12, 0x00); // SDP interface2: TDM disabled
-  // Sample rate: 16kHz via 4.096MHz MCLK (256x ratio), from the official
-  // coefficient table for {mclk=4096000, lrck=16000}
-  writeCodecReg(0x40, 0x07, 0x20); // OSR
-  writeCodecReg(0x40, 0x02, 0xC1); // adc_div=1 | doubler<<6 | dll<<7
+  writeCodecReg(0x40, 0x00, 0x41); // RESET_REG00: release
+  writeCodecReg(0x40, 0x01, 0x3F); // CLOCK_OFF_REG01: all off during config
+  writeCodecReg(0x40, 0x09, 0x30); // TIME_CONTROL0_REG09
+  writeCodecReg(0x40, 0x0A, 0x30); // TIME_CONTROL1_REG0A
+  writeCodecReg(0x40, 0x23, 0x2A); // ADC12_HPF2_REG23
+  writeCodecReg(0x40, 0x22, 0x0A); // ADC12_HPF1_REG22
+  writeCodecReg(0x40, 0x20, 0x0A); // ADC34_HPF2_REG20
+  writeCodecReg(0x40, 0x21, 0x2A); // ADC34_HPF1_REG21
+  writeCodecReg(0x40, 0x08, 0x00); // MODE_CONFIG_REG08: slave mode (bit0=0)
+  // I2S format: standard I2S(0x00) | 16-bit(0x60) - register 0x11 is the
+  // real SDP_INTERFACE1 register (cross-checked earlier this session).
+  writeCodecReg(0x40, 0x11, 0x60); // SDP_INTERFACE1_REG11
+  writeCodecReg(0x40, 0x40, 0x43); // ANALOG_REG40: analog front-end power up
+  writeCodecReg(0x40, 0x41, 0x70); // MIC12_BIAS_REG41: 2.87V
+  writeCodecReg(0x40, 0x42, 0x70); // MIC34_BIAS_REG42: 2.87V
+  writeCodecReg(0x40, 0x07, 0x20); // OSR_REG07
+  writeCodecReg(0x40, 0x02, 0xC1); // MAINCLK_REG02: adc_div|doubler<<6|dll<<7
   writeCodecReg(0x40, 0x04, 0x01); // LRCK divider high byte
   writeCodecReg(0x40, 0x05, 0x00); // LRCK divider low byte
-  // Cross-checked against es7210_mic_select() in the official driver: after
-  // everything else is configured, MIC1/2's ADC clocks specifically have to
-  // be turned back on by clearing bits 0x0B in register 0x01 - the earlier
-  // 0x3F write above only ever puts every channel's clock in the "off
-  // during config" state and, without this second write, never turns
-  // MIC1/2's back on. This is likely THE reason mic capture kept returning
-  // a hard zero even after every other register fix and after the I2C
-  // write mechanism itself was fixed - the ADC was correctly configured in
-  // every other respect but was never actually clocked.
-  writeCodecReg(0x40, 0x01, 0x34); // Enable MIC1/2 ADC clocks (0x3F & ~0x0B)
-  writeCodecReg(0x40, 0x41, 0x70); // MIC1/2 bias 2.87V
-  writeCodecReg(0x40, 0x42, 0x70); // MIC3/4 bias 2.87V
-  // Gain isn't the culprit either way (37.5dB made static worse, 12dB made
-  // voice inaudible without cleaning anything up) - static persisted at a
-  // similar relative level regardless, which fits the I2S bit-alignment
-  // theory being tested now better than a gain issue. Back to 24dB, the
-  // best of the three gain levels tried, as a clean baseline for this test.
-  writeCodecReg(0x40, 0x43, 0x18); // MIC1 gain (24dB | enable bit)
-  writeCodecReg(0x40, 0x44, 0x18); // MIC2 gain (24dB | enable bit)
-  writeCodecReg(0x40, 0x00, 0x71); // Enable device
-  writeCodecReg(0x40, 0x00, 0x41); // Enable device (final)
+  // es7210_mic_select(MIC1|MIC2): clear the enable bit on all 4 gain
+  // registers first, power both mic pairs off, then power/enable/gain just
+  // MIC1 and MIC2 (matching the official driver's exact call sequence,
+  // including its redundant re-writes per mic).
+  writeCodecReg(0x40, 0x43, 0x00); // MIC1_GAIN_REG43: clear enable bit
+  writeCodecReg(0x40, 0x44, 0x00); // MIC2_GAIN_REG44: clear enable bit
+  writeCodecReg(0x40, 0x45, 0x00); // MIC3_GAIN_REG45: clear enable bit (unused)
+  writeCodecReg(0x40, 0x46, 0x00); // MIC4_GAIN_REG46: clear enable bit (unused)
+  writeCodecReg(0x40, 0x4B, 0xFF); // MIC12_POWER_REG4B: off
+  writeCodecReg(0x40, 0x4C, 0xFF); // MIC34_POWER_REG4C: off (stays off, unused)
+  writeCodecReg(0x40, 0x01, 0x34); // CLOCK_OFF_REG01: clear bits 0x0B (0x3F & ~0x0B)
+  writeCodecReg(0x40, 0x4B, 0x00); // MIC12_POWER_REG4B: on
+  writeCodecReg(0x40, 0x43, 0x1A); // MIC1_GAIN_REG43: enable | 30dB
+  writeCodecReg(0x40, 0x01, 0x34); // (redundant, matches official's own redundancy)
+  writeCodecReg(0x40, 0x4B, 0x00); // (redundant, matches official's own redundancy)
+  writeCodecReg(0x40, 0x44, 0x1A); // MIC2_GAIN_REG44: enable | 30dB
+  writeCodecReg(0x40, 0x12, 0x00); // SDP_INTERFACE2_REG12: non-TDM (2 mics)
 
   // One-shot register readback appended after the I2C scan result (both
   // share codecRegDump so a single sendDebug() call reports everything) so
@@ -533,35 +570,93 @@ void initAudioHardware() {
   // Configure I2C audio chips
   initCodecChips();
 
-  // Tried RX-only (I2S_MODE_MASTER | I2S_MODE_RX, no TX) to test a forum
-  // thread's report that combined duplex caused problems for this exact
-  // chip pairing (viewtopic.php?t=45491) - result was total silence, not
-  // cleaner audio. That's a different, known legacy-driver quirk: RX-only
-  // master mode often fails to generate BCLK/WS properly at all without TX
-  // also active, so this test was inconclusive for the duplex theory and
-  // made things worse. Back to the working combined TX+RX config.
-  i2s_config_t i2s_config = {
-      .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX | I2S_MODE_RX),
-      .sample_rate = MIC_SAMPLE_RATE,
-      .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-      .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
-      .communication_format = I2S_COMM_FORMAT_STAND_I2S,
-      .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-      .dma_buf_count = 8,
-      .dma_buf_len = AUDIO_CHUNK_SAMPLES,
-      .use_apll = true,
-      .tx_desc_auto_clear = true};
+  // i2s_std migration: matches Espressif's own validated ESP32-S3-BOX-3 BSP
+  // (espressif/esp-bsp, bsp/esp-box-3/esp-box-3_idf5.c) exactly - one
+  // i2s_new_channel() call for both TX and RX sharing the physical
+  // peripheral/clock, each then put into std mode with a REAL hardware
+  // I2S_SLOT_MODE_MONO (not the legacy driver's software channel-select
+  // over a still-physically-stereo frame, which is the most likely reason
+  // our own capture stayed noisy while Espressif's factory test firmware -
+  // built on this same driver - produced clean audio on the same hardware).
+  i2s_chan_config_t chan_cfg =
+      I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
+  chan_cfg.auto_clear = true; // replaces the legacy i2s_zero_dma_buffer() call
+  ESP_ERROR_CHECK(i2s_new_channel(&chan_cfg, &i2sTxChan, &i2sRxChan));
 
-  i2s_pin_config_t pin_config = {.mck_io_num = I2S_MCLK_PIN,
-                                 .bck_io_num = I2S_BCLK_PIN,
-                                 .ws_io_num = I2S_WS_PIN,
-                                 .data_out_num = I2S_DOUT_PIN,
-                                 .data_in_num = I2S_DIN_PIN};
+  i2s_std_config_t std_cfg = {
+      .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(MIC_SAMPLE_RATE),
+      .slot_cfg = I2S_STD_PHILIP_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,
+                                                      I2S_SLOT_MODE_MONO),
+      .gpio_cfg = {.mclk = I2S_MCLK_PIN,
+                   .bclk = I2S_BCLK_PIN,
+                   .ws = I2S_WS_PIN,
+                   .dout = I2S_DOUT_PIN,
+                   .din = I2S_DIN_PIN,
+                   .invert_flags = {.mclk_inv = false,
+                                    .bclk_inv = false,
+                                    .ws_inv = false}}};
 
-  i2s_driver_install(I2S_NUM_0, &i2s_config, 0, NULL);
-  i2s_set_pin(I2S_NUM_0, &pin_config);
-  i2s_zero_dma_buffer(I2S_NUM_0);
-  Serial.println("[Hardware] I2S Driver installed successfully.");
+  ESP_ERROR_CHECK(i2s_channel_init_std_mode(i2sTxChan, &std_cfg));
+
+  // Slot-swap test (RIGHT instead of LEFT) didn't eliminate the interference
+  // tone - it just shifted its fundamental frequency (~500/1000/1500Hz on
+  // LEFT vs ~1000/2000Hz on RIGHT), which points to a clock/timing-derived
+  // artifact rather than "wrong slot has the real signal". Back to the
+  // default LEFT slot (matching the official BSP reference and the
+  // already-working TX/speaker config) to isolate the ES7210 register
+  // rewrite's own effect on its own, without the slot change as a confound.
+  ESP_ERROR_CHECK(i2s_channel_init_std_mode(i2sRxChan, &std_cfg));
+  ESP_ERROR_CHECK(i2s_channel_enable(i2sTxChan));
+  ESP_ERROR_CHECK(i2s_channel_enable(i2sRxChan));
+  Serial.println("[Hardware] I2S (i2s_std, mono) channels enabled successfully.");
+}
+
+// Standalone mic read-rate test: reads a fixed number of buffers back to
+// back via i2s_channel_read(), the SAME i2sRxChan/std_cfg as the live app,
+// but with NO WiFi/TCP/Gemini/state-machine involved at all - runs once at
+// boot, before WiFi.begin() is even called. The live app's audioMicTask()
+// showed only 1-2 real buffers read across many seconds of wall-clock time
+// during an actual Gemini session; this isolates whether that stall is
+// inherent to the i2s_std RX config itself (matches here too) or caused by
+// something else on Core 0 contending with it once WiFi/TCP/Gemini are
+// active (reads keep pace here, matching AUDIO_CHUNK_SAMPLES/16000 sec each).
+void micReadRateTest() {
+  const int TEST_BUFFERS = 60;
+  int16_t testBuf[AUDIO_CHUNK_SAMPLES];
+  size_t bytesRead = 0;
+  Serial.println("[MicTest] Standalone I2S read-rate test starting - "
+                  "speak into the mic now...");
+  unsigned long testStart = millis();
+  int zeroCount = 0;
+  int64_t maxRms = 0;
+  for (int i = 0; i < TEST_BUFFERS; i++) {
+    unsigned long readStart = millis();
+    esp_err_t err = i2s_channel_read(i2sRxChan, testBuf, sizeof(testBuf),
+                                      &bytesRead, portMAX_DELAY);
+    unsigned long readMs = millis() - readStart;
+    if (bytesRead == 0) zeroCount++;
+    int sampleCount = bytesRead / sizeof(int16_t);
+    int64_t sumSquare = 0;
+    for (int s = 0; s < sampleCount; s++) {
+      sumSquare += (int32_t)testBuf[s] * (int32_t)testBuf[s];
+    }
+    int rms = sampleCount > 0 ? (int)sqrt((double)(sumSquare / sampleCount)) : 0;
+    if (rms > maxRms) maxRms = rms;
+    (void)err;
+    (void)readMs;
+    // DIAGNOSTIC: no per-buffer Serial.printf() this round - the previous
+    // run showed each i2s_channel_read() itself completing in ~15ms, yet the
+    // full 60-buffer loop took 47 seconds, meaning ~99% of that time was
+    // spent somewhere else in the loop body. printf() over ESP32-S3's native
+    // USB-Serial/JTOG CDC is the only other thing happening per iteration -
+    // this run tests whether removing it drops total time to the ~2s that
+    // 60 buffers of real 16kHz audio should take.
+  }
+  unsigned long totalMs = millis() - testStart;
+  Serial.printf("[MicTest] DONE: %d buffers in %lums (avg %lums/buf), "
+                "zeroByteReads=%d, peakRms=%lld\n",
+                TEST_BUFFERS, totalMs, totalMs / TEST_BUFFERS, zeroCount,
+                (long long)maxRms);
 }
 
 // Sends one framed message: [1 byte type][4 bytes big-endian length][data].
@@ -622,7 +717,7 @@ void sendDebug(const char *text) {
   sendFrame(0x00, (const uint8_t *)msg.c_str(), msg.length());
 }
 
-// Plays a short 440Hz tone directly via i2s_write(), bypassing Gemini and
+// Plays a short 440Hz tone directly via i2s_channel_write(), bypassing Gemini and
 // the mic entirely - isolates the speaker/DAC/amp half of the pipeline so
 // it can be verified independently of whatever the mic is doing. Blocking
 // (~300ms); only ever called from loop() (Core 1) in response to a touch on
@@ -648,8 +743,8 @@ void playChime() {
       buf[i] = (int16_t)(sinf(2.0f * PI * freq * t) * 9000.0f * envelope);
     }
     size_t bytesWritten = 0;
-    i2s_write(I2S_NUM_0, buf, chunkLen * sizeof(int16_t), &bytesWritten,
-              portMAX_DELAY);
+    i2s_channel_write(i2sTxChan, buf, chunkLen * sizeof(int16_t),
+                       &bytesWritten, portMAX_DELAY);
     written += chunkLen;
   }
 }
@@ -698,6 +793,8 @@ void beginListening(const char *reason) {
   currentState = STATE_LISTENING;
   micStreamingActive = true;
   lastSpeechTimestamp = millis();
+  isSpeakingDetected = false;
+  speechStartTime = 0;
   lastTranscript = "Listening...";
   renderScreen(true);
 }
@@ -811,8 +908,8 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         resample24to16((const int16_t *)data, inSamples, resampled,
                         FRAME_BUF_CAPACITY / sizeof(int16_t));
     size_t bytesWritten = 0;
-    i2s_write(I2S_NUM_0, resampled, outSamples * sizeof(int16_t),
-              &bytesWritten, pdMS_TO_TICKS(50));
+    i2s_channel_write(i2sTxChan, resampled, outSamples * sizeof(int16_t),
+                       &bytesWritten, 50);
     lastSpeechTimestamp = millis();
     // This binary audio channel is Gemini's actual spoken reply (we're
     // AUDIO-only, responseModalities=["AUDIO"]) - the JSON serverContent/
@@ -843,13 +940,13 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       lastTranscript = "Tap screen to ask a question";
       renderScreen(true);
       sendDebug(codecRegDump);
-      // Mic-free diagnostic: confirms the network/Gemini/speaker path works
-      // in isolation, alongside the boot chime which confirms the speaker
-      // hardware itself. Once per boot only.
-      if (!textQuerySentOnce) {
-        textQuerySentOnce = true;
-        sendTextQuery("Hi, how are you");
-      }
+      // The mic-free "Hi, how are you" auto-query (sendTextQuery) already
+      // did its job confirming the network/Gemini/speaker path in
+      // isolation - removed because its own trailing reply audio can still
+      // be arriving when a real mic test starts, and handleFrame() treats
+      // ANY incoming audio as "Gemini is replying, stop listening" -
+      // silently truncating the very next listening session to a fraction
+      // of a second. sendTextQuery() is left defined for future manual use.
     }
     if (doc["text"].is<const char *>()) {
       const char *textSnippet = doc["text"].as<const char *>();
@@ -972,17 +1069,66 @@ void pollIncoming() {
 void audioMicTask(void *param) {
   int16_t micBuffer[AUDIO_CHUNK_SAMPLES];
   size_t bytesRead = 0;
-  unsigned long speechStartTime = 0;
-  bool isSpeakingDetected = false;
+  // DIAGNOSTIC: is i2s_channel_read() actually keeping pace with the 16kHz
+  // stream, or silently stalling for long stretches between buffers? Tracks
+  // wall-clock elapsed time and buffer count since streaming last started,
+  // logged alongside rms below, to tell "mic is just quiet" apart from
+  // "mic reads are starved" without relying on the 5s heartbeat cadence.
+  bool wasStreaming = false;
+  unsigned long sessionStartMs = 0;
+  unsigned long bufCount = 0;
+  unsigned long attemptCount = 0;
+  unsigned long zeroByteCount = 0;
+  static unsigned long lastAttemptLog = 0;
 
   while (true) {
     // Only stream audio when Gemini has fully acknowledged setup
     // This prevents binary audio from reaching the server before the
     // setup text message, which causes Gemini to reject with 1007.
     if (tcpClient.connected() && geminiSetupComplete) {
-      i2s_read(I2S_NUM_0, micBuffer, sizeof(micBuffer), &bytesRead,
-               portMAX_DELAY);
+      if (micStreamingActive && !wasStreaming) {
+        sessionStartMs = millis();
+        bufCount = 0;
+        attemptCount = 0;
+        zeroByteCount = 0;
+        wasStreaming = true;
+      } else if (!micStreamingActive) {
+        wasStreaming = false;
+      }
+      unsigned long readStartMs = millis();
+      i2s_channel_read(i2sRxChan, micBuffer, sizeof(micBuffer), &bytesRead,
+                        portMAX_DELAY);
+      unsigned long readMs = millis() - readStartMs;
+      attemptCount++;
+      if (bytesRead == 0) zeroByteCount++;
+
+      // DIAGNOSTIC: fires every 500ms regardless of bytesRead/micStreamingActive,
+      // unlike the rms log below which only fires on a successful in-session
+      // read - this is the only way to tell "the loop itself is stalling
+      // inside i2s_channel_read()" apart from "the loop spins fine but
+      // bytesRead keeps coming back 0" or "micStreamingActive keeps gating
+      // real buffers out".
+      if (wasStreaming && millis() - lastAttemptLog > 500) {
+        lastAttemptLog = millis();
+        // Raw Serial.printf here too - straight off USB serial, bypassing
+        // debugQueue/TCP/backend entirely, since those add their own
+        // queuing/throttling that could otherwise be mistaken for the mic
+        // task itself stalling.
+        Serial.printf("[MicAttempt] att=%lu zero=%lu ok=%lu el=%lums rd=%lu "
+                      "str=%d\n",
+                      attemptCount, zeroByteCount, bufCount,
+                      millis() - sessionStartMs, readMs,
+                      (int)micStreamingActive);
+        DebugMsg amsgQ;
+        snprintf(amsgQ.text, sizeof(amsgQ.text),
+                 "att=%lu zero=%lu ok=%lu el=%lums rd=%lu str=%d",
+                 attemptCount, zeroByteCount, bufCount,
+                 millis() - sessionStartMs, readMs, (int)micStreamingActive);
+        xQueueSend(debugQueue, &amsgQ, 0);
+      }
+
       if (bytesRead > 0 && micStreamingActive) {
+        bufCount++;
         // DIAGNOSTIC: stereo test (L vs R) came back identical, ruling out
         // a channel-mapping/wrong-slot bug - back to mono. Now testing a
         // bit-alignment theory instead: MIC_SHIFT_TEST_BITS left-shifts
@@ -1007,11 +1153,14 @@ void audioMicTask(void *param) {
         static unsigned long lastRmsLog = 0;
         if (millis() - lastRmsLog > 500) {
           lastRmsLog = millis();
-          Serial.printf("[Mic] RMS=%d (shift=%d) sample0=%d\n", rms,
-                        MIC_SHIFT_TEST_BITS, micBuffer[0]);
+          unsigned long elapsed = millis() - sessionStartMs;
+          Serial.printf("[Mic] RMS=%d sample0=%d n=%lu elapsed=%lums "
+                        "lastReadMs=%lu\n",
+                        rms, micBuffer[0], bufCount, elapsed, readMs);
           DebugMsg dmsg;
-          snprintf(dmsg.text, sizeof(dmsg.text), "rms=%d shift=%d sample0=%d",
-                   rms, MIC_SHIFT_TEST_BITS, micBuffer[0]);
+          snprintf(dmsg.text, sizeof(dmsg.text),
+                   "rms=%d n=%lu elapsed=%lums lastReadMs=%lu", rms, bufCount,
+                   elapsed, readMs);
           xQueueSend(debugQueue, &dmsg, 0);
         }
 
@@ -1044,7 +1193,7 @@ void audioMicTask(void *param) {
     } else {
       // Drain I2S buffer to prevent overflow accumulation while not streaming
       if (tcpClient.connected()) {
-        i2s_read(I2S_NUM_0, micBuffer, sizeof(micBuffer), &bytesRead, 10);
+        i2s_channel_read(i2sRxChan, micBuffer, sizeof(micBuffer), &bytesRead, 10);
       }
       vTaskDelay(pdMS_TO_TICKS(10));
     }
@@ -1053,6 +1202,23 @@ void audioMicTask(void *param) {
 
 void setup() {
   Serial.begin(115200);
+  // ROOT CAUSE of the "short/empty mic recording" bug: ESP32-S3's native
+  // USB-Serial/JTAG Serial (HWCDC) blocks in write() - via
+  // xSemaphoreTake(tx_lock, tx_timeout_ms) - whenever its small TX ring
+  // buffer fills, waiting for the host to drain it. A standalone i2s mic
+  // read-rate test (60 buffers, no WiFi/TCP/Gemini involved at all) proved
+  // this directly: with a Serial.printf() on every buffer, 60 reads took
+  // 47.4s wall-clock (avg 790ms/buf) despite each individual
+  // i2s_channel_read() itself completing in ~15ms; removing the per-buffer
+  // printf alone dropped the same 60-buffer test to 918ms (avg 15ms/buf) -
+  // a ~50x difference from Serial.printf() blocking, not the mic/codec/I2S
+  // config at all. This app logs from audioMicTask() and elsewhere
+  // throughout every session, so in real use those calls were stalling the
+  // mic task for hundreds of ms at a time. Setting the TX timeout to 0
+  // makes write() return immediately instead of blocking when the buffer is
+  // full, silently dropping serial output rather than starving the task
+  // that called it.
+  Serial.setTxTimeoutMs(0);
   delay(500);
   Serial.println("===============================================");
   Serial.println("  IMS ESP32-S3-BOX-3 Hardware Terminal");
@@ -1077,6 +1243,13 @@ void setup() {
   // speaker output can be confirmed (or ruled out) independently of the
   // touchscreen and before WiFi/Gemini are even in the picture.
   playChime();
+
+  // DIAGNOSTIC: standalone mic read-rate test, no WiFi/TCP/Gemini running
+  // yet at all - isolates whether the live app's severe mic-read stall is
+  // inherent to the i2s_std config itself or caused by contention once
+  // WiFi/TCP/Gemini are active. See micReadRateTest() for detail.
+  delay(1000);
+  micReadRateTest();
 
   // 3. Wi-Fi Connection
   WiFi.mode(WIFI_STA);
@@ -1183,6 +1356,7 @@ void loop() {
   // never fired) so the mic doesn't stream indefinitely in either case.
   if ((currentState == STATE_LISTENING || currentState == STATE_THINKING) &&
       (millis() - lastSpeechTimestamp > SESSION_IDLE_TIMEOUT_MS)) {
+    sendDebug("session_idle_timeout");
     currentState = STATE_STANDBY;
     micStreamingActive = false;
     lastTranscript = "Tap screen to ask a question";
