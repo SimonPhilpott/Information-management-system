@@ -20,5 +20,6 @@
 | TASK-016 | 21/09/2026 16:14 | 21/09/2026 16:15 | PASS | Resolve audio playback speedup / fast-forward effect by expanding PSRAM playback queue to 1024 slots and pacing flow control | Expanded playback queue to 1024 chunks (32.8s, 2MB PSRAM), implemented 35ms pacing flow control matching I2S DMA drain cadence, compiled and flashed to COM3 |
 | TASK-017 | 21/09/2026 16:17 | 21/09/2026 16:18 | PASS | Calibrate hardware DAC and software playback volume to balanced midpoint | Set ES8311 register 0x32 to 0xB4 (-5.5dB) and software gain to 1.2x (midpoint between initial loud level and previous attenuated level), compiled and flashed to COM3 |
 | TASK-018 | 21/09/2026 16:20 | 21/09/2026 16:22 | PASS | Introduce friendly, sarcastic, and darkly humorous British persona to hardware assistant | Updated system instructions in hardwareClientService.js and main.cpp; flashed binary to COM3; witty greetings and seasoned RAG answers verified |
+| TASK-019 | 21/09/2026 16:23 | 21/09/2026 16:23 | INCOMPLETE | Push latest firmware build, personality updates, and binaries to GitHub main and ESP32-S3-BOX-3B branches | Fast-forward merge changes to ESP32-S3-BOX-3B and push to origin/main and origin/ESP32-S3-BOX-3B |
 
 
