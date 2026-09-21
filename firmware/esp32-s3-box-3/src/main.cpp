@@ -175,6 +175,17 @@ struct AudioChunkMsg {
   uint8_t data[AUDIO_CHUNK_SAMPLES * sizeof(int16_t)];
   size_t len;
 };
+// Playback queue message: stereo 16-bit PCM chunks produced by handleFrame()
+// on Core 1 and consumed by audioPlaybackTask() on Core 0. Using a queue
+// (not a direct i2s_channel_write from handleFrame) is critical: calling
+// i2s_channel_write with portMAX_DELAY on Core 1 blocked loop() entirely,
+// which starved the TCP socket and caused the server to disconnect mid-reply.
+// The struct holds one AUDIO_CHUNK_SAMPLES-sized stereo chunk; larger frames
+// are split into multiple messages before queuing.
+struct PlaybackChunkMsg {
+  uint8_t data[AUDIO_CHUNK_SAMPLES * 2 * sizeof(int16_t)]; // stereo
+  size_t len;
+};
 enum ControlEvent { EVT_TURN_COMPLETE };
 
 // Debug telemetry sent over the existing WebSocket to the backend (which
@@ -188,6 +199,7 @@ struct DebugMsg {
 QueueHandle_t audioOutQueue = NULL;
 QueueHandle_t controlEventQueue = NULL;
 QueueHandle_t debugQueue = NULL;
+QueueHandle_t audioPlaybackQueue = NULL; // Core 1 -> Core 0 speaker audio
 
 void renderScreen(bool forceRedraw = false) {
   if (!forceRedraw && currentState == lastRenderedState)
@@ -937,16 +949,24 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       stereoPlaybackBuf[2 * i]     = (int16_t)boosted;
       stereoPlaybackBuf[2 * i + 1] = (int16_t)boosted;
     }
-    size_t bytesWritten = 0;
-    // portMAX_DELAY: the previous 50ms timeout was silently dropping frames
-    // whenever the I2S DMA TX FIFO was momentarily full between chunks (common
-    // during a burst of back-to-back Gemini audio frames). The TX FIFO drains
-    // at exactly the I2S clock rate (16kHz stereo 16-bit = 64KB/s), so a
-    // blocked write resolves within one DMA buffer period (~16ms) - well
-    // within the real-time budget. portMAX_DELAY ensures every frame is
-    // written rather than silently discarded when there's backpressure.
-    i2s_channel_write(i2sTxChan, stereoPlaybackBuf, outSamples * 2 * sizeof(int16_t),
-                       &bytesWritten, portMAX_DELAY);
+    // Push to audioPlaybackQueue in AUDIO_CHUNK_SAMPLES-sized stereo chunks.
+    // audioPlaybackTask (Core 0) drains the queue with portMAX_DELAY writes,
+    // so Core 1 (this function, called from loop()) is NEVER blocked waiting
+    // for DMA - which was the root cause of the TCP disconnect loop:
+    // portMAX_DELAY here was holding Core 1 for up to ~600ms per large frame.
+    static PlaybackChunkMsg pbMsg;
+    size_t offset = 0;
+    while (offset < outSamples) {
+      size_t chunk = outSamples - offset;
+      if (chunk > AUDIO_CHUNK_SAMPLES) chunk = AUDIO_CHUNK_SAMPLES;
+      memcpy(pbMsg.data, &stereoPlaybackBuf[offset * 2], chunk * 2 * sizeof(int16_t));
+      pbMsg.len = chunk * 2 * sizeof(int16_t);
+      // pdMS_TO_TICKS(20): brief wait only - if playback task is momentarily
+      // behind, give it 20ms to catch up rather than dropping immediately.
+      // Core 1 still returns to loop() within one DMA-drain period.
+      xQueueSend(audioPlaybackQueue, &pbMsg, pdMS_TO_TICKS(20));
+      offset += chunk;
+    }
     lastSpeechTimestamp = millis();
     // This binary audio channel is Gemini's actual spoken reply (we're
     // AUDIO-only, responseModalities=["AUDIO"]) - the JSON serverContent/
@@ -1250,6 +1270,29 @@ void audioMicTask(void *param) {
   }
 }
 
+// Speaker audio playback task on Core 0.
+// Drains audioPlaybackQueue (filled by handleFrame() on Core 1) and writes
+// each stereo PCM chunk to the I2S TX DMA with portMAX_DELAY. Running this
+// on Core 0 means Core 1's loop()/pollIncoming()/TCP path is NEVER blocked
+// by an i2s_channel_write() call - the root cause of the Standby->Speaking->
+// Connecting reconnect loop observed when portMAX_DELAY was called directly
+// from handleFrame(). Core 0 also hosts audioMicTask (priority 5); this task
+// runs at priority 4 so mic reads always take precedence, matching the
+// established read/write priority order in the ESP-IDF I2S examples.
+void audioPlaybackTask(void *param) {
+  static PlaybackChunkMsg msg;
+  while (true) {
+    if (xQueueReceive(audioPlaybackQueue, &msg, portMAX_DELAY) == pdTRUE) {
+      size_t bytesWritten = 0;
+      // portMAX_DELAY here is safe: this is Core 0, not the TCP loop.
+      // The DMA drains at 16kHz stereo 16-bit = 64KB/s, so each
+      // AUDIO_CHUNK_SAMPLES (512 stereo samples = 2048 bytes) chunk
+      // completes in ~32ms worst-case.
+      i2s_channel_write(i2sTxChan, msg.data, msg.len, &bytesWritten, portMAX_DELAY);
+    }
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   // ROOT CAUSE of the "short/empty mic recording" bug: ESP32-S3's native
@@ -1322,13 +1365,20 @@ void setup() {
   // event callback to register; pollIncoming()/loop() drive reconnects).
   connectToBackend();
 
-  // 5. Create the Core0 -> Core1 hand-off queues before the audio task can
-  // possibly use them, then pin mic audio task to Core 0 (leaving Core 1 for
-  // WiFi, TCP polling & UI render)
+  // 5. Create Core0 <-> Core1 hand-off queues before the audio tasks can
+  // possibly use them, then pin both audio tasks to Core 0 (leaving Core 1
+  // exclusively for WiFi, TCP polling & UI render).
+  // audioPlaybackQueue is Core1->Core0: handleFrame() (Core 1) pushes
+  // resampled stereo PCM; audioPlaybackTask() (Core 0) drains it to I2S TX.
+  // This decoupling means Core 1 is NEVER blocked by i2s_channel_write(),
+  // which was causing TCP disconnects when portMAX_DELAY held Core 1 for
+  // up to ~600ms per large Gemini audio frame.
   audioOutQueue = xQueueCreate(8, sizeof(AudioChunkMsg));
   controlEventQueue = xQueueCreate(4, sizeof(ControlEvent));
   debugQueue = xQueueCreate(8, sizeof(DebugMsg));
+  audioPlaybackQueue = xQueueCreate(16, sizeof(PlaybackChunkMsg));
   xTaskCreatePinnedToCore(audioMicTask, "MicTask", 8192, NULL, 5, NULL, 0);
+  xTaskCreatePinnedToCore(audioPlaybackTask, "PlaybackTask", 4096, NULL, 4, NULL, 0);
 }
 
 void loop() {
