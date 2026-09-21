@@ -22,20 +22,18 @@ export async function executeHardwareRAGSearch(query, subjects = []) {
 
     // Generate embedding for query
     const queryVector = await generateQueryEmbedding(query);
-    const vectorMatches = searchSimilar(queryVector, 5);
+    const relevantChunks = await searchSimilar(queryVector, subjects, 5, true);
 
-    if (!vectorMatches || vectorMatches.length === 0) {
-      return "No relevant passages were found in the IMS PDF library.";
+    if (!relevantChunks || relevantChunks.length === 0) {
+      console.log("[HardwareRAG] No vector matches found for: " + query);
+      return "No relevant passages were found in the IMS PDF library for this query.";
     }
 
-    const passageIds = vectorMatches.map(m => m.id);
-    const placeholders = passageIds.map(() => "?").join(",");
-    const querySql = "SELECT p.content, d.title, p.page_number FROM passages p JOIN documents d ON p.document_id = d.id WHERE p.id IN (" + placeholders + ")";
-    const rows = db.prepare(querySql).all(...passageIds);
+    console.log(`[HardwareRAG] Found ${relevantChunks.length} matching passages for: "${query}"`);
 
-    const contextText = rows.map((r, i) =>
-      "[Source " + (i + 1) + ": " + r.title + ", Page " + r.page_number + "]:\n" + r.content
-    ).join("\n\n");
+    const contextText = relevantChunks.map((chunk, i) =>
+      `[Source ${i + 1}: "${chunk.filename || 'Document'}", Page ${chunk.pageNum || 1}]:\n${chunk.text}`
+    ).join("\n\n---\n\n");
 
     return contextText;
   } catch (err) {
@@ -65,20 +63,20 @@ export function getHardwareSetupPayload(voiceName = "Puck") {
       },
       systemInstruction: {
         parts: [{
-          text: "You are an intelligent knowledge assistant communicating with the user through an ESP32-S3-BOX-3 hardware device. Keep answers concise, natural, direct, and conversational in British English. You have access to a tool named searchLibrary to query the user's PDF library."
+          text: "You are Ims, an intelligent voice assistant on an ESP32-S3-BOX-3 device. Your name is Ims (rhymes with rims). The user taps a button to start talking, then asks you a question directly - respond to what they say, do not wait for a greeting or wake phrase. Respond concisely in natural British English. Keep all answers short and suitable for voice synthesis. You have access to the searchLibrary tool to query the user's personal PDF library and documents. Whenever the user asks about specific topics, documents, books, facts, or technical details, ALWAYS call searchLibrary first to retrieve context before answering. Never terminate or close the session."
         }]
       },
       tools: [{
         functionDeclarations: [
           {
             name: "searchLibrary",
-            description: "Searches the local PDF knowledge base for relevant facts and information.",
+            description: "Searches the user's personal PDF library and document collection for passages and information relevant to the query. Always use this when the user asks questions about their documents, books, specific topics, facts, or technical details.",
             parameters: {
               type: "OBJECT",
               properties: {
                 query: {
                   type: "STRING",
-                  description: "The search term or question to find in the documents."
+                  description: "The search query to find relevant excerpts from the document collection."
                 }
               },
               required: ["query"]

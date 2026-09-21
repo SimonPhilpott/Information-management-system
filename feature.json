@@ -161,7 +161,17 @@
         "Hardware stereo I2S acquisition with software deinterleaving of pure Left channel (MIC1)",
         "PA enable and DAC mute gating preventing Class-D switching ripple from coupling into microphone lines",
         "Real-time RMS silence detection and FreeRTOS inter-core queue handoff to Core 1 network loop",
-        "Isolated test firmware (mictest) with serial register dumping and uniform PCM verification"
+      ]
+    },
+    "Hardware Dynamic RAG Tool Calling & Handshake Injection": {
+      "status": "enabled",
+      "description": "Server-side handshake augmentation injecting searchLibrary tool definitions and RAG system prompt directives into incoming ESP32-S3-BOX-3B setup packets, enabling grounded knowledge retrieval without firmware reflashing.",
+      "subFeatures": [
+        "Dynamic searchLibrary function declaration injection into upstream Gemini Live setup handshake",
+        "Enriched voice-optimised RAG system prompt instructing Gemini to query library for document facts",
+        "Asynchronous vector search execution via HNSW and SQLite passages extraction in hardwareClientService",
+        "Resilient cached setup preservation for seamless upstream WebSocket code 1000 reconnection",
+        "Defensive error toolResponse fallback ensuring session continuity on query timeouts"
       ]
     }
   }

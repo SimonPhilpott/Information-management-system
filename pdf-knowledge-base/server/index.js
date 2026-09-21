@@ -55,7 +55,7 @@ import voiceRoutes from './routes/voice.js';
 import { getAuthStatus } from './services/driveService.js';
 import { validateConfiguredModels } from './services/modelService.js';
 import { loadHnswFromDisk } from './services/hnswService.js';
-import { executeHardwareRAGSearch } from './services/hardwareClientService.js';
+import { executeHardwareRAGSearch, getHardwareSetupPayload } from './services/hardwareClientService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -432,7 +432,28 @@ function handleLiveProxyConnection(ws, isHardware = false) {
                 }
               }).catch((err) => {
                 console.error(`${tag} RAG tool execution error:`, err);
+                if (gWs.readyState === WebSocket.OPEN) {
+                  gWs.send(JSON.stringify({
+                    toolResponse: {
+                      functionResponses: [{
+                        response: { output: { text: "Search failed: " + err.message } },
+                        id: call.id
+                      }]
+                    }
+                  }));
+                }
               });
+            } else {
+              if (gWs.readyState === WebSocket.OPEN) {
+                gWs.send(JSON.stringify({
+                  toolResponse: {
+                    functionResponses: [{
+                      response: { output: { status: 'acknowledged' } },
+                      id: call.id
+                    }]
+                  }
+                }));
+              }
             }
           }
         }
@@ -565,7 +586,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
       return;
     }
 
-    const msgStr = message.toString();
+    let msgStr = message.toString();
     if (msgStr.includes('realtimeInput')) {
       if (Math.random() < 0.05) {
         console.log(`${tag} Forwarding audio stream chunks...`);
@@ -581,19 +602,29 @@ function handleLiveProxyConnection(ws, isHardware = false) {
         }
       } catch (_) { }
 
+      // Cache and augment client setup handshake so we can auto-replay if Gemini closes with 1000
+      try {
+        const parsed = JSON.parse(msgStr);
+        if (parsed.setup) {
+          if (isHardware) {
+            // Augment hardware setup with searchLibrary tool declarations and RAG system instructions
+            const hardwareDefaults = getHardwareSetupPayload();
+            if (!parsed.setup.tools) {
+              parsed.setup.tools = hardwareDefaults.setup.tools;
+            }
+            parsed.setup.systemInstruction = hardwareDefaults.setup.systemInstruction;
+            msgStr = JSON.stringify(parsed);
+            console.log(`${tag} 🔧 Augmented hardware setup handshake with searchLibrary tool and RAG system prompt`);
+          }
+          cachedSetupMsg = msgStr;
+          console.log(`${tag} Cached setup handshake for resilient reconnection.`);
+        }
+      } catch (_) { }
+
       console.log(`${tag} Forwarding control message:`, msgStr);
       try {
         fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
           `[${new Date().toISOString()}] ${tag} CLIENT MSG: ${msgStr}\n`);
-      } catch (_) { }
-
-      // Cache client setup handshake so we can auto-replay if Gemini closes with 1000
-      try {
-        const parsed = JSON.parse(msgStr);
-        if (parsed.setup) {
-          cachedSetupMsg = msgStr;
-          console.log(`${tag} Cached setup handshake for resilient reconnection.`);
-        }
       } catch (_) { }
     }
 

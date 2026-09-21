@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 13
-- Verified Features: 13
+- Total Registered Features: 14
+- Verified Features: 14
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -21,6 +21,7 @@
 | FEAT-011 | Rulebook Search & Downloader Scraper | [RulebookScraper.jsx](file:///d:/Information%20management%20system/src/components/Admin/RulebookScraper.jsx) | SSE streaming & Python grounding scraper | PASS |
 | FEAT-012 | ESP32-S3-BOX-3 Hardware Voice Terminal | [server/index.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/index.js) | ESP32 WebSocket audio streaming to /api/hardware-live | PASS |
 | FEAT-013 | ESP32-S3-BOX-3B Clean Microphone Capture Subsystem | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | ES7210 register readback, stereo DMA deinterleaving & 16kHz PCM | PASS |
+| FEAT-014 | Hardware Dynamic RAG Tool Calling | [server/index.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/index.js) | Server-side setup injection & HNSW vector search verification | PASS |
 
 ## Section 2: Detailed Scenarios
 ### Suite 12: ESP32-S3-BOX-3 Hardware Voice Terminal (FEAT-012)
@@ -35,9 +36,17 @@
 3. **Square-Wave Tone Elimination:** Execute hardware stereo I2S acquisition (`I2S_SLOT_MODE_STEREO`) and software extraction of pure Left channel (MIC1), eliminating 500Hz/1000Hz inter-channel square-wave modulation.
 4. **Class-D PA Noise Isolation:** Ensure PA enable pin and ES8311 DAC unmute are gated during recording turns, isolating the analogue microphone lines from amplifier switching ripple.
 
+### Suite 14: Hardware Dynamic RAG Tool Calling (FEAT-014)
+1. **Setup Augmentation:** Intercept incoming ESP32 setup packet in `server/index.js` and verify dynamic injection of the `tools` schema declaring `searchLibrary`.
+2. **Dynamic Prompt Enrichment:** Validate `systemInstruction` is augmented with voice-tailored directives instructing Gemini to query `searchLibrary` for document and topic inquiries.
+3. **Asynchronous Vector Retrieval:** Execute `executeHardwareRAGSearch` against HNSW vector store and SQLite metadata; confirm passage extraction with filename and page metadata.
+4. **Resilient Tool Response & Error Fallback:** Confirm `toolResponse` delivery to Gemini Live and fallback acknowledgment on error or timeouts to maintain session continuity.
+
 ## Section 3: Defensive Engineering Invariants
 1. Hardware watchdog timer (WDT) and auto-reconnect logic on ESP32 WebSocket disconnects.
 2. Anti-stutter ring buffer and I2S DMA queue sizing on ESP32 PSRAM to prevent audio underflow/overflow.
 3. Clean socket disconnection teardown on both Node.js backend and ESP32 firmware upon session termination or Wi-Fi dropouts.
 4. Stereo I2S bus acquisition with pure Left channel deinterleaving to prevent phase cancellation or DC-offset intermodulation on shared Box-3 codec lines.
+5. Server-side toolResponse fallback ensuring Gemini Live receives an error acknowledgment if RAG search encounters a timeout or failure.
+
 
