@@ -26,8 +26,8 @@
 ### Suite 12: ESP32-S3-BOX-3 Hardware Voice Terminal (FEAT-012)
 1. **Network Handshake:** Connect ESP32-S3-BOX-3 via Wi-Fi to IMS backend ws://<host>:3001/api/live (or ngrok). Verify WebSocket handshake and setup packet exchange.
 2. **Audio Input Streaming:** Stream 16kHz 16-bit PCM microphone frames from ES7210/ES8311 I2S codec on ESP32 into IMS backend; confirm audio packet ingestion and forwarding to Gemini Live.
-3. **Audio Output Streaming:** Receive Gemini Live 24kHz PCM downsampled/resampled to Box-3 speaker DAC; verify smooth speech output without buffer underruns.
-4. **Tool Calling & Screen Telemetry:** Verify tool calling (searchLibrary) queries IMS RAG vector store and renders state changes (Listening, Thinking, Speaking) on the Box-3 320x240 LCD.
+3. **Audio Output Streaming:** Receive Gemini Live 24kHz PCM downsampled/resampled to Box-3 speaker DAC; verify smooth speech output without buffer underruns via 256-chunk PSRAM-backed playback queue (~8.2s audio buffer).
+4. **Tool Calling & Screen Telemetry:** Verify tool calling (searchLibrary) queries IMS RAG vector store and renders state changes (Listening, Thinking, Speaking) on the Box-3 320x240 LCD, with calibrated VAD thresholds (speech RMS > 350, silence RMS < 250).
 
 ### Suite 13: ESP32-S3-BOX-3B Clean Microphone Capture Subsystem (FEAT-013)
 1. **ES7210 Clock State Verification:** Confirm ES7210 register 0x08 retains 0x10 (`LRCK_RATE_MODE`) in slave mode, preventing 16:1 sample decimation dropouts.
