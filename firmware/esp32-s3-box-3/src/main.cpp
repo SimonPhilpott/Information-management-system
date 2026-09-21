@@ -949,11 +949,24 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       stereoPlaybackBuf[2 * i]     = (int16_t)boosted;
       stereoPlaybackBuf[2 * i + 1] = (int16_t)boosted;
     }
+    // CRITICAL ORDERING: unmute the PA and DAC BEFORE queuing any audio.
+    // audioPlaybackTask (Core 0) dequeues and calls i2s_channel_write() the
+    // instant the first chunk lands in the queue. If setSpeakerMute(false) is
+    // called AFTER the push (the previous bug), the amp's 150ms startup ramp
+    // means ALL audio plays into a dead PA output - which is why Gemini's
+    // response was completely inaudible despite the I2S TX path working fine
+    // (confirmed by the boot chime). Unmute first, queue second.
+    if (currentState != STATE_SPEAKING) {
+      setSpeakerMute(false); // Enable PA (150ms startup) + unmute DAC - BEFORE queuing
+      currentState = STATE_SPEAKING;
+      micStreamingActive = false;
+      lastTranscript = "Speaking...";
+      renderScreen(true);
+    }
     // Push to audioPlaybackQueue in AUDIO_CHUNK_SAMPLES-sized stereo chunks.
     // audioPlaybackTask (Core 0) drains the queue with portMAX_DELAY writes,
     // so Core 1 (this function, called from loop()) is NEVER blocked waiting
-    // for DMA - which was the root cause of the TCP disconnect loop:
-    // portMAX_DELAY here was holding Core 1 for up to ~600ms per large frame.
+    // for I2S DMA - which was the earlier TCP disconnect root cause.
     static PlaybackChunkMsg pbMsg;
     size_t offset = 0;
     while (offset < outSamples) {
@@ -961,26 +974,10 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       if (chunk > AUDIO_CHUNK_SAMPLES) chunk = AUDIO_CHUNK_SAMPLES;
       memcpy(pbMsg.data, &stereoPlaybackBuf[offset * 2], chunk * 2 * sizeof(int16_t));
       pbMsg.len = chunk * 2 * sizeof(int16_t);
-      // pdMS_TO_TICKS(20): brief wait only - if playback task is momentarily
-      // behind, give it 20ms to catch up rather than dropping immediately.
-      // Core 1 still returns to loop() within one DMA-drain period.
       xQueueSend(audioPlaybackQueue, &pbMsg, pdMS_TO_TICKS(20));
       offset += chunk;
     }
     lastSpeechTimestamp = millis();
-    // This binary audio channel is Gemini's actual spoken reply (we're
-    // AUDIO-only, responseModalities=["AUDIO"]) - the JSON serverContent/
-    // text paths below are for transcript-style messages that may not
-    // arrive at all for a pure-audio response. Without this, nothing ever
-    // told audioMicTask to stop streaming once Gemini started replying, and
-    // the screen could sit on "Thinking..." through the entire reply.
-    if (currentState != STATE_SPEAKING) {
-      setSpeakerMute(false); // Unmute DAC & enable speaker PA for Gemini speech playback
-      currentState = STATE_SPEAKING;
-      micStreamingActive = false;
-      lastTranscript = "Speaking...";
-      renderScreen(true);
-    }
     return;
   }
 
