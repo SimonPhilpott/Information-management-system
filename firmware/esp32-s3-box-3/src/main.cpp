@@ -196,10 +196,13 @@ struct DebugMsg {
   char text[80];
 };
 
+#define PLAYBACK_QUEUE_DEPTH 256
 QueueHandle_t audioOutQueue = NULL;
 QueueHandle_t controlEventQueue = NULL;
 QueueHandle_t debugQueue = NULL;
-QueueHandle_t audioPlaybackQueue = NULL; // Core 1 -> Core 0 speaker audio
+QueueHandle_t audioPlaybackQueue = NULL; // Core 1 -> Core 0 speaker audio (PSRAM-backed)
+static StaticQueue_t playbackStaticQueue;
+static uint8_t *playbackQueueStorage = nullptr;
 
 void renderScreen(bool forceRedraw = false) {
   if (!forceRedraw && currentState == lastRenderedState)
@@ -836,6 +839,9 @@ void beginListening(const char *reason) {
   Serial.printf("[IMS] Starting listening session (%s)...\n", reason);
   sendDebug((String("listening_start:") + reason).c_str());
   setSpeakerMute(true); // Isolate mic from speaker PA switching noise
+  if (audioPlaybackQueue) {
+    xQueueReset(audioPlaybackQueue); // Flush any stale audio from previous turn
+  }
   currentState = STATE_LISTENING;
   micStreamingActive = true;
   lastSpeechTimestamp = millis();
@@ -845,35 +851,18 @@ void beginListening(const char *reason) {
   renderScreen(true);
 }
 
-// Deliberately sends nothing to Gemini - just flips the local UI to
-// THINKING. Two things learned the hard way getting here: (1) sending a
-// clientContent turn with a placeholder "." text part (the original
-// approach) made Gemini answer the literal period instead of the real
-// audio, producing the same generic "Yes, how can I help you?" reply every
-// time; (2) realtimeInput.audioStreamEnd (the next attempt) isn't a
-// recognized field either - Gemini just silently never responded and the
-// session eventually timed out. The browser app's own useGeminiLive.js
-// sendTurnComplete() sends {clientContent:{turns:[],turnComplete:true}},
-// but index.js explicitly drops that exact empty-turns shape server-side
-// to avoid a Gemini 1007 rejection - so in the ALREADY-WORKING browser
-// path, that message never actually reaches Gemini either. What actually
-// ends a turn there is Gemini's own server-side voice activity detection,
-// on by default for realtimeInput.audio streams with no explicit opt-in
-// needed - it notices the silence in the continuous audio stream itself
-// and starts responding unprompted. This only flips the DISPLAY to
-// THINKING - it deliberately leaves micStreamingActive alone, so
-// audioMicTask keeps streaming real mic audio (including trailing silence)
-// the whole time Gemini is "thinking", giving its VAD an actual continuous
-// stream to detect the end of speech from rather than an abruptly cut-off
-// one. handleFrame() clears micStreamingActive once Gemini's response
-// actually starts arriving.
+// Spoken turn complete: flips the display to THINKING and pre-warms the speaker PA.
+// Crucially leaves micStreamingActive = true so audioMicTask continues streaming
+// real trailing silence to Gemini Live - Gemini's server-side VAD requires continuous
+// silence frames to identify the end of speech and trigger synthesis.
+// handleFrame() stops mic streaming the instant Gemini's audio response arrives.
 void sendTurnComplete() {
   if (!tcpClient.connected() || !geminiSetupComplete) return;
+  Serial.println("[IMS] Spoken turn completed -> transitioning to THINKING");
   currentState = STATE_THINKING;
-  micStreamingActive = false; // Stop streaming mic audio so Gemini's VAD completes the turn!
-  // Pre-warm PA immediately - amp exits shutdown during Gemini's processing
-  // window so no blocking delay is needed when the first audio frame arrives.
+  // KEEP micStreamingActive true! Gemini VAD needs trailing silence frames
   preWarmSpeakerPA();
+  lastTranscript = "Thinking...";
   renderScreen(true);
 }
 
@@ -1016,23 +1005,26 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       Serial.println(
           "[Gemini] Setup complete ACK received - audio streaming enabled!");
       geminiSetupComplete = true;
-      currentState = STATE_STANDBY;
-      lastTranscript = "Tap screen to ask a question";
-      renderScreen(true);
-      sendDebug(codecRegDump);
-      // Startup greeting: Gemini synthesises this as native audio and streams
-      // it back through the speaker path immediately on first connect, so the
-      // user gets audible confirmation the device is ready without needing to
-      // tap anything. Uses sendTextQuery() which sends a proper clientContent
-      // turn with turnComplete=true so Gemini responds immediately.
-      sendTextQuery("Please say exactly: Hi, I'm Ims, ready to talk.");
-      // The mic-free "Hi, how are you" auto-query (sendTextQuery) already
-      // did its job confirming the network/Gemini/speaker path in
-      // isolation - removed because its own trailing reply audio can still
-      // be arriving when a real mic test starts, and handleFrame() treats
-      // ANY incoming audio as "Gemini is replying, stop listening" -
-      // silently truncating the very next listening session to a fraction
-      // of a second. sendTextQuery() is left defined for future manual use.
+      static bool startupGreetingSent = false;
+      if (!startupGreetingSent) {
+        startupGreetingSent = true;
+        currentState = STATE_STANDBY;
+        lastTranscript = "Tap screen to ask a question";
+        renderScreen(true);
+        sendDebug(codecRegDump);
+        // Startup greeting: Gemini synthesises this as native audio and streams
+        // it back through the speaker path immediately on first connect, so the
+        // user gets audible confirmation the device is ready without needing to
+        // tap anything.
+        sendTextQuery("Please say exactly: Hi, I'm Ims, ready to talk.");
+      } else {
+        // Transparent reconnect from proxy - preserve current state if listening/thinking/speaking
+        if (currentState != STATE_LISTENING && currentState != STATE_THINKING && currentState != STATE_SPEAKING) {
+          currentState = STATE_STANDBY;
+          lastTranscript = "Tap screen to ask a question";
+          renderScreen(true);
+        }
+      }
     }
     if (doc["text"].is<const char *>()) {
       const char *textSnippet = doc["text"].as<const char *>();
@@ -1043,14 +1035,12 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       renderScreen(true);
     }
     if (doc["turnComplete"].as<bool>() || doc["turnComplete"].is<JsonObject>()) {
-      // Do NOT mute the speaker here - audioPlaybackQueue may still have chunks
-      // queued for audioPlaybackTask to drain. Muting now kills the tail of
-      // Gemini's response. The speaker is muted at the correct point in
-      // beginListening() before the mic starts, isolating it from PA noise.
-      currentState = STATE_STANDBY;
       micStreamingActive = false;
-      lastTranscript = "Tap screen to ask a question";
-      renderScreen(true);
+      if (!audioPlaybackQueue || uxQueueMessagesWaiting(audioPlaybackQueue) == 0) {
+        currentState = STATE_STANDBY;
+        lastTranscript = "Tap screen to ask a question";
+        renderScreen(true);
+      }
     }
     if (doc["serverContent"].is<JsonObject>()) {
       JsonObject serverContent = doc["serverContent"];
@@ -1073,12 +1063,12 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         }
       }
       if (serverContent["turnComplete"].as<bool>()) {
-        // Do NOT mute the speaker here - queue may still be draining.
-        // beginListening() mutes before the mic starts. See note above.
-        currentState = STATE_STANDBY;
         micStreamingActive = false;
-        lastTranscript = "Tap screen to ask a question";
-        renderScreen(true);
+        if (!audioPlaybackQueue || uxQueueMessagesWaiting(audioPlaybackQueue) == 0) {
+          currentState = STATE_STANDBY;
+          lastTranscript = "Tap screen to ask a question";
+          renderScreen(true);
+        }
       }
     }
   } else {
@@ -1147,11 +1137,9 @@ void pollIncoming() {
 // Energy-based silence detection while actively LISTENING (tuned for BOX-3
 // dual mic array + ES7210 gain). Touch/button is the only trigger into
 // LISTENING now — this threshold only decides when the user has stopped
-// talking so we can close the turn.
-// Raised from 25 to 50 to track the ×2 software gain applied in
-// audioMicTask - raw RMS values are now doubled, so the threshold must
-// scale with them to maintain the same effective silence sensitivity.
-#define VOICE_ENERGY_THRESHOLD 50
+// Calibrated VAD thresholds: ES7210 noise floor is RMS 75-130; User speech is RMS 1000-2000+.
+#define VOICE_SPEECH_THRESHOLD 350
+#define VOICE_SILENCE_THRESHOLD 250
 
 // Bit-alignment diagnostic (see audioMicTask()) - left-shifts every mic
 // sample by this many bits before sending/logging. Tested at 4: result was
@@ -1262,18 +1250,19 @@ void audioMicTask(void *param) {
           xQueueSend(debugQueue, &dmsg, 0);
         }
 
-        if (rms > (VOICE_ENERGY_THRESHOLD / 2)) {
+        if (rms > VOICE_SPEECH_THRESHOLD) {
           lastSpeechTimestamp = millis();
           if (!isSpeakingDetected) {
             isSpeakingDetected = true;
             speechStartTime = millis();
+            Serial.printf("[Audio] Speech detected (RMS=%d)\n", rms);
           }
-        } else {
+        } else if (rms < VOICE_SILENCE_THRESHOLD) {
           // User went silent while in LISTENING
-          if (isSpeakingDetected && (millis() - lastSpeechTimestamp > 800) &&
+          if (isSpeakingDetected && (millis() - lastSpeechTimestamp > 900) &&
               (millis() - speechStartTime > 1200)) {
-            Serial.println("[Audio] Silence detected after speech turn -> "
-                            "queuing turnComplete");
+            Serial.printf("[Audio] Silence detected after speech turn (RMS=%d, speechMs=%lu) -> queuing turnComplete\n",
+                          rms, millis() - speechStartTime);
             isSpeakingDetected = false;
             ControlEvent evt = EVT_TURN_COMPLETE;
             xQueueSend(controlEventQueue, &evt, 0);
@@ -1404,7 +1393,18 @@ void setup() {
   audioOutQueue = xQueueCreate(8, sizeof(AudioChunkMsg));
   controlEventQueue = xQueueCreate(4, sizeof(ControlEvent));
   debugQueue = xQueueCreate(8, sizeof(DebugMsg));
-  audioPlaybackQueue = xQueueCreate(16, sizeof(PlaybackChunkMsg));
+
+  playbackQueueStorage = (uint8_t *)ps_malloc(PLAYBACK_QUEUE_DEPTH * sizeof(PlaybackChunkMsg));
+  if (playbackQueueStorage != nullptr) {
+    audioPlaybackQueue = xQueueCreateStatic(PLAYBACK_QUEUE_DEPTH, sizeof(PlaybackChunkMsg),
+                                            playbackQueueStorage, &playbackStaticQueue);
+    Serial.printf("[Audio] audioPlaybackQueue created in PSRAM (%d chunks, %u KB buffer)\n",
+                  PLAYBACK_QUEUE_DEPTH, (unsigned int)(PLAYBACK_QUEUE_DEPTH * sizeof(PlaybackChunkMsg) / 1024));
+  } else {
+    Serial.println("[Audio] WARNING: ps_malloc failed for playback queue! Falling back to SRAM (16 slots)");
+    audioPlaybackQueue = xQueueCreate(16, sizeof(PlaybackChunkMsg));
+  }
+
   xTaskCreatePinnedToCore(audioMicTask, "MicTask", 8192, NULL, 5, NULL, 0);
   xTaskCreatePinnedToCore(audioPlaybackTask, "PlaybackTask", 4096, NULL, 4, NULL, 0);
 }
@@ -1469,6 +1469,8 @@ void loop() {
     Serial.println("[Button] Talk button pressed!");
     if (currentState == STATE_STANDBY) {
       beginListening("button");
+    } else if (currentState == STATE_LISTENING) {
+      sendTurnComplete();
     } else {
       currentState = STATE_STANDBY;
       micStreamingActive = false;
@@ -1478,6 +1480,15 @@ void loop() {
     delay(50); // debounce
   }
   lastBtnState = btnState;
+
+  // Auto-transition from SPEAKING back to STANDBY once the audio queue is fully drained
+  if (currentState == STATE_SPEAKING && audioPlaybackQueue &&
+      uxQueueMessagesWaiting(audioPlaybackQueue) == 0 &&
+      (millis() - lastSpeechTimestamp > 400)) {
+    currentState = STATE_STANDBY;
+    lastTranscript = "Tap screen to ask a question";
+    renderScreen(true);
+  }
 
   // Auto-return to STANDBY after idle conversation - covers LISTENING (user
   // never spoke) and THINKING (Gemini never responded at all, e.g. its VAD
@@ -1507,20 +1518,13 @@ void loop() {
   if (tft.getTouch(&touchX, &touchY)) {
     if (currentState == STATE_SPEAKING) {
       // User interrupted Gemini: switch to listening
-      currentState = STATE_LISTENING;
-      micStreamingActive = true;
-      lastSpeechTimestamp = millis();
-      lastTranscript = "Interrupted by user";
-      renderScreen(true);
+      beginListening("touch_interrupt");
     } else if (currentState == STATE_STANDBY) {
       // Touch-to-talk: start listening for the user's spoken question
       beginListening("touch");
     } else if (currentState == STATE_LISTENING) {
-      // Manual touch sleep
-      currentState = STATE_STANDBY;
-      micStreamingActive = false;
-      lastTranscript = "Tap screen to ask a question";
-      renderScreen(true);
+      // Tap screen while listening: finish turn and trigger Gemini response immediately
+      sendTurnComplete();
     }
     delay(200);
   }
