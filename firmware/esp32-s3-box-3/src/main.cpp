@@ -194,18 +194,20 @@ enum ControlEvent {
 // Acoustic feedback blanking: tracks the last time the speaker played audio
 extern QueueHandle_t audioPlaybackQueue;
 volatile unsigned long lastPlaybackActiveTime = 0;
+volatile bool modelTurnActive = false; // Tracks active turn generation from Gemini
 
 // Returns true if audio is actively playing or queued to play out the speaker
 inline bool isSpeakerActive() {
+  if (modelTurnActive) return true;
   if (audioPlaybackQueue && uxQueueMessagesWaiting(audioPlaybackQueue) > 0) return true;
-  if (lastPlaybackActiveTime > 0 && (millis() - lastPlaybackActiveTime < 600)) return true;
+  if (lastPlaybackActiveTime > 0 && (millis() - lastPlaybackActiveTime < 1200)) return true;
   return false;
 }
 
 // Returns true during speaker playback plus acoustic reverberation / enclosure cooldown window
 inline bool isSpeakerCoolingDown() {
   if (isSpeakerActive()) return true;
-  if (lastPlaybackActiveTime > 0 && (millis() - lastPlaybackActiveTime < 1000)) return true;
+  if (lastPlaybackActiveTime > 0 && (millis() - lastPlaybackActiveTime < 1500)) return true;
   return false;
 }
 
@@ -988,6 +990,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
     if (stereoPlaybackBuf == nullptr) {
       stereoPlaybackBuf = (int16_t *)ps_malloc(FRAME_BUF_CAPACITY * 2);
     }
+    modelTurnActive = true;
     bool isTurnStart = (currentState != STATE_SPEAKING);
     if (isTurnStart) {
       // PA GPIO was pre-warmed in sendTurnComplete()/sendTextQuery() when we
@@ -1069,6 +1072,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       renderScreen(true);
     }
     if (doc["turnComplete"].as<bool>() || doc["turnComplete"].is<JsonObject>()) {
+      modelTurnActive = false;
       micStreamingActive = false;
       // Note: State transition back to STATE_STANDBY is handled cleanly in loop()
       // once audioPlaybackQueue drains and the speaker finishes playing.
@@ -1094,6 +1098,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         }
       }
       if (serverContent["turnComplete"].as<bool>()) {
+        modelTurnActive = false;
         micStreamingActive = false;
         // Note: State transition back to STATE_STANDBY is handled cleanly in loop()
         // once audioPlaybackQueue drains and the speaker finishes playing.
@@ -1163,11 +1168,14 @@ void pollIncoming() {
 }
 
 // Energy-based silence detection while actively LISTENING (tuned for BOX-3
-// dual mic array + ES7210 gain). Touch/button is the only trigger into
-// LISTENING now — this threshold only decides when the user has stopped
-// Calibrated VAD thresholds: ES7210 noise floor is RMS 75-130; User speech is RMS 1000-2000+.
-#define VOICE_SPEECH_THRESHOLD 350
-#define VOICE_SILENCE_THRESHOLD 250
+// dual mic array + ES7210 gain + 2x digital boost).
+// Calibrated VAD thresholds: ES7210 noise floor with 2x gain is RMS 120-250;
+// Ambient room noise / keyboard clicks / breathing is RMS 250-450;
+// Deliberate human speech is RMS 1200-3500+.
+#define VOICE_WAKE_THRESHOLD 800         // Wake phrase onset ("Hey Ims", "Eh up Ims")
+#define VOICE_WAKE_CONSECUTIVE_FRAMES 3  // Must sustain >800 RMS for 3 consecutive chunks (~96ms)
+#define VOICE_SPEECH_THRESHOLD 500       // Speech continuation detection during active LISTENING
+#define VOICE_SILENCE_THRESHOLD 280      // Silence threshold for turn completion
 
 // Bit-alignment diagnostic (see audioMicTask()) - left-shifts every mic
 // sample by this many bits before sending/logging. Tested at 4: result was
@@ -1293,7 +1301,52 @@ void audioMicTask(void *param) {
           xQueueSend(debugQueue, &dmsg, 0);
         }
 
-        if (micStreamingActive) {
+        // Acoustic Wake Word Detection (e.g. "Hey Ims", "Eh up Ims"):
+        // Allowed in STANDBY or THINKING (to recover/interrupt), provided speaker is not active or cooling down
+        bool canWakeDetect = (!isSpeakerCoolingDown()) &&
+                             (currentState == STATE_STANDBY || currentState == STATE_THINKING);
+        bool wakeTriggeredThisChunk = false;
+        static int wakeStreak = 0;
+        if (canWakeDetect) {
+          if (rms > VOICE_WAKE_THRESHOLD) {
+            wakeStreak++;
+            if (wakeStreak >= VOICE_WAKE_CONSECUTIVE_FRAMES) {
+              wakeStreak = 0;
+              wakeTriggeredThisChunk = true;
+              Serial.printf("[Audio] 🎙️ Validated wake speech detected (state=%d, RMS=%d) -> triggering LISTENING\n",
+                            (int)currentState, rms);
+              micStreamingActive = true;
+              isSpeakingDetected = true;
+              speechStartTime = millis();
+              lastSpeechTimestamp = millis();
+
+              // Notify Core 1 to transition UI state and mute speaker
+              ControlEvent evt = EVT_WAKE_SPEECH;
+              xQueueSend(controlEventQueue, &evt, 0);
+
+              // Flush circular pre-roll buffer so Gemini hears the start of the wake word
+              if (prerollBuffer != nullptr) {
+                int startIdx = prerollFilled ? prerollHead : 0;
+                int count = prerollFilled ? PREROLL_CHUNKS : prerollHead;
+                for (int i = 0; i < count; i++) {
+                  int idx = (startIdx + i) % PREROLL_CHUNKS;
+                  xQueueSend(audioOutQueue, &prerollBuffer[idx], 0);
+                }
+              }
+
+              // Also forward current chunk
+              size_t copyLen = monoSampleCount * sizeof(int16_t);
+              if (copyLen > sizeof(msg.data)) copyLen = sizeof(msg.data);
+              memcpy(msg.data, micBuffer, copyLen);
+              msg.len = copyLen;
+              xQueueSend(audioOutQueue, &msg, 0);
+            }
+          } else {
+            if (wakeStreak > 0) wakeStreak--;
+          }
+        }
+
+        if (micStreamingActive && !wakeTriggeredThisChunk) {
           if (rms > VOICE_SPEECH_THRESHOLD) {
             lastSpeechTimestamp = millis();
             if (!isSpeakingDetected) {
@@ -1320,36 +1373,6 @@ void audioMicTask(void *param) {
           // Non-blocking: if the queue is full (loop() briefly busy), drop this
           // chunk rather than stalling the I2S read cadence.
           xQueueSend(audioOutQueue, &msg, 0);
-        } else if (currentState == STATE_STANDBY && !isSpeakerCoolingDown()) {
-          // In STANDBY: check for speech onset (Wake Word: "Hey Ims", "Eh up Ims", etc.)
-          if (rms > VOICE_SPEECH_THRESHOLD) {
-            Serial.printf("[Audio] 🎙️ Acoustic wake speech detected in standby (RMS=%d) -> triggering LISTENING\n", rms);
-            micStreamingActive = true;
-            isSpeakingDetected = true;
-            speechStartTime = millis();
-            lastSpeechTimestamp = millis();
-
-            // Notify Core 1 to transition UI state and mute speaker
-            ControlEvent evt = EVT_WAKE_SPEECH;
-            xQueueSend(controlEventQueue, &evt, 0);
-
-            // Flush circular pre-roll buffer so Gemini hears the start of the wake word
-            if (prerollBuffer != nullptr) {
-              int startIdx = prerollFilled ? prerollHead : 0;
-              int count = prerollFilled ? PREROLL_CHUNKS : prerollHead;
-              for (int i = 0; i < count; i++) {
-                int idx = (startIdx + i) % PREROLL_CHUNKS;
-                xQueueSend(audioOutQueue, &prerollBuffer[idx], 0);
-              }
-            }
-
-            // Also forward current chunk
-            size_t copyLen = monoSampleCount * sizeof(int16_t);
-            if (copyLen > sizeof(msg.data)) copyLen = sizeof(msg.data);
-            memcpy(msg.data, micBuffer, copyLen);
-            msg.len = copyLen;
-            xQueueSend(audioOutQueue, &msg, 0);
-          }
         }
       }
     } else {
@@ -1537,7 +1560,7 @@ void loop() {
     if (evt == EVT_TURN_COMPLETE) {
       sendTurnComplete();
     } else if (evt == EVT_WAKE_SPEECH) {
-      if (currentState == STATE_STANDBY) {
+      if (currentState == STATE_STANDBY || currentState == STATE_THINKING || currentState == STATE_LISTENING) {
         beginListening("voice_wake");
       }
     }
@@ -1569,6 +1592,12 @@ void loop() {
       beginListening("button");
     } else if (currentState == STATE_LISTENING) {
       sendTurnComplete();
+    } else if (currentState == STATE_THINKING) {
+      Serial.println("[Button] Button pressed during THINKING -> resetting to STANDBY");
+      currentState = STATE_STANDBY;
+      micStreamingActive = false;
+      lastTranscript = "Say 'Hey Ims' or tap screen";
+      renderScreen(true);
     } else {
       currentState = STATE_STANDBY;
       micStreamingActive = false;
@@ -1622,6 +1651,13 @@ void loop() {
     } else if (currentState == STATE_LISTENING) {
       // Tap screen while listening: finish turn and trigger Gemini response immediately
       sendTurnComplete();
+    } else if (currentState == STATE_THINKING) {
+      // Tap screen while thinking: cancel thinking state and reset to ready standby
+      Serial.println("[Touch] Tapped during THINKING -> resetting to STANDBY");
+      currentState = STATE_STANDBY;
+      micStreamingActive = false;
+      lastTranscript = "Say 'Hey Ims' or tap screen";
+      renderScreen(true);
     }
     delay(200);
   }

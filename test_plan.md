@@ -66,5 +66,7 @@
 6. Acoustic feedback cooldown blanking window (1000ms) ensuring microphone task suppresses wake detection and resets pre-roll buffer while speaker is active or reverberating.
 7. Playback flow-control pacing (35ms timeout) matching 32ms I2S DMA chunk consumption, ensuring long streaming audio responses are paced without dropping frames or stalling the network loop.
 8. Conversational persona instructions enforce 100% strict adherence to RAG tool execution (`searchLibrary`) so wit does not override factual veracity.
+9. Acoustic wake detection requires multi-frame verification (3 consecutive frames > 800 RMS) and 1,500ms post-playback cooldown to eliminate ambient noise and speaker reverberation false triggers.
+10. Dual-trigger recovery allows wake phrase, touch, and top button to interrupt or reset from THINKING or LISTENING states.
 
 

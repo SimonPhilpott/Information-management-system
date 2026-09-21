@@ -183,7 +183,9 @@
         "Balanced DAC volume (ES8311 reg 0x32 = 0xB4, -5.5dB) and 1.2x digital gain calibrated for clear voice output",
         "Clean silent standby boot mode eliminating unprompted startup query and phantom thinking states",
         "Dual-trigger parity enabling seamless activation via voice wake phrases ('Hey Ims', 'Eh up Ims') or screen tap",
-        "1024-chunk (32.8s, 2MB) PSRAM playback queue with 35ms flow-control pacing preventing audio decimation and fast-forward distortion on long responses"
+        "1024-chunk (32.8s, 2MB) PSRAM playback queue with 35ms flow-control pacing preventing audio decimation and fast-forward distortion on long responses",
+        "Multi-frame wake confirmation (3 consecutive frames > 800 RMS) and 1500ms acoustic cooldown eliminating ambient noise false triggers",
+        "Dual-trigger state recovery allowing voice wake phrase, screen tap, and top button to interrupt or reset from THINKING or LISTENING states"
       ]
     },
     "Hardware Conversational Persona (Sarcastic & Dark Humour)": {

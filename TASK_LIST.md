@@ -21,5 +21,6 @@
 | TASK-017 | 21/09/2026 16:17 | 21/09/2026 16:18 | PASS | Calibrate hardware DAC and software playback volume to balanced midpoint | Set ES8311 register 0x32 to 0xB4 (-5.5dB) and software gain to 1.2x (midpoint between initial loud level and previous attenuated level), compiled and flashed to COM3 |
 | TASK-018 | 21/09/2026 16:20 | 21/09/2026 16:22 | PASS | Introduce friendly, sarcastic, and darkly humorous British persona to hardware assistant | Updated system instructions in hardwareClientService.js and main.cpp; flashed binary to COM3; witty greetings and seasoned RAG answers verified |
 | TASK-019 | 21/09/2026 16:23 | 21/09/2026 16:24 | PASS | Push latest firmware build, personality updates, and binaries to GitHub main and ESP32-S3-BOX-3B branches | Switched gh credentials to SimonPhilpott; pushed to origin/main, origin/ESP32-S3-BOX-3B, and origin/eps32-s3-box-3b |
+| TASK-020 | 21/09/2026 16:28 | 21/09/2026 16:32 | PASS | Eliminate voice clipping, prevent phantom thinking transitions, and enable wake/touch state recovery | Multi-frame wake verification (3 frames > 800 RMS), extended speaker cooldown (1500ms), 1200ms playback drain window, modelTurnActive tracking, and wake/touch reset from THINKING state; compiled and flashed to COM3 |
 
 
