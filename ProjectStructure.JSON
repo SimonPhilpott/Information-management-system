@@ -99,6 +99,18 @@
         "firmware/esp32-s3-box-3/include/config.h"
       ]
     },
+    "firmware/esp32-s3-box-3/build-and-flash.bat": {
+      "description": "One-click build and flash script compiling via PlatformIO, flashing to device, and synchronising bin/.",
+      "dependencies": []
+    },
+    "firmware/esp32-s3-box-3/flash-binary.bat": {
+      "description": "One-click script flashing the pre-compiled factory binary directly via esptool without compiling.",
+      "dependencies": []
+    },
+    "firmware/esp32-s3-box-3/README.md": {
+      "description": "Hardware architecture, flashing instructions, and audio VAD documentation for ESP32-S3-BOX-3B.",
+      "dependencies": []
+    },
     "firmware/esp32-s3-box-3-mictest/src/main.cpp": {
       "description": "Isolated ESP32-S3-BOX-3 microphone validation and loopback test firmware with register dump and serial WAV streaming.",
       "dependencies": []
