@@ -999,7 +999,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       if (chunk > AUDIO_CHUNK_SAMPLES) chunk = AUDIO_CHUNK_SAMPLES;
       memcpy(pbMsg.data, &stereoPlaybackBuf[offset * 2], chunk * 2 * sizeof(int16_t));
       pbMsg.len = chunk * 2 * sizeof(int16_t);
-      xQueueSend(audioPlaybackQueue, &pbMsg, pdMS_TO_TICKS(20));
+      xQueueSend(audioPlaybackQueue, &pbMsg, 0); // Non-blocking: drop frame if queue full rather than stalling Core 1
       offset += chunk;
     }
     lastSpeechTimestamp = millis();
@@ -1043,7 +1043,10 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       renderScreen(true);
     }
     if (doc["turnComplete"].as<bool>() || doc["turnComplete"].is<JsonObject>()) {
-      setSpeakerMute(true); // Return to muted speaker
+      // Do NOT mute the speaker here - audioPlaybackQueue may still have chunks
+      // queued for audioPlaybackTask to drain. Muting now kills the tail of
+      // Gemini's response. The speaker is muted at the correct point in
+      // beginListening() before the mic starts, isolating it from PA noise.
       currentState = STATE_STANDBY;
       micStreamingActive = false;
       lastTranscript = "Tap screen to ask a question";
@@ -1053,7 +1056,9 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       JsonObject serverContent = doc["serverContent"];
       if (serverContent["modelTurn"].is<JsonObject>()) {
         if (currentState != STATE_SPEAKING) {
-          setSpeakerMute(false);
+          // Pre-warm was done in sendTurnComplete(); just unmute the DAC register.
+          // No blocking delay - Core 1 must not stall here.
+          unmuteDacOnly();
         }
         currentState = STATE_SPEAKING;
         lastSpeechTimestamp = millis();
@@ -1068,7 +1073,8 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         }
       }
       if (serverContent["turnComplete"].as<bool>()) {
-        setSpeakerMute(true); // Return to muted speaker
+        // Do NOT mute the speaker here - queue may still be draining.
+        // beginListening() mutes before the mic starts. See note above.
         currentState = STATE_STANDBY;
         micStreamingActive = false;
         lastTranscript = "Tap screen to ask a question";
