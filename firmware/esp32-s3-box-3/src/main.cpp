@@ -493,10 +493,10 @@ void initCodecChips() {
   writeCodecReg(0x40, 0x4C, 0xFF); // MIC34_POWER_REG4C: off (stays off, unused)
   writeCodecReg(0x40, 0x01, 0x34); // CLOCK_OFF_REG01: clear bits 0x0B (0x3F & ~0x0B)
   writeCodecReg(0x40, 0x4B, 0x00); // MIC12_POWER_REG4B: on
-  writeCodecReg(0x40, 0x43, 0x1A); // MIC1_GAIN_REG43: enable | 30dB
+  writeCodecReg(0x40, 0x43, 0x1C); // MIC1_GAIN_REG43: enable | 36dB (max)
   writeCodecReg(0x40, 0x01, 0x34); // (redundant, matches official's own redundancy)
   writeCodecReg(0x40, 0x4B, 0x00); // (redundant, matches official's own redundancy)
-  writeCodecReg(0x40, 0x44, 0x1A); // MIC2_GAIN_REG44: enable | 30dB
+  writeCodecReg(0x40, 0x44, 0x1C); // MIC2_GAIN_REG44: enable | 36dB (max)
   writeCodecReg(0x40, 0x12, 0x00); // SDP_INTERFACE2_REG12: non-TDM (2 mics)
 
   // =========================================================================
@@ -512,8 +512,8 @@ void initCodecChips() {
   writeCodecReg(0x40, 0x49, 0x08); // MIC3_POWER_REG49: 0x08
   writeCodecReg(0x40, 0x4A, 0x08); // MIC4_POWER_REG4A: 0x08
   writeCodecReg(0x40, 0x4B, 0x00); // MIC12_POWER_REG4B
-  writeCodecReg(0x40, 0x43, 0x1A); // MIC1_GAIN_REG43: enable | 30dB
-  writeCodecReg(0x40, 0x44, 0x1A); // MIC2_GAIN_REG44: enable | 30dB
+  writeCodecReg(0x40, 0x43, 0x1C); // MIC1_GAIN_REG43: enable | 36dB (max)
+  writeCodecReg(0x40, 0x44, 0x1C); // MIC2_GAIN_REG44: enable | 36dB (max)
   writeCodecReg(0x40, 0x40, 0x43); // ANALOG_REG40
   writeCodecReg(0x40, 0x00, 0x71); // RESET_REG00: 0x71 (enable digital sequencer state machine)
   writeCodecReg(0x40, 0x00, 0x41); // RESET_REG00: 0x41 (release into active capture state)
@@ -1077,7 +1077,10 @@ void pollIncoming() {
 // dual mic array + ES7210 gain). Touch/button is the only trigger into
 // LISTENING now — this threshold only decides when the user has stopped
 // talking so we can close the turn.
-#define VOICE_ENERGY_THRESHOLD 25
+// Raised from 25 to 50 to track the ×2 software gain applied in
+// audioMicTask - raw RMS values are now doubled, so the threshold must
+// scale with them to maintain the same effective silence sensitivity.
+#define VOICE_ENERGY_THRESHOLD 50
 
 // Bit-alignment diagnostic (see audioMicTask()) - left-shifts every mic
 // sample by this many bits before sending/logging. Tested at 4: result was
@@ -1161,7 +1164,13 @@ void audioMicTask(void *param) {
         if (monoSampleCount > AUDIO_CHUNK_SAMPLES) monoSampleCount = AUDIO_CHUNK_SAMPLES;
         int64_t sumSquare = 0;
         for (int i = 0; i < monoSampleCount; i++) {
-          int16_t sample = stereoBuffer[2 * i]; // Pure Left channel (MIC1)
+          // ×2 software gain to compensate for quiet capture even at max
+          // hardware 36dB. Clamped to int16 range to prevent wrap-around
+          // clipping artifacts.
+          int32_t boosted = (int32_t)stereoBuffer[2 * i] * 2;
+          if (boosted >  32767) boosted =  32767;
+          if (boosted < -32768) boosted = -32768;
+          int16_t sample = (int16_t)boosted; // Pure Left channel (MIC1), boosted
           micBuffer[i] = sample;
           sumSquare += (int32_t)sample * (int32_t)sample;
         }
