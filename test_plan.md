@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 14
-- Verified Features: 14
+- Total Registered Features: 16
+- Verified Features: 16
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -22,6 +22,8 @@
 | FEAT-012 | ESP32-S3-BOX-3 Hardware Voice Terminal | [server/index.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/index.js) | ESP32 WebSocket audio streaming to /api/hardware-live | PASS |
 | FEAT-013 | ESP32-S3-BOX-3B Clean Microphone Capture Subsystem | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | ES7210 register readback, stereo DMA deinterleaving & 16kHz PCM | PASS |
 | FEAT-014 | Hardware Dynamic RAG Tool Calling | [server/index.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/index.js) | Server-side setup injection & HNSW vector search verification | PASS |
+| FEAT-015 | Acoustic Pre-Roll Wake-Word & Dual-Trigger Subsystem | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | PSRAM pre-roll circular buffer, acoustic feedback blanking, volume attenuation & dual trigger | PASS |
+| FEAT-016 | Hardware Conversational Persona | [hardwareClientService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/hardwareClientService.js) | Witty British sarcastic persona, dark humour greetings, and grounded RAG answer verification | PASS |
 
 ## Section 2: Detailed Scenarios
 ### Suite 12: ESP32-S3-BOX-3 Hardware Voice Terminal (FEAT-012)
@@ -42,11 +44,27 @@
 3. **Asynchronous Vector Retrieval:** Execute `executeHardwareRAGSearch` against HNSW vector store and SQLite metadata; confirm passage extraction with filename and page metadata.
 4. **Resilient Tool Response & Error Fallback:** Confirm `toolResponse` delivery to Gemini Live and fallback acknowledgment on error or timeouts to maintain session continuity.
 
+### Suite 15: Acoustic Pre-Roll Wake-Word & Dual-Trigger Subsystem (FEAT-015)
+1. **Pre-Roll Speech Capture:** Verify 16-chunk PSRAM circular buffer captures ~512ms of leading audio before RMS threshold crossing, preserving wake phrase attack ("Hey Ims", "Eh up Ims").
+2. **Acoustic Feedback Blanking:** Confirm `isSpeakerCoolingDown()` suppresses wake detection and flushes pre-roll buffer during speaker playback plus 1000ms cooldown, preventing self-interruption and clipping.
+3. **Volume Calibration:** Verify ES8311 register 0x32 calibrated to 0xB4 (-5.5dB) and 1.2x digital gain produce clear, balanced listening levels without clipping or distortion.
+4. **Clean Standby Boot:** Confirm omission of synthetic startup text query keeps device in silent, stable `STATE_STANDBY` until user initiates interaction via voice or touch.
+5. **Multi-Sentence Paced Playback:** Verify 1024-chunk PSRAM playback queue (32.8s) and 35ms flow-control pacing prevent chunk drops and speech speedup distortion on long multi-sentence RAG answers.
+
+### Suite 16: Hardware Conversational Persona (FEAT-016)
+1. **Wake Greeting Tone:** Trigger Box-3 with standalone wake phrase ("Eh up Ims", "Hey Ims") and verify witty, dry, or mildly sarcastic gallows humour greeting response.
+2. **Library Knowledge Accuracy:** Inquire about specific documents in the IMS library (e.g. project reports or manuals); verify Gemini executes `searchLibrary` and returns 100% accurate grounded facts.
+3. **Subtle Persona Seasoning:** Confirm that factual responses retain a subtle, entertaining hint of the friendly sarcastic persona without obscuring technical details or data.
+4. **Firmware Fallback Parity:** Verify Box-3 firmware fallback prompt maintains identical persona tone if backend handshake overrides are bypassed.
+
 ## Section 3: Defensive Engineering Invariants
 1. Hardware watchdog timer (WDT) and auto-reconnect logic on ESP32 WebSocket disconnects.
 2. Anti-stutter ring buffer and I2S DMA queue sizing on ESP32 PSRAM to prevent audio underflow/overflow.
 3. Clean socket disconnection teardown on both Node.js backend and ESP32 firmware upon session termination or Wi-Fi dropouts.
 4. Stereo I2S bus acquisition with pure Left channel deinterleaving to prevent phase cancellation or DC-offset intermodulation on shared Box-3 codec lines.
 5. Server-side toolResponse fallback ensuring Gemini Live receives an error acknowledgment if RAG search encounters a timeout or failure.
+6. Acoustic feedback cooldown blanking window (1000ms) ensuring microphone task suppresses wake detection and resets pre-roll buffer while speaker is active or reverberating.
+7. Playback flow-control pacing (35ms timeout) matching 32ms I2S DMA chunk consumption, ensuring long streaming audio responses are paced without dropping frames or stalling the network loop.
+8. Conversational persona instructions enforce 100% strict adherence to RAG tool execution (`searchLibrary`) so wit does not override factual veracity.
 
 

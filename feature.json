@@ -173,6 +173,29 @@
         "Resilient cached setup preservation for seamless upstream WebSocket code 1000 reconnection",
         "Defensive error toolResponse fallback ensuring session continuity on query timeouts"
       ]
+    },
+    "Acoustic Pre-Roll Wake-Word & Dual-Trigger Subsystem": {
+      "status": "enabled",
+      "description": "Acoustic pre-roll wake-word engine and dual-trigger (voice and touch) input subsystem for the ESP32-S3-BOX-3B with acoustic feedback blanking, volume attenuation, and clipping prevention.",
+      "subFeatures": [
+        "16-chunk (512ms, 16KB) circular pre-roll buffer in PSRAM capturing speech onsets before wake-word activation",
+        "Acoustic feedback blanking window (1000ms cooldown) suppressing self-cancellation during speaker playback",
+        "Balanced DAC volume (ES8311 reg 0x32 = 0xB4, -5.5dB) and 1.2x digital gain calibrated for clear voice output",
+        "Clean silent standby boot mode eliminating unprompted startup query and phantom thinking states",
+        "Dual-trigger parity enabling seamless activation via voice wake phrases ('Hey Ims', 'Eh up Ims') or screen tap",
+        "1024-chunk (32.8s, 2MB) PSRAM playback queue with 35ms flow-control pacing preventing audio decimation and fast-forward distortion on long responses"
+      ]
+    },
+    "Hardware Conversational Persona (Sarcastic & Dark Humour)": {
+      "status": "enabled",
+      "description": "Friendly, sarcastic, and darkly humorous British persona infused into Gemini Live setup instructions and firmware fallbacks, delivering witty greetings and dry, humorous responses while preserving 100% RAG accuracy.",
+      "subFeatures": [
+        "Articulate British English persona characterized by dry wit, subtle sarcasm, and cheerful gallows humour",
+        "Witty, darkly funny wake-word greeting responses (e.g. 'Eh up. Back from the brink, are we?')",
+        "Subtle personality seasoning on document factual responses without degrading RAG precision",
+        "Preserved 100% searchLibrary tool execution fidelity on document and library inquiries",
+        "Firmware fallback parity ensuring witty persona persists even without cloud-side setup overrides"
+      ]
     }
   }
 }

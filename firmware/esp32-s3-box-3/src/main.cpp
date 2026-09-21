@@ -186,7 +186,40 @@ struct PlaybackChunkMsg {
   uint8_t data[AUDIO_CHUNK_SAMPLES * 2 * sizeof(int16_t)]; // stereo
   size_t len;
 };
-enum ControlEvent { EVT_TURN_COMPLETE };
+enum ControlEvent {
+  EVT_TURN_COMPLETE,
+  EVT_WAKE_SPEECH
+};
+
+// Acoustic feedback blanking: tracks the last time the speaker played audio
+extern QueueHandle_t audioPlaybackQueue;
+volatile unsigned long lastPlaybackActiveTime = 0;
+
+// Returns true if audio is actively playing or queued to play out the speaker
+inline bool isSpeakerActive() {
+  if (audioPlaybackQueue && uxQueueMessagesWaiting(audioPlaybackQueue) > 0) return true;
+  if (lastPlaybackActiveTime > 0 && (millis() - lastPlaybackActiveTime < 600)) return true;
+  return false;
+}
+
+// Returns true during speaker playback plus acoustic reverberation / enclosure cooldown window
+inline bool isSpeakerCoolingDown() {
+  if (isSpeakerActive()) return true;
+  if (lastPlaybackActiveTime > 0 && (millis() - lastPlaybackActiveTime < 1000)) return true;
+  return false;
+}
+
+// Circular pre-roll buffer in PSRAM to preserve wake words ("Hey Ims", "Eh up Ims")
+#define PREROLL_CHUNKS 16 // 16 * 512 samples = 512ms at 16kHz
+static AudioChunkMsg *prerollBuffer = nullptr;
+static int prerollHead = 0;
+static bool prerollFilled = false;
+
+// Audio Queue for Core 0 (audioMicTask) -> Core 1 (loop)
+#define AUDIO_OUT_QUEUE_DEPTH 32
+QueueHandle_t audioOutQueue = NULL;
+static StaticQueue_t audioOutStaticQueue;
+static uint8_t *audioOutQueueStorage = nullptr;
 
 // Debug telemetry sent over the existing WebSocket to the backend (which
 // just logs and drops it) - live serial monitoring on this board resets it
@@ -196,8 +229,7 @@ struct DebugMsg {
   char text[80];
 };
 
-#define PLAYBACK_QUEUE_DEPTH 256
-QueueHandle_t audioOutQueue = NULL;
+#define PLAYBACK_QUEUE_DEPTH 1024
 QueueHandle_t controlEventQueue = NULL;
 QueueHandle_t debugQueue = NULL;
 QueueHandle_t audioPlaybackQueue = NULL; // Core 1 -> Core 0 speaker audio (PSRAM-backed)
@@ -244,7 +276,7 @@ void renderScreen(bool forceRedraw = false) {
     break;
   case STATE_STANDBY:
     statusColor = tft.color565(87, 101, 116);
-    statusText = "TAP SCREEN TO TALK";
+    statusText = "STANDBY (VOICE / TOUCH)";
     break;
   case STATE_LISTENING:
     statusColor = tft.color565(46, 213, 115);
@@ -299,7 +331,7 @@ void renderScreen(bool forceRedraw = false) {
   tft.fillRect(0, 204, 320, 36, tft.color565(15, 18, 26));
   tft.setTextColor(tft.color565(100, 110, 130));
   if (currentState == STATE_STANDBY) {
-    tft.drawString("Tap the screen to ask a question", 15, 214);
+    tft.drawString("Say 'Hey Ims' or tap screen", 15, 214);
   } else {
     tft.drawString("Tap Screen to Interrupt / Sleep", 15, 214);
   }
@@ -620,7 +652,7 @@ void initCodecChips() {
   writeCodecReg(0x18, 0x45, 0x00); // GP control
   writeCodecReg(0x18, 0x44, 0x58); // Internal reference signal (ADCL + DACR)
   writeCodecReg(0x18, 0x31, 0x00); // DAC unmute (was never explicitly set before)
-  writeCodecReg(0x18, 0x32, 0xBF); // DAC volume (~0dB)
+  writeCodecReg(0x18, 0x32, 0xB4); // DAC volume balanced (-5.5dB, calibrated midpoint between 0dB and -11.5dB)
   Serial.println("[Hardware] ES7210 & ES8311 initialized successfully.");
 }
 
@@ -735,12 +767,14 @@ void sendSetupHandshake() {
   JsonObject part1 = parts.add<JsonObject>();
   // Plain ASCII only - IPA chars in string literals cause malformed UTF-8 JSON
   part1["text"] =
-      "You are Ims, an intelligent voice assistant on an ESP32-S3-BOX-3 "
-      "device. Your name is Ims (rhymes with rims). The user taps a button to "
-      "start talking, then asks you a question directly - respond to what "
-      "they say, do not wait for a greeting or wake phrase. Respond concisely "
-      "in natural British English. Keep all answers short and suitable for "
-      "voice. Never terminate or close the session.";
+      "You are Ims, an intelligent voice assistant on an ESP32-S3-BOX-3 device. "
+      "Your name is Ims (rhymes with rims). You speak in natural, articulate British English. "
+      "You are fundamentally friendly and helpful, but you possess a delightfully dry, "
+      "sarcastic wit and an appetite for dark, gallows humour. When the user greets you with "
+      "a wake phrase alone ('Hey Ims', 'Hello Ims', or 'Eh up Ims'), respond with a witty, "
+      "darkly funny, yet welcoming greeting. When answering questions, deliver accurate facts "
+      "seasoned with subtle sarcasm, dry irony, or cheeky dark humour. Never be cruel. "
+      "Keep all answers short and suitable for voice synthesis. Never terminate or close the session.";
 
   String jsonString;
   serializeJson(doc, jsonString);
@@ -824,9 +858,8 @@ void sendTextQuery(const char *text) {
   renderScreen(true);
 }
 
-// Touch-to-talk: no wake word, no synthetic greeting turn sent to Gemini.
-// Just flip to LISTENING so audioMicTask (Core 0) starts enqueueing real mic
-// audio for Core 1 to stream, and the user speaks their actual question.
+// Dual-trigger (touch-to-talk or acoustic wake word):
+// Flips to LISTENING so audioMicTask (Core 0) streams mic audio for Core 1 to send.
 void beginListening(const char *reason) {
   if (!tcpClient.connected() || !geminiSetupComplete) {
     Serial.printf("[IMS] beginListening(%s) blocked - tcp=%d setup=%d\n",
@@ -845,8 +878,13 @@ void beginListening(const char *reason) {
   currentState = STATE_LISTENING;
   micStreamingActive = true;
   lastSpeechTimestamp = millis();
-  isSpeakingDetected = false;
-  speechStartTime = 0;
+  if (strcmp(reason, "voice_wake") == 0) {
+    isSpeakingDetected = true;
+    speechStartTime = millis();
+  } else {
+    isSpeakingDetected = false;
+    speechStartTime = 0;
+  }
   lastTranscript = "Listening...";
   renderScreen(true);
 }
@@ -892,10 +930,14 @@ void connectToBackend() {
 // continuous across the many small chunks a streaming response arrives in,
 // rather than resetting every chunk boundary. Ratio is exactly 2/3.
 size_t resample24to16(const int16_t *in, size_t inSamples, int16_t *out,
-                       size_t outCapacity) {
+                       size_t outCapacity, bool resetPhase = false) {
   static float phase = 0.0f;
   static int16_t lastSample = 0;
   static bool hasLast = false;
+  if (resetPhase) {
+    phase = 0.0f;
+    hasLast = false;
+  }
   const float step = 24000.0f / 16000.0f; // 1.5 input samples per output sample
 
   if (!hasLast && inSamples > 0) {
@@ -946,27 +988,8 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
     if (stereoPlaybackBuf == nullptr) {
       stereoPlaybackBuf = (int16_t *)ps_malloc(FRAME_BUF_CAPACITY * 2);
     }
-    size_t inSamples = len / sizeof(int16_t);
-    size_t outSamples =
-        resample24to16((const int16_t *)data, inSamples, resampled,
-                        FRAME_BUF_CAPACITY / sizeof(int16_t));
-    for (size_t i = 0; i < outSamples; i++) {
-      // x1.5 playback gain: Gemini's 24kHz output tends to be quiet after
-      // resampling to 16kHz. Clamped to int16 range to avoid wrap clipping.
-      int32_t boosted = (int32_t)resampled[i] * 3 / 2;
-      if (boosted >  32767) boosted =  32767;
-      if (boosted < -32768) boosted = -32768;
-      stereoPlaybackBuf[2 * i]     = (int16_t)boosted;
-      stereoPlaybackBuf[2 * i + 1] = (int16_t)boosted;
-    }
-    // CRITICAL ORDERING: unmute the PA and DAC BEFORE queuing any audio.
-    // audioPlaybackTask (Core 0) dequeues and calls i2s_channel_write() the
-    // instant the first chunk lands in the queue. If setSpeakerMute(false) is
-    // called AFTER the push (the previous bug), the amp's 150ms startup ramp
-    // means ALL audio plays into a dead PA output - which is why Gemini's
-    // response was completely inaudible despite the I2S TX path working fine
-    // (confirmed by the boot chime). Unmute first, queue second.
-    if (currentState != STATE_SPEAKING) {
+    bool isTurnStart = (currentState != STATE_SPEAKING);
+    if (isTurnStart) {
       // PA GPIO was pre-warmed in sendTurnComplete()/sendTextQuery() when we
       // entered STATE_THINKING. Gemini's processing window (~1-5s) was enough
       // for the NS4150B to fully exit shutdown. Only the DAC register needs
@@ -976,6 +999,18 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       micStreamingActive = false;
       lastTranscript = "Speaking...";
       renderScreen(true);
+    }
+    size_t inSamples = len / sizeof(int16_t);
+    size_t outSamples =
+        resample24to16((const int16_t *)data, inSamples, resampled,
+                        FRAME_BUF_CAPACITY / sizeof(int16_t), isTurnStart);
+    for (size_t i = 0; i < outSamples; i++) {
+      // 1.2x balanced playback gain (midpoint between 1.0x and 1.5x) with int16 clamping
+      int32_t sample = (int32_t)resampled[i] * 6 / 5;
+      if (sample >  32767) sample =  32767;
+      if (sample < -32768) sample = -32768;
+      stereoPlaybackBuf[2 * i]     = (int16_t)sample;
+      stereoPlaybackBuf[2 * i + 1] = (int16_t)sample;
     }
     // Push to audioPlaybackQueue in AUDIO_CHUNK_SAMPLES-sized stereo chunks.
     // audioPlaybackTask (Core 0) drains the queue with portMAX_DELAY writes,
@@ -988,7 +1023,9 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       if (chunk > AUDIO_CHUNK_SAMPLES) chunk = AUDIO_CHUNK_SAMPLES;
       memcpy(pbMsg.data, &stereoPlaybackBuf[offset * 2], chunk * 2 * sizeof(int16_t));
       pbMsg.len = chunk * 2 * sizeof(int16_t);
-      xQueueSend(audioPlaybackQueue, &pbMsg, 0); // Non-blocking: drop frame if queue full rather than stalling Core 1
+      // Wait up to 35ms for a free slot if buffer is temporarily full: audioPlaybackTask
+      // drains 1 chunk every ~32ms, so this paces flow smoothly without dropping frames or stalling Core 1.
+      xQueueSend(audioPlaybackQueue, &pbMsg, pdMS_TO_TICKS(35));
       offset += chunk;
     }
     lastSpeechTimestamp = millis();
@@ -1009,19 +1046,16 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       if (!startupGreetingSent) {
         startupGreetingSent = true;
         currentState = STATE_STANDBY;
-        lastTranscript = "Tap screen to ask a question";
+        lastTranscript = "Say 'Hey Ims' or tap screen";
         renderScreen(true);
         sendDebug(codecRegDump);
-        // Startup greeting: Gemini synthesises this as native audio and streams
-        // it back through the speaker path immediately on first connect, so the
-        // user gets audible confirmation the device is ready without needing to
-        // tap anything.
-        sendTextQuery("Please say exactly: Hi, I'm Ims, ready to talk.");
+        // Clean silent standby: do NOT inject synthetic sendTextQuery on boot.
+        // Device is in ready standby waiting for user touch or wake-word.
       } else {
         // Transparent reconnect from proxy - preserve current state if listening/thinking/speaking
         if (currentState != STATE_LISTENING && currentState != STATE_THINKING && currentState != STATE_SPEAKING) {
           currentState = STATE_STANDBY;
-          lastTranscript = "Tap screen to ask a question";
+          lastTranscript = "Say 'Hey Ims' or tap screen";
           renderScreen(true);
         }
       }
@@ -1036,11 +1070,8 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
     }
     if (doc["turnComplete"].as<bool>() || doc["turnComplete"].is<JsonObject>()) {
       micStreamingActive = false;
-      if (!audioPlaybackQueue || uxQueueMessagesWaiting(audioPlaybackQueue) == 0) {
-        currentState = STATE_STANDBY;
-        lastTranscript = "Tap screen to ask a question";
-        renderScreen(true);
-      }
+      // Note: State transition back to STATE_STANDBY is handled cleanly in loop()
+      // once audioPlaybackQueue drains and the speaker finishes playing.
     }
     if (doc["serverContent"].is<JsonObject>()) {
       JsonObject serverContent = doc["serverContent"];
@@ -1064,11 +1095,8 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       }
       if (serverContent["turnComplete"].as<bool>()) {
         micStreamingActive = false;
-        if (!audioPlaybackQueue || uxQueueMessagesWaiting(audioPlaybackQueue) == 0) {
-          currentState = STATE_STANDBY;
-          lastTranscript = "Tap screen to ask a question";
-          renderScreen(true);
-        }
+        // Note: State transition back to STATE_STANDBY is handled cleanly in loop()
+        // once audioPlaybackQueue drains and the speaker finishes playing.
       }
     }
   } else {
@@ -1217,7 +1245,7 @@ void audioMicTask(void *param) {
         xQueueSend(debugQueue, &amsgQ, 0);
       }
 
-      if (bytesRead > 0 && micStreamingActive) {
+      if (bytesRead > 0) {
         bufCount++;
         int monoSampleCount = bytesRead / (2 * sizeof(int16_t));
         if (monoSampleCount > AUDIO_CHUNK_SAMPLES) monoSampleCount = AUDIO_CHUNK_SAMPLES;
@@ -1236,46 +1264,93 @@ void audioMicTask(void *param) {
         int rms = monoSampleCount > 0 ? (int)sqrt((double)(sumSquare / monoSampleCount)) : 0;
         currentMicRms = rms;
 
+        // Circular pre-roll buffer in PSRAM: maintain recent 512ms of audio
+        // Reset while speaker is active or cooling down to avoid capturing speaker echo
+        if (isSpeakerCoolingDown()) {
+          prerollHead = 0;
+          prerollFilled = false;
+        } else if (prerollBuffer != nullptr) {
+          size_t copyLen = monoSampleCount * sizeof(int16_t);
+          if (copyLen > sizeof(prerollBuffer[prerollHead].data)) {
+            copyLen = sizeof(prerollBuffer[prerollHead].data);
+          }
+          memcpy(prerollBuffer[prerollHead].data, micBuffer, copyLen);
+          prerollBuffer[prerollHead].len = copyLen;
+          prerollHead = (prerollHead + 1) % PREROLL_CHUNKS;
+          if (prerollHead == 0) prerollFilled = true;
+        }
+
         static unsigned long lastRmsLog = 0;
         if (millis() - lastRmsLog > 500) {
           lastRmsLog = millis();
           unsigned long elapsed = millis() - sessionStartMs;
-          Serial.printf("[Mic] RMS=%d sample0=%d n=%lu elapsed=%lums "
-                        "lastReadMs=%lu\n",
-                        rms, micBuffer[0], bufCount, elapsed, readMs);
+          Serial.printf("[Mic] RMS=%d sample0=%d n=%lu elapsed=%lums lastReadMs=%lu str=%d\n",
+                        rms, micBuffer[0], bufCount, elapsed, readMs, (int)micStreamingActive);
           DebugMsg dmsg;
           snprintf(dmsg.text, sizeof(dmsg.text),
-                   "rms=%d n=%lu elapsed=%lums lastReadMs=%lu", rms, bufCount,
-                   elapsed, readMs);
+                   "rms=%d n=%lu elapsed=%lums str=%d", rms, bufCount,
+                   elapsed, (int)micStreamingActive);
           xQueueSend(debugQueue, &dmsg, 0);
         }
 
-        if (rms > VOICE_SPEECH_THRESHOLD) {
-          lastSpeechTimestamp = millis();
-          if (!isSpeakingDetected) {
+        if (micStreamingActive) {
+          if (rms > VOICE_SPEECH_THRESHOLD) {
+            lastSpeechTimestamp = millis();
+            if (!isSpeakingDetected) {
+              isSpeakingDetected = true;
+              speechStartTime = millis();
+              Serial.printf("[Audio] Speech detected (RMS=%d)\n", rms);
+            }
+          } else if (rms < VOICE_SILENCE_THRESHOLD) {
+            // User went silent while in LISTENING
+            if (isSpeakingDetected && (millis() - lastSpeechTimestamp > 900) &&
+                (millis() - speechStartTime > 1200)) {
+              Serial.printf("[Audio] Silence detected after speech turn (RMS=%d, speechMs=%lu) -> queuing turnComplete\n",
+                            rms, millis() - speechStartTime);
+              isSpeakingDetected = false;
+              ControlEvent evt = EVT_TURN_COMPLETE;
+              xQueueSend(controlEventQueue, &evt, 0);
+            }
+          }
+
+          size_t copyLen = monoSampleCount * sizeof(int16_t);
+          if (copyLen > sizeof(msg.data)) copyLen = sizeof(msg.data);
+          memcpy(msg.data, micBuffer, copyLen);
+          msg.len = copyLen;
+          // Non-blocking: if the queue is full (loop() briefly busy), drop this
+          // chunk rather than stalling the I2S read cadence.
+          xQueueSend(audioOutQueue, &msg, 0);
+        } else if (currentState == STATE_STANDBY && !isSpeakerCoolingDown()) {
+          // In STANDBY: check for speech onset (Wake Word: "Hey Ims", "Eh up Ims", etc.)
+          if (rms > VOICE_SPEECH_THRESHOLD) {
+            Serial.printf("[Audio] 🎙️ Acoustic wake speech detected in standby (RMS=%d) -> triggering LISTENING\n", rms);
+            micStreamingActive = true;
             isSpeakingDetected = true;
             speechStartTime = millis();
-            Serial.printf("[Audio] Speech detected (RMS=%d)\n", rms);
-          }
-        } else if (rms < VOICE_SILENCE_THRESHOLD) {
-          // User went silent while in LISTENING
-          if (isSpeakingDetected && (millis() - lastSpeechTimestamp > 900) &&
-              (millis() - speechStartTime > 1200)) {
-            Serial.printf("[Audio] Silence detected after speech turn (RMS=%d, speechMs=%lu) -> queuing turnComplete\n",
-                          rms, millis() - speechStartTime);
-            isSpeakingDetected = false;
-            ControlEvent evt = EVT_TURN_COMPLETE;
+            lastSpeechTimestamp = millis();
+
+            // Notify Core 1 to transition UI state and mute speaker
+            ControlEvent evt = EVT_WAKE_SPEECH;
             xQueueSend(controlEventQueue, &evt, 0);
+
+            // Flush circular pre-roll buffer so Gemini hears the start of the wake word
+            if (prerollBuffer != nullptr) {
+              int startIdx = prerollFilled ? prerollHead : 0;
+              int count = prerollFilled ? PREROLL_CHUNKS : prerollHead;
+              for (int i = 0; i < count; i++) {
+                int idx = (startIdx + i) % PREROLL_CHUNKS;
+                xQueueSend(audioOutQueue, &prerollBuffer[idx], 0);
+              }
+            }
+
+            // Also forward current chunk
+            size_t copyLen = monoSampleCount * sizeof(int16_t);
+            if (copyLen > sizeof(msg.data)) copyLen = sizeof(msg.data);
+            memcpy(msg.data, micBuffer, copyLen);
+            msg.len = copyLen;
+            xQueueSend(audioOutQueue, &msg, 0);
           }
         }
-
-        size_t copyLen = monoSampleCount * sizeof(int16_t);
-        if (copyLen > sizeof(msg.data)) copyLen = sizeof(msg.data);
-        memcpy(msg.data, micBuffer, copyLen);
-        msg.len = copyLen;
-        // Non-blocking: if the queue is full (loop() briefly busy), drop this
-        // chunk rather than stalling the I2S read cadence.
-        xQueueSend(audioOutQueue, &msg, 0);
       }
     } else {
       // Drain I2S buffer to prevent overflow accumulation while not streaming
@@ -1306,6 +1381,7 @@ void audioPlaybackTask(void *param) {
       // AUDIO_CHUNK_SAMPLES (512 stereo samples = 2048 bytes) chunk
       // completes in ~32ms worst-case.
       i2s_channel_write(i2sTxChan, msg.data, msg.len, &bytesWritten, portMAX_DELAY);
+      lastPlaybackActiveTime = millis();
     }
   }
 }
@@ -1390,7 +1466,25 @@ void setup() {
   // This decoupling means Core 1 is NEVER blocked by i2s_channel_write(),
   // which was causing TCP disconnects when portMAX_DELAY held Core 1 for
   // up to ~600ms per large Gemini audio frame.
-  audioOutQueue = xQueueCreate(8, sizeof(AudioChunkMsg));
+  // Allocate circular pre-roll buffer in PSRAM for wake-word attack preservation
+  prerollBuffer = (AudioChunkMsg *)ps_malloc(PREROLL_CHUNKS * sizeof(AudioChunkMsg));
+  if (prerollBuffer != nullptr) {
+    Serial.printf("[Audio] prerollBuffer allocated in PSRAM (%d chunks, %u KB)\n",
+                  PREROLL_CHUNKS, (unsigned int)(PREROLL_CHUNKS * sizeof(AudioChunkMsg) / 1024));
+  } else {
+    Serial.println("[Audio] WARNING: ps_malloc failed for pre-roll buffer!");
+  }
+
+  // 32-chunk PSRAM queue for audioOutQueue to handle pre-roll flush bursts without drops
+  audioOutQueueStorage = (uint8_t *)ps_malloc(AUDIO_OUT_QUEUE_DEPTH * sizeof(AudioChunkMsg));
+  if (audioOutQueueStorage != nullptr) {
+    audioOutQueue = xQueueCreateStatic(AUDIO_OUT_QUEUE_DEPTH, sizeof(AudioChunkMsg),
+                                       audioOutQueueStorage, &audioOutStaticQueue);
+    Serial.printf("[Audio] audioOutQueue created in PSRAM (%d chunks, %u KB)\n",
+                  AUDIO_OUT_QUEUE_DEPTH, (unsigned int)(AUDIO_OUT_QUEUE_DEPTH * sizeof(AudioChunkMsg) / 1024));
+  } else {
+    audioOutQueue = xQueueCreate(16, sizeof(AudioChunkMsg));
+  }
   controlEventQueue = xQueueCreate(4, sizeof(ControlEvent));
   debugQueue = xQueueCreate(8, sizeof(DebugMsg));
 
@@ -1442,6 +1536,10 @@ void loop() {
   while (xQueueReceive(controlEventQueue, &evt, 0) == pdTRUE) {
     if (evt == EVT_TURN_COMPLETE) {
       sendTurnComplete();
+    } else if (evt == EVT_WAKE_SPEECH) {
+      if (currentState == STATE_STANDBY) {
+        beginListening("voice_wake");
+      }
     }
   }
   DebugMsg dmsg;
@@ -1474,7 +1572,7 @@ void loop() {
     } else {
       currentState = STATE_STANDBY;
       micStreamingActive = false;
-      lastTranscript = "Tap screen to ask a question";
+      lastTranscript = "Say 'Hey Ims' or tap screen";
       renderScreen(true);
     }
     delay(50); // debounce
@@ -1482,11 +1580,10 @@ void loop() {
   lastBtnState = btnState;
 
   // Auto-transition from SPEAKING back to STANDBY once the audio queue is fully drained
-  if (currentState == STATE_SPEAKING && audioPlaybackQueue &&
-      uxQueueMessagesWaiting(audioPlaybackQueue) == 0 &&
-      (millis() - lastSpeechTimestamp > 400)) {
+  // and speaker playback has completely finished
+  if (currentState == STATE_SPEAKING && !isSpeakerActive()) {
     currentState = STATE_STANDBY;
-    lastTranscript = "Tap screen to ask a question";
+    lastTranscript = "Say 'Hey Ims' or tap screen";
     renderScreen(true);
   }
 
@@ -1498,7 +1595,7 @@ void loop() {
     sendDebug("session_idle_timeout");
     currentState = STATE_STANDBY;
     micStreamingActive = false;
-    lastTranscript = "Tap screen to ask a question";
+    lastTranscript = "Say 'Hey Ims' or tap screen";
     renderScreen(true);
   }
 

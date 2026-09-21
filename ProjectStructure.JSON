@@ -90,11 +90,11 @@
       "dependencies": []
     },
     "pdf-knowledge-base/server/services/hardwareClientService.js": {
-      "description": "Hardware bridge service executing automated RAG tool searches and crafting setup handshakes for embedded voice devices.",
+      "description": "Hardware bridge service executing automated RAG tool searches, persona prompt configuration, and setup handshakes for embedded voice devices.",
       "dependencies": []
     },
     "firmware/esp32-s3-box-3/src/main.cpp": {
-      "description": "FreeRTOS firmware for ESP32-S3-BOX-3 streaming I2S mic audio and outputting 24kHz speaker audio over WebSocket.",
+      "description": "FreeRTOS firmware for ESP32-S3-BOX-3 with dual voice/touch triggers, 16-chunk PSRAM acoustic pre-roll wake buffer, acoustic feedback blanking, attenuated DAC output, and 24kHz downsampled playback.",
       "dependencies": [
         "firmware/esp32-s3-box-3/include/config.h"
       ]
