@@ -151,6 +151,18 @@
         "FreeRTOS dual-core task architecture (Core 0 audio I2S, Core 1 networking & WebSocket)",
         "Visual terminal state management (Listening, Thinking, Speaking, Idle)"
       ]
+    },
+    "ESP32-S3-BOX-3B Clean Microphone Capture Subsystem": {
+      "status": "enabled",
+      "description": "Clean, continuous 16kHz 16-bit PCM microphone capture subsystem for the ESP32-S3-BOX-3B utilizing the ES7210 ADC and ES8311 DAC, eliminating decimation dropouts and square-wave carrier tone modulation.",
+      "subFeatures": [
+        "Preserved LRCK_RATE_MODE (REG08=0x10) preventing 16:1 sample decimation dropouts",
+        "Full ES7210 startup sequencing powering analog blocks, bias, and ADC filter pipeline",
+        "Hardware stereo I2S acquisition with software deinterleaving of pure Left channel (MIC1)",
+        "PA enable and DAC mute gating preventing Class-D switching ripple from coupling into microphone lines",
+        "Real-time RMS silence detection and FreeRTOS inter-core queue handoff to Core 1 network loop",
+        "Isolated test firmware (mictest) with serial register dumping and uniform PCM verification"
+      ]
     }
   }
 }

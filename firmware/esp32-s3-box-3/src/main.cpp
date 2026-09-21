@@ -354,6 +354,19 @@ uint8_t readCodecReg(uint8_t i2c_addr, uint8_t reg) {
   return value;
 }
 
+// Speaker amplifier & DAC muting helper: disables Class-D PA and mutes ES8311 DAC
+// during microphone capture to eliminate acoustic coupling and electrical switching ripple.
+void setSpeakerMute(bool mute) {
+  if (mute) {
+    writeCodecReg(0x18, 0x31, 0x01); // ES8311 DAC Mute
+    digitalWrite(PA_ENABLE_PIN, LOW); // Disable Class-D speaker PA
+  } else {
+    digitalWrite(PA_ENABLE_PIN, HIGH); // Enable Class-D speaker PA
+    delay(10);
+    writeCodecReg(0x18, 0x31, 0x00); // Unmute ES8311 DAC
+  }
+}
+
 // Populated once in initCodecChips() and sent to the backend as a one-shot
 // debug string as soon as the TCP connection is up, so we can verify the
 // ES7210's actual register state over the network without touching COM3
@@ -458,7 +471,8 @@ void initCodecChips() {
   writeCodecReg(0x40, 0x22, 0x0A); // ADC12_HPF1_REG22
   writeCodecReg(0x40, 0x20, 0x0A); // ADC34_HPF2_REG20
   writeCodecReg(0x40, 0x21, 0x2A); // ADC34_HPF1_REG21
-  writeCodecReg(0x40, 0x08, 0x00); // MODE_CONFIG_REG08: slave mode (bit0=0)
+  // MODE_CONFIG_REG08: slave mode (bit0=0), preserve default bits[7:4]=0x10
+  writeCodecReg(0x40, 0x08, 0x10);
   // I2S format: standard I2S(0x00) | 16-bit(0x60) - register 0x11 is the
   // real SDP_INTERFACE1 register (cross-checked earlier this session).
   writeCodecReg(0x40, 0x11, 0x60); // SDP_INTERFACE1_REG11
@@ -467,8 +481,6 @@ void initCodecChips() {
   writeCodecReg(0x40, 0x42, 0x70); // MIC34_BIAS_REG42: 2.87V
   writeCodecReg(0x40, 0x07, 0x20); // OSR_REG07
   writeCodecReg(0x40, 0x02, 0xC1); // MAINCLK_REG02: adc_div|doubler<<6|dll<<7
-  writeCodecReg(0x40, 0x04, 0x01); // LRCK divider high byte
-  writeCodecReg(0x40, 0x05, 0x00); // LRCK divider low byte
   // es7210_mic_select(MIC1|MIC2): clear the enable bit on all 4 gain
   // registers first, power both mic pairs off, then power/enable/gain just
   // MIC1 and MIC2 (matching the official driver's exact call sequence,
@@ -487,19 +499,39 @@ void initCodecChips() {
   writeCodecReg(0x40, 0x44, 0x1A); // MIC2_GAIN_REG44: enable | 30dB
   writeCodecReg(0x40, 0x12, 0x00); // SDP_INTERFACE2_REG12: non-TDM (2 mics)
 
+  // =========================================================================
+  // CRITICAL es7210_start() PHASE (from Espressif esp_codec_dev):
+  // Wakes up DLL (0x06=0x00), powers mic preamps (0x47/0x48=0x08), and
+  // latches digital filter state machine sequencer (0x71 -> 0x41).
+  // =========================================================================
+  writeCodecReg(0x40, 0x01, 0x34); // CLOCK_OFF_REG01
+  writeCodecReg(0x40, 0x06, 0x00); // POWER_DOWN_REG06: 0x00 (WAKE UP DLL & analog circuits)
+  writeCodecReg(0x40, 0x40, 0x43); // ANALOG_REG40
+  writeCodecReg(0x40, 0x47, 0x08); // MIC1_POWER_REG47: 0x08 (power up MIC1 preamp)
+  writeCodecReg(0x40, 0x48, 0x08); // MIC2_POWER_REG48: 0x08 (power up MIC2 preamp)
+  writeCodecReg(0x40, 0x49, 0x08); // MIC3_POWER_REG49: 0x08
+  writeCodecReg(0x40, 0x4A, 0x08); // MIC4_POWER_REG4A: 0x08
+  writeCodecReg(0x40, 0x4B, 0x00); // MIC12_POWER_REG4B
+  writeCodecReg(0x40, 0x43, 0x1A); // MIC1_GAIN_REG43: enable | 30dB
+  writeCodecReg(0x40, 0x44, 0x1A); // MIC2_GAIN_REG44: enable | 30dB
+  writeCodecReg(0x40, 0x40, 0x43); // ANALOG_REG40
+  writeCodecReg(0x40, 0x00, 0x71); // RESET_REG00: 0x71 (enable digital sequencer state machine)
+  writeCodecReg(0x40, 0x00, 0x41); // RESET_REG00: 0x41 (release into active capture state)
+
   // One-shot register readback appended after the I2C scan result (both
   // share codecRegDump so a single sendDebug() call reports everything) so
   // we can confirm over the network (not serial - opening COM3 resets the
   // board) whether our writes actually stuck.
   size_t dumpLen = strlen(codecRegDump);
   snprintf(codecRegDump + dumpLen, sizeof(codecRegDump) - dumpLen,
-           " | es7210_regs r00=%02X r08=%02X r11=%02X r12=%02X r40=%02X "
-           "r4B=%02X r4C=%02X r43=%02X r44=%02X",
-           readCodecReg(0x40, 0x00), readCodecReg(0x40, 0x08),
+           " | es7210_regs r00=%02X r01=%02X r06=%02X r08=%02X r11=%02X r12=%02X "
+           "r40=%02X r47=%02X r48=%02X r4B=%02X r43=%02X r44=%02X",
+           readCodecReg(0x40, 0x00), readCodecReg(0x40, 0x01),
+           readCodecReg(0x40, 0x06), readCodecReg(0x40, 0x08),
            readCodecReg(0x40, 0x11), readCodecReg(0x40, 0x12),
-           readCodecReg(0x40, 0x40), readCodecReg(0x40, 0x4B),
-           readCodecReg(0x40, 0x4C), readCodecReg(0x40, 0x43),
-           readCodecReg(0x40, 0x44));
+           readCodecReg(0x40, 0x40), readCodecReg(0x40, 0x47),
+           readCodecReg(0x40, 0x48), readCodecReg(0x40, 0x4B),
+           readCodecReg(0x40, 0x43), readCodecReg(0x40, 0x44));
   Serial.println(codecRegDump);
 
   // 2. Initialise ES8311 Speaker DAC (I2C Addr: 0x18). The original 8-line
@@ -563,21 +595,13 @@ void initAudioHardware() {
   // Configure MUTE Button (GPIO 1, active LOW)
   pinMode(MUTE_BTN_PIN, INPUT_PULLUP);
 
-  // Configure Power Amplifier pin
+  // Configure Power Amplifier pin - start muted to isolate mic
   pinMode(PA_ENABLE_PIN, OUTPUT);
-  digitalWrite(PA_ENABLE_PIN, HIGH); // Enable speaker amp
+  setSpeakerMute(true);
 
   // Configure I2C audio chips
   initCodecChips();
 
-  // i2s_std migration: matches Espressif's own validated ESP32-S3-BOX-3 BSP
-  // (espressif/esp-bsp, bsp/esp-box-3/esp-box-3_idf5.c) exactly - one
-  // i2s_new_channel() call for both TX and RX sharing the physical
-  // peripheral/clock, each then put into std mode with a REAL hardware
-  // I2S_SLOT_MODE_MONO (not the legacy driver's software channel-select
-  // over a still-physically-stereo frame, which is the most likely reason
-  // our own capture stayed noisy while Espressif's factory test firmware -
-  // built on this same driver - produced clean audio on the same hardware).
   i2s_chan_config_t chan_cfg =
       I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
   chan_cfg.auto_clear = true; // replaces the legacy i2s_zero_dma_buffer() call
@@ -586,7 +610,7 @@ void initAudioHardware() {
   i2s_std_config_t std_cfg = {
       .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(MIC_SAMPLE_RATE),
       .slot_cfg = I2S_STD_PHILIP_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,
-                                                      I2S_SLOT_MODE_MONO),
+                                                      I2S_SLOT_MODE_STEREO),
       .gpio_cfg = {.mclk = I2S_MCLK_PIN,
                    .bclk = I2S_BCLK_PIN,
                    .ws = I2S_WS_PIN,
@@ -597,32 +621,19 @@ void initAudioHardware() {
                                     .ws_inv = false}}};
 
   ESP_ERROR_CHECK(i2s_channel_init_std_mode(i2sTxChan, &std_cfg));
-
-  // Slot-swap test (RIGHT instead of LEFT) didn't eliminate the interference
-  // tone - it just shifted its fundamental frequency (~500/1000/1500Hz on
-  // LEFT vs ~1000/2000Hz on RIGHT), which points to a clock/timing-derived
-  // artifact rather than "wrong slot has the real signal". Back to the
-  // default LEFT slot (matching the official BSP reference and the
-  // already-working TX/speaker config) to isolate the ES7210 register
-  // rewrite's own effect on its own, without the slot change as a confound.
   ESP_ERROR_CHECK(i2s_channel_init_std_mode(i2sRxChan, &std_cfg));
   ESP_ERROR_CHECK(i2s_channel_enable(i2sTxChan));
   ESP_ERROR_CHECK(i2s_channel_enable(i2sRxChan));
-  Serial.println("[Hardware] I2S (i2s_std, mono) channels enabled successfully.");
+  Serial.println("[Hardware] I2S (i2s_std, 16kHz, STEREO) channels enabled successfully.");
 }
 
 // Standalone mic read-rate test: reads a fixed number of buffers back to
 // back via i2s_channel_read(), the SAME i2sRxChan/std_cfg as the live app,
 // but with NO WiFi/TCP/Gemini/state-machine involved at all - runs once at
-// boot, before WiFi.begin() is even called. The live app's audioMicTask()
-// showed only 1-2 real buffers read across many seconds of wall-clock time
-// during an actual Gemini session; this isolates whether that stall is
-// inherent to the i2s_std RX config itself (matches here too) or caused by
-// something else on Core 0 contending with it once WiFi/TCP/Gemini are
-// active (reads keep pace here, matching AUDIO_CHUNK_SAMPLES/16000 sec each).
+// boot, before WiFi.begin() is even called.
 void micReadRateTest() {
   const int TEST_BUFFERS = 60;
-  int16_t testBuf[AUDIO_CHUNK_SAMPLES];
+  static int16_t stereoTestBuf[AUDIO_CHUNK_SAMPLES * 2];
   size_t bytesRead = 0;
   Serial.println("[MicTest] Standalone I2S read-rate test starting - "
                   "speak into the mic now...");
@@ -631,26 +642,20 @@ void micReadRateTest() {
   int64_t maxRms = 0;
   for (int i = 0; i < TEST_BUFFERS; i++) {
     unsigned long readStart = millis();
-    esp_err_t err = i2s_channel_read(i2sRxChan, testBuf, sizeof(testBuf),
+    esp_err_t err = i2s_channel_read(i2sRxChan, stereoTestBuf, sizeof(stereoTestBuf),
                                       &bytesRead, portMAX_DELAY);
     unsigned long readMs = millis() - readStart;
     if (bytesRead == 0) zeroCount++;
-    int sampleCount = bytesRead / sizeof(int16_t);
+    int pairCount = bytesRead / (2 * sizeof(int16_t));
     int64_t sumSquare = 0;
-    for (int s = 0; s < sampleCount; s++) {
-      sumSquare += (int32_t)testBuf[s] * (int32_t)testBuf[s];
+    for (int s = 0; s < pairCount; s++) {
+      int16_t sample = stereoTestBuf[2 * s]; // Pure MIC1 Left
+      sumSquare += (int32_t)sample * (int32_t)sample;
     }
-    int rms = sampleCount > 0 ? (int)sqrt((double)(sumSquare / sampleCount)) : 0;
+    int rms = pairCount > 0 ? (int)sqrt((double)(sumSquare / pairCount)) : 0;
     if (rms > maxRms) maxRms = rms;
     (void)err;
     (void)readMs;
-    // DIAGNOSTIC: no per-buffer Serial.printf() this round - the previous
-    // run showed each i2s_channel_read() itself completing in ~15ms, yet the
-    // full 60-buffer loop took 47 seconds, meaning ~99% of that time was
-    // spent somewhere else in the loop body. printf() over ESP32-S3's native
-    // USB-Serial/JTOG CDC is the only other thing happening per iteration -
-    // this run tests whether removing it drops total time to the ~2s that
-    // 60 buffers of real 16kHz audio should take.
   }
   unsigned long totalMs = millis() - testStart;
   Serial.printf("[MicTest] DONE: %d buffers in %lums (avg %lums/buf), "
@@ -726,10 +731,11 @@ void sendDebug(const char *text) {
 void playChime() {
   Serial.println("[Hardware] Playing speaker test tone...");
   sendDebug("test_chime");
+  setSpeakerMute(false); // Enable speaker amp & unmute DAC
   const float freq = 440.0f;
   const int totalSamples = MIC_SAMPLE_RATE * 300 / 1000; // 300ms
   const int fadeSamples = 200; // click-free fade in/out
-  int16_t buf[256];
+  int16_t stereoBuf[512];
   int written = 0;
   while (written < totalSamples) {
     int chunkLen = min(256, totalSamples - written);
@@ -740,13 +746,17 @@ void playChime() {
       if (idx < fadeSamples) envelope = (float)idx / fadeSamples;
       if (idx > totalSamples - fadeSamples)
         envelope = (float)(totalSamples - idx) / fadeSamples;
-      buf[i] = (int16_t)(sinf(2.0f * PI * freq * t) * 9000.0f * envelope);
+      int16_t sample = (int16_t)(sinf(2.0f * PI * freq * t) * 9000.0f * envelope);
+      stereoBuf[2 * i] = sample;
+      stereoBuf[2 * i + 1] = sample;
     }
     size_t bytesWritten = 0;
-    i2s_channel_write(i2sTxChan, buf, chunkLen * sizeof(int16_t),
+    i2s_channel_write(i2sTxChan, stereoBuf, chunkLen * 2 * sizeof(int16_t),
                        &bytesWritten, portMAX_DELAY);
     written += chunkLen;
   }
+  delay(30);
+  setSpeakerMute(true); // Return to muted state to isolate mic
 }
 
 // Sends a real clientContent text turn (not the empty/placeholder "."
@@ -790,6 +800,7 @@ void beginListening(const char *reason) {
   }
   Serial.printf("[IMS] Starting listening session (%s)...\n", reason);
   sendDebug((String("listening_start:") + reason).c_str());
+  setSpeakerMute(true); // Isolate mic from speaker PA switching noise
   currentState = STATE_LISTENING;
   micStreamingActive = true;
   lastSpeechTimestamp = millis();
@@ -824,6 +835,7 @@ void beginListening(const char *reason) {
 void sendTurnComplete() {
   if (!tcpClient.connected() || !geminiSetupComplete) return;
   currentState = STATE_THINKING;
+  micStreamingActive = false; // Stop streaming mic audio so Gemini's VAD completes the turn!
   renderScreen(true);
 }
 
@@ -903,12 +915,20 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
     if (resampled == nullptr) {
       resampled = (int16_t *)ps_malloc(FRAME_BUF_CAPACITY);
     }
+    static int16_t *stereoPlaybackBuf = nullptr;
+    if (stereoPlaybackBuf == nullptr) {
+      stereoPlaybackBuf = (int16_t *)ps_malloc(FRAME_BUF_CAPACITY * 2);
+    }
     size_t inSamples = len / sizeof(int16_t);
     size_t outSamples =
         resample24to16((const int16_t *)data, inSamples, resampled,
                         FRAME_BUF_CAPACITY / sizeof(int16_t));
+    for (size_t i = 0; i < outSamples; i++) {
+      stereoPlaybackBuf[2 * i] = resampled[i];
+      stereoPlaybackBuf[2 * i + 1] = resampled[i];
+    }
     size_t bytesWritten = 0;
-    i2s_channel_write(i2sTxChan, resampled, outSamples * sizeof(int16_t),
+    i2s_channel_write(i2sTxChan, stereoPlaybackBuf, outSamples * 2 * sizeof(int16_t),
                        &bytesWritten, 50);
     lastSpeechTimestamp = millis();
     // This binary audio channel is Gemini's actual spoken reply (we're
@@ -918,6 +938,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
     // told audioMicTask to stop streaming once Gemini started replying, and
     // the screen could sit on "Thinking..." through the entire reply.
     if (currentState != STATE_SPEAKING) {
+      setSpeakerMute(false); // Unmute DAC & enable speaker PA for Gemini speech playback
       currentState = STATE_SPEAKING;
       micStreamingActive = false;
       lastTranscript = "Speaking...";
@@ -957,14 +978,18 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       renderScreen(true);
     }
     if (doc["turnComplete"].as<bool>() || doc["turnComplete"].is<JsonObject>()) {
-      currentState = STATE_LISTENING;
-      micStreamingActive = true; // resume capturing the next turn
-      lastSpeechTimestamp = millis();
+      setSpeakerMute(true); // Return to muted speaker
+      currentState = STATE_STANDBY;
+      micStreamingActive = false;
+      lastTranscript = "Tap screen to ask a question";
       renderScreen(true);
     }
     if (doc["serverContent"].is<JsonObject>()) {
       JsonObject serverContent = doc["serverContent"];
       if (serverContent["modelTurn"].is<JsonObject>()) {
+        if (currentState != STATE_SPEAKING) {
+          setSpeakerMute(false);
+        }
         currentState = STATE_SPEAKING;
         lastSpeechTimestamp = millis();
         JsonArray modelParts = serverContent["modelTurn"]["parts"];
@@ -978,9 +1003,10 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         }
       }
       if (serverContent["turnComplete"].as<bool>()) {
-        currentState = STATE_LISTENING;
-        micStreamingActive = true; // resume capturing the next turn
-        lastSpeechTimestamp = millis();
+        setSpeakerMute(true); // Return to muted speaker
+        currentState = STATE_STANDBY;
+        micStreamingActive = false;
+        lastTranscript = "Tap screen to ask a question";
         renderScreen(true);
       }
     }
@@ -1067,7 +1093,9 @@ void pollIncoming() {
 // task hands off work via audioOutQueue / controlEventQueue for loop() to
 // drain.
 void audioMicTask(void *param) {
-  int16_t micBuffer[AUDIO_CHUNK_SAMPLES];
+  static int16_t stereoBuffer[AUDIO_CHUNK_SAMPLES * 2];
+  static int16_t micBuffer[AUDIO_CHUNK_SAMPLES];
+  static AudioChunkMsg msg;
   size_t bytesRead = 0;
   // DIAGNOSTIC: is i2s_channel_read() actually keeping pace with the 16kHz
   // stream, or silently stalling for long stretches between buffers? Tracks
@@ -1096,7 +1124,7 @@ void audioMicTask(void *param) {
         wasStreaming = false;
       }
       unsigned long readStartMs = millis();
-      i2s_channel_read(i2sRxChan, micBuffer, sizeof(micBuffer), &bytesRead,
+      i2s_channel_read(i2sRxChan, stereoBuffer, sizeof(stereoBuffer), &bytesRead,
                         portMAX_DELAY);
       unsigned long readMs = millis() - readStartMs;
       attemptCount++;
@@ -1129,25 +1157,15 @@ void audioMicTask(void *param) {
 
       if (bytesRead > 0 && micStreamingActive) {
         bufCount++;
-        // DIAGNOSTIC: stereo test (L vs R) came back identical, ruling out
-        // a channel-mapping/wrong-slot bug - back to mono. Now testing a
-        // bit-alignment theory instead: MIC_SHIFT_TEST_BITS left-shifts
-        // every captured sample before it's sent/saved. If the ES7210's
-        // real audio content is sitting in the wrong bit position (e.g.
-        // padded into the lower bits instead of MSB-aligned), a shift
-        // should make voice suddenly pop out clean; if it's already
-        // correctly aligned, shifting just clips/distorts real signal +
-        // noise together with no improvement in intelligibility.
-        int sampleCount = bytesRead / sizeof(int16_t);
+        int monoSampleCount = bytesRead / (2 * sizeof(int16_t));
+        if (monoSampleCount > AUDIO_CHUNK_SAMPLES) monoSampleCount = AUDIO_CHUNK_SAMPLES;
         int64_t sumSquare = 0;
-        for (int i = 0; i < sampleCount; i++) {
-          int32_t shifted = (int32_t)micBuffer[i] << MIC_SHIFT_TEST_BITS;
-          if (shifted > 32767) shifted = 32767;
-          if (shifted < -32768) shifted = -32768;
-          micBuffer[i] = (int16_t)shifted;
-          sumSquare += (int32_t)micBuffer[i] * (int32_t)micBuffer[i];
+        for (int i = 0; i < monoSampleCount; i++) {
+          int16_t sample = stereoBuffer[2 * i]; // Pure Left channel (MIC1)
+          micBuffer[i] = sample;
+          sumSquare += (int32_t)sample * (int32_t)sample;
         }
-        int rms = (int)sqrt((double)(sumSquare / sampleCount));
+        int rms = monoSampleCount > 0 ? (int)sqrt((double)(sumSquare / monoSampleCount)) : 0;
         currentMicRms = rms;
 
         static unsigned long lastRmsLog = 0;
@@ -1182,8 +1200,8 @@ void audioMicTask(void *param) {
           }
         }
 
-        AudioChunkMsg msg;
-        size_t copyLen = min(bytesRead, sizeof(msg.data));
+        size_t copyLen = monoSampleCount * sizeof(int16_t);
+        if (copyLen > sizeof(msg.data)) copyLen = sizeof(msg.data);
         memcpy(msg.data, micBuffer, copyLen);
         msg.len = copyLen;
         // Non-blocking: if the queue is full (loop() briefly busy), drop this
@@ -1193,7 +1211,7 @@ void audioMicTask(void *param) {
     } else {
       // Drain I2S buffer to prevent overflow accumulation while not streaming
       if (tcpClient.connected()) {
-        i2s_channel_read(i2sRxChan, micBuffer, sizeof(micBuffer), &bytesRead, 10);
+        i2s_channel_read(i2sRxChan, stereoBuffer, sizeof(stereoBuffer), &bytesRead, 10);
       }
       vTaskDelay(pdMS_TO_TICKS(10));
     }
@@ -1278,7 +1296,7 @@ void setup() {
   audioOutQueue = xQueueCreate(8, sizeof(AudioChunkMsg));
   controlEventQueue = xQueueCreate(4, sizeof(ControlEvent));
   debugQueue = xQueueCreate(8, sizeof(DebugMsg));
-  xTaskCreatePinnedToCore(audioMicTask, "MicTask", 4096, NULL, 5, NULL, 0);
+  xTaskCreatePinnedToCore(audioMicTask, "MicTask", 8192, NULL, 5, NULL, 0);
 }
 
 void loop() {

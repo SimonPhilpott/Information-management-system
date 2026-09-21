@@ -98,6 +98,11 @@
       "dependencies": [
         "firmware/esp32-s3-box-3/include/config.h"
       ]
+    },
+    "firmware/esp32-s3-box-3-mictest/src/main.cpp": {
+      "description": "Isolated ESP32-S3-BOX-3 microphone validation and loopback test firmware with register dump and serial WAV streaming.",
+      "dependencies": []
     }
   }
 }
+

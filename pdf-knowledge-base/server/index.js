@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import net from 'net';
+import http from 'http';
 import { EventEmitter } from 'events';
 import { WebSocketServer, WebSocket } from 'ws';
 import config from './config.js';
@@ -730,5 +731,53 @@ const hardwareTcpServer = net.createServer((socket) => {
 
 hardwareTcpServer.listen(HARDWARE_TCP_PORT, () => {
   console.log(`[HardwareTCP] Raw TCP hardware endpoint listening on port ${HARDWARE_TCP_PORT}`);
+});
+
+// Temporary debug endpoint: accepts a raw PCM POST body from the
+// MichalZaniewicz/esphome-esp32-s3-box-3-va reference firmware's on_data
+// mic hook and saves it as a WAV file in the same folder as our own mic
+// captures, so it can be compared directly. Deliberately a separate plain
+// HTTP server, not an Express route - avoids the requireAdmin session auth
+// applied globally to the main app, which a bare device http_request.post
+// action has no way to satisfy. Matches that firmware's esp_audio_stack
+// config: 48000Hz, 16-bit, mono.
+const DEBUG_MIC_UPLOAD_PORT = 3003;
+const debugMicCapturesDir = path.join(__dirname, 'audio_captures');
+const debugMicServer = http.createServer((req, res) => {
+  if (req.method !== 'POST' || req.url !== '/debug-mic-upload') {
+    res.writeHead(404).end();
+    return;
+  }
+  const chunks = [];
+  req.on('data', (chunk) => chunks.push(chunk));
+  req.on('end', () => {
+    const pcm = Buffer.concat(chunks);
+    const sampleRate = 48000;
+    const numChannels = 1;
+    const bitsPerSample = 16;
+    const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+    const blockAlign = numChannels * (bitsPerSample / 8);
+    const wavHeader = Buffer.alloc(44);
+    wavHeader.write('RIFF', 0);
+    wavHeader.writeUInt32LE(36 + pcm.length, 4);
+    wavHeader.write('WAVE', 8);
+    wavHeader.write('fmt ', 12);
+    wavHeader.writeUInt32LE(16, 16);
+    wavHeader.writeUInt16LE(1, 20);
+    wavHeader.writeUInt16LE(numChannels, 22);
+    wavHeader.writeUInt32LE(sampleRate, 24);
+    wavHeader.writeUInt32LE(byteRate, 28);
+    wavHeader.writeUInt16LE(blockAlign, 32);
+    wavHeader.writeUInt16LE(bitsPerSample, 34);
+    wavHeader.write('data', 36);
+    wavHeader.writeUInt32LE(pcm.length, 40);
+    const outPath = path.join(debugMicCapturesDir, `reference_fw_mic_${Date.now()}.wav`);
+    fs.writeFileSync(outPath, Buffer.concat([wavHeader, pcm]));
+    console.log(`[DebugMicUpload] 💾 Saved ${outPath} (${pcm.length} bytes, ${(pcm.length / byteRate).toFixed(2)}s)`);
+    res.writeHead(200).end('ok');
+  });
+});
+debugMicServer.listen(DEBUG_MIC_UPLOAD_PORT, () => {
+  console.log(`[DebugMicUpload] Listening on port ${DEBUG_MIC_UPLOAD_PORT} at /debug-mic-upload`);
 });
 
