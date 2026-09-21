@@ -362,7 +362,12 @@ void setSpeakerMute(bool mute) {
     digitalWrite(PA_ENABLE_PIN, LOW); // Disable Class-D speaker PA
   } else {
     digitalWrite(PA_ENABLE_PIN, HIGH); // Enable Class-D speaker PA
-    delay(10);
+    // 150ms: NS4150B Class-D amp datasheet specifies ~100ms startup from
+    // shutdown. 10ms was too short - the first Gemini audio chunks arrived
+    // while the amp was still in its mute release ramp, so they played into
+    // a dead output and were lost. 150ms gives full headroom with a safety
+    // margin so every chunk is audible.
+    delay(150);
     writeCodecReg(0x18, 0x31, 0x00); // Unmute ES8311 DAC
   }
 }
@@ -924,12 +929,24 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         resample24to16((const int16_t *)data, inSamples, resampled,
                         FRAME_BUF_CAPACITY / sizeof(int16_t));
     for (size_t i = 0; i < outSamples; i++) {
-      stereoPlaybackBuf[2 * i] = resampled[i];
-      stereoPlaybackBuf[2 * i + 1] = resampled[i];
+      // x1.5 playback gain: Gemini's 24kHz output tends to be quiet after
+      // resampling to 16kHz. Clamped to int16 range to avoid wrap clipping.
+      int32_t boosted = (int32_t)resampled[i] * 3 / 2;
+      if (boosted >  32767) boosted =  32767;
+      if (boosted < -32768) boosted = -32768;
+      stereoPlaybackBuf[2 * i]     = (int16_t)boosted;
+      stereoPlaybackBuf[2 * i + 1] = (int16_t)boosted;
     }
     size_t bytesWritten = 0;
+    // portMAX_DELAY: the previous 50ms timeout was silently dropping frames
+    // whenever the I2S DMA TX FIFO was momentarily full between chunks (common
+    // during a burst of back-to-back Gemini audio frames). The TX FIFO drains
+    // at exactly the I2S clock rate (16kHz stereo 16-bit = 64KB/s), so a
+    // blocked write resolves within one DMA buffer period (~16ms) - well
+    // within the real-time budget. portMAX_DELAY ensures every frame is
+    // written rather than silently discarded when there's backpressure.
     i2s_channel_write(i2sTxChan, stereoPlaybackBuf, outSamples * 2 * sizeof(int16_t),
-                       &bytesWritten, 50);
+                       &bytesWritten, portMAX_DELAY);
     lastSpeechTimestamp = millis();
     // This binary audio channel is Gemini's actual spoken reply (we're
     // AUDIO-only, responseModalities=["AUDIO"]) - the JSON serverContent/
@@ -961,6 +978,12 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       lastTranscript = "Tap screen to ask a question";
       renderScreen(true);
       sendDebug(codecRegDump);
+      // Startup greeting: Gemini synthesises this as native audio and streams
+      // it back through the speaker path immediately on first connect, so the
+      // user gets audible confirmation the device is ready without needing to
+      // tap anything. Uses sendTextQuery() which sends a proper clientContent
+      // turn with turnComplete=true so Gemini responds immediately.
+      sendTextQuery("Please say exactly: Hi, I'm Ims, ready to talk.");
       // The mic-free "Hi, how are you" auto-query (sendTextQuery) already
       // did its job confirming the network/Gemini/speaker path in
       // isolation - removed because its own trailing reply audio can still
