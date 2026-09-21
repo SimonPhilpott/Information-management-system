@@ -374,14 +374,28 @@ void setSpeakerMute(bool mute) {
     digitalWrite(PA_ENABLE_PIN, LOW); // Disable Class-D speaker PA
   } else {
     digitalWrite(PA_ENABLE_PIN, HIGH); // Enable Class-D speaker PA
-    // 150ms: NS4150B Class-D amp datasheet specifies ~100ms startup from
-    // shutdown. 10ms was too short - the first Gemini audio chunks arrived
-    // while the amp was still in its mute release ramp, so they played into
-    // a dead output and were lost. 150ms gives full headroom with a safety
-    // margin so every chunk is audible.
+    // 150ms startup delay: NS4150B needs ~100ms to exit shutdown cleanly.
+    // ONLY used in this blocking form from playChime() during setup() (no
+    // FreeRTOS tasks running, blocking is fine). The Gemini audio path uses
+    // preWarmSpeakerPA() instead, which raises the GPIO earlier (during
+    // STATE_THINKING) so the amp warms up during Gemini's processing window
+    // rather than blocking Core 1 at the start of playback.
     delay(150);
     writeCodecReg(0x18, 0x31, 0x00); // Unmute ES8311 DAC
   }
+}
+
+// Raises PA_ENABLE_PIN immediately with NO delay - call when entering
+// STATE_THINKING so the NS4150B has Gemini's ~1-5s processing window to
+// warm up. unmuteDacOnly() then enables audio output with zero blocking.
+void preWarmSpeakerPA() {
+  digitalWrite(PA_ENABLE_PIN, HIGH);
+}
+
+// Unmutes ES8311 DAC output register only - no GPIO, no delay.
+// Call in handleFrame() on the first audio frame after preWarmSpeakerPA().
+void unmuteDacOnly() {
+  writeCodecReg(0x18, 0x31, 0x00);
 }
 
 // Populated once in initCodecChips() and sent to the backend as a one-shot
@@ -389,6 +403,7 @@ void setSpeakerMute(bool mute) {
 // ES7210's actual register state over the network without touching COM3
 // (which resets the board every time it's opened).
 char codecRegDump[256] = "";
+
 
 // Every register readback via both the Arduino HAL and LGFX's own I2C API
 // has come back as a hard failure at address 0x40, even after fixing two
@@ -800,6 +815,9 @@ void sendTextQuery(const char *text) {
   sendFrame(0x00, (const uint8_t *)turnStr.c_str(), turnStr.length());
   currentState = STATE_THINKING;
   lastTranscript = String(text);
+  // Pre-warm PA immediately so the amp has time to exit shutdown before
+  // audio arrives. Gemini takes ~1-5s to respond - ample warmup window.
+  preWarmSpeakerPA();
   renderScreen(true);
 }
 
@@ -853,6 +871,9 @@ void sendTurnComplete() {
   if (!tcpClient.connected() || !geminiSetupComplete) return;
   currentState = STATE_THINKING;
   micStreamingActive = false; // Stop streaming mic audio so Gemini's VAD completes the turn!
+  // Pre-warm PA immediately - amp exits shutdown during Gemini's processing
+  // window so no blocking delay is needed when the first audio frame arrives.
+  preWarmSpeakerPA();
   renderScreen(true);
 }
 
@@ -957,7 +978,11 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
     // response was completely inaudible despite the I2S TX path working fine
     // (confirmed by the boot chime). Unmute first, queue second.
     if (currentState != STATE_SPEAKING) {
-      setSpeakerMute(false); // Enable PA (150ms startup) + unmute DAC - BEFORE queuing
+      // PA GPIO was pre-warmed in sendTurnComplete()/sendTextQuery() when we
+      // entered STATE_THINKING. Gemini's processing window (~1-5s) was enough
+      // for the NS4150B to fully exit shutdown. Only the DAC register needs
+      // toggling here - non-blocking, no delay, Core 1 is never stalled.
+      unmuteDacOnly();
       currentState = STATE_SPEAKING;
       micStreamingActive = false;
       lastTranscript = "Speaking...";
