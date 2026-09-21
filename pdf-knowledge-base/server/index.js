@@ -255,6 +255,13 @@ function handleLiveProxyConnection(ws, isHardware = false) {
   let isClientClosed = false;
   const outboundQueue = [];
   let geminiFirstMessageLogged = false;
+  let lastModelAudioTime = 0;
+  let sessionTranscript = '';
+  // Tracks whether Gemini sent a turnComplete for the current generation turn.
+  // Used to detect mid-turn disconnects (Gemini closes code=1000 before the turn
+  // finished) and synthesise the missing turnComplete so the device does not
+  // get stuck in SPEAKING state with a partially-played response.
+  let currentTurnComplete = true; // true initially (no active turn yet)
 
   // Direct Raw Packet Capture: Stream recording to WAV on disk
   const capturesDir = path.join(__dirname, 'audio_captures');
@@ -310,6 +317,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
   // cleanly closes (still connected, or the server restarts) would
   // otherwise never produce a listenable file at all.
   const micFlushInterval = setInterval(flushMicWavToDisk, 5000);
+  const geminiFlushInterval = setInterval(() => flushWavToDisk(), 5000);
 
   const flushWavToDisk = () => {
     if (audioChunks.length === 0) return;
@@ -341,8 +349,13 @@ function handleLiveProxyConnection(ws, isHardware = false) {
       fs.writeFileSync(capturePath, finalWav);
       const durationSec = (totalPcmBytes / byteRate).toFixed(2);
       console.log(`[AudioCapture] 💾 SAVED RAW WAV: ${capturePath} (${durationSec}s of audio, ${finalWav.length} bytes)`);
+
+      // Save corresponding full transcript .txt file alongside the .wav file with identical base name
+      const txtPath = capturePath.replace(/\.wav$/, '.txt');
+      fs.writeFileSync(txtPath, sessionTranscript.trim() || '(No transcript received)');
+      console.log(`[TranscriptCapture] 📝 SAVED TRANSCRIPT TXT: ${txtPath} (${sessionTranscript.length} chars)`);
     } catch (err) {
-      console.error('[AudioCapture] Error saving WAV:', err);
+      console.error('[AudioCapture] Error saving WAV/TXT:', err);
     }
   };
 
@@ -392,6 +405,10 @@ function handleLiveProxyConnection(ws, isHardware = false) {
         if (parsed.serverContent?.modelTurn?.parts) {
           for (const part of parsed.serverContent.modelTurn.parts) {
             if (part.inlineData?.mimeType?.startsWith('audio/') && part.inlineData.data) {
+              lastModelAudioTime = Date.now();
+              // Mark this turn as incomplete until Gemini confirms otherwise.
+              // Any audio chunk arriving means a generation turn is in flight.
+              currentTurnComplete = false;
               const rawBytes = Buffer.from(part.inlineData.data, 'base64');
               parsedAudioBytes = rawBytes;
               audioChunks.push(rawBytes);
@@ -405,9 +422,31 @@ function handleLiveProxyConnection(ws, isHardware = false) {
         if (parsed.serverContent?.modelTurn?.parts) {
           for (const part of parsed.serverContent.modelTurn.parts) {
             if (part.text) {
+              sessionTranscript += part.text + "\n";
               console.log(`${tag} [LiveTranscript] Text received from Gemini:`, part.text);
+              try {
+                fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+                  `[${new Date().toISOString()}] ${tag} GEMINI TEXT: ${part.text}\n`);
+              } catch (_) { }
             }
           }
+        }
+
+        if (parsed.serverContent?.interrupted) {
+          console.warn(`${tag} ⚠️ Gemini reported MODEL INTERRUPTED!`);
+          try {
+            fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+              `[${new Date().toISOString()}] ${tag} GEMINI INTERRUPTED\n`);
+          } catch (_) { }
+        }
+
+        if (parsed.serverContent?.turnComplete) {
+          currentTurnComplete = true; // Gemini confirmed the turn ended cleanly
+          console.log(`${tag} ✅ Gemini reported TURN COMPLETE`);
+          try {
+            fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+              `[${new Date().toISOString()}] ${tag} GEMINI TURN COMPLETE\n`);
+          } catch (_) { }
         }
 
         // If tool call is issued by Gemini, handle searchLibrary automatically for hardware clients only.
@@ -501,13 +540,43 @@ function handleLiveProxyConnection(ws, isHardware = false) {
       console.log(`${tag} Gemini Live closed connection: ${code} - ${reasonStr}`);
       try {
         fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
-          `[${new Date().toISOString()}] ${tag} GEMINI CLOSE: code=${code} reason="${reasonStr}"\n`);
+          `[${new Date().toISOString()}] ${tag} GEMINI CLOSE: code=${code} reason="${reasonStr}" turnComplete=${currentTurnComplete}\n`);
       } catch (_) { }
 
       // Code 1000 is a normal WebSocket close (turn completed / idle duration reached).
       // If the client socket is still active (especially hardware terminal awaiting next voice turn),
       // do NOT drop the client socket. Reconnect to Gemini Live upstream transparently.
       if (!isClientClosed && ws.readyState === WebSocket.OPEN && (code === 1000 || code === 1005)) {
+        // -----------------------------------------------------------------------
+        // Mid-turn disconnect guard:
+        // Gemini occasionally closes code=1000 BEFORE sending turnComplete when
+        // its own server-side idle timeout fires mid-synthesis. Without this
+        // guard the hardware client is left in STATE_SPEAKING forever (or until
+        // the 1500ms isSpeakerActive safety guard fires), but crucially all audio
+        // already queued on the device DOES play out in full - we just need to
+        // tell it the turn is over afterward so the device returns to STANDBY.
+        // We wait 200ms to allow the last binary audio chunks already in-flight
+        // on the TCP socket to arrive at the device before the turnComplete JSON
+        // frame lands, avoiding a race where the device resets state mid-drain.
+        // -----------------------------------------------------------------------
+        if (!currentTurnComplete && isHardware && ws.readyState === WebSocket.OPEN) {
+          console.warn(`${tag} ⚠️ Gemini closed mid-turn (no turnComplete received). Sending synthetic turnComplete after 200ms drain delay.`);
+          try {
+            fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+              `[${new Date().toISOString()}] ${tag} SYNTHETIC TURNCOMPLETE QUEUED (mid-turn disconnect)\n`);
+          } catch (_) { }
+          setTimeout(() => {
+            try {
+              if (!isClientClosed && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ turnComplete: true }));
+                console.log(`${tag} ✅ Sent synthetic turnComplete to hardware client.`);
+              }
+            } catch (e) {
+              console.error(`${tag} Error sending synthetic turnComplete:`, e.message);
+            }
+          }, 200);
+        }
+        currentTurnComplete = true; // Reset for next turn
         console.log(`${tag} Gracefully handling code ${code} from Gemini. Keeping client socket open and preparing seamless upstream reconnect.`);
         currentGeminiWs = null;
         return;
@@ -569,6 +638,23 @@ function handleLiveProxyConnection(ws, isHardware = false) {
     if (isBinary) {
       ws.isHardwareClient = true;
       if (isHardware) micAudioChunks.push(Buffer.from(message));
+
+      // Acoustic echo barge-in protection:
+      // While Gemini is actively outputting speech audio (or within 1500ms of the last chunk),
+      // suppress forwarding mic audio to Gemini so Google's server-side VAD does not hear the speaker
+      // output and abort the turn with GEMINI INTERRUPTED.
+      // 1500ms matches the speaker cooldown window used in the firmware (isSpeakerCoolingDown),
+      // ensuring the proxy-side suppression stays in sync with when the physical speaker
+      // has actually gone silent and mic feedback has decayed. A shorter window (800ms) was
+      // insufficient — residual speaker output was leaking into the mic and causing Gemini to
+      // barge-in and close the turn early (mid-sentence) with code=1000.
+      // Automatically unblocks 1500ms after Gemini stops speaking, ensuring wake words and user
+      // queries are never locked out.
+      const isModelSpeakingNow = (Date.now() - lastModelAudioTime < 1500);
+      if (isHardware && isModelSpeakingNow) {
+        return;
+      }
+
       const base64Audio = Buffer.from(message).toString('base64');
       const realtimePayload = JSON.stringify({
         realtimeInput: {
@@ -641,7 +727,9 @@ function handleLiveProxyConnection(ws, isHardware = false) {
   ws.on('close', (code, reason) => {
     isClientClosed = true;
     flushMicWavToDisk();
+    flushWavToDisk();
     clearInterval(micFlushInterval);
+    clearInterval(geminiFlushInterval);
     const reasonStr = reason ? reason.toString() : '';
     console.log(`${tag} Client closed connection: ${code} - ${reasonStr}`);
     if (isHardware && activeHardwareSession?.clientWs === ws) {
