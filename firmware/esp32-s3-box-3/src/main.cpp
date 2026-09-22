@@ -153,6 +153,11 @@ volatile bool conversationShouldClose = false;
 // brand new conversation opens (see beginVerifying()/beginListening()) so a
 // leftover expression from a previous exchange doesn't linger indefinitely.
 volatile int currentEmotion = 0;
+// millis() timestamp of the last setEmotion call - loop() reverts to neutral
+// once EMOTION_DECAY_MS has passed with no new one, so an expression doesn't
+// sit on IMS's face indefinitely after a reply finishes.
+volatile unsigned long emotionSetAtMs = 0;
+#define EMOTION_DECAY_MS 20000
 enum FaceEmotion {
   EMOTION_NEUTRAL = 0,
   EMOTION_JOY,
@@ -187,6 +192,25 @@ int emotionFromName(const char *name) {
   if (strcmp(name, "bored") == 0) return EMOTION_BORED;
   if (strcmp(name, "sleepy") == 0) return EMOTION_SLEEPY;
   return EMOTION_NEUTRAL;
+}
+const char *emotionName(int emotion) {
+  switch (emotion) {
+    case EMOTION_JOY: return "joy";
+    case EMOTION_COCKY: return "cocky";
+    case EMOTION_LOVE: return "love";
+    case EMOTION_AMAZEMENT: return "amazement";
+    case EMOTION_SUSPICIOUS: return "suspicious";
+    case EMOTION_CONFUSED: return "confused";
+    case EMOTION_SAD: return "sad";
+    case EMOTION_DEVASTATED: return "devastated";
+    case EMOTION_ANGER: return "anger";
+    case EMOTION_RAGE: return "rage";
+    case EMOTION_FEAR: return "fear";
+    case EMOTION_DISGUSTED: return "disgusted";
+    case EMOTION_BORED: return "bored";
+    case EMOTION_SLEEPY: return "sleepy";
+    default: return "neutral";
+  }
 }
 bool isSetupAcknowledged = false;
 volatile bool geminiSetupComplete =
@@ -265,24 +289,25 @@ volatile bool modelTurnActive = false; // Tracks active turn generation from Gem
 // Returns true if audio is actively playing or queued to play out the speaker
 inline bool isSpeakerActive() {
   if (modelTurnActive) {
-    // Safety guard: if audioPlaybackQueue is empty and no playback has occurred for >1500ms,
-    // clear modelTurnActive in case turnComplete was missing or delayed from upstream
+    // Safety guard: if audioPlaybackQueue is empty and no playback has occurred for >4000ms,
+    // clear modelTurnActive in case turnComplete was missing or delayed from upstream.
+    // 4000ms allows Gemini Live to pause for up to 4s between clauses without premature auto-mute.
     if ((!audioPlaybackQueue || uxQueueMessagesWaiting(audioPlaybackQueue) == 0) &&
-        lastPlaybackActiveTime > 0 && (millis() - lastPlaybackActiveTime > 1500)) {
+        lastPlaybackActiveTime > 0 && (millis() - lastPlaybackActiveTime > 4000)) {
       modelTurnActive = false;
     } else {
       return true;
     }
   }
   if (audioPlaybackQueue && uxQueueMessagesWaiting(audioPlaybackQueue) > 0) return true;
-  if (lastPlaybackActiveTime > 0 && (millis() - lastPlaybackActiveTime < 1200)) return true;
+  if (lastPlaybackActiveTime > 0 && (millis() - lastPlaybackActiveTime < 200)) return true;
   return false;
 }
 
 // Returns true during speaker playback plus acoustic reverberation / enclosure cooldown window
 inline bool isSpeakerCoolingDown() {
   if (isSpeakerActive()) return true;
-  if (lastPlaybackActiveTime > 0 && (millis() - lastPlaybackActiveTime < 1500)) return true;
+  if (lastPlaybackActiveTime > 0 && (millis() - lastPlaybackActiveTime < 200)) return true;
   return false;
 }
 
@@ -673,6 +698,19 @@ static void drawFaceInternal(bool forceFull) {
   else if (currentState == STATE_SPEAKING || isSpeakerActive()) { onR = 165; onG = 94; onB = 234; }
   const int offR = 12, offG = 20, offB = 16;
 
+  // A dot only gets repainted below when its BRIGHTNESS changed - that's
+  // what keeps a still face cheap. But switching emotion (or state) often
+  // changes the COLOUR while leaving plenty of dots at the exact same
+  // brightness (e.g. still 255 in both the neutral and the joy eye pattern),
+  // so without this those dots silently kept their old colour - the two-tone
+  // face reported after the emotion feature shipped. Force every dot to
+  // repaint whenever the target colour itself has changed, not just when a
+  // brightness level has.
+  static int paintedR = -1, paintedG = -1, paintedB = -1;
+  bool recolour = (paintedR != onR || paintedG != onG || paintedB != onB);
+  paintedR = onR; paintedG = onG; paintedB = onB;
+  if (recolour) forceFull = true;
+
   for (int i = 0; i < FACE_COLS * FACE_ROWS; i++) {
     uint8_t v = want[i];
     if (!forceFull && v == faceCurLevels[i]) continue;
@@ -699,10 +737,13 @@ void drawFaceTick() {
 
 void renderScreen(bool forceRedraw = false) {
   static bool lastRenderedMute = false;
-  if (!forceRedraw && currentState == lastRenderedState && isMicHardwareMuted == lastRenderedMute)
+  static int lastRenderedEmotion = -1;
+  if (!forceRedraw && currentState == lastRenderedState && isMicHardwareMuted == lastRenderedMute &&
+      currentEmotion == lastRenderedEmotion)
     return;
   lastRenderedState = currentState;
   lastRenderedMute = isMicHardwareMuted;
+  lastRenderedEmotion = currentEmotion;
 
   tft.startWrite();
   // Clear entire 320x240 frame buffer with dark theme background
@@ -806,6 +847,15 @@ void renderScreen(bool forceRedraw = false) {
     tft.setTextColor(tft.color565(100, 110, 130));
     tft.drawString("Tap Screen to Interrupt / Sleep", 15, 214);
   }
+
+  // Current emotion, bottom-right of the footer - shown even when neutral so
+  // it doubles as a visible confirmation that setEmotion is actually being
+  // received, not just when something more expressive fires.
+  tft.setTextDatum(top_right);
+  tft.setTextColor(tft.color565(100, 110, 130));
+  tft.drawString(emotionName(currentEmotion), 305, 214);
+  tft.setTextDatum(top_left);
+
   tft.endWrite();
 }
 
@@ -859,19 +909,19 @@ uint8_t readCodecReg(uint8_t i2c_addr, uint8_t reg) {
 
 // Speaker amplifier & DAC muting helper: disables Class-D PA and mutes ES8311 DAC
 // during microphone capture to eliminate acoustic coupling and electrical switching ripple.
+// During an active conversation (conversationOpen == true), PA_ENABLE_PIN is kept HIGH
+// so the NS4150B amplifier never enters shutdown, eliminating the 100-150ms startup delay
+// that clips the opening syllables of short spoken phrases.
 void setSpeakerMute(bool mute) {
   if (mute) {
     writeCodecReg(0x18, 0x31, 0x01); // ES8311 DAC Mute
-    digitalWrite(PA_ENABLE_PIN, LOW); // Disable Class-D speaker PA
+    if (!conversationOpen) {
+      digitalWrite(PA_ENABLE_PIN, LOW); // Only shut down PA when returning to standby
+    }
   } else {
     digitalWrite(PA_ENABLE_PIN, HIGH); // Enable Class-D speaker PA
-    // 150ms startup delay: NS4150B needs ~100ms to exit shutdown cleanly.
-    // ONLY used in this blocking form from playChime() during setup() (no
-    // FreeRTOS tasks running, blocking is fine). The Gemini audio path uses
-    // preWarmSpeakerPA() instead, which raises the GPIO earlier (during
-    // STATE_THINKING) so the amp warms up during Gemini's processing window
-    // rather than blocking Core 1 at the start of playback.
-    delay(150);
+    // If starting up from cold shutdown, wait for NS4150B clean wake
+    delay(10);
     writeCodecReg(0x18, 0x31, 0x00); // Unmute ES8311 DAC
   }
 }
@@ -1235,7 +1285,7 @@ void sendSetupHandshake() {
       "When the user greets you with a wake phrase alone ('Hey Ims', 'Hello Ims', or 'Eh up Ims'), respond with a fresh, "
       "inventive, darkly funny greeting. When answering questions, deliver accurate facts seasoned with dry irony, "
       "subtle sarcasm, or tongue-in-cheek understatement. Never be cruel. "
-      "Keep all answers short and suitable for voice synthesis. Never terminate or close the session.";
+      "STRICT LENGTH LIMIT: Keep all spoken answers to 1 to 3 concise, complete sentences (maximum 15 seconds of audio). Never deliver lengthy monologues. Always finish your sentences completely. Never terminate or close the session.";
 
   String jsonString;
   serializeJson(doc, jsonString);
@@ -1377,6 +1427,7 @@ void beginVerifying() {
   if (isMicHardwareMuted || !tcpClient.connected() || !geminiSetupComplete) return;
   Serial.println("[IMS] Verifying possible wake phrase...");
   sendDebug("verifying_start");
+  preWarmSpeakerPA(); // Pre-warm amplifier so Gemini's reply is not clipped
   setSpeakerMute(true); // Isolate mic from speaker PA switching noise
   if (audioPlaybackQueue) {
     xQueueReset(audioPlaybackQueue);
@@ -1618,6 +1669,8 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
     // currentState/conversation flow at all.
     if (doc["setEmotion"].is<const char *>()) {
       currentEmotion = emotionFromName(doc["setEmotion"].as<const char *>());
+      emotionSetAtMs = millis();
+      renderScreen(true); // updates the bottom-right emotion label immediately
       Serial.printf("[IMS] setEmotion(%s) -> %d\n", doc["setEmotion"].as<const char *>(), currentEmotion);
     }
     if (doc["text"].is<const char *>()) {
@@ -2219,6 +2272,7 @@ void loop() {
       currentState = STATE_STANDBY;
       conversationOpen = false;
       conversationShouldClose = false;
+      setSpeakerMute(true);
       lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
     }
     renderScreen(true);
@@ -2234,20 +2288,33 @@ void loop() {
     micStreamingActive = false;
     conversationOpen = false;
     conversationShouldClose = false;
+    setSpeakerMute(true);
     lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
     renderScreen(true);
   }
 
   // Safety net for STATE_VERIFYING: if Gemini never confirms (real audio) or
   // rejects (noWakeDetected) the candidate - e.g. a dropped frame - don't
-  // leave the mic streaming and the device silently stuck forever. Much
-  // shorter than SESSION_IDLE_TIMEOUT_MS since this is "did Gemini even
-  // judge the candidate yet", not "is the user mid-conversation".
-  if (currentState == STATE_VERIFYING && (millis() - lastSpeechTimestamp > 3000)) {
+  // leave the mic streaming and the device silently stuck forever. 8000ms
+  // allows Gemini sufficient processing latency to judge the candidate and return
+  // audio without prematurely dropping back to STANDBY.
+  if (currentState == STATE_VERIFYING && (millis() - lastSpeechTimestamp > 8000)) {
     sendDebug("verify_timeout");
     currentState = STATE_STANDBY;
     micStreamingActive = false;
     isSpeakingDetected = false;
+    conversationOpen = false;
+    setSpeakerMute(true);
+    renderScreen(true);
+  }
+
+  // Emotion decay: an expression set by setEmotion() shouldn't sit on IMS's
+  // face indefinitely once the conversation has gone quiet. Only checked
+  // while not actively speaking, so it can never interrupt/flatten the
+  // expression mid-reply - only the resting face fades back to neutral.
+  if (currentEmotion != EMOTION_NEUTRAL && !isSpeakerActive() &&
+      (millis() - emotionSetAtMs > EMOTION_DECAY_MS)) {
+    currentEmotion = EMOTION_NEUTRAL;
     renderScreen(true);
   }
 

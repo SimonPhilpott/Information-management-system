@@ -202,13 +202,22 @@ server.on('upgrade', (request, socket, head) => {
 
 function handleLiveProxyConnection(ws, isHardware = false) {
   const tag = isHardware ? '[HardwareLive]' : '[BrowserLive]';
-  console.log(`${tag} Client connected`);
+  const remoteInfo = ws.socket ? `${ws.socket.remoteAddress}:${ws.socket.remotePort}` : (ws._socket ? `${ws._socket.remoteAddress}:${ws._socket.remotePort}` : 'unknown');
+  console.log(`${tag} Client connected from ${remoteInfo}`);
+  try {
+    fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+      `[${new Date().toISOString()}] ${tag} CLIENT CONNECTED from ${remoteInfo}\n`);
+  } catch (_) { }
   if (isHardware) ws.isHardwareClient = true;
 
   // Terminate only the prior session for THIS client type (browser vs hardware do not stomp each other)
   if (isHardware) {
     if (activeHardwareSession && activeHardwareSession.clientWs !== ws) {
       console.warn(`${tag} ⚠️ Terminating previous hardware session`);
+      try {
+        fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+          `[${new Date().toISOString()}] ${tag} TERMINATING PREVIOUS HARDWARE SESSION (replaced by incoming socket ${remoteInfo})\n`);
+      } catch (_) { }
       try {
         if (activeHardwareSession.geminiWs && (activeHardwareSession.geminiWs.readyState === WebSocket.OPEN || activeHardwareSession.geminiWs.readyState === WebSocket.CONNECTING)) {
           activeHardwareSession.geminiWs.close(1000, 'Replaced by new hardware session');
@@ -373,6 +382,44 @@ function handleLiveProxyConnection(ws, isHardware = false) {
       activeBrowserSession = { clientWs: ws, geminiWs: gWs };
     }
 
+    // 15-second WebSocket keep-alive heartbeat ping to prevent intermediate proxy/Cloudflare drops
+    const pingInterval = setInterval(() => {
+      if (gWs && gWs.readyState === WebSocket.OPEN) {
+        gWs.ping();
+      }
+    }, 15000);
+
+    // Hardware-only: while Gemini is speaking, the device has no acoustic
+    // echo cancellation (unlike the browser client's getUserMedia
+    // echoCancellation), so real mic audio is withheld to avoid feeding
+    // Gemini its own speaker output back as if it were the user barging in.
+    // But withholding it means literally nothing is sent as client input for
+    // the whole reply - no realtimeInput messages at all, sometimes for
+    // 15-20+ seconds - unlike the browser, which always streams continuous
+    // (echo-cancelled) audio. That gap looks like the likely cause of the
+    // playback cutting off mid-word at unpredictable points: whatever is
+    // timing out is timing out on elapsed silence since the last input
+    // frame, not on anything about the reply's content. Filling the gap
+    // with synthetic silence (rather than real, echo-risky mic audio) keeps
+    // input continuous the same way the browser's stream always is, without
+    // reintroducing the barge-in problem this suppression exists to prevent.
+    // 32ms cadence ~ matches a real 512-sample/16kHz mic chunk.
+    let silenceInterval = null;
+    if (isHardware) {
+      const silenceChunk = Buffer.alloc(1024); // 512 samples x 16-bit mono = 1024 bytes of zero PCM
+      const silenceBase64 = silenceChunk.toString('base64');
+      silenceInterval = setInterval(() => {
+        const isModelSpeakingNow = !currentTurnComplete && (Date.now() - lastModelAudioTime < 800);
+        if (isModelSpeakingNow && gWs && gWs.readyState === WebSocket.OPEN) {
+          gWs.send(JSON.stringify({
+            realtimeInput: {
+              audio: { mimeType: 'audio/pcm;rate=16000', data: silenceBase64 }
+            }
+          }));
+        }
+      }, 32);
+    }
+
     gWs.on('open', () => {
       console.log(`${tag} Connected to Gemini Live upstream`);
       // If we cached a setup handshake from the client, re-send it on new socket ONLY if outboundQueue doesn't already contain one
@@ -452,11 +499,30 @@ function handleLiveProxyConnection(ws, isHardware = false) {
         }
 
         if (parsed.serverContent?.turnComplete) {
-          currentTurnComplete = true; // Gemini confirmed the turn ended cleanly
-          console.log(`${tag} ✅ Gemini reported TURN COMPLETE`);
+          if (!parsed.toolCall) {
+            currentTurnComplete = true; // Gemini confirmed the turn ended cleanly
+          }
+          console.log(`${tag} ✅ Gemini reported TURN COMPLETE (hasToolCall=${!!parsed.toolCall})`);
           try {
             fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
-              `[${new Date().toISOString()}] ${tag} GEMINI TURN COMPLETE\n`);
+              `[${new Date().toISOString()}] ${tag} GEMINI TURN COMPLETE hasToolCall=${!!parsed.toolCall}\n`);
+          } catch (_) { }
+        }
+
+        // DIAGNOSTIC: the thinking-trace text repeatedly says "I'm calling
+        // searchLibrary/noWakeDetected" but the handler below (keyed on
+        // parsed.toolCall.functionCalls) never actually fires - not once in
+        // the whole log history, even before today's model swap. That means
+        // either the field is shaped differently than expected, or nested
+        // somewhere else in the message. Dump the raw top-level keys (and
+        // the toolCall value itself, if the field exists under ANY name) so
+        // the actual shape is visible on the next reply instead of guessing.
+        const topLevelKeys = Object.keys(parsed);
+        if (topLevelKeys.some(k => k.toLowerCase().includes('tool') || k.toLowerCase().includes('call'))) {
+          console.log(`${tag} 🐛 RAW message with a tool/call-like key:`, msgStr.slice(0, 2000));
+          try {
+            fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+              `[${new Date().toISOString()}] ${tag} RAW TOOLCALL-LIKE MSG: ${msgStr.slice(0, 2000)}\n`);
           } catch (_) { }
         }
 
@@ -571,7 +637,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
           if (parsed?.setupComplete) {
             ws.send(JSON.stringify({ setupComplete: {} }));
           }
-          if (parsed?.serverContent?.turnComplete) {
+          if (parsed?.serverContent?.turnComplete && !parsed.toolCall) {
             ws.send(JSON.stringify({ turnComplete: true }));
           }
         } else {
@@ -584,6 +650,8 @@ function handleLiveProxyConnection(ws, isHardware = false) {
     });
 
     gWs.on('close', (code, reason) => {
+      clearInterval(pingInterval);
+      clearInterval(silenceInterval);
       flushWavToDisk();
       flushMicWavToDisk();
       const reasonStr = reason ? reason.toString() : '';
@@ -652,6 +720,8 @@ function handleLiveProxyConnection(ws, isHardware = false) {
     });
 
     gWs.on('error', (err) => {
+      clearInterval(pingInterval);
+      clearInterval(silenceInterval);
       console.error(`${tag} Gemini Live WebSocket error:`, err.message);
       try {
         fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
@@ -707,17 +777,10 @@ function handleLiveProxyConnection(ws, isHardware = false) {
       if (isHardware) micAudioChunks.push(Buffer.from(message));
 
       // Acoustic echo barge-in protection:
-      // While Gemini is actively outputting speech audio (or within 1500ms of the last chunk),
-      // suppress forwarding mic audio to Gemini so Google's server-side VAD does not hear the speaker
-      // output and abort the turn with GEMINI INTERRUPTED.
-      // 1500ms matches the speaker cooldown window used in the firmware (isSpeakerCoolingDown),
-      // ensuring the proxy-side suppression stays in sync with when the physical speaker
-      // has actually gone silent and mic feedback has decayed. A shorter window (800ms) was
-      // insufficient — residual speaker output was leaking into the mic and causing Gemini to
-      // barge-in and close the turn early (mid-sentence) with code=1000.
-      // Automatically unblocks 1500ms after Gemini stops speaking, ensuring wake words and user
-      // queries are never locked out.
-      const isModelSpeakingNow = (Date.now() - lastModelAudioTime < 1500);
+      // While Gemini is actively generating speech chunks, suppress forwarding mic audio so
+      // Google's server-side VAD does not hear the physical speaker output and abort the turn.
+      // Once turnComplete is received, isModelSpeakingNow is immediately false so follow-ups are never blocked.
+      const isModelSpeakingNow = !currentTurnComplete && (Date.now() - lastModelAudioTime < 800);
       if (isHardware && isModelSpeakingNow) {
         // Was silent before - logging every suppressed frame would be way
         // too noisy (one per ~32ms chunk), so just count them and log a
@@ -817,6 +880,10 @@ function handleLiveProxyConnection(ws, isHardware = false) {
     clearInterval(geminiFlushInterval);
     const reasonStr = reason ? reason.toString() : '';
     console.log(`${tag} Client closed connection: ${code} - ${reasonStr}`);
+    try {
+      fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+        `[${new Date().toISOString()}] ${tag} CLIENT CLOSED: code=${code} reason="${reasonStr}"\n`);
+    } catch (_) { }
     if (isHardware && activeHardwareSession?.clientWs === ws) {
       activeHardwareSession = null;
     } else if (!isHardware && activeBrowserSession?.clientWs === ws) {
@@ -835,6 +902,10 @@ function handleLiveProxyConnection(ws, isHardware = false) {
   ws.on('error', (err) => {
     isClientClosed = true;
     console.error(`${tag} Client WebSocket error:`, err.message);
+    try {
+      fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+        `[${new Date().toISOString()}] ${tag} CLIENT ERROR: ${err.message}\n`);
+    } catch (_) { }
     try {
       if (currentGeminiWs && (currentGeminiWs.readyState === WebSocket.OPEN || currentGeminiWs.readyState === WebSocket.CONNECTING)) {
         currentGeminiWs.close(1011, 'Client socket error');
