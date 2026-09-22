@@ -256,6 +256,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
   const outboundQueue = [];
   let geminiFirstMessageLogged = false;
   let lastModelAudioTime = 0;
+  let suppressedMicFrameCount = 0; // see the echo-suppression logging below
   let sessionTranscript = '';
   // Tracks whether Gemini sent a turnComplete for the current generation turn.
   // Used to detect mid-turn disconnects (Gemini closes code=1000 before the turn
@@ -359,9 +360,12 @@ function handleLiveProxyConnection(ws, isHardware = false) {
     }
   };
 
+  let geminiConnectedAt = 0; // for "how long was this connection alive" in the close log below
+
   const createGeminiSocket = () => {
     if (isClientClosed) return null;
     const gWs = new WebSocket(geminiUrl);
+    geminiConnectedAt = Date.now();
 
     if (isHardware) {
       activeHardwareSession = { clientWs: ws, geminiWs: gWs };
@@ -433,10 +437,17 @@ function handleLiveProxyConnection(ws, isHardware = false) {
         }
 
         if (parsed.serverContent?.interrupted) {
-          console.warn(`${tag} ⚠️ Gemini reported MODEL INTERRUPTED!`);
+          // msSinceOwnAudio small (a couple hundred ms or less) points at the
+          // model interrupting ITS OWN in-flight generation (a self-revision,
+          // nothing to do with the mic) rather than reacting to delayed
+          // user/echo audio arriving - the two look identical in the plain
+          // "GEMINI INTERRUPTED" line alone, so this is the number that
+          // actually distinguishes them.
+          const msSinceOwnAudio = lastModelAudioTime > 0 ? (Date.now() - lastModelAudioTime) : -1;
+          console.warn(`${tag} ⚠️ Gemini reported MODEL INTERRUPTED! (${msSinceOwnAudio}ms since its own last audio chunk, ${suppressedMicFrameCount} mic frames suppressed in the current window)`);
           try {
             fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
-              `[${new Date().toISOString()}] ${tag} GEMINI INTERRUPTED\n`);
+              `[${new Date().toISOString()}] ${tag} GEMINI INTERRUPTED msSinceOwnAudio=${msSinceOwnAudio} suppressedMicFrames=${suppressedMicFrameCount}\n`);
           } catch (_) { }
         }
 
@@ -482,6 +493,26 @@ function handleLiveProxyConnection(ws, isHardware = false) {
                   }));
                 }
               });
+            } else if (call.name === 'noWakeDetected' || call.name === 'endConversation') {
+              // Both are pure signals to the DEVICE, not data Gemini needs back beyond
+              // the usual ack - the hardware client is what actually needs to know,
+              // so it can silently drop out of STATE_VERIFYING (noWakeDetected) or
+              // mark the conversation closed once the farewell reply finishes
+              // (endConversation). See handleFrame() in main.cpp.
+              console.log(`${tag} 🔔 ${call.name} tool call from Gemini - forwarding to hardware client`);
+              if (isHardware && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ [call.name]: true }));
+              }
+              if (gWs.readyState === WebSocket.OPEN) {
+                gWs.send(JSON.stringify({
+                  toolResponse: {
+                    functionResponses: [{
+                      response: { output: { status: 'acknowledged' } },
+                      id: call.id
+                    }]
+                  }
+                }));
+              }
             } else {
               if (gWs.readyState === WebSocket.OPEN) {
                 gWs.send(JSON.stringify({
@@ -537,10 +568,18 @@ function handleLiveProxyConnection(ws, isHardware = false) {
       flushWavToDisk();
       flushMicWavToDisk();
       const reasonStr = reason ? reason.toString() : '';
-      console.log(`${tag} Gemini Live closed connection: ${code} - ${reasonStr}`);
+      const connectionAliveMs = geminiConnectedAt > 0 ? (Date.now() - geminiConnectedAt) : -1;
+      const msSinceOwnAudioAtClose = lastModelAudioTime > 0 ? (Date.now() - lastModelAudioTime) : -1;
+      console.log(`${tag} Gemini Live closed connection: ${code} - ${reasonStr} (alive ${connectionAliveMs}ms, ${msSinceOwnAudioAtClose}ms since last audio chunk)`);
       try {
+        // connectionAliveMs distinguishes a Gemini-side idle/session-length
+        // limit (would cluster around some roughly-fixed duration every
+        // time) from something we're doing (would vary with what the user
+        // was actually doing). msSinceOwnAudioAtClose small + turnComplete
+        // false means it died WHILE actively mid-generation, not after
+        // finishing and going idle.
         fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
-          `[${new Date().toISOString()}] ${tag} GEMINI CLOSE: code=${code} reason="${reasonStr}" turnComplete=${currentTurnComplete}\n`);
+          `[${new Date().toISOString()}] ${tag} GEMINI CLOSE: code=${code} reason="${reasonStr}" turnComplete=${currentTurnComplete} connectionAliveMs=${connectionAliveMs} msSinceOwnAudioAtClose=${msSinceOwnAudioAtClose}\n`);
       } catch (_) { }
 
       // Code 1000 is a normal WebSocket close (turn completed / idle duration reached).
@@ -627,6 +666,15 @@ function handleLiveProxyConnection(ws, isHardware = false) {
         const maybeDebug = JSON.parse(message.toString());
         if (typeof maybeDebug.debug === 'string') {
           console.log(`${tag} [DEBUG] ${maybeDebug.debug}`);
+          // Was console-only until now, so this telemetry (mic RMS during
+          // SPEAKING, mute-transition decisions, etc.) was lost as soon as
+          // the console scrollback rolled over - persisting it lets a
+          // playback-cutoff reproduction be analysed afterward instead of
+          // needing to watch the live console at the exact moment it happens.
+          try {
+            fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+              `[${new Date().toISOString()}] ${tag} DEVICE DEBUG: ${maybeDebug.debug}\n`);
+          } catch (_) { }
           return;
         }
       } catch (_) { }
@@ -652,7 +700,21 @@ function handleLiveProxyConnection(ws, isHardware = false) {
       // queries are never locked out.
       const isModelSpeakingNow = (Date.now() - lastModelAudioTime < 1500);
       if (isHardware && isModelSpeakingNow) {
+        // Was silent before - logging every suppressed frame would be way
+        // too noisy (one per ~32ms chunk), so just count them and log a
+        // summary the moment suppression actually lifts. Lets a cutoff
+        // reproduction be checked afterward for whether mic audio was still
+        // being generated (device didn't think it was muted) right up to
+        // the edge of this window, without drowning the log.
+        suppressedMicFrameCount++;
         return;
+      }
+      if (suppressedMicFrameCount > 0) {
+        try {
+          fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+            `[${new Date().toISOString()}] ${tag} ECHO SUPPRESSION LIFTED: dropped ${suppressedMicFrameCount} mic frames (device believed it was muted/not-listening for this whole window)\n`);
+        } catch (_) { }
+        suppressedMicFrameCount = 0;
       }
 
       const base64Audio = Buffer.from(message).toString('base64');
@@ -693,14 +755,18 @@ function handleLiveProxyConnection(ws, isHardware = false) {
         const parsed = JSON.parse(msgStr);
         if (parsed.setup) {
           if (isHardware) {
-            // Augment hardware setup with searchLibrary tool declarations and RAG system instructions
+            // Augment hardware setup with searchLibrary/noWakeDetected/endConversation
+            // tool declarations and the RAG + wake-phrase-gating system prompt.
+            // Tools are now ALWAYS overridden (not just when the client sent none) -
+            // the firmware's own hardcoded setup message already includes a stale
+            // searchLibrary-only tools array, which previously meant the
+            // noWakeDetected/endConversation declarations added here never actually
+            // reached Gemini for hardware clients.
             const hardwareDefaults = getHardwareSetupPayload();
-            if (!parsed.setup.tools) {
-              parsed.setup.tools = hardwareDefaults.setup.tools;
-            }
+            parsed.setup.tools = hardwareDefaults.setup.tools;
             parsed.setup.systemInstruction = hardwareDefaults.setup.systemInstruction;
             msgStr = JSON.stringify(parsed);
-            console.log(`${tag} 🔧 Augmented hardware setup handshake with searchLibrary tool and RAG system prompt`);
+            console.log(`${tag} 🔧 Augmented hardware setup handshake with searchLibrary/noWakeDetected/endConversation tools and wake-phrase-gated system prompt`);
           }
           cachedSetupMsg = msgStr;
           console.log(`${tag} Cached setup handshake for resilient reconnection.`);

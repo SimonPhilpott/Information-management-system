@@ -110,6 +110,14 @@ enum TerminalState {
   STATE_CONNECTING_WIFI,
   STATE_CONNECTING_SERVER,
   STATE_STANDBY,   // Idle, waiting for a screen tap or button press
+  // A local energy spike happened, so a short burst of audio is being sent to
+  // Gemini to judge whether it was actually one of Ims's wake phrases - the
+  // RMS gate that triggers this has no idea what was actually said, only
+  // that something was loud enough to maybe be speech. Renders identically
+  // to STANDBY so a false trigger (background noise) is invisible on screen;
+  // only a confirmed wake phrase (real audio arriving) or a deliberate touch
+  // visibly changes state.
+  STATE_VERIFYING,
   STATE_LISTENING, // Active full-duplex session
   STATE_THINKING,
   STATE_SPEAKING
@@ -127,6 +135,17 @@ i2s_chan_handle_t i2sRxChan = NULL;
 // HardwareTcpClient shim: [1 byte type][4 bytes big-endian length][payload].
 WiFiClient tcpClient;
 bool wasConnected = false; // detects the connect/disconnect edge in loop()
+// True once a real wake phrase (or a touch) has actually opened a
+// conversation - as long as this stays true, SPEAKING hands straight back to
+// LISTENING for the next turn instead of dropping to STANDBY, so the user
+// doesn't have to repeat a wake phrase for every follow-up sentence. Cleared
+// when Gemini calls endConversation (see handleFrame()) or the session times
+// out/gets muted.
+volatile bool conversationOpen = false;
+// Set by the endConversation tool call; consumed the next time STATE_SPEAKING
+// finishes so the farewell reply plays out in full before the conversation
+// actually closes.
+volatile bool conversationShouldClose = false;
 bool isSetupAcknowledged = false;
 volatile bool geminiSetupComplete =
     false; // Set true only after Gemini sends setupComplete ACK
@@ -189,7 +208,11 @@ struct PlaybackChunkMsg {
 };
 enum ControlEvent {
   EVT_TURN_COMPLETE,
-  EVT_WAKE_SPEECH
+  // Renamed from EVT_WAKE_SPEECH: the local RMS gate that raises this has no
+  // idea what was actually said, only that something was loud enough to
+  // maybe be speech - it's a candidate for Gemini to confirm or reject via
+  // the noWakeDetected/real-audio-response contract in beginVerifying().
+  EVT_WAKE_CANDIDATE
 };
 
 // Acoustic feedback blanking: tracks the last time the speaker played audio
@@ -460,6 +483,7 @@ void renderScreen(bool forceRedraw = false) {
       statusText = "CONNECTING IMS BACKEND...";
       break;
     case STATE_STANDBY:
+    case STATE_VERIFYING: // deliberately identical to STANDBY - see the enum comment
       statusColor = tft.color565(87, 101, 116);
       statusText = "STANDBY (VOICE / TOUCH)";
       break;
@@ -1053,14 +1077,35 @@ void beginListening(const char *reason) {
   currentState = STATE_LISTENING;
   micStreamingActive = true;
   lastSpeechTimestamp = millis();
-  if (strcmp(reason, "voice_wake") == 0) {
-    isSpeakingDetected = true;
-    speechStartTime = millis();
-  } else {
-    isSpeakingDetected = false;
-    speechStartTime = 0;
-  }
+  isSpeakingDetected = false;
+  speechStartTime = 0;
+  conversationOpen = true; // touch always opens a conversation deliberately
+  conversationShouldClose = false;
   lastTranscript = "Listening...";
+  renderScreen(true);
+}
+
+// Local energy-gate trigger only (touch-to-talk goes straight to
+// beginListening() above - a deliberate tap needs no verification). Streams
+// the candidate audio to Gemini exactly like beginListening() does, but
+// stays in STATE_VERIFYING - which renders identically to STANDBY - until
+// handleFrame() sees either real audio back (confirmed wake, see the
+// STATE_SPEAKING transition) or a noWakeDetected tool call (silently reverts
+// to STANDBY). A false trigger from background noise is therefore invisible
+// on screen instead of flashing LISTENING/THINKING.
+void beginVerifying() {
+  if (isMicHardwareMuted || !tcpClient.connected() || !geminiSetupComplete) return;
+  Serial.println("[IMS] Verifying possible wake phrase...");
+  sendDebug("verifying_start");
+  setSpeakerMute(true); // Isolate mic from speaker PA switching noise
+  if (audioPlaybackQueue) {
+    xQueueReset(audioPlaybackQueue);
+  }
+  currentState = STATE_VERIFYING;
+  micStreamingActive = true;
+  lastSpeechTimestamp = millis();
+  isSpeakingDetected = true;
+  speechStartTime = millis();
   renderScreen(true);
 }
 
@@ -1071,15 +1116,28 @@ void beginListening(const char *reason) {
 // handleFrame() stops mic streaming the instant Gemini's audio response arrives.
 void sendTurnComplete() {
   if (!tcpClient.connected() || !geminiSetupComplete) return;
-  Serial.println("[IMS] Spoken turn completed -> transitioning to THINKING");
-  currentState = STATE_THINKING;
   // KEEP micStreamingActive true! Gemini Live server-side VAD requires continuous
   // silence frames to identify the end of speech and trigger synthesis.
   // handleFrame() stops mic streaming the instant Gemini's audio response arrives.
   isSpeakingDetected = false;
   preWarmSpeakerPA();
-  lastTranscript = "Thinking...";
-  renderScreen(true);
+  // STATE_VERIFYING is a not-yet-confirmed wake candidate, not an open
+  // conversation turn - Gemini still needs the turnComplete signal so it can
+  // actually judge the audio (its VAD needs the trailing silence exactly
+  // like a real turn does), but the screen must stay looking like STANDBY.
+  // Forcing STATE_THINKING here was the bug: it showed "Thinking..." for
+  // every false trigger and, worse, made noWakeDetected's `currentState ==
+  // STATE_VERIFYING` guard in handleFrame() always false, so a rejected
+  // candidate never reverted - it just sat in THINKING until the 14s idle
+  // timeout silently kicked it back to STANDBY.
+  if (currentState == STATE_VERIFYING) {
+    Serial.println("[IMS] Wake-candidate speech ended -> awaiting Gemini's judgment (still verifying)");
+  } else {
+    Serial.println("[IMS] Spoken turn completed -> transitioning to THINKING");
+    currentState = STATE_THINKING;
+    lastTranscript = "Thinking...";
+    renderScreen(true);
+  }
 }
 
 bool usingFallback = false;
@@ -1177,6 +1235,11 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       currentState = STATE_SPEAKING;
       micStreamingActive = false;
       isSpeakingDetected = false;
+      // Real audio arriving is the definitive "this was actually a wake
+      // phrase" signal from STATE_VERIFYING - opens the conversation so the
+      // next turn goes straight back to LISTENING instead of requiring
+      // another wake phrase (see the SPEAKING auto-transition in loop()).
+      conversationOpen = true;
       if (audioOutQueue) {
         xQueueReset(audioOutQueue);
       }
@@ -1244,6 +1307,27 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
           renderScreen(true);
         }
       }
+    }
+    // Backend forwarded Gemini's noWakeDetected tool call: the audio that
+    // triggered STATE_VERIFYING was judged NOT to contain a real wake
+    // phrase. Revert silently - STATE_VERIFYING already looks identical to
+    // STANDBY on screen, so nothing visibly changes for a false trigger.
+    if (doc["noWakeDetected"].as<bool>()) {
+      if (currentState == STATE_VERIFYING) {
+        Serial.println("[IMS] noWakeDetected - false trigger, reverting to STANDBY silently");
+        currentState = STATE_STANDBY;
+        micStreamingActive = false;
+        isSpeakingDetected = false;
+        renderScreen(true);
+      }
+    }
+    // Backend forwarded Gemini's endConversation tool call (user said "bye"/
+    // "goodbye"/etc.) - don't cut the farewell reply short. Just mark that
+    // the conversation should close once STATE_SPEAKING naturally finishes
+    // (see the auto-transition in loop()), same as any other reply.
+    if (doc["endConversation"].as<bool>()) {
+      Serial.println("[IMS] endConversation - closing conversation after this reply finishes");
+      conversationShouldClose = true;
     }
     if (doc["text"].is<const char *>()) {
       const char *textSnippet = doc["text"].as<const char *>();
@@ -1474,20 +1558,32 @@ void audioMicTask(void *param) {
         if (millis() - lastRmsLog > 500) {
           lastRmsLog = millis();
           unsigned long elapsed = millis() - sessionStartMs;
-          Serial.printf("[Mic] RMS=%d sample0=%d n=%lu elapsed=%lums lastReadMs=%lu str=%d\n",
-                        rms, micBuffer[0], bufCount, elapsed, readMs, (int)micStreamingActive);
+          // state= added specifically to check for echo/barge-in during
+          // playback: a nonzero RMS logged with state=STATE_SPEAKING (see
+          // the TerminalState enum above for the current numeric value)
+          // means the mic is picking up something significant while IMS is
+          // talking, regardless of whether that audio actually got
+          // forwarded to Gemini (the state/cooldown gates are checked
+          // separately, further down) - useful signal on its own either way.
+          Serial.printf("[Mic] RMS=%d sample0=%d n=%lu elapsed=%lums lastReadMs=%lu str=%d state=%d\n",
+                        rms, micBuffer[0], bufCount, elapsed, readMs, (int)micStreamingActive, (int)currentState);
           DebugMsg dmsg;
           snprintf(dmsg.text, sizeof(dmsg.text),
-                   "rms=%d n=%lu elapsed=%lums str=%d", rms, bufCount,
-                   elapsed, (int)micStreamingActive);
+                   "rms=%d n=%lu elapsed=%lums str=%d state=%d", rms, bufCount,
+                   elapsed, (int)micStreamingActive, (int)currentState);
           xQueueSend(debugQueue, &dmsg, 0);
         }
 
-        // Acoustic Wake Word Detection (e.g. "Hey Ims", "Eh up Ims"):
-        // Allowed in STANDBY or THINKING (to recover/interrupt), provided speaker is not active or cooling down,
-        // and hardware mic mute switch is NOT engaged.
+        // Local energy gate only - NOT real wake-phrase recognition. Only
+        // armed from STANDBY: THINKING/LISTENING/SPEAKING mean a
+        // conversation is already open (or being confirmed), so a fresh
+        // trigger here would be redundant or would race the verification
+        // already in flight. Whatever crosses this threshold is a
+        // *candidate* - Gemini is the one that actually judges whether it
+        // was one of Ims's wake phrases, via the noWakeDetected contract in
+        // beginVerifying()/handleFrame().
         bool canWakeDetect = (!isSpeakerCoolingDown()) && !isMicHardwareMuted &&
-                             (currentState == STATE_STANDBY || currentState == STATE_THINKING);
+                             (currentState == STATE_STANDBY);
         bool wakeTriggeredThisChunk = false;
         static int wakeStreak = 0;
         if (canWakeDetect) {
@@ -1496,7 +1592,7 @@ void audioMicTask(void *param) {
             if (wakeStreak >= VOICE_WAKE_CONSECUTIVE_FRAMES) {
               wakeStreak = 0;
               wakeTriggeredThisChunk = true;
-              Serial.printf("[Audio] 🎙️ Validated wake speech detected (state=%d, RMS=%d) -> triggering LISTENING\n",
+              Serial.printf("[Audio] 🎙️ Energy gate crossed (state=%d, RMS=%d) -> sending candidate to Gemini for wake-phrase judgment\n",
                             (int)currentState, rms);
               micStreamingActive = true;
               isSpeakingDetected = true;
@@ -1504,7 +1600,7 @@ void audioMicTask(void *param) {
               lastSpeechTimestamp = millis();
 
               // Notify Core 1 to transition UI state and mute speaker
-              ControlEvent evt = EVT_WAKE_SPEECH;
+              ControlEvent evt = EVT_WAKE_CANDIDATE;
               xQueueSend(controlEventQueue, &evt, 0);
 
               // Flush circular pre-roll buffer so Gemini hears the start of the wake word
@@ -1744,9 +1840,9 @@ void loop() {
   while (xQueueReceive(controlEventQueue, &evt, 0) == pdTRUE) {
     if (evt == EVT_TURN_COMPLETE) {
       sendTurnComplete();
-    } else if (evt == EVT_WAKE_SPEECH) {
-      if (currentState == STATE_STANDBY || currentState == STATE_THINKING || currentState == STATE_LISTENING) {
-        beginListening("voice_wake");
+    } else if (evt == EVT_WAKE_CANDIDATE) {
+      if (currentState == STATE_STANDBY) {
+        beginVerifying();
       }
     }
   }
@@ -1777,7 +1873,9 @@ void loop() {
       Serial.println("[Button] Physical mic MUTE switch engaged (button illuminated)");
       micStreamingActive = false;
       isSpeakingDetected = false;
-      if (currentState == STATE_LISTENING || currentState == STATE_THINKING) {
+      conversationOpen = false;
+      conversationShouldClose = false;
+      if (currentState == STATE_LISTENING || currentState == STATE_THINKING || currentState == STATE_VERIFYING) {
         currentState = STATE_STANDBY;
       }
       if (audioOutQueue) {
@@ -1793,11 +1891,45 @@ void loop() {
     delay(50); // debounce
   }
 
-  // Auto-transition from SPEAKING back to STANDBY once the audio queue is fully drained
-  // and speaker playback has completely finished
+  // Auto-transition from SPEAKING once the audio queue is fully drained and
+  // speaker playback has completely finished. If the conversation is still
+  // open (a real wake phrase or a touch started it, and endConversation
+  // hasn't fired) this goes straight back to LISTENING for the next turn
+  // instead of STANDBY, so the user isn't required to repeat a wake phrase
+  // for every follow-up sentence - only ending with "bye"/"goodbye"/etc.
+  // (which sets conversationShouldClose via the endConversation tool call in
+  // handleFrame()) actually closes it.
   if (currentState == STATE_SPEAKING && !isSpeakerActive()) {
-    currentState = STATE_STANDBY;
-    lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
+    // Diagnostic for the playback-cutoff investigation: this is the ONLY
+    // place SPEAKING ends and (when a conversation is open) actively
+    // re-mutes the speaker via setSpeakerMute(true) below - if that mute is
+    // firing PREMATURELY (Gemini was still mid-response, just paused longer
+    // than isSpeakerActive()'s 1200ms/1500ms grace windows), this is where
+    // it would show up. queueDepth=0 and modelTurnActive=0 here don't by
+    // themselves prove the response was actually finished - only that this
+    // firmware believed it was.
+    {
+      int queueDepth = audioPlaybackQueue ? uxQueueMessagesWaiting(audioPlaybackQueue) : -1;
+      char dbg[80];
+      snprintf(dbg, sizeof(dbg), "speaking_autotransition modelTurnActive=%d queueDepth=%d sinceLastPlayMs=%lu convOpen=%d",
+               (int)modelTurnActive, queueDepth, millis() - lastPlaybackActiveTime, (int)conversationOpen);
+      Serial.println(dbg);
+      sendDebug(dbg);
+    }
+    if (conversationOpen && !conversationShouldClose) {
+      currentState = STATE_LISTENING;
+      micStreamingActive = true;
+      isSpeakingDetected = false;
+      speechStartTime = 0;
+      lastSpeechTimestamp = millis();
+      setSpeakerMute(true);
+      lastTranscript = "Listening...";
+    } else {
+      currentState = STATE_STANDBY;
+      conversationOpen = false;
+      conversationShouldClose = false;
+      lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
+    }
     renderScreen(true);
   }
 
@@ -1809,7 +1941,22 @@ void loop() {
     sendDebug("session_idle_timeout");
     currentState = STATE_STANDBY;
     micStreamingActive = false;
+    conversationOpen = false;
+    conversationShouldClose = false;
     lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
+    renderScreen(true);
+  }
+
+  // Safety net for STATE_VERIFYING: if Gemini never confirms (real audio) or
+  // rejects (noWakeDetected) the candidate - e.g. a dropped frame - don't
+  // leave the mic streaming and the device silently stuck forever. Much
+  // shorter than SESSION_IDLE_TIMEOUT_MS since this is "did Gemini even
+  // judge the candidate yet", not "is the user mid-conversation".
+  if (currentState == STATE_VERIFYING && (millis() - lastSpeechTimestamp > 3000)) {
+    sendDebug("verify_timeout");
+    currentState = STATE_STANDBY;
+    micStreamingActive = false;
+    isSpeakingDetected = false;
     renderScreen(true);
   }
 
@@ -1836,8 +1983,10 @@ void loop() {
     } else if (currentState == STATE_SPEAKING) {
       // User interrupted Gemini: switch to listening
       beginListening("touch_interrupt");
-    } else if (currentState == STATE_STANDBY) {
-      // Touch-to-talk: start listening for the user's spoken question
+    } else if (currentState == STATE_STANDBY || currentState == STATE_VERIFYING) {
+      // Touch-to-talk: a deliberate tap confirms intent immediately, whether
+      // or not Gemini would have judged an in-flight VERIFYING candidate as
+      // a real wake phrase - no need to wait on it.
       beginListening("touch");
     } else if (currentState == STATE_LISTENING) {
       // Tap screen while listening: finish turn and trigger Gemini response immediately
@@ -1847,6 +1996,8 @@ void loop() {
       Serial.println("[Touch] Tapped during THINKING -> resetting to STANDBY");
       currentState = STATE_STANDBY;
       micStreamingActive = false;
+      conversationOpen = false;
+      conversationShouldClose = false;
       lastTranscript = "Say 'Hey Ims' or tap screen";
       renderScreen(true);
     }
