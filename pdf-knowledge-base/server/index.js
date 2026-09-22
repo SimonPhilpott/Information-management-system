@@ -55,7 +55,7 @@ import voiceRoutes from './routes/voice.js';
 import { getAuthStatus } from './services/driveService.js';
 import { validateConfiguredModels } from './services/modelService.js';
 import { loadHnswFromDisk } from './services/hnswService.js';
-import { executeHardwareRAGSearch, getHardwareSetupPayload } from './services/hardwareClientService.js';
+import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getPersonality, setPersonality } from './services/hardwareClientService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -202,12 +202,49 @@ server.on('upgrade', (request, socket, head) => {
 
 function handleLiveProxyConnection(ws, isHardware = false) {
   const tag = isHardware ? '[HardwareLive]' : '[BrowserLive]';
+
+  // Most connections are just the device sitting in standby, reconnecting
+  // periodically with no real interaction at all - creating a folder for
+  // every single one of those used to flood audio_captures/ with near-empty
+  // junk. Instead there's one single always-on log at audio_captures/debug.log,
+  // and a per-connection folder (audio.wav/mic.wav/debug.log) only actually
+  // gets created the first time this connection produces real spoken audio
+  // (see ensureCaptureFolder(), called from the audioChunks.push() site below)
+  // - i.e. a genuine wake-phrase interaction, never a noWakeDetected/silent
+  // reconnect. Every log line for this connection is buffered in memory from
+  // the start regardless, so a folder that does get created still has the
+  // full context leading up to the interaction, not just what happened after.
+  const globalLogPath = path.join(__dirname, 'audio_captures', 'debug.log');
+  const captureDir = path.join(__dirname, 'audio_captures', `${Date.now()}_${isHardware ? 'hardware' : 'browser'}`);
+  const capturePath = path.join(captureDir, 'audio.wav');
+  const micCapturePath = path.join(captureDir, 'mic.wav');
+  const connectionLogPath = path.join(captureDir, 'debug.log');
+  const connectionLogLines = [];
+  let captureFolderCreated = false;
+
+  const ensureCaptureFolder = () => {
+    if (captureFolderCreated) return;
+    captureFolderCreated = true;
+    try {
+      fs.mkdirSync(captureDir, { recursive: true });
+      fs.appendFileSync(connectionLogPath, connectionLogLines.join(''));
+    } catch (_) { }
+  };
+
+  // Writes to the single global running log always, and buffers into this
+  // connection's own in-memory log - only actually written to a folder (and
+  // kept live-appended from then on) once ensureCaptureFolder() has fired.
+  const logCapture = (line) => {
+    try { fs.appendFileSync(globalLogPath, line); } catch (_) { }
+    connectionLogLines.push(line);
+    if (captureFolderCreated) {
+      try { fs.appendFileSync(connectionLogPath, line); } catch (_) { }
+    }
+  };
+
   const remoteInfo = ws.socket ? `${ws.socket.remoteAddress}:${ws.socket.remotePort}` : (ws._socket ? `${ws._socket.remoteAddress}:${ws._socket.remotePort}` : 'unknown');
   console.log(`${tag} Client connected from ${remoteInfo}`);
-  try {
-    fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
-      `[${new Date().toISOString()}] ${tag} CLIENT CONNECTED from ${remoteInfo}\n`);
-  } catch (_) { }
+  logCapture(`[${new Date().toISOString()}] ${tag} CLIENT CONNECTED from ${remoteInfo}\n`);
   if (isHardware) ws.isHardwareClient = true;
 
   // Terminate only the prior session for THIS client type (browser vs hardware do not stomp each other)
@@ -215,7 +252,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
     if (activeHardwareSession && activeHardwareSession.clientWs !== ws) {
       console.warn(`${tag} ⚠️ Terminating previous hardware session`);
       try {
-        fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+        logCapture(
           `[${new Date().toISOString()}] ${tag} TERMINATING PREVIOUS HARDWARE SESSION (replaced by incoming socket ${remoteInfo})\n`);
       } catch (_) { }
       try {
@@ -255,7 +292,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
   const geminiUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
   console.log(`${tag} Connecting to Gemini Live with key prefix: ${apiKey ? apiKey.slice(0, 6) : 'MISSING'}, url length: ${geminiUrl.length}`);
   try {
-    fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+    logCapture(
       `[${new Date().toISOString()}] ${tag} CONNECTING GEMINI keyPrefix=${apiKey ? apiKey.slice(0, 6) : 'MISSING'}\n`);
   } catch (_) { }
 
@@ -266,21 +303,26 @@ function handleLiveProxyConnection(ws, isHardware = false) {
   let geminiFirstMessageLogged = false;
   let lastModelAudioTime = 0;
   let suppressedMicFrameCount = 0; // see the echo-suppression logging below
-  let sessionTranscript = '';
+  let sessionTranscript = ''; // Gemini's internal "thinking" trace - NOT what it actually says out loud
+  let spokenTranscript = '';  // real word-for-word transcript of the spoken audio (outputAudioTranscription)
+  let userSpokenTranscript = ''; // real transcript of what the USER said (inputAudioTranscription) - Phase 3 memory
+  // Phase 2 variance engine (hardwareClientService.js): the first ~15 words
+  // of each real spoken reply, captured once per turn and persisted via
+  // recordReplyOpener() so the NEXT session's prompt can steer away from
+  // whatever structural pattern has been overused recently.
+  let turnOpenerWords = [];
+  let turnOpenerSaved = false;
   // Tracks whether Gemini sent a turnComplete for the current generation turn.
   // Used to detect mid-turn disconnects (Gemini closes code=1000 before the turn
   // finished) and synthesise the missing turnComplete so the device does not
   // get stuck in SPEAKING state with a partially-played response.
   let currentTurnComplete = true; // true initially (no active turn yet)
 
-  // Direct Raw Packet Capture: Stream recording to WAV on disk
-  const capturesDir = path.join(__dirname, 'audio_captures');
-  if (!fs.existsSync(capturesDir)) fs.mkdirSync(capturesDir, { recursive: true });
-  const captureFilename = `raw_gemini_audio_${Date.now()}.wav`;
-  const capturePath = path.join(capturesDir, captureFilename);
+  // Direct Raw Packet Capture: Stream recording to WAV on disk (capturePath
+  // defined at the top of this function, inside the per-connection folder)
   const audioChunks = [];
   const captureStartTime = Date.now();
-  console.log(`[AudioCapture] 🎙️ Initialised raw packet capture: ${capturePath}`);
+  console.log(`[AudioCapture] 🎙️ Ready to capture (folder only created if this connection gets a real interaction): ${capturePath}`);
 
   // Mirror capture for the OTHER direction (hardware mic -> Gemini) - the
   // existing AudioCapture above only ever recorded Gemini's spoken replies.
@@ -290,11 +332,11 @@ function handleLiveProxyConnection(ws, isHardware = false) {
   // has been silently failing to ever respond to it.
   // Stereo A/B test concluded (L and R sounded identical, ruling out a
   // channel-mapping bug) - firmware is back to mono capture, so this is a
-  // plain single-channel WAV writer again.
+  // plain single-channel WAV writer again. (micCapturePath also defined at
+  // the top of this function.)
   const micAudioChunks = [];
-  const micCapturePath = path.join(capturesDir, `raw_mic_audio_${Date.now()}.wav`);
   const flushMicWavToDisk = () => {
-    if (!isHardware || micAudioChunks.length === 0) return;
+    if (!isHardware || micAudioChunks.length === 0 || !captureFolderCreated) return;
     try {
       const totalPcmBytes = micAudioChunks.reduce((acc, c) => acc + c.length, 0);
       const wavHeader = Buffer.alloc(44);
@@ -330,7 +372,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
   const geminiFlushInterval = setInterval(() => flushWavToDisk(), 5000);
 
   const flushWavToDisk = () => {
-    if (audioChunks.length === 0) return;
+    if (audioChunks.length === 0 || !captureFolderCreated) return;
     try {
       const totalPcmBytes = audioChunks.reduce((acc, c) => acc + c.length, 0);
       // WAV header (44 bytes) for 24kHz, 16-bit mono PCM
@@ -364,6 +406,15 @@ function handleLiveProxyConnection(ws, isHardware = false) {
       const txtPath = capturePath.replace(/\.wav$/, '.txt');
       fs.writeFileSync(txtPath, sessionTranscript.trim() || '(No transcript received)');
       console.log(`[TranscriptCapture] 📝 SAVED TRANSCRIPT TXT: ${txtPath} (${sessionTranscript.length} chars)`);
+
+      // The REAL word-for-word transcript of the spoken audio, separate from
+      // the thinking-trace .txt above - compare this against the .wav's
+      // actual duration/content to tell apart a genuine upstream truncation
+      // (this is ALSO incomplete/cuts off) from a local delivery bug (this
+      // is complete, but the audio isn't).
+      const spokenPath = capturePath.replace(/\.wav$/, '_spoken.txt');
+      fs.writeFileSync(spokenPath, spokenTranscript.trim() || '(No spoken transcript received - outputAudioTranscription may not be enabled/supported for this model)');
+      console.log(`[TranscriptCapture] 🗣️ SAVED SPOKEN TRANSCRIPT: ${spokenPath} (${spokenTranscript.length} chars)`);
     } catch (err) {
       console.error('[AudioCapture] Error saving WAV/TXT:', err);
     }
@@ -442,7 +493,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
         const preview = data.toString().slice(0, 500);
         console.log(`${tag} First Gemini message received:`, preview);
         try {
-          fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+          logCapture(
             `[${new Date().toISOString()}] ${tag} GEMINI FIRST MSG: ${preview}\n`);
         } catch (_) { }
       }
@@ -457,9 +508,21 @@ function handleLiveProxyConnection(ws, isHardware = false) {
           for (const part of parsed.serverContent.modelTurn.parts) {
             if (part.inlineData?.mimeType?.startsWith('audio/') && part.inlineData.data) {
               lastModelAudioTime = Date.now();
+              // currentTurnComplete was true -> this chunk starts a NEW turn,
+              // so reset the opener-fingerprint tracker (see the
+              // outputTranscription handler below) before flipping it false.
+              if (currentTurnComplete) {
+                turnOpenerWords = [];
+                turnOpenerSaved = false;
+              }
               // Mark this turn as incomplete until Gemini confirms otherwise.
               // Any audio chunk arriving means a generation turn is in flight.
               currentTurnComplete = false;
+              // Real spoken audio only ever arrives for a genuine wake-phrase
+              // reply, never a noWakeDetected/silent turn - this is the
+              // signal that a real interaction happened, so this is the one
+              // place a capture folder actually gets created.
+              ensureCaptureFolder();
               const rawBytes = Buffer.from(part.inlineData.data, 'base64');
               parsedAudioBytes = rawBytes;
               audioChunks.push(rawBytes);
@@ -476,11 +539,49 @@ function handleLiveProxyConnection(ws, isHardware = false) {
               sessionTranscript += part.text + "\n";
               console.log(`${tag} [LiveTranscript] Text received from Gemini:`, part.text);
               try {
-                fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+                logCapture(
                   `[${new Date().toISOString()}] ${tag} GEMINI TEXT: ${part.text}\n`);
               } catch (_) { }
             }
           }
+        }
+
+        // The REAL transcript of what Gemini is actually saying out loud -
+        // only present when outputAudioTranscription was enabled in setup
+        // (see the augmentation above). Arrives incrementally, timed close
+        // to the corresponding audio chunk, not as one block at the end.
+        if (parsed.serverContent?.outputTranscription?.text) {
+          const spokenText = parsed.serverContent.outputTranscription.text;
+          spokenTranscript += spokenText;
+          console.log(`${tag} [SpokenTranscript] "${spokenText}"`);
+          try {
+            logCapture(
+              `[${new Date().toISOString()}] ${tag} GEMINI SPOKEN TEXT: ${spokenText}\n`);
+          } catch (_) { }
+
+          // Phase 2 variance engine: capture just the first ~15 words of this
+          // turn's REAL spoken opener (not the thinking trace) and persist it
+          // once, the first time this turn accumulates enough words.
+          if (isHardware && !turnOpenerSaved) {
+            turnOpenerWords.push(...spokenText.split(/\s+/).filter(Boolean));
+            if (turnOpenerWords.length >= 15) {
+              const opener = turnOpenerWords.slice(0, 15).join(' ');
+              recordReplyOpener(opener);
+              turnOpenerSaved = true;
+              console.log(`${tag} [Variance] Recorded reply opener: "${opener}"`);
+            }
+          }
+        }
+
+        // The user's own words, transcribed (Phase 3 memory needs to know
+        // what the user actually said, not just what Ims replied).
+        if (parsed.serverContent?.inputTranscription?.text) {
+          const heardText = parsed.serverContent.inputTranscription.text;
+          userSpokenTranscript += heardText;
+          try {
+            logCapture(
+              `[${new Date().toISOString()}] ${tag} USER SPOKEN TEXT: ${heardText}\n`);
+          } catch (_) { }
         }
 
         if (parsed.serverContent?.interrupted) {
@@ -493,7 +594,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
           const msSinceOwnAudio = lastModelAudioTime > 0 ? (Date.now() - lastModelAudioTime) : -1;
           console.warn(`${tag} ⚠️ Gemini reported MODEL INTERRUPTED! (${msSinceOwnAudio}ms since its own last audio chunk, ${suppressedMicFrameCount} mic frames suppressed in the current window)`);
           try {
-            fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+            logCapture(
               `[${new Date().toISOString()}] ${tag} GEMINI INTERRUPTED msSinceOwnAudio=${msSinceOwnAudio} suppressedMicFrames=${suppressedMicFrameCount}\n`);
           } catch (_) { }
         }
@@ -504,9 +605,17 @@ function handleLiveProxyConnection(ws, isHardware = false) {
           }
           console.log(`${tag} ✅ Gemini reported TURN COMPLETE (hasToolCall=${!!parsed.toolCall})`);
           try {
-            fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+            logCapture(
               `[${new Date().toISOString()}] ${tag} GEMINI TURN COMPLETE hasToolCall=${!!parsed.toolCall}\n`);
           } catch (_) { }
+          // Fallback for the (very common, given the strict length limit)
+          // case where a whole reply never reaches the 15-word threshold in
+          // the outputTranscription handler above - record whatever was
+          // actually said rather than silently never recording short turns.
+          if (isHardware && !turnOpenerSaved && turnOpenerWords.length > 0) {
+            recordReplyOpener(turnOpenerWords.join(' '));
+            turnOpenerSaved = true;
+          }
         }
 
         // DIAGNOSTIC: the thinking-trace text repeatedly says "I'm calling
@@ -521,7 +630,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
         if (topLevelKeys.some(k => k.toLowerCase().includes('tool') || k.toLowerCase().includes('call'))) {
           console.log(`${tag} 🐛 RAW message with a tool/call-like key:`, msgStr.slice(0, 2000));
           try {
-            fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+            logCapture(
               `[${new Date().toISOString()}] ${tag} RAW TOOLCALL-LIKE MSG: ${msgStr.slice(0, 2000)}\n`);
           } catch (_) { }
         }
@@ -568,6 +677,13 @@ function handleLiveProxyConnection(ws, isHardware = false) {
               console.log(`${tag} 🔔 ${call.name} tool call from Gemini - forwarding to hardware client`);
               if (isHardware && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ [call.name]: true }));
+              }
+              if (call.name === 'endConversation' && isHardware) {
+                // Phase 3 memory: fire-and-forget, never blocks the tool ack
+                // above - a slow/failed summarisation call must not delay
+                // the farewell reply reaching the device.
+                recordConversationMemory(userSpokenTranscript, spokenTranscript)
+                  .catch((err) => console.error(`${tag} [Memory] recordConversationMemory failed:`, err.message));
               }
               if (gWs.readyState === WebSocket.OPEN) {
                 gWs.send(JSON.stringify({
@@ -665,7 +781,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
         // was actually doing). msSinceOwnAudioAtClose small + turnComplete
         // false means it died WHILE actively mid-generation, not after
         // finishing and going idle.
-        fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+        logCapture(
           `[${new Date().toISOString()}] ${tag} GEMINI CLOSE: code=${code} reason="${reasonStr}" turnComplete=${currentTurnComplete} connectionAliveMs=${connectionAliveMs} msSinceOwnAudioAtClose=${msSinceOwnAudioAtClose}\n`);
       } catch (_) { }
 
@@ -688,7 +804,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
         if (!currentTurnComplete && isHardware && ws.readyState === WebSocket.OPEN) {
           console.warn(`${tag} ⚠️ Gemini closed mid-turn (no turnComplete received). Sending synthetic turnComplete after 200ms drain delay.`);
           try {
-            fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+            logCapture(
               `[${new Date().toISOString()}] ${tag} SYNTHETIC TURNCOMPLETE QUEUED (mid-turn disconnect)\n`);
           } catch (_) { }
           setTimeout(() => {
@@ -724,7 +840,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
       clearInterval(silenceInterval);
       console.error(`${tag} Gemini Live WebSocket error:`, err.message);
       try {
-        fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+        logCapture(
           `[${new Date().toISOString()}] ${tag} GEMINI ERROR: ${err.message}\n`);
       } catch (_) { }
       try {
@@ -761,7 +877,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
           // playback-cutoff reproduction be analysed afterward instead of
           // needing to watch the live console at the exact moment it happens.
           try {
-            fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+            logCapture(
               `[${new Date().toISOString()}] ${tag} DEVICE DEBUG: ${maybeDebug.debug}\n`);
           } catch (_) { }
           return;
@@ -793,7 +909,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
       }
       if (suppressedMicFrameCount > 0) {
         try {
-          fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+          logCapture(
             `[${new Date().toISOString()}] ${tag} ECHO SUPPRESSION LIFTED: dropped ${suppressedMicFrameCount} mic frames (device believed it was muted/not-listening for this whole window)\n`);
         } catch (_) { }
         suppressedMicFrameCount = 0;
@@ -847,8 +963,23 @@ function handleLiveProxyConnection(ws, isHardware = false) {
             const hardwareDefaults = getHardwareSetupPayload();
             parsed.setup.tools = hardwareDefaults.setup.tools;
             parsed.setup.systemInstruction = hardwareDefaults.setup.systemInstruction;
+            // DIAGNOSTIC (and worth keeping permanently): asks Gemini for a
+            // real, word-for-word transcript of what it's actually SAYING in
+            // the audio, arriving incrementally alongside the audio chunks
+            // themselves (serverContent.outputTranscription.text) - distinct
+            // from the "thinking" trace text already captured into
+            // sessionTranscript, which is internal reasoning, not a
+            // transcript of the spoken words. This is the ground truth that
+            // tells apart "Gemini's own generation stopped" (transcript is
+            // ALSO incomplete) from "our own pipeline lost/dropped audio
+            // Gemini actually sent" (transcript is complete, audio isn't).
+            parsed.setup.outputAudioTranscription = {};
+            // Same idea, the USER's side - needed for Phase 3's relationship
+            // memory (imspersonality.md), which needs to know what the user
+            // actually said/asked about, not just what Ims replied.
+            parsed.setup.inputAudioTranscription = {};
             msgStr = JSON.stringify(parsed);
-            console.log(`${tag} 🔧 Augmented hardware setup handshake with searchLibrary/noWakeDetected/endConversation tools and wake-phrase-gated system prompt`);
+            console.log(`${tag} 🔧 Augmented hardware setup handshake with searchLibrary/noWakeDetected/endConversation tools, wake-phrase-gated system prompt, and outputAudioTranscription`);
           }
           cachedSetupMsg = msgStr;
           console.log(`${tag} Cached setup handshake for resilient reconnection.`);
@@ -857,7 +988,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
 
       console.log(`${tag} Forwarding control message:`, msgStr);
       try {
-        fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+        logCapture(
           `[${new Date().toISOString()}] ${tag} CLIENT MSG: ${msgStr}\n`);
       } catch (_) { }
     }
@@ -881,7 +1012,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
     const reasonStr = reason ? reason.toString() : '';
     console.log(`${tag} Client closed connection: ${code} - ${reasonStr}`);
     try {
-      fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+      logCapture(
         `[${new Date().toISOString()}] ${tag} CLIENT CLOSED: code=${code} reason="${reasonStr}"\n`);
     } catch (_) { }
     if (isHardware && activeHardwareSession?.clientWs === ws) {
@@ -903,7 +1034,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
     isClientClosed = true;
     console.error(`${tag} Client WebSocket error:`, err.message);
     try {
-      fs.appendFileSync(path.join(__dirname, 'live_proxy_debug.log'),
+      logCapture(
         `[${new Date().toISOString()}] ${tag} CLIENT ERROR: ${err.message}\n`);
     } catch (_) { }
     try {
@@ -932,6 +1063,14 @@ hardwareWss.on('connection', (ws) => handleLiveProxyConnection(ws, true));
 // ---------------------------------------------------------------------------
 const HARDWARE_TCP_PORT = process.env.HARDWARE_TCP_PORT || 3002;
 
+// Wire framing, both directions - must match FRAME_MAGIC/FRAME_HEADER_LEN in
+// the firmware's main.cpp: [0xA5][0x5A][type:1][length:4 BE][payload].
+const FRAME_MAGIC = Buffer.from([0xa5, 0x5a]);
+const FRAME_HEADER_LEN = 7;
+// Nothing legitimate comes close: the largest real frame either direction is
+// a Gemini audio chunk, and those top out around 46KB.
+const MAX_FRAME_PAYLOAD = 64 * 1024;
+
 class HardwareTcpClient extends EventEmitter {
   constructor(socket) {
     super();
@@ -939,6 +1078,7 @@ class HardwareTcpClient extends EventEmitter {
     this.readyState = HardwareTcpClient.OPEN;
     this._closed = false;
     this._buffer = Buffer.alloc(0);
+    this._resyncSkipped = 0;
 
     socket.on('data', (chunk) => this._onData(chunk));
     socket.on('close', () => this._finishClose(1006, ''));
@@ -949,12 +1089,43 @@ class HardwareTcpClient extends EventEmitter {
     this._buffer = Buffer.concat([this._buffer, chunk]);
     // A single TCP chunk can contain multiple frames, or a partial one -
     // drain every complete frame currently buffered, then wait for more.
-    while (this._buffer.length >= 5) {
-      const type = this._buffer[0];
-      const len = this._buffer.readUInt32BE(1);
-      if (this._buffer.length < 5 + len) break;
-      const payload = this._buffer.subarray(5, 5 + len);
-      this._buffer = this._buffer.subarray(5 + len);
+    while (true) {
+      // Hunt for the frame marker. Without one, a single lost or duplicated
+      // byte desynchronises this parser permanently (every subsequent
+      // "length" is really payload), and the only escape was dropping the
+      // connection. Scanning to the next marker turns that into a recoverable
+      // hiccup - see FRAME_MAGIC in the firmware for the full reasoning.
+      const idx = this._buffer.indexOf(FRAME_MAGIC);
+      if (idx < 0) {
+        // Keep one trailing byte: it could be the first half of a marker
+        // split across two TCP chunks.
+        if (this._buffer.length > 1) {
+          this._resyncSkipped += this._buffer.length - 1;
+          this._buffer = this._buffer.subarray(this._buffer.length - 1);
+        }
+        return;
+      }
+      if (idx > 0) {
+        this._resyncSkipped += idx;
+        this._buffer = this._buffer.subarray(idx);
+      }
+      if (this._buffer.length < FRAME_HEADER_LEN) return;
+      const type = this._buffer[2];
+      const len = this._buffer.readUInt32BE(3);
+      if (len > MAX_FRAME_PAYLOAD) {
+        // Marker matched but the length is impossible, so it was payload that
+        // happened to look like one. Skip past it and keep hunting.
+        this._resyncSkipped += 2;
+        this._buffer = this._buffer.subarray(2);
+        continue;
+      }
+      if (this._buffer.length < FRAME_HEADER_LEN + len) return;
+      const payload = this._buffer.subarray(FRAME_HEADER_LEN, FRAME_HEADER_LEN + len);
+      this._buffer = this._buffer.subarray(FRAME_HEADER_LEN + len);
+      if (this._resyncSkipped > 0) {
+        console.warn(`[HardwareTCP] Resynced after skipping ${this._resyncSkipped} bytes from device`);
+        this._resyncSkipped = 0;
+      }
       this.emit('message', Buffer.from(payload), type === 1);
     }
   }
@@ -963,9 +1134,11 @@ class HardwareTcpClient extends EventEmitter {
     if (this.readyState !== HardwareTcpClient.OPEN) return;
     const isBinary = Buffer.isBuffer(data) || !!(opts && opts.binary);
     const payload = Buffer.isBuffer(data) ? data : Buffer.from(String(data));
-    const header = Buffer.alloc(5);
-    header[0] = isBinary ? 1 : 0;
-    header.writeUInt32BE(payload.length, 1);
+    const header = Buffer.alloc(FRAME_HEADER_LEN);
+    header[0] = FRAME_MAGIC[0];
+    header[1] = FRAME_MAGIC[1];
+    header[2] = isBinary ? 1 : 0;
+    header.writeUInt32BE(payload.length, 3);
     try {
       this.socket.write(Buffer.concat([header, payload]));
     } catch (err) {
@@ -1018,7 +1191,41 @@ hardwareTcpServer.listen(HARDWARE_TCP_PORT, () => {
 // config: 48000Hz, 16-bit, mono.
 const DEBUG_MIC_UPLOAD_PORT = 3003;
 const debugMicCapturesDir = path.join(__dirname, 'audio_captures');
+// Must exist up front - the single always-on debug.log (written by every
+// live connection, interaction or not) lives directly in here, and can't
+// rely on a per-interaction capture folder's mkdirSync to have created the
+// parent dir first on a fresh checkout.
+fs.mkdirSync(debugMicCapturesDir, { recursive: true });
 const debugMicServer = http.createServer((req, res) => {
+  // Phase 4/5 (imspersonality.md): the settings screen's slider/voice
+  // changes POST here, and reads current values on boot. Same server/port
+  // as the mic upload above, same reasoning - a bare device HTTP request has
+  // no way to satisfy the main app's session-based requireAdmin middleware.
+  if (req.url === '/device/personality') {
+    if (req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(getPersonality()));
+      return;
+    }
+    if (req.method === 'POST') {
+      const chunks = [];
+      req.on('data', (chunk) => chunks.push(chunk));
+      req.on('end', () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+          const next = setPersonality(body);
+          console.log('[Personality] Updated from device:', next);
+          res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(next));
+        } catch (err) {
+          console.error('[Personality] Failed to parse device update:', err.message);
+          res.writeHead(400).end('bad request');
+        }
+      });
+      return;
+    }
+    res.writeHead(405).end();
+    return;
+  }
+
   if (req.method !== 'POST' || req.url !== '/debug-mic-upload') {
     res.writeHead(404).end();
     return;

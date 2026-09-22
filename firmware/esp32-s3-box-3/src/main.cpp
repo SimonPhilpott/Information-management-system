@@ -8,8 +8,12 @@
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
+#include <HTTPClient.h> // Phase 4/5 personality settings: POST/GET to the backend's device/personality endpoint
+#include <Preferences.h> // NVS cache for the settings screen, so it redraws instantly on boot without a network round trip
 #include <cstring>
 #include <driver/i2c.h> // for the I2C_NUM_0 port-number type only
+#include <esp_system.h> // esp_reset_reason() - see connectToBackend()
+#include <esp_heap_caps.h> // heap_caps_get_free_size() - see the heartbeat in loop()
 // Migrated from the legacy driver/i2s.h (deprecated, and only capable of a
 // software channel-select "fake mono" over a physically stereo frame) to
 // the newer channel-based i2s_std driver, which supports a genuine hardware
@@ -212,7 +216,132 @@ const char *emotionName(int emotion) {
     default: return "neutral";
   }
 }
+// ---------------------------------------------------------------------------
+// Personality settings screen (imspersonality.md Phases 4/5). Five 0-100
+// sliders + a voice picker, matching the backend's ims_personality settings
+// exactly (same axis order/keys, same defaults) so a value set from either
+// side reads the same way. NVS-cached via Preferences so the screen redraws
+// with the right handle positions instantly on boot, without waiting on a
+// network round trip - matches the plan's own stated reasoning.
+//
+// Deliberate simplification: this firmware does NOT fetch current values
+// from the backend on boot, only on save (POST). If the personality was
+// last changed via scripts/setPersonality.js rather than this screen, the
+// device's NVS cache will be stale until the next slider touch overwrites
+// it - acceptable for now since the screen becomes the primary way to
+// change it going forward, but worth knowing.
+// ---------------------------------------------------------------------------
+#define PERSONALITY_AXIS_COUNT 5
+const char *PERSONALITY_AXIS_KEYS[PERSONALITY_AXIS_COUNT] = {"humor", "delivery", "temperament", "social", "formality"};
+const char *PERSONALITY_AXIS_LABELS[PERSONALITY_AXIS_COUNT] = {"HUMOR", "DELIVERY", "TEMPERAMENT", "SOCIAL", "FORMALITY"};
+// Low/mid/high tier names, exactly matching hardwareClientService.js's
+// PERSONALITY_AXES - display-only here (a simple 3-way split), the backend
+// does the real continuous blending into the system prompt.
+const char *PERSONALITY_TIER_NAMES[PERSONALITY_AXIS_COUNT][3] = {
+  {"Cheerful", "Dry", "Dark"},
+  {"Tactful", "Candid", "Blunt"},
+  {"Pragmatic", "Systematic", "Philosophical"},
+  {"Clinical", "Professional", "Empathic"},
+  {"Casual", "Articulate", "Academic"}
+};
+// All 30 prebuilt Gemini voices (ai.google.dev/gemini-api/docs/speech-generation)
+// - the Live API's native-audio models (gemini-3.8-live included) support any
+// voice from this same TTS voice set, not just the original small Live-API
+// subset, so all 30 are offered here rather than the 4 we started with.
+const char *PERSONALITY_VOICES[] = {
+    "Zephyr", "Puck", "Charon", "Kore", "Fenrir", "Leda", "Orus", "Aoede",
+    "Callirrhoe", "Autonoe", "Enceladus", "Iapetus", "Umbriel", "Algieba",
+    "Despina", "Erinome", "Algenib", "Rasalgethi", "Laomedeia", "Achernar",
+    "Alnilam", "Schedar", "Gacrux", "Pulcherrima", "Achird", "Zubenelgenubi",
+    "Vindemiatrix", "Sadachbia", "Sadaltager", "Sulafat"};
+#define PERSONALITY_VOICE_COUNT 30
+
+int personalityValues[PERSONALITY_AXIS_COUNT] = {70, 45, 30, 55, 35}; // matches DEFAULT_PERSONALITY in hardwareClientService.js
+int personalityVoiceIndex = 0; // index into PERSONALITY_VOICES
+
+volatile bool onSettingsScreen = false; // read from audioMicTask() (Core 0), written from loop() (Core 1)
+volatile bool onVoiceScreen = false; // settings sub-screen: false=personality sliders, true=voice picker
+int settingsDraggingAxis = -1; // -1 = not currently dragging a slider
+bool settingsDirty = false;
+unsigned long settingsLastChangeMs = 0;
+bool pendingVoicePreview = false; // a voice-arrow tap is waiting on the debounced save below to actually preview
+#define SETTINGS_SAVE_DEBOUNCE_MS 600
+
+// Voice/personality preview flow (Phase 5.1, see startPreview() near
+// connectToBackend()): both the voice picker's arrows and the personality
+// screen's Play button need Gemini to actually SPEAK with the
+// just-changed voice/tone, but voice and systemInstruction are both fixed
+// at Gemini Live session setup and cannot change mid-session - so a preview
+// means reconnecting with the latest saved settings, then sending a text
+// turn asking it to say something. This spans several loop() iterations
+// (reconnect + Gemini's setupComplete ACK are both asynchronous).
+enum PreviewFlowState { PREVIEW_IDLE, PREVIEW_RECONNECT, PREVIEW_AWAIT_SETUP, PREVIEW_SPEAKING };
+PreviewFlowState previewFlow = PREVIEW_IDLE;
+String previewPendingText;
+unsigned long previewFlowStartMs = 0;
+
+Preferences personalityPrefs;
+
+const char *tierNameFor(int axisIdx, int value) {
+  if (value <= 33) return PERSONALITY_TIER_NAMES[axisIdx][0];
+  if (value <= 66) return PERSONALITY_TIER_NAMES[axisIdx][1];
+  return PERSONALITY_TIER_NAMES[axisIdx][2];
+}
+
+void loadPersonalityFromNVS() {
+  personalityPrefs.begin("ims_persona", true); // read-only
+  for (int i = 0; i < PERSONALITY_AXIS_COUNT; i++) {
+    personalityValues[i] = personalityPrefs.getInt(PERSONALITY_AXIS_KEYS[i], personalityValues[i]);
+  }
+  String savedVoice = personalityPrefs.getString("voice", PERSONALITY_VOICES[0]);
+  for (int i = 0; i < PERSONALITY_VOICE_COUNT; i++) {
+    if (savedVoice == PERSONALITY_VOICES[i]) { personalityVoiceIndex = i; break; }
+  }
+  personalityPrefs.end();
+  Serial.println("[Personality] Loaded from NVS cache");
+}
+
+void savePersonalityToNVS() {
+  personalityPrefs.begin("ims_persona", false); // read-write
+  for (int i = 0; i < PERSONALITY_AXIS_COUNT; i++) {
+    personalityPrefs.putInt(PERSONALITY_AXIS_KEYS[i], personalityValues[i]);
+  }
+  personalityPrefs.putString("voice", PERSONALITY_VOICES[personalityVoiceIndex]);
+  personalityPrefs.end();
+}
+
+// Fire-and-forget-ish: blocks Core 1 briefly (HTTPClient has no async mode),
+// but only ever called from the debounce check in loop(), at most once every
+// SETTINGS_SAVE_DEBOUNCE_MS while actively dragging - not during normal
+// conversation, so a few hundred ms of blocking here doesn't stall audio.
+void postPersonalityToBackend() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  HTTPClient http;
+  String url = String("http://") + IMS_PRIMARY_HOST + ":3003/device/personality";
+  http.begin(url);
+  http.addHeader("Content-Type", "application/json");
+  JsonDocument doc;
+  for (int i = 0; i < PERSONALITY_AXIS_COUNT; i++) doc[PERSONALITY_AXIS_KEYS[i]] = personalityValues[i];
+  doc["voice"] = PERSONALITY_VOICES[personalityVoiceIndex];
+  String body;
+  serializeJson(doc, body);
+  int code = http.POST(body);
+  Serial.printf("[Personality] POST /device/personality -> %d\n", code);
+  http.end();
+}
+
 bool isSetupAcknowledged = false;
+// pollIncoming()'s framing state machine keeps partial-frame progress in
+// statics so a frame split across several TCP reads can be reassembled. That
+// progress is meaningless - worse, actively harmful - on a NEW socket: a
+// reconnect landing mid-frame left frameBytesRead/frameLen pointing at the
+// dead connection's frame, so the parser consumed the fresh stream's header
+// bytes as that frame's tail and desynced permanently. It then read audio PCM
+// as a length prefix, tripped the "frame too large" guard, closed the socket
+// (RST, seen backend-side as ECONNRESET), reconnected - and inherited stale
+// state all over again. Set this on every connect/disconnect so the parser
+// always starts a new socket from a clean slate.
+volatile bool incomingParserResetPending = false;
 volatile bool geminiSetupComplete =
     false; // Set true only after Gemini sends setupComplete ACK
 volatile bool isMicHardwareMuted = false; // Physical top latching mute button state (GPIO 1)
@@ -729,13 +858,251 @@ static void drawFaceInternal(bool forceFull) {
 // a ~120ms cadence from loop() (see below), replacing the old
 // LISTENING-only drawOrbPulse() heartbeat so the face animates in every state.
 void drawFaceTick() {
+  if (onSettingsScreen) return; // don't paint face dots over the settings screen
   faceFrame++;
   tft.startWrite();
   drawFaceInternal(false);
   tft.endWrite();
 }
 
+// Gear icon tap zone (top-left of the header). Shared identically by both
+// screens - the main screen's icon opens settings, the settings screen's
+// same-shaped icon (drawGearIcon() below) goes back - so the two can never
+// disagree about where the tap target actually is.
+#define HEADER_ICON_X0 0
+#define HEADER_ICON_Y0 0
+#define HEADER_ICON_X1 36
+#define HEADER_ICON_Y1 34
+#define HEADER_ICON_CX 18 // hub centre
+#define HEADER_ICON_CY 17
+#define HEADER_TITLE_X 40 // both screens' title text starts here, clear of the icon
+
+// Personality screen only: top-right "VOICE >" tap zone that opens the voice
+// picker sub-screen - wide enough to cover both the label text and the
+// chevron icon next to it, not just the icon itself.
+#define HEADER_RIGHT_ZONE_X0 240
+#define HEADER_RIGHT_ZONE_Y0 0
+#define HEADER_RIGHT_ZONE_X1 320
+#define HEADER_RIGHT_ZONE_Y1 34
+#define HEADER_RIGHT_CHEVRON_CX 304
+#define HEADER_RIGHT_CHEVRON_CY 17
+#define HEADER_RIGHT_LABEL_X 296 // right edge the "VOICE" label is right-aligned against
+
+// Voice screen only: its back zone is wider than HEADER_ICON_* (0-36) since
+// it carries a "< PERSONALITY" chevron+label, not just a bare icon.
+#define VOICE_BACK_ZONE_X0 0
+#define VOICE_BACK_ZONE_Y0 0
+#define VOICE_BACK_ZONE_X1 150
+#define VOICE_BACK_ZONE_Y1 34
+#define VOICE_BACK_CHEVRON_CX 18
+#define VOICE_BACK_CHEVRON_CY 17
+#define VOICE_BACK_LABEL_X 32
+
+// Voice screen: left/right arrow tap zones flanking the voice name.
+#define VOICE_LEFT_ARROW_X0 10
+#define VOICE_LEFT_ARROW_X1 90
+#define VOICE_RIGHT_ARROW_X0 230
+#define VOICE_RIGHT_ARROW_X1 310
+#define VOICE_ARROW_Y0 80
+#define VOICE_ARROW_Y1 160
+#define VOICE_ARROW_CY 120
+
+// Personality screen: the one large Play button filling the space freed up
+// by removing the old small play-demo row + footer hint text.
+#define PLAY_BUTTON_X0 20
+#define PLAY_BUTTON_X1 300
+#define PLAY_BUTTON_Y0 186
+#define PLAY_BUTTON_Y1 232
+#define PLAY_BUTTON_CX 160
+#define PLAY_BUTTON_CY 209
+
+// A hub + 8 teeth close against its rim, rather than the original 4 teeth
+// spaced well clear of the hub - the gap was what made the first version
+// read as "circle with 4 separate squares" instead of one gear silhouette.
+// Used on both screens so the icon and its meaning (tap here to switch
+// screens) stay visually consistent.
+void drawGearIcon(int cx, int cy) {
+  uint32_t col = tft.color565(140, 150, 175);
+  tft.fillCircle(cx, cy, 6, col);
+  // 8 teeth at 45-degree increments, radius 7 from centre so each tooth
+  // overlaps the hub's edge instead of floating clear of it.
+  const int dx[8] = {7, 5, 0, -5, -7, -5, 0, 5};
+  const int dy[8] = {0, 5, 7, 5, 0, -5, -7, -5};
+  for (int i = 0; i < 8; i++) {
+    tft.fillRect(cx + dx[i] - 1, cy + dy[i] - 1, 3, 3, col);
+  }
+}
+
+// Solid triangle pointing left or right, centred at (cx, cy) - used for the
+// personality screen's "open voice picker" icon and the voice screen's
+// prev/next arrows.
+void drawTriangleArrow(int cx, int cy, bool pointRight, uint32_t col) {
+  if (pointRight) {
+    tft.fillTriangle(cx - 6, cy - 8, cx - 6, cy + 8, cx + 7, cy, col);
+  } else {
+    tft.fillTriangle(cx + 6, cy - 8, cx + 6, cy + 8, cx - 7, cy, col);
+  }
+}
+
+// Open chevron ("<"/">") for header nav links - deliberately a different,
+// lighter style than drawTriangleArrow()'s solid filled triangle, so the
+// header's "go to another screen" affordance never looks like the big
+// filled Play button.
+void drawChevron(int cx, int cy, bool pointRight, uint32_t col) {
+  int dir = pointRight ? 1 : -1;
+  for (int t = 0; t < 2; t++) { // 2px stroke thickness
+    tft.drawLine(cx - dir * 5 + t, cy - 7, cx + dir * 5 + t, cy, col);
+    tft.drawLine(cx - dir * 5 + t, cy + 7, cx + dir * 5 + t, cy, col);
+  }
+}
+
+#define SETTINGS_TRACK_X0 15
+#define SETTINGS_TRACK_X1 300
+#define SETTINGS_ROW_Y0 34
+#define SETTINGS_ROW_H 28 // 5 axis rows = 140px, fits in 34-174; the Play button fills 174-240
+
+int settingsTrackXForValue(int value) {
+  return SETTINGS_TRACK_X0 + (int)((value / 100.0f) * (SETTINGS_TRACK_X1 - SETTINGS_TRACK_X0));
+}
+
+// Which axis row (0-4, -1 = none/below the sliders) a touch Y falls into.
+// Shared between rendering and touch handling so the two can never disagree
+// about where a row actually is. Anything below row 4 (the Play button
+// area) is handled by an explicit PLAY_BUTTON_* rect check instead, since
+// that button isn't part of this uniform row grid.
+int settingsRowForY(int y) {
+  if (y < SETTINGS_ROW_Y0) return -1;
+  int row = (y - SETTINGS_ROW_Y0) / SETTINGS_ROW_H;
+  if (row < 0 || row >= PERSONALITY_AXIS_COUNT) return -1;
+  return row;
+}
+
+// Redraws just one axis row's label/tier-name/track/handle. Used both by the
+// full drawSettingsScreen() below and, on its own, while dragging a slider -
+// repainting only the ~28px row that actually changed (instead of a full
+// fillScreen + full redraw on every touch sample) is what stops the visible
+// flash/flicker during a drag, since this display has no back buffer.
+void drawSettingsRow(int i) {
+  int rowY = SETTINGS_ROW_Y0 + i * SETTINGS_ROW_H;
+  tft.fillRect(0, rowY, 320, SETTINGS_ROW_H, tft.color565(11, 14, 21));
+  tft.setTextColor(tft.color565(140, 150, 175));
+  tft.setTextSize(1);
+  tft.drawString(PERSONALITY_AXIS_LABELS[i], 15, rowY + 2);
+  tft.setTextColor(tft.color565(76, 255, 122));
+  tft.setTextDatum(top_right);
+  tft.drawString(tierNameFor(i, personalityValues[i]), 305, rowY + 2);
+  tft.setTextDatum(top_left);
+
+  // Track
+  tft.fillRoundRect(SETTINGS_TRACK_X0, rowY + 16, SETTINGS_TRACK_X1 - SETTINGS_TRACK_X0, 5, 2, tft.color565(40, 50, 70));
+  // Handle
+  int hx = settingsTrackXForValue(personalityValues[i]);
+  tft.fillCircle(hx, rowY + 18, 7, tft.color565(76, 255, 122));
+}
+
+// Redraws just the big Play button (previewFlow declared near
+// connectToBackend() - defined later in the file, but this only reads it,
+// so no forward declaration is needed). Icon-only by design - greys out
+// while a preview is in flight, same flicker-avoidance reasoning as
+// drawSettingsRow() above (called on its own, without a full-screen redraw,
+// every time previewFlow changes).
+void drawPlayButton() {
+  int freeY0 = SETTINGS_ROW_Y0 + PERSONALITY_AXIS_COUNT * SETTINGS_ROW_H; // 174 - bottom of the last slider row
+  tft.fillRect(0, freeY0, 320, 240 - freeY0, tft.color565(11, 14, 21));
+  bool playing = (previewFlow != PREVIEW_IDLE);
+  uint32_t fill = playing ? tft.color565(45, 50, 62) : tft.color565(76, 255, 122);
+  uint32_t icon = playing ? tft.color565(90, 100, 115) : tft.color565(11, 14, 21);
+  tft.fillRoundRect(PLAY_BUTTON_X0, PLAY_BUTTON_Y0, PLAY_BUTTON_X1 - PLAY_BUTTON_X0, PLAY_BUTTON_Y1 - PLAY_BUTTON_Y0, 12, fill);
+  drawTriangleArrow(PLAY_BUTTON_CX, PLAY_BUTTON_CY, true, icon);
+}
+
+void drawSettingsScreen() {
+  tft.startWrite();
+  tft.fillScreen(tft.color565(11, 14, 21));
+
+  // Header - same gear icon as the main screen's, in the same spot (tapping
+  // it here goes back instead of opening settings). Title centred, "VOICE"
+  // link (chevron - see drawChevron(), deliberately not the Play button's
+  // filled-triangle style) right-aligned in the header's free space.
+  tft.fillRect(0, 0, 320, 34, tft.color565(20, 24, 34));
+  tft.setTextColor(tft.color565(140, 150, 175));
+  tft.setTextSize(1);
+  tft.setTextDatum(middle_center);
+  tft.drawString("IMS PERSONALITY", 160, 17);
+  tft.setTextDatum(middle_right);
+  tft.drawString("VOICE", HEADER_RIGHT_LABEL_X, 17);
+  tft.setTextDatum(top_left);
+  drawGearIcon(HEADER_ICON_CX, HEADER_ICON_CY);
+  drawChevron(HEADER_RIGHT_CHEVRON_CX, HEADER_RIGHT_CHEVRON_CY, true, tft.color565(140, 150, 175));
+
+  for (int i = 0; i < PERSONALITY_AXIS_COUNT; i++) {
+    drawSettingsRow(i);
+  }
+
+  // One large Play button fills the rest of the screen - see drawPlayButton().
+  drawPlayButton();
+
+  tft.endWrite();
+}
+
+// Phase 5.1: voice picker sub-screen, reached via the right arrow on the
+// personality screen. Left/right arrows cycle personalityVoiceIndex and
+// (once the debounced save lands, see loop()) trigger startPreview() so the
+// device actually speaks "Hi, I'm <voice>" in the newly-selected voice.
+void drawVoiceScreen() {
+  tft.startWrite();
+  tft.fillScreen(tft.color565(11, 14, 21));
+
+  // Header - "< PERSONALITY" chevron+label goes back up one level, to the
+  // personality screen (not the gear icon - that's specifically the "open
+  // settings" affordance on the main screen, and reusing its shape here as
+  // a generic back button would be confusing). Title centred.
+  tft.fillRect(0, 0, 320, 34, tft.color565(20, 24, 34));
+  tft.setTextColor(tft.color565(140, 150, 175));
+  tft.setTextSize(1);
+  tft.setTextDatum(middle_center);
+  tft.drawString("IMS VOICE", 160, 17);
+  tft.setTextDatum(middle_left);
+  tft.drawString("PERSONALITY", VOICE_BACK_LABEL_X, 17);
+  tft.setTextDatum(top_left);
+  drawChevron(VOICE_BACK_CHEVRON_CX, VOICE_BACK_CHEVRON_CY, false, tft.color565(140, 150, 175));
+
+  bool busy = (previewFlow != PREVIEW_IDLE);
+  uint32_t arrowCol = busy ? tft.color565(60, 66, 80) : tft.color565(140, 150, 175);
+  uint32_t nameCol = busy ? tft.color565(90, 100, 120) : tft.color565(76, 255, 122);
+  drawTriangleArrow(45, VOICE_ARROW_CY, false, arrowCol);
+  drawTriangleArrow(275, VOICE_ARROW_CY, true, arrowCol);
+
+  // Text size 2, not 3 - some of the 30 voice names (e.g. "Zubenelgenubi")
+  // are long enough that size 3 would run into the arrows either side.
+  tft.setTextDatum(middle_center);
+  tft.setTextSize(2);
+  tft.setTextColor(nameCol);
+  tft.drawString(PERSONALITY_VOICES[personalityVoiceIndex], 160, VOICE_ARROW_CY - 5);
+  tft.setTextSize(1);
+  tft.setTextColor(tft.color565(100, 110, 130));
+  char idxStr[16];
+  snprintf(idxStr, sizeof(idxStr), "%d of %d", personalityVoiceIndex + 1, PERSONALITY_VOICE_COUNT);
+  tft.drawString(idxStr, 160, VOICE_ARROW_CY + 30);
+  tft.setTextDatum(top_left);
+
+  // Footer - same hint text style as the other screens.
+  tft.fillRect(0, 204, 320, 36, tft.color565(15, 18, 26));
+  tft.setTextColor(tft.color565(100, 110, 130));
+  tft.setTextDatum(top_center);
+  tft.drawString(busy ? "Speaking preview..." : "Tap an arrow to preview a voice", 160, 214);
+  tft.setTextDatum(top_left);
+
+  tft.endWrite();
+}
+
 void renderScreen(bool forceRedraw = false) {
+  // Checked FIRST, before touching any of the lastRendered* tracking below -
+  // this must be a total no-op while the settings screen is open, not just
+  // skip the draw, so nothing is missed/stale the moment the user leaves it
+  // (the back-arrow handler already calls renderScreen(true) itself once
+  // onSettingsScreen goes false).
+  if (onSettingsScreen) return;
   static bool lastRenderedMute = false;
   static int lastRenderedEmotion = -1;
   if (!forceRedraw && currentState == lastRenderedState && isMicHardwareMuted == lastRenderedMute &&
@@ -759,23 +1126,28 @@ void renderScreen(bool forceRedraw = false) {
   tft.fillRect(0, 0, 320, 34, tft.color565(20, 24, 34));
   tft.setTextColor(tft.color565(140, 150, 175));
   tft.setTextSize(1);
-  tft.drawString("IMS INTELLIGENCE TERMINAL", 10, 11);
+  tft.setTextDatum(middle_center);
+  tft.drawString("(I)nformation (M)anagement (S)ystem", 160, 17);
+  tft.setTextDatum(top_left); // reset - everything after this relies on left-anchored text
+  drawGearIcon(HEADER_ICON_CX, HEADER_ICON_CY); // Phase 4 settings entry point
 
+  tft.setTextDatum(middle_left);
   if (isMicHardwareMuted) {
-    tft.fillCircle(240, 17, 4, tft.color565(255, 71, 87));
+    tft.fillCircle(236, 17, 4, tft.color565(255, 71, 87));
     tft.setTextColor(tft.color565(255, 71, 87));
-    tft.drawString("MUTED", 248, 11);
+    tft.drawString("MUTED", 244, 17);
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    tft.fillCircle(285, 17, 4, tft.color565(46, 213, 115));
+    tft.fillCircle(280, 17, 4, tft.color565(46, 213, 115));
     tft.setTextColor(tft.color565(140, 150, 175));
-    tft.drawString("WIFI", 295, 11);
+    tft.drawString("WIFI", 290, 17);
   } else {
-    tft.fillCircle(285, 17, 4, tft.color565(255, 71, 87));
+    tft.fillCircle(280, 17, 4, tft.color565(255, 71, 87));
     tft.setTextColor(tft.color565(140, 150, 175));
-    tft.drawString("DISC", 295, 11);
+    tft.drawString("DISC", 290, 17);
   }
+  tft.setTextDatum(top_left);
 
   // Main Body Background
   tft.fillRect(0, 34, 320, 170, tft.color565(11, 14, 21));
@@ -785,7 +1157,7 @@ void renderScreen(bool forceRedraw = false) {
   const char *statusText;
   if (isMicHardwareMuted) {
     statusColor = tft.color565(255, 71, 87); // Crimson red
-    statusText = "MIC MUTED (BUTTON LIT)";
+    statusText = "MIC MUTED";
   } else {
     switch (currentState) {
     case STATE_CONNECTING_WIFI:
@@ -799,7 +1171,7 @@ void renderScreen(bool forceRedraw = false) {
     case STATE_STANDBY:
     case STATE_VERIFYING: // deliberately identical to STANDBY - see the enum comment
       statusColor = tft.color565(87, 101, 116);
-      statusText = "STANDBY (VOICE / TOUCH)";
+      statusText = "STANDBY";
       break;
     case STATE_LISTENING:
       statusColor = tft.color565(46, 213, 115);
@@ -1239,20 +1611,54 @@ void micReadRateTest() {
                 (long long)maxRms);
 }
 
-// Sends one framed message: [1 byte type][4 bytes big-endian length][data].
-// type 0x00 = text/JSON, 0x01 = binary PCM. Matches HardwareTcpClient in
-// index.js and the ESPHome ims_bridge component exactly. Core 1 only.
+// Wire framing, both directions, matching HardwareTcpClient in index.js:
+//   [0xA5][0x5A][1 byte type][4 bytes big-endian length][payload]
+// type 0x00 = text/JSON, 0x01 = binary PCM.
+//
+// The two magic bytes are what make a desync survivable. With a bare
+// length prefix, losing a single byte anywhere in the stream is permanently
+// fatal: every subsequent "header" is really payload, so the length field is
+// garbage (we were reading audio samples as a 4GB length), and the only
+// available response was to drop the connection - killing playback mid-reply
+// and, because the reconnect re-entered the same state, doing it again and
+// again. With a marker, the parser can scan forward to the next real frame
+// boundary and carry on, so the socket stays up for the life of the device.
+#define FRAME_MAGIC0 0xA5
+#define FRAME_MAGIC1 0x5A
+#define FRAME_HEADER_LEN 7 // magic(2) + type(1) + length(4)
+
+// Writes every byte or reports failure. WiFiClient::write() can legitimately
+// return a SHORT count, and the old code ignored the return value entirely -
+// a short payload write tells the peer "expect N bytes", delivers fewer, and
+// desynchronises its parser permanently. With FRAME_MAGIC (below) the peer can
+// now resynchronise from that, but it still shouldn't happen silently.
+bool writeAll(const uint8_t *data, size_t len) {
+  size_t sent = 0;
+  while (sent < len) {
+    if (!tcpClient.connected()) return false;
+    int n = tcpClient.write(data + sent, len - sent);
+    if (n <= 0) {
+      Serial.printf("[TCP] Short write: %u of %u bytes\n", (unsigned)sent, (unsigned)len);
+      return false;
+    }
+    sent += n;
+  }
+  return true;
+}
+
 void sendFrame(uint8_t type, const uint8_t *data, size_t len) {
   if (!tcpClient.connected()) return;
-  uint8_t header[5];
-  header[0] = type;
-  header[1] = (len >> 24) & 0xFF;
-  header[2] = (len >> 16) & 0xFF;
-  header[3] = (len >> 8) & 0xFF;
-  header[4] = len & 0xFF;
-  tcpClient.write(header, sizeof(header));
+  uint8_t header[FRAME_HEADER_LEN];
+  header[0] = FRAME_MAGIC0;
+  header[1] = FRAME_MAGIC1;
+  header[2] = type;
+  header[3] = (len >> 24) & 0xFF;
+  header[4] = (len >> 16) & 0xFF;
+  header[5] = (len >> 8) & 0xFF;
+  header[6] = len & 0xFF;
+  if (!writeAll(header, sizeof(header))) return;
   if (len > 0) {
-    tcpClient.write(data, len);
+    writeAll(data, len);
   }
 }
 
@@ -1300,6 +1706,23 @@ void sendDebug(const char *text) {
   if (!tcpClient.connected()) return;
   String msg = "{\"debug\":\"" + String(text) + "\"}";
   sendFrame(0x00, (const uint8_t *)msg.c_str(), msg.length());
+}
+
+// Tells Gemini the realtimeInput audio stream has genuinely ended (per the
+// Live API spec, appropriate under the default automatic/server-side VAD
+// mode we use - audioStreamEnd, not clientContent.turnComplete, which only
+// applies to text turns). Needed because previously, whenever a
+// STATE_VERIFYING candidate or a LISTENING turn got abandoned locally
+// (verify_timeout, session_idle_timeout, mic muted mid-turn) the firmware
+// just stopped sending mic audio with no signal at all - Gemini was left
+// with an audio stream that silently stopped, no formal end. Every one of
+// those is now told explicitly, so nothing is left open/ambiguous on
+// Gemini's side across repeated wake-candidate checks.
+void sendAudioStreamEnd() {
+  if (!tcpClient.connected() || !geminiSetupComplete) return;
+  const char *msg = "{\"realtimeInput\":{\"audioStreamEnd\":true}}";
+  sendFrame(0x00, (const uint8_t *)msg, strlen(msg));
+  Serial.println("[IMS] Sent audioStreamEnd - abandoned input stream closed cleanly on Gemini's side");
 }
 
 // Plays a short 440Hz tone directly via i2s_channel_write(), bypassing Gemini and
@@ -1478,8 +1901,38 @@ void sendTurnComplete() {
 bool usingFallback = false;
 int connectionAttempts = 0;
 
+// Mid-conversation TCP cutoffs have been traced to the DEVICE sending an RST
+// to the backend (read ECONNRESET server-side) right at/near the end of a
+// spoken reply, with no application-level cause found (not the frame-too-large
+// self-drop, not low heap, not weak WiFi) and the device re-connecting within
+// single-digit milliseconds - too fast for a normal reboot's WiFi
+// reassociation, but NOT too fast to rule out a brownout, which resets just
+// the chip/WiFi state, not necessarily requiring a fresh AP handshake.
+// esp_reset_reason() survives across that kind of reset and tells us for
+// certain whether the chip actually reset (ESP_RST_BROWNOUT/PANIC/TASK_WDT/
+// etc.) versus a genuinely TCP-only-level event (ESP_RST_POWERON only on
+// the very first boot, otherwise whatever the reason was BEFORE this boot).
+const char *resetReasonName(esp_reset_reason_t reason) {
+  switch (reason) {
+    case ESP_RST_POWERON: return "POWERON";
+    case ESP_RST_EXT: return "EXT_PIN";
+    case ESP_RST_SW: return "SW_RESET";
+    case ESP_RST_PANIC: return "PANIC";
+    case ESP_RST_INT_WDT: return "INT_WDT";
+    case ESP_RST_TASK_WDT: return "TASK_WDT";
+    case ESP_RST_WDT: return "OTHER_WDT";
+    case ESP_RST_DEEPSLEEP: return "DEEPSLEEP_WAKE";
+    case ESP_RST_BROWNOUT: return "BROWNOUT";
+    case ESP_RST_SDIO: return "SDIO";
+    default: return "UNKNOWN";
+  }
+}
+
 void connectToBackend() {
   tcpClient.stop();
+  // Whatever partial frame the old socket was mid-way through is gone with
+  // it - see incomingParserResetPending's declaration.
+  incomingParserResetPending = true;
   Serial.printf("[TCP] Connecting to PRIMARY (Local LAN): %s:%d\n",
                 IMS_PRIMARY_HOST, IMS_TCP_PORT);
   currentState = STATE_CONNECTING_SERVER;
@@ -1489,9 +1942,67 @@ void connectToBackend() {
     isSetupAcknowledged = true;
     geminiSetupComplete = false; // Will be set true when Gemini ACKs setup
     sendSetupHandshake();
+    char resetDbg[48];
+    snprintf(resetDbg, sizeof(resetDbg), "boot_reset_reason=%s", resetReasonName(esp_reset_reason()));
+    sendDebug(resetDbg);
   } else {
     Serial.println("[TCP] Connect failed - will retry");
     connectionAttempts++;
+  }
+}
+
+void flushSettingsSave(); // defined just below startPreview() - see its own comment
+
+// Kicks off the voice/personality preview flow (see PreviewFlowState above
+// and the state machine in loop()) - used by both the voice picker's arrow
+// taps and the personality screen's Play button. No-ops if a preview is
+// already in flight, matching the greyed-out button/arrows the UI shows in
+// that state.
+void startPreview(const String &text) {
+  if (previewFlow != PREVIEW_IDLE) return;
+  // Force-saves any still-debounced change first (so e.g. a Play tap right
+  // after dragging a slider previews the position actually left it at) -
+  // but if that change was a voice-arrow tap still waiting on its OWN "Hi,
+  // I'm X" preview, flushSettingsSave() fires that preview itself, which
+  // claims previewFlow before we get to. Re-checking afterwards means THIS
+  // call backs off rather than stomping it - otherwise a Play tap landing in
+  // that ~600ms window would silently swallow the voice preview for good,
+  // since settingsDirty would already be false by the time the normal
+  // debounce check in loop() got a chance to fire it.
+  flushSettingsSave();
+  if (previewFlow != PREVIEW_IDLE) return;
+  setSpeakerMute(true);
+  if (audioPlaybackQueue) {
+    xQueueReset(audioPlaybackQueue);
+  }
+  previewPendingText = text;
+  previewFlow = PREVIEW_RECONNECT;
+  previewFlowStartMs = millis();
+  if (onVoiceScreen) {
+    drawVoiceScreen();
+  } else if (onSettingsScreen) {
+    tft.startWrite();
+    drawPlayButton();
+    tft.endWrite();
+  }
+}
+
+// Shared by the periodic debounce check in loop() and every place that used
+// to inline "if (settingsDirty) { save; post; }" (the back arrows, the
+// voice-icon, and startPreview() above) - saving is only half the job when
+// the dirty change was a voice-arrow tap: pendingVoicePreview also needs to
+// fire its "Hi, I'm X" preview, and funnelling every save through one place
+// means that can never get silently dropped by whichever caller happens to
+// save first.
+void flushSettingsSave() {
+  if (!settingsDirty) return;
+  savePersonalityToNVS();
+  postPersonalityToBackend();
+  settingsDirty = false;
+  if (pendingVoicePreview) {
+    pendingVoicePreview = false;
+    String name = PERSONALITY_VOICES[personalityVoiceIndex];
+    startPreview("Say exactly, with nothing else before or after it: \"Hi, I'm " + name + ".\"");
   }
 }
 
@@ -1727,7 +2238,14 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
 // plain WiFiClient has no event loop of its own, so this is called every
 // pass through loop() instead. Core 1 only.
 void pollIncoming() {
-  static uint8_t header[5];
+  // RX_SYNC: hunting for the two magic bytes that start every frame.
+  // RX_HEADER: magic found, reading type + length.
+  // RX_PAYLOAD: reading the payload itself.
+  enum RxState { RX_SYNC, RX_HEADER, RX_PAYLOAD };
+  static RxState rxState = RX_SYNC;
+  static uint8_t syncMatched = 0; // magic bytes matched so far (0 or 1)
+  static uint32_t resyncSkipped = 0; // bytes discarded hunting for the marker
+  static uint8_t header[5]; // type(1) + length(4), magic already consumed
   static size_t headerBytesRead = 0;
   static uint8_t frameType = 0;
   static uint32_t frameLen = 0;
@@ -1742,8 +2260,50 @@ void pollIncoming() {
     }
   }
 
+  // A new socket always starts at a frame boundary - drop any half-read frame
+  // left over from the previous one (see incomingParserResetPending).
+  if (incomingParserResetPending) {
+    incomingParserResetPending = false;
+    if (rxState != RX_SYNC || headerBytesRead != 0 || frameBytesRead != 0) {
+      Serial.printf("[TCP] Parser reset mid-frame (state=%d hdr=%u payload=%u/%u) - discarding\n",
+                    (int)rxState, (unsigned)headerBytesRead, (unsigned)frameBytesRead, (unsigned)frameLen);
+    }
+    rxState = RX_SYNC;
+    syncMatched = 0;
+    resyncSkipped = 0;
+    headerBytesRead = 0;
+    frameBytesRead = 0;
+    frameLen = 0;
+    frameType = 0;
+  }
+
   while (tcpClient.available() > 0) {
-    if (headerBytesRead < sizeof(header)) {
+    if (rxState == RX_SYNC) {
+      uint8_t b;
+      int n = tcpClient.read(&b, 1);
+      if (n <= 0) return;
+      if (syncMatched == 0) {
+        if (b == FRAME_MAGIC0) {
+          syncMatched = 1;
+        } else {
+          resyncSkipped++;
+        }
+      } else { // already have MAGIC0
+        if (b == FRAME_MAGIC1) {
+          syncMatched = 0;
+          headerBytesRead = 0;
+          rxState = RX_HEADER;
+        } else if (b == FRAME_MAGIC0) {
+          resyncSkipped++; // previous byte was a false start; this one may not be
+        } else {
+          resyncSkipped += 2;
+          syncMatched = 0;
+        }
+      }
+      continue;
+    }
+
+    if (rxState == RX_HEADER) {
       int n = tcpClient.read(header + headerBytesRead,
                               sizeof(header) - headerBytesRead);
       if (n <= 0) return;
@@ -1754,26 +2314,49 @@ void pollIncoming() {
                  ((uint32_t)header[3] << 8) | (uint32_t)header[4];
       frameBytesRead = 0;
       if (frameLen > FRAME_BUF_CAPACITY) {
-        Serial.printf("[TCP] Frame too large (%u bytes) - dropping "
-                      "connection\n",
+        // The magic matched but the length is impossible, so those two bytes
+        // were payload that happened to look like a marker. Go back to
+        // hunting rather than dropping the connection - a bogus length is no
+        // longer a fatal event.
+        Serial.printf("[TCP] Implausible frame len %u after marker - resyncing\n",
                       (unsigned)frameLen);
-        tcpClient.stop();
+        resyncSkipped += FRAME_HEADER_LEN;
+        rxState = RX_SYNC;
+        syncMatched = 0;
         headerBytesRead = 0;
-        return;
+        frameLen = 0;
+        continue;
       }
+      rxState = RX_PAYLOAD;
     }
 
-    if (frameBytesRead < frameLen) {
-      int n = tcpClient.read(frameBuf + frameBytesRead,
-                              frameLen - frameBytesRead);
-      if (n <= 0) return;
-      frameBytesRead += n;
-      if (frameBytesRead < frameLen) return; // wait for rest
-    }
+    if (rxState == RX_PAYLOAD) {
+      if (frameBytesRead < frameLen) {
+        int n = tcpClient.read(frameBuf + frameBytesRead,
+                                frameLen - frameBytesRead);
+        if (n <= 0) return;
+        frameBytesRead += n;
+        if (frameBytesRead < frameLen) return; // wait for rest
+      }
 
-    handleFrame(frameType, frameBuf, frameLen);
-    headerBytesRead = 0;
-    frameBytesRead = 0;
+      // Report a completed recovery once we're genuinely back in step. The
+      // skipped-byte count is the diagnostic that says how far out of step we
+      // were, which points at whatever dropped or duplicated bytes upstream.
+      if (resyncSkipped > 0) {
+        Serial.printf("[TCP] Resynced after skipping %u bytes\n", (unsigned)resyncSkipped);
+        char dbgMsg[64];
+        snprintf(dbgMsg, sizeof(dbgMsg), "resync skipped=%u state=%d",
+                 (unsigned)resyncSkipped, (int)currentState);
+        sendDebug(dbgMsg);
+        resyncSkipped = 0;
+      }
+
+      handleFrame(frameType, frameBuf, frameLen);
+      rxState = RX_SYNC;
+      syncMatched = 0;
+      headerBytesRead = 0;
+      frameBytesRead = 0;
+    }
   }
 }
 
@@ -1926,8 +2509,12 @@ void audioMicTask(void *param) {
         // *candidate* - Gemini is the one that actually judges whether it
         // was one of Ims's wake phrases, via the noWakeDetected contract in
         // beginVerifying()/handleFrame().
+        // onSettingsScreen check: currentState stays STATE_STANDBY the whole
+        // time the settings screen is open (see the touch handler in loop()),
+        // so without this a wake candidate could fire and steal focus while
+        // the user is mid-drag on a slider.
         bool canWakeDetect = (!isSpeakerCoolingDown()) && !isMicHardwareMuted &&
-                             (currentState == STATE_STANDBY);
+                             (currentState == STATE_STANDBY) && !onSettingsScreen;
         bool wakeTriggeredThisChunk = false;
         static int wakeStreak = 0;
         if (canWakeDetect) {
@@ -2056,6 +2643,8 @@ void setup() {
   Serial.println("  IMS ESP32-S3-BOX-3 Hardware Terminal");
   Serial.println("===============================================");
 
+  loadPersonalityFromNVS();
+
   // 1. Initialise LovyanGFX Display & Touch. GPIO48 is NOT the LCD reset pin
   // (see LGFX_BOX3 class above) - leave it as input_pullup, matching
   // LovyanGFX's own validated board_ESP32_S3_BOX_V3 profile, since it may
@@ -2162,6 +2751,40 @@ void loop() {
     isSetupAcknowledged = false;
     geminiSetupComplete = false;
     micStreamingActive = false;
+    incomingParserResetPending = true; // see its declaration - stale framing state desyncs the next socket
+    // audioPlaybackTask (Core 0) keeps draining audioPlaybackQueue on its own
+    // schedule regardless of TCP state - if the connection died with
+    // unplayed audio still queued (Gemini streams ahead of real-time
+    // playback), that backlog would otherwise keep playing out the speaker
+    // after the connection is already dead, and then whatever conversation
+    // comes next after reconnecting inherits it as a jarring, out-of-context
+    // snippet. Stop and clear it here, not just at the next
+    // beginListening()/beginVerifying(), which only flushes what's left in
+    // the queue at THAT moment - too late for anything already mid-flight.
+    setSpeakerMute(true);
+    if (audioPlaybackQueue) {
+      xQueueReset(audioPlaybackQueue);
+    }
+    conversationOpen = false;
+    conversationShouldClose = false;
+    // If this drop happened mid-preview (voice arrow / Play button), don't
+    // leave previewFlow waiting on a connection that's now gone. Whatever
+    // reconnects next (the automatic retry below, or a fresh tap) is NOT the
+    // connection this preview asked for - if previewFlow were left in
+    // PREVIEW_AWAIT_SETUP/PREVIEW_SPEAKING, the now-stale previewPendingText
+    // could end up spoken once some unrelated later connection happens to
+    // complete setup, well after the user has moved on - exactly the "snippet
+    // of another conversation" symptom. Aborting immediately here,
+    // unconditionally and regardless of which preview sub-state it was in,
+    // means a crash mid-preview always shows as "button re-enabled, try
+    // again" instead.
+    if (previewFlow != PREVIEW_IDLE) {
+      Serial.println("[Preview] Connection dropped mid-preview - aborting");
+      previewFlow = PREVIEW_IDLE;
+      previewPendingText = "";
+      if (onVoiceScreen) drawVoiceScreen();
+      else if (onSettingsScreen) { tft.startWrite(); drawPlayButton(); tft.endWrite(); }
+    }
   }
   wasConnected = nowConnected;
 
@@ -2196,12 +2819,33 @@ void loop() {
   }
 
   // Heartbeat so we can tell "connected but idle" apart from "not receiving
-  // telemetry at all" in the backend log.
+  // telemetry at all" in the backend log. Now also carries free heap
+  // (current + all-time minimum) and WiFi RSSI - added specifically to
+  // investigate a device-side TCP RST seen during active playback
+  // (ECONNRESET on the backend's read from this socket, ~100s into a
+  // session). A trending-down minFreeHeap would point at a leak/
+  // fragmentation issue causing an eventual crash/reset under the combined
+  // I2S + WiFi + display load; a collapsing RSSI would point at signal/RF
+  // instead. No existing telemetry covered either before now.
   static unsigned long lastHeartbeat = 0;
   if (millis() - lastHeartbeat > 5000) {
     lastHeartbeat = millis();
-    char hb[48];
-    snprintf(hb, sizeof(hb), "heartbeat state=%d", (int)currentState);
+    char hb[160];
+    // ESP.getFreeHeap()/getMinFreeHeap() report the DEFAULT heap, which on
+    // this board is mostly PSRAM (ps_malloc() is used explicitly elsewhere
+    // for the big audio buffers specifically BECAUSE the default pool draws
+    // from PSRAM first) - a healthy-looking total could still be masking a
+    // slow leak/fragmentation in INTERNAL RAM specifically, which is the
+    // only pool WiFi/lwIP's own buffers can actually use. intHeap/intMin
+    // isolate that internal-only pool so a leak there is visible even while
+    // the combined total still looks fine.
+    char hb2[64];
+    snprintf(hb2, sizeof(hb2), " intHeap=%u intMin=%u",
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
+    snprintf(hb, sizeof(hb), "heartbeat state=%d heap=%u minHeap=%u rssi=%d%s",
+             (int)currentState, (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap(),
+             (int)WiFi.RSSI(), hb2);
     sendDebug(hb);
   }
 
@@ -2215,6 +2859,9 @@ void loop() {
     isMicHardwareMuted = muteButtonActive;
     if (isMicHardwareMuted) {
       Serial.println("[Button] Physical mic MUTE switch engaged (button illuminated)");
+      if (currentState == STATE_LISTENING || currentState == STATE_VERIFYING) {
+        sendAudioStreamEnd(); // was mid-stream - close it out cleanly on Gemini's side
+      }
       micStreamingActive = false;
       isSpeakingDetected = false;
       conversationOpen = false;
@@ -2284,6 +2931,7 @@ void loop() {
   if ((currentState == STATE_LISTENING || currentState == STATE_THINKING) &&
       (millis() - lastSpeechTimestamp > SESSION_IDLE_TIMEOUT_MS)) {
     sendDebug("session_idle_timeout");
+    if (currentState == STATE_LISTENING) sendAudioStreamEnd(); // was mid-stream
     currentState = STATE_STANDBY;
     micStreamingActive = false;
     conversationOpen = false;
@@ -2300,6 +2948,7 @@ void loop() {
   // audio without prematurely dropping back to STANDBY.
   if (currentState == STATE_VERIFYING && (millis() - lastSpeechTimestamp > 8000)) {
     sendDebug("verify_timeout");
+    sendAudioStreamEnd(); // this is exactly the case that was never being closed
     currentState = STATE_STANDBY;
     micStreamingActive = false;
     isSpeakingDetected = false;
@@ -2331,10 +2980,120 @@ void loop() {
     }
   }
 
+  // Settings screen save debounce - checked every loop iteration regardless
+  // of touch, so a save actually fires ~600ms after the LAST drag movement
+  // rather than needing another touch event to trigger it. A voice-arrow
+  // tap sets pendingVoicePreview so the preview only actually fires once
+  // the settle-then-save the user's FINAL choice, not on every intermediate
+  // tap while they're still cycling through voices.
+  if (settingsDirty && (millis() - settingsLastChangeMs > SETTINGS_SAVE_DEBOUNCE_MS)) {
+    flushSettingsSave();
+  }
+
+  // Voice/personality preview flow - see startPreview() near
+  // connectToBackend() and the PreviewFlowState comment above onVoiceScreen.
+  if (previewFlow == PREVIEW_RECONNECT) {
+    connectToBackend();
+    previewFlow = PREVIEW_AWAIT_SETUP;
+    previewFlowStartMs = millis();
+  } else if (previewFlow == PREVIEW_AWAIT_SETUP) {
+    if (geminiSetupComplete) {
+      sendTextQuery(previewPendingText.c_str());
+      previewFlow = PREVIEW_SPEAKING;
+      previewFlowStartMs = millis();
+    } else if (millis() - previewFlowStartMs > 8000) {
+      Serial.println("[Preview] Gave up waiting for Gemini setup - aborting preview");
+      previewFlow = PREVIEW_IDLE;
+      if (onVoiceScreen) drawVoiceScreen();
+      else if (onSettingsScreen) { tft.startWrite(); drawPlayButton(); tft.endWrite(); }
+    }
+  } else if (previewFlow == PREVIEW_SPEAKING) {
+    bool stillActive = (currentState == STATE_THINKING || currentState == STATE_SPEAKING || isSpeakerActive());
+    if (!stillActive || (millis() - previewFlowStartMs > 20000)) {
+      previewFlow = PREVIEW_IDLE;
+      if (onVoiceScreen) drawVoiceScreen();
+      else if (onSettingsScreen) { tft.startWrite(); drawPlayButton(); tft.endWrite(); }
+    }
+  }
+
   // Touch feedback
   uint16_t touchX, touchY;
   if (tft.getTouch(&touchX, &touchY)) {
-    if (isMicHardwareMuted) {
+    if (onVoiceScreen) {
+      if (touchX >= VOICE_BACK_ZONE_X0 && touchX <= VOICE_BACK_ZONE_X1 && touchY >= VOICE_BACK_ZONE_Y0 && touchY <= VOICE_BACK_ZONE_Y1) {
+        // "< PERSONALITY": back up one level. Flush any pending voice change
+        // first (fires its "Hi, I'm X" preview rather than leaving it to the
+        // passive debounce timer, and rather than losing it if a Play tap on
+        // the personality screen races in before that timer fires).
+        flushSettingsSave();
+        onVoiceScreen = false;
+        drawSettingsScreen();
+      } else if (previewFlow == PREVIEW_IDLE && touchY >= VOICE_ARROW_Y0 && touchY <= VOICE_ARROW_Y1) {
+        // Left/right arrows cycle the voice - ignored while a preview is
+        // already in flight, matching the greyed-out arrows drawVoiceScreen()
+        // shows in that state.
+        if (touchX >= VOICE_LEFT_ARROW_X0 && touchX <= VOICE_LEFT_ARROW_X1) {
+          personalityVoiceIndex = (personalityVoiceIndex - 1 + PERSONALITY_VOICE_COUNT) % PERSONALITY_VOICE_COUNT;
+          settingsDirty = true;
+          pendingVoicePreview = true;
+          settingsLastChangeMs = millis();
+          drawVoiceScreen();
+          delay(200);
+        } else if (touchX >= VOICE_RIGHT_ARROW_X0 && touchX <= VOICE_RIGHT_ARROW_X1) {
+          personalityVoiceIndex = (personalityVoiceIndex + 1) % PERSONALITY_VOICE_COUNT;
+          settingsDirty = true;
+          pendingVoicePreview = true;
+          settingsLastChangeMs = millis();
+          drawVoiceScreen();
+          delay(200);
+        }
+      }
+    } else if (onSettingsScreen) {
+      if (touchX >= HEADER_ICON_X0 && touchX <= HEADER_ICON_X1 && touchY >= HEADER_ICON_Y0 && touchY <= HEADER_ICON_Y1) {
+        // Gear icon: back to the main screen. Any pending debounced save
+        // above already ran before this touch is even processed next loop,
+        // but flush one now too so leaving mid-drag never loses a change.
+        flushSettingsSave();
+        onSettingsScreen = false;
+        settingsDraggingAxis = -1;
+        renderScreen(true);
+      } else if (touchX >= HEADER_RIGHT_ZONE_X0 && touchX <= HEADER_RIGHT_ZONE_X1 &&
+                 touchY >= HEADER_RIGHT_ZONE_Y0 && touchY <= HEADER_RIGHT_ZONE_Y1) {
+        // "VOICE >": open the voice picker sub-screen. Flush any pending
+        // change first, same reasoning as the back arrow.
+        flushSettingsSave();
+        onVoiceScreen = true;
+        drawVoiceScreen();
+        delay(200);
+      } else if (touchX >= PLAY_BUTTON_X0 && touchX <= PLAY_BUTTON_X1 && touchY >= PLAY_BUTTON_Y0 && touchY <= PLAY_BUTTON_Y1) {
+        // Play button: speak a fresh sentence showcasing the CURRENT slider
+        // settings. Ignored (no-op) while a preview is already in flight -
+        // the button is greyed out during that window.
+        if (previewFlow == PREVIEW_IDLE) {
+          startPreview("In one short, vivid sentence, say something that really shows off exactly how you talk and think right now - make it distinctly characterful, not generic.");
+        }
+      } else {
+        int row = settingsRowForY(touchY);
+        if (row >= 0 && row < PERSONALITY_AXIS_COUNT) {
+          int clamped = touchX < SETTINGS_TRACK_X0 ? 0 : (touchX > SETTINGS_TRACK_X1 ? 100 :
+                        (int)(((touchX - SETTINGS_TRACK_X0) / (float)(SETTINGS_TRACK_X1 - SETTINGS_TRACK_X0)) * 100));
+          personalityValues[row] = clamped;
+          settingsDraggingAxis = row;
+          settingsDirty = true;
+          settingsLastChangeMs = millis();
+          tft.startWrite();
+          drawSettingsRow(row);
+          tft.endWrite();
+        }
+      }
+    } else if (touchX >= HEADER_ICON_X0 && touchX <= HEADER_ICON_X1 && touchY >= HEADER_ICON_Y0 && touchY <= HEADER_ICON_Y1 &&
+               currentState == STATE_STANDBY && !isMicHardwareMuted) {
+      // Gear icon: only from a genuinely idle STANDBY, so opening settings
+      // never interrupts an actual conversation.
+      onSettingsScreen = true;
+      drawSettingsScreen();
+      delay(200);
+    } else if (isMicHardwareMuted) {
       Serial.println("[Touch] Tap while mic is hardware muted");
       lastTranscript = "Mic is muted (top button lit)";
       renderScreen(true);
@@ -2359,6 +3118,7 @@ void loop() {
       lastTranscript = "Say 'Hey Ims' or tap screen";
       renderScreen(true);
     }
-    delay(200);
+    if (!onSettingsScreen || settingsDraggingAxis < 0) delay(200);
+    settingsDraggingAxis = -1; // one touch sample = one drag step, not a held state
   }
 }
