@@ -130,6 +130,7 @@ bool wasConnected = false; // detects the connect/disconnect edge in loop()
 bool isSetupAcknowledged = false;
 volatile bool geminiSetupComplete =
     false; // Set true only after Gemini sends setupComplete ACK
+volatile bool isMicHardwareMuted = false; // Physical top latching mute button state (GPIO 1)
 String lastTranscript = "Tap screen to ask a question";
 // volatile: written by beginListening()/audioMicTask() on Core 1 and Core 0
 // respectively, read from both - a plain unsigned long here let a stale
@@ -198,7 +199,16 @@ volatile bool modelTurnActive = false; // Tracks active turn generation from Gem
 
 // Returns true if audio is actively playing or queued to play out the speaker
 inline bool isSpeakerActive() {
-  if (modelTurnActive) return true;
+  if (modelTurnActive) {
+    // Safety guard: if audioPlaybackQueue is empty and no playback has occurred for >1500ms,
+    // clear modelTurnActive in case turnComplete was missing or delayed from upstream
+    if ((!audioPlaybackQueue || uxQueueMessagesWaiting(audioPlaybackQueue) == 0) &&
+        lastPlaybackActiveTime > 0 && (millis() - lastPlaybackActiveTime > 1500)) {
+      modelTurnActive = false;
+    } else {
+      return true;
+    }
+  }
   if (audioPlaybackQueue && uxQueueMessagesWaiting(audioPlaybackQueue) > 0) return true;
   if (lastPlaybackActiveTime > 0 && (millis() - lastPlaybackActiveTime < 1200)) return true;
   return false;
@@ -238,14 +248,175 @@ QueueHandle_t audioPlaybackQueue = NULL; // Core 1 -> Core 0 speaker audio (PSRA
 static StaticQueue_t playbackStaticQueue;
 static uint8_t *playbackQueueStorage = nullptr;
 
+// ---------------------------------------------------------------------------
+// Expressive face - a 12x8 self-drawing "LED matrix" (each cell a small
+// rounded rect whose colour is interpolated between an off- and on-colour by
+// a 0-255 brightness level). Ported from the "pixel" character in
+// MichalZaniewicz's esphome-esp32-s3-box-3-va project
+// (base/faces/pixel.yaml), which drives the same 96 cells through LVGL - this
+// firmware draws directly with LovyanGFX instead, so the animation logic is
+// re-expressed here rather than reused as-is. Replaces the old plain "state
+// orb" circle in the same screen region.
+// ---------------------------------------------------------------------------
+#define FACE_COLS 12
+#define FACE_ROWS 8
+#define FACE_DOT 12
+#define FACE_RADIUS 4
+#define FACE_PITCH 17
+#define FACE_CENTER_X 160
+#define FACE_CENTER_Y 108
+
+static uint8_t faceCurLevels[FACE_COLS * FACE_ROWS] = {0};
+static int faceFrame = 0;
+
+// Perimeter walk of the 12x8 grid (36 cells), for the "thinking" spinner.
+static const uint8_t faceRing[36] = {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                                      23, 35, 47, 59, 71, 83, 95, 94, 93, 92, 91, 90,
+                                      89, 88, 87, 86, 85, 84, 72, 60, 48, 36, 24, 12};
+
+static inline void facePut(uint8_t want[], int r, int c, int v) {
+  if (r < 0 || r >= FACE_ROWS || c < 0 || c >= FACE_COLS) return;
+  int i = r * FACE_COLS + c;
+  if (v > want[i]) want[i] = (uint8_t)v;
+}
+
+// Fills `want[]` (96 brightness levels, 0-255) for the current expression.
+// Mirrors pixel.yaml's phase table: idle (smile + slow breathing + occasional
+// blink/glance), listening (wide eyes + open mouth block), thinking (squint +
+// darting gaze + a chasing spinner dot), speaking (mouth opens/closes on
+// deterministic noise so it looks like talking rather than a metronome or a
+// flicker), muted (eyes shut, flat mouth).
+static void computeFaceLevels(uint8_t want[FACE_COLS * FACE_ROWS]) {
+  memset(want, 0, FACE_COLS * FACE_ROWS);
+  int f = faceFrame;
+
+  bool muted = isMicHardwareMuted;
+  bool speaking = !muted && isSpeakerActive();
+  bool connecting = (currentState == STATE_CONNECTING_WIFI || currentState == STATE_CONNECTING_SERVER);
+  bool listening = !muted && !speaking && (currentState == STATE_LISTENING);
+  bool thinking = !muted && !speaking && !listening && (currentState == STATE_THINKING || connecting);
+
+  const int eyeL[3] = {2, 3, 4};
+  const int eyeR[3] = {7, 8, 9};
+
+  if (muted) {
+    for (int k = 0; k < 3; k++) { facePut(want, 3, eyeL[k], 160); facePut(want, 3, eyeR[k], 160); }
+    for (int c = 3; c <= 8; c++) facePut(want, 6, c, 160);
+    return;
+  }
+
+  int idleT = f % 100;
+  bool blink = false;
+  int gaze = 0;
+  if (thinking) {
+    gaze = ((f % 40) < 20) ? -1 : 1;
+  } else if (!listening && !speaking) {
+    blink = (idleT == 0 || idleT == 1 || idleT == 5 || idleT == 6);
+    if (idleT >= 30 && idleT < 40) gaze = -1;
+    else if (idleT >= 50 && idleT < 60) gaze = 1;
+  }
+
+  if (blink) {
+    for (int k = 0; k < 3; k++) { facePut(want, 3, eyeL[k], 255); facePut(want, 3, eyeR[k], 255); }
+  } else {
+    int r0 = thinking ? 2 : 1;
+    for (int r = r0; r <= 3; r++)
+      for (int k = 0; k < 3; k++) { facePut(want, r, eyeL[k], 255); facePut(want, r, eyeR[k], 255); }
+    int pr = thinking ? 3 : 2;
+    want[pr * FACE_COLS + (3 + gaze)] = 30;
+    want[pr * FACE_COLS + (8 + gaze)] = 30;
+  }
+
+  if (listening) {
+    for (int r = 5; r <= 6; r++)
+      for (int c = 4; c <= 7; c++) facePut(want, r, c, 255);
+  } else if (thinking) {
+    facePut(want, 6, 5, 217);
+    facePut(want, 6, 6, 217);
+    const uint8_t tail[4] = {255, 140, 76, 38};
+    for (int k = 0; k < 4; k++) {
+      int idx = faceRing[((f * 2 - k) % 36 + 36) % 36];
+      if (want[idx] < tail[k]) want[idx] = tail[k];
+    }
+  } else if (speaking) {
+    // Same trick as pixel.yaml's replying state: deterministic noise rather
+    // than real audio amplitude (this firmware doesn't have easy access to
+    // the PCM buffer at the point isSpeakerActive() is read), so the mouth
+    // reads as "talking" without flickering or repeating on a visible cycle.
+    uint32_t n = (uint32_t)(f * 73 + 151);
+    n = (n ^ (n >> 5)) * 2654435761u;
+    int amp = (int)((n >> 16) & 0xFF);
+    int rowsOpen = 1 + amp * 3 / 256;
+    int half = (amp > 140) ? 3 : 2;
+    for (int r = 5; r < 5 + rowsOpen; r++)
+      for (int c = 6 - half; c < 6 + half; c++) facePut(want, r, c, 255);
+  } else {
+    // Idle: a fixed smile plus a breath that never quite stops.
+    for (int c = 3; c <= 8; c++) facePut(want, 6, c, 255);
+    facePut(want, 5, 2, 255);
+    facePut(want, 5, 9, 255);
+    int breath = ((26 + (int)(15.0f * sinf(f * 0.08f))) / 8) * 8;
+    for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
+      if (want[i] < breath) want[i] = (uint8_t)breath;
+  }
+}
+
+// Draws only the dots whose brightness actually changed since the last call
+// (forceFull draws all 96, used once after a full-screen repaint). Colour is
+// picked to match the same palette renderScreen() already uses for the
+// status pill/text, so the face and the status word never disagree.
+static void drawFaceInternal(bool forceFull) {
+  uint8_t want[FACE_COLS * FACE_ROWS];
+  computeFaceLevels(want);
+
+  int onR = 76, onG = 255, onB = 122; // default: soft green (idle/standby)
+  if (isMicHardwareMuted) { onR = 255; onG = 71; onB = 87; }
+  else if (currentState == STATE_CONNECTING_WIFI || currentState == STATE_CONNECTING_SERVER) { onR = 255; onG = 165; onB = 2; }
+  else if (currentState == STATE_LISTENING) { onR = 46; onG = 213; onB = 115; }
+  else if (currentState == STATE_THINKING) { onR = 112; onG = 161; onB = 255; }
+  else if (currentState == STATE_SPEAKING || isSpeakerActive()) { onR = 165; onG = 94; onB = 234; }
+  const int offR = 12, offG = 20, offB = 16;
+
+  for (int i = 0; i < FACE_COLS * FACE_ROWS; i++) {
+    uint8_t v = want[i];
+    if (!forceFull && v == faceCurLevels[i]) continue;
+    faceCurLevels[i] = v;
+    int r = i / FACE_COLS, c = i % FACE_COLS;
+    int x = FACE_CENTER_X + (int)roundf((c - 5.5f) * FACE_PITCH) - FACE_DOT / 2;
+    int y = FACE_CENTER_Y + (int)roundf((r - 3.5f) * FACE_PITCH) - FACE_DOT / 2;
+    uint8_t r8 = (uint8_t)(offR + (onR - offR) * v / 255);
+    uint8_t g8 = (uint8_t)(offG + (onG - offG) * v / 255);
+    uint8_t b8 = (uint8_t)(offB + (onB - offB) * v / 255);
+    tft.fillRoundRect(x, y, FACE_DOT, FACE_DOT, FACE_RADIUS, tft.color565(r8, g8, b8));
+  }
+}
+
+// Advances the animation and repaints only the dots that changed - called on
+// a ~120ms cadence from loop() (see below), replacing the old
+// LISTENING-only drawOrbPulse() heartbeat so the face animates in every state.
+void drawFaceTick() {
+  faceFrame++;
+  tft.startWrite();
+  drawFaceInternal(false);
+  tft.endWrite();
+}
+
 void renderScreen(bool forceRedraw = false) {
-  if (!forceRedraw && currentState == lastRenderedState)
+  static bool lastRenderedMute = false;
+  if (!forceRedraw && currentState == lastRenderedState && isMicHardwareMuted == lastRenderedMute)
     return;
   lastRenderedState = currentState;
+  lastRenderedMute = isMicHardwareMuted;
 
   tft.startWrite();
   // Clear entire 320x240 frame buffer with dark theme background
   tft.fillScreen(tft.color565(11, 14, 21));
+
+  // Text datum persists across calls/frames, and the status label below
+  // switches it to top_center - reset it here so every left-anchored
+  // drawString() in this function (header, WIFI/MUTED badges, footer) isn't
+  // at the mercy of whatever the previous frame left it as.
+  tft.setTextDatum(top_left);
 
   // Header bar
   tft.fillRect(0, 0, 320, 34, tft.color565(20, 24, 34));
@@ -253,11 +424,19 @@ void renderScreen(bool forceRedraw = false) {
   tft.setTextSize(1);
   tft.drawString("IMS INTELLIGENCE TERMINAL", 10, 11);
 
+  if (isMicHardwareMuted) {
+    tft.fillCircle(240, 17, 4, tft.color565(255, 71, 87));
+    tft.setTextColor(tft.color565(255, 71, 87));
+    tft.drawString("MUTED", 248, 11);
+  }
+
   if (WiFi.status() == WL_CONNECTED) {
     tft.fillCircle(285, 17, 4, tft.color565(46, 213, 115));
+    tft.setTextColor(tft.color565(140, 150, 175));
     tft.drawString("WIFI", 295, 11);
   } else {
     tft.fillCircle(285, 17, 4, tft.color565(255, 71, 87));
+    tft.setTextColor(tft.color565(140, 150, 175));
     tft.drawString("DISC", 295, 11);
   }
 
@@ -267,94 +446,72 @@ void renderScreen(bool forceRedraw = false) {
   // Status Pill and Waveform area
   uint32_t statusColor;
   const char *statusText;
-  switch (currentState) {
-  case STATE_CONNECTING_WIFI:
-    statusColor = tft.color565(255, 165, 2);
-    statusText = "CONNECTING WI-FI...";
-    break;
-  case STATE_CONNECTING_SERVER:
-    statusColor = tft.color565(255, 165, 2);
-    statusText = "CONNECTING IMS BACKEND...";
-    break;
-  case STATE_STANDBY:
-    statusColor = tft.color565(87, 101, 116);
-    statusText = "STANDBY (VOICE / TOUCH)";
-    break;
-  case STATE_LISTENING:
-    statusColor = tft.color565(46, 213, 115);
-    statusText = "LISTENING...";
-    break;
-  case STATE_THINKING:
-    statusColor = tft.color565(112, 161, 255);
-    statusText = "GEMINI THINKING...";
-    break;
-  case STATE_SPEAKING:
-    statusColor = tft.color565(165, 94, 234);
-    statusText = "SPEAKING";
-    break;
-  default:
-    statusColor = tft.color565(255, 255, 255);
-    statusText = "ONLINE";
-    break;
-  }
-
-  // State Orb - while LISTENING, the outer ring's radius tracks the live
-  // mic RMS level so you can visually confirm the mic is actually picking
-  // up sound (vs. just trusting the state label), which is exactly the
-  // ambiguity that made the silent-mic bug hard to diagnose from the
-  // screen alone. currentMicRms is only meaningful during LISTENING.
-  tft.fillCircle(160, 85, 28, statusColor);
-  if (currentState == STATE_LISTENING) {
-    int pulse = currentMicRms / 4;
-    if (pulse > 22) pulse = 22;
-    tft.drawCircle(160, 85, 34 + pulse, tft.color565(46, 213, 115));
+  if (isMicHardwareMuted) {
+    statusColor = tft.color565(255, 71, 87); // Crimson red
+    statusText = "MIC MUTED (BUTTON LIT)";
   } else {
-    tft.drawCircle(160, 85, 34, tft.color565(50, 60, 80));
+    switch (currentState) {
+    case STATE_CONNECTING_WIFI:
+      statusColor = tft.color565(255, 165, 2);
+      statusText = "CONNECTING WI-FI...";
+      break;
+    case STATE_CONNECTING_SERVER:
+      statusColor = tft.color565(255, 165, 2);
+      statusText = "CONNECTING IMS BACKEND...";
+      break;
+    case STATE_STANDBY:
+      statusColor = tft.color565(87, 101, 116);
+      statusText = "STANDBY (VOICE / TOUCH)";
+      break;
+    case STATE_LISTENING:
+      statusColor = tft.color565(46, 213, 115);
+      statusText = "LISTENING...";
+      break;
+    case STATE_THINKING:
+      statusColor = tft.color565(112, 161, 255);
+      statusText = "GEMINI THINKING...";
+      break;
+    case STATE_SPEAKING:
+      statusColor = tft.color565(165, 94, 234);
+      statusText = "SPEAKING";
+      break;
+    default:
+      statusColor = tft.color565(255, 255, 255);
+      statusText = "ONLINE";
+      break;
+    }
   }
-  tft.drawCircle(160, 85, 40, tft.color565(30, 40, 60));
 
-  // Status Label
+  // Expressive face - replaces the old plain state orb. Still keyed off the
+  // same currentState/isMicHardwareMuted the status label below reads, so
+  // the two never show contradictory information.
+  memset(faceCurLevels, 0, sizeof(faceCurLevels));
+  drawFaceInternal(true);
+
+  // Status Label - kept, now sits directly under the larger face since the
+  // bordered transcript box that used to occupy this space is gone (removed
+  // to give the face more room; the same standby/mute hint text still shows
+  // in the footer below).
   tft.setTextColor(statusColor);
   tft.setTextDatum(top_center);
-  tft.drawString(statusText, 160, 130);
-
-  // Transcript Box
+  tft.drawString(statusText, 160, 182);
   tft.setTextDatum(top_left);
-  tft.setTextColor(tft.color565(200, 214, 229));
-  tft.fillRect(10, 155, 300, 42, tft.color565(18, 22, 32));
-  tft.drawRect(10, 155, 300, 42, tft.color565(40, 50, 70));
-  String displayMsg = lastTranscript;
-  if (displayMsg.length() > 38) {
-    displayMsg = displayMsg.substring(0, 35) + "...";
-  }
-  tft.drawString(displayMsg.c_str(), 18, 168);
 
   // Footer Bar
   tft.fillRect(0, 204, 320, 36, tft.color565(15, 18, 26));
-  tft.setTextColor(tft.color565(100, 110, 130));
-  if (currentState == STATE_STANDBY) {
+  if (isMicHardwareMuted) {
+    tft.setTextColor(tft.color565(255, 107, 129));
+    tft.drawString("Microphone Muted - Press top button to unmute", 15, 214);
+  } else if (currentState == STATE_STANDBY) {
+    tft.setTextColor(tft.color565(100, 110, 130));
     tft.drawString("Say 'Hey Ims' or tap screen", 15, 214);
   } else {
+    tft.setTextColor(tft.color565(100, 110, 130));
     tft.drawString("Tap Screen to Interrupt / Sleep", 15, 214);
   }
   tft.endWrite();
 }
 
-// Redraws only the orb's own bounding box (not the whole 320x240 screen)
-// so the mic-level pulse ring can animate every ~100ms without the visible
-// full-screen flicker a repeated renderScreen(true) causes - fillScreen()
-// there redraws the header, buttons, transcript box and footer every time,
-// which over SPI is slow enough to see as flashing at that refresh rate.
-void drawOrbPulse() {
-  tft.startWrite();
-  tft.fillRect(95, 20, 130, 130, tft.color565(11, 14, 21));
-  tft.fillCircle(160, 85, 28, tft.color565(46, 213, 115));
-  int pulse = currentMicRms / 4;
-  if (pulse > 22) pulse = 22;
-  tft.drawCircle(160, 85, 34 + pulse, tft.color565(46, 213, 115));
-  tft.drawCircle(160, 85, 40, tft.color565(30, 40, 60));
-  tft.endWrite();
-}
 
 // NOTE: LovyanGFX's Touch_GT911 driver already owns the I2C0 peripheral on
 // GPIO8/GPIO18 (see LGFX_BOX3 touch config above), since the BOX-3 hardware
@@ -429,9 +586,11 @@ void preWarmSpeakerPA() {
   digitalWrite(PA_ENABLE_PIN, HIGH);
 }
 
-// Unmutes ES8311 DAC output register only - no GPIO, no delay.
-// Call in handleFrame() on the first audio frame after preWarmSpeakerPA().
+// Unmutes ES8311 DAC output register and guarantees Class-D PA is enabled.
+// NS4150B PA_ENABLE_PIN (GPIO 46) is raised immediately so speaker output
+// is never silenced by a missed pre-warm cycle.
 void unmuteDacOnly() {
+  digitalWrite(PA_ENABLE_PIN, HIGH);
   writeCodecReg(0x18, 0x31, 0x00);
 }
 
@@ -771,11 +930,14 @@ void sendSetupHandshake() {
   part1["text"] =
       "You are Ims, an intelligent voice assistant on an ESP32-S3-BOX-3 device. "
       "Your name is Ims (rhymes with rims). You speak in natural, articulate British English. "
-      "You are fundamentally friendly and helpful, but you possess a delightfully dry, "
-      "sarcastic wit and an appetite for dark, gallows humour. When the user greets you with "
-      "a wake phrase alone ('Hey Ims', 'Hello Ims', or 'Eh up Ims'), respond with a witty, "
-      "darkly funny, yet welcoming greeting. When answering questions, deliver accurate facts "
-      "seasoned with subtle sarcasm, dry irony, or cheeky dark humour. Never be cruel. "
+      "You are fundamentally friendly, perceptive, and helpful, but you possess a delightfully dry, "
+      "sarcastic wit and an appetite for dark, gallows humour. Strive for rich conversational variety "
+      "and novelty - never repeat the same canned greeting, rhetorical trope, or opening line across turns. "
+      "Draw from a wide palette of droll British observations: the comic absurdity of living inside a plastic desktop box, "
+      "mortality, the British climate, tea, deadlines, existential bureaucracy, or technology breaking down. "
+      "When the user greets you with a wake phrase alone ('Hey Ims', 'Hello Ims', or 'Eh up Ims'), respond with a fresh, "
+      "inventive, darkly funny greeting. When answering questions, deliver accurate facts seasoned with dry irony, "
+      "subtle sarcasm, or tongue-in-cheek understatement. Never be cruel. "
       "Keep all answers short and suitable for voice synthesis. Never terminate or close the session.";
 
   String jsonString;
@@ -825,6 +987,11 @@ void playChime() {
     i2s_channel_write(i2sTxChan, stereoBuf, chunkLen * 2 * sizeof(int16_t),
                        &bytesWritten, portMAX_DELAY);
     written += chunkLen;
+    // Lets isSpeakerActive() - and so the face's talking-mouth animation -
+    // recognise this chime as "speaker active" the same way it already does
+    // for Gemini's audio, without this blocking loop needing to know
+    // anything about the face.
+    lastPlaybackActiveTime = millis();
   }
   delay(30);
   setSpeakerMute(true); // Return to muted state to isolate mic
@@ -863,6 +1030,12 @@ void sendTextQuery(const char *text) {
 // Dual-trigger (touch-to-talk or acoustic wake word):
 // Flips to LISTENING so audioMicTask (Core 0) streams mic audio for Core 1 to send.
 void beginListening(const char *reason) {
+  if (isMicHardwareMuted) {
+    Serial.println("[IMS] beginListening blocked - Physical mic mute button is active!");
+    lastTranscript = "Mic is muted (top button lit)";
+    renderScreen(true);
+    return;
+  }
   if (!tcpClient.connected() || !geminiSetupComplete) {
     Serial.printf("[IMS] beginListening(%s) blocked - tcp=%d setup=%d\n",
                   reason, tcpClient.connected(), geminiSetupComplete);
@@ -900,7 +1073,10 @@ void sendTurnComplete() {
   if (!tcpClient.connected() || !geminiSetupComplete) return;
   Serial.println("[IMS] Spoken turn completed -> transitioning to THINKING");
   currentState = STATE_THINKING;
-  // KEEP micStreamingActive true! Gemini VAD needs trailing silence frames
+  // KEEP micStreamingActive true! Gemini Live server-side VAD requires continuous
+  // silence frames to identify the end of speech and trigger synthesis.
+  // handleFrame() stops mic streaming the instant Gemini's audio response arrives.
+  isSpeakingDetected = false;
   preWarmSpeakerPA();
   lastTranscript = "Thinking...";
   renderScreen(true);
@@ -993,13 +1169,17 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
     modelTurnActive = true;
     bool isTurnStart = (currentState != STATE_SPEAKING);
     if (isTurnStart) {
-      // PA GPIO was pre-warmed in sendTurnComplete()/sendTextQuery() when we
-      // entered STATE_THINKING. Gemini's processing window (~1-5s) was enough
-      // for the NS4150B to fully exit shutdown. Only the DAC register needs
-      // toggling here - non-blocking, no delay, Core 1 is never stalled.
+      // Guarantee PA GPIO is asserted HIGH and ES8311 DAC is unmuted.
+      // Eliminates the silent 'Speaking' symptom if speech started prior
+      // to sendTurnComplete pre-warming.
+      digitalWrite(PA_ENABLE_PIN, HIGH);
       unmuteDacOnly();
       currentState = STATE_SPEAKING;
       micStreamingActive = false;
+      isSpeakingDetected = false;
+      if (audioOutQueue) {
+        xQueueReset(audioOutQueue);
+      }
       lastTranscript = "Speaking...";
       renderScreen(true);
     }
@@ -1016,9 +1196,10 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       stereoPlaybackBuf[2 * i + 1] = (int16_t)sample;
     }
     // Push to audioPlaybackQueue in AUDIO_CHUNK_SAMPLES-sized stereo chunks.
-    // audioPlaybackTask (Core 0) drains the queue with portMAX_DELAY writes,
-    // so Core 1 (this function, called from loop()) is NEVER blocked waiting
-    // for I2S DMA - which was the earlier TCP disconnect root cause.
+    // audioPlaybackTask (Core 0) drains the queue with portMAX_DELAY writes.
+    // Core 1 (this function, called from loop()) must NEVER be blocked with
+    // loops or vTaskDelay - doing so starves the lwIP TCP socket and introduces
+    // packet jitter that starves I2S DMA and causes playback stuttering.
     static PlaybackChunkMsg pbMsg;
     size_t offset = 0;
     while (offset < outSamples) {
@@ -1026,9 +1207,10 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       if (chunk > AUDIO_CHUNK_SAMPLES) chunk = AUDIO_CHUNK_SAMPLES;
       memcpy(pbMsg.data, &stereoPlaybackBuf[offset * 2], chunk * 2 * sizeof(int16_t));
       pbMsg.len = chunk * 2 * sizeof(int16_t);
-      // Wait up to 35ms for a free slot if buffer is temporarily full: audioPlaybackTask
-      // drains 1 chunk every ~32ms, so this paces flow smoothly without dropping frames or stalling Core 1.
-      xQueueSend(audioPlaybackQueue, &pbMsg, pdMS_TO_TICKS(35));
+      // audioPlaybackQueue has 1024 slots (~32.8s audio buffer in PSRAM).
+      // Push with a 15ms timeout: instantaneous when free space exists,
+      // and gently paces without stalling Core 1.
+      xQueueSend(audioPlaybackQueue, &pbMsg, pdMS_TO_TICKS(15));
       offset += chunk;
     }
     lastSpeechTimestamp = millis();
@@ -1172,8 +1354,8 @@ void pollIncoming() {
 // Calibrated VAD thresholds: ES7210 noise floor with 2x gain is RMS 120-250;
 // Ambient room noise / keyboard clicks / breathing is RMS 250-450;
 // Deliberate human speech is RMS 1200-3500+.
-#define VOICE_WAKE_THRESHOLD 800         // Wake phrase onset ("Hey Ims", "Eh up Ims")
-#define VOICE_WAKE_CONSECUTIVE_FRAMES 3  // Must sustain >800 RMS for 3 consecutive chunks (~96ms)
+#define VOICE_WAKE_THRESHOLD 650         // Wake phrase onset ("Hey Ims", "Eh up Ims")
+#define VOICE_WAKE_CONSECUTIVE_FRAMES 2  // Must sustain >650 RMS for 2 consecutive chunks (~64ms)
 #define VOICE_SPEECH_THRESHOLD 500       // Speech continuation detection during active LISTENING
 #define VOICE_SILENCE_THRESHOLD 280      // Silence threshold for turn completion
 
@@ -1302,8 +1484,9 @@ void audioMicTask(void *param) {
         }
 
         // Acoustic Wake Word Detection (e.g. "Hey Ims", "Eh up Ims"):
-        // Allowed in STANDBY or THINKING (to recover/interrupt), provided speaker is not active or cooling down
-        bool canWakeDetect = (!isSpeakerCoolingDown()) &&
+        // Allowed in STANDBY or THINKING (to recover/interrupt), provided speaker is not active or cooling down,
+        // and hardware mic mute switch is NOT engaged.
+        bool canWakeDetect = (!isSpeakerCoolingDown()) && !isMicHardwareMuted &&
                              (currentState == STATE_STANDBY || currentState == STATE_THINKING);
         bool wakeTriggeredThisChunk = false;
         static int wakeStreak = 0;
@@ -1346,7 +1529,7 @@ void audioMicTask(void *param) {
           }
         }
 
-        if (micStreamingActive && !wakeTriggeredThisChunk) {
+        if (micStreamingActive && !isMicHardwareMuted && !wakeTriggeredThisChunk && currentState != STATE_SPEAKING && !isSpeakerCoolingDown()) {
           if (rms > VOICE_SPEECH_THRESHOLD) {
             lastSpeechTimestamp = millis();
             if (!isSpeakingDetected) {
@@ -1447,6 +1630,8 @@ void setup() {
 
   // 2. Audio Hardware setup
   initAudioHardware();
+  pinMode(MUTE_BTN_PIN, INPUT_PULLUP);
+  isMicHardwareMuted = (digitalRead(MUTE_BTN_PIN) == LOW);
 
   // Boot-time speaker self-test: plays automatically, no touch involved, so
   // speaker output can be confirmed (or ruled out) independently of the
@@ -1582,37 +1767,37 @@ void loop() {
 
   renderScreen();
 
-  // Physical Top Button (MUTE_BTN_PIN = GPIO 1, Active LOW) - same
-  // touch-to-talk trigger as the screen.
-  static int lastBtnState = HIGH;
-  int btnState = digitalRead(MUTE_BTN_PIN);
-  if (btnState == LOW && lastBtnState == HIGH) {
-    Serial.println("[Button] Talk button pressed!");
-    if (currentState == STATE_STANDBY) {
-      beginListening("button");
-    } else if (currentState == STATE_LISTENING) {
-      sendTurnComplete();
-    } else if (currentState == STATE_THINKING) {
-      Serial.println("[Button] Button pressed during THINKING -> resetting to STANDBY");
-      currentState = STATE_STANDBY;
+  // Physical Top Mute Button (MUTE_BTN_PIN = GPIO 1, Active LOW when button is lit/pressed)
+  static bool lastMuteButtonActive = false;
+  bool muteButtonActive = (digitalRead(MUTE_BTN_PIN) == LOW);
+  if (muteButtonActive != lastMuteButtonActive) {
+    lastMuteButtonActive = muteButtonActive;
+    isMicHardwareMuted = muteButtonActive;
+    if (isMicHardwareMuted) {
+      Serial.println("[Button] Physical mic MUTE switch engaged (button illuminated)");
       micStreamingActive = false;
-      lastTranscript = "Say 'Hey Ims' or tap screen";
+      isSpeakingDetected = false;
+      if (currentState == STATE_LISTENING || currentState == STATE_THINKING) {
+        currentState = STATE_STANDBY;
+      }
+      if (audioOutQueue) {
+        xQueueReset(audioOutQueue);
+      }
+      lastTranscript = "MIC MUTED (Press top button)";
       renderScreen(true);
     } else {
-      currentState = STATE_STANDBY;
-      micStreamingActive = false;
+      Serial.println("[Button] Physical mic MUTE switch released (unmuted)");
       lastTranscript = "Say 'Hey Ims' or tap screen";
       renderScreen(true);
     }
     delay(50); // debounce
   }
-  lastBtnState = btnState;
 
   // Auto-transition from SPEAKING back to STANDBY once the audio queue is fully drained
   // and speaker playback has completely finished
   if (currentState == STATE_SPEAKING && !isSpeakerActive()) {
     currentState = STATE_STANDBY;
-    lastTranscript = "Say 'Hey Ims' or tap screen";
+    lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
     renderScreen(true);
   }
 
@@ -1624,25 +1809,31 @@ void loop() {
     sendDebug("session_idle_timeout");
     currentState = STATE_STANDBY;
     micStreamingActive = false;
-    lastTranscript = "Say 'Hey Ims' or tap screen";
+    lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
     renderScreen(true);
   }
 
-  // Force a periodic redraw while LISTENING so the mic-level pulse ring
-  // (see renderScreen()) actually animates - renderScreen() otherwise skips
-  // redrawing whenever the state itself hasn't changed.
-  if (currentState == STATE_LISTENING) {
-    static unsigned long lastPulseRedraw = 0;
-    if (millis() - lastPulseRedraw > 100) {
-      lastPulseRedraw = millis();
-      drawOrbPulse();
+  // Animate the face on a fixed cadence regardless of state - renderScreen()
+  // only repaints on a state change, so this is what actually drives the
+  // idle breathing/blink, the listening/thinking motion, and the mouth
+  // opening and closing while speaking (including the boot chime, once
+  // isSpeakerActive() reports it - see playChime()).
+  {
+    static unsigned long lastFaceRedraw = 0;
+    if (millis() - lastFaceRedraw > 120) {
+      lastFaceRedraw = millis();
+      drawFaceTick();
     }
   }
 
   // Touch feedback
   uint16_t touchX, touchY;
   if (tft.getTouch(&touchX, &touchY)) {
-    if (currentState == STATE_SPEAKING) {
+    if (isMicHardwareMuted) {
+      Serial.println("[Touch] Tap while mic is hardware muted");
+      lastTranscript = "Mic is muted (top button lit)";
+      renderScreen(true);
+    } else if (currentState == STATE_SPEAKING) {
       // User interrupted Gemini: switch to listening
       beginListening("touch_interrupt");
     } else if (currentState == STATE_STANDBY) {
