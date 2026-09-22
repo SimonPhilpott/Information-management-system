@@ -146,6 +146,48 @@ volatile bool conversationOpen = false;
 // finishes so the farewell reply plays out in full before the conversation
 // actually closes.
 volatile bool conversationShouldClose = false;
+// 0 = neutral (the phase-based idle/listening/thinking/speaking face this
+// firmware already draws). 1-14 = one of the emotions below, set by Gemini's
+// setEmotion tool call (see handleFrame()) and reflected by the face whether
+// IMS is currently speaking or resting afterward. Reset to neutral whenever a
+// brand new conversation opens (see beginVerifying()/beginListening()) so a
+// leftover expression from a previous exchange doesn't linger indefinitely.
+volatile int currentEmotion = 0;
+enum FaceEmotion {
+  EMOTION_NEUTRAL = 0,
+  EMOTION_JOY,
+  EMOTION_COCKY,
+  EMOTION_LOVE,
+  EMOTION_AMAZEMENT,
+  EMOTION_SUSPICIOUS,
+  EMOTION_CONFUSED,
+  EMOTION_SAD,
+  EMOTION_DEVASTATED,
+  EMOTION_ANGER,
+  EMOTION_RAGE,
+  EMOTION_FEAR,
+  EMOTION_DISGUSTED,
+  EMOTION_BORED,
+  EMOTION_SLEEPY
+};
+int emotionFromName(const char *name) {
+  if (!name) return EMOTION_NEUTRAL;
+  if (strcmp(name, "joy") == 0) return EMOTION_JOY;
+  if (strcmp(name, "cocky") == 0) return EMOTION_COCKY;
+  if (strcmp(name, "love") == 0) return EMOTION_LOVE;
+  if (strcmp(name, "amazement") == 0) return EMOTION_AMAZEMENT;
+  if (strcmp(name, "suspicious") == 0) return EMOTION_SUSPICIOUS;
+  if (strcmp(name, "confused") == 0) return EMOTION_CONFUSED;
+  if (strcmp(name, "sad") == 0) return EMOTION_SAD;
+  if (strcmp(name, "devastated") == 0) return EMOTION_DEVASTATED;
+  if (strcmp(name, "anger") == 0) return EMOTION_ANGER;
+  if (strcmp(name, "rage") == 0) return EMOTION_RAGE;
+  if (strcmp(name, "fear") == 0) return EMOTION_FEAR;
+  if (strcmp(name, "disgusted") == 0) return EMOTION_DISGUSTED;
+  if (strcmp(name, "bored") == 0) return EMOTION_BORED;
+  if (strcmp(name, "sleepy") == 0) return EMOTION_SLEEPY;
+  return EMOTION_NEUTRAL;
+}
 bool isSetupAcknowledged = false;
 volatile bool geminiSetupComplete =
     false; // Set true only after Gemini sends setupComplete ACK
@@ -328,6 +370,215 @@ static void computeFaceLevels(uint8_t want[FACE_COLS * FACE_ROWS]) {
     return;
   }
 
+  // Ported from expressionsupdate2.yaml's per-emotion upper/lower face
+  // tables. Mutually exclusive with the phase-based rendering below, same as
+  // the reference: an active emotion (set by Gemini's setEmotion tool call,
+  // see handleFrame()) completely overrides the idle/listening/thinking look
+  // until it's cleared at the start of the next conversation. Colour for
+  // each emotion lives in drawFaceInternal()'s palette, keyed the same way.
+  if (currentEmotion != EMOTION_NEUTRAL) {
+    uint32_t n = (uint32_t)(f * 73 + 151);
+    n = (n ^ (n >> 5)) * 2654435761u;
+    int amp = (int)((n >> 16) & 0xFF);
+
+    switch (currentEmotion) {
+      case EMOTION_JOY:
+        facePut(want, 1, 3, 255); facePut(want, 1, 8, 255);
+        facePut(want, 2, 2, 255); facePut(want, 2, 4, 255); facePut(want, 2, 7, 255); facePut(want, 2, 9, 255);
+        break;
+      case EMOTION_COCKY:
+        for (int c = 2; c <= 4; c++) facePut(want, 0, c, 255);
+        for (int r = 2; r <= 3; r++) for (int c = 2; c <= 4; c++) facePut(want, r, c, 255);
+        for (int c = 7; c <= 9; c++) facePut(want, 2, c, 255);
+        want[2 * FACE_COLS + 3] = 30; want[3 * FACE_COLS + 8] = 30;
+        break;
+      case EMOTION_LOVE:
+        facePut(want, 1, 2, 255); facePut(want, 1, 4, 255); facePut(want, 1, 7, 255); facePut(want, 1, 9, 255);
+        for (int c = 2; c <= 4; c++) facePut(want, 2, c, 255);
+        for (int c = 7; c <= 9; c++) facePut(want, 2, c, 255);
+        facePut(want, 3, 3, 255); facePut(want, 3, 8, 255);
+        break;
+      case EMOTION_AMAZEMENT:
+        for (int r = 1; r <= 4; r++) { for (int c = 2; c <= 4; c++) facePut(want, r, c, 255); for (int c = 7; c <= 9; c++) facePut(want, r, c, 255); }
+        want[2 * FACE_COLS + 3] = 30; want[2 * FACE_COLS + 8] = 30;
+        break;
+      case EMOTION_SUSPICIOUS:
+        for (int c = 2; c <= 4; c++) facePut(want, 2, c, 255);
+        for (int c = 7; c <= 9; c++) facePut(want, 2, c, 255);
+        facePut(want, 3, 3, 255); facePut(want, 3, 4, 255); facePut(want, 3, 8, 255); facePut(want, 3, 9, 255);
+        want[3 * FACE_COLS + 2] = 30; want[3 * FACE_COLS + 7] = 30;
+        break;
+      case EMOTION_CONFUSED:
+        for (int c = 2; c <= 4; c++) facePut(want, 0, c, 255);
+        facePut(want, 1, 8, 255); facePut(want, 1, 9, 255);
+        for (int r = 2; r <= 3; r++) for (int c = 2; c <= 4; c++) facePut(want, r, c, 255);
+        for (int c = 7; c <= 9; c++) { facePut(want, 2, c, 255); facePut(want, 3, c, 255); }
+        want[2 * FACE_COLS + 3] = 30; want[3 * FACE_COLS + 8] = 30;
+        break;
+      case EMOTION_SAD:
+        facePut(want, 0, 5, 255); facePut(want, 0, 7, 255);
+        facePut(want, 1, 3, 255); facePut(want, 1, 9, 255);
+        for (int r = 2; r <= 3; r++) { for (int c = 2; c <= 4; c++) facePut(want, r, c, 255); for (int c = 7; c <= 9; c++) facePut(want, r, c, 255); }
+        want[3 * FACE_COLS + 3] = 30; want[3 * FACE_COLS + 8] = 30;
+        break;
+      case EMOTION_DEVASTATED:
+        for (int c = 2; c <= 4; c++) facePut(want, 2, c, 255);
+        for (int c = 7; c <= 9; c++) facePut(want, 2, c, 255);
+        facePut(want, 3, 3, 140); facePut(want, 3, 8, 140);
+        facePut(want, 5, 3, 255); facePut(want, 5, 8, 255);
+        break;
+      case EMOTION_ANGER:
+        facePut(want, 1, 1, 255); facePut(want, 1, 10, 255);
+        for (int c = 2; c <= 4; c++) facePut(want, 2, c, 255);
+        for (int c = 7; c <= 9; c++) facePut(want, 2, c, 255);
+        for (int c = 2; c <= 4; c++) facePut(want, 3, c, 255);
+        for (int c = 7; c <= 9; c++) facePut(want, 3, c, 255);
+        want[3 * FACE_COLS + 3] = 30; want[3 * FACE_COLS + 8] = 30;
+        break;
+      case EMOTION_RAGE:
+        facePut(want, 0, 0, 255); facePut(want, 0, 11, 255);
+        facePut(want, 1, 1, 255); facePut(want, 1, 10, 255);
+        for (int r = 2; r <= 3; r++) { for (int c = 2; c <= 4; c++) facePut(want, r, c, 255); for (int c = 7; c <= 9; c++) facePut(want, r, c, 255); }
+        want[3 * FACE_COLS + 3] = 30; want[3 * FACE_COLS + 8] = 30;
+        break;
+      case EMOTION_FEAR:
+        facePut(want, 0, 2, 255); facePut(want, 0, 3, 255); facePut(want, 0, 8, 255); facePut(want, 0, 9, 255);
+        for (int r = 1; r <= 3; r++) { for (int c = 2; c <= 4; c++) facePut(want, r, c, 255); for (int c = 7; c <= 9; c++) facePut(want, r, c, 255); }
+        want[3 * FACE_COLS + 3] = 30; want[3 * FACE_COLS + 8] = 30;
+        break;
+      case EMOTION_DISGUSTED:
+        facePut(want, 1, 8, 255);
+        facePut(want, 2, 2, 255); facePut(want, 2, 3, 255); facePut(want, 2, 7, 255); facePut(want, 2, 9, 255);
+        facePut(want, 3, 3, 255); facePut(want, 3, 4, 255); facePut(want, 3, 7, 255); facePut(want, 3, 8, 255); facePut(want, 3, 9, 255);
+        want[3 * FACE_COLS + 3] = 30; want[2 * FACE_COLS + 8] = 30;
+        break;
+      case EMOTION_BORED:
+        for (int r = 2; r <= 3; r++) { for (int c = 2; c <= 4; c++) facePut(want, r, c, 255); for (int c = 7; c <= 9; c++) facePut(want, r, c, 255); }
+        want[3 * FACE_COLS + 3] = 30; want[3 * FACE_COLS + 8] = 30;
+        break;
+      case EMOTION_SLEEPY:
+        for (int c = 2; c <= 4; c++) facePut(want, 3, c, 255);
+        for (int c = 7; c <= 9; c++) facePut(want, 3, c, 255);
+        break;
+    }
+
+    if (speaking) {
+      switch (currentEmotion) {
+        case EMOTION_JOY: {
+          int rows = 1 + amp * 3 / 256;
+          for (int r = 5; r < 5 + rows; r++) for (int c = 3; c <= 8; c++) facePut(want, r, c, 255);
+          facePut(want, 5, 2, 255); facePut(want, 5, 9, 255);
+          break;
+        }
+        case EMOTION_COCKY: {
+          int rows = 1 + amp * 2 / 256;
+          for (int r = 5; r < 5 + rows; r++) for (int c = 5; c <= 8; c++) facePut(want, r, c, 255);
+          facePut(want, 5, 9, 255);
+          break;
+        }
+        case EMOTION_AMAZEMENT:
+        case EMOTION_FEAR: {
+          int openR = (amp > 100) ? 7 : 6;
+          for (int c = 4; c <= 7; c++) facePut(want, 5, c, 255);
+          facePut(want, 6, 4, 255); facePut(want, 6, 7, 255);
+          if (openR == 7) {
+            facePut(want, 7, 4, 255); facePut(want, 7, 7, 255);
+            for (int c = 5; c <= 6; c++) facePut(want, 7, c, 255);
+          } else {
+            for (int c = 5; c <= 6; c++) facePut(want, 6, c, 255);
+          }
+          break;
+        }
+        case EMOTION_SAD:
+        case EMOTION_DEVASTATED: {
+          int rows = 1 + amp * 2 / 256;
+          for (int r = 5; r < 5 + rows; r++) for (int c = 4; c <= 7; c++) facePut(want, r, c, 255);
+          facePut(want, 6, 3, 255); facePut(want, 6, 8, 255);
+          break;
+        }
+        case EMOTION_ANGER:
+        case EMOTION_RAGE:
+          for (int c = 2; c <= 9; c++) facePut(want, 6, c, 255);
+          if (amp > 110) for (int c = 3; c <= 8; c++) facePut(want, 5, c, 255);
+          if (amp > 190) for (int c = 3; c <= 8; c++) facePut(want, 7, c, 255);
+          break;
+        case EMOTION_DISGUSTED:
+          facePut(want, 5, 8, 255);
+          for (int c = 4; c <= 7; c++) facePut(want, 6, c, 255);
+          if (amp > 130) { facePut(want, 7, 5, 255); facePut(want, 7, 6, 255); }
+          break;
+        case EMOTION_BORED:
+          for (int c = 4; c <= 7; c++) facePut(want, 6, c, 255);
+          if (amp > 160) for (int c = 5; c <= 6; c++) facePut(want, 5, c, 255);
+          break;
+        default: {
+          int rowsOpen = 1 + amp * 3 / 256;
+          int half = (amp > 140) ? 3 : 2;
+          for (int r = 5; r < 5 + rowsOpen; r++) for (int c = 6 - half; c < 6 + half; c++) facePut(want, r, c, 255);
+          break;
+        }
+      }
+    } else {
+      switch (currentEmotion) {
+        case EMOTION_JOY:
+          for (int c = 2; c <= 9; c++) facePut(want, 5, c, 255);
+          for (int c = 3; c <= 8; c++) facePut(want, 6, c, 255);
+          for (int c = 4; c <= 7; c++) facePut(want, 7, c, 255);
+          break;
+        case EMOTION_COCKY:
+          facePut(want, 5, 8, 255);
+          for (int c = 4; c <= 8; c++) facePut(want, 6, c, 255);
+          break;
+        case EMOTION_LOVE:
+          facePut(want, 5, 2, 255); facePut(want, 5, 9, 255);
+          for (int c = 3; c <= 8; c++) facePut(want, 6, c, 255);
+          break;
+        case EMOTION_AMAZEMENT:
+          for (int c = 4; c <= 7; c++) { facePut(want, 5, c, 255); facePut(want, 7, c, 255); }
+          facePut(want, 6, 4, 255); facePut(want, 6, 7, 255);
+          break;
+        case EMOTION_SUSPICIOUS:
+          for (int c = 4; c <= 7; c++) facePut(want, 6, c, 255);
+          break;
+        case EMOTION_CONFUSED:
+          facePut(want, 5, 4, 255); facePut(want, 5, 5, 255);
+          facePut(want, 6, 6, 255); facePut(want, 6, 7, 255); facePut(want, 6, 8, 255);
+          break;
+        case EMOTION_SAD:
+          for (int c = 4; c <= 7; c++) facePut(want, 5, c, 255);
+          facePut(want, 6, 3, 255); facePut(want, 6, 8, 255);
+          break;
+        case EMOTION_DEVASTATED:
+          for (int c = 4; c <= 7; c++) { facePut(want, 6, c, 255); facePut(want, 7, c, 255); }
+          break;
+        case EMOTION_ANGER:
+          for (int c = 2; c <= 9; c++) facePut(want, 6, c, 255);
+          break;
+        case EMOTION_RAGE:
+          for (int c = 2; c <= 9; c++) { facePut(want, 5, c, 255); facePut(want, 7, c, 255); }
+          facePut(want, 6, 2, 255); facePut(want, 6, 9, 255);
+          break;
+        case EMOTION_FEAR:
+          facePut(want, 5, 5, 255); facePut(want, 5, 6, 255);
+          facePut(want, 6, 4, 255); facePut(want, 6, 7, 255);
+          facePut(want, 7, 5, 255); facePut(want, 7, 6, 255);
+          break;
+        case EMOTION_DISGUSTED:
+          facePut(want, 5, 8, 255);
+          for (int c = 4; c <= 7; c++) facePut(want, 6, c, 255);
+          facePut(want, 7, 5, 255); facePut(want, 7, 6, 255);
+          break;
+        case EMOTION_BORED:
+          for (int c = 4; c <= 7; c++) facePut(want, 6, c, 255);
+          break;
+        case EMOTION_SLEEPY:
+          facePut(want, 6, 5, 255); facePut(want, 6, 6, 255);
+          break;
+      }
+    }
+    return;
+  }
+
   int idleT = f % 100;
   bool blink = false;
   int gaze = 0;
@@ -394,6 +645,28 @@ static void drawFaceInternal(bool forceFull) {
 
   int onR = 76, onG = 255, onB = 122; // default: soft green (idle/standby)
   if (isMicHardwareMuted) { onR = 255; onG = 71; onB = 87; }
+  // Emotion colour takes priority over the phase palette below (matches
+  // computeFaceLevels() treating an active emotion as a full override), but
+  // never over the mute indicator above - the user needs that to always read
+  // the same way regardless of what IMS is "feeling".
+  else if (currentEmotion != EMOTION_NEUTRAL) {
+    switch (currentEmotion) {
+      case EMOTION_JOY:        onR = 255; onG = 215; onB = 0;   break; // gold
+      case EMOTION_COCKY:      onR = 0;   onG = 229; onB = 255; break; // bright cyan
+      case EMOTION_LOVE:       onR = 255; onG = 51;  onB = 133; break; // hot pink
+      case EMOTION_AMAZEMENT:  onR = 255; onG = 184; onB = 77;  break; // amber
+      case EMOTION_SUSPICIOUS: onR = 51;  onG = 255; onB = 184; break; // sharp teal
+      case EMOTION_CONFUSED:   onR = 153; onG = 255; onB = 51;  break; // lime
+      case EMOTION_SAD:        onR = 77;  onG = 148; onB = 255; break; // soft blue
+      case EMOTION_DEVASTATED: onR = 30;  onG = 136; onB = 229; break; // deep cold blue
+      case EMOTION_ANGER:      onR = 255; onG = 119; onB = 51;  break; // warm orange
+      case EMOTION_RAGE:       onR = 255; onG = 34;  onB = 34;  break; // scarlet
+      case EMOTION_FEAR:       onR = 186; onG = 104; onB = 200; break; // ghostly violet
+      case EMOTION_DISGUSTED:  onR = 166; onG = 226; onB = 46;  break; // sickly olive
+      case EMOTION_BORED:      onR = 126; onG = 154; onB = 133; break; // slate grey-green
+      case EMOTION_SLEEPY:     onR = 46;  onG = 74;  onB = 56;  break; // dim forest green
+    }
+  }
   else if (currentState == STATE_CONNECTING_WIFI || currentState == STATE_CONNECTING_SERVER) { onR = 255; onG = 165; onB = 2; }
   else if (currentState == STATE_LISTENING) { onR = 46; onG = 213; onB = 115; }
   else if (currentState == STATE_THINKING) { onR = 112; onG = 161; onB = 255; }
@@ -937,7 +1210,7 @@ void sendSetupHandshake() {
   Serial.println("[IMS] Sending Gemini Live setup configuration...");
   JsonDocument doc;
   JsonObject setup = doc["setup"].to<JsonObject>();
-  setup["model"] = "models/gemini-2.5-flash-native-audio-latest";
+  setup["model"] = "models/gemini-3.8-live";
 
   JsonObject genConfig = setup["generationConfig"].to<JsonObject>();
   JsonArray modalities = genConfig["responseModalities"].to<JsonArray>();
@@ -1081,6 +1354,13 @@ void beginListening(const char *reason) {
   speechStartTime = 0;
   conversationOpen = true; // touch always opens a conversation deliberately
   conversationShouldClose = false;
+  // Only a fresh tap-to-talk from STANDBY counts as starting a NEW
+  // conversation - "touch_interrupt" (barging in mid-reply) is still the
+  // same conversation, so it must not wipe the expression IMS is already
+  // wearing.
+  if (strcmp(reason, "touch") == 0) {
+    currentEmotion = EMOTION_NEUTRAL;
+  }
   lastTranscript = "Listening...";
   renderScreen(true);
 }
@@ -1101,6 +1381,10 @@ void beginVerifying() {
   if (audioPlaybackQueue) {
     xQueueReset(audioPlaybackQueue);
   }
+  // Only ever reached from STANDBY (see canWakeDetect), so this is always the
+  // start of a possible NEW conversation - clear any leftover expression from
+  // the last one before we even know if this candidate is real.
+  currentEmotion = EMOTION_NEUTRAL;
   currentState = STATE_VERIFYING;
   micStreamingActive = true;
   lastSpeechTimestamp = millis();
@@ -1328,6 +1612,13 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
     if (doc["endConversation"].as<bool>()) {
       Serial.println("[IMS] endConversation - closing conversation after this reply finishes");
       conversationShouldClose = true;
+    }
+    // Backend forwarded Gemini's setEmotion tool call - purely cosmetic, just
+    // updates which expression computeFaceLevels() draws. Doesn't touch
+    // currentState/conversation flow at all.
+    if (doc["setEmotion"].is<const char *>()) {
+      currentEmotion = emotionFromName(doc["setEmotion"].as<const char *>());
+      Serial.printf("[IMS] setEmotion(%s) -> %d\n", doc["setEmotion"].as<const char *>(), currentEmotion);
     }
     if (doc["text"].is<const char *>()) {
       const char *textSnippet = doc["text"].as<const char *>();

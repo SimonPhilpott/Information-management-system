@@ -513,6 +513,25 @@ function handleLiveProxyConnection(ws, isHardware = false) {
                   }
                 }));
               }
+            } else if (call.name === 'setEmotion') {
+              // Cosmetic only (drives the face on the device's screen) - forward
+              // the chosen emotion string straight through, no RAG/state logic
+              // needed. main.cpp maps the string to its emotion index.
+              const emotion = call.args?.emotion || 'neutral';
+              console.log(`${tag} 🎭 setEmotion(${emotion}) - forwarding to hardware client`);
+              if (isHardware && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ setEmotion: emotion }));
+              }
+              if (gWs.readyState === WebSocket.OPEN) {
+                gWs.send(JSON.stringify({
+                  toolResponse: {
+                    functionResponses: [{
+                      response: { output: { status: 'acknowledged' } },
+                      id: call.id
+                    }]
+                  }
+                }));
+              }
             } else {
               if (gWs.readyState === WebSocket.OPEN) {
                 gWs.send(JSON.stringify({
