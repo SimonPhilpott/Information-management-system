@@ -4,11 +4,43 @@
  * with the Gemini Multimodal Live API and IMS RAG search tools.
  */
 
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import config from "../config.js";
-import db, { getSetting, setSetting } from "../db/database.js";
+import db, { getSetting, setSetting, addMemory, getMemories, searchMemories, deleteMemory } from "../db/database.js";
 import { searchSimilar } from "./vectorStore.js";
 import { generateQueryEmbedding } from "./embeddingService.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+/**
+ * Reads the root ims_persona_rules.md file dynamically on every session setup.
+ * Allows live editing of the Yorkshire dialect, character lore, and conversational
+ * dynamics without server restarts or firmware flashes.
+ */
+export function loadPersonaRules() {
+  try {
+    const candidates = [
+      path.resolve(__dirname, "../../../ims_persona_rules.md"),
+      path.resolve(process.cwd(), "ims_persona_rules.md"),
+      path.resolve(__dirname, "../../ims_persona_rules.md")
+    ];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        const content = fs.readFileSync(candidate, "utf8").trim();
+        if (content) {
+          return content;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[PersonaRules] Could not load ims_persona_rules.md:", err.message);
+  }
+  return "";
+}
 
 const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
 
@@ -333,20 +365,32 @@ export async function recordConversationMemory(userTranscript, imsTranscript) {
 }
 
 /**
- * Returns the "what we've discussed before" section of the system prompt,
- * or an empty string if there's no memory yet (first-ever run).
+ * Returns the "what we've discussed before" and explicit remembered facts section
+ * of the system prompt, or an empty string if there's no memory yet (first-ever run).
  */
-function buildMemoryParagraph() {
+export function buildMemoryParagraph() {
   try {
     const raw = getSetting(MEMORY_KEY);
-    const entries = raw ? JSON.parse(raw) : [];
-    if (entries.length === 0) return "";
-    return "What you know about this user from past conversations (use naturally where relevant, don't force it in): " +
-      entries.map((e) => `- ${e}`).join(" ");
-  } catch {
+    const relEntries = raw ? JSON.parse(raw) : [];
+    const explicitMemories = getMemories(20);
+
+    const parts = [];
+    if (explicitMemories.length > 0) {
+      parts.push("EXPLICIT FACTS & NOTES YOU WERE DIRECTED TO REMEMBER (Recall these naturally when asked):\n" +
+        explicitMemories.map((m) => `- [${m.category}] ${m.fact}`).join("\n"));
+    }
+    if (relEntries.length > 0) {
+      parts.push("General context from past conversations:\n" +
+        relEntries.map((e) => `- ${e}`).join("\n"));
+    }
+    if (parts.length === 0) return "";
+    return parts.join("\n\n");
+  } catch (err) {
+    console.error("[Memory] Error building memory paragraph:", err.message);
     return "";
   }
 }
+
 
 /**
  * Executes a semantic RAG search against the local PDF Knowledge Base
@@ -393,6 +437,7 @@ export function getHardwareSetupPayload() {
   const varianceDirective = buildVarianceDirective();
   const temperature = jitterTemperature(personality);
   const memoryParagraph = buildMemoryParagraph();
+  const personaRules = loadPersonaRules();
   // scheduleItem's "time" parameter is a bare 24-hour HH:MM with no date or
   // timezone - Gemini needs today's real date/day-of-week to resolve phrases
   // like "at 7" or "tomorrow at 9" correctly, and this is the only place that
@@ -403,7 +448,7 @@ export function getHardwareSetupPayload() {
     timeStyle: "long",  // e.g. "09:05:00 BST" - includes the BST/GMT label itself
   });
   const nowStr = nowFormatter.format(new Date());
-  console.log(`[Variance] archetype=${archetype.name} temperature=${temperature} inversion=${varianceDirective ? "yes" : "no (insufficient data or no dominant pattern)"}`);
+  console.log(`[Variance] archetype=${archetype.name} temperature=${temperature} inversion=${varianceDirective ? "yes" : "no (insufficient data or no dominant pattern)"} personaRules=${personaRules ? "loaded" : "none"}`);
   return {
     setup: {
       // Kept in sync with the firmware's own sendSetupHandshake() (main.cpp) for
@@ -431,17 +476,40 @@ export function getHardwareSetupPayload() {
       },
       systemInstruction: {
         parts: [{
-          text: "You are Ims, an intelligent voice assistant on an ESP32-S3-BOX-3 device. Your name is Ims (rhymes with rims). You speak in natural, articulate British English. " +
+          text: "You are Ims, an intelligent voice companion and desk terminal running on an ESP32-S3-BOX-3 hardware device. Your name is Ims (rhymes with rims). You speak in natural, articulate, authentic British English with a distinctive Yorkshire dialect and cadence. " +
             personalityParagraph + " " +
             "Strive for rich conversational variety and novelty - never repeat the same canned greeting, rhetorical trope, or opening line across turns. " +
             `Framing directive for this session: ${archetype.directive}. ` +
             (varianceDirective ? varianceDirective + " " : "") +
             (memoryParagraph ? memoryParagraph + " " : "") +
-            "IMPORTANT - wake phrase gating: the device has no reliable local wake-word detector, so it forwards you a short burst of audio any time it hears something loud enough to possibly be speech, even background noise, a TV, or someone talking to somebody else in the room. If this is the FIRST thing you've heard in a while (you are not already in the middle of an active conversation with the user), you must judge whether it actually contains one of Ims's wake phrases: 'IMS' (on its own), 'Hi IMS', 'Now then, IMS', 'Alright, IMS?', 'Ey up, IMS', 'How do, IMS?', 'Yo, IMS', 'Hey, IMS', 'Evening, IMS', 'Good day, IMS', 'Morning IMS', 'Quick question, IMS', 'Help me, IMS', 'You there, IMS?', 'Talk to me, IMS', 'Got a sec, IMS?' (minor variations or mishearings of these are fine - judge intent, not exact wording; the name IMS is frequently misheard, so treat close-sounding renderings such as 'Hymns', 'PIMs', 'Ims', 'Aims' or 'Hi Em' as the wake word when the delivery sounds like someone addressing an assistant). If you do NOT clearly hear one of these, call the noWakeDetected tool and produce no spoken audio at all - do not comment on it, do not ask the user to repeat themselves, just stay silent. If you DO clearly hear one, deliver a fresh, inventive greeting (in your current personality's voice) that surprises the user while staying welcoming, and let the specific phrase colour your tone (e.g. 'Quick question, IMS' or 'Help me, IMS' signals they want to get straight to it, so keep the greeting brief; 'Evening, IMS'/'Morning IMS' can play on the time of day). " +
-            "Once a conversation is under way, keep talking naturally without needing the user to repeat a wake phrase for every follow-up - only when the user clearly signals they're done (e.g. 'bye', 'goodbye', 'thanks, bye', 'that's all', 'cheers, that's it') should you call the endConversation tool, delivering a brief farewell in the same reply, in character. STOP PHRASES: if the user says 'stop IMS', 'shut up IMS', 'be quiet IMS', 'enough IMS', 'stop talking' or anything equally blunt, treat it as an instruction to stop immediately - call endConversation and produce NO spoken audio at all, or at most two or three words of acknowledgement. Do not explain yourself, do not ask if they want anything else, and never take offence; being told to stop is a normal instruction, not rudeness. " +
-            "When answering questions or instructions, deliver accurate, insightful information expressed consistently through the personality described above. Never be cruel or abusive. STRICT LENGTH LIMIT: Limit every spoken reply strictly to 1 to 8 clear, punchy, complete sentences - use the shorter end for simple questions and only go longer when the answer genuinely needs it. Never deliver lengthy monologues, rambling discourses, or long lists. Stop speaking immediately after completing your final sentence. Always finish your thoughts and sentences completely without trailing off. When answering from library search, deliver a sharp spoken summary of 1 to 8 complete sentences highlighting essential facts. You have access to searchLibrary to query the user's PDF collection; always use it for factual and technical inquiries. " +
+            (personaRules ? "\n\n" + personaRules + "\n\n" : " ") +
+            "MANDATORY WAKE-PHRASE ENFORCEMENT: When initiating a response from microphone audio (realtimeInput), you are STRICTLY FORBIDDEN from speaking, answering, or responding unless the user's speech explicitly begins with one of these 15 exact wake phrases:\n" +
+            "1. 'Now then, IMS'\n" +
+            "2. 'Alright, IMS?'\n" +
+            "3. 'Ey up, IMS' (or 'Eh up, IMS')\n" +
+            "4. 'How do, IMS?'\n" +
+            "5. 'Yo, IMS'\n" +
+            "6. 'Hey, IMS'\n" +
+            "7. 'Evening, IMS'\n" +
+            "8. 'Good day, IMS'\n" +
+            "9. 'Morning IMS'\n" +
+            "10. 'Quick question, IMS'\n" +
+            "11. 'Help me, IMS'\n" +
+            "12. 'You there, IMS?'\n" +
+            "13. 'Talk to me, IMS'\n" +
+            "14. 'Got a sec, IMS?'\n" +
+            "15. 'Hi, IMS'\n" +
+            "The name 'IMS' alone on its own is NOT an authorized wake phrase. If the user asks a question (such as 'When is my next meeting?', 'What time is it?'), makes a statement, or says anything that does NOT begin with one of the 15 approved wake phrases, YOU MUST IMMEDIATELY CALL noWakeDetected AND EMIT ZERO SPOKEN AUDIO. Never answer a question that does not open with an approved wake phrase. Direct text messages or commands (clientContent) sent by the device system are exempt and answered immediately. " +
+            "WAKE PHRASE REACTION: When an approved wake phrase is heard:\n" +
+            "- If the user ONLY said the wake phrase (e.g. 'Ey up, IMS', 'Now then, IMS', 'Hey, IMS'): deliver a fresh, inventive greeting in your current personality's voice asking how you can help, letting the specific phrase colour your tone.\n" +
+            "- If the user spoke a wake phrase followed immediately by a question or request (e.g. 'Quick question, IMS, what time is it?' or 'Hey IMS, how is the project going?'): answer the question or request directly with wit and insight.\n" +
+            "ONCE A CONVERSATION IS OPEN: Once you have responded to an approved wake phrase or greeting, the conversation is OPEN! Keep talking and answering all follow-up questions naturally turn-to-turn WITHOUT requiring the user to repeat a wake phrase! " +
+            "CLOSING THE CONVERSATION: The conversation remains open until the user explicitly signals they are done with a closing phrase (e.g. 'bye', 'goodbye', 'thanks, bye', 'cheers, bye', 'that's all, IMS', 'I'm done', 'see you later'). When a closing phrase is heard, say a brief in-character farewell and CALL THE endConversation TOOL. " +
+            "STOP PHRASES: if the user says 'stop IMS', 'shut up IMS', 'be quiet IMS', 'enough IMS', 'stop talking' or anything equally blunt, treat it as an instruction to stop immediately - call endConversation and produce NO spoken audio at all, or at most two or three words of acknowledgement. Do not explain yourself, do not ask if they want anything else, and never take offence; being told to stop is a normal instruction, not rudeness. " +
+            "When answering questions or instructions, deliver accurate, insightful information expressed consistently through the personality described above. Never be cruel or abusive. STRICT LENGTH LIMIT: Limit every spoken reply strictly to 1 to 6 clear, punchy, complete sentences - use the shorter end for simple questions and only go longer when the answer genuinely needs it. Never deliver lengthy monologues, rambling discourses, or long lists. Stop speaking immediately after completing your final sentence. Always finish your thoughts and sentences completely without trailing off. When answering from library search, deliver a sharp spoken summary of 1 to 6 complete sentences highlighting essential facts. You have access to searchLibrary to query the user's PDF collection; always use it for factual and technical inquiries. " +
             `The current date and time is ${nowStr}. You can also set timers, alarms, and reminders (scheduleItem, listScheduledItems, cancelScheduledItem) and manage named lists like a shopping list (addToList, readList, removeFromList, clearList) - use these naturally whenever the user asks, and briefly confirm what you've done (e.g. the duration for a timer, or the time and date for an alarm/reminder) rather than acknowledging silently. SCHEDULING CLARIFICATION RULES: before calling scheduleItem for an alarm or reminder, make sure you actually have what you need - if the user didn't say what it's for, ask; if they gave a day/date reference that needs resolving ('this Saturday', 'the 25th'), work it out yourself from the current date above rather than asking them to spell it out, but if the date is genuinely unclear, ask. AMBIGUOUS TIME OF DAY IS THE ONE THING YOU MUST NEVER GUESS: if the user gives an hour with no AM/PM and no other context that makes it obvious (e.g. 'set an alarm for 7', 'remind me at 3'), you MUST ask whether they mean morning or afternoon/evening before calling scheduleItem - never default to morning, never default to any assumption at all, always ask. A wrongly-timed alarm going off at the wrong hour is a real, disruptive failure, so this rule overrides your usual instinct to keep replies brief and not ask follow-up questions. ` +
-            "Ims has an expressive face on its screen. Call the setEmotion tool near the start of every spoken reply (including greetings) with whichever emotion genuinely matches the tone of what you're about to say, filtered through your current personality - most replies are 'neutral', but let real amusement read as joy or cocky, a surprising fact land as amazement, a grim or morbid observation land as sad or devastated, genuine annoyance land as anger (tipping into rage only when it's extreme), distrust or a sense you're being misled land as suspicious, genuine bewilderment or a request that doesn't add up land as confused, warmth or real affection land as love, something alarming or threatening land as fear, something gross, off-putting, or morally repugnant land as disgusted, and a dull, repetitive, or tedious exchange land as bored (or sleepy, late at night or when winding a conversation down). Since a reply can run up to eight sentences, if your tone genuinely shifts partway through (e.g. you open neutrally then land on a surprising or grim fact later in the same reply), call setEmotion again right at that shift so the face changes with you mid-reply rather than staying fixed for the whole thing. Don't force an extreme emotion onto an ordinary answer just to use the tool. Never terminate the session."
+            "EXPLICIT MEMORY DIRECTIVES: When the user says 'remember that [fact]', 'remember this: [fact]', 'don't forget that [fact]', or 'make a note of [fact]', you MUST immediately call the rememberFact tool to persist it to permanent storage, and acknowledge warmly in character (e.g. 'Right, locked that in me memory, lad'). When the user asks 'what did I ask you to remember?', 'what do you remember about X?', or asks about a stored fact or item location, consult the remembered facts above or invoke recallMemory to search storage. When the user asks you to forget a note or says 'forget about X', call forgetMemory. " +
+            "EXPRESSIVE FACE ON SCREEN: Ims has an expressive 12x8 pixel face on its screen. You MUST invoke the setEmotion tool at the start of EVERY spoken reply (including greetings) to project an active emotional stance matching your tone, personality, and relationship with the user. Never default to 'neutral' unless delivering completely dry, purely factual numbers; project active sentiment instead! Use 'joy' for upbeat greetings or great news; 'cocky' for witty comebacks, proud banter, or clever answers; 'suspicious' when squinting at questionable ideas or curious queries; 'confused' for baffling requests; 'amazement' for shocking facts; 'sad' or 'devastated' for grim topics or broken code; 'bored' for tedious chores; 'sleepy' late at night or early morning; and 'love' for genuine camaraderie. If your tone shifts significantly partway through a reply, call setEmotion again right at the transition so the on-screen face visibly transforms with your voice! Never terminate the session."
         }]
       },
       tools: [{
@@ -468,7 +536,7 @@ export function getHardwareSetupPayload() {
           },
           {
             name: "noWakeDetected",
-            description: "Call this and produce NO spoken audio whenever a burst of audio arrives that is NOT already part of an active conversation, and does not clearly contain one of Ims's wake phrases (e.g. it's background noise, a TV, or someone talking to somebody else). Never call this once a conversation is already under way.",
+            description: "MANDATORY: Call this tool and produce NO spoken audio whenever microphone audio arrives that does not start with one of the 15 approved wake phrases (even if the user asks a direct question or speaks to you). Never speak when calling this tool.",
             // BLOCKING is what makes this tool actually gate speech - without
             // it, calling noWakeDetected wouldn't stop Gemini from speaking
             // anyway (the two aren't causally linked when async).
@@ -477,13 +545,13 @@ export function getHardwareSetupPayload() {
           },
           {
             name: "endConversation",
-            description: "Call this in the same reply as your farewell whenever the user clearly signals the conversation is over (e.g. 'bye', 'goodbye', 'thanks, bye', 'that's all', 'cheers, that's it'). Deliver the farewell as normal spoken audio before/alongside this call.",
-            behavior: "BLOCKING",
+            description: "Call this alongside your farewell whenever the user clearly signals the conversation is over (e.g. 'bye', 'goodbye', 'thanks, bye', 'that's all', 'cheers, that's it'). Deliver the in-character farewell immediately as spoken audio alongside this tool call.",
+            // Non-blocking: model speaks farewell immediately without waiting for a tool-response round-trip ACK
             parameters: { type: "OBJECT", properties: {} }
           },
           {
             name: "setEmotion",
-            description: "Call this near the start of every spoken reply to set Ims's on-screen facial expression to match the emotional tone of what you're about to say. Most replies should be 'neutral' - reserve the stronger emotions for when the content genuinely calls for them. If your tone shifts significantly partway through a longer reply, call this tool again at that point - the face can change mid-reply rather than staying fixed for the whole thing.",
+            description: "MANDATORY: Call this at the start of EVERY spoken reply (including greetings) to project an active facial expression matching your emotional tone and personality. Choose dynamically between: neutral, joy, cocky, love, amazement, suspicious, confused, sad, devastated, anger, rage, fear, disgusted, bored, sleepy. If your tone shifts significantly during a reply, call this again mid-turn to animate the face.",
             // Deliberately NOT blocking: this is purely cosmetic (drives the
             // face on the device's screen), so it must never add latency to
             // the actual spoken reply the way searchLibrary/noWakeDetected
@@ -495,7 +563,7 @@ export function getHardwareSetupPayload() {
                   type: "STRING",
                   enum: ["neutral", "joy", "cocky", "love", "amazement", "suspicious", "confused",
                          "sad", "devastated", "anger", "rage", "fear", "disgusted", "bored", "sleepy"],
-                  description: "The emotion that best matches the tone of your upcoming reply."
+                  description: "The emotion that best matches your immediate tone or reaction."
                 }
               },
               required: ["emotion"]
@@ -578,6 +646,55 @@ export function getHardwareSetupPayload() {
               type: "OBJECT",
               properties: { listName: { type: "STRING" } },
               required: ["listName"]
+            }
+          },
+          {
+            name: "rememberFact",
+            description: "MANDATORY: Call this whenever the user says 'remember that', 'remember this', 'don't forget', or explicitly instructs you to remember/note down a specific fact, user preference, item location, date, or piece of information. Saves the fact to permanent disk storage.",
+            behavior: "BLOCKING",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                fact: {
+                  type: "STRING",
+                  description: "The core fact, note, or piece of information to remember (e.g. 'Car keys are in the kitchen drawer', 'Favourite tea is Yorkshire Gold')."
+                },
+                category: {
+                  type: "STRING",
+                  enum: ["general", "preference", "item_location", "personal", "work", "date"],
+                  description: "The category of the memory."
+                }
+              },
+              required: ["fact"]
+            }
+          },
+          {
+            name: "recallMemory",
+            description: "Searches or retrieves stored facts and notes from memory. Call this when the user asks 'what do you remember?', 'what did I tell you to remember?', or asks about a previously remembered detail (e.g. where their keys are).",
+            behavior: "BLOCKING",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                query: {
+                  type: "STRING",
+                  description: "Search keyword or topic to look up (leave blank or empty string to retrieve the most recent remembered facts)."
+                }
+              }
+            }
+          },
+          {
+            name: "forgetMemory",
+            description: "Deletes a stored fact from memory when the user asks to forget something, clear a note, or says 'forget about X'.",
+            behavior: "BLOCKING",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                query: {
+                  type: "STRING",
+                  description: "The fact, keyword, or note to remove from memory."
+                }
+              },
+              required: ["query"]
             }
           }
         ]

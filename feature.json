@@ -160,7 +160,7 @@
         "Full ES7210 startup sequencing powering analog blocks, bias, and ADC filter pipeline",
         "Hardware stereo I2S acquisition with software deinterleaving of pure Left channel (MIC1)",
         "PA enable and DAC mute gating preventing Class-D switching ripple from coupling into microphone lines",
-        "Real-time RMS silence detection and FreeRTOS inter-core queue handoff to Core 1 network loop",
+        "Real-time RMS silence detection and FreeRTOS inter-core queue handoff to Core 1 network loop"
       ]
     },
     "Hardware Dynamic RAG Tool Calling & Handshake Injection": {
@@ -198,6 +198,126 @@
         "Preserved 100% searchLibrary tool execution fidelity on document and library inquiries",
         "Firmware fallback parity ensuring witty persona persists even without cloud-side setup overrides"
       ]
+    },
+    "Hardware Half-Duplex Audio Protection & Lossless Playback Pacing": {
+      "status": "enabled",
+      "description": "Server-side and firmware-side half-duplex microphone suppression and lossless FreeRTOS audio queue flow control preventing speaker acoustic feedback from triggering false Gemini Live cloud VAD barge-in interruptions and eliminating voice playback truncation.",
+      "subFeatures": [
+        "Server-side half-duplex mic suppression in index.js dropping binary audio frames while Gemini modelTurn playback is active",
+        "Firmware-side mic stream shutdown and audioOutQueue reset upon user turnComplete and modelTurn arrival",
+        "audioMicTask state protection inhibiting mic transmission during STATE_SPEAKING and acoustic cooldown window",
+        "Lossless FreeRTOS audioPlaybackQueue ingestion retry loop preventing dropped chunks when bursts exceed queue depth",
+        "Spoken RAG brevity guidance instructing Gemini to synthesize concise 2-4 sentence answers without token duration exhaustion",
+        "Diagnostic Gemini event and transcript logging in live_proxy_debug.log with periodic 5s WAV capture flushes"
+      ]
+    },
+    "Hardware Stutter-Free Playback & Responsive Wake-Word Triggering": {
+      "status": "enabled",
+      "description": "Remediation subsystem resolving audio playback stuttering and restoring 100% wake-word detection reliability by removing blocking Core 1 vTaskDelay loops, eliminating proxy mic suppression, adding modelTurnActive timeout guards, and recalibrating wake thresholds.",
+      "subFeatures": [
+        "Non-blocking bounded FreeRTOS playback queue send in handleFrame() preventing Core 1 network loop stalls and eliminating I2S buffer underruns",
+        "Proxy-side mic passthrough removing isModelSpeaking drop logic so wake-word speech is never discarded by the server",
+        "Acoustic state safety auto-clear resetting modelTurnActive if audio queue is empty for >1500ms when turnComplete is missing",
+        "Continuous trailing silence streaming during STATE_THINKING providing Gemini server-side VAD with clean speech-turn boundary detection",
+        "Calibrated wake-word acoustic thresholds (650 RMS across 2 consecutive frames / ~64ms) ensuring reliable 1st-try wake triggering without false positives"
+      ]
+    },
+    "Hardware Physical Mic Mute Switch, Transcript Logging & PA Protection": {
+      "status": "enabled",
+      "description": "Hardware physical top mute button integration, guaranteed Class-D amplifier power-on sequencing, server-side response transcript file capture alongside audio WAVs, and rich persona conversational variety at elevated temperature.",
+      "subFeatures": [
+        "Physical top latching button (GPIO 1) active LOW mute state tracking with crimson red [MIC MUTED] LCD banner and status orb feedback",
+        "Complete microphone suppression and wake-word inhibition while top mute button is depressed and illuminated red",
+        "NS4150B Class-D speaker power amplifier (GPIO 46) guaranteed assertion HIGH on DAC unmute and speech start, eliminating silent Speaking states",
+        "Server-side full response transcript saving (.txt) directly alongside audio captures (.wav) for speech synthesis verification",
+        "Time-bounded playback echo suppression window (800ms) in proxy preventing acoustic self-interruption (GEMINI INTERRUPTED) while allowing prompt post-speech wake-up",
+        "Rich persona conversational variety guidelines and temperature 0.9 configuration eliminating repetitive canned phrases"
+      ]
+    },
+    "Hardware Complete Audio Playback & Synthesis Continuity Guarantee": {
+      "status": "enabled",
+      "description": "Remediation subsystem preventing premature audio cutoffs and incomplete sentence truncation during Gemini Live spoken responses by widening the empty-queue pause tolerance, enforcing strict 1-3 sentence spoken brevity, defensively asserting DAC/PA unmute on mid-turn packets, and logging remote socket telemetry.",
+      "subFeatures": [
+        "Firmware empty-queue pause tolerance expanded from 1500ms to 4000ms in isSpeakerActive() preventing inter-clause Gemini pauses from tripping DAC mute",
+        "Strict 1 to 3 complete sentence spoken brevity constraints in systemInstruction limiting audio responses to 15-20s and avoiding queue buffer overruns",
+        "Defensive Class-D amplifier (GPIO 46) and ES8311 DAC unmute re-assertion on every incoming audio chunk in handleFrame()",
+        "Strict microphone outbound streaming shutoff in sendTurnComplete() preventing post-speech acoustic reverberation from leaking into Google VAD",
+        "Socket remote address and port logging in proxy server tracking client connection lifecycles and diagnosing transient reconnects"
+      ]
+    },
+    "Hardware Keep-Alive Ping, Amplifier Persistence & Fast Turn Transition": {
+      "status": "enabled",
+      "description": "Comprehensive audio continuity and responsive turn-taking architecture adding 15s WebSocket keep-alive pings, keeping the NS4150B Class-D speaker PA active throughout conversations to prevent syllable clipping, reducing speaker post-drain cooldown to 200ms for instant follow-up dialogue, and enforcing 1-2 sentence spoken conciseness in system instructions.",
+      "subFeatures": [
+        "15-second WebSocket keep-alive heartbeat ping (gWs.ping()) in server proxy preventing edge proxy and Cloudflare half-open drops during silence",
+        "Persistent Class-D amplifier power (PA_ENABLE_PIN HIGH) during active conversation turns eliminating the 100-150ms startup delay that clips opening syllables",
+        "Speaker cooldown window reduced from 1500ms to 200ms after I2S playback buffer empty, enabling instant natural user follow-up responses",
+        "Strict 1-2 sentence spoken conciseness rule in systemInstruction preventing Gemini Live from exceeding Google single-turn audio duration caps",
+        "Proxy echo suppression gated dynamically on !currentTurnComplete to prevent post-response mic lockout"
+      ]
+    },
+    "Hardware Interactive Voice Shuffling & Official Voice Descriptions": {
+      "status": "enabled",
+      "description": "Interactive voice selection architecture on ESP32-S3-BOX-3 providing instantaneous audio termination on navigation, a 350ms settle debounce for fluid voice shuffling without TCP thrashing, official Google Gemini voice descriptions rendered directly beneath the voice name, and server-side wake phrase gating exemption for direct interface text queries.",
+      "subFeatures": [
+        "Interactive navigation arrows accessible at all times without disabled or greyed-out blocking during preview playback",
+        "Immediate audio termination and FreeRTOS playback/outbound queue purging upon left or right arrow navigation",
+        "350ms voice preview settle debounce preventing socket flood and heap degradation during rapid arrow clicks",
+        "Official Google Gemini 30-voice descriptions rendered in accent sky blue directly beneath the emerald voice name",
+        "Exemption of direct clientContent text turns from wake-phrase gating in server system instructions ensuring prompt preview speech",
+        "Defensive cancellation of preview flow upon receiving synthetic noWakeDetected signals preventing display lockup"
+      ]
+    },
+    "Hardware Strict 15 Wake-Phrase Initiation & Context Reset": {
+      "status": "enabled",
+      "description": "Strict wake-phrase enforcement architecture restricting voice initiation exclusively to 15 explicit British/conversational phrases, keeping LCD display firmly in STANDBY during candidate verification to eliminate false thinking screens, unblocking Gemini Live audio streaming directly to the hardware terminal, terminating upstream sessions on unapproved audio via noWakeDetected, and maintaining open dialogue turn-to-turn until explicit user farewell or 14s idle timeout.",
+      "subFeatures": [
+        "Strict enumeration of exactly 15 user-approved wake phrases in Gemini Live system instructions (including phonetic variants like 'Eh up, IMS')",
+        "Immediate response to wake phrase alone or wake phrase followed directly by question/request in same breath",
+        "Firmware display guard holding screen in STANDBY during wake candidate verification, eliminating false 'GEMINI THINKING...' transitions",
+        "Unconditional reset to STANDBY and conversation closure upon noWakeDetected tool invocation",
+        "Direct model audio frame forwarding from Gemini Live to ESP32 without input-transcription buffer stalls",
+        "Continuous open dialogue across follow-up turns without repeating wake words until explicit closing phrase (endConversation) or 14s idle timeout",
+        "Firmware-driven sessionClosed notification on standby, verify timeout, mute, and cancel events terminating stale Gemini sessions",
+        "Touch-to-talk exemption allowing direct query initiation upon physical screen touch"
+      ]
+    },
+    "Hardware Yorkshire Persona, Dynamic Markdown Rulebook & Emotion Matrix": {
+      "status": "enabled",
+      "description": "Deep conversational personality architecture integrating a hot-reloaded root markdown rulebook (ims_persona_rules.md), authentic Yorkshire dialect and phonetic priming, uninhibited turn-by-turn emotion matrix activation across 14 pixel faces, and non-blocking instant farewell execution.",
+      "subFeatures": [
+        "Dynamic session-setup reading of root ims_persona_rules.md enabling hot-reloading of dialect, character lore, and conversational directives without server restarts or firmware flashes",
+        "Acoustic vocoder priming with authentic Yorkshire dialect anchors (Ey up, nowt, owt, proper, crack on, reight, fair play, mardy, champion) and phonetic conversational exemplars",
+        "Mandatory turn-by-turn setEmotion tool invocation across 14 animated pixel expressions (joy, cocky, amazement, suspicious, confused, sad, devastated, anger, rage, fear, disgusted, bored, sleepy, love) with mid-reply sentiment transition support",
+        "Removal of prompt neutrality suppression and passive corporate assistant tropes in favor of proactive conversational hooks, dry banter, and inquisitive turn closures",
+        "Physical embodiment grounding as a dedicated ESP32-S3-BOX-3 desktop terminal with awareness of UK time, weather, and low-power hardware constraints",
+        "Non-blocking endConversation tool declaration eliminating post-farewell thinking screen lag"
+      ]
+    },
+    "Hardware Explicit Memory & Recall Subsystem": {
+      "status": "enabled",
+      "description": "Discrete long-term memory architecture empowering IMS to store explicit facts, notes, preferences, and item locations in SQLite via rememberFact, recall them dynamically or via recallMemory, and prune stale entries via forgetMemory.",
+      "subFeatures": [
+        "Dedicated ims_memories SQLite table with categorization, timestamps, and indexed retrieval",
+        "Tool-driven real-time fact storage via rememberFact when user says 'remember that', 'remember this', or 'make a note'",
+        "Dynamic pre-injection of up to 20 stored explicit memories into the Gemini Live setup payload alongside background session summaries",
+        "Semantic keyword query lookup via recallMemory enabling natural answers to 'where did I put X' or 'what did I ask you to remember'",
+        "Targeted memory deletion via forgetMemory when the user instructs IMS to drop or clear a note",
+        "Natural in-character dialect confirmations and acknowledgments across all memory actions"
+      ]
+    },
+    "IMS Memory Management Portal": {
+      "status": "enabled",
+      "description": "Dedicated web management hub for IMS persistent memories accessible at /ims/memories, featuring real-time SQLite data synchronization, full-text keyword search, category filtering, add/edit modals with helper exemplars, delete confirmation gates, and responsive Oatmeal/dark glassmorphic design.",
+      "subFeatures": [
+        "Dedicated routing in App.jsx rendering MemoriesPortal on /ims/memories with SPA history integration",
+        "Direct navigation button in the left sidebar under Browse Library and topbar header icon next to Settings",
+        "Express REST endpoints mounted at /api/memories supporting GET (with search & category filtering), POST, PUT, and DELETE",
+        "Categorization scheme covering General, Item Locations, Preferences, Personal, and Work & Projects",
+        "Optimistic state updates and toast notifications on memory addition, inline editing, and deletion",
+        "Destructive action safeguards requiring explicit confirmation before purging stored memory facts from SQLite"
+      ]
     }
   }
 }
+

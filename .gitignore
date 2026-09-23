@@ -56,3 +56,13 @@ scratch/
 # Test utility scripts
 pdf-knowledge-base/test_live_setup.js
 
+# Temporary test archives and downloaded packages
+esp32_s3_box_3_factory_test_firmware.bin*
+homeassistant/piper-data/
+homeassistant/whisper-data/
+firmware/esp32-s3-box-3-mictest/
+firmware/esp32-s3-box-3-official-mictest/
+playbook-builder 18/
+wake-word-voice-assistants-26.6.1/
+*.code-workspace
+

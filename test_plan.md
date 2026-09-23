@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 16
-- Verified Features: 16
+- Total Registered Features: 26
+- Verified Features: 26
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -24,6 +24,20 @@
 | FEAT-014 | Hardware Dynamic RAG Tool Calling | [server/index.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/index.js) | Server-side setup injection & HNSW vector search verification | PASS |
 | FEAT-015 | Acoustic Pre-Roll Wake-Word & Dual-Trigger Subsystem | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | PSRAM pre-roll circular buffer, acoustic feedback blanking, volume attenuation & dual trigger | PASS |
 | FEAT-016 | Hardware Conversational Persona | [hardwareClientService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/hardwareClientService.js) | Witty British sarcastic persona, dark humour greetings, and grounded RAG answer verification | PASS |
+| FEAT-017 | Hardware Half-Duplex Audio Protection & Lossless Playback Pacing | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | Server/firmware half-duplex mic suppression, FreeRTOS lossless queue retry loop & RAG spoken brevity | PASS |
+| FEAT-018 | Hardware Stutter-Free Playback & Responsive Wake-Word Triggering | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | Core 1 non-blocking playback queue pacing, server mic passthrough & calibrated wake VAD | PASS |
+| FEAT-019 | Hardware Physical Mic Mute Switch, Transcript Logging & PA Protection | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | Physical latching mute button (GPIO 1), transcript saving alongside WAV, PA enable guarantee & rich persona | PASS |
+| FEAT-020 | Hardware Complete Audio Playback & Synthesis Continuity Guarantee | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | 4000ms pause-tolerant drain timer, 1-3 sentence spoken brevity limit, defensive PA/DAC unmute, and socket lifecycle logging | PASS |
+| FEAT-021 | Hardware Keep-Alive Ping, Amplifier Persistence & Fast Turn Transition | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | 15s WebSocket ping, persistent PA during dialogue, 200ms post-drain cooldown & 1-2 sentence spoken conciseness | PASS |
+| FEAT-022 | Hardware Interactive Voice Shuffling & Official Voice Descriptions | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | Immediate audio termination, 350ms settle debounce, 30 official voice descriptions, and wake-gating text exemption | PASS |
+| FEAT-023 | Hardware Strict 15 Wake-Phrase Initiation & Context Reset | [hardwareClientService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/hardwareClientService.js) | Dual-layer 15 wake-phrase gating, server audio buffering & sessionClosed context reset | PASS |
+| FEAT-024 | Hardware Yorkshire Persona, Dynamic Markdown Rulebook & Emotion Matrix | [hardwareClientService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/hardwareClientService.js) | Dynamic ims_persona_rules.md loading, Yorkshire phonetic priming, turn-by-turn setEmotion activation & non-blocking farewell | PASS |
+| FEAT-025 | Hardware Explicit Memory & Recall Subsystem | [hardwareClientService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/hardwareClientService.js) | rememberFact SQLite persistence, prompt pre-injection, and recallMemory / forgetMemory execution | PASS |
+| FEAT-026 | IMS Memory Management Portal | [MemoriesPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/MemoriesPortal.jsx) | /ims/memories route view, add, edit, and delete operations | PASS |
+
+
+
+
 
 ## Section 2: Detailed Scenarios
 ### Suite 12: ESP32-S3-BOX-3 Hardware Voice Terminal (FEAT-012)
@@ -57,6 +71,82 @@
 3. **Subtle Persona Seasoning:** Confirm that factual responses retain a subtle, entertaining hint of the friendly sarcastic persona without obscuring technical details or data.
 4. **Firmware Fallback Parity:** Verify Box-3 firmware fallback prompt maintains identical persona tone if backend handshake overrides are bypassed.
 
+### Suite 17: Hardware Half-Duplex Audio Protection & Lossless Playback Pacing (FEAT-017)
+1. **Server-Side Half-Duplex Suppression:** Monitor `live_proxy_debug.log` during long assistant speech turns; confirm binary mic messages from hardware client are filtered while `isModelSpeaking` is true, preventing false Gemini cloud VAD barge-in.
+2. **Firmware Outbound Queue Reset:** Verify `sendTurnComplete()` and `handleFrame()` immediately deactivate `micStreamingActive` and reset `audioOutQueue`, stopping in-flight microphone packets from colliding with model audio synthesis.
+3. **Core 0 audioMicTask Playback Guard:** Validate that `audioMicTask` inhibits mic frame pushing into `audioOutQueue` whenever `currentState == STATE_SPEAKING` or `isSpeakerCoolingDown()` is active.
+4. **Lossless Playback Ingestion:** Verify that long bursts of audio chunks streamed into `handleFrame()` utilize the 40ms/4ms delay retry loop rather than silently dropping chunks, ensuring 100% audio packet delivery to `audioPlaybackQueue`.
+5. **RAG Spoken Brevity & Completion:** Trigger a multi-document library query; verify Gemini synthesizes a complete, punchy 2-4 sentence spoken answer without mid-sentence cut-offs or token duration exhaustion.
+
+### Suite 18: Hardware Stutter-Free Playback & Responsive Wake-Word Triggering (FEAT-018)
+1. **Core 1 Non-Blocking Network Ingestion:** Verify `handleFrame()` pushes incoming resampled audio into `audioPlaybackQueue` using bounded 15ms queue send without `vTaskDelay` loops, maintaining continuous lwIP TCP socket polling without receive window stalls.
+2. **Smooth Stutter-Free Speaker Playback:** Stream multi-sentence Gemini Live voice responses into ESP32-S3-BOX-3B; verify smooth, continuous audio reproduction through ES8311 DAC without I2S DMA underrun clicks, stuttering, or gaps.
+3. **Unconditional Proxy Mic Ingestion:** Confirm `index.js` routes all binary microphone frames from the hardware terminal to upstream Gemini Live without model-speaking suppression, preventing wake-word dropped packets.
+4. **modelTurnActive Auto-Clearing Guard:** Verify `isSpeakerActive()` safely clears `modelTurnActive` if `audioPlaybackQueue` has been empty for >1500ms, eliminating permanent acoustic cooldown lockups when upstream `turnComplete` is missing.
+5. **Responsive Acoustic Wake Triggering:** Say "Hey Ims" or "Eh up Ims" from 1m distance; confirm immediate transition to `STATE_LISTENING` on the 1st attempt via calibrated 650 RMS / 2-frame VAD.
+
+### Suite 19: Hardware Physical Mic Mute Switch, Transcript Logging & PA Protection (FEAT-019)
+1. **Physical Latching Mute Button:** Press top mute button on ESP32-S3-BOX-3; confirm button illuminates red and LCD renders `[MIC MUTED (BUTTON LIT)]` status with red indicator, actively blocking all mic streaming and wake detection.
+2. **Unmute Recovery:** Press top button again to release latch; confirm LED extinguishes and LCD immediately transitions back to ready `STANDBY` state, allowing immediate wake-word ("Hey Ims") triggering.
+3. **Power Amplifier Power-On Guarantee:** Trigger conversational speech turn; verify `PA_ENABLE_PIN` (GPIO 46) is unconditionally asserted HIGH upon incoming audio arrival in `unmuteDacOnly()` and `handleFrame()`, eliminating silent "Speaking..." states.
+4. **Full Response Transcript (.txt) Logging:** Trigger speech playback; verify `server/index.js` creates a `.txt` file containing the complete Gemini Live text response with the identical filename alongside each saved `.wav` file in `pdf-knowledge-base/server/audio_captures/`.
+5. **Time-Bounded Echo Suppression:** Confirm server suppresses mic audio forwarding while `Date.now() - lastModelAudioTime < 800`, eliminating Google's server-side `GEMINI INTERRUPTED` acoustic feedback aborts while permitting immediate speech once model finishes.
+6. **Varied Persona Synthesis:** Issue successive queries and wake-ups; verify Gemini generates novel, non-repetitive responses at temperature 0.9 while adhering to the witty, dark British comedic persona.
+
+### Suite 20: Hardware Complete Audio Playback & Synthesis Continuity Guarantee (FEAT-020)
+1. **Pause-Tolerant Audio Playback:** Issue an inquiry eliciting a multi-clause response; verify that Gemini Live pauses up to 4,000ms between clauses or sentences do not prematurely trigger `speaking_autotransition` or mute the ES8311 DAC.
+2. **Spoken Brevity Enforcement:** Trigger library search queries and general conversation; confirm Gemini consistently constrains spoken responses to 1 to 3 complete sentences (under 15–20s of audio) without rambling or buffer overflow.
+3. **Sentence Completion:** Verify that all spoken responses finish with a natural sentence conclusion, avoiding abrupt cutoffs mid-word or mid-sentence.
+4. **Defensive PA/DAC Assertion:** Confirm that PA enable (GPIO 46) and ES8311 DAC unmute are continuously re-asserted on every binary audio chunk in `handleFrame()`, preventing any underrun from silencing audio.
+5. **Proxy Connection Telemetry:** Verify `live_proxy_debug.log` captures client IP, remote port, and explicit connection close codes for all hardware terminal sessions.
+
+### Suite 21: Hardware Keep-Alive Ping, Amplifier Persistence & Fast Turn Transition (FEAT-021)
+1. **WebSocket Keep-Alive Heartbeat:** Verify server proxy logs `gWs.ping()` transmissions every 15 seconds during idle periods, preventing Cloudflare and Google Cloud edge socket closures.
+2. **Persistent Amplifier Power:** Initiate dialogue; verify `PA_ENABLE_PIN` (GPIO 46) remains HIGH across turn transitions while `conversationOpen == true`, eliminating the 100-150ms wake delay and preventing opening syllable clipping.
+3. **Rapid 200ms Turn Transition:** When speech finishes, verify `isSpeakerActive()` transitions to `STATE_LISTENING` within 200ms of I2S DMA empty, enabling instant natural user follow-up responses without delay.
+4. **Spoken Conciseness Enforcement:** Confirm Gemini consistently limits voice replies to 1-2 concise sentences (under 10s of audio), completely eliminating the 20-second Google token cutoff.
+5. **Standby Power Saving:** When conversation closes (`conversationOpen == false`), verify `setSpeakerMute(true)` sets `PA_ENABLE_PIN` LOW, restoring full low-power quiet standby.
+
+### Suite 22: Hardware Interactive Voice Shuffling & Official Voice Descriptions (FEAT-022)
+1. **Immediate Audio Interruption & Queue Purge:** During active voice preview playback, tap the left or right chevron arrow on the Box-3 LCD; verify speaker amplifier (`PA_ENABLE_PIN`) is immediately deasserted LOW, `audioPlaybackQueue` and `audioOutQueue` are instantly flushed, and prior audio speech halts with zero perceptual latency.
+2. **Rapid Voice Shuffling & Debounce Pacing:** Rapidly tap through 5-10 voice selections; confirm LCD title, voice name, and description update with zero lag on every tap, while network reconnection and Gemini audio preview requests are debounced to 350ms of quiet settle time, eliminating socket flooding and heap fragmentation.
+3. **Official Voice Descriptions Display:** Cycle through all 30 Gemini voices (Puck, Charon, Kore, Fenrir, Aoede, etc.); verify each voice name displays in emerald green and its corresponding official Google description (e.g. "Bright", "Upbeat", "Informative", "Firm", "Excitable") renders directly beneath in sky blue.
+4. **Text-Turn Wake Gating Exemption:** On voice preview trigger, verify server-side `hardwareClientService.js` explicitly exempts direct text turns (`clientContent`) from `noWakeDetected` silence gating, ensuring preview speech "Hi, I'm <voice>" synthesizes and plays aloud reliably.
+5. **Preview Flow Reset Safety:** If server emits a `noWakeDetected` signal or WebSocket reconnects, verify `previewFlow` resets safely to `PREVIEW_IDLE`, restoring UI interactive indicators without locking the screen in "Speaking preview...".
+
+### Suite 23: Hardware Strict 15 Wake-Phrase Initiation & Context Reset (FEAT-023)
+1. **Approved Wake-Phrase Initiation:** Speak any of the 15 approved wake phrases ("Now then, IMS", "Alright, IMS?", "Ey up, IMS" / "Eh up, IMS", "How do, IMS?", "Yo, IMS", "Hey, IMS", "Evening, IMS", "Good day, IMS", "Morning IMS", "Quick question, IMS", "Help me, IMS", "You there, IMS?", "Talk to me, IMS", "Got a sec, IMS?", "Hi, IMS"); verify Gemini Live immediately responds aloud, transitioning device from `STANDBY` to `SPEAKING`.
+2. **Elimination of False Thinking Transitions:** During wake candidate speech verification (`!conversationOpen`), verify the LCD display stays firmly on `STANDBY` without displaying "GEMINI THINKING...".
+3. **Unauthorized Ambient Speech Dropping:** Speak direct queries or ambient conversation into the room without an approved wake opening (e.g. "When is my next meeting?", "What time is it?", or "IMS what is this?"); verify Gemini calls `noWakeDetected`, emits 0 audio bytes, and device remains silent in `STANDBY` with zero spoken audio.
+4. **Continuous Dialogue Flow:** After an approved wake phrase opens the dialogue (`conversationOpen = true`), speak follow-up questions naturally without repeating wake words; verify Gemini answers each turn and shows `LISTENING...` / `GEMINI THINKING...` / `SPEAKING`.
+5. **Explicit Closing Phrase Teardown:** Speak a closing phrase (e.g. "thanks, bye", "goodbye", "that's all, IMS"); verify Gemini delivers farewell speech, calls `endConversation`, and device returns to `STANDBY` with `conversationOpen = false`.
+6. **Session Idle Context Teardown:** Allow an open conversation to sit idle for 14s; verify firmware transitions `STATE_LISTENING` -> `STATE_STANDBY`, transmits `{"sessionClosed": true}`, and backend drops upstream Gemini session (code 1000) so old context cannot bleed into subsequent sessions.
+7. **Touch-To-Talk Wake Bypass:** Tap the LCD screen directly; verify firmware sends `{"touchToTalk": true}` and enters `STATE_LISTENING`, allowing direct query questions without requiring a spoken wake phrase.
+
+### Suite 24: Hardware Yorkshire Persona, Dynamic Markdown Rulebook & Emotion Matrix (FEAT-024)
+1. **Dynamic Markdown Rulebook Ingestion:** Modify `ims_persona_rules.md` in repository root; start a hardware session and verify server console logs `personaRules=loaded` and system prompt contains injected rules without requiring server restart or firmware reflash.
+2. **Yorkshire Dialect Acoustic Synthesis:** Speak an approved wake phrase (e.g. "Ey up, IMS", "Now then, IMS"); verify spoken audio response adopts genuine Northern cadence, regional idioms ("nowt", "owt", "proper", "crack on", "champion"), and dropped aspirate phrasing.
+3. **Turn-by-Turn Facial Emotion Expression:** Monitor Box-3 LCD display across multi-turn exchanges; verify Gemini invokes `setEmotion` at the start of every reply with context-appropriate expressions (`joy` on greetings, `cocky` on witty comebacks, `suspicious` on dubious questions, `amazement` on technical milestones, `sleepy` at night) rather than sitting statically on `neutral`.
+4. **Mid-Turn Emotional Transitions:** Present a prompt requiring evaluation and conclusion (e.g. checking a complex contract clause); verify Gemini calls `setEmotion` mid-turn, visibly transforming the LCD pixel matrix as the sentiment shifts from investigation to resolution.
+5. **Conversational Agency & Hook Engagement:** Engage in dialogue; verify IMS closes turns with active conversational hooks, counter-questions, or dry observations rather than subservient corporate assistant closures ("How may I assist you today?").
+6. **Non-Blocking Farewell Execution:** Speak a closing phrase ("Thanks, bye"); verify Gemini synthesizes and plays farewell audio immediately without lag, and Box-3 transitions to `STANDBY` as `conversationOpen` closes.
+
+### Suite 25: Hardware Explicit Memory & Recall Subsystem (FEAT-025)
+1. **Explicit Fact Ingestion ("Remember that / remember this"):** Speak a directive with an approved wake phrase (e.g. "Hey IMS, I left me car keys in the top drawer by the front door, remember that"); verify Gemini invokes `rememberFact`, logs `[rememberFact saved]` in server console, sets an expressive face (e.g. `cocky`), and delivers an affirmative in-character acknowledgment aloud.
+2. **Persistent Storage Verification:** Inspect SQLite `ims_memories` table; verify the fact is recorded with unique ID, categorized appropriately, and timestamped.
+3. **Session Handshake Pre-Injection:** Open a new hardware session; verify `buildMemoryParagraph()` loads the stored fact from `ims_memories` and injects it into `systemInstruction.parts[0].text` alongside past conversation topic summaries.
+4. **Targeted Memory Recall ("Where are my keys?"):** Ask a direct recall question (e.g. "Quick question, IMS, where did I leave me car keys?"); verify Gemini recalls the exact saved fact and answers aloud in authentic dialect without hallucination.
+5. **Broad Memory Querying ("What did I ask you to remember?"):** Ask "What have I asked you to remember?"; verify Gemini invokes `recallMemory` and recites the active stored notes.
+6. **Targeted Fact Deletion ("Forget that note"):** Instruct IMS to forget a specific item (e.g. "Forget about the car keys"); verify Gemini calls `forgetMemory`, deletes the record from `ims_memories`, and acknowledges the removal.
+
+### Suite 26: IMS Memory Management Portal (/ims/memories) (FEAT-026)
+1. **Route Activation:** Navigate to `/ims/memories` in browser or click "Memories DB" in the left sidebar or topbar icon; verify `MemoriesPortal` renders with Oatmeal/dark theme, overview metric cards, and responsive toolbar.
+2. **Database Ingestion & Categorization:** Click "Add Memory", enter fact text, choose category (`item_location`, `preference`, `personal`, `work`), and submit; verify `POST /api/memories` returns HTTP 201, toast confirms insertion, and memory card displays immediately.
+3. **Real-time Live Search & Filtering:** Enter keywords into the search input or toggle category pills (`All`, `Item Locations`, `Preferences`, etc.); verify grid updates instantly reflecting filtered memory subsets.
+4. **Inline Fact Editing:** Click the edit icon on a memory card; update the fact string or category in the modal and save; verify `PUT /api/memories/:id` persists changes and card refreshes.
+5. **Destructive Action Confirmation Guard:** Click the delete trash icon; verify card presents an explicit confirmation button ("Confirm") before executing `DELETE /api/memories/:id`, preventing accidental fact loss.
+6. **Hardware Cross-Synchronization:** Speak a fact to the Box-3 assistant ("Hey IMS, remember that my workshop code is 4421"); refresh `/ims/memories` and verify the spoken memory appears in the web portal with its timestamp and category.
+
 ## Section 3: Defensive Engineering Invariants
 1. Hardware watchdog timer (WDT) and auto-reconnect logic on ESP32 WebSocket disconnects.
 2. Anti-stutter ring buffer and I2S DMA queue sizing on ESP32 PSRAM to prevent audio underflow/overflow.
@@ -64,9 +154,30 @@
 4. Stereo I2S bus acquisition with pure Left channel deinterleaving to prevent phase cancellation or DC-offset intermodulation on shared Box-3 codec lines.
 5. Server-side toolResponse fallback ensuring Gemini Live receives an error acknowledgment if RAG search encounters a timeout or failure.
 6. Acoustic feedback cooldown blanking window (1000ms) ensuring microphone task suppresses wake detection and resets pre-roll buffer while speaker is active or reverberating.
-7. Playback flow-control pacing (35ms timeout) matching 32ms I2S DMA chunk consumption, ensuring long streaming audio responses are paced without dropping frames or stalling the network loop.
+7. Playback flow-control pacing (15ms timeout) into 1024-chunk PSRAM buffer ensuring streaming audio chunks are ingested without dropping frames or blocking Core 1's network poll loop.
 8. Conversational persona instructions enforce 100% strict adherence to RAG tool execution (`searchLibrary`) so wit does not override factual veracity.
-9. Acoustic wake detection requires multi-frame verification (3 consecutive frames > 800 RMS) and 1,500ms post-playback cooldown to eliminate ambient noise and speaker reverberation false triggers.
+9. Acoustic wake detection requires multi-frame verification (2 consecutive frames > 650 RMS) and 1,500ms post-playback cooldown to eliminate ambient noise and speaker reverberation false triggers.
 10. Dual-trigger recovery allows wake phrase, touch, and top button to interrupt or reset from THINKING or LISTENING states.
+11. Hardware-level half-duplex microphone suppression: during active physical speaker playback (`STATE_SPEAKING` and `isSpeakerCoolingDown()`), microphone forwarding is suppressed on the device itself with microsecond DMA accuracy.
+12. Acoustic state timeout guard: `modelTurnActive` is automatically cleared after 1500ms of speaker silence to ensure missing upstream `turnComplete` packets cannot permanently dead-end acoustic wake detection.
+13. Hardware physical mic mute switch (GPIO 1) is active LOW and unconditionally halts mic task streaming, purges outbound queues, and rejects touch-to-talk triggers until physically disengaged.
+14. Class-D speaker power amplifier (NS4150B on GPIO 46) is guaranteed enabled on every audio chunk reception to eliminate race conditions between local silence timers and rapid Gemini synthesis.
+15. Playback pause tolerance guard: `isSpeakerActive()` maintains `modelTurnActive` for up to 4,000ms of empty-queue silence, preventing inter-clause speech synthesis pauses from prematurely muting the hardware codec.
+16. Strict spoken length boundary: Gemini Live system prompt strictly limits audio answers to 1-3 complete sentences (max 15-20s audio) to prevent FreeRTOS PSRAM queue exhaustion and cloud VAD aborts.
+17. WebSocket keep-alive ping interval (15s) maintains intermediate Google Cloud edge proxies and prevents silent TCP half-open connection termination during conversational pauses.
+18. Class-D amplifier persistence: `PA_ENABLE_PIN` (GPIO 46) is held asserted HIGH for the entirety of an active dialogue (`conversationOpen`), eliminating the 100-150ms startup delay that clips initial syllables of short replies.
+19. Rapid turn-taking cooldown: the post-drain acoustic cooldown is bounded to 200ms after the I2S DMA playback queue empties, restoring the microphone immediately for natural zero-lag conversational replies without echo feedback.
+20. Voice preview audio cutoff: on chevron arrow touch in the IMS Voice screen, speaker PA is immediately disabled (LOW), `audioPlaybackQueue` is flushed, and `previewFlow` is aborted to allow instant, non-blocking shuffling between voices.
+21. Voice shuffle settle debounce (350ms): rapid screen navigation updates UI and voice state immediately while pacing backend TCP socket reconnection, preventing socket churn and FreeRTOS heap exhaustion.
+22. Standby wake verification invariant: while `conversationOpen == false`, `sendTurnComplete()` leaves `currentState = STATE_VERIFYING` and the LCD rendered in `STANDBY`, preventing candidate audio evaluation from flashing false `GEMINI THINKING...` screens.
+23. Session state synchronization: firmware explicitly broadcasts `sessionClosed` upon idle timeout, verification timeout, mute engagement, or tap-cancel, ensuring proxy terminates upstream Gemini session (code 1000) and prevents conversational context bleed.
+24. Dynamic persona configuration fallback: if `ims_persona_rules.md` is missing or unreadable, `hardwareClientService.js` gracefully falls back to default system instructions without crashing the session setup handshake.
+25. Non-blocking tool execution safety: `endConversation` and `setEmotion` tools are declared without blocking behavior flags, ensuring Gemini Live synthesizes voice immediately without waiting for server response round trips.
+26. Explicit memory error resilience: if database lookup encounters a transient lock or error, `rememberFact` and `recallMemory` return defensive error fallbacks to Gemini Live without breaking the WebSocket stream or audio pipeline.
+27. Web memory portal optimistic and defensive validation: memory additions and deletions are validated on both client and Express routes with non-empty string checks, confirmation gates on destructive actions, and non-blocking asynchronous REST endpoints preserving SQLite database integrity.
+
+
+
+
 
 

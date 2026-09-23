@@ -206,6 +206,18 @@ export default function Layout({
               <Compass size={20} />
             </button>
           </Tooltip>
+          <Tooltip text="IMS Memories Database (/ims/memories)">
+            <button
+              className="settings-cog-btn"
+              onClick={() => {
+                window.history.pushState(null, '', '/ims/memories');
+                window.dispatchEvent(new PopStateEvent('popstate'));
+              }}
+              title="IMS Memories Database (/ims/memories)"
+            >
+              <Brain size={18} />
+            </button>
+          </Tooltip>
           {!teleportedIds.includes('settings') && (
             <div data-tool-id="settings">
               <Tooltip text="Admin">

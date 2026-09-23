@@ -256,6 +256,41 @@ const char *PERSONALITY_VOICES[] = {
     "Vindemiatrix", "Sadachbia", "Sadaltager", "Sulafat"};
 #define PERSONALITY_VOICE_COUNT 30
 
+// Official voice tone and style descriptions from Google Gemini API guidance
+// (ai.google.dev/gemini-api/docs/speech-generation)
+const char *PERSONALITY_VOICE_DESCRIPTIONS[PERSONALITY_VOICE_COUNT] = {
+    "Bright",        // Zephyr
+    "Upbeat",        // Puck
+    "Informative",   // Charon
+    "Firm",          // Kore
+    "Excitable",     // Fenrir
+    "Youthful",      // Leda
+    "Firm",          // Orus
+    "Breezy",        // Aoede
+    "Easy-going",    // Callirrhoe
+    "Bright",        // Autonoe
+    "Breathy",       // Enceladus
+    "Clear",         // Iapetus
+    "Easy-going",    // Umbriel
+    "Smooth",        // Algieba
+    "Smooth",        // Despina
+    "Clear",         // Erinome
+    "Gravelly",      // Algenib
+    "Informative",   // Rasalgethi
+    "Upbeat",        // Laomedeia
+    "Soft",          // Achernar
+    "Firm",          // Alnilam
+    "Even",          // Schedar
+    "Mature",        // Gacrux
+    "Forward",       // Pulcherrima
+    "Friendly",      // Achird
+    "Casual",        // Zubenelgenubi
+    "Gentle",        // Vindemiatrix
+    "Lively",        // Sadachbia
+    "Knowledgeable", // Sadaltager
+    "Warm"           // Sulafat
+};
+
 // Selectable alert tones for fired timers/alarms/reminders (Preferences
 // screen) - declared here, ahead of loadPersonalityFromNVS() below, which
 // needs ALERT_SOUND_COUNT to clamp a value loaded from NVS. playAlertSound()
@@ -294,6 +329,9 @@ enum PreviewFlowState { PREVIEW_IDLE, PREVIEW_RECONNECT, PREVIEW_AWAIT_SETUP, PR
 PreviewFlowState previewFlow = PREVIEW_IDLE;
 String previewPendingText;
 unsigned long previewFlowStartMs = 0;
+bool voicePreviewPending = false;
+unsigned long voicePreviewTriggerMs = 0;
+#define VOICE_PREVIEW_DEBOUNCE_MS 350
 
 Preferences personalityPrefs;
 
@@ -1144,30 +1182,37 @@ void drawVoiceScreen() {
   drawChevron(VOICE_BACK_CHEVRON_CX, VOICE_BACK_CHEVRON_CY, false, tft.color565(140, 150, 175));
   drawChevron(VOICE_NEXT_CHEVRON_CX, VOICE_BACK_CHEVRON_CY, true, tft.color565(140, 150, 175));
 
-  bool busy = (previewFlow != PREVIEW_IDLE);
-  uint32_t arrowCol = busy ? tft.color565(60, 66, 80) : tft.color565(140, 150, 175);
-  uint32_t nameCol = busy ? tft.color565(90, 100, 120) : tft.color565(76, 255, 122);
+  bool busy = (previewFlow != PREVIEW_IDLE || voicePreviewPending);
+  uint32_t arrowCol = tft.color565(140, 150, 175);
+  uint32_t nameCol = tft.color565(76, 255, 122);
   drawTriangleArrow(45, VOICE_ARROW_CY, false, arrowCol);
   drawTriangleArrow(275, VOICE_ARROW_CY, true, arrowCol);
 
-  // Text size 2, not 3 - some of the 30 voice names (e.g. "Zubenelgenubi")
-  // are long enough that size 3 would run into the arrows either side.
+  // Text size 2 for voice name, centered slightly above arrow center
   tft.setTextDatum(middle_center);
   tft.setTextSize(2);
   tft.setTextColor(nameCol);
-  tft.drawString(PERSONALITY_VOICES[personalityVoiceIndex], 160, VOICE_ARROW_CY - 5);
+  tft.drawString(PERSONALITY_VOICES[personalityVoiceIndex], 160, VOICE_ARROW_CY - 16);
+
+  // Voice description directly beneath the voice name in accent sky-blue
   tft.setTextSize(1);
+  tft.setTextColor(tft.color565(120, 210, 255));
+  char descStr[48];
+  snprintf(descStr, sizeof(descStr), "(%s)", PERSONALITY_VOICE_DESCRIPTIONS[personalityVoiceIndex]);
+  tft.drawString(descStr, 160, VOICE_ARROW_CY + 8);
+
+  // Voice index counter e.g. "1 of 30"
   tft.setTextColor(tft.color565(100, 110, 130));
   char idxStr[16];
   snprintf(idxStr, sizeof(idxStr), "%d of %d", personalityVoiceIndex + 1, PERSONALITY_VOICE_COUNT);
-  tft.drawString(idxStr, 160, VOICE_ARROW_CY + 30);
+  tft.drawString(idxStr, 160, VOICE_ARROW_CY + 28);
   tft.setTextDatum(top_left);
 
-  // Footer - same hint text style as the other screens.
+  // Footer - dynamic status hint
   tft.fillRect(0, 204, 320, 36, tft.color565(15, 18, 26));
-  tft.setTextColor(tft.color565(100, 110, 130));
+  tft.setTextColor(busy ? tft.color565(120, 210, 255) : tft.color565(100, 110, 130));
   tft.setTextDatum(top_center);
-  tft.drawString(busy ? "Speaking preview..." : "Tap an arrow to preview a voice", 160, 214);
+  tft.drawString(busy ? "Speaking preview..." : "Tap arrows to shuffle voices", 160, 214);
   tft.setTextDatum(top_left);
 
   tft.endWrite();
@@ -1899,6 +1944,20 @@ void sendAudioStreamEnd() {
   Serial.println("[IMS] Sent audioStreamEnd - abandoned input stream closed cleanly on Gemini's side");
 }
 
+void sendSessionClosed() {
+  if (!tcpClient.connected()) return;
+  const char *msg = "{\"sessionClosed\":true}";
+  sendFrame(0x00, (const uint8_t *)msg, strlen(msg));
+  Serial.println("[IMS] Sent sessionClosed - conversation closed on device");
+}
+
+void sendTouchToTalk() {
+  if (!tcpClient.connected()) return;
+  const char *msg = "{\"touchToTalk\":true}";
+  sendFrame(0x00, (const uint8_t *)msg, strlen(msg));
+  Serial.println("[IMS] Sent touchToTalk - user initiated conversation via screen tap");
+}
+
 // Plays a short 440Hz tone directly via i2s_channel_write(), bypassing Gemini and
 // the mic entirely - isolates the speaker/DAC/amp half of the pipeline so
 // it can be verified independently of whatever the mic is doing. Blocking
@@ -2033,6 +2092,9 @@ void beginListening(const char *reason) {
   }
   Serial.printf("[IMS] Starting listening session (%s)...\n", reason);
   sendDebug((String("listening_start:") + reason).c_str());
+  if (strcmp(reason, "touch") == 0 || strcmp(reason, "touch_interrupt") == 0) {
+    sendTouchToTalk();
+  }
   setSpeakerMute(true); // Isolate mic from speaker PA switching noise
   if (audioPlaybackQueue) {
     xQueueReset(audioPlaybackQueue); // Flush any stale audio from previous turn
@@ -2096,19 +2158,14 @@ void sendTurnComplete() {
   // handleFrame() stops mic streaming the instant Gemini's audio response arrives.
   isSpeakingDetected = false;
   preWarmSpeakerPA();
-  // STATE_VERIFYING is a not-yet-confirmed wake candidate, not an open
-  // conversation turn - Gemini still needs the turnComplete signal so it can
-  // actually judge the audio (its VAD needs the trailing silence exactly
-  // like a real turn does), but the screen must stay looking like STANDBY.
-  // Forcing STATE_THINKING here was the bug: it showed "Thinking..." for
-  // every false trigger and, worse, made noWakeDetected's `currentState ==
-  // STATE_VERIFYING` guard in handleFrame() always false, so a rejected
-  // candidate never reverted - it just sat in THINKING until the 14s idle
-  // timeout silently kicked it back to STANDBY.
-  if (currentState == STATE_VERIFYING) {
-    Serial.println("[IMS] Wake-candidate speech ended -> awaiting Gemini's judgment (still verifying)");
+  // If conversation is NOT open or currently verifying, this is an unconfirmed wake candidate.
+  // Gemini judges the audio; the screen must stay looking like STANDBY.
+  // NEVER show "GEMINI THINKING..." when a candidate wake phrase is being evaluated!
+  if (!conversationOpen || currentState == STATE_VERIFYING) {
+    Serial.println("[IMS] Wake-candidate speech ended -> awaiting Gemini's judgment (still verifying, stay in STANDBY)");
+    currentState = STATE_VERIFYING;
   } else {
-    Serial.println("[IMS] Spoken turn completed -> transitioning to THINKING");
+    Serial.println("[IMS] Spoken turn completed in open conversation -> transitioning to THINKING");
     currentState = STATE_THINKING;
     lastTranscript = "Thinking...";
     renderScreen(true);
@@ -2172,11 +2229,13 @@ void flushSettingsSave(); // defined just below startPreview() - see its own com
 
 // Kicks off the voice/personality preview flow (see PreviewFlowState above
 // and the state machine in loop()) - used by both the voice picker's arrow
-// taps and the personality screen's Play button. No-ops if a preview is
-// already in flight, matching the greyed-out button/arrows the UI shows in
-// that state.
+// taps and the personality screen's Play button. If an existing preview was
+// in flight, cleanly aborts it to start the newly requested preview immediately.
 void startPreview(const String &text) {
-  if (previewFlow != PREVIEW_IDLE) return;
+  if (previewFlow != PREVIEW_IDLE) {
+    previewFlow = PREVIEW_IDLE;
+    previewPendingText = "";
+  }
   // Force-save any still-debounced change first, so e.g. a Play tap right
   // after dragging a slider previews the position actually left it at.
   flushSettingsSave();
@@ -2286,6 +2345,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       // next turn goes straight back to LISTENING instead of requiring
       // another wake phrase (see the SPEAKING auto-transition in loop()).
       conversationOpen = true;
+      conversationShouldClose = false;
       if (audioOutQueue) {
         xQueueReset(audioOutQueue);
       }
@@ -2346,8 +2406,8 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         // Clean silent standby: do NOT inject synthetic sendTextQuery on boot.
         // Device is in ready standby waiting for user touch or wake-word.
       } else {
-        // Transparent reconnect from proxy - preserve current state if listening/thinking/speaking
-        if (currentState != STATE_LISTENING && currentState != STATE_THINKING && currentState != STATE_SPEAKING) {
+        // Transparent reconnect from proxy - preserve current state if listening/thinking/speaking/verifying
+        if (currentState != STATE_LISTENING && currentState != STATE_THINKING && currentState != STATE_SPEAKING && currentState != STATE_VERIFYING) {
           currentState = STATE_STANDBY;
           lastTranscript = "Say 'Hey Ims' or tap screen";
           renderScreen(true);
@@ -2359,13 +2419,22 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
     // phrase. Revert silently - STATE_VERIFYING already looks identical to
     // STANDBY on screen, so nothing visibly changes for a false trigger.
     if (doc["noWakeDetected"].as<bool>()) {
-      if (currentState == STATE_VERIFYING) {
-        Serial.println("[IMS] noWakeDetected - false trigger, reverting to STANDBY silently");
-        currentState = STATE_STANDBY;
-        micStreamingActive = false;
-        isSpeakingDetected = false;
-        renderScreen(true);
+      if (previewFlow != PREVIEW_IDLE) {
+        Serial.println("[Preview] noWakeDetected received during preview - aborting preview");
+        previewFlow = PREVIEW_IDLE;
+        previewPendingText = "";
+        if (onVoiceScreen) drawVoiceScreen();
+        else if (onSettingsScreen && !onPrefsScreen) { tft.startWrite(); drawPlayButton(); tft.endWrite(); }
       }
+      Serial.println("[IMS] noWakeDetected - false trigger, reverting to STANDBY silently");
+      currentState = STATE_STANDBY;
+      micStreamingActive = false;
+      isSpeakingDetected = false;
+      conversationOpen = false;
+      conversationShouldClose = false;
+      setSpeakerMute(true);
+      lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
+      renderScreen(true);
     }
     // Backend forwarded Gemini's endConversation tool call (user said "bye"/
     // "goodbye"/etc.) - don't cut the farewell reply short. Just mark that
@@ -3125,6 +3194,7 @@ void loop() {
       isSpeakingDetected = false;
       conversationOpen = false;
       conversationShouldClose = false;
+      sendSessionClosed();
       if (currentState == STATE_LISTENING || currentState == STATE_THINKING || currentState == STATE_VERIFYING) {
         currentState = STATE_STANDBY;
       }
@@ -3179,6 +3249,7 @@ void loop() {
       conversationOpen = false;
       conversationShouldClose = false;
       setSpeakerMute(true);
+      sendSessionClosed();
       lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
     }
     renderScreen(true);
@@ -3191,6 +3262,7 @@ void loop() {
       (millis() - lastSpeechTimestamp > SESSION_IDLE_TIMEOUT_MS)) {
     sendDebug("session_idle_timeout");
     if (currentState == STATE_LISTENING) sendAudioStreamEnd(); // was mid-stream
+    sendSessionClosed();
     currentState = STATE_STANDBY;
     micStreamingActive = false;
     conversationOpen = false;
@@ -3208,6 +3280,7 @@ void loop() {
   if (currentState == STATE_VERIFYING && (millis() - lastSpeechTimestamp > 8000)) {
     sendDebug("verify_timeout");
     sendAudioStreamEnd(); // this is exactly the case that was never being closed
+    sendSessionClosed();
     currentState = STATE_STANDBY;
     micStreamingActive = false;
     isSpeakingDetected = false;
@@ -3260,6 +3333,14 @@ void loop() {
   // rather than needing another touch event to trigger it.
   if (settingsDirty && (millis() - settingsLastChangeMs > SETTINGS_SAVE_DEBOUNCE_MS)) {
     flushSettingsSave();
+  }
+
+  // Voice screen preview debounce - allows user to rapidly shuffle through voices
+  // without thrashing TCP reconnects. Triggers startPreview() 350ms after the last arrow tap.
+  if (voicePreviewPending && (millis() >= voicePreviewTriggerMs)) {
+    voicePreviewPending = false;
+    String voiceName = PERSONALITY_VOICES[personalityVoiceIndex];
+    startPreview("Hey IMS! Say exactly, with nothing else before or after it: \"Hi, I'm " + voiceName + ".\"");
   }
 
 
@@ -3323,43 +3404,53 @@ void loop() {
       }
     } else if (onVoiceScreen) {
       if (touchX >= VOICE_BACK_ZONE_X0 && touchX <= VOICE_BACK_ZONE_X1 && touchY >= VOICE_BACK_ZONE_Y0 && touchY <= VOICE_BACK_ZONE_Y1) {
-        // "< PERSONALITY": back up one level. Flush any pending voice change
-        // first (fires its "Hi, I'm X" preview rather than leaving it to the
-        // passive debounce timer, and rather than losing it if a Play tap on
-        // the personality screen races in before that timer fires).
+        // "< PERSONALITY": back up one level.
+        voicePreviewPending = false;
         flushSettingsSave();
         onVoiceScreen = false;
         drawSettingsScreen();
       } else if (touchX >= VOICE_NEXT_ZONE_X0 && touchX <= VOICE_NEXT_ZONE_X1 &&
                  touchY >= VOICE_BACK_ZONE_Y0 && touchY <= VOICE_BACK_ZONE_Y1) {
         // "PREFERENCES >": forward one level.
+        voicePreviewPending = false;
         flushSettingsSave();
         onVoiceScreen = false;
         onPrefsScreen = true;
         drawPreferencesScreen();
         delay(200);
-      } else if (previewFlow == PREVIEW_IDLE && touchY >= VOICE_ARROW_Y0 && touchY <= VOICE_ARROW_Y1) {
-        // Left/right arrows cycle the voice - ignored while a preview is
-        // already in flight, matching the greyed-out arrows drawVoiceScreen()
-        // shows in that state.
+      } else if (touchY >= VOICE_ARROW_Y0 && touchY <= VOICE_ARROW_Y1) {
+        // Left/right arrows cycle the voice - accessible at all times so user
+        // can rapidly shuffle through voices without waiting for preview to finish.
         int delta = 0;
         if (touchX >= VOICE_LEFT_ARROW_X0 && touchX <= VOICE_LEFT_ARROW_X1) delta = -1;
         else if (touchX >= VOICE_RIGHT_ARROW_X0 && touchX <= VOICE_RIGHT_ARROW_X1) delta = 1;
         if (delta != 0) {
+          // Immediately terminate any active audio playback & queue
+          setSpeakerMute(true);
+          digitalWrite(PA_ENABLE_PIN, LOW);
+          if (audioPlaybackQueue) {
+            xQueueReset(audioPlaybackQueue);
+          }
+          if (audioOutQueue) {
+            xQueueReset(audioOutQueue);
+          }
+          modelTurnActive = false;
+          if (previewFlow != PREVIEW_IDLE) {
+            previewFlow = PREVIEW_IDLE;
+            previewPendingText = "";
+          }
+
           personalityVoiceIndex =
               (personalityVoiceIndex + delta + PERSONALITY_VOICE_COUNT) % PERSONALITY_VOICE_COUNT;
           settingsDirty = true;
           settingsLastChangeMs = millis();
           drawVoiceScreen();
-          // Preview straight away rather than via the save debounce. That
-          // indirection (set a flag, wait 600ms, save, then have a separate
-          // loop() check notice and fire) had too many ways to fall through
-          // and silently drop the preview. startPreview() force-saves the
-          // change itself, and the previewFlow guard above already stops
-          // overlapping previews, so the debounce bought nothing here.
-          String voiceName = PERSONALITY_VOICES[personalityVoiceIndex];
-          startPreview("Say exactly, with nothing else before or after it: \"Hi, I'm " + voiceName + ".\"");
-          delay(200);
+
+          // Settle debounce: schedules startPreview() for 350ms after the last tap,
+          // instantly terminating previous speech and letting user shuffle fluidly.
+          voicePreviewPending = true;
+          voicePreviewTriggerMs = millis() + VOICE_PREVIEW_DEBOUNCE_MS;
+          delay(120);
         }
       }
     } else if (onSettingsScreen) {
@@ -3429,6 +3520,7 @@ void loop() {
       micStreamingActive = false;
       conversationOpen = false;
       conversationShouldClose = false;
+      sendSessionClosed();
       lastTranscript = "Say 'Hey Ims' or tap screen";
       renderScreen(true);
     }

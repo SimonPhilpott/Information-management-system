@@ -147,6 +147,14 @@ db.exec(`
     answer TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS ims_memories (
+    id TEXT PRIMARY KEY,
+    fact TEXT NOT NULL,
+    category TEXT DEFAULT 'general',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_memories_created ON ims_memories(created_at);
 `);
 
 // Migrations: Add confidence_score and validation_status to chat_messages if missing
@@ -184,4 +192,53 @@ export function getSettings() {
   return settings;
 }
 
+// Explicit Memory & Recall Subsystem
+export function addMemory(fact, category = 'general') {
+  const id = 'mem_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+  const cat = (category || 'general').trim().toLowerCase();
+  const trimmedFact = fact.trim();
+  const createdAt = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  db.prepare('INSERT INTO ims_memories (id, fact, category, created_at) VALUES (?, ?, ?, ?)').run(id, trimmedFact, cat, createdAt);
+  return { id, fact: trimmedFact, category: cat, created_at: createdAt };
+}
+
+export function getMemories(limit = 100, category = null) {
+  if (category && category !== 'all') {
+    const cat = category.trim().toLowerCase();
+    if (limit <= 0) {
+      return db.prepare('SELECT id, fact, category, created_at FROM ims_memories WHERE category = ? ORDER BY created_at DESC').all(cat);
+    }
+    return db.prepare('SELECT id, fact, category, created_at FROM ims_memories WHERE category = ? ORDER BY created_at DESC LIMIT ?').all(cat, limit);
+  }
+  if (limit <= 0) {
+    return db.prepare('SELECT id, fact, category, created_at FROM ims_memories ORDER BY created_at DESC').all();
+  }
+  return db.prepare('SELECT id, fact, category, created_at FROM ims_memories ORDER BY created_at DESC LIMIT ?').all(limit);
+}
+
+export function searchMemories(query, category = null) {
+  if (!query || !query.trim()) {
+    return getMemories(50, category);
+  }
+  const term = `%${query.trim()}%`;
+  if (category && category !== 'all') {
+    const cat = category.trim().toLowerCase();
+    return db.prepare('SELECT id, fact, category, created_at FROM ims_memories WHERE category = ? AND (fact LIKE ? OR id LIKE ?) ORDER BY created_at DESC LIMIT 50').all(cat, term, term);
+  }
+  return db.prepare('SELECT id, fact, category, created_at FROM ims_memories WHERE fact LIKE ? OR category LIKE ? OR id LIKE ? ORDER BY created_at DESC LIMIT 50').all(term, term, term);
+}
+
+export function deleteMemory(idOrFact) {
+  const info = db.prepare('DELETE FROM ims_memories WHERE id = ? OR fact LIKE ?').run(idOrFact, `%${idOrFact}%`);
+  return info.changes > 0;
+}
+
+export function updateMemory(id, fact, category = 'general') {
+  const cat = (category || 'general').trim().toLowerCase();
+  const info = db.prepare('UPDATE ims_memories SET fact = ?, category = ? WHERE id = ?').run(fact.trim(), cat, id);
+  return info.changes > 0;
+}
+
 export default db;
+
+

@@ -52,11 +52,14 @@ import adminRoutes, { startNgrok } from './routes/admin.js';
 import gemsRoutes from './routes/gems.js';
 import graphRoutes from './routes/graph.js';
 import voiceRoutes from './routes/voice.js';
+import memoriesRoutes from './routes/memories.js';
 import { getAuthStatus } from './services/driveService.js';
 import { validateConfiguredModels } from './services/modelService.js';
 import { loadHnswFromDisk } from './services/hnswService.js';
 import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getPersonality, setPersonality, getCaptureLogging, setCaptureLogging } from './services/hardwareClientService.js';
 import { scheduleItem, listScheduledItems, cancelScheduledItem, addToList, readList, removeFromList, clearList, checkDueScheduledItems, stopAllRinging } from './services/remindersService.js';
+import { addMemory, getMemories, searchMemories, deleteMemory } from './db/database.js';
+
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -95,8 +98,8 @@ app.use(session({
 
 // Restriction Middleware: Gates the app to the authorized user only
 const requireAdmin = (req, res, next) => {
-  // Allow auth routes and static assets
-  if (req.path.startsWith('/api/auth') || !req.path.startsWith('/api')) {
+  // Allow auth routes, memories database management, and static assets
+  if (req.path.startsWith('/api/auth') || req.path.startsWith('/api/memories') || !req.path.startsWith('/api')) {
     return next();
   }
 
@@ -131,6 +134,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/gems', gemsRoutes);
 app.use('/api/graph', graphRoutes);
 app.use('/api/voice', voiceRoutes);
+app.use('/api/memories', memoriesRoutes);
 
 // Serve static client build in production
 const clientDist = path.join(__dirname, '..', 'client', 'dist');
@@ -322,6 +326,10 @@ function handleLiveProxyConnection(ws, isHardware = false) {
   // get stuck in SPEAKING state with a partially-played response.
   let currentTurnComplete = true; // true initially (no active turn yet)
   let turnCompleteAt = 0; // when currentTurnComplete last flipped true - see isModelSpeakingNow's POST_TURN_ECHO_GRACE_MS
+
+  // Strict session lifecycle state for hardware clients
+  let isConversationActive = false;
+  let touchToTalkActive = false;
 
   // Direct Raw Packet Capture: Stream recording to WAV on disk (capturePath
   // defined at the top of this function, inside the per-connection folder)
@@ -587,6 +595,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
             logCapture(
               `[${new Date().toISOString()}] ${tag} USER SPOKEN TEXT: ${heardText}\n`);
           } catch (_) { }
+
         }
 
         if (parsed.serverContent?.interrupted) {
@@ -686,12 +695,17 @@ function handleLiveProxyConnection(ws, isHardware = false) {
                 }
               });
             } else if (call.name === 'noWakeDetected' || call.name === 'endConversation') {
-              // Both are pure signals to the DEVICE, not data Gemini needs back beyond
-              // the usual ack - the hardware client is what actually needs to know,
-              // so it can silently drop out of STATE_VERIFYING (noWakeDetected) or
-              // mark the conversation closed once the farewell reply finishes
-              // (endConversation). See handleFrame() in main.cpp.
               console.log(`${tag} 🔔 ${call.name} tool call from Gemini - forwarding to hardware client`);
+              if (call.name === 'noWakeDetected') {
+                isConversationActive = false;
+                turnWakePhraseVerified = false;
+                pendingModelAudioBytes = [];
+              }
+              if (call.name === 'endConversation') {
+                isConversationActive = false;
+                touchToTalkActive = false;
+                turnWakePhraseVerified = false;
+              }
               if (isHardware && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ [call.name]: true }));
               }
@@ -776,6 +790,41 @@ function handleLiveProxyConnection(ws, isHardware = false) {
                 clearList(call.args?.listName);
                 respondToToolCall(call, { status: 'cleared' });
               } catch (err) {
+                respondToToolCall(call, { error: err.message });
+              }
+            } else if (call.name === 'rememberFact') {
+              try {
+                const fact = call.args?.fact;
+                const category = call.args?.category || 'general';
+                if (!fact) {
+                  respondToToolCall(call, { error: 'No fact provided' });
+                } else {
+                  const saved = addMemory(fact, category);
+                  console.log(`${tag} 🧠 rememberFact saved: "${saved.fact}" (${saved.category})`);
+                  respondToToolCall(call, { status: 'remembered', fact: saved.fact, id: saved.id });
+                }
+              } catch (err) {
+                console.error(`${tag} rememberFact failed:`, err.message);
+                respondToToolCall(call, { error: err.message });
+              }
+            } else if (call.name === 'recallMemory') {
+              try {
+                const query = call.args?.query || '';
+                const results = searchMemories(query);
+                console.log(`${tag} 🔍 recallMemory("${query}") -> found ${results.length} memories`);
+                respondToToolCall(call, { query, memories: results.map((m) => m.fact) });
+              } catch (err) {
+                console.error(`${tag} recallMemory failed:`, err.message);
+                respondToToolCall(call, { error: err.message });
+              }
+            } else if (call.name === 'forgetMemory') {
+              try {
+                const query = call.args?.query || '';
+                const deleted = deleteMemory(query);
+                console.log(`${tag} 🗑️ forgetMemory("${query}") -> deleted: ${deleted}`);
+                respondToToolCall(call, { status: deleted ? 'forgotten' : 'not_found', query });
+              } catch (err) {
+                console.error(`${tag} forgetMemory failed:`, err.message);
                 respondToToolCall(call, { error: err.message });
               }
             } else {
@@ -924,17 +973,34 @@ function handleLiveProxyConnection(ws, isHardware = false) {
     // forward to Gemini (it would reject these as malformed clientContent).
     if (!isBinary) {
       try {
-        const maybeDebug = JSON.parse(message.toString());
-        if (typeof maybeDebug.debug === 'string') {
-          console.log(`${tag} [DEBUG] ${maybeDebug.debug}`);
-          // Was console-only until now, so this telemetry (mic RMS during
-          // SPEAKING, mute-transition decisions, etc.) was lost as soon as
-          // the console scrollback rolled over - persisting it lets a
-          // playback-cutoff reproduction be analysed afterward instead of
-          // needing to watch the live console at the exact moment it happens.
+        const maybeJson = JSON.parse(message.toString());
+        if (typeof maybeJson.debug === 'string') {
+          console.log(`${tag} [DEBUG] ${maybeJson.debug}`);
           try {
             logCapture(
-              `[${new Date().toISOString()}] ${tag} DEVICE DEBUG: ${maybeDebug.debug}\n`);
+              `[${new Date().toISOString()}] ${tag} DEVICE DEBUG: ${maybeJson.debug}\n`);
+          } catch (_) { }
+          return;
+        }
+        if (maybeJson.sessionClosed) {
+          console.log(`${tag} 🔒 Hardware session closed by device. Resetting conversation state.`);
+          isConversationActive = false;
+          touchToTalkActive = false;
+          try {
+            logCapture(`[${new Date().toISOString()}] ${tag} SESSION CLOSED BY DEVICE\n`);
+          } catch (_) { }
+          if (currentGeminiWs && currentGeminiWs.readyState === WebSocket.OPEN) {
+            currentGeminiWs.close(1000, "Device session closed");
+            currentGeminiWs = null;
+          }
+          return;
+        }
+        if (maybeJson.touchToTalk) {
+          console.log(`${tag} 👆 Touch-to-talk initiated by device.`);
+          isConversationActive = true;
+          touchToTalkActive = true;
+          try {
+            logCapture(`[${new Date().toISOString()}] ${tag} TOUCH TO TALK INITIATED\n`);
           } catch (_) { }
           return;
         }

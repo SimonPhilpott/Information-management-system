@@ -10,7 +10,8 @@
         "src/components/KnowledgeMesh/SunburstCanvas.jsx",
         "src/components/Dashboard/Layout.jsx",
         "src/components/Dashboard/ChatInterface.jsx",
-        "src/components/Dashboard/DemoPortal.jsx"
+        "src/components/Dashboard/DemoPortal.jsx",
+        "src/components/Dashboard/MemoriesPortal.jsx"
       ]
     },
     "src/components/Dashboard/Layout.jsx": {
@@ -55,6 +56,10 @@
         "src/components/KnowledgeMesh/SunburstCanvas.jsx"
       ]
     },
+    "src/components/Dashboard/MemoriesPortal.jsx": {
+      "description": "Dedicated web management hub for IMS persistent memories at /ims/memories featuring Oatmeal/dark styling, live search, category filtering, inline editing, and deletion with confirmation safeguards.",
+      "dependencies": []
+    },
     "src/components/Dashboard/HnswIndexModal.jsx": {
       "description": "High-performance vector acceleration modal with real-time SSE progress bar, latency telemetry metrics, and binary index builder trigger.",
       "dependencies": []
@@ -89,12 +94,33 @@
       "description": "Core conversation service handling query expansions, semantic matches, global library manifests, and Gemini chat processing.",
       "dependencies": []
     },
+    "pdf-knowledge-base/server/routes/memories.js": {
+      "description": "REST API route handler for IMS explicit memories mounting GET, POST, PUT, DELETE, and summary stats operations against the SQLite ims_memories table.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js"
+      ]
+    },
+    "pdf-knowledge-base/server/index.js": {
+      "description": "Backend API and WebSocket proxy routing ESP32-S3 hardware audio to Gemini Live, streaming model audio directly in 1024-byte chunks, managing session lifecycle, resetting upstream sockets on noWakeDetected, and executing explicit memory operations (rememberFact, recallMemory, forgetMemory).",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/hardwareClientService.js",
+        "pdf-knowledge-base/server/db/database.js",
+        "pdf-knowledge-base/server/routes/memories.js"
+      ]
+    },
     "pdf-knowledge-base/server/services/hardwareClientService.js": {
-      "description": "Hardware bridge service executing automated RAG tool searches, persona prompt configuration, and setup handshakes for embedded voice devices.",
+      "description": "Hardware bridge service executing automated RAG tool searches, dynamic ims_persona_rules.md loading, explicit memory injection & tool declarations (rememberFact, recallMemory, forgetMemory), authentic Yorkshire dialect & phonetic priming, turn-by-turn emotion matrix activation across 14 pixel faces, and non-blocking instant farewell execution.",
+      "dependencies": [
+        "ims_persona_rules.md",
+        "pdf-knowledge-base/server/db/database.js"
+      ]
+    },
+    "ims_persona_rules.md": {
+      "description": "Root configuration document defining core persona directives, authentic Yorkshire vocabulary and phonetic speech anchors, proactive conversational hooks, and 14-state facial emotion guidelines.",
       "dependencies": []
     },
     "firmware/esp32-s3-box-3/src/main.cpp": {
-      "description": "FreeRTOS firmware for ESP32-S3-BOX-3 with dual voice/touch triggers, 16-chunk PSRAM acoustic pre-roll wake buffer, acoustic feedback blanking, attenuated DAC output, and 24kHz downsampled playback.",
+      "description": "FreeRTOS firmware for ESP32-S3-BOX-3 holding display in STANDBY during wake candidate verification to eliminate false thinking screens, unconditionally resetting on noWakeDetected, maintaining active dialogue until explicit closing phrase or 14s idle timeout, strict sessionClosed idle notifications, touchToTalk intent signaling, interactive voice shuffling, 350ms settle debounce, immediate audio playback termination, official Google Gemini 30-voice descriptions, persistent Class-D speaker PA during active dialogue, rapid 200ms post-drain turn-taking cooldown, 4000ms pause-tolerant playback drain window, pre-warmed PA on wake verify, physical top latching mute button (GPIO 1), non-blocking bounded playback queue pacing, and calibrated wake-word VAD.",
       "dependencies": [
         "firmware/esp32-s3-box-3/include/config.h"
       ]

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Library, Bookmark, Trash2, FileText, Settings, Eye, EyeOff, Check, X, Compass, MessageSquare, User, UserX } from 'lucide-react';
+import { Sparkles, Library, Bookmark, Trash2, FileText, Settings, Eye, EyeOff, Check, X, Compass, MessageSquare, User, UserX, Brain } from 'lucide-react';
 import { Tooltip } from '../Dashboard/CursorHover';
 import SubjectFilter from '../Dashboard/SubjectFilter';
 import ChatHistory from '../Dashboard/ChatHistory';
@@ -51,9 +51,23 @@ export default function Sidebar({
         </Tooltip>
 
         <Tooltip text="View and manage all files in your Knowledge Base">
-          <button className="sidebar-action-btn" onClick={onOpenCatalog} style={{ width: '100%' }}>
+          <button className="sidebar-action-btn" onClick={onOpenCatalog} style={{ width: '100%', marginBottom: '8px' }}>
             <Library size={14} fill="none" stroke="currentColor" />
             <span>Browse Library</span>
+          </button>
+        </Tooltip>
+
+        <Tooltip text="View and manage persistent IMS memories database (/ims/memories)">
+          <button 
+            className="sidebar-action-btn" 
+            onClick={() => {
+              window.history.pushState(null, '', '/ims/memories');
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }} 
+            style={{ width: '100%' }}
+          >
+            <Brain size={14} fill="none" stroke="currentColor" />
+            <span>Memories DB</span>
           </button>
         </Tooltip>
       </div>

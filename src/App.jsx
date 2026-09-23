@@ -21,6 +21,7 @@ import { useAppLogic } from './hooks/useAppLogic';
 import OnboardingSetup from './components/Dashboard/OnboardingSetup';
 import { checkIsEntertainment } from './utils/contentFilter';
 import DemoPortal from './components/Dashboard/DemoPortal';
+import MemoriesPortal from './components/Dashboard/MemoriesPortal';
 
 const getShortSummary = (text) => {
   if (!text) return '';
@@ -1292,6 +1293,17 @@ export default function App() {
     return (
       <DemoPortal 
         nodes={filteredNodes} 
+        theme={state.theme} 
+        onThemeToggle={actions.toggleTheme} 
+        currentPath={currentPath}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/memories' || currentPath.startsWith('/ims/memories')) {
+    return (
+      <MemoriesPortal 
         theme={state.theme} 
         onThemeToggle={actions.toggleTheme} 
         currentPath={currentPath}
