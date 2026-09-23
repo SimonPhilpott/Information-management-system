@@ -91,7 +91,7 @@
 5. **Responsive Acoustic Wake Triggering:** Say "Hey Ims" or "Eh up Ims" from 1m distance; confirm immediate transition to `STATE_LISTENING` on the 1st attempt via calibrated 650 RMS / 2-frame VAD.
 
 ### Suite 19: Hardware Physical Mic Mute Switch, Transcript Logging & PA Protection (FEAT-019)
-1. **Physical Latching Mute Button:** Press top mute button on ESP32-S3-BOX-3; confirm button illuminates red and LCD renders `[MIC MUTED (BUTTON LIT)]` status with red indicator, actively blocking all mic streaming and wake detection.
+1. **Physical Latching Mute Button:** Press top mute button on ESP32-S3-BOX-3; confirm button illuminates red and LCD renders `[MIC MUTED]` status with footer prompt `Press the top button to unmute`, with top-right header clean, actively blocking all mic streaming and wake detection.
 2. **Unmute Recovery:** Press top button again to release latch; confirm LED extinguishes and LCD immediately transitions back to ready `STANDBY` state, allowing immediate wake-word ("Hey Ims") triggering.
 3. **Power Amplifier Power-On Guarantee:** Trigger conversational speech turn; verify `PA_ENABLE_PIN` (GPIO 46) is unconditionally asserted HIGH upon incoming audio arrival in `unmuteDacOnly()` and `handleFrame()`, eliminating silent "Speaking..." states.
 4. **Full Response Transcript (.txt) Logging:** Trigger speech playback; verify `server/index.js` creates a `.txt` file containing the complete Gemini Live text response with the identical filename alongside each saved `.wav` file in `pdf-knowledge-base/server/audio_captures/`.

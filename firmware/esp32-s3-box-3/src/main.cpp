@@ -1575,11 +1575,6 @@ void renderScreen(bool forceRedraw = false) {
   drawGearIcon(HEADER_ICON_CX, HEADER_ICON_CY); // Phase 4 settings entry point
 
   tft.setTextDatum(middle_left);
-  if (isMicHardwareMuted) {
-    tft.fillCircle(236, HEADER_CY, 4, tft.color565(255, 71, 87));
-    tft.setTextColor(tft.color565(255, 71, 87));
-    tft.drawString("MUTED", 244, HEADER_CY);
-  }
 
   if (WiFi.status() == WL_CONNECTED) {
     tft.fillCircle(280, HEADER_CY, 4, tft.color565(46, 213, 115));
@@ -1659,7 +1654,7 @@ void renderScreen(bool forceRedraw = false) {
   tft.fillRect(0, 204, 320, 36, tft.color565(15, 18, 26));
   if (isMicHardwareMuted) {
     tft.setTextColor(tft.color565(255, 107, 129));
-    tft.drawString("Microphone Muted - Press top button to unmute", 15, 214);
+    tft.drawString("Press the top button to unmute", 15, 214);
   } else {
     tft.setTextColor(tft.color565(100, 110, 130));
     tft.drawString(currentDateTimeStr(), 15, 214);
