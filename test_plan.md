@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 29
-- Verified Features: 29
+- Total Registered Features: 30
+- Verified Features: 30
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -37,6 +37,7 @@
 | FEAT-027 | Hardware BSD Socket Transport & Buffer Crackle Elimination | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | PlatformIO compilation, raw BSD socket connect, 16KB SO_RCVBUF, TCP_NODELAY | PASS |
 | FEAT-028 | Unified Cross-Platform Voice Persistence & Preview Isolation | [useGeminiLive.js](file:///d:/Information%20management%20system/src/hooks/useGeminiLive.js) | Ephemeral Web previewVoice, decoupled Box-3 previewVoiceIndex, backend sync & default voice lock | PASS |
 | FEAT-029 | IMS Central Hub and Dynamic Persona Portal | [PersonaPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/PersonaPortal.jsx) | /ims central card navigation, /ims/persona Markdown editor, /api/persona-rules GET/PUT persistence | PASS |
+| FEAT-030 | Subject-Grounded Library Book Retrieval & Response Formulation | [subjectMatcherService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/subjectMatcherService.js) | Dynamic taxonomy scoring, book candidate resolution, & grounded prompt formulation | PASS |
 
 
 
@@ -169,6 +170,15 @@
 2. **Dynamic Persona Editing:** Open `/ims/persona`; verify editor loads current `ims_persona_rules.md` contents via `GET /api/persona-rules`; modify text and click Save; verify `PUT /api/persona-rules` persists to disk and returns success toast.
 3. **Runtime Reflection:** Initiate a Gemini Live voice session on web or hardware terminal; verify updated persona rules are dynamically loaded into the systemInstruction without requiring a server reboot or firmware reflash.
 
+### Suite 30: Subject-Grounded Library Book Retrieval & Response Formulation (FEAT-030)
+1. **Dynamic Taxonomy Resolution:** Query `subjectMatcherService.js` for known library subjects; verify caching and extraction of 70+ taxonomy paths with synonyms (e.g. GNN -> Graph Neural Networks, LLM -> Large Language Models, PyTorch -> Pytorch).
+2. **Query Subject Detection:** Submit query containing subject terms (e.g. "How do I implement few-shot prompt engineering?"); verify `detectQuerySubjects()` returns matching leaf subjects (e.g. `Artificial Intelligence / Deep Learning / Large Language Models / Prompt Engineering`) and candidate books (e.g. `Prompt Engineering for Generative AI.pdf`).
+3. **Multi-Format Document Resolution:** Verify `resolveDriveFileIdsForSubjects()` in `vectorStore.js` resolves matching `drive_file_id`s regardless of path delimiter spacing (`/` vs ` / `) or prefix hierarchy depth.
+4. **Targeted Vector Chunk Grounding:** Execute chat query with matched subjects; verify `searchSimilarMultiQuery` filters chunks strictly against targeted book IDs, falling back cleanly to broad library search if chunks < 3.
+5. **Prompt Directive Injection:** Verify Gemini prompt includes `LIBRARY SUBJECT GROUNDING (HIGH PRIORITY)` directives instructing formulation and code derivation strictly from the matched library books.
+6. **UI Grounding Badge:** Verify `MessageBubble.jsx` displays visual grounding badge (`📚 Grounded in: [Subject Leaf Name] ([N] books)`) when `groundedSubjects` and `groundedBooks` are returned.
+7. **Hardware Audio RAG Prepend:** Verify `executeHardwareRAGSearch()` in `hardwareClientService.js` prepends detected subject headers to RAG context for Box-3 voice responses.
+
 ## Section 3: Defensive Engineering Invariants
 1. Hardware watchdog timer (WDT) and auto-reconnect logic on ESP32 WebSocket disconnects.
 2. Anti-stutter ring buffer and I2S DMA queue sizing on ESP32 PSRAM to prevent audio underflow/overflow.
@@ -200,6 +210,7 @@
 28. Raw BSD socket window expansion and retry resilience: `RawTcpClient` explicitly expands socket receive buffer (`SO_RCVBUF`) to 16KB, disables Nagle batching (`TCP_NODELAY`), implements non-blocking `recv()` via `ioctl(FIONREAD)` and handles `EAGAIN`/`EWOULDBLOCK` on transmit with microsecond delays, preventing buffer truncation and acoustic waveform distortion.
 29. Voice audition isolation invariant: Web previewVoice initializes an ephemeral WebSocket connection with dedicated AudioContext playback that automatically terminates on turnComplete without mutating voiceName or localStorage; firmware previewVoiceIndex and activePreviewVoice decouple arrow auditioning from personalityVoiceIndex, preventing auditions from altering NVS or sending mutating POST requests to SQLite without explicit user tap-to-commit.
 30. Persona rules runtime loading invariant: `loadPersonaRules` dynamically resolves `ims_persona_rules.md` across known relative root paths on each Gemini Live setup payload construction, and `savePersonaRules` safely performs atomic synchronous disk write via `/api/persona-rules` PUT endpoint with non-empty validation.
+31. Dynamic subject-grounded book scoping fallback invariant: if targeted subject-grounded vector filtering returns fewer than 3 chunks, vectorStore and chatService automatically execute a secondary broad library vector search to guarantee complete answer formulation and avoid starved context.
 
 
 

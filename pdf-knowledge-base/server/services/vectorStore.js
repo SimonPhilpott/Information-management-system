@@ -32,9 +32,6 @@ function cosineSimilarity(a, b) {
 /**
  * Sanitize subject name for use as filename
  */
-/**
- * Sanitize subject name for use as filename
- */
 function subjectToFilename(subject) {
   return subject.replace(/[^a-zA-Z0-9-_ ]/g, '_').replace(/\s+/g, '_').toLowerCase();
 }
@@ -99,6 +96,46 @@ async function getCachedChunks(filePath) {
 }
 
 /**
+ * Resiliently resolves drive_file_ids for a list of subject paths,
+ * accounting for slash spacing differences (e.g. "A/B" vs "A / B")
+ * and matching both exact nodes and child descendants.
+ */
+export function resolveDriveFileIdsForSubjects(subjects, showPersonal = false) {
+  if (!subjects || subjects.length === 0) return null;
+
+  const conditions = [];
+  const params = [];
+
+  for (const s of subjects) {
+    if (!s) continue;
+    const trimmed = s.trim();
+    const withSpaces = trimmed.replace(/\s*\/\s*/g, ' / ');
+    const withoutSpaces = trimmed.replace(/\s*\/\s*/g, '/');
+
+    conditions.push('(subject = ? OR subject = ? OR subject LIKE ? OR subject LIKE ? OR folder_path = ? OR folder_path = ? OR folder_path LIKE ? OR folder_path LIKE ?)');
+    params.push(
+      withSpaces, withoutSpaces, `${withSpaces} / %`, `${withoutSpaces}/%`,
+      withSpaces, withoutSpaces, `${withSpaces}/%`, `${withoutSpaces}/%`
+    );
+  }
+
+  if (conditions.length === 0) return null;
+
+  try {
+    const docs = db.prepare(`
+      SELECT drive_file_id, subject FROM documents 
+      WHERE (${conditions.join(' OR ')})
+    `).all(...params);
+
+    const filteredDocs = showPersonal ? docs : docs.filter(d => !isEntertainment(d.subject));
+    return new Set(filteredDocs.map(d => d.drive_file_id));
+  } catch (err) {
+    console.error('[VectorStore] Error resolving drive IDs for subjects:', err.message);
+    return null;
+  }
+}
+
+/**
  * Store embeddings for a document (grouped by subject)
  */
 export function storeEmbeddings(subject, documentId, driveFileId, filename, embeddedChunks) {
@@ -145,27 +182,16 @@ export function storeEmbeddings(subject, documentId, driveFileId, filename, embe
  * @param {string[]} subjects - Optional filter by subjects (empty = all)
  * @param {number} topK - Number of results to return
  * @param {boolean} showPersonal - Toggle to include/exclude personal (RPG) books
- */
-/**
- * Search for similar chunks across subjects
- * @param {number[]} queryEmbedding - The query embedding vector
- * @param {string[]} subjects - Optional filter by subjects (empty = all)
- * @param {number} topK - Number of results to return
- * @param {boolean} showPersonal - Toggle to include/exclude personal (RPG) books
+ * @param {string[]|Set<string>|null} targetDriveFileIds - Optional explicit drive_file_id constraints
  * @returns {Promise<Array>}
  */
-export async function searchSimilar(queryEmbedding, subjects = [], topK = 8, showPersonal = false) {
-  // Resolve allowed drive file IDs if filtered by subjects
+export async function searchSimilar(queryEmbedding, subjects = [], topK = 8, showPersonal = false, targetDriveFileIds = null) {
+  // Resolve allowed drive file IDs if filtered by target IDs or subjects
   let allowedDriveFileIds = null;
-  if (subjects.length > 0) {
-    const placeholders = subjects.map(() => '?').join(',');
-    const docs = db.prepare(`
-      SELECT drive_file_id, subject FROM documents 
-      WHERE subject IN (${placeholders}) OR folder_path IN (${placeholders})
-    `).all(...subjects, ...subjects);
-    
-    const filteredDocs = showPersonal ? docs : docs.filter(d => !isEntertainment(d.subject));
-    allowedDriveFileIds = new Set(filteredDocs.map(d => d.drive_file_id));
+  if (targetDriveFileIds && (targetDriveFileIds.length > 0 || (targetDriveFileIds instanceof Set && targetDriveFileIds.size > 0))) {
+    allowedDriveFileIds = targetDriveFileIds instanceof Set ? targetDriveFileIds : new Set(targetDriveFileIds);
+  } else if (subjects.length > 0) {
+    allowedDriveFileIds = resolveDriveFileIdsForSubjects(subjects, showPersonal);
   }
 
   // 1. Try ultra-fast HNSW Approximate Nearest Neighbour search (1-2ms)
@@ -239,25 +265,22 @@ export async function searchSimilar(queryEmbedding, subjects = [], topK = 8, sho
 
 /**
  * Multi-query semantic search: fires several synonym embeddings in parallel and
- * merges results. This dramatically improves recall for thematic queries where
- * rulebook vocabulary (e.g. "Normandy", "D-Day") doesn't align with the user's
- * phrase (e.g. "WW2 games").
+ * merges results. This dramatically improves recall for thematic queries.
  *
  * @param {number[][]} queryEmbeddings - Array of embedding vectors (one per query variant)
  * @param {string[]} subjects - Optional subject filter
  * @param {number} topK - Number of final results to return
  * @param {boolean} showPersonal - Include personal/entertainment content
+ * @param {string[]|Set<string>|null} targetDriveFileIds - Optional explicit drive_file_id constraints
  * @returns {Promise<Array>}
  */
-export async function searchSimilarMultiQuery(queryEmbeddings, subjects = [], topK = 8, showPersonal = false) {
+export async function searchSimilarMultiQuery(queryEmbeddings, subjects = [], topK = 8, showPersonal = false, targetDriveFileIds = null) {
   // Fire all query variants in parallel — they share the same HNSW index
   const allResultSets = await Promise.all(
-    queryEmbeddings.map(embedding => searchSimilar(embedding, subjects, topK * 3, showPersonal))
+    queryEmbeddings.map(embedding => searchSimilar(embedding, subjects, topK * 3, showPersonal, targetDriveFileIds))
   );
 
   // Merge: keep the highest-scoring chunk per unique (driveFileId, chunkIndex) pair.
-  // Using driveFileId+chunkIndex as the dedup key ensures the same text passage
-  // from the same document is only counted once, even if two variants find it.
   const bestByKey = new Map();
 
   for (const resultSet of allResultSets) {
@@ -276,7 +299,6 @@ export async function searchSimilarMultiQuery(queryEmbeddings, subjects = [], to
     .sort((a, b) => b.similarity - a.similarity)
     .slice(0, topK);
 }
-
 
 /**
  * Get list of all indexed subjects
@@ -315,6 +337,7 @@ export function isDocumentIndexed(driveFileId) {
   }
   return false;
 }
+
 /**
  * Remove a document from the vector store
  */
@@ -379,3 +402,14 @@ export function updateDocumentSubject(driveFileId, oldSubject, newSubject) {
     console.error(`Failed to update document ${driveFileId} subject in vector store:`, err);
   }
 }
+
+export default {
+  storeEmbeddings,
+  searchSimilar,
+  searchSimilarMultiQuery,
+  getIndexedSubjects,
+  isDocumentIndexed,
+  removeDocument,
+  updateDocumentSubject,
+  resolveDriveFileIdsForSubjects
+};

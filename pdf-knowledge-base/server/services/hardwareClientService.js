@@ -12,6 +12,7 @@ import config from "../config.js";
 import db, { getSetting, setSetting, addMemory, getMemories, searchMemories, deleteMemory } from "../db/database.js";
 import { searchSimilar } from "./vectorStore.js";
 import { generateQueryEmbedding } from "./embeddingService.js";
+import { detectQuerySubjects } from "./subjectMatcherService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -427,9 +428,31 @@ export async function executeHardwareRAGSearch(query, subjects = []) {
   try {
     console.log("[HardwareRAG] Searching library for hardware terminal: " + query);
 
+    let targetSubjects = Array.isArray(subjects) ? [...subjects] : [];
+    let targetIds = null;
+    let subjectHeader = '';
+
+    if (targetSubjects.length === 0) {
+      const detection = detectQuerySubjects(query, { showPersonal: true });
+      if (detection.hasMatches) {
+        targetSubjects = detection.matchedSubjects.map(s => s.subject);
+        targetIds = detection.targetDriveFileIds;
+        subjectHeader = `[Targeted Library Subjects: ${detection.matchedSubjects.map(s => s.leafName).join(', ')}]\n\n`;
+        console.log(`[HardwareRAG] Auto-detected library subjects: ${detection.matchedSubjects.map(s => s.leafName).join(', ')} (${detection.books.length} books)`);
+      }
+    }
+
     // Generate embedding for query
     const queryVector = await generateQueryEmbedding(query);
-    const relevantChunks = await searchSimilar(queryVector, subjects, 5, true);
+    let relevantChunks = await searchSimilar(queryVector, targetSubjects, 5, true, targetIds);
+
+    // If subject-scoped search yielded fewer than 2 chunks, fallback to broad search
+    if ((!relevantChunks || relevantChunks.length < 2) && targetIds) {
+      const fallbackChunks = await searchSimilar(queryVector, [], 5, true);
+      if (fallbackChunks && fallbackChunks.length > 0) {
+        relevantChunks = fallbackChunks;
+      }
+    }
 
     if (!relevantChunks || relevantChunks.length === 0) {
       console.log("[HardwareRAG] No vector matches found for: " + query);
@@ -438,7 +461,7 @@ export async function executeHardwareRAGSearch(query, subjects = []) {
 
     console.log(`[HardwareRAG] Found ${relevantChunks.length} matching passages for: "${query}"`);
 
-    const contextText = relevantChunks.map((chunk, i) =>
+    const contextText = subjectHeader + relevantChunks.map((chunk, i) =>
       `[Source ${i + 1}: "${chunk.filename || 'Document'}", Page ${chunk.pageNum || 1}]:\n${chunk.text}`
     ).join("\n\n---\n\n");
 

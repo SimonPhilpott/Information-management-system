@@ -100,9 +100,17 @@
       "description": "In-process C++ HNSW vector index graph engine providing sub-millisecond similarity lookups and SSE build events.",
       "dependencies": []
     },
+    "pdf-knowledge-base/server/services/subjectMatcherService.js": {
+      "description": "Intelligent taxonomy scoring, synonym mapping, query subject extraction, and driveFileId resolution service grounding queries in library books.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js"
+      ]
+    },
     "pdf-knowledge-base/server/services/chatService.js": {
-      "description": "Core conversation service handling query expansions, semantic matches, global library manifests, and Gemini chat processing.",
-      "dependencies": []
+      "description": "Core conversation service handling query expansions, automated subject-grounded book matching, semantic vector retrieval, global library manifests, and Gemini chat processing.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/subjectMatcherService.js"
+      ]
     },
     "pdf-knowledge-base/server/routes/settings.js": {
       "description": "REST API route handler for IMS settings and personality synchronization, mounting GET /api/settings/personality and POST /api/settings/personality against SQLite.",
@@ -136,7 +144,8 @@
       "description": "Hardware bridge service executing automated RAG tool searches, dynamic ims_persona_rules.md loading, explicit memory injection & tool declarations (rememberFact, recallMemory, forgetMemory), Umbriel default voice enforcement with non-mutating previewVoice setup payloads, authentic Yorkshire dialect & phonetic priming, turn-by-turn emotion matrix activation across 14 pixel faces, and non-blocking instant farewell execution.",
       "dependencies": [
         "ims_persona_rules.md",
-        "pdf-knowledge-base/server/db/database.js"
+        "pdf-knowledge-base/server/db/database.js",
+        "pdf-knowledge-base/server/services/subjectMatcherService.js"
       ]
     },
     "ims_persona_rules.md": {

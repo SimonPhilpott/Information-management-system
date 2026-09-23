@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { processMessage, getChatSessions, getSessionMessages, deleteSession, verifyMessage, clearAllSessions, validateMessage } from '../services/chatService.js';
 import { generateQueryEmbedding } from '../services/embeddingService.js';
 import { searchSimilar } from '../services/vectorStore.js';
+import { detectQuerySubjects } from '../services/subjectMatcherService.js';
 import db from '../db/database.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -173,15 +174,46 @@ router.post('/search', async (req, res) => {
       return res.status(400).json({ error: 'Search query is required' });
     }
 
+    let targetSubjects = Array.isArray(subjects) ? [...subjects] : [];
+    let targetIds = null;
+    let detection = null;
+
+    if (targetSubjects.length === 0) {
+      detection = detectQuerySubjects(query.trim(), { showPersonal: showPersonal || false });
+      if (detection.hasMatches) {
+        targetSubjects = detection.matchedSubjects.map(s => s.subject);
+        targetIds = detection.targetDriveFileIds;
+      }
+    }
+
     const queryEmbedding = await generateQueryEmbedding(query.trim());
-    const chunks = await searchSimilar(queryEmbedding, subjects || [], 8, showPersonal || false);
+    let chunks = await searchSimilar(queryEmbedding, targetSubjects, 8, showPersonal || false, targetIds);
+
+    // Defensive fallback
+    if ((!chunks || chunks.length < 2) && targetIds) {
+      const fallback = await searchSimilar(queryEmbedding, [], 8, showPersonal || false);
+      if (fallback && fallback.length > 0) chunks = fallback;
+    }
 
     // Format simple text response context for Gemini Live to consume easily
-    const formattedText = chunks
+    const subjectPrefix = detection?.hasMatches 
+      ? `[Targeted Library Subjects: ${detection.matchedSubjects.map(s => s.leafName).join(', ')}]\n\n`
+      : '';
+
+    const formattedText = subjectPrefix + chunks
       .map((chunk, i) => `[Source ${i + 1}: "${chunk.filename}", Page ${chunk.pageNum}]\n${chunk.text}`)
       .join('\n\n---\n\n');
 
-    res.json({ chunks, formattedText });
+    res.json({ 
+      chunks, 
+      formattedText,
+      groundedSubjects: detection?.hasMatches ? detection.matchedSubjects.map(s => ({
+        subject: s.subject,
+        leafName: s.leafName,
+        books: s.books.map(b => b.filename)
+      })) : null,
+      groundedBooks: detection?.hasMatches ? detection.books : null
+    });
   } catch (err) {
     console.error('Search API error:', err);
     res.status(500).json({ error: err.message });

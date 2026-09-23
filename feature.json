@@ -352,6 +352,19 @@
         "Instant live prompt update mechanism taking effect on the subsequent Gemini Live session handshake without server restarts or firmware flashes",
         "Left navigation sidebar IMS Hub quick launcher and full App.jsx SPA routing integration"
       ]
+    },
+    "Subject-Grounded Library Book Retrieval & Response Formulation": {
+      "status": "enabled",
+      "description": "Automated subject detection, taxonomy scoring, and targeted library book retrieval architecture that identifies subjects touched by user queries (e.g. AI Prompt Engineering, PyTorch, Deep Learning, Graph Neural Networks) and scopes RAG chunks and code generation directly to the user's library books covering those subjects.",
+      "subFeatures": [
+        "Dynamic subject taxonomy extraction and synonym/acronym mapping (GNN, LLM, RAG, PyTorch, React) in subjectMatcherService.js",
+        "Automated subject detection with book candidate ranking and leaf-node specificity weighting",
+        "Multi-format path matching resolving both slash conventions ('/' and ' / ') and prefix hierarchies across SQLite document subjects",
+        "Targeted vector search chunk filtering in vectorStore.js with automatic fallback if filtered chunks are below threshold",
+        "Grounding prompt injection instructing Gemini to formulate answers and code directly from the matched library books",
+        "UI grounded subjects badge in MessageBubble.jsx showing matched taxonomy subjects and book count",
+        "Hardware Live Voice and REST chat RAG retrieval integration prepending targeted subject context to hardware voice responses"
+      ]
     }
   }
 }

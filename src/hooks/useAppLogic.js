@@ -404,7 +404,9 @@ export function useAppLogic() {
         model: data.model,
         canvasUpdate: data.canvasUpdate,
         image: data.generatedImage,
-        spokenSummary: data.spokenSummary
+        spokenSummary: data.spokenSummary,
+        groundedSubjects: data.groundedSubjects || null,
+        groundedBooks: data.groundedBooks || null
       }]);
 
       fetch(`${API}/api/usage/summary`).then(r => r.json()).then(setUsage);

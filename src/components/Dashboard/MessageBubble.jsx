@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { User, Bot, Zap, Brain, Sparkles, Copy, Check, ShieldCheck, Info, Loader2, Volume2, AudioLines } from 'lucide-react';
+import { User, Bot, Zap, Brain, Sparkles, Copy, Check, ShieldCheck, Info, Loader2, Volume2, AudioLines, BookOpen } from 'lucide-react';
 import CitationCard from './CitationCard';
 import { Tooltip } from './CursorHover';
 
 export default function MessageBubble({ message, onOpenPdf, onPin, pinnedItems = [], onOpenCanvas, showCitations, onAskGeneralChat }) {
-  const { role, content, citations, model, canvasUpdate, id, confidenceScore, validationStatus, isLiveVoice } = message;
+  const { role, content, citations, model, canvasUpdate, id, confidenceScore, validationStatus, isLiveVoice, groundedSubjects, groundedBooks } = message;
   
   const [localConfidenceScore, setLocalConfidenceScore] = React.useState(confidenceScore);
   const [localValidationStatus, setLocalValidationStatus] = React.useState(validationStatus);
@@ -430,6 +430,27 @@ export default function MessageBubble({ message, onOpenPdf, onPin, pinnedItems =
               alt="User uploaded" 
               style={{ maxWidth: '100%', borderRadius: 'var(--radius-md)', border: '1px solid var(--glass-border)' }} 
             />
+          </div>
+        )}
+        {role === 'assistant' && groundedSubjects && groundedSubjects.length > 0 && (
+          <div className="grounded-subjects-badge" style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            marginBottom: '8px',
+            padding: '4px 10px',
+            background: 'rgba(99, 102, 241, 0.1)',
+            border: '1px solid rgba(99, 102, 241, 0.25)',
+            borderRadius: '16px',
+            fontSize: '11px',
+            color: 'var(--accent-indigo-light, #818cf8)',
+            fontWeight: '600'
+          }}>
+            <BookOpen size={13} style={{ flexShrink: 0 }} />
+            <span>
+              Grounded in: {groundedSubjects.map(s => s.split('/').pop().trim()).join(', ')}
+              {groundedBooks && groundedBooks.length > 0 ? ` (${groundedBooks.length} book${groundedBooks.length > 1 ? 's' : ''})` : ''}
+            </span>
           </div>
         )}
         <div className="message-text">

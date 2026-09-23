@@ -4,6 +4,7 @@ import { generateQueryEmbedding } from './embeddingService.js';
 import { searchSimilar, searchSimilarMultiQuery } from './vectorStore.js';
 import { logUsage, isNearSpendCap } from './usageService.js';
 import { generateImage } from './imageService.js';
+import { detectQuerySubjects } from './subjectMatcherService.js';
 import db from '../db/database.js';
 import { v4 as uuidv4 } from 'uuid';
 import { parseAttachment } from './attachmentParser.js';
@@ -176,7 +177,9 @@ export async function processMessage(message, sessionId, subjects = [], modelCho
       spokenSummary: validatedMatch.answer,
       confidenceScore: 100,
       validationStatus: 'verified',
-      usage: null
+      usage: null,
+      groundedSubjects: null,
+      groundedBooks: null
     };
   }
 
@@ -185,7 +188,9 @@ export async function processMessage(message, sessionId, subjects = [], modelCho
   if (capStatus.nearCap) {
     return {
       response: `⚠️ **Spending limit warning**: You've used ${capStatus.percentage.toFixed(1)}% of your monthly spend cap ($${capStatus.remaining.toFixed(4)} remaining).`,
-      citations: [], sessionId, model: null, usage: null, capWarning: true
+      citations: [], sessionId, model: null, usage: null, capWarning: true,
+      groundedSubjects: null,
+      groundedBooks: null
     };
   }
 
@@ -206,7 +211,22 @@ export async function processMessage(message, sessionId, subjects = [], modelCho
     expandedQuery = `${contextSummary} ${message}`;
   }
 
-  // Step 2-3: Context Retrieval using the expanded query
+  // Step 2: Subject & Book Grounding Detection
+  let targetSubjects = Array.isArray(subjects) ? [...subjects] : [];
+  let subjectDetection = null;
+  let isAutoDetected = false;
+
+  if (!isGeneral && targetSubjects.length === 0) {
+    subjectDetection = detectQuerySubjects(expandedQuery, { showPersonal });
+    if (subjectDetection.hasMatches) {
+      isAutoDetected = true;
+      targetSubjects = subjectDetection.matchedSubjects.map(s => s.subject);
+      console.log(`[Chat] Auto-detected ${subjectDetection.matchedSubjects.length} library subject(s):`, 
+        subjectDetection.matchedSubjects.map(s => `${s.leafName} (${s.books.length} books)`).join(', '));
+    }
+  }
+
+  // Step 3: Context Retrieval using the expanded query and detected subject books
   let context = '';
   let relevantChunks = [];
 
@@ -221,14 +241,33 @@ export async function processMessage(message, sessionId, subjects = [], modelCho
       console.log(`[Chat] Dynamic Top-K enabled: Scaling retrieval topK to ${topK} for library/aggregation query.`);
     }
 
+    const targetIds = (isAutoDetected && subjectDetection?.targetDriveFileIds?.length > 0)
+      ? subjectDetection.targetDriveFileIds
+      : null;
+
     if (queryVariants.length === 1) {
       // Single variant — no expansion needed, use original fast path
       const queryEmbedding = await generateQueryEmbedding(queryVariants[0]);
-      relevantChunks = await searchSimilar(queryEmbedding, subjects, topK, showPersonal);
+      relevantChunks = await searchSimilar(queryEmbedding, targetSubjects, topK, showPersonal, targetIds);
     } else {
       // Multiple variants — embed all in parallel and merge results
       const queryEmbeddings = await Promise.all(queryVariants.map(v => generateQueryEmbedding(v)));
-      relevantChunks = await searchSimilarMultiQuery(queryEmbeddings, subjects, topK, showPersonal);
+      relevantChunks = await searchSimilarMultiQuery(queryEmbeddings, targetSubjects, topK, showPersonal, targetIds);
+    }
+
+    // Defensive fallback: If auto-detected subject retrieval returned fewer than 3 chunks,
+    // backfill with global library retrieval to prevent starvation on broad questions
+    if (isAutoDetected && relevantChunks.length < 3) {
+      console.log(`[Chat] Subject search returned only ${relevantChunks.length} chunks; supplementing with global library search.`);
+      const queryEmbedding = await generateQueryEmbedding(queryVariants[0]);
+      const globalChunks = await searchSimilar(queryEmbedding, [], topK, showPersonal);
+      const existingIds = new Set(relevantChunks.map(c => `${c.driveFileId}:${c.chunkIndex}`));
+      for (const gc of globalChunks) {
+        if (!existingIds.has(`${gc.driveFileId}:${gc.chunkIndex}`)) {
+          relevantChunks.push(gc);
+          if (relevantChunks.length >= topK) break;
+        }
+      }
     }
     
     const contextParts = relevantChunks.map((chunk, i) => {
@@ -290,10 +329,24 @@ export async function processMessage(message, sessionId, subjects = [], modelCho
   // Step 6: Call Gemini
   const toneInstruction = TONE_INSTRUCTIONS[tone] || TONE_INSTRUCTIONS.friendly;
   
-  // Subject context injection
-  const subjectContext = subjects.length > 0 
-    ? `\n\nSTRICT CONTEXT CONSTRAINT: The user has selected these specific subjects: ${subjects.join(', ')}. Your response MUST prioritize and focus exclusively on these materials. If the question is a follow-up, assume it refers to the books within these subjects.` 
-    : '';
+  // Subject context and grounding injection
+  let subjectContext = '';
+  if (isAutoDetected && subjectDetection && subjectDetection.hasMatches) {
+    const subjectList = subjectDetection.matchedSubjects.map(s => 
+      `- Subject: "${s.subject}"\n  Covered by Books in Library: ${s.books.map(b => `"${b.filename}"`).join(', ')}`
+    ).join('\n');
+
+    subjectContext = `\n\nLIBRARY SUBJECT GROUNDING (HIGH PRIORITY):
+The user's question touches on the following catalogued subject(s) in their personal library:
+${subjectList}
+
+MANDATORY SUBJECT-DERIVED FORMULATION DIRECTIVE:
+1. You MUST formulate your response, explanations, and any requested code derived directly from the books in your library covering these subjects.
+2. If the user asks for code, technical architecture, or implementation steps, derive them from the specific frameworks, patterns, and code practices presented in the matched library excerpts above.
+3. Explicitly reference and cite the books where these methods or examples originate (e.g. [[Book Title, Page X]]).`;
+  } else if (targetSubjects.length > 0) {
+    subjectContext = `\n\nSTRICT CONTEXT CONSTRAINT: The user has selected these specific subjects: ${targetSubjects.join(', ')}. Your response MUST prioritize and focus exclusively on these materials. If the question is a follow-up, assume it refers to the books within these subjects.`;
+  }
 
   // Fetch active custom global rules from admin
   const activeRules = db.prepare('SELECT content FROM global_rules WHERE is_active = 1').all().map(r => r.content);
@@ -441,7 +494,13 @@ export async function processMessage(message, sessionId, subjects = [], modelCho
       promptTokens: usage.promptTokenCount,
       completionTokens: usage.candidatesTokenCount,
       totalTokens: usage.totalTokenCount
-    } : null
+    } : null,
+    groundedSubjects: isAutoDetected && subjectDetection ? subjectDetection.matchedSubjects.map(s => ({
+      subject: s.subject,
+      leafName: s.leafName,
+      books: s.books.map(b => b.filename)
+    })) : null,
+    groundedBooks: isAutoDetected && subjectDetection ? subjectDetection.books : null
   };
 }
 
@@ -482,22 +541,22 @@ function extractCitations(text, sourceChunks) {
       });
 
       if (matchingChunk) {
-          citation.filename = matchingChunk.filename;
-          citation.driveFileId = matchingChunk.driveFileId;
+        citation.filename = matchingChunk.filename;
+        citation.driveFileId = matchingChunk.driveFileId;
+        citation.pageNum = pageNum;
+        citation.excerpt = matchingChunk.text.substring(0, 200) + '...';
+        citation.hasImages = matchingChunk.hasImages;
+      } else {
+        // Try matching by page number only if book title doesn't match well
+        const pageOnlyMatch = sourceChunks.find(c => c.pageNum === pageNum);
+        if (pageOnlyMatch) {
+          citation.filename = pageOnlyMatch.filename;
+          citation.driveFileId = pageOnlyMatch.driveFileId;
           citation.pageNum = pageNum;
-          citation.excerpt = matchingChunk.text.substring(0, 200) + '...';
-          citation.hasImages = matchingChunk.hasImages;
-        } else {
-          // Try matching by page number only if book title doesn't match well
-          const pageOnlyMatch = sourceChunks.find(c => c.pageNum === pageNum);
-          if (pageOnlyMatch) {
-            citation.filename = pageOnlyMatch.filename;
-            citation.driveFileId = pageOnlyMatch.driveFileId;
-            citation.pageNum = pageNum;
-            citation.excerpt = pageOnlyMatch.text.substring(0, 200) + '...';
-            citation.hasImages = pageOnlyMatch.hasImages;
-          }
+          citation.excerpt = pageOnlyMatch.text.substring(0, 200) + '...';
+          citation.hasImages = pageOnlyMatch.hasImages;
         }
+      }
     }
 
     citations.push(citation);
@@ -557,9 +616,6 @@ export function getChatSessions() {
   `).all();
 }
 
-/**
- * Get messages for a session
- */
 /**
  * Verify a message using Google Search (Double-Check)
  */
@@ -672,8 +728,6 @@ Return your response strictly in the following JSON format:
   }
 }
 
-
-
 export function getSessionMessages(sessionId) {
   return db.prepare(`
     SELECT * FROM chat_messages
@@ -702,3 +756,13 @@ export function clearAllSessions() {
   db.prepare('DELETE FROM chat_messages').run();
   db.prepare('DELETE FROM chat_sessions').run();
 }
+
+export default {
+  processMessage,
+  getChatSessions,
+  getSessionMessages,
+  deleteSession,
+  clearAllSessions,
+  verifyMessage,
+  validateMessage
+};
