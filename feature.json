@@ -317,7 +317,20 @@
         "Optimistic state updates and toast notifications on memory addition, inline editing, and deletion",
         "Destructive action safeguards requiring explicit confirmation before purging stored memory facts from SQLite"
       ]
+    },
+    "Hardware BSD Socket Transport & Buffer Crackle Elimination": {
+      "status": "enabled",
+      "description": "High-performance network transport architecture replacing Arduino WiFiClient with raw lwIP/BSD sockets, expanding socket receive buffers (SO_RCVBUF) to 16KB, disabling Nagle's algorithm (TCP_NODELAY), and implementing non-blocking polling to eliminate the 1436-byte NetworkClientRxBuffer drop bottleneck and associated speaker crackle.",
+      "subFeatures": [
+        "Raw lwIP/BSD socket implementation bypassing Arduino WiFiClientRxBuffer and memory copies",
+        "16KB socket receive buffer (SO_RCVBUF) providing ample headroom during intensive Core 1 display redraws and FreeRTOS audio queue transfers",
+        "Immediate TCP segment transmission via TCP_NODELAY on both ESP32-S3 firmware and Node.js proxy",
+        "Non-blocking socket polling using ioctl(FIONREAD) and recv(O_NONBLOCK) preserving zero-delay loop execution",
+        "EAGAIN/EWOULDBLOCK-tolerant writeAll retry loop eliminating short write packet drops on bursts",
+        "Retention of frame sync marker protocol (0xA5 0x5A) as a resilient defensive safety net"
+      ]
     }
   }
 }
+
 

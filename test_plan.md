@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 26
-- Verified Features: 26
+- Total Registered Features: 27
+- Verified Features: 27
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -34,6 +34,8 @@
 | FEAT-024 | Hardware Yorkshire Persona, Dynamic Markdown Rulebook & Emotion Matrix | [hardwareClientService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/hardwareClientService.js) | Dynamic ims_persona_rules.md loading, Yorkshire phonetic priming, turn-by-turn setEmotion activation & non-blocking farewell | PASS |
 | FEAT-025 | Hardware Explicit Memory & Recall Subsystem | [hardwareClientService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/hardwareClientService.js) | rememberFact SQLite persistence, prompt pre-injection, and recallMemory / forgetMemory execution | PASS |
 | FEAT-026 | IMS Memory Management Portal | [MemoriesPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/MemoriesPortal.jsx) | /ims/memories route view, add, edit, and delete operations | PASS |
+| FEAT-027 | Hardware BSD Socket Transport & Buffer Crackle Elimination | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | PlatformIO compilation, raw BSD socket connect, 16KB SO_RCVBUF, TCP_NODELAY | PASS |
+
 
 
 
@@ -147,6 +149,12 @@
 5. **Destructive Action Confirmation Guard:** Click the delete trash icon; verify card presents an explicit confirmation button ("Confirm") before executing `DELETE /api/memories/:id`, preventing accidental fact loss.
 6. **Hardware Cross-Synchronization:** Speak a fact to the Box-3 assistant ("Hey IMS, remember that my workshop code is 4421"); refresh `/ims/memories` and verify the spoken memory appears in the web portal with its timestamp and category.
 
+### Suite 27: Hardware BSD Socket Transport & Buffer Crackle Elimination (FEAT-027)
+1. **Transport Initialization:** Flash firmware to ESP32-S3-BOX-3; verify `RawTcpClient` initializes socket, sets `SO_RCVBUF` to 16,384 bytes, enables `TCP_NODELAY`, and successfully connects to `IMS_PRIMARY_HOST:IMS_TCP_PORT`.
+2. **Sustained Audio Ingestion Without Drops:** Stream a long multi-sentence response from Gemini Live while state=6 (SPEAKING); monitor serial log to verify 0 occurrences of `[TCP] Resynced after skipping 1436 bytes` and 0 dropped audio frames.
+3. **Acoustic Waveform Continuity:** Listen to speaker output throughout lengthy spoken responses; verify clean, continuous audio output with zero audible clicks, pops, or crackles.
+4. **Rapid Shuffling Stress Test:** Navigate rapidly between voices on the settings screen; verify raw BSD socket cleanly handles socket drops, immediate audio cutoffs, and reconnects without heap exhaustion or framing desync.
+
 ## Section 3: Defensive Engineering Invariants
 1. Hardware watchdog timer (WDT) and auto-reconnect logic on ESP32 WebSocket disconnects.
 2. Anti-stutter ring buffer and I2S DMA queue sizing on ESP32 PSRAM to prevent audio underflow/overflow.
@@ -175,6 +183,8 @@
 25. Non-blocking tool execution safety: `endConversation` and `setEmotion` tools are declared without blocking behavior flags, ensuring Gemini Live synthesizes voice immediately without waiting for server response round trips.
 26. Explicit memory error resilience: if database lookup encounters a transient lock or error, `rememberFact` and `recallMemory` return defensive error fallbacks to Gemini Live without breaking the WebSocket stream or audio pipeline.
 27. Web memory portal optimistic and defensive validation: memory additions and deletions are validated on both client and Express routes with non-empty string checks, confirmation gates on destructive actions, and non-blocking asynchronous REST endpoints preserving SQLite database integrity.
+28. Raw BSD socket window expansion and retry resilience: `RawTcpClient` explicitly expands socket receive buffer (`SO_RCVBUF`) to 16KB, disables Nagle batching (`TCP_NODELAY`), implements non-blocking `recv()` via `ioctl(FIONREAD)` and handles `EAGAIN`/`EWOULDBLOCK` on transmit with microsecond delays, preventing buffer truncation and acoustic waveform distortion.
+
 
 
 

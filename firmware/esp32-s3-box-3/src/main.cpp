@@ -8,6 +8,11 @@
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
+#include <lwip/sockets.h>
+#include <lwip/netdb.h>
+#include <lwip/inet.h>
+#include <fcntl.h>
+#include <errno.h>
 #include <HTTPClient.h> // Phase 4/5 personality settings: POST/GET to the backend's device/personality endpoint
 #include <Preferences.h> // NVS cache for the settings screen, so it redraws instantly on boot without a network round trip
 #include <cstring>
@@ -134,10 +139,152 @@ TerminalState lastRenderedState = (TerminalState)-1;
 // Espressif's own BSP pattern (one i2s_new_channel() call returns both).
 i2s_chan_handle_t i2sTxChan = NULL;
 i2s_chan_handle_t i2sRxChan = NULL;
-// Raw TCP, not WebSocket - see config.h for why. Speaks the same simple
-// framed protocol as the ESPHome ims_bridge component and the backend's
-// HardwareTcpClient shim: [1 byte type][4 bytes big-endian length][payload].
-WiFiClient tcpClient;
+// High-performance raw BSD/lwIP socket transport replacing Arduino WiFiClient.
+// Eliminates the internal 1436-byte NetworkClientRxBuffer drop bottleneck
+// that caused audio waveform discontinuities and speaker crackle during playback.
+class RawTcpClient {
+private:
+  int sock;
+  volatile bool _connected;
+
+public:
+  RawTcpClient() : sock(-1), _connected(false) {}
+
+  ~RawTcpClient() {
+    stop();
+  }
+
+  bool connect(const char *host, uint16_t port) {
+    stop();
+
+    sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sock < 0) {
+      Serial.printf("[TCP] socket() creation failed: errno %d\n", errno);
+      return false;
+    }
+
+    // 1. Expand Receive Buffer to 16KB (bypassing the 1436-byte WiFiClient Rx buffer drop)
+    int rcvBufSize = 16384;
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &rcvBufSize, sizeof(rcvBufSize)) < 0) {
+      Serial.printf("[TCP] setsockopt SO_RCVBUF failed: errno %d\n", errno);
+    }
+
+    // 2. Expand Send Buffer to 8KB for smooth mic packet bursts
+    int sndBufSize = 8192;
+    setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &sndBufSize, sizeof(sndBufSize));
+
+    // 3. Disable Nagle's algorithm for low-latency streaming
+    int nodelay = 1;
+    setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+
+    // 4. Resolve destination host
+    struct sockaddr_in serverAddr;
+    memset(&serverAddr, 0, sizeof(serverAddr));
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(port);
+
+    if (inet_pton(AF_INET, host, &serverAddr.sin_addr) <= 0) {
+      struct hostent *he = gethostbyname(host);
+      if (!he || !he->h_addr_list || !he->h_addr_list[0]) {
+        Serial.printf("[TCP] Host resolve failed for %s\n", host);
+        stop();
+        return false;
+      }
+      memcpy(&serverAddr.sin_addr, he->h_addr_list[0], he->h_length);
+    }
+
+    // 5. Connect with 4-second timeout
+    struct timeval tv;
+    tv.tv_sec = 4;
+    tv.tv_usec = 0;
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    if (::connect(sock, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
+      Serial.printf("[TCP] connect() to %s:%u failed: errno %d\n", host, port, errno);
+      stop();
+      return false;
+    }
+
+    // 6. Set non-blocking mode on the socket for polling
+    int flags = fcntl(sock, F_GETFL, 0);
+    fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+
+    _connected = true;
+    return true;
+  }
+
+  void stop() {
+    _connected = false;
+    if (sock >= 0) {
+      close(sock);
+      sock = -1;
+    }
+  }
+
+  bool connected() const {
+    return _connected && (sock >= 0);
+  }
+
+  // Returns number of bytes ready to read without blocking
+  int available() {
+    if (sock < 0 || !_connected) return 0;
+    int count = 0;
+    if (ioctl(sock, FIONREAD, &count) < 0) {
+      if (errno != EAGAIN && errno != EWOULDBLOCK) {
+        Serial.printf("[TCP] ioctl FIONREAD failed: errno %d\n", errno);
+        stop();
+      }
+      return 0;
+    }
+    return count;
+  }
+
+  // Reads up to len bytes in non-blocking mode.
+  // Returns >0: bytes read
+  // Returns 0: nothing ready (EAGAIN/EWOULDBLOCK)
+  // Returns -1: peer disconnected or fatal socket error
+  int read(uint8_t *buf, size_t len) {
+    if (sock < 0 || !_connected) return -1;
+    if (len == 0) return 0;
+
+    ssize_t n = recv(sock, buf, len, 0);
+    if (n > 0) {
+      return (int)n;
+    }
+    if (n == 0) {
+      Serial.println("[TCP] Connection closed by peer (EOF)");
+      stop();
+      return -1;
+    }
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      return 0;
+    }
+    Serial.printf("[TCP] recv() failed: errno %d\n", errno);
+    stop();
+    return -1;
+  }
+
+  // Sends up to len bytes in non-blocking mode
+  int write(const uint8_t *buf, size_t len) {
+    if (sock < 0 || !_connected) return -1;
+    if (len == 0) return 0;
+
+    ssize_t n = send(sock, buf, len, 0);
+    if (n >= 0) {
+      return (int)n;
+    }
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      return 0;
+    }
+    Serial.printf("[TCP] send() failed: errno %d\n", errno);
+    stop();
+    return -1;
+  }
+};
+
+RawTcpClient tcpClient;
+
 bool wasConnected = false; // detects the connect/disconnect edge in loop()
 // True once a real wake phrase (or a touch) has actually opened a
 // conversation - as long as this stays true, SPEAKING hands straight back to
@@ -1853,17 +2000,29 @@ void micReadRateTest() {
 // now resynchronise from that, but it still shouldn't happen silently.
 bool writeAll(const uint8_t *data, size_t len) {
   size_t sent = 0;
+  uint32_t startMs = millis();
   while (sent < len) {
     if (!tcpClient.connected()) return false;
     int n = tcpClient.write(data + sent, len - sent);
-    if (n <= 0) {
+    if (n > 0) {
+      sent += n;
+      startMs = millis();
+    } else if (n == 0) {
+      // Socket transmit buffer temporarily full (EAGAIN/EWOULDBLOCK) - yield slightly
+      if (millis() - startMs > 1500) {
+        Serial.printf("[TCP] writeAll timeout after %u of %u bytes\n", (unsigned)sent, (unsigned)len);
+        tcpClient.stop();
+        return false;
+      }
+      vTaskDelay(pdMS_TO_TICKS(1));
+    } else {
       Serial.printf("[TCP] Short write: %u of %u bytes\n", (unsigned)sent, (unsigned)len);
       return false;
     }
-    sent += n;
   }
   return true;
 }
+
 
 void sendFrame(uint8_t type, const uint8_t *data, size_t len) {
   if (!tcpClient.connected()) return;

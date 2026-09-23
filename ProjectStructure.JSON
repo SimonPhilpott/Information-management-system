@@ -120,7 +120,7 @@
       "dependencies": []
     },
     "firmware/esp32-s3-box-3/src/main.cpp": {
-      "description": "FreeRTOS firmware for ESP32-S3-BOX-3 holding display in STANDBY during wake candidate verification to eliminate false thinking screens, unconditionally resetting on noWakeDetected, maintaining active dialogue until explicit closing phrase or 14s idle timeout, strict sessionClosed idle notifications, touchToTalk intent signaling, interactive voice shuffling, 350ms settle debounce, immediate audio playback termination, official Google Gemini 30-voice descriptions, persistent Class-D speaker PA during active dialogue, rapid 200ms post-drain turn-taking cooldown, 4000ms pause-tolerant playback drain window, pre-warmed PA on wake verify, physical top latching mute button (GPIO 1), non-blocking bounded playback queue pacing, and calibrated wake-word VAD.",
+      "description": "FreeRTOS firmware for ESP32-S3-BOX-3 with raw lwIP/BSD socket transport (RawTcpClient), 16KB SO_RCVBUF, TCP_NODELAY, non-blocking polling, display held in STANDBY during wake candidate verification, unconditional reset on noWakeDetected, active dialogue persistence until closing phrase or 14s idle timeout, strict sessionClosed notifications, touchToTalk intent signaling, interactive voice shuffling, 350ms settle debounce, immediate audio playback termination, official Google Gemini 30-voice descriptions, persistent Class-D speaker PA during dialogue, rapid 200ms post-drain turn-taking cooldown, 4000ms pause-tolerant playback drain window, pre-warmed PA on wake verify, physical top latching mute button (GPIO 1), non-blocking bounded playback queue pacing, and calibrated wake-word VAD.",
       "dependencies": [
         "firmware/esp32-s3-box-3/include/config.h"
       ]
