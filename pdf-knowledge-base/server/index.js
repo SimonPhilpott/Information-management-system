@@ -55,7 +55,8 @@ import voiceRoutes from './routes/voice.js';
 import { getAuthStatus } from './services/driveService.js';
 import { validateConfiguredModels } from './services/modelService.js';
 import { loadHnswFromDisk } from './services/hnswService.js';
-import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getPersonality, setPersonality } from './services/hardwareClientService.js';
+import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getPersonality, setPersonality, getCaptureLogging, setCaptureLogging } from './services/hardwareClientService.js';
+import { scheduleItem, listScheduledItems, cancelScheduledItem, addToList, readList, removeFromList, clearList, checkDueScheduledItems, stopAllRinging } from './services/remindersService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -224,6 +225,9 @@ function handleLiveProxyConnection(ws, isHardware = false) {
 
   const ensureCaptureFolder = () => {
     if (captureFolderCreated) return;
+    // Preferences screen toggle - when off, no per-interaction folder is
+    // written at all (the always-on audio_captures/debug.log is unaffected).
+    if (!getCaptureLogging()) return;
     captureFolderCreated = true;
     try {
       fs.mkdirSync(captureDir, { recursive: true });
@@ -317,6 +321,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
   // finished) and synthesise the missing turnComplete so the device does not
   // get stuck in SPEAKING state with a partially-played response.
   let currentTurnComplete = true; // true initially (no active turn yet)
+  let turnCompleteAt = 0; // when currentTurnComplete last flipped true - see isModelSpeakingNow's POST_TURN_ECHO_GRACE_MS
 
   // Direct Raw Packet Capture: Stream recording to WAV on disk (capturePath
   // defined at the top of this function, inside the per-connection folder)
@@ -602,6 +607,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
         if (parsed.serverContent?.turnComplete) {
           if (!parsed.toolCall) {
             currentTurnComplete = true; // Gemini confirmed the turn ended cleanly
+            turnCompleteAt = Date.now();
           }
           console.log(`${tag} ✅ Gemini reported TURN COMPLETE (hasToolCall=${!!parsed.toolCall})`);
           try {
@@ -640,6 +646,17 @@ function handleLiveProxyConnection(ws, isHardware = false) {
         // auto-responding here too raced it with a second, less-formatted toolResponse for the same
         // call.id, degrading library answers and destabilizing the turn-taking/interrupt state.
         if (isHardware && parsed.toolCall?.functionCalls) {
+          // Shared by every new reminders/lists branch below, all of which
+          // are synchronous - reduces 7 near-identical toolResponse blocks to
+          // one call each, so a copy-paste slip can't silently mismatch a
+          // call.id or skip the OPEN check.
+          const respondToToolCall = (call, output) => {
+            if (gWs.readyState === WebSocket.OPEN) {
+              gWs.send(JSON.stringify({
+                toolResponse: { functionResponses: [{ response: { output }, id: call.id }] }
+              }));
+            }
+          };
           for (const call of parsed.toolCall.functionCalls) {
             if (call.name === 'searchLibrary') {
               console.log(`${tag} 🔍 Executing searchLibrary RAG tool for client: "${call.args?.query}"`);
@@ -684,6 +701,13 @@ function handleLiveProxyConnection(ws, isHardware = false) {
                 // the farewell reply reaching the device.
                 recordConversationMemory(userSpokenTranscript, spokenTranscript)
                   .catch((err) => console.error(`${tag} [Memory] recordConversationMemory failed:`, err.message));
+                // Every goodbye also dismisses any currently-ringing
+                // timer/alarm/reminder - harmless no-op if nothing's ringing,
+                // so this doesn't need to know whether THIS particular
+                // farewell was actually "IMS, stop" for an alert or just an
+                // ordinary end of conversation.
+                const stopped = stopAllRinging();
+                if (stopped > 0) console.log(`${tag} 🔕 Dismissed ${stopped} ringing alert(s)`);
               }
               if (gWs.readyState === WebSocket.OPEN) {
                 gWs.send(JSON.stringify({
@@ -714,17 +738,48 @@ function handleLiveProxyConnection(ws, isHardware = false) {
                   }
                 }));
               }
-            } else {
-              if (gWs.readyState === WebSocket.OPEN) {
-                gWs.send(JSON.stringify({
-                  toolResponse: {
-                    functionResponses: [{
-                      response: { output: { status: 'acknowledged' } },
-                      id: call.id
-                    }]
-                  }
-                }));
+            } else if (call.name === 'scheduleItem') {
+              try {
+                const result = scheduleItem(call.args || {});
+                console.log(`${tag} ⏰ scheduleItem:`, result);
+                respondToToolCall(call, result);
+              } catch (err) {
+                console.error(`${tag} scheduleItem failed:`, err.message);
+                respondToToolCall(call, { error: err.message });
               }
+            } else if (call.name === 'listScheduledItems') {
+              respondToToolCall(call, { items: listScheduledItems() });
+            } else if (call.name === 'cancelScheduledItem') {
+              const cancelled = cancelScheduledItem(call.args?.id);
+              console.log(`${tag} ⏰ cancelScheduledItem(${call.args?.id}) -> ${cancelled}`);
+              respondToToolCall(call, { cancelled });
+            } else if (call.name === 'addToList') {
+              try {
+                respondToToolCall(call, addToList(call.args?.listName, call.args?.item));
+              } catch (err) {
+                respondToToolCall(call, { error: err.message });
+              }
+            } else if (call.name === 'readList') {
+              try {
+                respondToToolCall(call, readList(call.args?.listName));
+              } catch (err) {
+                respondToToolCall(call, { error: err.message });
+              }
+            } else if (call.name === 'removeFromList') {
+              try {
+                respondToToolCall(call, { removed: removeFromList(call.args?.listName, call.args?.item) });
+              } catch (err) {
+                respondToToolCall(call, { error: err.message });
+              }
+            } else if (call.name === 'clearList') {
+              try {
+                clearList(call.args?.listName);
+                respondToToolCall(call, { status: 'cleared' });
+              } catch (err) {
+                respondToToolCall(call, { error: err.message });
+              }
+            } else {
+              respondToToolCall(call, { status: 'acknowledged' });
             }
           }
         }
@@ -819,6 +874,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
           }, 200);
         }
         currentTurnComplete = true; // Reset for next turn
+        turnCompleteAt = Date.now();
         console.log(`${tag} Gracefully handling code ${code} from Gemini. Keeping client socket open and preparing seamless upstream reconnect.`);
         currentGeminiWs = null;
         return;
@@ -895,8 +951,21 @@ function handleLiveProxyConnection(ws, isHardware = false) {
       // Acoustic echo barge-in protection:
       // While Gemini is actively generating speech chunks, suppress forwarding mic audio so
       // Google's server-side VAD does not hear the physical speaker output and abort the turn.
-      // Once turnComplete is received, isModelSpeakingNow is immediately false so follow-ups are never blocked.
-      const isModelSpeakingNow = !currentTurnComplete && (Date.now() - lastModelAudioTime < 800);
+      //
+      // Also keeps suppressing for POST_TURN_ECHO_GRACE_MS AFTER turnComplete, not just up to it.
+      // turnComplete is a NETWORK signal ("Gemini has finished sending audio for this turn") - it says
+      // nothing about whether the DEVICE has finished physically playing that audio out loud yet, and
+      // with no real device-side query, there's still a gap of a few hundred ms where the speaker is
+      // audibly finishing while the mic (device auto-reopens for a wake-free follow-up the instant
+      // conversationOpen is true) is already back on. A real capture caught this directly: turnComplete
+      // fired, suppression dropped instantly, the mic picked up the tail of the device's own reply as
+      // fresh input (RMS spikes in the thousands right after - self-echo, not the room), and Gemini,
+      // receiving that as a new turn, answered with the exact same sentence it had just finished saying.
+      const POST_TURN_ECHO_GRACE_MS = 900;
+      const msSinceTurnComplete = currentTurnComplete ? (Date.now() - turnCompleteAt) : Infinity;
+      const isModelSpeakingNow =
+        (!currentTurnComplete && (Date.now() - lastModelAudioTime < 800)) ||
+        (currentTurnComplete && msSinceTurnComplete < POST_TURN_ECHO_GRACE_MS);
       if (isHardware && isModelSpeakingNow) {
         // Was silent before - logging every suppressed frame would be way
         // too noisy (one per ~32ms chunk), so just count them and log a
@@ -963,6 +1032,13 @@ function handleLiveProxyConnection(ws, isHardware = false) {
             const hardwareDefaults = getHardwareSetupPayload();
             parsed.setup.tools = hardwareDefaults.setup.tools;
             parsed.setup.systemInstruction = hardwareDefaults.setup.systemInstruction;
+            // generationConfig carries the selected voice AND the variance
+            // engine's per-session temperature. Without this override the
+            // firmware's hardcoded handshake values won instead (voiceName
+            // "Puck", temperature 1.0), so the voice picker silently did
+            // nothing no matter what was chosen, and the temperature jitter
+            // never reached Gemini at all.
+            parsed.setup.generationConfig = hardwareDefaults.setup.generationConfig;
             // DIAGNOSTIC (and worth keeping permanently): asks Gemini for a
             // real, word-for-word transcript of what it's actually SAYING in
             // the audio, arriving incrementally alongside the audio chunks
@@ -1181,6 +1257,36 @@ hardwareTcpServer.listen(HARDWARE_TCP_PORT, () => {
   console.log(`[HardwareTCP] Raw TCP hardware endpoint listening on port ${HARDWARE_TCP_PORT}`);
 });
 
+// Timers/alarms/reminders: poll every 15s for anything due and push it to
+// the device. Deliberately NOT a Gemini turn - it's a lightweight control
+// frame (device chimes + shows it on screen, see reminderFired in main.cpp),
+// so it works whether or not a live conversation happens to be in progress,
+// and it's independent of any specific handleLiveProxyConnection() closure -
+// it just needs whichever hardware session is currently active, if any.
+setInterval(() => {
+  let fired;
+  try {
+    fired = checkDueScheduledItems();
+  } catch (err) {
+    console.error('[Reminders] checkDueScheduledItems failed:', err.message);
+    return;
+  }
+  for (const item of fired) {
+    console.log(`[Reminders] Fired: ${item.type} "${item.label || ''}" (id=${item.id})`);
+    if (activeHardwareSession?.clientWs?.readyState === WebSocket.OPEN) {
+      try {
+        activeHardwareSession.clientWs.send(JSON.stringify({
+          reminderFired: { type: item.type, label: item.label || '' }
+        }));
+      } catch (err) {
+        console.error('[Reminders] Failed to notify device:', err.message);
+      }
+    } else {
+      console.warn(`[Reminders] No connected hardware client to notify for id=${item.id} - it fired but was missed`);
+    }
+  }
+}, 15000);
+
 // Temporary debug endpoint: accepts a raw PCM POST body from the
 // MichalZaniewicz/esphome-esp32-s3-box-3-va reference firmware's on_data
 // mic hook and saves it as a WAV file in the same folder as our own mic
@@ -1203,7 +1309,8 @@ const debugMicServer = http.createServer((req, res) => {
   // no way to satisfy the main app's session-based requireAdmin middleware.
   if (req.url === '/device/personality') {
     if (req.method === 'GET') {
-      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(getPersonality()));
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+         .end(JSON.stringify({ ...getPersonality(), captureLogging: getCaptureLogging() }));
       return;
     }
     if (req.method === 'POST') {
@@ -1212,9 +1319,15 @@ const debugMicServer = http.createServer((req, res) => {
       req.on('end', () => {
         try {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+          // captureLogging rides along on the same device settings POST but
+          // isn't part of the personality itself - see the Preferences screen.
+          if (typeof body.captureLogging === 'boolean') {
+            setCaptureLogging(body.captureLogging);
+          }
           const next = setPersonality(body);
-          console.log('[Personality] Updated from device:', next);
-          res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(next));
+          console.log('[Personality] Updated from device:', next, 'captureLogging:', getCaptureLogging());
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+             .end(JSON.stringify({ ...next, captureLogging: getCaptureLogging() }));
         } catch (err) {
           console.error('[Personality] Failed to parse device update:', err.message);
           res.writeHead(400).end('bad request');

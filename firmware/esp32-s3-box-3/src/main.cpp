@@ -256,15 +256,30 @@ const char *PERSONALITY_VOICES[] = {
     "Vindemiatrix", "Sadachbia", "Sadaltager", "Sulafat"};
 #define PERSONALITY_VOICE_COUNT 30
 
+// Selectable alert tones for fired timers/alarms/reminders (Preferences
+// screen) - declared here, ahead of loadPersonalityFromNVS() below, which
+// needs ALERT_SOUND_COUNT to clamp a value loaded from NVS. playAlertSound()
+// (which actually plays these) lives later, near playChime().
+#define ALERT_SOUND_COUNT 4
+const char *ALERT_SOUND_NAMES[ALERT_SOUND_COUNT] = {"Chime", "Beep Beep", "Ascending", "Bell"};
+
 int personalityValues[PERSONALITY_AXIS_COUNT] = {70, 45, 30, 55, 35}; // matches DEFAULT_PERSONALITY in hardwareClientService.js
 int personalityVoiceIndex = 0; // index into PERSONALITY_VOICES
 
 volatile bool onSettingsScreen = false; // read from audioMicTask() (Core 0), written from loop() (Core 1)
-volatile bool onVoiceScreen = false; // settings sub-screen: false=personality sliders, true=voice picker
+volatile bool onVoiceScreen = false; // settings sub-screen: personality sliders -> voice picker
+volatile bool onPrefsScreen = false; // settings sub-screen: voice picker -> preferences
+// Preferences: when off, the backend stops creating a capture folder per
+// interaction under audio_captures (the always-on debug.log is unaffected).
+bool captureLoggingEnabled = true;
+// Which tone (see ALERT_SOUND_NAMES/playAlertSound()) plays when a timer,
+// alarm, or reminder fires. Purely device-local - unlike captureLogging,
+// the backend never needs to know this, since it's the DEVICE that decides
+// which sound to play locally on receiving a reminderFired frame.
+int alertSoundIndex = 0;
 int settingsDraggingAxis = -1; // -1 = not currently dragging a slider
 bool settingsDirty = false;
 unsigned long settingsLastChangeMs = 0;
-bool pendingVoicePreview = false; // a voice-arrow tap is waiting on the debounced save below to actually preview
 #define SETTINGS_SAVE_DEBOUNCE_MS 600
 
 // Voice/personality preview flow (Phase 5.1, see startPreview() near
@@ -297,6 +312,9 @@ void loadPersonalityFromNVS() {
   for (int i = 0; i < PERSONALITY_VOICE_COUNT; i++) {
     if (savedVoice == PERSONALITY_VOICES[i]) { personalityVoiceIndex = i; break; }
   }
+  captureLoggingEnabled = personalityPrefs.getBool("caplog", true);
+  alertSoundIndex = personalityPrefs.getInt("alertsnd", 0);
+  if (alertSoundIndex < 0 || alertSoundIndex >= ALERT_SOUND_COUNT) alertSoundIndex = 0;
   personalityPrefs.end();
   Serial.println("[Personality] Loaded from NVS cache");
 }
@@ -307,6 +325,8 @@ void savePersonalityToNVS() {
     personalityPrefs.putInt(PERSONALITY_AXIS_KEYS[i], personalityValues[i]);
   }
   personalityPrefs.putString("voice", PERSONALITY_VOICES[personalityVoiceIndex]);
+  personalityPrefs.putBool("caplog", captureLoggingEnabled);
+  personalityPrefs.putInt("alertsnd", alertSoundIndex);
   personalityPrefs.end();
 }
 
@@ -323,6 +343,7 @@ void postPersonalityToBackend() {
   JsonDocument doc;
   for (int i = 0; i < PERSONALITY_AXIS_COUNT; i++) doc[PERSONALITY_AXIS_KEYS[i]] = personalityValues[i];
   doc["voice"] = PERSONALITY_VOICES[personalityVoiceIndex];
+  doc["captureLogging"] = captureLoggingEnabled;
   String body;
   serializeJson(doc, body);
   int code = http.POST(body);
@@ -483,7 +504,14 @@ static uint8_t *playbackQueueStorage = nullptr;
 #define FACE_RADIUS 4
 #define FACE_PITCH 17
 #define FACE_CENTER_X 160
-#define FACE_CENTER_Y 108
+// 111, not the original 108 - shifted down 3px so the face's own top row
+// (at FACE_CENTER_Y - 66, i.e. y=45 with this value) clears HEADER_H (43)
+// with a couple of px to spare, instead of sitting partly inside/behind the
+// header bar - see HEADER_H's own comment for the matching header-side half
+// of this trade-off. Keep this in step with HEADER_H: FACE_CENTER_Y =
+// HEADER_H + 68 keeps the header-to-face gap at ~2px however tall the
+// header ends up.
+#define FACE_CENTER_Y 111
 
 static uint8_t faceCurLevels[FACE_COLS * FACE_ROWS] = {0};
 static int faceFrame = 0;
@@ -865,38 +893,79 @@ void drawFaceTick() {
   tft.endWrite();
 }
 
+// Header bar height, shared by all four screens (main/personality/voice/
+// preferences) - bumped up from the original 34px specifically so the gear
+// icon and the chevron nav chips get a taller, easier-to-hit touch target,
+// not just a visually taller bar. Every header icon/chevron/hitbox below is
+// expressed relative to this and HEADER_CY (its vertical centre), so
+// changing this one number keeps everything - graphics, hit zones, and
+// vertically-centred text - in sync with each other.
+//
+// 43: reduced a further 10% from 48 (itself reduced 15% from an earlier 56 -
+// see git history for that step's reasoning). FACE_CENTER_Y moves up to
+// match every time this changes (see its own comment).
+#define HEADER_H 43
+#define HEADER_CY (HEADER_H / 2)
+
 // Gear icon tap zone (top-left of the header). Shared identically by both
 // screens - the main screen's icon opens settings, the settings screen's
 // same-shaped icon (drawGearIcon() below) goes back - so the two can never
 // disagree about where the tap target actually is.
 #define HEADER_ICON_X0 0
 #define HEADER_ICON_Y0 0
-#define HEADER_ICON_X1 36
-#define HEADER_ICON_Y1 34
-#define HEADER_ICON_CX 18 // hub centre
-#define HEADER_ICON_CY 17
-#define HEADER_TITLE_X 40 // both screens' title text starts here, clear of the icon
+#define HEADER_ICON_X1 44
+#define HEADER_ICON_Y1 HEADER_H
+#define HEADER_ICON_CX 22 // hub centre
+#define HEADER_ICON_CY HEADER_CY
+#define HEADER_TITLE_X 48 // both screens' title text starts here, clear of the icon
 
 // Personality screen only: top-right "VOICE >" tap zone that opens the voice
 // picker sub-screen - wide enough to cover both the label text and the
 // chevron icon next to it, not just the icon itself.
-#define HEADER_RIGHT_ZONE_X0 240
+#define HEADER_RIGHT_ZONE_X0 230
 #define HEADER_RIGHT_ZONE_Y0 0
 #define HEADER_RIGHT_ZONE_X1 320
-#define HEADER_RIGHT_ZONE_Y1 34
-#define HEADER_RIGHT_CHEVRON_CX 304
-#define HEADER_RIGHT_CHEVRON_CY 17
-#define HEADER_RIGHT_LABEL_X 296 // right edge the "VOICE" label is right-aligned against
+#define HEADER_RIGHT_ZONE_Y1 HEADER_H
+#define HEADER_RIGHT_CHEVRON_CX 300
+#define HEADER_RIGHT_CHEVRON_CY HEADER_CY
+#define HEADER_RIGHT_LABEL_X 290 // right edge the "VOICE" label is right-aligned against
 
-// Voice screen only: its back zone is wider than HEADER_ICON_* (0-36) since
+// Voice screen only: its back zone is wider than HEADER_ICON_* (0-44) since
 // it carries a "< PERSONALITY" chevron+label, not just a bare icon.
 #define VOICE_BACK_ZONE_X0 0
 #define VOICE_BACK_ZONE_Y0 0
-#define VOICE_BACK_ZONE_X1 150
-#define VOICE_BACK_ZONE_Y1 34
-#define VOICE_BACK_CHEVRON_CX 18
-#define VOICE_BACK_CHEVRON_CY 17
-#define VOICE_BACK_LABEL_X 32
+#define VOICE_BACK_ZONE_X1 155
+#define VOICE_BACK_ZONE_Y1 HEADER_H
+#define VOICE_BACK_CHEVRON_CX 22
+#define VOICE_BACK_CHEVRON_CY HEADER_CY
+#define VOICE_BACK_LABEL_X 38
+
+// Voice screen: "PREFERENCES >" chip on the right of its header. Wider than
+// the personality screen's equivalent because the label is longer, and it can
+// afford to be - "IMS VOICE" is a short centred title.
+#define VOICE_NEXT_ZONE_X0 195
+#define VOICE_NEXT_ZONE_X1 320
+#define VOICE_NEXT_CHEVRON_CX 300
+#define VOICE_NEXT_LABEL_X 290
+
+// Preferences screen: two rows, "Capture Logging" (on/off toggle) then
+// "Alert Sound" (left/right cycle, like the voice picker but compact).
+#define PREFS_TOGGLE_X0 228
+#define PREFS_TOGGLE_X1 304
+#define PREFS_CAPLOG_LABEL_Y (HEADER_H + 8)
+#define PREFS_TOGGLE_Y0 (HEADER_H + 20)
+#define PREFS_TOGGLE_Y1 (HEADER_H + 50)
+#define PREFS_PATH_LINE1_Y (PREFS_TOGGLE_Y1 + 10)
+#define PREFS_PATH_LINE2_Y (PREFS_TOGGLE_Y1 + 24)
+#define PREFS_SOUND_LABEL_Y (PREFS_PATH_LINE2_Y + 18)
+#define PREFS_SOUND_ROW_CY (PREFS_SOUND_LABEL_Y + 26)
+#define PREFS_SOUND_HINT_Y (PREFS_SOUND_ROW_CY + 20)
+#define PREFS_SOUND_LEFT_ARROW_X0 90
+#define PREFS_SOUND_LEFT_ARROW_X1 130
+#define PREFS_SOUND_RIGHT_ARROW_X0 190
+#define PREFS_SOUND_RIGHT_ARROW_X1 230
+#define PREFS_SOUND_ROW_Y0 (PREFS_SOUND_LABEL_Y - 6)
+#define PREFS_SOUND_ROW_Y1 (PREFS_SOUND_ROW_CY + 20)
 
 // Voice screen: left/right arrow tap zones flanking the voice name.
 #define VOICE_LEFT_ARROW_X0 10
@@ -923,13 +992,16 @@ void drawFaceTick() {
 // screens) stay visually consistent.
 void drawGearIcon(int cx, int cy) {
   uint32_t col = tft.color565(140, 150, 175);
-  tft.fillCircle(cx, cy, 6, col);
-  // 8 teeth at 45-degree increments, radius 7 from centre so each tooth
-  // overlaps the hub's edge instead of floating clear of it.
-  const int dx[8] = {7, 5, 0, -5, -7, -5, 0, 5};
-  const int dy[8] = {0, 5, 7, 5, 0, -5, -7, -5};
+  tft.fillCircle(cx, cy, 9, col);
+  // 8 teeth at 45-degree increments, radius 10 from centre so each tooth
+  // overlaps the hub's edge instead of floating clear of it. Sized to fill
+  // HEADER_H (see its own comment) rather than a fixed small icon, so the
+  // visible icon grows along with its touch target instead of looking lost
+  // in a taller header bar.
+  const int dx[8] = {10, 7, 0, -7, -10, -7, 0, 7};
+  const int dy[8] = {0, 7, 10, 7, 0, -7, -10, -7};
   for (int i = 0; i < 8; i++) {
-    tft.fillRect(cx + dx[i] - 1, cy + dy[i] - 1, 3, 3, col);
+    tft.fillRect(cx + dx[i] - 2, cy + dy[i] - 2, 4, 4, col);
   }
 }
 
@@ -950,15 +1022,17 @@ void drawTriangleArrow(int cx, int cy, bool pointRight, uint32_t col) {
 // filled Play button.
 void drawChevron(int cx, int cy, bool pointRight, uint32_t col) {
   int dir = pointRight ? 1 : -1;
-  for (int t = 0; t < 2; t++) { // 2px stroke thickness
-    tft.drawLine(cx - dir * 5 + t, cy - 7, cx + dir * 5 + t, cy, col);
-    tft.drawLine(cx - dir * 5 + t, cy + 7, cx + dir * 5 + t, cy, col);
+  // Scaled up to match drawGearIcon()'s sizing, same reasoning: fill more of
+  // the taller HEADER_H rather than staying a fixed small glyph.
+  for (int t = 0; t < 3; t++) { // 3px stroke thickness
+    tft.drawLine(cx - dir * 8 + t, cy - 11, cx + dir * 8 + t, cy, col);
+    tft.drawLine(cx - dir * 8 + t, cy + 11, cx + dir * 8 + t, cy, col);
   }
 }
 
 #define SETTINGS_TRACK_X0 15
 #define SETTINGS_TRACK_X1 300
-#define SETTINGS_ROW_Y0 34
+#define SETTINGS_ROW_Y0 HEADER_H
 #define SETTINGS_ROW_H 28 // 5 axis rows = 140px, fits in 34-174; the Play button fills 174-240
 
 int settingsTrackXForValue(int value) {
@@ -1024,13 +1098,13 @@ void drawSettingsScreen() {
   // it here goes back instead of opening settings). Title centred, "VOICE"
   // link (chevron - see drawChevron(), deliberately not the Play button's
   // filled-triangle style) right-aligned in the header's free space.
-  tft.fillRect(0, 0, 320, 34, tft.color565(20, 24, 34));
+  tft.fillRect(0, 0, 320, HEADER_H, tft.color565(20, 24, 34));
   tft.setTextColor(tft.color565(140, 150, 175));
   tft.setTextSize(1);
   tft.setTextDatum(middle_center);
-  tft.drawString("IMS PERSONALITY", 160, 17);
+  tft.drawString("IMS PERSONALITY", 160, HEADER_CY);
   tft.setTextDatum(middle_right);
-  tft.drawString("VOICE", HEADER_RIGHT_LABEL_X, 17);
+  tft.drawString("VOICE", HEADER_RIGHT_LABEL_X, HEADER_CY);
   tft.setTextDatum(top_left);
   drawGearIcon(HEADER_ICON_CX, HEADER_ICON_CY);
   drawChevron(HEADER_RIGHT_CHEVRON_CX, HEADER_RIGHT_CHEVRON_CY, true, tft.color565(140, 150, 175));
@@ -1057,15 +1131,18 @@ void drawVoiceScreen() {
   // personality screen (not the gear icon - that's specifically the "open
   // settings" affordance on the main screen, and reusing its shape here as
   // a generic back button would be confusing). Title centred.
-  tft.fillRect(0, 0, 320, 34, tft.color565(20, 24, 34));
+  tft.fillRect(0, 0, 320, HEADER_H, tft.color565(20, 24, 34));
   tft.setTextColor(tft.color565(140, 150, 175));
   tft.setTextSize(1);
   tft.setTextDatum(middle_center);
-  tft.drawString("IMS VOICE", 160, 17);
+  tft.drawString("IMS VOICE", 160, HEADER_CY);
   tft.setTextDatum(middle_left);
-  tft.drawString("PERSONALITY", VOICE_BACK_LABEL_X, 17);
+  tft.drawString("PERSONALITY", VOICE_BACK_LABEL_X, HEADER_CY);
+  tft.setTextDatum(middle_right);
+  tft.drawString("PREFERENCES", VOICE_NEXT_LABEL_X, HEADER_CY);
   tft.setTextDatum(top_left);
   drawChevron(VOICE_BACK_CHEVRON_CX, VOICE_BACK_CHEVRON_CY, false, tft.color565(140, 150, 175));
+  drawChevron(VOICE_NEXT_CHEVRON_CX, VOICE_BACK_CHEVRON_CY, true, tft.color565(140, 150, 175));
 
   bool busy = (previewFlow != PREVIEW_IDLE);
   uint32_t arrowCol = busy ? tft.color565(60, 66, 80) : tft.color565(140, 150, 175);
@@ -1096,6 +1173,101 @@ void drawVoiceScreen() {
   tft.endWrite();
 }
 
+// Preferences sub-screen, one step further right than the voice picker.
+// Currently a single toggle controlling whether the backend writes a capture
+// folder per interaction.
+void drawPreferencesScreen() {
+  tft.startWrite();
+  tft.fillScreen(tft.color565(11, 14, 21));
+
+  // Header - "< VOICE" back chip, centred title, same language as the others.
+  tft.fillRect(0, 0, 320, HEADER_H, tft.color565(20, 24, 34));
+  tft.setTextColor(tft.color565(140, 150, 175));
+  tft.setTextSize(1);
+  tft.setTextDatum(middle_center);
+  tft.drawString("IMS PREFERENCES", 160, HEADER_CY);
+  tft.setTextDatum(middle_left);
+  tft.drawString("VOICE", VOICE_BACK_LABEL_X, HEADER_CY);
+  tft.setTextDatum(top_left);
+  drawChevron(VOICE_BACK_CHEVRON_CX, VOICE_BACK_CHEVRON_CY, false, tft.color565(140, 150, 175));
+
+  tft.setTextColor(tft.color565(140, 150, 175));
+  tft.drawString("CAPTURE LOGGING", 15, PREFS_CAPLOG_LABEL_Y);
+
+  // Toggle: a pill with the knob at whichever end matches the state.
+  uint32_t trackCol = captureLoggingEnabled ? tft.color565(76, 255, 122) : tft.color565(45, 50, 62);
+  int w = PREFS_TOGGLE_X1 - PREFS_TOGGLE_X0;
+  int h = PREFS_TOGGLE_Y1 - PREFS_TOGGLE_Y0;
+  tft.fillRoundRect(PREFS_TOGGLE_X0, PREFS_TOGGLE_Y0, w, h, h / 2, trackCol);
+  int knobR = h / 2 - 4;
+  int knobCx = captureLoggingEnabled ? (PREFS_TOGGLE_X1 - knobR - 4) : (PREFS_TOGGLE_X0 + knobR + 4);
+  tft.fillCircle(knobCx, PREFS_TOGGLE_Y0 + h / 2, knobR, tft.color565(11, 14, 21));
+  tft.setTextDatum(middle_center);
+  tft.setTextColor(captureLoggingEnabled ? tft.color565(11, 14, 21) : tft.color565(140, 150, 175));
+  tft.drawString(captureLoggingEnabled ? "ON" : "OFF",
+                 captureLoggingEnabled ? PREFS_TOGGLE_X0 + 24 : PREFS_TOGGLE_X1 - 24,
+                 PREFS_TOGGLE_Y0 + h / 2);
+  tft.setTextDatum(top_left);
+
+  // The path the toggle controls, split across two lines - the full string is
+  // far wider than 320px at this text size.
+  tft.setTextColor(tft.color565(100, 110, 130));
+  tft.drawString("D:\\Information management system\\", 15, PREFS_PATH_LINE1_Y);
+  tft.drawString("pdf-knowledge-base\\server\\audio_captures", 15, PREFS_PATH_LINE2_Y);
+
+  // Alert sound: left/right cycle, same interaction language as the voice
+  // picker but compact - a single row rather than a whole screen, since
+  // there are only 4 short-named options here versus 30 voices.
+  tft.setTextColor(tft.color565(140, 150, 175));
+  tft.drawString("ALERT SOUND", 15, PREFS_SOUND_LABEL_Y);
+  drawChevron(110, PREFS_SOUND_ROW_CY, false, tft.color565(140, 150, 175));
+  drawChevron(210, PREFS_SOUND_ROW_CY, true, tft.color565(140, 150, 175));
+  tft.setTextDatum(middle_center);
+  tft.setTextColor(tft.color565(76, 255, 122));
+  tft.drawString(ALERT_SOUND_NAMES[alertSoundIndex], 160, PREFS_SOUND_ROW_CY);
+  tft.setTextDatum(top_center);
+  tft.setTextColor(tft.color565(100, 110, 130));
+  tft.drawString("(tap to preview)", 160, PREFS_SOUND_HINT_Y);
+  tft.setTextDatum(top_left);
+
+  tft.fillRect(0, 204, 320, 36, tft.color565(15, 18, 26));
+  tft.setTextColor(tft.color565(100, 110, 130));
+  tft.setTextDatum(top_center);
+  tft.drawString("Per-interaction capture folders", 160, 214);
+  tft.setTextDatum(top_left);
+
+  tft.endWrite();
+}
+
+// "HH:mm:ss dd/MM/yyyy" in Europe/London local time (see configTzTime() in
+// setup(), which applies the real BST/GMT rule, not a fixed offset). Returns
+// a placeholder before NTP has synced (getLocalTime() fails, e.g. briefly
+// after boot), rather than showing a stale or nonsensical clock.
+String currentDateTimeStr() {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo, 50)) {
+    return String("--:--:-- --/--/----");
+  }
+  char buf[24];
+  strftime(buf, sizeof(buf), "%H:%M:%S %d/%m/%Y", &timeinfo);
+  return String(buf);
+}
+
+// Repaints just the footer's bottom-left clock corner - called once a second
+// from loop() (see below). Deliberately NOT a full renderScreen(true): this
+// display has no back buffer, so a full fillScreen() every second would
+// visibly flash the whole screen (face included) once a second, for the
+// sake of a clock only a small corner of which actually changed.
+void drawFooterClock() {
+  if (onSettingsScreen || isMicHardwareMuted) return; // mute warning occupies this space instead
+  tft.startWrite();
+  tft.fillRect(0, 204, 180, 20, tft.color565(15, 18, 26));
+  tft.setTextDatum(top_left);
+  tft.setTextColor(tft.color565(100, 110, 130));
+  tft.drawString(currentDateTimeStr(), 15, 214);
+  tft.endWrite();
+}
+
 void renderScreen(bool forceRedraw = false) {
   // Checked FIRST, before touching any of the lastRendered* tracking below -
   // this must be a total no-op while the settings screen is open, not just
@@ -1123,34 +1295,38 @@ void renderScreen(bool forceRedraw = false) {
   tft.setTextDatum(top_left);
 
   // Header bar
-  tft.fillRect(0, 0, 320, 34, tft.color565(20, 24, 34));
+  tft.fillRect(0, 0, 320, HEADER_H, tft.color565(20, 24, 34));
   tft.setTextColor(tft.color565(140, 150, 175));
   tft.setTextSize(1);
   tft.setTextDatum(middle_center);
-  tft.drawString("(I)nformation (M)anagement (S)ystem", 160, 17);
+  tft.drawString("(I)nformation (M)anagement (S)ystem", 160, HEADER_CY);
   tft.setTextDatum(top_left); // reset - everything after this relies on left-anchored text
   drawGearIcon(HEADER_ICON_CX, HEADER_ICON_CY); // Phase 4 settings entry point
 
   tft.setTextDatum(middle_left);
   if (isMicHardwareMuted) {
-    tft.fillCircle(236, 17, 4, tft.color565(255, 71, 87));
+    tft.fillCircle(236, HEADER_CY, 4, tft.color565(255, 71, 87));
     tft.setTextColor(tft.color565(255, 71, 87));
-    tft.drawString("MUTED", 244, 17);
+    tft.drawString("MUTED", 244, HEADER_CY);
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    tft.fillCircle(280, 17, 4, tft.color565(46, 213, 115));
+    tft.fillCircle(280, HEADER_CY, 4, tft.color565(46, 213, 115));
     tft.setTextColor(tft.color565(140, 150, 175));
-    tft.drawString("WIFI", 290, 17);
+    tft.drawString("WIFI", 290, HEADER_CY);
   } else {
-    tft.fillCircle(280, 17, 4, tft.color565(255, 71, 87));
+    tft.fillCircle(280, HEADER_CY, 4, tft.color565(255, 71, 87));
     tft.setTextColor(tft.color565(140, 150, 175));
-    tft.drawString("DISC", 290, 17);
+    tft.drawString("DISC", 290, HEADER_CY);
   }
   tft.setTextDatum(top_left);
 
-  // Main Body Background
-  tft.fillRect(0, 34, 320, 170, tft.color565(11, 14, 21));
+  // Main Body Background - starts right at HEADER_H, not a leftover hardcoded
+  // 34: that gap used to overpaint the bottom ~16px of the taller header with
+  // this darker body colour, which is what made the header icon/title look
+  // bottom-cropped/misaligned even though the header bar and its content were
+  // both actually being drawn at the correct, matching height.
+  tft.fillRect(0, HEADER_H, 320, 204 - HEADER_H, tft.color565(11, 14, 21));
 
   // Status Pill and Waveform area
   uint32_t statusColor;
@@ -1207,17 +1383,15 @@ void renderScreen(bool forceRedraw = false) {
   tft.drawString(statusText, 160, 182);
   tft.setTextDatum(top_left);
 
-  // Footer Bar
+  // Footer Bar - bottom-left is the live clock normally, replaced by the
+  // mute warning when it's actually relevant (higher priority information).
   tft.fillRect(0, 204, 320, 36, tft.color565(15, 18, 26));
   if (isMicHardwareMuted) {
     tft.setTextColor(tft.color565(255, 107, 129));
     tft.drawString("Microphone Muted - Press top button to unmute", 15, 214);
-  } else if (currentState == STATE_STANDBY) {
-    tft.setTextColor(tft.color565(100, 110, 130));
-    tft.drawString("Say 'Hey Ims' or tap screen", 15, 214);
   } else {
     tft.setTextColor(tft.color565(100, 110, 130));
-    tft.drawString("Tap Screen to Interrupt / Sleep", 15, 214);
+    tft.drawString(currentDateTimeStr(), 15, 214);
   }
 
   // Current emotion, bottom-right of the footer - shown even when neutral so
@@ -1731,13 +1905,14 @@ void sendAudioStreamEnd() {
 // (~300ms); only ever called from loop() (Core 1) in response to a touch on
 // the TEST button, so it can't race the mic task's I2S reads (I2S RX/TX
 // share one peripheral but are independent FIFOs/DMA channels).
-void playChime() {
-  Serial.println("[Hardware] Playing speaker test tone...");
-  sendDebug("test_chime");
-  setSpeakerMute(false); // Enable speaker amp & unmute DAC
-  const float freq = 440.0f;
-  const int totalSamples = MIC_SAMPLE_RATE * 300 / 1000; // 300ms
-  const int fadeSamples = 200; // click-free fade in/out
+// Writes a single sine tone directly to the I2S TX channel, blocking Core 1
+// for its duration - shared by playChime() (boot) and playAlertSound()
+// (timers/alarms/reminders). Doesn't touch speaker mute/PA itself; callers
+// wrap a whole sequence of these in one mute(false)/mute(true) pair so a
+// multi-note pattern doesn't pop/settle between notes.
+void playTone(float freq, int durationMs) {
+  const int totalSamples = MIC_SAMPLE_RATE * durationMs / 1000;
+  const int fadeSamples = min(200, totalSamples / 4); // click-free fade in/out
   int16_t stereoBuf[512];
   int written = 0;
   while (written < totalSamples) {
@@ -1758,13 +1933,44 @@ void playChime() {
                        &bytesWritten, portMAX_DELAY);
     written += chunkLen;
     // Lets isSpeakerActive() - and so the face's talking-mouth animation -
-    // recognise this chime as "speaker active" the same way it already does
-    // for Gemini's audio, without this blocking loop needing to know
-    // anything about the face.
+    // recognise this as "speaker active" the same way it already does for
+    // Gemini's audio, without this blocking loop needing to know anything
+    // about the face.
     lastPlaybackActiveTime = millis();
   }
+}
+
+void playChime() {
+  Serial.println("[Hardware] Playing speaker test tone...");
+  sendDebug("test_chime");
+  setSpeakerMute(false); // Enable speaker amp & unmute DAC
+  playTone(440.0f, 300);
   delay(30);
   setSpeakerMute(true); // Return to muted state to isolate mic
+}
+
+// The selectable tone for a fired timer/alarm/reminder (Preferences screen).
+// Deliberately just a short, distinct sound - NOT the spoken announcement
+// itself, which follows via a real sendTextQuery() so Gemini says what it
+// was actually for (see handleFrame()'s reminderFired branch).
+void playAlertSound(int index) {
+  setSpeakerMute(false);
+  switch (index) {
+    case 1: // Beep Beep
+      playTone(880.0f, 140); delay(90); playTone(880.0f, 140);
+      break;
+    case 2: // Ascending
+      playTone(523.0f, 110); playTone(659.0f, 110); playTone(784.0f, 160);
+      break;
+    case 3: // Bell
+      playTone(784.0f, 90); playTone(523.0f, 260);
+      break;
+    default: // Chime
+      playTone(440.0f, 300);
+      break;
+  }
+  delay(30);
+  setSpeakerMute(true);
 }
 
 // Sends a real clientContent text turn (not the empty/placeholder "."
@@ -1790,6 +1996,17 @@ void sendTextQuery(const char *text) {
   serializeJson(doc, turnStr);
   sendFrame(0x00, (const uint8_t *)turnStr.c_str(), turnStr.length());
   currentState = STATE_THINKING;
+  // Every OTHER path that enters STATE_THINKING/LISTENING refreshes this;
+  // this one didn't. loop()'s "abandoned conversation" safety net reverts
+  // THINKING to STANDBY and mutes the speaker once lastSpeechTimestamp is
+  // more than SESSION_IDLE_TIMEOUT_MS (14s) stale - and a voice/personality
+  // preview is typically started well over 14s after the mic last picked up
+  // real speech (you've been browsing a menu, not talking). Without this,
+  // that timeout could fire within one loop() iteration of sendTextQuery()
+  // returning, muting the speaker before Gemini's audio even arrived - the
+  // preview looked like it silently failed, when actually it was cut off
+  // before it could ever be heard.
+  lastSpeechTimestamp = millis();
   lastTranscript = String(text);
   // Pre-warm PA immediately so the amp has time to exit shutdown before
   // audio arrives. Gemini takes ~1-5s to respond - ample warmup window.
@@ -1960,17 +2177,9 @@ void flushSettingsSave(); // defined just below startPreview() - see its own com
 // that state.
 void startPreview(const String &text) {
   if (previewFlow != PREVIEW_IDLE) return;
-  // Force-saves any still-debounced change first (so e.g. a Play tap right
-  // after dragging a slider previews the position actually left it at) -
-  // but if that change was a voice-arrow tap still waiting on its OWN "Hi,
-  // I'm X" preview, flushSettingsSave() fires that preview itself, which
-  // claims previewFlow before we get to. Re-checking afterwards means THIS
-  // call backs off rather than stomping it - otherwise a Play tap landing in
-  // that ~600ms window would silently swallow the voice preview for good,
-  // since settingsDirty would already be false by the time the normal
-  // debounce check in loop() got a chance to fire it.
+  // Force-save any still-debounced change first, so e.g. a Play tap right
+  // after dragging a slider previews the position actually left it at.
   flushSettingsSave();
-  if (previewFlow != PREVIEW_IDLE) return;
   setSpeakerMute(true);
   if (audioPlaybackQueue) {
     xQueueReset(audioPlaybackQueue);
@@ -1980,7 +2189,7 @@ void startPreview(const String &text) {
   previewFlowStartMs = millis();
   if (onVoiceScreen) {
     drawVoiceScreen();
-  } else if (onSettingsScreen) {
+  } else if (onSettingsScreen && !onPrefsScreen) {
     tft.startWrite();
     drawPlayButton();
     tft.endWrite();
@@ -1988,22 +2197,13 @@ void startPreview(const String &text) {
 }
 
 // Shared by the periodic debounce check in loop() and every place that used
-// to inline "if (settingsDirty) { save; post; }" (the back arrows, the
-// voice-icon, and startPreview() above) - saving is only half the job when
-// the dirty change was a voice-arrow tap: pendingVoicePreview also needs to
-// fire its "Hi, I'm X" preview, and funnelling every save through one place
-// means that can never get silently dropped by whichever caller happens to
-// save first.
+// to inline "if (settingsDirty) { save; post; }" - the back arrows, the
+// screen-navigation chips, and startPreview().
 void flushSettingsSave() {
   if (!settingsDirty) return;
   savePersonalityToNVS();
   postPersonalityToBackend();
   settingsDirty = false;
-  if (pendingVoicePreview) {
-    pendingVoicePreview = false;
-    String name = PERSONALITY_VOICES[personalityVoiceIndex];
-    startPreview("Say exactly, with nothing else before or after it: \"Hi, I'm " + name + ".\"");
-  }
 }
 
 // Linear-interpolation downsampler, 24kHz (Gemini's native output rate) to
@@ -2183,6 +2383,48 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       emotionSetAtMs = millis();
       renderScreen(true); // updates the bottom-right emotion label immediately
       Serial.printf("[IMS] setEmotion(%s) -> %d\n", doc["setEmotion"].as<const char *>(), currentEmotion);
+    }
+    // Backend forwarded a fired timer/alarm/reminder (see remindersService.js's
+    // poller in index.js) - purely a push notification over the raw TCP link,
+    // not a Gemini turn, so it can arrive with no live conversation in
+    // progress at all. Only actually alert from a genuinely idle STANDBY:
+    // playAlertSound() blocks Core 1 and writes straight to the shared I2S TX
+    // channel with portMAX_DELAY, which would collide with audioPlaybackTask
+    // (Core 0) writing Gemini's own audio to that same channel if a reply
+    // were in flight.
+    if (doc["reminderFired"].is<JsonObject>()) {
+      JsonObject rf = doc["reminderFired"];
+      const char *kind = rf["type"] | "reminder";
+      const char *label = rf["label"] | "";
+      Serial.printf("[IMS] Reminder fired: %s \"%s\"\n", kind, label);
+      if (currentState == STATE_STANDBY) {
+        char msg[96];
+        if (label[0] != '\0') {
+          snprintf(msg, sizeof(msg), "%s: %s", kind, label);
+        } else {
+          snprintf(msg, sizeof(msg), "%s finished", kind);
+        }
+        lastTranscript = String(msg);
+        renderScreen(true);
+        playAlertSound(alertSoundIndex);
+        // Have Gemini actually SPEAK what it was for, reusing the exact same
+        // clientContent-text-turn mechanism the voice/personality preview
+        // uses. This also means the announcement becomes a completely normal
+        // open conversational turn afterward (conversationOpen gets set true
+        // the moment real audio streams back, same as any wake-triggered
+        // reply) - so the existing STOP PHRASES handling in the system
+        // prompt already covers "IMS stop" here for free, with no new
+        // dismiss-alert mechanism needed.
+        char announceMsg[128];
+        if (label[0] != '\0') {
+          snprintf(announceMsg, sizeof(announceMsg),
+                   "Your %s for \"%s\" just went off - announce this briefly, in character.", kind, label);
+        } else {
+          snprintf(announceMsg, sizeof(announceMsg),
+                   "Your %s just went off - announce this briefly, in character.", kind);
+        }
+        sendTextQuery(announceMsg);
+      }
     }
     if (doc["text"].is<const char *>()) {
       const char *textSnippet = doc["text"].as<const char *>();
@@ -2467,7 +2709,10 @@ void audioMicTask(void *param) {
 
         // Circular pre-roll buffer in PSRAM: maintain recent 512ms of audio
         // Reset while speaker is active or cooling down to avoid capturing speaker echo
-        if (isSpeakerCoolingDown()) {
+        // Only maintain the ring while NOT already streaming: anything captured
+        // during a live turn has been sent to Gemini already, so keeping it
+        // here just gives the next wake flush duplicate audio to re-send.
+        if (isSpeakerCoolingDown() || micStreamingActive) {
           prerollHead = 0;
           prerollFilled = false;
         } else if (prerollBuffer != nullptr) {
@@ -2542,6 +2787,14 @@ void audioMicTask(void *param) {
                   int idx = (startIdx + i) % PREROLL_CHUNKS;
                   xQueueSend(audioOutQueue, &prerollBuffer[idx], 0);
                 }
+                // Emptying the ring here is essential, not tidiness. Without
+                // it these same chunks stay queued up to be flushed AGAIN on
+                // the next wake trigger - and since the ring also keeps
+                // filling while we're streaming live, that second flush
+                // re-sends audio Gemini has already received. It then hears
+                // the wake phrase twice and answers twice, word for word.
+                prerollHead = 0;
+                prerollFilled = false;
               }
 
               // Also forward current chunk
@@ -2688,6 +2941,12 @@ void setup() {
   Serial.println(" Connected!");
   Serial.printf("[WiFi] IP Address: %s\n", WiFi.localIP().toString().c_str());
 
+  // NTP + Europe/London POSIX TZ rule - not just a fixed UTC+0/+1 offset, so
+  // the on-screen clock (see currentDateTimeStr()) tracks the real BST/GMT
+  // changeover automatically, the same way the backend's Intl-based
+  // Europe/London handling does for reminders/alarms/timers.
+  configTzTime("GMT0BST,M3.5.0/1,M10.5.0/2", "pool.ntp.org", "time.nist.gov");
+
   currentState = STATE_CONNECTING_SERVER;
   renderScreen(true);
 
@@ -2783,7 +3042,7 @@ void loop() {
       previewFlow = PREVIEW_IDLE;
       previewPendingText = "";
       if (onVoiceScreen) drawVoiceScreen();
-      else if (onSettingsScreen) { tft.startWrite(); drawPlayButton(); tft.endWrite(); }
+      else if (onSettingsScreen && !onPrefsScreen) { tft.startWrite(); drawPlayButton(); tft.endWrite(); }
     }
   }
   wasConnected = nowConnected;
@@ -2980,15 +3239,29 @@ void loop() {
     }
   }
 
+  // The footer clock shows seconds, so it needs a genuine once-a-second
+  // tick - renderScreen() otherwise only redraws on a state/mute/emotion
+  // change, so without this a static STANDBY screen would show whatever
+  // time it was when it last had a real reason to redraw. Uses the
+  // lightweight drawFooterClock() (see its own comment), not a full
+  // renderScreen(true), specifically to avoid flashing the whole screen
+  // once a second.
+  {
+    static int lastRenderedSecond = -1;
+    struct tm ti;
+    if (!onSettingsScreen && getLocalTime(&ti, 0) && ti.tm_sec != lastRenderedSecond) {
+      lastRenderedSecond = ti.tm_sec;
+      drawFooterClock();
+    }
+  }
+
   // Settings screen save debounce - checked every loop iteration regardless
-  // of touch, so a save actually fires ~600ms after the LAST drag movement
-  // rather than needing another touch event to trigger it. A voice-arrow
-  // tap sets pendingVoicePreview so the preview only actually fires once
-  // the settle-then-save the user's FINAL choice, not on every intermediate
-  // tap while they're still cycling through voices.
+  // of touch, so a save actually fires ~600ms after the LAST slider drag
+  // rather than needing another touch event to trigger it.
   if (settingsDirty && (millis() - settingsLastChangeMs > SETTINGS_SAVE_DEBOUNCE_MS)) {
     flushSettingsSave();
   }
+
 
   // Voice/personality preview flow - see startPreview() near
   // connectToBackend() and the PreviewFlowState comment above onVoiceScreen.
@@ -3005,21 +3278,50 @@ void loop() {
       Serial.println("[Preview] Gave up waiting for Gemini setup - aborting preview");
       previewFlow = PREVIEW_IDLE;
       if (onVoiceScreen) drawVoiceScreen();
-      else if (onSettingsScreen) { tft.startWrite(); drawPlayButton(); tft.endWrite(); }
+      else if (onSettingsScreen && !onPrefsScreen) { tft.startWrite(); drawPlayButton(); tft.endWrite(); }
     }
   } else if (previewFlow == PREVIEW_SPEAKING) {
     bool stillActive = (currentState == STATE_THINKING || currentState == STATE_SPEAKING || isSpeakerActive());
     if (!stillActive || (millis() - previewFlowStartMs > 20000)) {
       previewFlow = PREVIEW_IDLE;
       if (onVoiceScreen) drawVoiceScreen();
-      else if (onSettingsScreen) { tft.startWrite(); drawPlayButton(); tft.endWrite(); }
+      else if (onSettingsScreen && !onPrefsScreen) { tft.startWrite(); drawPlayButton(); tft.endWrite(); }
     }
   }
 
   // Touch feedback
   uint16_t touchX, touchY;
   if (tft.getTouch(&touchX, &touchY)) {
-    if (onVoiceScreen) {
+    if (onPrefsScreen) {
+      if (touchX >= VOICE_BACK_ZONE_X0 && touchX <= VOICE_BACK_ZONE_X1 && touchY >= VOICE_BACK_ZONE_Y0 && touchY <= VOICE_BACK_ZONE_Y1) {
+        // "< VOICE": back one level to the voice picker.
+        onPrefsScreen = false;
+        onVoiceScreen = true;
+        drawVoiceScreen();
+        delay(200);
+      } else if (touchX >= PREFS_TOGGLE_X0 && touchX <= PREFS_TOGGLE_X1 &&
+                 touchY >= PREFS_TOGGLE_Y0 && touchY <= PREFS_TOGGLE_Y1) {
+        captureLoggingEnabled = !captureLoggingEnabled;
+        settingsDirty = true;
+        settingsLastChangeMs = millis();
+        drawPreferencesScreen();
+        delay(200);
+      } else if (touchY >= PREFS_SOUND_ROW_Y0 && touchY <= PREFS_SOUND_ROW_Y1) {
+        // Alert sound: local tone, no Gemini/reconnect involved (unlike the
+        // voice picker), so it can preview immediately and synchronously.
+        int delta = 0;
+        if (touchX >= PREFS_SOUND_LEFT_ARROW_X0 - 20 && touchX < 160) delta = -1;
+        else if (touchX > 160 && touchX <= PREFS_SOUND_RIGHT_ARROW_X1 + 20) delta = 1;
+        if (delta != 0) {
+          alertSoundIndex = (alertSoundIndex + delta + ALERT_SOUND_COUNT) % ALERT_SOUND_COUNT;
+          settingsDirty = true;
+          settingsLastChangeMs = millis();
+          drawPreferencesScreen();
+          playAlertSound(alertSoundIndex);
+          delay(150);
+        }
+      }
+    } else if (onVoiceScreen) {
       if (touchX >= VOICE_BACK_ZONE_X0 && touchX <= VOICE_BACK_ZONE_X1 && touchY >= VOICE_BACK_ZONE_Y0 && touchY <= VOICE_BACK_ZONE_Y1) {
         // "< PERSONALITY": back up one level. Flush any pending voice change
         // first (fires its "Hi, I'm X" preview rather than leaving it to the
@@ -3028,23 +3330,35 @@ void loop() {
         flushSettingsSave();
         onVoiceScreen = false;
         drawSettingsScreen();
+      } else if (touchX >= VOICE_NEXT_ZONE_X0 && touchX <= VOICE_NEXT_ZONE_X1 &&
+                 touchY >= VOICE_BACK_ZONE_Y0 && touchY <= VOICE_BACK_ZONE_Y1) {
+        // "PREFERENCES >": forward one level.
+        flushSettingsSave();
+        onVoiceScreen = false;
+        onPrefsScreen = true;
+        drawPreferencesScreen();
+        delay(200);
       } else if (previewFlow == PREVIEW_IDLE && touchY >= VOICE_ARROW_Y0 && touchY <= VOICE_ARROW_Y1) {
         // Left/right arrows cycle the voice - ignored while a preview is
         // already in flight, matching the greyed-out arrows drawVoiceScreen()
         // shows in that state.
-        if (touchX >= VOICE_LEFT_ARROW_X0 && touchX <= VOICE_LEFT_ARROW_X1) {
-          personalityVoiceIndex = (personalityVoiceIndex - 1 + PERSONALITY_VOICE_COUNT) % PERSONALITY_VOICE_COUNT;
+        int delta = 0;
+        if (touchX >= VOICE_LEFT_ARROW_X0 && touchX <= VOICE_LEFT_ARROW_X1) delta = -1;
+        else if (touchX >= VOICE_RIGHT_ARROW_X0 && touchX <= VOICE_RIGHT_ARROW_X1) delta = 1;
+        if (delta != 0) {
+          personalityVoiceIndex =
+              (personalityVoiceIndex + delta + PERSONALITY_VOICE_COUNT) % PERSONALITY_VOICE_COUNT;
           settingsDirty = true;
-          pendingVoicePreview = true;
           settingsLastChangeMs = millis();
           drawVoiceScreen();
-          delay(200);
-        } else if (touchX >= VOICE_RIGHT_ARROW_X0 && touchX <= VOICE_RIGHT_ARROW_X1) {
-          personalityVoiceIndex = (personalityVoiceIndex + 1) % PERSONALITY_VOICE_COUNT;
-          settingsDirty = true;
-          pendingVoicePreview = true;
-          settingsLastChangeMs = millis();
-          drawVoiceScreen();
+          // Preview straight away rather than via the save debounce. That
+          // indirection (set a flag, wait 600ms, save, then have a separate
+          // loop() check notice and fire) had too many ways to fall through
+          // and silently drop the preview. startPreview() force-saves the
+          // change itself, and the previewFlow guard above already stops
+          // overlapping previews, so the debounce bought nothing here.
+          String voiceName = PERSONALITY_VOICES[personalityVoiceIndex];
+          startPreview("Say exactly, with nothing else before or after it: \"Hi, I'm " + voiceName + ".\"");
           delay(200);
         }
       }

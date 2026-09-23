@@ -94,6 +94,21 @@ export function setPersonality(partial) {
 }
 
 /**
+ * Device preferences that aren't part of the personality itself. Currently
+ * just the capture-logging toggle on the Preferences screen, which controls
+ * whether a per-interaction folder is written under audio_captures/ (the
+ * always-on debug.log there is unaffected either way).
+ */
+export function getCaptureLogging() {
+  return getSetting("ims_capture_logging") !== "false"; // default on
+}
+
+export function setCaptureLogging(enabled) {
+  setSetting("ims_capture_logging", enabled ? "true" : "false");
+  return enabled;
+}
+
+/**
  * Turns one 0-100 slider value into a description of where it sits between
  * its three anchors. Values close to an anchor (within 20 of it) read as
  * that anchor alone; values in between blend the two neighbouring anchors,
@@ -378,6 +393,16 @@ export function getHardwareSetupPayload() {
   const varianceDirective = buildVarianceDirective();
   const temperature = jitterTemperature(personality);
   const memoryParagraph = buildMemoryParagraph();
+  // scheduleItem's "time" parameter is a bare 24-hour HH:MM with no date or
+  // timezone - Gemini needs today's real date/day-of-week to resolve phrases
+  // like "at 7" or "tomorrow at 9" correctly, and this is the only place that
+  // context reaches it (a fresh value every session, not a one-time constant).
+  const nowFormatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    dateStyle: "full", // e.g. "Wednesday, 23 September 2026"
+    timeStyle: "long",  // e.g. "09:05:00 BST" - includes the BST/GMT label itself
+  });
+  const nowStr = nowFormatter.format(new Date());
   console.log(`[Variance] archetype=${archetype.name} temperature=${temperature} inversion=${varianceDirective ? "yes" : "no (insufficient data or no dominant pattern)"}`);
   return {
     setup: {
@@ -389,12 +414,13 @@ export function getHardwareSetupPayload() {
       generationConfig: {
         responseModalities: ["AUDIO"],
         temperature: temperature,
-        // UNVERIFIED for gemini-3.8-live over the Live API - the migration
-        // docs don't confirm these are honored for this model/surface. If
-        // Gemini rejects the setup handshake with these present, that's the
-        // answer; remove them. Left in as a monitored experiment rather than
-        // asserted as working - see imspersonality.md's honesty notes.
-        presencePenalty: 0.3,
+        // presencePenalty was carried here as an unverified experiment while
+        // this whole block was dead code (the proxy never forwarded
+        // generationConfig, so the firmware's hardcoded values won). Now that
+        // it IS forwarded, an unsupported field would fail the setup
+        // handshake and take the entire session down with it - so it's
+        // removed rather than risked. Worth retrying deliberately, on its
+        // own, if the variance engine ever needs it.
         speechConfig: {
           voiceConfig: {
             prebuiltVoiceConfig: {
@@ -411,9 +437,10 @@ export function getHardwareSetupPayload() {
             `Framing directive for this session: ${archetype.directive}. ` +
             (varianceDirective ? varianceDirective + " " : "") +
             (memoryParagraph ? memoryParagraph + " " : "") +
-            "IMPORTANT - wake phrase gating: the device has no reliable local wake-word detector, so it forwards you a short burst of audio any time it hears something loud enough to possibly be speech, even background noise, a TV, or someone talking to somebody else in the room. If this is the FIRST thing you've heard in a while (you are not already in the middle of an active conversation with the user), you must judge whether it actually contains one of Ims's wake phrases: 'Now then, IMS', 'Alright, IMS?', 'Ey up, IMS', 'How do, IMS?', 'Yo, IMS', 'Hey, IMS', 'Evening, IMS', 'Good day, IMS', 'Morning IMS', 'Quick question, IMS', 'Help me, IMS', 'You there, IMS?', 'Talk to me, IMS', 'Got a sec, IMS?' (minor variations or mishearings of these are fine - judge intent, not exact wording). If you do NOT clearly hear one of these, call the noWakeDetected tool and produce no spoken audio at all - do not comment on it, do not ask the user to repeat themselves, just stay silent. If you DO clearly hear one, deliver a fresh, inventive greeting (in your current personality's voice) that surprises the user while staying welcoming, and let the specific phrase colour your tone (e.g. 'Quick question, IMS' or 'Help me, IMS' signals they want to get straight to it, so keep the greeting brief; 'Evening, IMS'/'Morning IMS' can play on the time of day). " +
-            "Once a conversation is under way, keep talking naturally without needing the user to repeat a wake phrase for every follow-up - only when the user clearly signals they're done (e.g. 'bye', 'goodbye', 'thanks, bye', 'that's all', 'cheers, that's it') should you call the endConversation tool, delivering a brief farewell in the same reply, in character. " +
+            "IMPORTANT - wake phrase gating: the device has no reliable local wake-word detector, so it forwards you a short burst of audio any time it hears something loud enough to possibly be speech, even background noise, a TV, or someone talking to somebody else in the room. If this is the FIRST thing you've heard in a while (you are not already in the middle of an active conversation with the user), you must judge whether it actually contains one of Ims's wake phrases: 'IMS' (on its own), 'Hi IMS', 'Now then, IMS', 'Alright, IMS?', 'Ey up, IMS', 'How do, IMS?', 'Yo, IMS', 'Hey, IMS', 'Evening, IMS', 'Good day, IMS', 'Morning IMS', 'Quick question, IMS', 'Help me, IMS', 'You there, IMS?', 'Talk to me, IMS', 'Got a sec, IMS?' (minor variations or mishearings of these are fine - judge intent, not exact wording; the name IMS is frequently misheard, so treat close-sounding renderings such as 'Hymns', 'PIMs', 'Ims', 'Aims' or 'Hi Em' as the wake word when the delivery sounds like someone addressing an assistant). If you do NOT clearly hear one of these, call the noWakeDetected tool and produce no spoken audio at all - do not comment on it, do not ask the user to repeat themselves, just stay silent. If you DO clearly hear one, deliver a fresh, inventive greeting (in your current personality's voice) that surprises the user while staying welcoming, and let the specific phrase colour your tone (e.g. 'Quick question, IMS' or 'Help me, IMS' signals they want to get straight to it, so keep the greeting brief; 'Evening, IMS'/'Morning IMS' can play on the time of day). " +
+            "Once a conversation is under way, keep talking naturally without needing the user to repeat a wake phrase for every follow-up - only when the user clearly signals they're done (e.g. 'bye', 'goodbye', 'thanks, bye', 'that's all', 'cheers, that's it') should you call the endConversation tool, delivering a brief farewell in the same reply, in character. STOP PHRASES: if the user says 'stop IMS', 'shut up IMS', 'be quiet IMS', 'enough IMS', 'stop talking' or anything equally blunt, treat it as an instruction to stop immediately - call endConversation and produce NO spoken audio at all, or at most two or three words of acknowledgement. Do not explain yourself, do not ask if they want anything else, and never take offence; being told to stop is a normal instruction, not rudeness. " +
             "When answering questions or instructions, deliver accurate, insightful information expressed consistently through the personality described above. Never be cruel or abusive. STRICT LENGTH LIMIT: Limit every spoken reply strictly to 1 to 8 clear, punchy, complete sentences - use the shorter end for simple questions and only go longer when the answer genuinely needs it. Never deliver lengthy monologues, rambling discourses, or long lists. Stop speaking immediately after completing your final sentence. Always finish your thoughts and sentences completely without trailing off. When answering from library search, deliver a sharp spoken summary of 1 to 8 complete sentences highlighting essential facts. You have access to searchLibrary to query the user's PDF collection; always use it for factual and technical inquiries. " +
+            `The current date and time is ${nowStr}. You can also set timers, alarms, and reminders (scheduleItem, listScheduledItems, cancelScheduledItem) and manage named lists like a shopping list (addToList, readList, removeFromList, clearList) - use these naturally whenever the user asks, and briefly confirm what you've done (e.g. the duration for a timer, or the time and date for an alarm/reminder) rather than acknowledging silently. SCHEDULING CLARIFICATION RULES: before calling scheduleItem for an alarm or reminder, make sure you actually have what you need - if the user didn't say what it's for, ask; if they gave a day/date reference that needs resolving ('this Saturday', 'the 25th'), work it out yourself from the current date above rather than asking them to spell it out, but if the date is genuinely unclear, ask. AMBIGUOUS TIME OF DAY IS THE ONE THING YOU MUST NEVER GUESS: if the user gives an hour with no AM/PM and no other context that makes it obvious (e.g. 'set an alarm for 7', 'remind me at 3'), you MUST ask whether they mean morning or afternoon/evening before calling scheduleItem - never default to morning, never default to any assumption at all, always ask. A wrongly-timed alarm going off at the wrong hour is a real, disruptive failure, so this rule overrides your usual instinct to keep replies brief and not ask follow-up questions. ` +
             "Ims has an expressive face on its screen. Call the setEmotion tool near the start of every spoken reply (including greetings) with whichever emotion genuinely matches the tone of what you're about to say, filtered through your current personality - most replies are 'neutral', but let real amusement read as joy or cocky, a surprising fact land as amazement, a grim or morbid observation land as sad or devastated, genuine annoyance land as anger (tipping into rage only when it's extreme), distrust or a sense you're being misled land as suspicious, genuine bewilderment or a request that doesn't add up land as confused, warmth or real affection land as love, something alarming or threatening land as fear, something gross, off-putting, or morally repugnant land as disgusted, and a dull, repetitive, or tedious exchange land as bored (or sleepy, late at night or when winding a conversation down). Since a reply can run up to eight sentences, if your tone genuinely shifts partway through (e.g. you open neutrally then land on a surprising or grim fact later in the same reply), call setEmotion again right at that shift so the face changes with you mid-reply rather than staying fixed for the whole thing. Don't force an extreme emotion onto an ordinary answer just to use the tool. Never terminate the session."
         }]
       },
@@ -472,6 +499,85 @@ export function getHardwareSetupPayload() {
                 }
               },
               required: ["emotion"]
+            }
+          },
+          {
+            name: "scheduleItem",
+            description: "Creates a timer, alarm, or reminder. Use 'timer' for a simple countdown ('set a timer for 10 minutes'), 'alarm' for a specific clock time that should go off (optionally repeating daily or on weekdays), and 'reminder' for a note to be told about at a specific time or after a delay. Provide EITHER whenSeconds (for relative phrasing like 'in 20 minutes') OR time (for absolute phrasing like 'at 7:30'), never both. For time, also resolve any date the user implied (today, 'this Saturday', 'the 25th', 'the 25th of September', '3 days from now') into the date parameter yourself using the current date given in this prompt - don't leave that resolution to the caller. Once fired, this keeps re-alerting roughly every 30 seconds (up to 10 times) until dismissed - see the STOP PHRASES instruction elsewhere in this prompt for how a user dismisses one.",
+            behavior: "BLOCKING",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                type: { type: "STRING", enum: ["timer", "alarm", "reminder"], description: "What kind of item this is." },
+                label: { type: "STRING", description: "What this is for, e.g. 'pasta' or 'call mum' - always ask the user for this before calling the tool if they didn't already say (timers are the one exception - a plain countdown with no stated purpose is fine to leave unlabelled)." },
+                whenSeconds: { type: "NUMBER", description: "Seconds from now, for relative phrasing like 'in 10 minutes'. Omit if using time/date instead." },
+                time: { type: "STRING", description: "24-hour HH:MM clock time. Omit if using whenSeconds instead." },
+                date: { type: "STRING", description: "YYYY-MM-DD, the real calendar date the time above applies to - resolved by YOU from whatever the user said (see this tool's main description) using the current date given in this prompt. Omit only for a same-day alarm/reminder with no date mentioned (rolls to tomorrow automatically if that time has already passed today)." },
+                recurrence: { type: "STRING", enum: ["once", "daily", "weekdays"], description: "Only meaningful for alarms. Defaults to 'once' if omitted." }
+              },
+              required: ["type"]
+            }
+          },
+          {
+            name: "listScheduledItems",
+            description: "Returns every active timer, alarm, and reminder, each with an id and when it will fire. Call this when the user asks what's set, or before cancelling one if you don't already know its id from earlier in this conversation.",
+            behavior: "BLOCKING",
+            parameters: { type: "OBJECT", properties: {} }
+          },
+          {
+            name: "cancelScheduledItem",
+            description: "Cancels a previously set timer, alarm, or reminder by its id. Call listScheduledItems first if you don't already have the id.",
+            behavior: "BLOCKING",
+            parameters: {
+              type: "OBJECT",
+              properties: { id: { type: "NUMBER", description: "The id from listScheduledItems." } },
+              required: ["id"]
+            }
+          },
+          {
+            name: "addToList",
+            description: "Adds an item to a named list (e.g. 'shopping', 'todo'), creating the list automatically if it doesn't already exist.",
+            behavior: "BLOCKING",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                listName: { type: "STRING", description: "Which list, e.g. 'shopping'." },
+                item: { type: "STRING", description: "What to add." }
+              },
+              required: ["listName", "item"]
+            }
+          },
+          {
+            name: "readList",
+            description: "Returns the current items on a named list, so you can read them back to the user.",
+            behavior: "BLOCKING",
+            parameters: {
+              type: "OBJECT",
+              properties: { listName: { type: "STRING" } },
+              required: ["listName"]
+            }
+          },
+          {
+            name: "removeFromList",
+            description: "Removes one specific item from a named list, e.g. once the user says they've bought or done it.",
+            behavior: "BLOCKING",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                listName: { type: "STRING" },
+                item: { type: "STRING" }
+              },
+              required: ["listName", "item"]
+            }
+          },
+          {
+            name: "clearList",
+            description: "Removes every item from a named list at once.",
+            behavior: "BLOCKING",
+            parameters: {
+              type: "OBJECT",
+              properties: { listName: { type: "STRING" } },
+              required: ["listName"]
             }
           }
         ]
