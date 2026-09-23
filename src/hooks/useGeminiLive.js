@@ -35,10 +35,25 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false, onU
   const [sessionElapsedMs, setSessionElapsedMs] = useState(0);
   const sessionStartTimeRef = useRef(null);
   const sessionTimerIntervalRef = useRef(null);
-  const [voiceName, setVoiceName] = useState(() => localStorage.getItem('gemini-live-voice') || 'Puck');
+  const [voiceName, setVoiceName] = useState(() => localStorage.getItem('gemini-live-voice') || 'Umbriel');
   const [isVoiceLocked, setIsVoiceLocked] = useState(() => localStorage.getItem('gemini-live-voice-locked') === 'true');
   const [isSearching, setIsSearching] = useState(false);
   const liveStatusRef = useRef(liveStatus);
+
+  // Synchronize active voice and personality settings from backend on mount
+  useEffect(() => {
+    fetch('/api/settings/personality')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.voice) {
+          console.log(`[GeminiLive] Synced voice setting from backend: ${data.voice}`);
+          setVoiceName(data.voice);
+          voiceNameRef.current = data.voice;
+          localStorage.setItem('gemini-live-voice', data.voice);
+        }
+      })
+      .catch(err => console.warn('[GeminiLive] Could not sync personality voice from backend:', err.message));
+  }, []);
 
   // Precision Session Elapsed Stopwatch
   useEffect(() => {
@@ -136,8 +151,136 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false, onU
     if (isVoiceLocked) return;
     setVoiceName(name);
     voiceNameRef.current = name;
+    localStorage.setItem('gemini-live-voice', name);
     speakIntroRef.current = true;
+    fetch('/api/settings/personality', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voice: name })
+    }).catch(err => console.warn('[GeminiLive] Failed to sync voice update to backend:', err.message));
   }, [isVoiceLocked]);
+
+  const previewSocketRef = useRef(null);
+  const [isPreviewingVoice, setIsPreviewingVoice] = useState(false);
+
+  /**
+   * Preview a voice without altering the user's active/default voice selection.
+   * Connects a temporary WebSocket session that speaks "Hi, I'm [VoiceName]."
+   */
+  const previewVoice = useCallback((targetVoice) => {
+    if (!targetVoice) return;
+    console.log(`[GeminiLive] 🎧 Auditioning voice preview for: ${targetVoice} (current active voice remains: ${voiceNameRef.current})`);
+
+    // Abort previous preview socket if one is running
+    if (previewSocketRef.current) {
+      try { previewSocketRef.current.close(1000); } catch (_) {}
+      previewSocketRef.current = null;
+    }
+
+    setIsPreviewingVoice(true);
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/api/live`;
+    const pSocket = new WebSocket(wsUrl);
+    previewSocketRef.current = pSocket;
+
+    let pAudioCtx = null;
+    let scheduledTime = 0;
+
+    const getAudioCtx = () => {
+      if (!pAudioCtx || pAudioCtx.state === 'closed') {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        pAudioCtx = new AudioContextClass({ sampleRate: 24000 });
+      }
+      if (pAudioCtx.state === 'suspended') {
+        pAudioCtx.resume();
+      }
+      return pAudioCtx;
+    };
+
+    pSocket.onopen = () => {
+      const setupMsg = {
+        setup: {
+          model: 'models/gemini-3.1-flash-live-preview',
+          generationConfig: {
+            responseModalities: ['AUDIO'],
+            temperature: 1.0,
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: {
+                  voiceName: targetVoice
+                }
+              }
+            }
+          }
+        }
+      };
+      pSocket.send(JSON.stringify(setupMsg));
+    };
+
+    pSocket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.setupComplete) {
+          pSocket.send(JSON.stringify({
+            clientContent: {
+              turns: [{
+                role: 'user',
+                parts: [{ text: `Say exactly: "Hi, I'm ${targetVoice}."` }]
+              }],
+              turnComplete: true
+            }
+          }));
+          return;
+        }
+
+        if (data.serverContent?.modelTurn?.parts) {
+          for (const part of data.serverContent.modelTurn.parts) {
+            if (part.inlineData?.data) {
+              const ctx = getAudioCtx();
+              const binary = atob(part.inlineData.data);
+              const len = binary.length;
+              const numSamples = Math.floor(len / 2);
+              if (numSamples > 0) {
+                const audioBuffer = ctx.createBuffer(1, numSamples, 24000);
+                const channelData = audioBuffer.getChannelData(0);
+                const view = new DataView(new ArrayBuffer(len));
+                for (let i = 0; i < len; i++) view.setUint8(i, binary.charCodeAt(i));
+                for (let i = 0; i < numSamples; i++) {
+                  channelData[i] = view.getInt16(i * 2, true) / 32768.0;
+                }
+                const source = ctx.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(ctx.destination);
+                const now = ctx.currentTime;
+                if (scheduledTime < now) scheduledTime = now;
+                source.start(scheduledTime);
+                scheduledTime += audioBuffer.duration;
+              }
+            }
+          }
+        }
+
+        if (data.serverContent?.turnComplete) {
+          setTimeout(() => {
+            try { pSocket.close(1000); } catch (_) {}
+            setIsPreviewingVoice(false);
+          }, 800);
+        }
+      } catch (err) {
+        console.error('[GeminiLive] Voice preview error:', err);
+      }
+    };
+
+    pSocket.onerror = (e) => {
+      console.warn('[GeminiLive] Voice preview socket error:', e);
+      setIsPreviewingVoice(false);
+    };
+
+    pSocket.onclose = () => {
+      setIsPreviewingVoice(false);
+    };
+  }, []);
 
   const pendingConnectRef = useRef(false);
 
@@ -887,6 +1030,8 @@ export function useGeminiLive({ selectedSubjects = [], showPersonal = false, onU
     sessionElapsedMs,
     connectLive,
     disconnectLive,
-    toggleMute
+    toggleMute,
+    previewVoice,
+    isPreviewingVoice
   };
 }

@@ -11,7 +11,9 @@
         "src/components/Dashboard/Layout.jsx",
         "src/components/Dashboard/ChatInterface.jsx",
         "src/components/Dashboard/DemoPortal.jsx",
-        "src/components/Dashboard/MemoriesPortal.jsx"
+        "src/components/Dashboard/MemoriesPortal.jsx",
+        "src/components/Dashboard/PersonaPortal.jsx",
+        "src/components/Dashboard/ImsHub.jsx"
       ]
     },
     "src/components/Dashboard/Layout.jsx": {
@@ -60,6 +62,14 @@
       "description": "Dedicated web management hub for IMS persistent memories at /ims/memories featuring Oatmeal/dark styling, live search, category filtering, inline editing, and deletion with confirmation safeguards.",
       "dependencies": []
     },
+    "src/components/Dashboard/ImsHub.jsx": {
+      "description": "Central visual navigation hub for all IMS subsystems at /ims featuring responsive cards for Memories and Persona management.",
+      "dependencies": []
+    },
+    "src/components/Dashboard/PersonaPortal.jsx": {
+      "description": "Dedicated web editor for IMS dialect, identity, and system prompt rules at /ims/persona with live persistence to ims_persona_rules.md.",
+      "dependencies": []
+    },
     "src/components/Dashboard/HnswIndexModal.jsx": {
       "description": "High-performance vector acceleration modal with real-time SSE progress bar, latency telemetry metrics, and binary index builder trigger.",
       "dependencies": []
@@ -83,7 +93,7 @@
       "dependencies": []
     },
     "src/hooks/useGeminiLive.js": {
-      "description": "Multimodal Gemini Live Web Audio streaming hook with hardware echo cancellation, anti-stutter buffer, and voice keep-alive/farewell tools.",
+      "description": "Multimodal Gemini Live Web Audio streaming hook with hardware echo cancellation, anti-stutter buffer, ephemeral previewVoice isolation without state mutation, backend personality sync, and voice keep-alive/farewell tools.",
       "dependencies": []
     },
     "pdf-knowledge-base/server/services/hnswService.js": {
@@ -94,22 +104,36 @@
       "description": "Core conversation service handling query expansions, semantic matches, global library manifests, and Gemini chat processing.",
       "dependencies": []
     },
+    "pdf-knowledge-base/server/routes/settings.js": {
+      "description": "REST API route handler for IMS settings and personality synchronization, mounting GET /api/settings/personality and POST /api/settings/personality against SQLite.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js"
+      ]
+    },
     "pdf-knowledge-base/server/routes/memories.js": {
       "description": "REST API route handler for IMS explicit memories mounting GET, POST, PUT, DELETE, and summary stats operations against the SQLite ims_memories table.",
       "dependencies": [
         "pdf-knowledge-base/server/db/database.js"
       ]
     },
+    "pdf-knowledge-base/server/routes/persona.js": {
+      "description": "REST API route handler for dynamic inspection and persistence of ims_persona_rules.md system prompt rules, mounting GET and PUT /api/persona-rules.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/hardwareClientService.js"
+      ]
+    },
     "pdf-knowledge-base/server/index.js": {
-      "description": "Backend API and WebSocket proxy routing ESP32-S3 hardware audio to Gemini Live, streaming model audio directly in 1024-byte chunks, managing session lifecycle, resetting upstream sockets on noWakeDetected, and executing explicit memory operations (rememberFact, recallMemory, forgetMemory).",
+      "description": "Backend API and WebSocket proxy routing ESP32-S3 hardware audio to Gemini Live, streaming model audio directly in 1024-byte chunks, managing session lifecycle, resetting upstream sockets on noWakeDetected, routing temporary setup.previewVoice previews without database mutation, and executing explicit memory operations (rememberFact, recallMemory, forgetMemory).",
       "dependencies": [
         "pdf-knowledge-base/server/services/hardwareClientService.js",
         "pdf-knowledge-base/server/db/database.js",
-        "pdf-knowledge-base/server/routes/memories.js"
+        "pdf-knowledge-base/server/routes/memories.js",
+        "pdf-knowledge-base/server/routes/settings.js",
+        "pdf-knowledge-base/server/routes/persona.js"
       ]
     },
     "pdf-knowledge-base/server/services/hardwareClientService.js": {
-      "description": "Hardware bridge service executing automated RAG tool searches, dynamic ims_persona_rules.md loading, explicit memory injection & tool declarations (rememberFact, recallMemory, forgetMemory), authentic Yorkshire dialect & phonetic priming, turn-by-turn emotion matrix activation across 14 pixel faces, and non-blocking instant farewell execution.",
+      "description": "Hardware bridge service executing automated RAG tool searches, dynamic ims_persona_rules.md loading, explicit memory injection & tool declarations (rememberFact, recallMemory, forgetMemory), Umbriel default voice enforcement with non-mutating previewVoice setup payloads, authentic Yorkshire dialect & phonetic priming, turn-by-turn emotion matrix activation across 14 pixel faces, and non-blocking instant farewell execution.",
       "dependencies": [
         "ims_persona_rules.md",
         "pdf-knowledge-base/server/db/database.js"
@@ -120,7 +144,7 @@
       "dependencies": []
     },
     "firmware/esp32-s3-box-3/src/main.cpp": {
-      "description": "FreeRTOS firmware for ESP32-S3-BOX-3 with raw lwIP/BSD socket transport (RawTcpClient), 16KB SO_RCVBUF, TCP_NODELAY, non-blocking polling, display held in STANDBY during wake candidate verification, unconditional reset on noWakeDetected, active dialogue persistence until closing phrase or 14s idle timeout, strict sessionClosed notifications, touchToTalk intent signaling, interactive voice shuffling, 350ms settle debounce, immediate audio playback termination, official Google Gemini 30-voice descriptions, persistent Class-D speaker PA during dialogue, rapid 200ms post-drain turn-taking cooldown, 4000ms pause-tolerant playback drain window, pre-warmed PA on wake verify, physical top latching mute button (GPIO 1), non-blocking bounded playback queue pacing, and calibrated wake-word VAD.",
+      "description": "FreeRTOS firmware for ESP32-S3-BOX-3 with raw lwIP/BSD socket transport (RawTcpClient), 16KB SO_RCVBUF, TCP_NODELAY, boot-time backend personality synchronization (GET /device/personality), decoupled voice preview flow (previewVoiceIndex / activePreviewVoice) with explicit tap-to-commit confirmation, non-persisting 350ms settle debounce auditioning, display held in STANDBY during wake candidate verification, unconditional reset on noWakeDetected, active dialogue persistence until closing phrase or 14s idle timeout, strict sessionClosed notifications, touchToTalk intent signaling, official Google Gemini 30-voice descriptions, persistent Class-D speaker PA during dialogue, rapid 200ms post-drain turn-taking cooldown, 4000ms pause-tolerant playback drain window, pre-warmed PA on wake verify, physical top latching mute button (GPIO 1), non-blocking bounded playback queue pacing, and calibrated wake-word VAD.",
       "dependencies": [
         "firmware/esp32-s3-box-3/include/config.h"
       ]

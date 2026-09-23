@@ -57,17 +57,17 @@ export default function Sidebar({
           </button>
         </Tooltip>
 
-        <Tooltip text="View and manage persistent IMS memories database (/ims/memories)">
-          <button 
-            className="sidebar-action-btn" 
+        <Tooltip text="IMS Hub - memories, persona, and other IMS configuration (/ims)">
+          <button
+            className="sidebar-action-btn"
             onClick={() => {
-              window.history.pushState(null, '', '/ims/memories');
+              window.history.pushState(null, '', '/ims');
               window.dispatchEvent(new PopStateEvent('popstate'));
-            }} 
+            }}
             style={{ width: '100%' }}
           >
             <Brain size={14} fill="none" stroke="currentColor" />
-            <span>Memories DB</span>
+            <span>IMS Hub</span>
           </button>
         </Tooltip>
       </div>

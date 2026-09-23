@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 27
-- Verified Features: 27
+- Total Registered Features: 29
+- Verified Features: 29
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -35,6 +35,8 @@
 | FEAT-025 | Hardware Explicit Memory & Recall Subsystem | [hardwareClientService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/hardwareClientService.js) | rememberFact SQLite persistence, prompt pre-injection, and recallMemory / forgetMemory execution | PASS |
 | FEAT-026 | IMS Memory Management Portal | [MemoriesPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/MemoriesPortal.jsx) | /ims/memories route view, add, edit, and delete operations | PASS |
 | FEAT-027 | Hardware BSD Socket Transport & Buffer Crackle Elimination | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | PlatformIO compilation, raw BSD socket connect, 16KB SO_RCVBUF, TCP_NODELAY | PASS |
+| FEAT-028 | Unified Cross-Platform Voice Persistence & Preview Isolation | [useGeminiLive.js](file:///d:/Information%20management%20system/src/hooks/useGeminiLive.js) | Ephemeral Web previewVoice, decoupled Box-3 previewVoiceIndex, backend sync & default voice lock | PASS |
+| FEAT-029 | IMS Central Hub and Dynamic Persona Portal | [PersonaPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/PersonaPortal.jsx) | /ims central card navigation, /ims/persona Markdown editor, /api/persona-rules GET/PUT persistence | PASS |
 
 
 
@@ -155,6 +157,18 @@
 3. **Acoustic Waveform Continuity:** Listen to speaker output throughout lengthy spoken responses; verify clean, continuous audio output with zero audible clicks, pops, or crackles.
 4. **Rapid Shuffling Stress Test:** Navigate rapidly between voices on the settings screen; verify raw BSD socket cleanly handles socket drops, immediate audio cutoffs, and reconnects without heap exhaustion or framing desync.
 
+### Suite 28: Unified Cross-Platform Voice Persistence & Preview Isolation (FEAT-028)
+1. **Default Voice Persistence Across Clients:** Ensure active voice is set to `Umbriel` in web client and hardware terminal; reload browser and verify `Umbriel` remains selected; reboot ESP32-S3-BOX-3 and verify serial logs show `[Personality] Synced from backend: voice=Umbriel` and voice screen renders `Umbriel [ ACTIVE DEFAULT VOICE ]`.
+2. **Web Audition Preview Isolation:** Open voice dropdown in Web UI, click the Play preview button next to `Zephyr` (or any other voice); verify audio snippet plays in that auditioned voice; verify the primary voice dropdown, `voiceName` hook state, and `localStorage` retain `Umbriel`.
+3. **Hardware Audition Preview Isolation:** On the Box-3 terminal, navigate to IMS Voice screen; tap the right arrow repeatedly to audition other voices (`Fenrir`, `Aoede`, `Zephyr`); verify the Box-3 speaks "Hi, I'm <voice>", but status indicator shows `[ TAP HERE TO SET AS DEFAULT ]` (amber); exit back to IMS PERSONALITY without tapping center; verify active default voice remains `Umbriel` and SQLite backend `ims_personality` voice is unaffected.
+4. **Hardware Explicit Voice Default Commitment:** On the Box-3 terminal voice screen, cycle to a new voice and explicitly tap the center area; verify label updates to green `[ ACTIVE DEFAULT VOICE ]`, NVS is updated, and `POST /device/personality` updates backend SQLite; verify subsequent reboots retain this chosen voice.
+5. **Backend Single Source of Truth:** Update voice via `POST /api/settings/personality` or Web UI; reboot Box-3 hardware; verify `fetchPersonalityFromBackend()` during WiFi setup retrieves and applies the newly committed voice automatically.
+
+### Suite 29: IMS Central Hub and Dynamic Persona Portal (FEAT-029)
+1. **Hub Navigation:** Navigate to `/ims` via the left sidebar "IMS Hub" button; verify portal renders responsive navigation cards for Memories (`/ims/memories`) and Persona (`/ims/persona`).
+2. **Dynamic Persona Editing:** Open `/ims/persona`; verify editor loads current `ims_persona_rules.md` contents via `GET /api/persona-rules`; modify text and click Save; verify `PUT /api/persona-rules` persists to disk and returns success toast.
+3. **Runtime Reflection:** Initiate a Gemini Live voice session on web or hardware terminal; verify updated persona rules are dynamically loaded into the systemInstruction without requiring a server reboot or firmware reflash.
+
 ## Section 3: Defensive Engineering Invariants
 1. Hardware watchdog timer (WDT) and auto-reconnect logic on ESP32 WebSocket disconnects.
 2. Anti-stutter ring buffer and I2S DMA queue sizing on ESP32 PSRAM to prevent audio underflow/overflow.
@@ -184,6 +198,9 @@
 26. Explicit memory error resilience: if database lookup encounters a transient lock or error, `rememberFact` and `recallMemory` return defensive error fallbacks to Gemini Live without breaking the WebSocket stream or audio pipeline.
 27. Web memory portal optimistic and defensive validation: memory additions and deletions are validated on both client and Express routes with non-empty string checks, confirmation gates on destructive actions, and non-blocking asynchronous REST endpoints preserving SQLite database integrity.
 28. Raw BSD socket window expansion and retry resilience: `RawTcpClient` explicitly expands socket receive buffer (`SO_RCVBUF`) to 16KB, disables Nagle batching (`TCP_NODELAY`), implements non-blocking `recv()` via `ioctl(FIONREAD)` and handles `EAGAIN`/`EWOULDBLOCK` on transmit with microsecond delays, preventing buffer truncation and acoustic waveform distortion.
+29. Voice audition isolation invariant: Web previewVoice initializes an ephemeral WebSocket connection with dedicated AudioContext playback that automatically terminates on turnComplete without mutating voiceName or localStorage; firmware previewVoiceIndex and activePreviewVoice decouple arrow auditioning from personalityVoiceIndex, preventing auditions from altering NVS or sending mutating POST requests to SQLite without explicit user tap-to-commit.
+30. Persona rules runtime loading invariant: `loadPersonaRules` dynamically resolves `ims_persona_rules.md` across known relative root paths on each Gemini Live setup payload construction, and `savePersonaRules` safely performs atomic synchronous disk write via `/api/persona-rules` PUT endpoint with non-empty validation.
+
 
 
 

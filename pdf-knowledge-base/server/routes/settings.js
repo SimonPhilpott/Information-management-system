@@ -1,8 +1,36 @@
 import { Router } from 'express';
 import db, { getSettings, setSetting, getSetting } from '../db/database.js';
 import { listDriveFolders } from '../services/driveService.js';
+import { getPersonality, setPersonality, getCaptureLogging, setCaptureLogging } from '../services/hardwareClientService.js';
 
 const router = Router();
+
+/**
+ * GET /api/settings/personality - Get current personality, active voice, and preferences
+ */
+router.get('/personality', (req, res) => {
+  try {
+    res.json({ ...getPersonality(), captureLogging: getCaptureLogging() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/settings/personality - Update personality or active voice setting
+ */
+router.post('/personality', (req, res) => {
+  try {
+    if (typeof req.body.captureLogging === 'boolean') {
+      setCaptureLogging(req.body.captureLogging);
+    }
+    const next = setPersonality(req.body);
+    res.json({ ...next, captureLogging: getCaptureLogging() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 /**
  * GET /api/settings - Get all settings

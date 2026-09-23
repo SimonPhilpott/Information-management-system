@@ -329,6 +329,29 @@
         "EAGAIN/EWOULDBLOCK-tolerant writeAll retry loop eliminating short write packet drops on bursts",
         "Retention of frame sync marker protocol (0xA5 0x5A) as a resilient defensive safety net"
       ]
+    },
+    "Unified Cross-Platform Voice Persistence & Preview Isolation": {
+      "status": "enabled",
+      "description": "Unified voice persistence and preview isolation architecture across Web and ESP32-S3-BOX-3 hardware terminal, ensuring the user's chosen default voice ('Umbriel') remains strictly persistent across reboots and reloads while isolating voice auditioning/previews so they never overwrite or hijack the active default voice.",
+      "subFeatures": [
+        "Ephemeral web audition preview via isolated temporary WebSocket connection and AudioContext playback without mutating state or localStorage",
+        "Hardware preview decoupling via previewVoiceIndex and activePreviewVoice in ESP32 firmware",
+        "Non-persisting voice auditioning on hardware arrow navigation with 350ms settle debounce",
+        "Explicit tap-to-commit confirmation on hardware voice screen before updating default voice and persisting to NVS/SQLite",
+        "Boot-time hardware backend synchronization via GET /device/personality ensuring unified single source of truth across web and terminal",
+        "Server-side temporary preview voice routing in hardware handshake setup without mutating persisted database personality"
+      ]
+    },
+    "IMS Central Hub and Dynamic Persona Portal": {
+      "status": "enabled",
+      "description": "Unified central navigation hub at /ims and dynamic live persona editor portal at /ims/persona enabling real-time inspection, editing, and persistence of ims_persona_rules.md with immediate effect on Gemini Live hardware and web system prompts.",
+      "subFeatures": [
+        "Visual portal navigation hub at /ims with responsive cards for Memories and Persona management",
+        "Dedicated full-featured Markdown editor at /ims/persona with unsaved changes tracking, reload fallback, and status toast notifications",
+        "Express REST endpoints mounted at /api/persona-rules supporting GET and PUT for live file inspection and atomic disk persistence",
+        "Instant live prompt update mechanism taking effect on the subsequent Gemini Live session handshake without server restarts or firmware flashes",
+        "Left navigation sidebar IMS Hub quick launcher and full App.jsx SPA routing integration"
+      ]
     }
   }
 }

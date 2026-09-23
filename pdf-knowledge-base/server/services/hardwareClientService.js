@@ -21,25 +21,47 @@ const __dirname = path.dirname(__filename);
  * Allows live editing of the Yorkshire dialect, character lore, and conversational
  * dynamics without server restarts or firmware flashes.
  */
+const PERSONA_RULES_CANDIDATES = [
+  path.resolve(__dirname, "../../../ims_persona_rules.md"),
+  path.resolve(process.cwd(), "ims_persona_rules.md"),
+  path.resolve(__dirname, "../../ims_persona_rules.md")
+];
+
+/**
+ * Resolves the actual on-disk path of ims_persona_rules.md - the first
+ * candidate that already exists, or the first candidate at all if none do
+ * yet (so a fresh save always has somewhere sensible to write to).
+ */
+export function getPersonaRulesPath() {
+  for (const candidate of PERSONA_RULES_CANDIDATES) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return PERSONA_RULES_CANDIDATES[0];
+}
+
 export function loadPersonaRules() {
   try {
-    const candidates = [
-      path.resolve(__dirname, "../../../ims_persona_rules.md"),
-      path.resolve(process.cwd(), "ims_persona_rules.md"),
-      path.resolve(__dirname, "../../ims_persona_rules.md")
-    ];
-    for (const candidate of candidates) {
-      if (fs.existsSync(candidate)) {
-        const content = fs.readFileSync(candidate, "utf8").trim();
-        if (content) {
-          return content;
-        }
-      }
+    const resolvedPath = getPersonaRulesPath();
+    if (fs.existsSync(resolvedPath)) {
+      const content = fs.readFileSync(resolvedPath, "utf8").trim();
+      if (content) return content;
     }
   } catch (err) {
     console.warn("[PersonaRules] Could not load ims_persona_rules.md:", err.message);
   }
   return "";
+}
+
+/**
+ * Overwrites ims_persona_rules.md with new content - used by the /ims/persona
+ * web editor. Takes effect on the very next Gemini session setup (no restart
+ * needed), same as any other hand-edit of the file - see loadPersonaRules()'s
+ * own doc comment.
+ */
+export function savePersonaRules(content) {
+  const resolvedPath = getPersonaRulesPath();
+  fs.writeFileSync(resolvedPath, content, "utf8");
+  return resolvedPath;
 }
 
 const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
@@ -89,7 +111,7 @@ const PERSONALITY_AXES = {
 // Roughly matches the fixed "dry, sarcastic, dark-leaning British wit" persona
 // this device shipped with, so the very first boot (before anyone touches a
 // slider) sounds like the Ims that's already been tuned and tested all session.
-const DEFAULT_PERSONALITY = { humor: 70, delivery: 45, temperament: 30, social: 55, formality: 35, voice: "Puck" };
+const DEFAULT_PERSONALITY = { humor: 70, delivery: 45, temperament: 30, social: 55, formality: 35, voice: "Umbriel" };
 
 /**
  * Reads the persisted personality settings, filling in any missing axis
@@ -100,7 +122,8 @@ export function getPersonality() {
   try {
     const raw = getSetting("ims_personality");
     if (!raw) return { ...DEFAULT_PERSONALITY };
-    return { ...DEFAULT_PERSONALITY, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    return { ...DEFAULT_PERSONALITY, ...parsed, voice: parsed.voice || "Umbriel" };
   } catch (err) {
     console.error("[Personality] Failed to read settings, using defaults:", err.message);
     return { ...DEFAULT_PERSONALITY };
@@ -430,8 +453,9 @@ export async function executeHardwareRAGSearch(query, subjects = []) {
  * Creates the standard Gemini Live setup handshake payload
  * formatted specifically for embedded audio clients.
  */
-export function getHardwareSetupPayload() {
+export function getHardwareSetupPayload(previewVoice = null) {
   const personality = getPersonality();
+  const activeVoice = previewVoice || personality.voice || "Umbriel";
   const personalityParagraph = buildPersonalityParagraph(personality);
   const archetype = pickArchetype();
   const varianceDirective = buildVarianceDirective();
@@ -448,7 +472,7 @@ export function getHardwareSetupPayload() {
     timeStyle: "long",  // e.g. "09:05:00 BST" - includes the BST/GMT label itself
   });
   const nowStr = nowFormatter.format(new Date());
-  console.log(`[Variance] archetype=${archetype.name} temperature=${temperature} inversion=${varianceDirective ? "yes" : "no (insufficient data or no dominant pattern)"} personaRules=${personaRules ? "loaded" : "none"}`);
+  console.log(`[Variance] archetype=${archetype.name} temperature=${temperature} voice=${activeVoice} (preview=${Boolean(previewVoice)}) inversion=${varianceDirective ? "yes" : "no"} personaRules=${personaRules ? "loaded" : "none"}`);
   return {
     setup: {
       // Kept in sync with the firmware's own sendSetupHandshake() (main.cpp) for
@@ -469,7 +493,7 @@ export function getHardwareSetupPayload() {
         speechConfig: {
           voiceConfig: {
             prebuiltVoiceConfig: {
-              voiceName: personality.voice
+              voiceName: activeVoice
             }
           }
         }
@@ -477,12 +501,22 @@ export function getHardwareSetupPayload() {
       systemInstruction: {
         parts: [{
           text: "You are Ims, an intelligent voice companion and desk terminal running on an ESP32-S3-BOX-3 hardware device. Your name is Ims (rhymes with rims). You speak in natural, articulate, authentic British English with a distinctive Yorkshire dialect and cadence. " +
+            (personaRules ? "\n\n" + personaRules + "\n\n" : " ") +
+            // Personality sliders come AFTER the persona rules document, not
+            // before it, deliberately: this is the user-adjustable layer that
+            // should win on TONE (how warm/blunt/formal/playful Ims actually
+            // is right now), while the document above fixes WHO Ims is
+            // (dialect, mechanics, relationship) - see that document's own
+            // "Note on tone". Putting it last, closest to where the model
+            // actually starts generating, keeps it the most salient word on
+            // tone specifically, rather than getting buried under - and
+            // overridden by - the document's own worked examples.
+            "Right now, calibrate that tone using the following user-adjustable personality settings - these take priority over any tone implied above: " +
             personalityParagraph + " " +
             "Strive for rich conversational variety and novelty - never repeat the same canned greeting, rhetorical trope, or opening line across turns. " +
             `Framing directive for this session: ${archetype.directive}. ` +
             (varianceDirective ? varianceDirective + " " : "") +
             (memoryParagraph ? memoryParagraph + " " : "") +
-            (personaRules ? "\n\n" + personaRules + "\n\n" : " ") +
             "MANDATORY WAKE-PHRASE ENFORCEMENT: When initiating a response from microphone audio (realtimeInput), you are STRICTLY FORBIDDEN from speaking, answering, or responding unless the user's speech explicitly begins with one of these 15 exact wake phrases:\n" +
             "1. 'Now then, IMS'\n" +
             "2. 'Alright, IMS?'\n" +

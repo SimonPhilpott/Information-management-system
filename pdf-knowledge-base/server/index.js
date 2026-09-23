@@ -53,6 +53,7 @@ import gemsRoutes from './routes/gems.js';
 import graphRoutes from './routes/graph.js';
 import voiceRoutes from './routes/voice.js';
 import memoriesRoutes from './routes/memories.js';
+import personaRoutes from './routes/persona.js';
 import { getAuthStatus } from './services/driveService.js';
 import { validateConfiguredModels } from './services/modelService.js';
 import { loadHnswFromDisk } from './services/hnswService.js';
@@ -135,6 +136,7 @@ app.use('/api/gems', gemsRoutes);
 app.use('/api/graph', graphRoutes);
 app.use('/api/voice', voiceRoutes);
 app.use('/api/memories', memoriesRoutes);
+app.use('/api/persona-rules', personaRoutes);
 
 // Serve static client build in production
 const clientDist = path.join(__dirname, '..', 'client', 'dist');
@@ -1095,15 +1097,12 @@ function handleLiveProxyConnection(ws, isHardware = false) {
             // searchLibrary-only tools array, which previously meant the
             // noWakeDetected/endConversation declarations added here never actually
             // reached Gemini for hardware clients.
-            const hardwareDefaults = getHardwareSetupPayload();
+            const previewVoice = parsed.setup.previewVoice || null;
+            const hardwareDefaults = getHardwareSetupPayload(previewVoice);
             parsed.setup.tools = hardwareDefaults.setup.tools;
             parsed.setup.systemInstruction = hardwareDefaults.setup.systemInstruction;
-            // generationConfig carries the selected voice AND the variance
-            // engine's per-session temperature. Without this override the
-            // firmware's hardcoded handshake values won instead (voiceName
-            // "Puck", temperature 1.0), so the voice picker silently did
-            // nothing no matter what was chosen, and the temperature jitter
-            // never reached Gemini at all.
+            // generationConfig carries the selected voice (or previewVoice if auditioning)
+            // AND the variance engine's per-session temperature.
             parsed.setup.generationConfig = hardwareDefaults.setup.generationConfig;
             // DIAGNOSTIC (and worth keeping permanently): asks Gemini for a
             // real, word-for-word transcript of what it's actually SAYING in

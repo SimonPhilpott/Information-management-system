@@ -22,6 +22,8 @@ import OnboardingSetup from './components/Dashboard/OnboardingSetup';
 import { checkIsEntertainment } from './utils/contentFilter';
 import DemoPortal from './components/Dashboard/DemoPortal';
 import MemoriesPortal from './components/Dashboard/MemoriesPortal';
+import PersonaPortal from './components/Dashboard/PersonaPortal';
+import ImsHub from './components/Dashboard/ImsHub';
 
 const getShortSummary = (text) => {
   if (!text) return '';
@@ -1301,11 +1303,37 @@ export default function App() {
     );
   }
 
+  // Specific /ims/* sub-paths are checked before the bare /ims hub below,
+  // since /ims/memories etc. would otherwise also match a startsWith('/ims')
+  // check on the hub itself. Any new /ims/* page needs its own check added
+  // here (above the hub check), plus an entry in ImsHub.jsx's LINKS array.
   if (currentPath === '/ims/memories' || currentPath.startsWith('/ims/memories')) {
     return (
-      <MemoriesPortal 
-        theme={state.theme} 
-        onThemeToggle={actions.toggleTheme} 
+      <MemoriesPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        currentPath={currentPath}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/persona' || currentPath.startsWith('/ims/persona')) {
+    return (
+      <PersonaPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        currentPath={currentPath}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims' || currentPath === '/ims/') {
+    return (
+      <ImsHub
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
         currentPath={currentPath}
         setCurrentPath={setCurrentPath}
       />

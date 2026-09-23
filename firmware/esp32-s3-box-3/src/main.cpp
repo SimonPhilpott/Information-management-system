@@ -445,8 +445,13 @@ const char *PERSONALITY_VOICE_DESCRIPTIONS[PERSONALITY_VOICE_COUNT] = {
 #define ALERT_SOUND_COUNT 4
 const char *ALERT_SOUND_NAMES[ALERT_SOUND_COUNT] = {"Chime", "Beep Beep", "Ascending", "Bell"};
 
+#define DEFAULT_VOICE_NAME "Umbriel"
+#define DEFAULT_VOICE_INDEX 12
+
 int personalityValues[PERSONALITY_AXIS_COUNT] = {70, 45, 30, 55, 35}; // matches DEFAULT_PERSONALITY in hardwareClientService.js
-int personalityVoiceIndex = 0; // index into PERSONALITY_VOICES
+int personalityVoiceIndex = DEFAULT_VOICE_INDEX; // active saved voice (Umbriel)
+int previewVoiceIndex = DEFAULT_VOICE_INDEX;     // voice currently auditioned on voice screen
+String activePreviewVoice = "";                  // when non-empty, setup sends this temporary voice for preview only
 
 volatile bool onSettingsScreen = false; // read from audioMicTask() (Core 0), written from loop() (Core 1)
 volatile bool onVoiceScreen = false; // settings sub-screen: personality sliders -> voice picker
@@ -493,15 +498,17 @@ void loadPersonalityFromNVS() {
   for (int i = 0; i < PERSONALITY_AXIS_COUNT; i++) {
     personalityValues[i] = personalityPrefs.getInt(PERSONALITY_AXIS_KEYS[i], personalityValues[i]);
   }
-  String savedVoice = personalityPrefs.getString("voice", PERSONALITY_VOICES[0]);
+  String savedVoice = personalityPrefs.getString("voice", DEFAULT_VOICE_NAME);
+  personalityVoiceIndex = DEFAULT_VOICE_INDEX;
   for (int i = 0; i < PERSONALITY_VOICE_COUNT; i++) {
     if (savedVoice == PERSONALITY_VOICES[i]) { personalityVoiceIndex = i; break; }
   }
+  previewVoiceIndex = personalityVoiceIndex;
   captureLoggingEnabled = personalityPrefs.getBool("caplog", true);
   alertSoundIndex = personalityPrefs.getInt("alertsnd", 0);
   if (alertSoundIndex < 0 || alertSoundIndex >= ALERT_SOUND_COUNT) alertSoundIndex = 0;
   personalityPrefs.end();
-  Serial.println("[Personality] Loaded from NVS cache");
+  Serial.printf("[Personality] Loaded from NVS: voice=%s\n", PERSONALITY_VOICES[personalityVoiceIndex]);
 }
 
 void savePersonalityToNVS() {
@@ -513,6 +520,45 @@ void savePersonalityToNVS() {
   personalityPrefs.putBool("caplog", captureLoggingEnabled);
   personalityPrefs.putInt("alertsnd", alertSoundIndex);
   personalityPrefs.end();
+}
+
+// Fetches the active personality and voice choice directly from the backend
+// SQLite database on boot/WiFi connection, keeping device and web app in lockstep.
+void fetchPersonalityFromBackend() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  HTTPClient http;
+  String url = String("http://") + IMS_PRIMARY_HOST + ":3003/device/personality";
+  http.begin(url);
+  int code = http.GET();
+  if (code == 200) {
+    String payload = http.getString();
+    JsonDocument doc;
+    if (deserializeJson(doc, payload) == DeserializationError::Ok) {
+      for (int i = 0; i < PERSONALITY_AXIS_COUNT; i++) {
+        if (doc.containsKey(PERSONALITY_AXIS_KEYS[i])) {
+          personalityValues[i] = doc[PERSONALITY_AXIS_KEYS[i]];
+        }
+      }
+      if (doc.containsKey("voice")) {
+        const char *backendVoice = doc["voice"];
+        for (int i = 0; i < PERSONALITY_VOICE_COUNT; i++) {
+          if (strcmp(backendVoice, PERSONALITY_VOICES[i]) == 0) {
+            personalityVoiceIndex = i;
+            previewVoiceIndex = i;
+            break;
+          }
+        }
+      }
+      if (doc.containsKey("captureLogging")) {
+        captureLoggingEnabled = doc["captureLogging"];
+      }
+      savePersonalityToNVS();
+      Serial.printf("[Personality] Synced from backend: voice=%s\n", PERSONALITY_VOICES[personalityVoiceIndex]);
+    }
+  } else {
+    Serial.printf("[Personality] GET /device/personality status: %d\n", code);
+  }
+  http.end();
 }
 
 // Fire-and-forget-ish: blocks Core 1 briefly (HTTPClient has no async mode),
@@ -532,7 +578,7 @@ void postPersonalityToBackend() {
   String body;
   serializeJson(doc, body);
   int code = http.POST(body);
-  Serial.printf("[Personality] POST /device/personality -> %d\n", code);
+  Serial.printf("[Personality] POST /device/personality -> %d (voice=%s)\n", code, PERSONALITY_VOICES[personalityVoiceIndex]);
   http.end();
 }
 
@@ -996,7 +1042,31 @@ static void computeFaceLevels(uint8_t want[FACE_COLS * FACE_ROWS]) {
     for (int c = 3; c <= 8; c++) facePut(want, 6, c, 255);
     facePut(want, 5, 2, 255);
     facePut(want, 5, 9, 255);
-    int breath = ((26 + (int)(15.0f * sinf(f * 0.08f))) / 8) * 8;
+    // Continuous, not stepped (a /8*8 rounding used to collapse this into
+    // ~5 visible brightness levels - removed; full 8-bit resolution is free
+    // on this LCD, unlike the real-LED reference project this was ported
+    // from). Matches an actual human breath's asymmetric timing - a real
+    // inhale/pause/exhale, not a symmetric sine wave that fades in and out
+    // over equal durations with no pause at the top - via three separately-
+    // timed eased segments (raised-cosine: zero velocity at both ends of
+    // each segment, so they stitch together with no kink where one meets
+    // the next) driven by wall-clock time rather than the tick counter, so
+    // the rhythm stays correct even if drawFaceTick()'s call cadence drifts.
+    const float BREATH_INHALE_S = 1.5f;
+    const float BREATH_PAUSE_S = 0.5f;
+    const float BREATH_EXHALE_S = 2.5f;
+    const float BREATH_CYCLE_S = BREATH_INHALE_S + BREATH_PAUSE_S + BREATH_EXHALE_S;
+    float t = fmodf(millis() / 1000.0f, BREATH_CYCLE_S);
+    float level; // 0.0 = dim end of the breath, 1.0 = bright end
+    if (t < BREATH_INHALE_S) {
+      level = 0.5f - 0.5f * cosf(PI * (t / BREATH_INHALE_S));
+    } else if (t < BREATH_INHALE_S + BREATH_PAUSE_S) {
+      level = 1.0f;
+    } else {
+      float p = (t - BREATH_INHALE_S - BREATH_PAUSE_S) / BREATH_EXHALE_S;
+      level = 0.5f + 0.5f * cosf(PI * p);
+    }
+    int breath = 11 + (int)(30.0f * level); // same 11-41 range the old sine version used
     for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
       if (want[i] < breath) want[i] = (uint8_t)breath;
   }
@@ -1339,27 +1409,36 @@ void drawVoiceScreen() {
   tft.setTextDatum(middle_center);
   tft.setTextSize(2);
   tft.setTextColor(nameCol);
-  tft.drawString(PERSONALITY_VOICES[personalityVoiceIndex], 160, VOICE_ARROW_CY - 16);
+  tft.drawString(PERSONALITY_VOICES[previewVoiceIndex], 160, VOICE_ARROW_CY - 22);
 
   // Voice description directly beneath the voice name in accent sky-blue
   tft.setTextSize(1);
   tft.setTextColor(tft.color565(120, 210, 255));
   char descStr[48];
-  snprintf(descStr, sizeof(descStr), "(%s)", PERSONALITY_VOICE_DESCRIPTIONS[personalityVoiceIndex]);
-  tft.drawString(descStr, 160, VOICE_ARROW_CY + 8);
+  snprintf(descStr, sizeof(descStr), "(%s)", PERSONALITY_VOICE_DESCRIPTIONS[previewVoiceIndex]);
+  tft.drawString(descStr, 160, VOICE_ARROW_CY - 2);
 
-  // Voice index counter e.g. "1 of 30"
+  // Voice index counter e.g. "13 of 30"
   tft.setTextColor(tft.color565(100, 110, 130));
   char idxStr[16];
-  snprintf(idxStr, sizeof(idxStr), "%d of %d", personalityVoiceIndex + 1, PERSONALITY_VOICE_COUNT);
-  tft.drawString(idxStr, 160, VOICE_ARROW_CY + 28);
+  snprintf(idxStr, sizeof(idxStr), "%d of %d", previewVoiceIndex + 1, PERSONALITY_VOICE_COUNT);
+  tft.drawString(idxStr, 160, VOICE_ARROW_CY + 14);
+
+  // Active status or tap-to-set prompt
+  if (previewVoiceIndex == personalityVoiceIndex) {
+    tft.setTextColor(tft.color565(76, 255, 122));
+    tft.drawString("[ ACTIVE DEFAULT VOICE ]", 160, VOICE_ARROW_CY + 32);
+  } else {
+    tft.setTextColor(tft.color565(255, 195, 76));
+    tft.drawString("[ TAP HERE TO SET AS DEFAULT ]", 160, VOICE_ARROW_CY + 32);
+  }
   tft.setTextDatum(top_left);
 
   // Footer - dynamic status hint
   tft.fillRect(0, 204, 320, 36, tft.color565(15, 18, 26));
   tft.setTextColor(busy ? tft.color565(120, 210, 255) : tft.color565(100, 110, 130));
   tft.setTextDatum(top_center);
-  tft.drawString(busy ? "Speaking preview..." : "Tap arrows to shuffle voices", 160, 214);
+  tft.drawString(busy ? "Speaking audition..." : "Arrows preview | Tap center to set default", 160, 214);
   tft.setTextDatum(top_left);
 
   tft.endWrite();
@@ -2052,7 +2131,11 @@ void sendSetupHandshake() {
   genConfig["temperature"] = 1.0;
 
   JsonObject speechConfig = genConfig["speechConfig"].to<JsonObject>();
-  speechConfig["voiceConfig"]["prebuiltVoiceConfig"]["voiceName"] = "Puck";
+  const char *targetVoice = (activePreviewVoice.length() > 0) ? activePreviewVoice.c_str() : PERSONALITY_VOICES[personalityVoiceIndex];
+  speechConfig["voiceConfig"]["prebuiltVoiceConfig"]["voiceName"] = targetVoice;
+  if (activePreviewVoice.length() > 0) {
+    setup["previewVoice"] = activePreviewVoice;
+  }
 
   JsonObject sysInstruct = setup["systemInstruction"].to<JsonObject>();
   JsonArray parts = sysInstruct["parts"].to<JsonArray>();
@@ -2397,7 +2480,9 @@ void startPreview(const String &text) {
   }
   // Force-save any still-debounced change first, so e.g. a Play tap right
   // after dragging a slider previews the position actually left it at.
-  flushSettingsSave();
+  if (activePreviewVoice.length() == 0) {
+    flushSettingsSave();
+  }
   setSpeakerMute(true);
   if (audioPlaybackQueue) {
     xQueueReset(audioPlaybackQueue);
@@ -3169,11 +3254,40 @@ void setup() {
   Serial.println(" Connected!");
   Serial.printf("[WiFi] IP Address: %s\n", WiFi.localIP().toString().c_str());
 
+  // Synchronise active personality and voice choice directly from backend
+  fetchPersonalityFromBackend();
+
   // NTP + Europe/London POSIX TZ rule - not just a fixed UTC+0/+1 offset, so
   // the on-screen clock (see currentDateTimeStr()) tracks the real BST/GMT
   // changeover automatically, the same way the backend's Intl-based
   // Europe/London handling does for reminders/alarms/timers.
   configTzTime("GMT0BST,M3.5.0/1,M10.5.0/2", "pool.ntp.org", "time.nist.gov");
+
+  // DIAGNOSTIC: dump raw UTC epoch alongside the TZ-adjusted local time as
+  // soon as SNTP sync completes, so a wrong on-screen clock can be told
+  // apart from "SNTP never synced" vs. "synced fine but DST/TZ rule wasn't
+  // applied" by reading the serial log, instead of guessing from the UI.
+  {
+    Serial.printf("[Time] TZ env var: %s\n", getenv("TZ") ? getenv("TZ") : "(null)");
+    struct tm diagTm;
+    bool synced = false;
+    for (int i = 0; i < 20; i++) {
+      if (getLocalTime(&diagTm, 500)) { synced = true; break; }
+      Serial.println("[Time] waiting for SNTP sync...");
+    }
+    if (synced) {
+      time_t rawEpoch = time(nullptr);
+      struct tm utcTm;
+      gmtime_r(&rawEpoch, &utcTm);
+      char localBuf[32], utcBuf[32];
+      strftime(localBuf, sizeof(localBuf), "%Y-%m-%d %H:%M:%S", &diagTm);
+      strftime(utcBuf, sizeof(utcBuf), "%Y-%m-%d %H:%M:%S", &utcTm);
+      Serial.printf("[Time] raw epoch=%ld UTC=%s local(TZ-adjusted)=%s isdst=%d\n",
+                    (long)rawEpoch, utcBuf, localBuf, diagTm.tm_isdst);
+    } else {
+      Serial.println("[Time] SNTP sync FAILED after 10s - clock will show placeholder.");
+    }
+  }
 
   currentState = STATE_CONNECTING_SERVER;
   renderScreen(true);
@@ -3498,7 +3612,8 @@ void loop() {
   // without thrashing TCP reconnects. Triggers startPreview() 350ms after the last arrow tap.
   if (voicePreviewPending && (millis() >= voicePreviewTriggerMs)) {
     voicePreviewPending = false;
-    String voiceName = PERSONALITY_VOICES[personalityVoiceIndex];
+    String voiceName = PERSONALITY_VOICES[previewVoiceIndex];
+    activePreviewVoice = voiceName;
     startPreview("Hey IMS! Say exactly, with nothing else before or after it: \"Hi, I'm " + voiceName + ".\"");
   }
 
@@ -3517,6 +3632,7 @@ void loop() {
     } else if (millis() - previewFlowStartMs > 8000) {
       Serial.println("[Preview] Gave up waiting for Gemini setup - aborting preview");
       previewFlow = PREVIEW_IDLE;
+      activePreviewVoice = "";
       if (onVoiceScreen) drawVoiceScreen();
       else if (onSettingsScreen && !onPrefsScreen) { tft.startWrite(); drawPlayButton(); tft.endWrite(); }
     }
@@ -3524,6 +3640,7 @@ void loop() {
     bool stillActive = (currentState == STATE_THINKING || currentState == STATE_SPEAKING || isSpeakerActive());
     if (!stillActive || (millis() - previewFlowStartMs > 20000)) {
       previewFlow = PREVIEW_IDLE;
+      activePreviewVoice = "";
       if (onVoiceScreen) drawVoiceScreen();
       else if (onSettingsScreen && !onPrefsScreen) { tft.startWrite(); drawPlayButton(); tft.endWrite(); }
     }
@@ -3563,53 +3680,65 @@ void loop() {
       }
     } else if (onVoiceScreen) {
       if (touchX >= VOICE_BACK_ZONE_X0 && touchX <= VOICE_BACK_ZONE_X1 && touchY >= VOICE_BACK_ZONE_Y0 && touchY <= VOICE_BACK_ZONE_Y1) {
-        // "< PERSONALITY": back up one level.
+        // "< PERSONALITY": back up one level without saving uncommitted preview voice
         voicePreviewPending = false;
+        activePreviewVoice = "";
+        previewVoiceIndex = personalityVoiceIndex;
         flushSettingsSave();
         onVoiceScreen = false;
         drawSettingsScreen();
       } else if (touchX >= VOICE_NEXT_ZONE_X0 && touchX <= VOICE_NEXT_ZONE_X1 &&
                  touchY >= VOICE_BACK_ZONE_Y0 && touchY <= VOICE_BACK_ZONE_Y1) {
-        // "PREFERENCES >": forward one level.
+        // "PREFERENCES >": forward one level without saving uncommitted preview voice
         voicePreviewPending = false;
+        activePreviewVoice = "";
+        previewVoiceIndex = personalityVoiceIndex;
         flushSettingsSave();
         onVoiceScreen = false;
         onPrefsScreen = true;
         drawPreferencesScreen();
         delay(200);
       } else if (touchY >= VOICE_ARROW_Y0 && touchY <= VOICE_ARROW_Y1) {
-        // Left/right arrows cycle the voice - accessible at all times so user
-        // can rapidly shuffle through voices without waiting for preview to finish.
-        int delta = 0;
-        if (touchX >= VOICE_LEFT_ARROW_X0 && touchX <= VOICE_LEFT_ARROW_X1) delta = -1;
-        else if (touchX >= VOICE_RIGHT_ARROW_X0 && touchX <= VOICE_RIGHT_ARROW_X1) delta = 1;
-        if (delta != 0) {
-          // Immediately terminate any active audio playback & queue
-          setSpeakerMute(true);
-          digitalWrite(PA_ENABLE_PIN, LOW);
-          if (audioPlaybackQueue) {
-            xQueueReset(audioPlaybackQueue);
+        // Check if tapping center area to commit active default voice
+        if (touchX > VOICE_LEFT_ARROW_X1 && touchX < VOICE_RIGHT_ARROW_X0) {
+          if (previewVoiceIndex != personalityVoiceIndex) {
+            personalityVoiceIndex = previewVoiceIndex;
+            savePersonalityToNVS();
+            postPersonalityToBackend();
+            drawVoiceScreen();
+            delay(150);
           }
-          if (audioOutQueue) {
-            xQueueReset(audioOutQueue);
-          }
-          modelTurnActive = false;
-          if (previewFlow != PREVIEW_IDLE) {
-            previewFlow = PREVIEW_IDLE;
-            previewPendingText = "";
-          }
+        } else {
+          // Left/right arrows cycle auditioning voice only (does NOT alter default voice)
+          int delta = 0;
+          if (touchX >= VOICE_LEFT_ARROW_X0 && touchX <= VOICE_LEFT_ARROW_X1) delta = -1;
+          else if (touchX >= VOICE_RIGHT_ARROW_X0 && touchX <= VOICE_RIGHT_ARROW_X1) delta = 1;
+          if (delta != 0) {
+            // Immediately terminate any active audio playback & queue
+            setSpeakerMute(true);
+            digitalWrite(PA_ENABLE_PIN, LOW);
+            if (audioPlaybackQueue) {
+              xQueueReset(audioPlaybackQueue);
+            }
+            if (audioOutQueue) {
+              xQueueReset(audioOutQueue);
+            }
+            modelTurnActive = false;
+            if (previewFlow != PREVIEW_IDLE) {
+              previewFlow = PREVIEW_IDLE;
+              previewPendingText = "";
+            }
 
-          personalityVoiceIndex =
-              (personalityVoiceIndex + delta + PERSONALITY_VOICE_COUNT) % PERSONALITY_VOICE_COUNT;
-          settingsDirty = true;
-          settingsLastChangeMs = millis();
-          drawVoiceScreen();
+            previewVoiceIndex =
+                (previewVoiceIndex + delta + PERSONALITY_VOICE_COUNT) % PERSONALITY_VOICE_COUNT;
+            drawVoiceScreen();
 
-          // Settle debounce: schedules startPreview() for 350ms after the last tap,
-          // instantly terminating previous speech and letting user shuffle fluidly.
-          voicePreviewPending = true;
-          voicePreviewTriggerMs = millis() + VOICE_PREVIEW_DEBOUNCE_MS;
-          delay(120);
+            // Settle debounce: schedules startPreview() for 350ms after the last tap,
+            // instantly auditioning the voice without changing or persisting the default voice.
+            voicePreviewPending = true;
+            voicePreviewTriggerMs = millis() + VOICE_PREVIEW_DEBOUNCE_MS;
+            delay(120);
+          }
         }
       }
     } else if (onSettingsScreen) {

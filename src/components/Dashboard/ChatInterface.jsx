@@ -445,7 +445,7 @@ export default function ChatInterface({
                       onClick={() => !geminiLive.isVoiceLocked && setShowVoiceMenu(!showVoiceMenu)}
                       style={{ height: '24px', border: '1px solid var(--glass-border)', background: 'var(--glass-bg)', outline: 'none' }}
                     >
-                      <span className="capitalize">{geminiLive.voiceName || 'Puck'}</span>
+                      <span className="capitalize">{geminiLive.voiceName || 'Umbriel'}</span>
                       {!geminiLive.isVoiceLocked && <span className="text-[8px] opacity-60">▼</span>}
                     </button>
                   </Tooltip>
@@ -480,7 +480,7 @@ export default function ChatInterface({
                         <div
                           key={v.name}
                           className={`flex items-center justify-between px-2 py-1 rounded-[4px] text-[11px] font-medium transition-all ${
-                            (geminiLive.voiceName || 'Puck') === v.name 
+                            (geminiLive.voiceName || 'Umbriel') === v.name 
                               ? 'bg-[var(--accent-indigo)] text-white' 
                               : 'text-[var(--text-primary)] hover:bg-[var(--glass-bg-hover)]'
                           }`}
@@ -502,14 +502,12 @@ export default function ChatInterface({
                           <button
                             type="button"
                             className={`opacity-60 hover:opacity-100 hover:scale-110 transition-all p-0.5 outline-none ${
-                              (geminiLive.voiceName || 'Puck') === v.name ? 'text-white' : 'text-[var(--accent-indigo)]'
+                              (geminiLive.voiceName || 'Umbriel') === v.name ? 'text-white' : 'text-[var(--accent-indigo)]'
                             }`}
-                            title={`Play demo for ${v.name}`}
-                            onClick={() => {
-                              geminiLive.setVoiceName(v.name);
-                              if (!geminiLive.isConnected) {
-                                geminiLive.connectLive();
-                              }
+                            title={`Play demo for ${v.name} (does not change active voice)`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              geminiLive.previewVoice?.(v.name);
                             }}
                           >
                             <Play size={10} fill="currentColor" />
