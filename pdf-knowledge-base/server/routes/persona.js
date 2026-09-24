@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { loadPersonaRules, savePersonaRules, getPersonaRulesPath } from '../services/hardwareClientService.js';
+import { loadPersonaRules, savePersonaRules, getPersonaRulesPath, listPersonaHistory, readPersonaHistory } from '../services/hardwareClientService.js';
 
 const router = Router();
 
@@ -24,6 +24,17 @@ router.get('/', (req, res) => {
  * setup - no server restart or firmware flash needed, same as a direct
  * hand-edit of the file.
  */
+// Previous versions (a snapshot is kept every time the rules are saved).
+router.get('/history', (req, res) => {
+  res.json({ success: true, versions: listPersonaHistory() });
+});
+
+router.get('/history/:id', (req, res) => {
+  const content = readPersonaHistory(req.params.id);
+  if (content === null) return res.status(404).json({ error: 'Version not found.' });
+  res.json({ success: true, content });
+});
+
 router.put('/', (req, res) => {
   try {
     const { content } = req.body;

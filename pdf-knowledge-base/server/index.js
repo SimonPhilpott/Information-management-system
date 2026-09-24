@@ -58,6 +58,15 @@ import musicScanRoutes from './routes/musicScan.js';
 import birthdayRoutes from './routes/birthdays.js';
 import scheduledRouter from './routes/scheduled.js';
 import cameraRoutes from './routes/camera.js';
+import faceDesignRoutes from './routes/faceDesigns.js';
+import wifiRoutes from './routes/wifi.js';
+import recordingRoutes from './routes/recordings.js';
+import { isRecordingActive, startRecording, stopRecording, appendRecordingText, onRecordingChange } from './services/recordingService.js';
+import { SqliteSessionStore } from './db/sessionStore.js';
+import { onDevicePush, onSchedulePush } from './services/deviceBus.js';
+import calendarRoutes from './routes/calendar.js';
+import { refreshEvents, getUpcomingEvents, getDeviceIcons, createEvent, describeEvents } from './services/calendarService.js';
+import { getDevicePayload, getNeutralOverride } from './services/faceDesignService.js';
 import boardgamesRoutes from './routes/boardgames.js';
 import peopleRoutes from './routes/people.js';
 import lookRoutes from './routes/look.js';
@@ -67,7 +76,7 @@ import { getAuthStatus } from './services/driveService.js';
 import { validateConfiguredModels } from './services/modelService.js';
 import { loadHnswFromDisk } from './services/hnswService.js';
 import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getWebPersonaBlock, getPersonality, setPersonality, getCaptureLogging, setCaptureLogging } from './services/hardwareClientService.js';
-import { scheduleItem, listScheduledItems, cancelScheduledItem, addToList, readList, removeFromList, clearList, checkDueScheduledItems, stopAllRinging, getActiveScheduledStatus, getItemsDueToday } from './services/remindersService.js';
+import { scheduleItem, listScheduledItems, cancelScheduledItem, addToList, readList, removeFromList, clearList, checkDueScheduledItems, stopAllRinging, getActiveScheduledStatus, getItemsDueToday, getHistorySummary } from './services/remindersService.js';
 import { getBirthdayFooterStatus, getUpcomingBirthdays, listBirthdays } from './services/birthdayService.js';
 import { getTodayReleases, getWindowResults } from './services/musicScanService.js';
 import { isFirstInteractionToday, markMorningReportOffered, buildMorningReportDirective } from './services/morningReportService.js';
@@ -103,6 +112,7 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(session({
+  store: new SqliteSessionStore(), // logins survive backend restarts
   secret: config.sessionSecret,
   resave: false,
   saveUninitialized: false,
@@ -155,6 +165,10 @@ app.use('/api/persona-rules', personaRoutes);
 app.use('/api/music-scan', musicScanRoutes);
 app.use('/api/birthdays', birthdayRoutes);
 app.use('/api/camera', cameraRoutes);
+app.use('/api/face-designs', faceDesignRoutes);
+app.use('/api/wifi', wifiRoutes);
+app.use('/api/recordings', recordingRoutes);
+app.use('/api/calendar', calendarRoutes);
 app.use('/api/boardgames', boardgamesRoutes);
 app.use('/api/people', peopleRoutes);
 app.use('/api/look', lookRoutes);
@@ -233,6 +247,23 @@ const hardwareWss = new WebSocketServer({ noServer: true });
 let activeBrowserSession = null;
 let activeHardwareSession = null;
 
+// Messages routes want pushed to the device (e.g. previewing a face from the
+// Face Designer) - see services/deviceBus.js.
+onDevicePush((message) => {
+  const ws = activeHardwareSession?.clientWs;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try { ws.send(JSON.stringify(message)); } catch (err) { console.error('[DeviceBus] push failed:', err.message); }
+  }
+});
+
+onSchedulePush(() => pushScheduleStatus());
+
+// Google Calendar: refresh every 5 minutes (also applies any "remind" rules)
+// and re-send the icons. Silent no-op until the user has connected Calendar.
+const refreshCalendar = () => refreshEvents({ force: true }).then(() => pushScheduleStatus()).catch((err) => console.error('[Calendar] refresh failed:', err.message));
+setTimeout(refreshCalendar, 10000);
+setInterval(refreshCalendar, 5 * 60 * 1000);
+
 export function pushScheduleStatus(targetWs = null) {
   const ws = targetWs || activeHardwareSession?.clientWs;
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -246,7 +277,10 @@ export function pushScheduleStatus(targetWs = null) {
         ...getActiveScheduledStatus(),
         birthday: getBirthdayFooterStatus(),
         newReleases: { count: getTodayReleases().length },
-        camera: (({ attached, awake }) => ({ attached, awake }))(getCameraStatus())
+        camera: (({ attached, awake }) => ({ attached, awake }))(getCameraStatus()),
+        recording: { active: isRecordingActive() },
+        calendar: { icons: getDeviceIcons() },
+        neutralFace: getNeutralOverride()
       };
       ws.send(JSON.stringify({
         schedule: status
@@ -272,6 +306,25 @@ server.on('upgrade', (request, socket, head) => {
     socket.destroy();
   }
 });
+
+// While a call/meeting is being recorded the upstream Gemini session is only a
+// transcriber: no tools, told to say nothing. (Anything it does say is also
+// dropped in handleLiveProxyConnection - this just stops it wasting effort.)
+function toSilentSetup(msgStr) {
+  try {
+    const parsed = JSON.parse(msgStr);
+    if (!parsed.setup) return msgStr;
+    delete parsed.setup.tools;
+    parsed.setup.systemInstruction = {
+      parts: [{
+        text: 'You are a silent listener. Someone is on a call or in a meeting and this is being transcribed. ' +
+          'You must NEVER speak, answer, greet, acknowledge or call any tool, whatever anyone says, even if they address you by name. ' +
+          'Produce no output of any kind.'
+      }]
+    };
+    return JSON.stringify(parsed);
+  } catch (_) { return msgStr; }
+}
 
 // Every (re)connection to Gemini gets the SAVED voice re-applied, and the voice
 // actually sent is logged - so the voice can never silently be anything other
@@ -441,6 +494,51 @@ function handleLiveProxyConnection(ws, isHardware = false) {
   // Strict session lifecycle state for hardware clients
   let isConversationActive = false;
   let touchToTalkActive = false;
+
+  // Call/meeting recording (services/recordingService.js). While active this
+  // connection is strictly silent: see recordingMessage() and the guards below.
+  let normalSetupMsg = null; // the real setup, restored when recording ends
+  const restartUpstream = () => {
+    resumptionHandle = null; // never resume across a normal <-> silent switch
+    try {
+      if (currentGeminiWs && (currentGeminiWs.readyState === WebSocket.OPEN || currentGeminiWs.readyState === WebSocket.CONNECTING)) {
+        currentGeminiWs.close(1000, 'Recording mode changed');
+      }
+    } catch (_) { }
+  };
+  const offRecordingChange = isHardware ? onRecordingChange((status) => {
+    if (isClientClosed) return;
+    userSpokenTranscript = '';
+    spokenTranscript = '';
+    isConversationActive = false;
+    touchToTalkActive = false;
+    currentTurnComplete = true;
+    if (cachedSetupMsg) {
+      cachedSetupMsg = status.active ? toSilentSetup(normalSetupMsg || cachedSetupMsg) : (normalSetupMsg || cachedSetupMsg);
+    }
+    restartUpstream();
+    console.log(`${tag} 🎙️ Recording mode ${status.active ? 'ON - fully silent' : 'OFF'}`);
+    pushScheduleStatus(ws);
+  }) : null;
+
+  // Everything Gemini sends while recording ends up here instead of the normal
+  // handler, so nothing can reach the device: no audio, text, tool effects or
+  // turn events. Only the user's words are kept, for the transcript.
+  const recordingMessage = (parsed, gWs) => {
+    currentTurnComplete = true;
+    // The device needs the setup acknowledgement (a control frame, not speech) or it will not stream its mic.
+    if (parsed.setupComplete && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ setupComplete: {} }));
+    const heard = parsed.serverContent?.inputTranscription?.text;
+    if (heard && appendRecordingText(heard)) {
+      stopRecording();
+      console.log(`${tag} 🎙️ Recording stopped by voice command`);
+    }
+    for (const call of parsed.toolCall?.functionCalls || []) {
+      if (gWs.readyState === WebSocket.OPEN) {
+        gWs.send(JSON.stringify({ toolResponse: { functionResponses: [{ response: { output: { status: 'ignored', instruction: 'Stay completely silent.' } }, id: call.id }] } }));
+      }
+    }
+  };
 
   // Direct Raw Packet Capture: Stream recording to WAV on disk (capturePath
   // defined at the top of this function, inside the per-connection folder)
@@ -641,6 +739,11 @@ function handleLiveProxyConnection(ws, isHardware = false) {
       let parsed = null;
       try {
         parsed = JSON.parse(msgStr);
+
+        if (isHardware && isRecordingActive()) {
+          recordingMessage(parsed, gWs);
+          return;
+        }
 
         // Check for incoming audio parts
         if (parsed.serverContent?.modelTurn?.parts) {
@@ -869,7 +972,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
               const emotion = call.args?.emotion || 'neutral';
               console.log(`${tag} 🎭 setEmotion(${emotion}) - forwarding to hardware client`);
               if (isHardware && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ setEmotion: emotion }));
+                ws.send(JSON.stringify(getDevicePayload(emotion)));
               }
               if (gWs.readyState === WebSocket.OPEN) {
                 gWs.send(JSON.stringify({
@@ -891,6 +994,20 @@ function handleLiveProxyConnection(ws, isHardware = false) {
                 console.error(`${tag} scheduleItem failed:`, err.message);
                 respondToToolCall(call, { error: err.message });
               }
+            } else if (call.name === 'startRecording') {
+              console.log(`${tag} 🎙️ startRecording tool call`);
+              respondToToolCall(call, { status: 'recording', instruction: 'Recording has started. Say nothing at all from now on.' });
+              startRecording(call.args?.withWhom, 'voice');
+            } else if (call.name === 'getCalendarEvents') {
+              const days = Math.max(1, Math.min(30, Number(call.args?.days ?? 7)));
+              getUpcomingEvents(days).then((events) => {
+                console.log(`${tag} 📅 getCalendarEvents(${days}d) -> ${events.length}`);
+                respondToToolCall(call, { days, count: events.length, events: describeEvents(events) });
+              }).catch((err) => respondToToolCall(call, { error: err.message }));
+            } else if (call.name === 'addCalendarEvent') {
+              createEvent({ title: call.args?.title, date: call.args?.date, time: call.args?.time, durationMinutes: call.args?.durationMinutes })
+                .then((ev) => { console.log(`${tag} 📅 addCalendarEvent -> ${ev.title} ${ev.date}`); respondToToolCall(call, { status: 'added', title: ev.title, date: ev.date, time: ev.time }); })
+                .catch((err) => respondToToolCall(call, { error: err.message }));
             } else if (call.name === 'listScheduledItems') {
               respondToToolCall(call, { items: listScheduledItems() });
             } else if (call.name === 'cancelScheduledItem') {
@@ -985,6 +1102,12 @@ function handleLiveProxyConnection(ws, isHardware = false) {
                   respondToToolCall(call, { error: err.message });
                 });
               }
+            } else if (call.name === 'getScheduleHistory') {
+              const kind = ['alarm', 'timer', 'reminder'].includes(call.args?.type) ? call.args.type : null;
+              const period = ['today', 'yesterday', 'week', 'month'].includes(call.args?.period) ? call.args.period : 'yesterday';
+              const summary = getHistorySummary({ type: kind, period });
+              console.log(`${tag} 🕘 getScheduleHistory(${kind || 'all'}, ${period}) -> ${summary.events.length} events`);
+              respondToToolCall(call, summary);
             } else if (call.name === 'getUpcomingBirthdays') {
               const days = Math.max(0, Math.min(366, Number(call.args?.withinDays ?? 7)));
               const list = listBirthdays().filter((b) => b.daysUntil <= days)
@@ -1169,6 +1292,9 @@ function handleLiveProxyConnection(ws, isHardware = false) {
           } catch (_) { }
           return;
         }
+        // A call is being recorded: the device only streams its mic. Session
+        // and touch messages must not reset or restart anything.
+        if (isHardware && isRecordingActive() && (maybeJson.sessionClosed || maybeJson.touchToTalk)) return;
         if (maybeJson.sessionClosed) {
           console.log(`${tag} 🔒 Hardware session closed by device. Resetting conversation state.`);
           isConversationActive = false;
@@ -1199,7 +1325,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
     // In ws library, message is ALWAYS a Buffer. ONLY isBinary indicates an opcode 0x02 binary frame.
     if (isBinary) {
       ws.isHardwareClient = true;
-      if (isHardware) micAudioChunks.push(Buffer.from(message));
+      if (isHardware && !isRecordingActive()) micAudioChunks.push(Buffer.from(message)); // never keep call audio on disk
 
       // Acoustic echo barge-in protection:
       // While Gemini is actively generating speech chunks, suppress forwarding mic audio so
@@ -1283,8 +1409,9 @@ function handleLiveProxyConnection(ws, isHardware = false) {
             // noWakeDetected/endConversation declarations added here never actually
             // reached Gemini for hardware clients.
             const previewVoice = parsed.setup.previewVoice || null;
-            const hardwareDefaults = getHardwareSetupPayload(previewVoice, morningReportReady ? morningReportDirective : null);
-            if (morningReportReady) {
+            const recordingNow = isRecordingActive();
+            const hardwareDefaults = getHardwareSetupPayload(previewVoice, morningReportReady && !recordingNow ? morningReportDirective : null);
+            if (morningReportReady && !recordingNow) {
               markMorningReportOffered();
               morningReportReady = false; // don't re-inject if setup is replayed on this same connection
             }
@@ -1330,6 +1457,8 @@ function handleLiveProxyConnection(ws, isHardware = false) {
             msgStr = JSON.stringify(parsed);
             console.log(`${tag} 🎭 Applied saved Ims voice (${persona.voice}), personality and persona rules to browser live session`);
           }
+          normalSetupMsg = msgStr;
+          if (isHardware && isRecordingActive()) msgStr = toSilentSetup(msgStr);
           cachedSetupMsg = msgStr;
           console.log(`${tag} Cached setup handshake for resilient reconnection.`);
         }
@@ -1354,6 +1483,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
 
   ws.on('close', (code, reason) => {
     isClientClosed = true;
+    if (offRecordingChange) offRecordingChange();
     flushMicWavToDisk();
     flushWavToDisk();
     clearInterval(micFlushInterval);
@@ -1543,6 +1673,10 @@ setInterval(() => {
     pushScheduleStatus();
   } catch (err) {
     console.error('[Reminders] checkDueScheduledItems failed:', err.message);
+    return;
+  }
+  if (isRecordingActive() && fired.length) {
+    console.log(`[Reminders] ${fired.length} item(s) went off during a recording - kept silent`);
     return;
   }
   for (const item of fired) {

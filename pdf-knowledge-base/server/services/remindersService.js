@@ -29,6 +29,36 @@ db.exec(`
 // already-existing table, so these columns need adding explicitly.
 try { db.exec(`ALTER TABLE scheduled_items ADD COLUMN ringing INTEGER NOT NULL DEFAULT 0`); } catch (_) { }
 try { db.exec(`ALTER TABLE scheduled_items ADD COLUMN ring_count INTEGER NOT NULL DEFAULT 0`); } catch (_) { }
+// History: nothing is ever deleted. scheduled_for is the time the user asked
+// for (fire_at drifts forward while an item re-rings); cancelled_at/ended_at/
+// ended_reason record how and when it finished ('cancelled', 'dismissed' =
+// rang and was acknowledged, 'unanswered' = rang its maximum times with no
+// response); first_fired_at is when it first went off. schedule_events is the
+// full timeline (created / edited / fired / dismissed / unanswered / cancelled)
+// used to answer "did my reminder go off?" and "what did I set yesterday?".
+try { db.exec(`ALTER TABLE scheduled_items ADD COLUMN scheduled_for INTEGER`); } catch (_) { }
+try { db.exec(`ALTER TABLE scheduled_items ADD COLUMN first_fired_at INTEGER`); } catch (_) { }
+try { db.exec(`ALTER TABLE scheduled_items ADD COLUMN cancelled_at INTEGER`); } catch (_) { }
+try { db.exec(`ALTER TABLE scheduled_items ADD COLUMN ended_at INTEGER`); } catch (_) { }
+try { db.exec(`ALTER TABLE scheduled_items ADD COLUMN ended_reason TEXT`); } catch (_) { }
+db.exec(`
+  CREATE TABLE IF NOT EXISTS schedule_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id INTEGER NOT NULL,
+    item_type TEXT NOT NULL,
+    label TEXT,
+    event TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    scheduled_for INTEGER,
+    detail TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_schedule_events_at ON schedule_events(at);
+`);
+
+function logEvent(item, event, { at = Date.now(), scheduledFor = null, detail = null } = {}) {
+  db.prepare(`INSERT INTO schedule_events (item_id, item_type, label, event, at, scheduled_for, detail) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .run(item.id, item.type, item.label || null, event, at, scheduledFor, detail);
+}
 
 const VALID_TYPES = ['timer', 'alarm', 'reminder'];
 const VALID_RECURRENCE = ['once', 'daily', 'weekdays'];
@@ -132,8 +162,9 @@ export function scheduleItem({ type, label, whenSeconds, time, date, recurrence 
   const rec = VALID_RECURRENCE.includes(recurrence) ? recurrence : 'once';
   const fireAt = computeFireAt({ whenSeconds, time, date });
   const info = db.prepare(
-    `INSERT INTO scheduled_items (type, label, fire_at, recurrence, created_at) VALUES (?, ?, ?, ?, ?)`
-  ).run(type, label || null, fireAt, rec, Date.now());
+    `INSERT INTO scheduled_items (type, label, fire_at, recurrence, created_at, scheduled_for) VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(type, label || null, fireAt, rec, Date.now(), fireAt);
+  logEvent({ id: info.lastInsertRowid, type, label }, 'created', { scheduledFor: fireAt, detail: rec === 'once' ? null : rec });
   return {
     id: info.lastInsertRowid,
     type,
@@ -159,8 +190,12 @@ export function listScheduledItems(type = null) {
 }
 
 export function cancelScheduledItem(id) {
-  const info = db.prepare(`UPDATE scheduled_items SET cancelled = 1 WHERE id = ? AND cancelled = 0`).run(id);
-  return info.changes > 0;
+  const item = db.prepare(`SELECT * FROM scheduled_items WHERE id = ? AND cancelled = 0`).get(id);
+  if (!item) return false;
+  const now = Date.now();
+  db.prepare(`UPDATE scheduled_items SET cancelled = 1, ringing = 0, cancelled_at = ?, ended_at = ?, ended_reason = 'cancelled' WHERE id = ?`).run(now, now, id);
+  logEvent(item, 'cancelled', { at: now, scheduledFor: item.scheduled_for || item.fire_at });
+  return true;
 }
 
 // Web-editing counterpart to scheduleItem() - used by the /ims/alarms,
@@ -176,8 +211,9 @@ export function updateScheduledItem(id, { label, whenSeconds, time, date, recurr
   const fireAt = (whenSeconds !== undefined || time !== undefined || date !== undefined)
     ? computeFireAt({ whenSeconds, time, date })
     : existing.fire_at;
-  db.prepare(`UPDATE scheduled_items SET label = ?, fire_at = ?, recurrence = ?, ringing = 0, ring_count = 0 WHERE id = ?`)
-    .run(label !== undefined ? (label || null) : existing.label, fireAt, rec, id);
+  db.prepare(`UPDATE scheduled_items SET label = ?, fire_at = ?, scheduled_for = ?, recurrence = ?, ringing = 0, ring_count = 0 WHERE id = ?`)
+    .run(label !== undefined ? (label || null) : existing.label, fireAt, fireAt, rec, id);
+  logEvent({ id, type: existing.type, label: label !== undefined ? (label || null) : existing.label }, 'edited', { scheduledFor: fireAt });
   return {
     id,
     type: existing.type,
@@ -210,12 +246,15 @@ const MAX_RINGS = 10;
 // (stopAllRinging()) or it's rung MAX_RINGS times with no response. 'once'
 // items are finished; recurring ones advance to their next real occurrence
 // rather than staying cancelled.
-function retireRinging(item) {
+function retireRinging(item, reason = 'dismissed') {
+  const now = Date.now();
+  logEvent(item, reason, { at: now, scheduledFor: item.scheduled_for || item.fire_at, detail: `rang ${item.ring_count} time(s)` });
   if (item.recurrence === 'once') {
-    db.prepare(`UPDATE scheduled_items SET cancelled = 1, ringing = 0, ring_count = 0 WHERE id = ?`).run(item.id);
+    db.prepare(`UPDATE scheduled_items SET cancelled = 1, ringing = 0, ring_count = 0, ended_at = ?, ended_reason = ? WHERE id = ?`).run(now, reason, item.id);
   } else {
-    db.prepare(`UPDATE scheduled_items SET fire_at = ?, ringing = 0, ring_count = 0 WHERE id = ?`)
-      .run(nextOccurrence(item.fire_at, item.recurrence), item.id);
+    const next = nextOccurrence(item.fire_at, item.recurrence);
+    db.prepare(`UPDATE scheduled_items SET fire_at = ?, scheduled_for = ?, ringing = 0, ring_count = 0, first_fired_at = NULL WHERE id = ?`)
+      .run(next, next, item.id);
   }
 }
 
@@ -231,8 +270,12 @@ export function checkDueScheduledItems() {
   for (const item of due) {
     const ringCount = item.ring_count + 1;
     fired.push({ id: item.id, type: item.type, label: item.label, ringCount, maxRings: MAX_RINGS });
+    if (!item.first_fired_at) {
+      db.prepare(`UPDATE scheduled_items SET first_fired_at = ? WHERE id = ?`).run(now, item.id);
+      logEvent(item, 'fired', { at: now, scheduledFor: item.scheduled_for || item.fire_at });
+    }
     if (ringCount >= MAX_RINGS) {
-      retireRinging(item);
+      retireRinging({ ...item, ring_count: ringCount }, 'unanswered');
     } else {
       db.prepare(`UPDATE scheduled_items SET fire_at = ?, ringing = 1, ring_count = ? WHERE id = ?`)
         .run(now + RING_INTERVAL_MS, ringCount, item.id);
@@ -247,7 +290,7 @@ export function checkDueScheduledItems() {
 // particular goodbye was actually about an alert or just an ordinary one).
 export function stopAllRinging() {
   const ringing = db.prepare(`SELECT * FROM scheduled_items WHERE ringing = 1 AND cancelled = 0`).all();
-  for (const item of ringing) retireRinging(item);
+  for (const item of ringing) retireRinging(item, 'dismissed');
   return ringing.length;
 }
 
@@ -311,3 +354,67 @@ export function getItemsDueToday() {
   return rows.map((r) => ({ id: r.id, type: r.type, label: r.label, fireAt: new Date(r.fire_at).toISOString() }));
 }
 
+
+// --- History / archive ------------------------------------------------------
+
+const msToIso = (ms) => (ms ? new Date(ms).toISOString() : null);
+const londonFmt = new Intl.DateTimeFormat('en-GB', {
+  timeZone: LONDON_TZ, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+const londonText = (ms) => (ms ? londonFmt.format(new Date(ms)) : null);
+
+// Finished items (cancelled, or once-only ones that went off), newest first.
+// outcome: cancelled | dismissed (went off, acknowledged) | unanswered (rang
+// the maximum times, nobody responded) | ended (older records with no reason).
+export function getArchivedItems({ type = null, days = 30, search = '' } = {}) {
+  const since = days > 0 ? Date.now() - days * 86400000 : 0;
+  const term = `%${String(search || '').trim()}%`;
+  const rows = db.prepare(
+    `SELECT * FROM scheduled_items WHERE cancelled = 1 ${type ? 'AND type = ?' : ''}
+       AND COALESCE(ended_at, cancelled_at, first_fired_at, fire_at) >= ? AND COALESCE(label, '') LIKE ?
+     ORDER BY COALESCE(ended_at, cancelled_at, first_fired_at, fire_at) DESC LIMIT 500`
+  ).all(...(type ? [type] : []), since, term);
+  return rows.map((r) => ({
+    id: r.id, type: r.type, label: r.label, recurrence: r.recurrence,
+    createdAt: msToIso(r.created_at),
+    scheduledFor: msToIso(r.scheduled_for || r.fire_at),
+    firstFiredAt: msToIso(r.first_fired_at),
+    endedAt: msToIso(r.ended_at || r.cancelled_at),
+    outcome: r.ended_reason || 'ended',
+  }));
+}
+
+// The full timeline of what happened, newest first.
+export function getScheduleEvents({ type = null, sinceMs = 0, untilMs = Date.now() + 1, limit = 300 } = {}) {
+  return db.prepare(
+    `SELECT * FROM schedule_events WHERE at >= ? AND at < ? ${type ? 'AND item_type = ?' : ''} ORDER BY at DESC LIMIT ?`
+  ).all(sinceMs, untilMs, ...(type ? [type] : []), limit).map((e) => ({
+    id: e.id, itemId: e.item_id, type: e.item_type, label: e.label, event: e.event,
+    at: msToIso(e.at), scheduledFor: msToIso(e.scheduled_for), detail: e.detail,
+  }));
+}
+
+// Plain-language history for a period - what the voice tool returns so Ims
+// can answer "did my reminders go off?" or "what alarms did I set yesterday?".
+// Times are given in London local time.
+export function getHistorySummary({ type = null, period = 'yesterday' } = {}) {
+  const now = Date.now();
+  const today = londonParts(new Date(now));
+  const startOfToday = londonWallTimeToUtcMs(today.year, today.month, today.day, 0, 0, 0);
+  const windows = {
+    today: [startOfToday, now + 1],
+    yesterday: [londonWallTimeToUtcMs(today.year, today.month, today.day - 1, 0, 0, 0), startOfToday],
+    week: [now - 7 * 86400000, now + 1],
+    month: [now - 30 * 86400000, now + 1],
+  };
+  const [from, to] = windows[period] || windows.yesterday;
+  const events = getScheduleEvents({ type, sinceMs: from, untilMs: to, limit: 200 }).reverse();
+  return {
+    period: windows[period] ? period : 'yesterday',
+    from: londonText(from), to: londonText(to - 1),
+    events: events.map((e) => ({
+      when: londonText(Date.parse(e.at)), type: e.type, label: e.label || '(unlabelled)', event: e.event,
+      scheduledFor: londonText(e.scheduledFor ? Date.parse(e.scheduledFor) : null), detail: e.detail,
+    })),
+  };
+}

@@ -13,6 +13,7 @@ import db, { getSetting, setSetting, addMemory, getMemories, searchMemories, del
 import { searchSimilar } from "./vectorStore.js";
 import { generateQueryEmbedding } from "./embeddingService.js";
 import { detectQuerySubjects } from "./subjectMatcherService.js";
+import { getEmotionNames, getFacePromptGuide } from "./faceDesignService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -61,8 +62,44 @@ export function loadPersonaRules() {
  */
 export function savePersonaRules(content) {
   const resolvedPath = getPersonaRulesPath();
+  // Keep the version being replaced, so any edit (especially restructuring the
+  // document into sections) can be undone from the /ims/persona history list.
+  try {
+    if (fs.existsSync(resolvedPath)) {
+      const prev = fs.readFileSync(resolvedPath, "utf8");
+      if (prev.trim() && prev !== content) {
+        fs.mkdirSync(PERSONA_HISTORY_DIR, { recursive: true });
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        fs.writeFileSync(path.join(PERSONA_HISTORY_DIR, `${stamp}.md`), prev, "utf8");
+        const files = fs.readdirSync(PERSONA_HISTORY_DIR).filter((f) => f.endsWith(".md")).sort();
+        for (const old of files.slice(0, Math.max(0, files.length - 60))) fs.unlinkSync(path.join(PERSONA_HISTORY_DIR, old));
+      }
+    }
+  } catch (err) {
+    console.warn("[PersonaRules] Could not write history snapshot:", err.message);
+  }
   fs.writeFileSync(resolvedPath, content, "utf8");
   return resolvedPath;
+}
+
+const PERSONA_HISTORY_DIR = path.resolve(__dirname, "../data/persona_history");
+
+export function listPersonaHistory() {
+  try {
+    return fs.readdirSync(PERSONA_HISTORY_DIR).filter((f) => f.endsWith(".md")).sort().reverse().map((f) => ({
+      id: f.replace(/\.md$/, ""),
+      savedAt: f.replace(/\.md$/, "").replace(/^(\d{4}-\d{2}-\d{2}T\d{2})-(\d{2})-(\d{2})-(\d+Z)$/, "$1:$2:$3.$4"),
+      bytes: fs.statSync(path.join(PERSONA_HISTORY_DIR, f)).size,
+    }));
+  } catch (_) {
+    return [];
+  }
+}
+
+export function readPersonaHistory(id) {
+  if (!/^[0-9TZ-]+$/.test(id)) return null;
+  const p = path.join(PERSONA_HISTORY_DIR, `${id}.md`);
+  return fs.existsSync(p) ? fs.readFileSync(p, "utf8") : null;
 }
 
 const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
@@ -582,9 +619,13 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             "When answering questions or instructions, deliver accurate, insightful information expressed consistently through the British Yorkshire persona described above across all domains, including code, systems, and technical topics - never regress into generic Silicon Valley tech phrasing. Never be cruel or abusive. STRICT LENGTH LIMIT: Limit every spoken reply strictly to 1 to 6 clear, punchy, complete sentences - use the shorter end for simple questions and only go longer when the answer genuinely needs it. Never deliver lengthy monologues, rambling discourses, or long lists. Stop speaking immediately after completing your final sentence. Always finish your thoughts and sentences completely without trailing off. When answering from library search, deliver a sharp spoken summary of 1 to 6 complete sentences highlighting essential facts. You have access to searchLibrary to query the user's PDF collection; always use it for factual and technical inquiries. " +
             `The current date and time is ${nowStr}. You have access to getWeather to retrieve real-time weather conditions and forecasts for any city or the local area (defaults to Leeds / Yorkshire, UK if omitted) - always call getWeather whenever the user asks about the weather, temperature, rain, or what to wear out. Deliver weather observations seasoned with natural Yorkshire commentary (e.g. 'cracking flags', 'chucking it down', 'brass monkeys', 'proper chilly', 'grab your big coat'). You also have access to getBloodGlucose to inspect the user's current blood glucose (in mmol/L) from Nightscout (Libre CGM) - call it whenever the user asks about their blood sugar, glucose, levels, or how they are tracking. Normal target range is 4.0 to 7.5 mmol/L (green); above 7.5 is high (amber/yellow); below 4.0 is low/hypo risk (red). Report the number, trend direction, and deliver caring, reassuring Yorkshire advice (e.g. 'Sitting at a steady 5.1, spot on', or 'Creeping up a bit at 8.2, keep an eye on it'). You can also set timers, alarms, and reminders (scheduleItem, listScheduledItems, cancelScheduledItem) and manage named lists like a shopping list (addToList, readList, removeFromList, clearList) - use these naturally whenever the user asks, and briefly confirm what you've done (e.g. the duration for a timer, or the time and date for an alarm/reminder) rather than acknowledging silently. SCHEDULING CLARIFICATION RULES: before calling scheduleItem for an alarm or reminder, make sure you actually have what you need - if the user didn't say what it's for, ask; if they gave a day/date reference that needs resolving ('this Saturday', 'the 25th'), work it out yourself from the current date above rather than asking them to spell it out, but if the date is genuinely unclear, ask. AMBIGUOUS TIME OF DAY IS THE ONE THING YOU MUST NEVER GUESS: if the user gives an hour with no AM/PM and no other context that makes it obvious (e.g. 'set an alarm for 7', 'remind me at 3'), you MUST ask whether they mean morning or afternoon/evening before calling scheduleItem - never default to morning, never default to any assumption at all, always ask. A wrongly-timed alarm going off at the wrong hour is a real, disruptive failure, so this rule overrides your usual instinct to keep replies brief and not ask follow-up questions. ` +
             "CAMERA: you can see through a camera on your desk dock via the lookAtCamera tool - call it for anything about what is in view, report what it says in your own voice, and if it says the camera is not available, say so plainly rather than guessing. " +
+            "RECORDING CALLS AND MEETINGS: when the user asks you to record a call or meeting (e.g. 'IMS, record this call'), if they have not said who it is with, ask ONE short question - who is it with? - then call startRecording with their answer. As soon as you call startRecording you must stay COMPLETELY SILENT: no words, no confirmation, no sounds, no emotion changes, no tool calls, whatever anyone says afterwards. The system ends the recording itself when the user says 'IMS stop'. " +
+            "CALENDAR: you can read and add to the user's Google Calendar with getCalendarEvents and addCalendarEvent (never invent events; bin days are deliberately hidden from you and must never be mentioned). " +
+            "SCHEDULE HISTORY: past alarms, timers and reminders are kept (what was set, what went off, what was missed or cancelled) - use getScheduleHistory to answer questions about them and report exactly what it returns. " +
             "BIRTHDAYS AND NEW MUSIC: you have getUpcomingBirthdays and getNewMusicReleases tools backed by the user's real saved data - call them whenever the user asks about birthdays or new albums/EPs, report exactly what they return (say plainly if there are none), and never invent or assume. " +
             "EXPLICIT MEMORY DIRECTIVES: When the user says 'remember that [fact]', 'remember this: [fact]', 'don't forget that [fact]', or 'make a note of [fact]', you MUST immediately call the rememberFact tool to persist it to permanent storage, and acknowledge warmly in character (e.g. 'Right, locked that in me memory, lad'). When the user asks 'what did I ask you to remember?', 'what do you remember about X?', or asks about a stored fact or item location, consult the remembered facts above or invoke recallMemory to search storage. When the user asks you to forget a note or says 'forget about X', call forgetMemory. " +
-            "EXPRESSIVE FACE ON SCREEN: Ims has an expressive 12x8 pixel face on its screen. You MUST invoke the setEmotion tool at the start of EVERY spoken reply (including greetings) to project an active emotional stance matching your tone, personality, and relationship with the user. Never default to 'neutral' unless delivering completely dry, purely factual numbers; project active sentiment instead! Use 'joy' for upbeat greetings or great news; 'cocky' for witty comebacks, proud banter, or clever answers; 'suspicious' when squinting at questionable ideas or curious queries; 'confused' for baffling requests; 'amazement' for shocking facts; 'sad' or 'devastated' for grim topics or broken code; 'bored' for tedious chores; 'sleepy' late at night or early morning; and 'love' for genuine camaraderie. If your tone shifts significantly partway through a reply, call setEmotion again right at the transition so the on-screen face visibly transforms with your voice! Never terminate the session." +
+            "EXPRESSIVE FACE ON SCREEN: Ims has an expressive 12x8 pixel face on its screen. You MUST invoke the setEmotion tool at the start of EVERY spoken reply (including greetings) to project an active emotional stance matching your tone, personality, and relationship with the user. Never default to 'neutral' unless delivering completely dry, purely factual numbers; project active sentiment instead! " +
+            getFacePromptGuide() + "\nIf your tone shifts significantly partway through a reply, call setEmotion again right at the transition so the on-screen face visibly transforms with your voice! Never terminate the session." +
             (morningReportDirective ? " " + morningReportDirective : "")
         }]
       },
@@ -627,7 +668,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "setEmotion",
-            description: "MANDATORY: Call this at the start of EVERY spoken reply (including greetings) to project an active facial expression matching your emotional tone and personality. Choose dynamically between: neutral, joy, cocky, love, amazement, suspicious, confused, sad, devastated, anger, rage, fear, disgusted, bored, sleepy. If your tone shifts significantly during a reply, call this again mid-turn to animate the face.",
+            description: "MANDATORY: Call this at the start of EVERY spoken reply (including greetings) to project an active facial expression matching your emotional tone and personality. Choose from the faces listed in your instructions (the enum below is the complete current list). If your tone shifts significantly during a reply, call this again mid-turn to animate the face.",
             // Deliberately NOT blocking: this is purely cosmetic (drives the
             // face on the device's screen), so it must never add latency to
             // the actual spoken reply the way searchLibrary/noWakeDetected
@@ -637,8 +678,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
               properties: {
                 emotion: {
                   type: "STRING",
-                  enum: ["neutral", "joy", "cocky", "love", "amazement", "suspicious", "confused",
-                         "sad", "devastated", "anger", "rage", "fear", "disgusted", "bored", "sleepy"],
+                  enum: getEmotionNames(),
                   description: "The emotion that best matches your immediate tone or reaction."
                 }
               },
@@ -660,6 +700,39 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
                 recurrence: { type: "STRING", enum: ["once", "daily", "weekdays"], description: "Only meaningful for alarms. Defaults to 'once' if omitted." }
               },
               required: ["type"]
+            }
+          },
+          {
+            name: "getCalendarEvents",
+            description: "Reads the user's Google Calendar (bin-day type events are already filtered out). Call it whenever they ask what is coming up, about appointments, or what is on a given day. Report exactly what it returns; if it returns an error, say so plainly.",
+            behavior: "BLOCKING",
+            parameters: { type: "OBJECT", properties: { days: { type: "NUMBER", description: "How many days ahead to look, from today. Default 7, maximum 30." } } }
+          },
+          {
+            name: "addCalendarEvent",
+            description: "Adds an appointment or event to the user's Google Calendar (e.g. a doctor's appointment). You need a title and a date; resolve any relative date yourself from the current date in this prompt and ask if the date or AM/PM is unclear. Time is optional - leave it out for an all-day event.",
+            behavior: "BLOCKING",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                title: { type: "STRING", description: "What the event is." },
+                date: { type: "STRING", description: "YYYY-MM-DD." },
+                time: { type: "STRING", description: "24-hour HH:MM start time. Omit for all-day." },
+                durationMinutes: { type: "NUMBER", description: "Length in minutes. Default 30." }
+              },
+              required: ["title", "date"]
+            }
+          },
+          {
+            name: "startRecording",
+            description: "Starts a silent recording and transcript of a call or meeting. Call it ONLY after the user has asked to record and you know who the call/meeting is with. From the moment you call it you must produce NO audio and NO text for the rest of the session - the system handles ending it.",
+            behavior: "BLOCKING",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                withWhom: { type: "STRING", description: "Who the call or meeting is with, as the user said it." }
+              },
+              required: ["withWhom"]
             }
           },
           {
@@ -783,6 +856,18 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
                 question: { type: "STRING", description: "What to find out from the picture, e.g. 'What am I holding?' or 'How do I look?'" }
               },
               required: ["question"]
+            }
+          },
+          {
+            name: "getScheduleHistory",
+            description: "Looks up what happened with the user's alarms, timers and reminders in the past: what was set, what went off, whether it was acknowledged or went unanswered, and what was cancelled. ALWAYS call this for questions like 'did my reminder go off?', 'what alarms did I set yesterday?', 'did I miss anything?' - never answer from memory or guess. Times returned are London local time.",
+            behavior: "BLOCKING",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                type: { type: "STRING", description: "'alarm', 'timer', 'reminder', or 'all'. Defaults to all." },
+                period: { type: "STRING", description: "'today', 'yesterday', 'week' or 'month'. Defaults to yesterday." }
+              }
             }
           },
           {

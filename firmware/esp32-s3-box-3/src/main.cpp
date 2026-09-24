@@ -298,6 +298,11 @@ volatile bool conversationOpen = false;
 // finishes so the farewell reply plays out in full before the conversation
 // actually closes.
 volatile bool conversationShouldClose = false;
+// A call/meeting is being recorded (the backend says so via schedule.recording).
+// While true the device is COMPLETELY silent and unreactive: it only streams the
+// mic. No speech, no alert sounds, no taps, no state changes - see handleFrame(),
+// the touch handler and the recording block in loop().
+volatile bool recordingActive = false;
 // 0 = neutral (the phase-based idle/listening/thinking/speaking face this
 // firmware already draws). 1-14 = one of the emotions below, set by Gemini's
 // setEmotion tool call (see handleFrame()) and reflected by the face whether
@@ -310,6 +315,19 @@ volatile int currentEmotion = 0;
 // sit on IMS's face indefinitely after a reply finishes.
 volatile unsigned long emotionSetAtMs = 0;
 #define EMOTION_DECAY_MS 20000
+// A face designed at /ims/facedesigner and pushed by the backend with the
+// setEmotion call that selects it (handleFrame()). Grid is 12x8 = 96 cells,
+// one brightness per dot; colour is the dot colour. EMOTION_CUSTOM renders it.
+static uint8_t customFaceGrid[96] = {0};      // resting frame (mouth closed)
+static uint8_t customFaceOpenGrid[96] = {0};  // speaking frame (mouth open)
+static uint32_t customFaceRGB = 0x4CFF7A;
+// The everyday face, when the user has redrawn/recoloured it in the Face
+// Designer (the backend sends it as neutralFace; null/absent = built-in smile).
+static uint8_t neutralFaceGrid[96];
+static uint8_t neutralFaceOpenGrid[96];
+static uint32_t neutralFaceRGB = 0x4CFF7A;
+static bool neutralCustomActive = false;
+static char customFaceName[24] = "custom";
 enum FaceEmotion {
   EMOTION_NEUTRAL = 0,
   EMOTION_JOY,
@@ -325,7 +343,8 @@ enum FaceEmotion {
   EMOTION_FEAR,
   EMOTION_DISGUSTED,
   EMOTION_BORED,
-  EMOTION_SLEEPY
+  EMOTION_SLEEPY,
+  EMOTION_CUSTOM
 };
 int emotionFromName(const char *name) {
   if (!name) return EMOTION_NEUTRAL;
@@ -361,6 +380,7 @@ const char *emotionName(int emotion) {
     case EMOTION_DISGUSTED: return "disgusted";
     case EMOTION_BORED: return "bored";
     case EMOTION_SLEEPY: return "sleepy";
+    case EMOTION_CUSTOM: return customFaceName;
     default: return "neutral";
   }
 }
@@ -640,11 +660,12 @@ volatile unsigned long speechStartTime = 0;
 // no open conversation). 25s leaves room for slow tool calls and for the
 // backend transparently resuming Gemini's session after a quiet spell.
 const unsigned long SESSION_IDLE_TIMEOUT_MS = 25000;
-// Once a conversation is OPEN it stays open until the user ends it ("thanks,
-// bye" -> endConversation), however long the pauses between questions. This
-// is only a far-off safety net so an abandoned open mic doesn't stream
-// forever; it is deliberately NOT a normal conversation timeout.
-const unsigned long CONVERSATION_IDLE_TIMEOUT_MS = 30UL * 60UL * 1000UL;
+// An OPEN conversation ends by itself after this long with no follow-up:
+// the face and status return to STANDBY and Ims stays silent until the next
+// wake phrase. (Saying goodbye - "thanks, bye", "stop IMS" - ends it sooner via
+// endConversation.) Deliberately short: a device left listening after a chat is
+// how Ims ends up talking over a conversation with someone else.
+const unsigned long CONVERSATION_IDLE_TIMEOUT_MS = 15000UL;
 bool textQuerySentOnce = false; // Mic-free "Hi, how are you" diagnostic, once per boot
 
 // Live mic RMS level, written every buffer by audioMicTask (Core 0) and read
@@ -794,7 +815,36 @@ static inline void facePut(uint8_t want[], int r, int c, int v) {
 // darting gaze + a chasing spinner dot), speaking (mouth opens/closes on
 // deterministic noise so it looks like talking rather than a metronome or a
 // flicker), muted (eyes shut, flat mouth).
-static void computeFaceLevels(uint8_t want[FACE_COLS * FACE_ROWS]) {
+// The breathing background: every dot that isn't part of the current
+// expression fades gently in and out on a real inhale / pause / exhale rhythm.
+// Applied to every face (idle, listening, thinking, speaking, every emotion,
+// custom designs) so they all share the same living backdrop; only the
+// mic-muted face stays dark so its indicator reads unambiguously.
+static void applyBreathBackground(uint8_t want[FACE_COLS * FACE_ROWS]) {
+  // Continuous, not stepped: full 8-bit resolution is free on this LCD.
+  // Asymmetric human-breath timing (raised-cosine eased segments, zero
+  // velocity at each joint so they stitch with no kink), driven by wall-clock
+  // time rather than the tick counter so the rhythm survives cadence drift.
+  const float BREATH_INHALE_S = 1.5f;
+  const float BREATH_PAUSE_S = 0.5f;
+  const float BREATH_EXHALE_S = 2.5f;
+  const float BREATH_CYCLE_S = BREATH_INHALE_S + BREATH_PAUSE_S + BREATH_EXHALE_S;
+  float bt = fmodf(millis() / 1000.0f, BREATH_CYCLE_S);
+  float level; // 0.0 = dim end of the breath, 1.0 = bright end
+  if (bt < BREATH_INHALE_S) {
+    level = 0.5f - 0.5f * cosf(PI * (bt / BREATH_INHALE_S));
+  } else if (bt < BREATH_INHALE_S + BREATH_PAUSE_S) {
+    level = 1.0f;
+  } else {
+    float p = (bt - BREATH_INHALE_S - BREATH_PAUSE_S) / BREATH_EXHALE_S;
+    level = 0.5f + 0.5f * cosf(PI * p);
+  }
+  int breath = 8 + (int)(52.0f * level); // 8..60: 52 distinct levels
+  for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
+    if (want[i] < breath) want[i] = (uint8_t)breath;
+}
+
+static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
   memset(want, 0, FACE_COLS * FACE_ROWS);
   int f = faceFrame;
 
@@ -823,6 +873,16 @@ static void computeFaceLevels(uint8_t want[FACE_COLS * FACE_ROWS]) {
     uint32_t n = (uint32_t)(f * 73 + 151);
     n = (n ^ (n >> 5)) * 2654435761u;
     int amp = (int)((n >> 16) & 0xFF);
+
+    if (currentEmotion == EMOTION_CUSTOM) {
+      // Every designed/edited face carries two frames: while speaking, flap
+      // between the mouth-open and mouth-closed frame on the same noise the
+      // built-in talking animation uses; otherwise show the resting frame.
+      const uint8_t *frame = (speaking && amp > 100) ? customFaceOpenGrid : customFaceGrid;
+      for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
+        if (frame[i]) facePut(want, i / FACE_COLS, i % FACE_COLS, frame[i]);
+      return;
+    }
 
     switch (currentEmotion) {
       case EMOTION_JOY:
@@ -1063,45 +1123,33 @@ static void computeFaceLevels(uint8_t want[FACE_COLS * FACE_ROWS]) {
     uint32_t n = (uint32_t)(f * 73 + 151);
     n = (n ^ (n >> 5)) * 2654435761u;
     int amp = (int)((n >> 16) & 0xFF);
+    if (neutralCustomActive) {
+      const uint8_t *nf = (amp > 100) ? neutralFaceOpenGrid : neutralFaceGrid;
+      for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
+        if (nf[i]) facePut(want, i / FACE_COLS, i % FACE_COLS, nf[i]);
+      return;
+    }
     int rowsOpen = 1 + amp * 3 / 256;
     int half = (amp > 140) ? 3 : 2;
     for (int r = 5; r < 5 + rowsOpen; r++)
       for (int c = 6 - half; c < 6 + half; c++) facePut(want, r, c, 255);
   } else {
-    // Idle: a fixed smile plus a breath that never quite stops.
-    for (int c = 3; c <= 8; c++) facePut(want, 6, c, 255);
-    facePut(want, 5, 2, 255);
-    facePut(want, 5, 9, 255);
-    // Continuous, not stepped (a /8*8 rounding used to collapse this into
-    // ~5 visible brightness levels - removed; full 8-bit resolution is free
-    // on this LCD, unlike the real-LED reference project this was ported
-    // from). Matches an actual human breath's asymmetric timing - a real
-    // inhale/pause/exhale, not a symmetric sine wave that fades in and out
-    // over equal durations with no pause at the top - via three separately-
-    // timed eased segments (raised-cosine: zero velocity at both ends of
-    // each segment, so they stitch together with no kink where one meets
-    // the next) driven by wall-clock time rather than the tick counter, so
-    // the rhythm stays correct even if drawFaceTick()'s call cadence drifts.
-    const float BREATH_INHALE_S = 1.5f;
-    const float BREATH_PAUSE_S = 0.5f;
-    const float BREATH_EXHALE_S = 2.5f;
-    const float BREATH_CYCLE_S = BREATH_INHALE_S + BREATH_PAUSE_S + BREATH_EXHALE_S;
-    float t = fmodf(millis() / 1000.0f, BREATH_CYCLE_S);
-    float level; // 0.0 = dim end of the breath, 1.0 = bright end
-    if (t < BREATH_INHALE_S) {
-      level = 0.5f - 0.5f * cosf(PI * (t / BREATH_INHALE_S));
-    } else if (t < BREATH_INHALE_S + BREATH_PAUSE_S) {
-      level = 1.0f;
+    // Idle: the user's neutral design if they made one, else a fixed smile.
+    if (neutralCustomActive) {
+      for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
+        if (neutralFaceGrid[i]) facePut(want, i / FACE_COLS, i % FACE_COLS, neutralFaceGrid[i]);
     } else {
-      float p = (t - BREATH_INHALE_S - BREATH_PAUSE_S) / BREATH_EXHALE_S;
-      level = 0.5f + 0.5f * cosf(PI * p);
+      for (int c = 3; c <= 8; c++) facePut(want, 6, c, 255);
+      facePut(want, 5, 2, 255);
+      facePut(want, 5, 9, 255);
     }
-    // High-fidelity smooth breathing: range 8 to 60 gives 52 distinct levels
-    // providing continuous, flicker-free fading across the 30ms refresh cadence
-    int breath = 8 + (int)(52.0f * level);
-    for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
-      if (want[i] < breath) want[i] = (uint8_t)breath;
+    // (the breathing background is applied to every face by computeFaceLevels())
   }
+}
+
+static void computeFaceLevels(uint8_t want[FACE_COLS * FACE_ROWS]) {
+  computeFaceLevelsShape(want);
+  if (!isMicHardwareMuted) applyBreathBackground(want);
 }
 
 // Draws only the dots whose brightness actually changed since the last call
@@ -1134,12 +1182,21 @@ static void drawFaceInternal(bool forceFull) {
       case EMOTION_DISGUSTED:  onR = 166; onG = 226; onB = 46;  break; // sickly olive
       case EMOTION_BORED:      onR = 126; onG = 154; onB = 133; break; // slate grey-green
       case EMOTION_SLEEPY:     onR = 46;  onG = 74;  onB = 56;  break; // dim forest green
+      case EMOTION_CUSTOM:     onR = (customFaceRGB >> 16) & 0xFF; onG = (customFaceRGB >> 8) & 0xFF; onB = customFaceRGB & 0xFF; break;
     }
   }
   else if (currentState == STATE_CONNECTING_WIFI || currentState == STATE_CONNECTING_SERVER) { onR = 255; onG = 165; onB = 2; }
+  else if (recordingActive) { onR = 200; onG = 30; onB = 30; }
   else if (currentState == STATE_LISTENING) { onR = 46; onG = 213; onB = 115; }
   else if (currentState == STATE_THINKING) { onR = 112; onG = 161; onB = 255; }
   else if (currentState == STATE_SPEAKING || isSpeakerActive()) { onR = 165; onG = 94; onB = 234; }
+  // A redesigned neutral face uses its own colour while idle or speaking; the
+  // listening / thinking / connecting / recording colours stay, as they signal state.
+  if (neutralCustomActive && !isMicHardwareMuted && currentEmotion == EMOTION_NEUTRAL && !recordingActive &&
+      currentState != STATE_CONNECTING_WIFI && currentState != STATE_CONNECTING_SERVER &&
+      currentState != STATE_LISTENING && currentState != STATE_THINKING) {
+    onR = (neutralFaceRGB >> 16) & 0xFF; onG = (neutralFaceRGB >> 8) & 0xFF; onB = neutralFaceRGB & 0xFF;
+  }
   const int offR = 12, offG = 20, offB = 16;
 
   // A dot only gets repainted below when its BRIGHTNESS changed - that's
@@ -1193,8 +1250,109 @@ void drawFaceTick() {
 //   DoubleDown, SingleDown, FortyFiveDown, Flat, FortyFiveUp, SingleUp, DoubleUp
 // - Blood glucose value in mmol/L in Font 4 (<4.0 red, 4.0-7.5 green, >7.5 yellow)
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Calendar icons (see calendarService.js): right of the face, around the glucose
+// reading. Sensor sits above it (white on the day, orange the day before), the
+// pod change icon below it, and the prescription icon under that.
+// ---------------------------------------------------------------------------
+static const uint8_t PROGMEM pod_icon_24x24[] = {
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x3C, 0x00,  // ..........####..........
+  0x00, 0x7E, 0x00,  // .........######.........
+  0x00, 0xFF, 0x00,  // ........########........
+  0x80, 0xFF, 0x01,  // .......##########.......
+  0xC0, 0xFF, 0x03,  // ......############......
+  0xC0, 0xFF, 0x03,  // ......############......
+  0xE0, 0xFF, 0x07,  // .....##############.....
+  0xE0, 0xFF, 0x07,  // .....##############.....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF8, 0xFF, 0x1F,  // ...##################...
+  0xF8, 0xFF, 0x1F,  // ...##################...
+  0xF8, 0xFF, 0x1F,  // ...##################...
+  0xF8, 0xFF, 0x1F,  // ...##################...
+  0xF8, 0xFF, 0x1F,  // ...##################...
+  0xF8, 0xC3, 0x1F,  // ...#######....#######...
+  0xF0, 0xC3, 0x0F,  // ....######....######....
+  0xC0, 0xC3, 0x03,  // ......####....####......
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x00, 0x00,  // ........................
+};
+
+static const uint8_t PROGMEM sensor_icon_24x24[] = {
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0xFF, 0x00,  // ........########........
+  0xC0, 0xFF, 0x03,  // ......############......
+  0xE0, 0xFF, 0x07,  // .....##############.....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF8, 0xFF, 0x1F,  // ...##################...
+  0xFC, 0x81, 0x3F,  // ..#######......#######..
+  0x7C, 0x00, 0x3E,  // ..#####..........#####..
+  0x7E, 0x18, 0x7E,  // .######....##....######.
+  0x3E, 0x7E, 0x7C,  // .#####...######...#####.
+  0x3E, 0x7E, 0x7C,  // .#####...######...#####.
+  0x3E, 0xFF, 0x7C,  // .#####..########..#####.
+  0x3E, 0xFF, 0x7C,  // .#####..########..#####.
+  0x3E, 0x7E, 0x7C,  // .#####...######...#####.
+  0x3E, 0x7E, 0x7C,  // .#####...######...#####.
+  0x7E, 0x18, 0x7E,  // .######....##....######.
+  0x7C, 0x00, 0x3E,  // ..#####..........#####..
+  0xFC, 0x81, 0x3F,  // ..#######......#######..
+  0xF8, 0xFF, 0x1F,  // ...##################...
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xE0, 0xFF, 0x07,  // .....##############.....
+  0xC0, 0xFF, 0x03,  // ......############......
+  0x00, 0xFF, 0x00,  // ........########........
+  0x00, 0x00, 0x00,  // ........................
+};
+
+static const uint8_t PROGMEM rx_icon_24x24[] = {
+  0x00, 0x00, 0x00,  // ........................
+  0x7C, 0x7C, 0x00,  // ..#####...#####.........
+  0xFE, 0xFE, 0x00,  // .#######.#######........
+  0x7C, 0x7C, 0x00,  // ..#####...#####.........
+  0x38, 0x38, 0x00,  // ...###.....###..........
+  0x38, 0x38, 0x00,  // ...###.....###..........
+  0x38, 0x38, 0x00,  // ...###.....###..........
+  0x38, 0x38, 0x00,  // ...###.....###..........
+  0x38, 0x38, 0x00,  // ...###.....###..........
+  0x38, 0x38, 0x00,  // ...###.....###..........
+  0x38, 0x38, 0x00,  // ...###.....###..........
+  0x78, 0x3C, 0x00,  // ...####...####..........
+  0xF0, 0x1F, 0x00,  // ....#########...........
+  0xE0, 0x0F, 0x3E,  // .....#######.....#####..
+  0xC0, 0x07, 0x7F,  // ......#####.....#######.
+  0x80, 0x83, 0xFF,  // .......###.....#########
+  0x80, 0x83, 0xE3,  // .......###.....###...###
+  0x80, 0x83, 0xE3,  // .......###.....###...###
+  0x80, 0x87, 0xE3,  // .......####....###...###
+  0x00, 0x8F, 0xFF,  // ........####...#########
+  0x00, 0x3F, 0x7F,  // ........######..#######.
+  0x00, 0x7E, 0x3E,  // .........######..#####..
+  0x00, 0x38, 0x00,  // ...........###..........
+  0x00, 0x00, 0x00,  // ........................
+};
+
+static uint8_t calSensor = 0; // 0 none, 1 white, 2 orange
+static uint8_t calPod = 0;
+static uint8_t calRx = 0;
+
+static void drawCalendarIcons() {
+  const uint16_t bg = tft.color565(11, 14, 21);
+  const uint16_t white = tft.color565(255, 255, 255);
+  const uint16_t orange = tft.color565(255, 140, 0);
+  const int x = 292 - 12;
+  tft.fillRect(266, 45, 54, 28, bg);
+  tft.fillRect(266, 122, 54, 58, bg);
+  if (calSensor) tft.drawXBitmap(x, 47, sensor_icon_24x24, 24, 24, calSensor == 2 ? orange : white);
+  if (calPod) tft.drawXBitmap(x, 124, pod_icon_24x24, 24, 24, white);
+  if (calRx) tft.drawXBitmap(x, 152, rx_icon_24x24, 24, 24, white);
+}
+
 #define GLUCOSE_CX 292
-#define GLUCOSE_CY 116
 
 static String currentGlucoseValue = "--";
 static String currentGlucoseDirection = "Flat";
@@ -1268,24 +1426,25 @@ void drawGlucoseWidget() {
   tft.startWrite();
 
   // Clear widget bounding box without touching the face (ends at 264) or screen edges (320)
-  tft.fillRect(266, 80, 54, 80, tft.color565(11, 14, 21));
+  tft.fillRect(266, 74, 54, 48, tft.color565(11, 14, 21));
 
   uint16_t color = getGlucoseColor(currentGlucoseValue);
 
-  // 1. Draw Direction Arrow(s) above the number (cy = GLUCOSE_CY - 16 = 95)
-  drawGlucoseArrows(GLUCOSE_CX, GLUCOSE_CY - 16, currentGlucoseDirection, color);
+  // 1. Direction arrow(s) above the number (cy = 84; moved up to make room for the calendar icons)
+  drawGlucoseArrows(GLUCOSE_CX, 84, currentGlucoseDirection, color);
 
-  // 2. Draw Blood Glucose Value below arrows (cy = GLUCOSE_CY + 14 = 125)
+  // 2. Blood glucose value below the arrows (cy = 108)
   tft.setTextDatum(middle_center);
   tft.setFont(&fonts::Font4);
   tft.setTextColor(color);
-  tft.drawString(currentGlucoseValue, GLUCOSE_CX, GLUCOSE_CY + 14);
+  tft.drawString(currentGlucoseValue, GLUCOSE_CX, 108);
 
   // Reset font and datum
   tft.setFont(&fonts::Font0);
   tft.setTextSize(1);
   tft.setTextDatum(top_left);
 
+  drawCalendarIcons();
   tft.endWrite();
 }
 
@@ -2044,7 +2203,10 @@ void renderScreen(bool forceRedraw = false) {
   // Status Pill and Waveform area
   uint32_t statusColor;
   const char *statusText;
-  if (isMicHardwareMuted) {
+  if (recordingActive) {
+    statusColor = tft.color565(255, 71, 87);
+    statusText = "RECORDING";
+  } else if (isMicHardwareMuted) {
     statusColor = tft.color565(255, 71, 87); // Crimson red
     statusText = "MIC MUTED";
   } else {
@@ -3018,11 +3180,81 @@ size_t resample24to16(const int16_t *in, size_t inSamples, int16_t *out,
 // (reuses the exact same Gemini Live message parsing that used to live in
 // webSocketEvent's WStype_TEXT case), type 0x01 = binary 24kHz PCM audio from
 // Gemini, resampled down to the 16kHz I2S bus rate before playback.
+// Applies the backend's neutralFace: an object {grid, openGrid, color} switches the
+// everyday face to the user's design, anything else restores the built-in one.
+static void applyNeutralFace(JsonVariantConst nf) {
+  if (nf.is<JsonObjectConst>() && nf["grid"].is<const char *>() && strlen(nf["grid"].as<const char *>()) >= 96) {
+    const char *g = nf["grid"];
+    const char *og = nf["openGrid"].is<const char *>() ? nf["openGrid"].as<const char *>() : g;
+    if (strlen(og) < 96) og = g;
+    auto hexLevel = [](char ch) -> uint8_t {
+      int v = (ch >= '0' && ch <= '9') ? ch - '0' : (ch >= 'a' && ch <= 'f') ? ch - 'a' + 10 : (ch >= 'A' && ch <= 'F') ? ch - 'A' + 10 : 0;
+      return (uint8_t)(v * 17);
+    };
+    for (int i = 0; i < 96; i++) { neutralFaceGrid[i] = hexLevel(g[i]); neutralFaceOpenGrid[i] = hexLevel(og[i]); }
+    neutralFaceRGB = (uint32_t)strtoul(nf["color"] | "4CFF7A", nullptr, 16);
+    neutralCustomActive = true;
+  } else {
+    neutralCustomActive = false;
+  }
+}
+
+// Enter/leave recording mode. Entering silences and flushes the speaker and
+// puts the device into a plain "mic on" state; leaving returns to STANDBY.
+void setRecordingMode(bool on) {
+  if (on == recordingActive) return;
+  recordingActive = on;
+  Serial.printf("[IMS] Recording mode %s\n", on ? "ON (silent)" : "OFF");
+  setSpeakerMute(true);
+  if (audioPlaybackQueue) xQueueReset(audioPlaybackQueue);
+  modelTurnActive = false;
+  conversationShouldClose = false;
+  isSpeakingDetected = false;
+  if (previewFlow != PREVIEW_IDLE) { previewFlow = PREVIEW_IDLE; previewPendingText = ""; }
+  if (on) {
+    conversationOpen = true;
+    if (currentState != STATE_CONNECTING_WIFI && currentState != STATE_CONNECTING_SERVER) currentState = STATE_LISTENING;
+    micStreamingActive = !isMicHardwareMuted;
+    lastSpeechTimestamp = millis();
+  } else {
+    conversationOpen = false;
+    micStreamingActive = false;
+    if (currentState == STATE_LISTENING || currentState == STATE_THINKING || currentState == STATE_SPEAKING) currentState = STATE_STANDBY;
+    lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
+  }
+  if (onSettingsScreen) { onSettingsScreen = false; onPrefsScreen = false; onVoiceScreen = false; }
+  renderScreen(true);
+}
+
 void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
+  // Recording: nothing the server sends may make a sound or change state. Audio
+  // is dropped outright, and only the schedule/glucose updates (which carry the
+  // recording on/off flag and the status icons) are processed.
+  if (recordingActive) {
+    if (type == 0x01) return;
+    JsonDocument peek;
+    if (deserializeJson(peek, data, len) || (!peek["schedule"].is<JsonObject>() && !peek["glucose"].is<JsonObject>() && !peek["setupComplete"].is<JsonObject>())) return;
+  }
   if (type == 0x01) {
     // Incoming 24kHz PCM audio from IMS proxy - resample to 16kHz bus rate.
     // Downsampling only shrinks the sample count, so the input's own sample
     // count is always a safe upper bound for the output buffer.
+    // Ims speaks ONLY inside a conversation. Every legitimate spoken reply
+    // arrives after the device has left STANDBY (a wake phrase -> VERIFYING, a
+    // question -> THINKING, and reminder announcements / voice previews go
+    // through sendTextQuery() which enters THINKING first). Audio arriving while
+    // the device is idle is unsolicited - e.g. a fresh Gemini session greeting
+    // by itself, or a reply that outlived a finished conversation - so it is
+    // dropped rather than played, and never opens a conversation.
+    if (currentState == STATE_STANDBY || currentState == STATE_CONNECTING_WIFI || currentState == STATE_CONNECTING_SERVER) {
+      static unsigned long lastDropLogMs = 0;
+      if (millis() - lastDropLogMs > 2000) {
+        lastDropLogMs = millis();
+        Serial.println("[IMS] Dropped audio received outside a conversation (standby)");
+        sendDebug("dropped_unsolicited_audio");
+      }
+      return;
+    }
     static int16_t *resampled = nullptr;
     if (resampled == nullptr) {
       resampled = (int16_t *)ps_malloc(FRAME_BUF_CAPACITY);
@@ -3149,8 +3381,34 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
     // Backend forwarded Gemini's setEmotion tool call - purely cosmetic, just
     // updates which expression computeFaceLevels() draws. Doesn't touch
     // currentState/conversation flow at all.
+    if (doc.as<JsonObject>().containsKey("neutralFace")) applyNeutralFace(doc["neutralFace"]);
     if (doc["setEmotion"].is<const char *>()) {
-      currentEmotion = emotionFromName(doc["setEmotion"].as<const char *>());
+      // A face from /ims/facedesigner rides along as {grid, openGrid, color}:
+      // two frames of 96 hex digits (0-f -> brightness 0-255) row by row, and rrggbb.
+      if (doc["face"].is<JsonObject>() && doc["face"]["grid"].is<const char *>()) {
+        const char *g = doc["face"]["grid"];
+        if (strlen(g) >= 96) {
+          // "openGrid" is the mouth-open frame; if a sender omits it, reuse the resting frame.
+          const char *og = doc["face"]["openGrid"].is<const char *>() ? doc["face"]["openGrid"].as<const char *>() : g;
+          if (strlen(og) < 96) og = g;
+          auto hexLevel = [](char ch) -> uint8_t {
+            int v = (ch >= '0' && ch <= '9') ? ch - '0' : (ch >= 'a' && ch <= 'f') ? ch - 'a' + 10 : (ch >= 'A' && ch <= 'F') ? ch - 'A' + 10 : 0;
+            return (uint8_t)(v * 17);
+          };
+          for (int i = 0; i < 96; i++) {
+            customFaceGrid[i] = hexLevel(g[i]);
+            customFaceOpenGrid[i] = hexLevel(og[i]);
+          }
+          const char *col = doc["face"]["color"] | "4CFF7A";
+          customFaceRGB = (uint32_t)strtoul(col, nullptr, 16);
+          strlcpy(customFaceName, doc["setEmotion"].as<const char *>(), sizeof(customFaceName));
+          currentEmotion = EMOTION_CUSTOM;
+        } else {
+          currentEmotion = emotionFromName(doc["setEmotion"].as<const char *>());
+        }
+      } else {
+        currentEmotion = emotionFromName(doc["setEmotion"].as<const char *>());
+      }
       emotionSetAtMs = millis();
       renderScreen(true); // updates the bottom-right emotion label immediately
       Serial.printf("[IMS] setEmotion(%s) -> %d\n", doc["setEmotion"].as<const char *>(), currentEmotion);
@@ -3225,6 +3483,21 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       cameraAttached = s["camera"]["attached"] | false;
       cameraAwake = s["camera"]["awake"] | false;
       cameraSetAwake(cameraAwake);
+      setRecordingMode(s["recording"]["active"] | false);
+      if (s.containsKey("neutralFace")) applyNeutralFace(s["neutralFace"]);
+      {
+        uint8_t nSensor = 0, nPod = 0, nRx = 0;
+        for (JsonObject ic : s["calendar"]["icons"].as<JsonArray>()) {
+          const char *nm = ic["icon"] | "";
+          if (strcmp(nm, "sensor") == 0) nSensor = strcmp(ic["color"] | "white", "orange") == 0 ? 2 : 1;
+          else if (strcmp(nm, "pod") == 0) nPod = 1;
+          else if (strcmp(nm, "prescription") == 0) nRx = 1;
+        }
+        if (nSensor != calSensor || nPod != calPod || nRx != calRx) {
+          calSensor = nSensor; calPod = nPod; calRx = nRx;
+          if (!onSettingsScreen) drawGlucoseWidget();
+        }
+      }
       Serial.printf("[IMS] Schedule updated: alarm=%d, timer=%d, reminder=%d, birthday=%d(green=%d), newReleases=%d, camera=%d\n",
                     alarmCount, timerCount, reminderCount, birthdayCount, birthdayIsGreen, newReleaseCount, cameraAttached);
       if (!onSettingsScreen) {
@@ -3625,7 +3898,7 @@ void audioMicTask(void *param) {
             }
           } else if (rms < VOICE_SILENCE_THRESHOLD) {
             // User went silent while in LISTENING
-            if (isSpeakingDetected && (millis() - lastSpeechTimestamp > 900) &&
+            if (!recordingActive && isSpeakingDetected && (millis() - lastSpeechTimestamp > 900) &&
                 (millis() - speechStartTime > 1200)) {
               Serial.printf("[Audio] Silence detected after speech turn (RMS=%d, speechMs=%lu) -> queuing turnComplete\n",
                             rms, millis() - speechStartTime);
@@ -3961,7 +4234,10 @@ void loop() {
   if (muteButtonActive != lastMuteButtonActive) {
     lastMuteButtonActive = muteButtonActive;
     isMicHardwareMuted = muteButtonActive;
-    if (isMicHardwareMuted) {
+    if (recordingActive) {
+      // Muting mid-recording just stops the mic feed; it must not end the session.
+      Serial.printf("[Button] Mic mute %s during recording\n", muteButtonActive ? "on" : "off");
+    } else if (isMicHardwareMuted) {
       Serial.println("[Button] Physical mic MUTE switch engaged (button illuminated)");
       if (currentState == STATE_LISTENING || currentState == STATE_VERIFYING) {
         sendAudioStreamEnd(); // was mid-stream - close it out cleanly on Gemini's side
@@ -3985,6 +4261,19 @@ void loop() {
       renderScreen(true);
     }
     delay(50); // debounce
+  }
+
+  // Recording: hold the device in a plain "mic on" state whatever else happens
+  // (reconnects, stray state changes) and defeat every idle timeout below.
+  if (recordingActive) {
+    lastSpeechTimestamp = millis();
+    conversationShouldClose = false;
+    if (tcpClient.connected() && geminiSetupComplete &&
+        (currentState == STATE_STANDBY || currentState == STATE_VERIFYING || currentState == STATE_THINKING || currentState == STATE_SPEAKING)) {
+      currentState = STATE_LISTENING;
+      renderScreen(true);
+    }
+    micStreamingActive = !isMicHardwareMuted && currentState == STATE_LISTENING;
   }
 
   // Auto-transition from SPEAKING once the audio queue is fully drained and
@@ -4028,6 +4317,24 @@ void loop() {
       sendSessionClosed();
       lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
     }
+    renderScreen(true);
+  }
+
+  // The user said goodbye (endConversation arrived) but the device is already
+  // LISTENING - the farewell audio finished before the flag did, or Ims said
+  // nothing at all (e.g. "stop IMS"). The SPEAKING auto-transition above never
+  // runs in that case, so without this the mic would stay open indefinitely.
+  // Close straight away: back to STANDBY with the face and status reset.
+  if (conversationShouldClose && currentState == STATE_LISTENING) {
+    sendAudioStreamEnd();
+    sendSessionClosed();
+    currentState = STATE_STANDBY;
+    micStreamingActive = false;
+    isSpeakingDetected = false;
+    conversationOpen = false;
+    conversationShouldClose = false;
+    setSpeakerMute(true);
+    lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
     renderScreen(true);
   }
 
@@ -4337,6 +4644,8 @@ void loop() {
       onSettingsScreen = true;
       drawSettingsScreen();
       delay(200);
+    } else if (recordingActive) {
+      // Recording: taps do nothing at all.
     } else if (isMicHardwareMuted) {
       Serial.println("[Touch] Tap while mic is hardware muted");
       lastTranscript = "Mic is muted (top button lit)";

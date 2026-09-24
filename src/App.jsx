@@ -29,6 +29,10 @@ import BirthdayPortal from './components/Dashboard/BirthdayPortal';
 import BoardgamesPortal from './components/Dashboard/BoardgamesPortal';
 import LookPortal from './components/Dashboard/LookPortal';
 import FacesPortal from './components/Dashboard/FacesPortal';
+import FaceDesignerPortal from './components/Dashboard/FaceDesignerPortal';
+import WifiPortal from './components/Dashboard/WifiPortal';
+import RecordingsPortal from './components/Dashboard/RecordingsPortal';
+import CalendarPortal from './components/Dashboard/CalendarPortal';
 import ImsHub from './components/Dashboard/ImsHub';
 
 const getShortSummary = (text) => {
@@ -1382,6 +1386,46 @@ export default function App() {
   if (currentPath === '/ims/look' || currentPath.startsWith('/ims/look')) {
     return (
       <LookPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/calendar' || currentPath.startsWith('/ims/calendar')) {
+    return (
+      <CalendarPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/recordings' || currentPath.startsWith('/ims/recordings')) {
+    return (
+      <RecordingsPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/wifi' || currentPath.startsWith('/ims/wifi')) {
+    return (
+      <WifiPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/facedesigner' || currentPath.startsWith('/ims/facedesigner')) {
+    return (
+      <FaceDesignerPortal
         theme={state.theme}
         onThemeToggle={actions.toggleTheme}
         setCurrentPath={setCurrentPath}

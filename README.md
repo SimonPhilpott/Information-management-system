@@ -159,11 +159,15 @@ The **IMS Hub** (`/ims`) links to every service below. Each page has a back butt
 
 | Page | What it does |
 |---|---|
-| `/ims/memories` | View, add, edit and delete everything Ims has been told to remember (SQLite-backed) |
-| `/ims/persona` | Edit `ims_persona_rules.md` - Ims's dialect, identity and tool rules - live, no restart |
+| `/ims/memories` | View, add, edit and delete everything Ims has been told to remember (SQLite-backed). Deleting archives: the Archive panel keeps deleted memories with when they were added and deleted, and can restore them |
+| `/ims/persona` | Edit `ims_persona_rules.md` as **sections**: editable cards you can reorder, duplicate, remove and add from templates (pronunciation, relationship, grammar, phrases to avoid, tool rules), or switch to raw markdown. Every save keeps the previous version in a History list. Live, no restart |
+| `/ims/facedesigner` | **Face Designer.** Every face Ims can pull, as two 12x8 dot grids (mouth closed / open). Click dots to light them (click again to switch off), open the colour picker or type a hex colour, name the face, and write *when it should be used* - that text is what Gemini is told. Every face is editable, including the everyday neutral face (used when idle and speaking; listening, thinking and connecting keep their state colours). The faded breathing background dots always take a dim version of the face's colour. Preview on IMS |
+| `/ims/wifi` | **Wi-Fi networks.** Add networks and passwords. Passwords are encrypted on disk (AES-256-GCM, key in `server/data/.wifi_key` or `WIFI_ENCRYPTION_KEY`) and shown as dots until you press the eye, which fetches that one password for 10 seconds and is logged. Needs this browser signed in with your Google account |
+| `/ims/recordings` | **Call and meeting recordings.** Say "Ims, record this call", answer who it is with, and Ims goes completely silent (no speech, alarms, sounds or reactions; taps ignored) while it transcribes. Say "Ims stop" or "Ims stop recording" to end it. Open, copy and delete transcripts here, and ask for an AI summary with actions, follow-up questions, key points, decisions and risks. Call audio is never saved, and transcripts are kept out of Ims's memory and logs |
+| `/ims/calendar` | **Google Calendar.** Upcoming events, add appointments (or ask Ims), and rules: when an event title contains some words Ims shows an icon (pod below the glucose reading, sensor above it - white on the day, orange the day before, prescription lower right) or sets a reminder. Bin-day style events are filtered out before anything sees them. Reminders and alarms on their pages have an *Add to Google Calendar* button. Needs Calendar access: sign in again once to grant it, and enable the Google Calendar API in your Google Cloud project |
 | `/ims/musicscan` | **Music scanner.** Nightly (default 01:00 London time) scan of your music library against MusicBrainz. Shows scan progress, and per artist every album/EP with an exact release date, coloured **green = owned**, **red = not owned**, **grey = owned but not on MusicBrainz**. Views for Day / Week / Month / 6 Months / Year plus an All Artists list; collapsible artists with owned / not-owned counts; a "Released today" list (this count drives the vinyl icon on the device); per-artist search-name and pseudonym editing with an instant rescan |
-| `/ims/alarms`, `/ims/timers`, `/ims/reminders` | Create, edit and cancel entries; changes reach the device within ~15 s. Ims chimes/speaks them when they fire |
-| `/ims/birthday` | Names, day/month and optional birth year. A cake icon appears on the device within 7 days (yellow), or green on the day (green wins if both apply) |
+| `/ims/alarms`, `/ims/timers`, `/ims/reminders` | Create, edit and cancel entries; changes reach the device within ~15 s. Ims chimes/speaks them when they fire. An **Archive** tab keeps everything that has finished, with when it was set, when it went off, and whether it was acknowledged, went unanswered or was cancelled, plus a full event timeline. Ask Ims "did my reminder go off?" or "what alarms did I set yesterday?" |
+| `/ims/birthday` | Names, day/month and optional birth year. A cake icon appears on the device within 7 days (yellow), or green on the day (green wins if both apply). Deleting archives; the Archive tab lists deleted birthdays (restorable) and those that passed in the last 30 days |
 | `/ims/boardgames` | Your BoardGameGeek collection, with expandable expansions (owned vs not owned) and a **want-to-sell tick** per game/expansion. Needs a BGG API token (see below) |
 | `/ims/look` | See what Ims sees: live view, snapshots, and questions about the live view or any saved photo (answered by Gemini, with recognised people named) |
 | `/ims/faces` | Teach Ims who people are: capture a face, name it, add notes, add more samples. Recognition is **local** |
@@ -178,7 +182,7 @@ The first time you talk to Ims each day (London date), it offers your morning re
 
 ### Ims tools during a conversation
 
-Beyond searching your library, Ims can call: weather, blood glucose (Nightscout), timers/alarms/reminders, lists, memories, `getUpcomingBirthdays`, `getNewMusicReleases`, and `lookAtCamera`. The birthday, music and camera tools return real data, and Ims is instructed to say plainly when there is none instead of guessing.
+Beyond searching your library, Ims can call: weather, blood glucose (Nightscout), timers/alarms/reminders, lists, memories, `getUpcomingBirthdays`, `getNewMusicReleases`, `getScheduleHistory` (past alarms/timers/reminders) and `lookAtCamera`. The birthday, music and camera tools return real data, and Ims is instructed to say plainly when there is none instead of guessing.
 
 ## The voice terminal (ESP32-S3-BOX-3)
 
@@ -210,7 +214,7 @@ platformio run --target upload       # flash over USB
 
 ### Wake phrases
 
-Ims only answers when you start with **"Hey IMS"**, **"Hi IMS"** or **"Eh up IMS"** (or touch the screen). Once a conversation is open it **stays open until you end it** ("thanks, bye", "that's all"...) - pauses between questions are fine. Saying "stop IMS" stops it immediately. There is a 30-minute safety net for an abandoned open mic.
+Ims speaks **only inside an active conversation**. A conversation starts when you say **"Hey IMS"**, **"Hi IMS"** or **"Eh up IMS"** (or touch the screen). It ends when you say a goodbye or stop phrase ("thanks IMS bye", "bye IMS", "goodbye IMS", "stop IMS"), or **automatically after about 15 seconds with no follow-up**. When it ends, the face and status return to **STANDBY** and Ims produces no speech or other output until the next wake phrase. As a safeguard the device also drops any audio that arrives while it is idle, so a stray Gemini reply can never make Ims speak over a conversation you're having with someone else.
 
 ## Voice, persona and conversation behaviour
 

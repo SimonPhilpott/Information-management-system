@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Sun, Moon, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Sun, Moon, ChevronRight } from 'lucide-react';
 
 // Each entry here is one card on the hub. Add a new one whenever a new
 // /ims/* page is built - this is the single place that needs to know about
@@ -85,6 +85,38 @@ const LINKS = [
     icon: ScanFace,
     gradient: 'from-violet-500 to-purple-600',
     glow: 'rgba(139,92,246,0.3)'
+  },
+  {
+    path: '/ims/facedesigner',
+    title: 'Face Designer',
+    description: "Design Ims's faces on a dot grid and say when each should be used.",
+    icon: Smile,
+    gradient: 'from-yellow-400 to-amber-500',
+    glow: 'rgba(250,204,21,0.3)'
+  },
+  {
+    path: '/ims/wifi',
+    title: 'Wi-Fi',
+    description: 'Wi-Fi networks Ims can use. Passwords are encrypted and hidden until you reveal them.',
+    icon: Wifi,
+    gradient: 'from-sky-400 to-blue-600',
+    glow: 'rgba(56,189,248,0.3)'
+  },
+  {
+    path: '/ims/recordings',
+    title: 'Recordings',
+    description: 'Transcripts of calls and meetings Ims recorded silently, with an AI summary.',
+    icon: Mic,
+    gradient: 'from-rose-500 to-red-600',
+    glow: 'rgba(244,63,94,0.3)'
+  },
+  {
+    path: '/ims/calendar',
+    title: 'Calendar',
+    description: 'Your Google Calendar: appointments, and rules that show icons or set reminders.',
+    icon: CalendarDays,
+    gradient: 'from-indigo-500 to-blue-600',
+    glow: 'rgba(99,102,241,0.3)'
   }
 ];
 

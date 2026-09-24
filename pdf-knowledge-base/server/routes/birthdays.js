@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { listBirthdays, addBirthday, updateBirthday, deleteBirthday } from '../services/birthdayService.js';
+import { listBirthdays, addBirthday, updateBirthday, deleteBirthday, restoreBirthday, getArchivedBirthdays, getRecentlyPassedBirthdays } from '../services/birthdayService.js';
 
 // No direct WS push to hardware here (would need a circular import back to
 // index.js, which owns the hardware socket) - the existing 15s schedule-poll
@@ -10,6 +10,24 @@ const router = Router();
 router.get('/', (req, res) => {
   try {
     res.json({ success: true, birthdays: listBirthdays() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Deleted birthdays, plus the ones that have recently passed (last 30 days).
+router.get('/archive', (req, res) => {
+  try {
+    res.json({ success: true, deleted: getArchivedBirthdays(), recentlyPassed: getRecentlyPassedBirthdays(Number(req.query.days) || 30) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:id/restore', (req, res) => {
+  try {
+    if (!restoreBirthday(Number(req.params.id))) return res.status(404).json({ error: 'Archived birthday not found' });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

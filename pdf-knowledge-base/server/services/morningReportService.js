@@ -6,6 +6,7 @@ import { getItemsDueToday } from './remindersService.js';
 import { getUpcomingBirthdays } from './birthdayService.js';
 import { getTodayReleases } from './musicScanService.js';
 import { identifyPeopleInView } from './lookService.js';
+import { getUpcomingEvents, getEventsOn, describeEvents } from './calendarService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STATE_PATH = path.join(__dirname, '..', 'data', 'morning_report_state.json');
@@ -87,6 +88,14 @@ export async function buildMorningReportDirective() {
     parts.push(`Scheduled today: ${desc.join('; ')}.`);
   } else {
     parts.push('Nothing else scheduled for today.');
+  }
+
+  try {
+    await getUpcomingEvents(1); // refreshes the cache if stale
+    const today = getEventsOn(londonNow().dateStr);
+    if (today.length > 0) parts.push(`Calendar today: ${describeEvents(today).join('; ')}.`);
+  } catch (err) {
+    console.warn('[MorningReport] Calendar skipped:', err.message);
   }
 
   const birthdays = getUpcomingBirthdays();

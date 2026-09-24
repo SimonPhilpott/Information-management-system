@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { scheduleItem, listScheduledItems, cancelScheduledItem, updateScheduledItem } from '../services/remindersService.js';
+import { scheduleItem, listScheduledItems, cancelScheduledItem, updateScheduledItem, getArchivedItems, getScheduleEvents } from '../services/remindersService.js';
 
 // One shared router mounted three times (/api/alarms, /api/timers,
 // /api/reminders) rather than three near-identical files - alarms, timers
@@ -12,6 +12,28 @@ export default function scheduledRouter(type) {
   router.get('/', (req, res) => {
     try {
       res.json({ success: true, items: listScheduledItems(type) });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Finished items: cancelled, or gone off (acknowledged / unanswered).
+  // ?days=30 (0 = all time) & ?search=text
+  router.get('/archive', (req, res) => {
+    try {
+      const days = req.query.days === undefined ? 30 : Number(req.query.days);
+      res.json({ success: true, items: getArchivedItems({ type, days, search: req.query.search || '' }) });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // The timeline of everything that happened to these items (created, edited,
+  // went off, dismissed, cancelled...). ?days=7
+  router.get('/events', (req, res) => {
+    try {
+      const days = Number(req.query.days) || 7;
+      res.json({ success: true, events: getScheduleEvents({ type, sinceMs: Date.now() - days * 86400000 }) });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

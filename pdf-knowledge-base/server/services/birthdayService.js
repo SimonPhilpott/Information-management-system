@@ -10,6 +10,10 @@ db.exec(`
     created_at INTEGER NOT NULL
   );
 `);
+// Deleting a birthday archives it (deleted_at) rather than destroying it, so it
+// can be reviewed or restored from the /ims/birthday archive.
+try { db.exec(`ALTER TABLE birthdays ADD COLUMN deleted_at INTEGER`); } catch (_) { }
+try { db.exec(`ALTER TABLE birthdays ADD COLUMN updated_at INTEGER`); } catch (_) { }
 
 const LONDON_TZ = 'Europe/London';
 const londonPartsFormatter = new Intl.DateTimeFormat('en-GB', {
@@ -51,7 +55,7 @@ function rowToBirthday(row, today) {
 
 export function listBirthdays() {
   const today = todayLondonParts();
-  const rows = db.prepare(`SELECT * FROM birthdays ORDER BY birth_month ASC, birth_day ASC`).all();
+  const rows = db.prepare(`SELECT * FROM birthdays WHERE deleted_at IS NULL ORDER BY birth_month ASC, birth_day ASC`).all();
   return rows.map((r) => rowToBirthday(r, today)).sort((a, b) => a.daysUntil - b.daysUntil);
 }
 
@@ -69,7 +73,7 @@ export function addBirthday({ name, birthYear, month, day }) {
 }
 
 export function updateBirthday(id, { name, birthYear, month, day }) {
-  const existing = db.prepare(`SELECT * FROM birthdays WHERE id = ?`).get(id);
+  const existing = db.prepare(`SELECT * FROM birthdays WHERE id = ? AND deleted_at IS NULL`).get(id);
   if (!existing) throw new Error('Birthday not found');
   const updated = {
     name: name !== undefined ? String(name).trim() : existing.name,
@@ -77,14 +81,42 @@ export function updateBirthday(id, { name, birthYear, month, day }) {
     birth_month: month !== undefined ? Number(month) : existing.birth_month,
     birth_day: day !== undefined ? Number(day) : existing.birth_day,
   };
-  db.prepare(`UPDATE birthdays SET name = ?, birth_year = ?, birth_month = ?, birth_day = ? WHERE id = ?`)
-    .run(updated.name, updated.birth_year, updated.birth_month, updated.birth_day, id);
+  db.prepare(`UPDATE birthdays SET name = ?, birth_year = ?, birth_month = ?, birth_day = ?, updated_at = ? WHERE id = ?`)
+    .run(updated.name, updated.birth_year, updated.birth_month, updated.birth_day, Date.now(), id);
   return rowToBirthday({ id, ...updated }, todayLondonParts());
 }
 
 export function deleteBirthday(id) {
-  const info = db.prepare(`DELETE FROM birthdays WHERE id = ?`).run(id);
-  return info.changes > 0;
+  return db.prepare(`UPDATE birthdays SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`).run(Date.now(), id).changes > 0;
+}
+
+export function restoreBirthday(id) {
+  return db.prepare(`UPDATE birthdays SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL`).run(id).changes > 0;
+}
+
+// Deleted birthdays, most recently deleted first.
+export function getArchivedBirthdays() {
+  const today = todayLondonParts();
+  return db.prepare(`SELECT * FROM birthdays WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`).all().map((r) => ({
+    ...rowToBirthday(r, today),
+    createdAt: new Date(r.created_at).toISOString(),
+    deletedAt: new Date(r.deleted_at).toISOString(),
+  }));
+}
+
+// Birthdays that have already happened in the last `days` days (not counting
+// today, which is still "upcoming"): a record of who you've recently passed.
+export function getRecentlyPassedBirthdays(days = 30) {
+  const today = todayLondonParts();
+  const todayMs = Date.UTC(today.year, today.month - 1, today.day);
+  const out = [];
+  for (const b of listBirthdays()) {
+    let last = Date.UTC(today.year, b.month - 1, b.day);
+    if (last > todayMs) last = Date.UTC(today.year - 1, b.month - 1, b.day);
+    const daysSince = Math.round((todayMs - last) / 86400000);
+    if (daysSince >= 1 && daysSince <= days) out.push({ ...b, daysSince, turnedAge: b.birthYear ? new Date(last).getUTCFullYear() - b.birthYear : null });
+  }
+  return out.sort((a, b) => a.daysSince - b.daysSince);
 }
 
 // Within the next 7 days INCLUDING today. Used for both the footer cake icon

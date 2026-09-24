@@ -157,6 +157,11 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_memories_created ON ims_memories(created_at);
 `);
 
+// Memories are never destroyed: deleting one archives it (deleted_at) so it can
+// be reviewed or restored from the /ims/memories archive.
+try { db.exec(`ALTER TABLE ims_memories ADD COLUMN deleted_at TEXT`); } catch (_) { }
+try { db.exec(`ALTER TABLE ims_memories ADD COLUMN updated_at TEXT`); } catch (_) { }
+
 // Migrations: Add confidence_score and validation_status to chat_messages if missing
 try {
   db.exec("ALTER TABLE chat_messages ADD COLUMN confidence_score INTEGER DEFAULT NULL");
@@ -202,18 +207,21 @@ export function addMemory(fact, category = 'general') {
   return { id, fact: trimmedFact, category: cat, created_at: createdAt };
 }
 
+const MEM_COLS = 'id, fact, category, created_at, updated_at';
+const nowStamp = () => new Date().toISOString().replace('T', ' ').substring(0, 19);
+
 export function getMemories(limit = 100, category = null) {
   if (category && category !== 'all') {
     const cat = category.trim().toLowerCase();
     if (limit <= 0) {
-      return db.prepare('SELECT id, fact, category, created_at FROM ims_memories WHERE category = ? ORDER BY created_at DESC').all(cat);
+      return db.prepare(`SELECT ${MEM_COLS} FROM ims_memories WHERE deleted_at IS NULL AND category = ? ORDER BY created_at DESC`).all(cat);
     }
-    return db.prepare('SELECT id, fact, category, created_at FROM ims_memories WHERE category = ? ORDER BY created_at DESC LIMIT ?').all(cat, limit);
+    return db.prepare(`SELECT ${MEM_COLS} FROM ims_memories WHERE deleted_at IS NULL AND category = ? ORDER BY created_at DESC LIMIT ?`).all(cat, limit);
   }
   if (limit <= 0) {
-    return db.prepare('SELECT id, fact, category, created_at FROM ims_memories ORDER BY created_at DESC').all();
+    return db.prepare(`SELECT ${MEM_COLS} FROM ims_memories WHERE deleted_at IS NULL ORDER BY created_at DESC`).all();
   }
-  return db.prepare('SELECT id, fact, category, created_at FROM ims_memories ORDER BY created_at DESC LIMIT ?').all(limit);
+  return db.prepare(`SELECT ${MEM_COLS} FROM ims_memories WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT ?`).all(limit);
 }
 
 export function searchMemories(query, category = null) {
@@ -223,20 +231,34 @@ export function searchMemories(query, category = null) {
   const term = `%${query.trim()}%`;
   if (category && category !== 'all') {
     const cat = category.trim().toLowerCase();
-    return db.prepare('SELECT id, fact, category, created_at FROM ims_memories WHERE category = ? AND (fact LIKE ? OR id LIKE ?) ORDER BY created_at DESC LIMIT 50').all(cat, term, term);
+    return db.prepare(`SELECT ${MEM_COLS} FROM ims_memories WHERE deleted_at IS NULL AND category = ? AND (fact LIKE ? OR id LIKE ?) ORDER BY created_at DESC LIMIT 50`).all(cat, term, term);
   }
-  return db.prepare('SELECT id, fact, category, created_at FROM ims_memories WHERE fact LIKE ? OR category LIKE ? OR id LIKE ? ORDER BY created_at DESC LIMIT 50').all(term, term, term);
+  return db.prepare(`SELECT ${MEM_COLS} FROM ims_memories WHERE deleted_at IS NULL AND (fact LIKE ? OR category LIKE ? OR id LIKE ?) ORDER BY created_at DESC LIMIT 50`).all(term, term, term);
 }
 
+// "Deleting" archives: the row stays, stamped with when it was deleted.
 export function deleteMemory(idOrFact) {
-  const info = db.prepare('DELETE FROM ims_memories WHERE id = ? OR fact LIKE ?').run(idOrFact, `%${idOrFact}%`);
+  const info = db.prepare(`UPDATE ims_memories SET deleted_at = ? WHERE deleted_at IS NULL AND (id = ? OR fact LIKE ?)`)
+    .run(nowStamp(), idOrFact, `%${idOrFact}%`);
   return info.changes > 0;
 }
 
 export function updateMemory(id, fact, category = 'general') {
   const cat = (category || 'general').trim().toLowerCase();
-  const info = db.prepare('UPDATE ims_memories SET fact = ?, category = ? WHERE id = ?').run(fact.trim(), cat, id);
+  const info = db.prepare('UPDATE ims_memories SET fact = ?, category = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL').run(fact.trim(), cat, nowStamp(), id);
   return info.changes > 0;
+}
+
+// Archived (deleted) memories, most recently deleted first. `search` matches the text.
+export function getArchivedMemories({ search = '', limit = 300 } = {}) {
+  const term = `%${String(search || '').trim()}%`;
+  return db.prepare(
+    `SELECT ${MEM_COLS}, deleted_at FROM ims_memories WHERE deleted_at IS NOT NULL AND (fact LIKE ? OR category LIKE ?) ORDER BY deleted_at DESC LIMIT ?`
+  ).all(term, term, limit);
+}
+
+export function restoreMemory(id) {
+  return db.prepare('UPDATE ims_memories SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL').run(id).changes > 0;
 }
 
 export default db;

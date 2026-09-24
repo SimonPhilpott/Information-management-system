@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, Save, RotateCw, Check, AlertCircle, Sun, Moon,
-  Plus, Trash2, Pencil, X, Bell, Clock, PenLine
+  Plus, Trash2, Pencil, X, Bell, Clock, PenLine, Archive, ListChecks, CalendarPlus, CalendarCheck
 } from 'lucide-react';
 
 // One shared page for /ims/alarms, /ims/timers, /ims/reminders - they're the
@@ -33,6 +33,14 @@ export default function ScheduledItemsPortal({ type, theme = 'dark', onThemeTogg
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ label: '', when: '', recurrence: 'once' });
   const [isCreating, setIsCreating] = useState(false);
+  const [tab, setTab] = useState('active');           // 'active' | 'archive'
+  const [archive, setArchive] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [archiveDays, setArchiveDays] = useState(30);
+  const [archiveSearch, setArchiveSearch] = useState('');
+  const [showTimeline, setShowTimeline] = useState(false);
+  const [calLinks, setCalLinks] = useState({});        // item id -> Google Calendar link, for items already added
+  const [calBusy, setCalBusy] = useState(null);
 
   const showToast = useCallback((msg, t = 'success') => {
     setNotification({ msg, type: t });
@@ -52,6 +60,50 @@ export default function ScheduledItemsPortal({ type, theme = 'dark', onThemeTogg
   }, [meta.apiPath]);
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
+
+  // Which items are already on the Google Calendar. Quietly empty if not signed in.
+  const fetchCalLinks = useCallback(async () => {
+    if (type === 'timer') return;
+    try {
+      const res = await fetch('/api/calendar/links', { credentials: 'same-origin' });
+      const data = await res.json();
+      if (data.success) setCalLinks(data.links);
+    } catch (_) { /* optional */ }
+  }, [type]);
+  useEffect(() => { fetchCalLinks(); }, [fetchCalLinks]);
+
+  const addToCalendar = async (item) => {
+    setCalBusy(item.id);
+    try {
+      const res = await fetch(`/api/calendar/from-reminder/${item.id}`, { method: 'POST', credentials: 'same-origin' });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) throw new Error('Sign in with Google (on the Calendar page) to add to your calendar.');
+      if (!res.ok || !data.success) throw new Error(data.error || 'Could not add it to the calendar.');
+      showToast(data.alreadyAdded ? 'Already on your Google Calendar.' : 'Added to your Google Calendar.');
+      fetchCalLinks();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setCalBusy(null);
+    }
+  };
+
+  // Archive: everything finished (cancelled, or went off) with its timestamps,
+  // and the event timeline. Refetched when the tab, period or search changes.
+  const fetchArchive = useCallback(async () => {
+    try {
+      const [a, e] = await Promise.all([
+        fetch(`${meta.apiPath}/archive?days=${archiveDays}&search=${encodeURIComponent(archiveSearch)}`).then((r) => r.json()),
+        fetch(`${meta.apiPath}/events?days=${archiveDays || 3650}`).then((r) => r.json())
+      ]);
+      if (a.success) setArchive(a.items);
+      if (e.success) setEvents(e.events);
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  }, [meta.apiPath, archiveDays, archiveSearch]);
+
+  useEffect(() => { if (tab === 'archive') fetchArchive(); }, [tab, fetchArchive]);
 
   const handleReturnHome = () => {
     window.history.pushState(null, '', '/ims');
@@ -116,7 +168,7 @@ export default function ScheduledItemsPortal({ type, theme = 'dark', onThemeTogg
   const panelClass = `rounded-2xl border p-5 ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/70 border-[#2E2B27]/10 shadow-sm'}`;
 
   return (
-    <div className={`min-h-screen w-full flex flex-col font-sans transition-colors duration-300 ${
+    <div className={`h-screen overflow-y-auto w-full flex flex-col font-sans transition-colors duration-300 ${
       isDark ? 'bg-[#030712] text-[#f3f4f6]' : 'bg-[#f4efed] text-[#1f2937]'
     }`}>
       {notification && (
@@ -167,6 +219,18 @@ export default function ScheduledItemsPortal({ type, theme = 'dark', onThemeTogg
           </div>
         )}
 
+        <div className="flex gap-2">
+          {[['active', `Active (${items.length})`, ListChecks], ['archive', 'Archive', Archive]].map(([key, label, TabIcon]) => (
+            <button key={key} onClick={() => setTab(key)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+                tab === key ? `bg-gradient-to-r ${meta.gradient} text-white` : isDark ? 'bg-white/5 hover:bg-white/10 text-slate-300' : 'bg-black/5 hover:bg-black/10 text-slate-700'
+              }`}>
+              <TabIcon size={14} />{label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'active' && (
         <div className={panelClass}>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xs font-black uppercase tracking-wider">Active {meta.plural} ({items.length})</h2>
@@ -222,6 +286,17 @@ export default function ScheduledItemsPortal({ type, theme = 'dark', onThemeTogg
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
+                    {type !== 'timer' && (calLinks[item.id] ? (
+                      <a href={typeof calLinks[item.id] === 'string' ? calLinks[item.id] : undefined} target="_blank" rel="noreferrer"
+                        className="p-2 rounded-lg text-emerald-400" title="On your Google Calendar - open it">
+                        <CalendarCheck size={14} />
+                      </a>
+                    ) : (
+                      <button onClick={() => addToCalendar(item)} disabled={calBusy === item.id}
+                        className={`p-2 rounded-lg disabled:opacity-40 ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`} title="Add to Google Calendar">
+                        {calBusy === item.id ? <RotateCw size={14} className="animate-spin" /> : <CalendarPlus size={14} />}
+                      </button>
+                    ))}
                     <button onClick={() => startEdit(item)} className={`p-2 rounded-lg ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`} title="Edit">
                       <Pencil size={14} />
                     </button>
@@ -234,6 +309,74 @@ export default function ScheduledItemsPortal({ type, theme = 'dark', onThemeTogg
             </div>
           )}
         </div>
+        )}
+
+        {tab === 'archive' && (
+          <div className={panelClass}>
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              <h2 className="text-xs font-black uppercase tracking-wider mr-auto">Past {meta.plural.toLowerCase()} ({archive.length})</h2>
+              <input className={`${fieldClass} !w-48`} placeholder="Search..." value={archiveSearch} onChange={(e) => setArchiveSearch(e.target.value)} />
+              <select className={`${fieldClass} !w-36`} value={archiveDays} onChange={(e) => setArchiveDays(Number(e.target.value))}>
+                <option value={1}>Last 24 hours</option>
+                <option value={7}>Last 7 days</option>
+                <option value={30}>Last 30 days</option>
+                <option value={90}>Last 90 days</option>
+                <option value={0}>All time</option>
+              </select>
+              <button onClick={() => setShowTimeline(!showTimeline)} className={`px-3 py-2 rounded-lg text-xs font-bold ${showTimeline ? `bg-gradient-to-r ${meta.gradient} text-white` : isDark ? 'bg-white/5' : 'bg-black/5'}`}>
+                {showTimeline ? 'Show list' : 'Show timeline'}
+              </button>
+            </div>
+
+            {!showTimeline ? (
+              archive.length === 0 ? (
+                <p className="text-xs text-slate-500 py-6 text-center">Nothing in this period.</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {archive.map((a) => {
+                    const OUTCOME = {
+                      dismissed: ['Went off - acknowledged', 'bg-emerald-500/15 text-emerald-500'],
+                      unanswered: ['Went off - no response', 'bg-amber-500/15 text-amber-500'],
+                      cancelled: ['Cancelled', 'bg-slate-500/15 text-slate-400'],
+                      ended: ['Finished', 'bg-slate-500/15 text-slate-400']
+                    }[a.outcome] || ['Finished', 'bg-slate-500/15 text-slate-400'];
+                    const fmt = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Europe/London', dateStyle: 'medium', timeStyle: 'short' }) : '-');
+                    return (
+                      <div key={a.id} className={`p-3 rounded-xl border text-xs ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold">{a.label || `(unlabelled ${type})`}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${OUTCOME[1]}`}>{OUTCOME[0]}</span>
+                          {a.recurrence !== 'once' && <span className="opacity-60 text-[10px]">repeats {a.recurrence}</span>}
+                        </div>
+                        <div className="mt-1.5 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                          <span>Set: <strong className={isDark ? 'text-slate-300' : 'text-slate-700'}>{fmt(a.createdAt)}</strong></span>
+                          <span>For: <strong className={isDark ? 'text-slate-300' : 'text-slate-700'}>{fmt(a.scheduledFor)}</strong></span>
+                          <span>Went off: <strong className={isDark ? 'text-slate-300' : 'text-slate-700'}>{fmt(a.firstFiredAt)}</strong></span>
+                          <span>Ended: <strong className={isDark ? 'text-slate-300' : 'text-slate-700'}>{fmt(a.endedAt)}</strong></span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )
+            ) : (
+              events.length === 0 ? (
+                <p className="text-xs text-slate-500 py-6 text-center">No events recorded in this period.</p>
+              ) : (
+                <div className="flex flex-col">
+                  {events.map((e) => (
+                    <div key={e.id} className="flex items-center gap-3 py-1.5 text-xs border-b border-white/5 last:border-0">
+                      <span className="w-40 shrink-0 text-slate-500 tabular-nums">{new Date(e.at).toLocaleString('en-GB', { timeZone: 'Europe/London', dateStyle: 'short', timeStyle: 'medium' })}</span>
+                      <span className={`w-24 shrink-0 font-bold ${{ created: 'text-sky-400', edited: 'text-violet-400', fired: 'text-amber-400', dismissed: 'text-emerald-400', unanswered: 'text-red-400', cancelled: 'text-slate-400' }[e.event] || ''}`}>{e.event}</span>
+                      <span className="truncate">{e.label || `(unlabelled ${e.type})`}</span>
+                      {e.detail && <span className="ml-auto text-[10px] opacity-60 shrink-0">{e.detail}</span>}
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+          </div>
+        )}
       </main>
     </div>
   );

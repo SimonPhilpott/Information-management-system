@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Save, RotateCw, Check, AlertCircle, Sun, Moon, Plus, Trash2, Pencil, X, Cake } from 'lucide-react';
+import { ArrowLeft, Save, RotateCw, Check, AlertCircle, Sun, Moon, Plus, Trash2, Pencil, X, Cake, Archive, ListChecks, Undo2 } from 'lucide-react';
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -13,6 +13,8 @@ export default function BirthdayPortal({ theme = 'dark', onThemeToggle, setCurre
   const [editingId, setEditingId] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
   const [form, setForm] = useState({ name: '', month: 1, day: 1, birthYear: '' });
+  const [tab, setTab] = useState('active');   // 'active' | 'archive'
+  const [archive, setArchive] = useState({ deleted: [], recentlyPassed: [] });
 
   const showToast = useCallback((msg, t = 'success') => {
     setNotification({ msg, type: t });
@@ -32,6 +34,29 @@ export default function BirthdayPortal({ theme = 'dark', onThemeToggle, setCurre
   }, []);
 
   useEffect(() => { fetchBirthdays(); }, [fetchBirthdays]);
+
+  const fetchArchive = useCallback(async () => {
+    try {
+      const d = await (await fetch('/api/birthdays/archive')).json();
+      if (d.success) setArchive({ deleted: d.deleted, recentlyPassed: d.recentlyPassed });
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  }, []);
+  useEffect(() => { if (tab === 'archive') fetchArchive(); }, [tab, fetchArchive]);
+
+  const restore = async (id) => {
+    try {
+      const res = await fetch(`/api/birthdays/${id}/restore`, { method: 'POST' });
+      const d = await res.json();
+      if (!res.ok || !d.success) throw new Error(d.error || 'Failed to restore.');
+      showToast('Birthday restored.');
+      fetchArchive();
+      fetchBirthdays();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
 
   const handleReturnHome = () => {
     window.history.pushState(null, '', '/ims');
@@ -63,12 +88,12 @@ export default function BirthdayPortal({ theme = 'dark', onThemeToggle, setCurre
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this birthday?')) return;
+    if (!window.confirm('Move this birthday to the archive?')) return;
     try {
       const res = await fetch(`/api/birthdays/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to delete.');
-      showToast('Birthday deleted.');
+      showToast('Birthday moved to the archive.');
       fetchBirthdays();
     } catch (err) {
       showToast(err.message, 'error');
@@ -82,7 +107,7 @@ export default function BirthdayPortal({ theme = 'dark', onThemeToggle, setCurre
   const daysInMonth = (m) => new Date(2024, m, 0).getDate();
 
   return (
-    <div className={`min-h-screen w-full flex flex-col font-sans transition-colors duration-300 ${
+    <div className={`h-screen overflow-y-auto w-full flex flex-col font-sans transition-colors duration-300 ${
       isDark ? 'bg-[#030712] text-[#f3f4f6]' : 'bg-[#f4efed] text-[#1f2937]'
     }`}>
       {notification && (
@@ -133,6 +158,18 @@ export default function BirthdayPortal({ theme = 'dark', onThemeToggle, setCurre
           </div>
         )}
 
+        <div className="flex gap-2">
+          {[['active', `Birthdays (${birthdays.length})`, ListChecks], ['archive', 'Archive', Archive]].map(([key, label, TabIcon]) => (
+            <button key={key} onClick={() => setTab(key)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+                tab === key ? 'bg-gradient-to-r from-pink-500 to-fuchsia-600 text-white' : isDark ? 'bg-white/5 hover:bg-white/10 text-slate-300' : 'bg-black/5 hover:bg-black/10 text-slate-700'
+              }`}>
+              <TabIcon size={14} />{label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'active' && (
         <div className={panelClass}>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xs font-black uppercase tracking-wider">Birthdays ({birthdays.length})</h2>
@@ -211,6 +248,53 @@ export default function BirthdayPortal({ theme = 'dark', onThemeToggle, setCurre
             </div>
           )}
         </div>
+        )}
+
+        {tab === 'archive' && (
+          <>
+            <div className={panelClass}>
+              <h2 className="text-xs font-black uppercase tracking-wider mb-3">Recently passed - last 30 days ({archive.recentlyPassed.length})</h2>
+              {archive.recentlyPassed.length === 0 ? (
+                <p className="text-xs text-slate-500 py-3 text-center">No birthdays in the last 30 days.</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {archive.recentlyPassed.map((b) => (
+                    <div key={b.id} className={`p-3 rounded-xl border text-xs flex items-center justify-between ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
+                      <div>
+                        <div className="font-bold">{b.name}</div>
+                        <div className="text-[11px] text-slate-500">{MONTH_NAMES[b.month - 1]} {b.day}{b.turnedAge ? ` • turned ${b.turnedAge}` : ''}</div>
+                      </div>
+                      <span className="text-[11px] text-slate-500">{b.daysSince} day{b.daysSince === 1 ? '' : 's'} ago</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className={panelClass}>
+              <h2 className="text-xs font-black uppercase tracking-wider mb-3">Deleted ({archive.deleted.length})</h2>
+              {archive.deleted.length === 0 ? (
+                <p className="text-xs text-slate-500 py-3 text-center">Nothing has been deleted.</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {archive.deleted.map((b) => (
+                    <div key={b.id} className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-3 ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
+                      <div>
+                        <div className="font-bold">{b.name}</div>
+                        <div className="text-[11px] text-slate-500">
+                          {MONTH_NAMES[b.month - 1]} {b.day}{b.birthYear ? ` • born ${b.birthYear}` : ''} • added {new Date(b.createdAt).toLocaleDateString('en-GB')} • deleted {new Date(b.deletedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
+                        </div>
+                      </div>
+                      <button onClick={() => restore(b.id)} className={`px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 ${isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}>
+                        <Undo2 size={12} /> Restore
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </main>
     </div>
   );

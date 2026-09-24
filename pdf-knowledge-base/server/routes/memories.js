@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import db, { addMemory, getMemories, searchMemories, deleteMemory, updateMemory } from '../db/database.js';
+import db, { addMemory, getMemories, searchMemories, deleteMemory, updateMemory, getArchivedMemories, restoreMemory } from '../db/database.js';
 
 const router = Router();
 
@@ -20,8 +20,8 @@ router.get('/', (req, res) => {
     }
 
     // Compute category aggregations and total count
-    const totalRow = db.prepare('SELECT COUNT(*) as count FROM ims_memories').get();
-    const catRows = db.prepare('SELECT category, COUNT(*) as count FROM ims_memories GROUP BY category ORDER BY count DESC').all();
+    const totalRow = db.prepare('SELECT COUNT(*) as count FROM ims_memories WHERE deleted_at IS NULL').get();
+    const catRows = db.prepare('SELECT category, COUNT(*) as count FROM ims_memories WHERE deleted_at IS NULL GROUP BY category ORDER BY count DESC').all();
 
     const categoryCounts = {};
     catRows.forEach(row => {
@@ -41,14 +41,39 @@ router.get('/', (req, res) => {
 });
 
 /**
+ * GET /api/memories/archive
+ * Memories that were deleted (kept, with when they were deleted) - can be restored.
+ */
+router.get('/archive', (req, res) => {
+  try {
+    res.json({ success: true, memories: getArchivedMemories({ search: req.query.search || '' }) });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load archive: ' + err.message });
+  }
+});
+
+/**
+ * POST /api/memories/:id/restore
+ * Bring an archived memory back.
+ */
+router.post('/:id/restore', (req, res) => {
+  try {
+    if (!restoreMemory(req.params.id)) return res.status(404).json({ error: 'Archived memory not found.' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to restore: ' + err.message });
+  }
+});
+
+/**
  * GET /api/memories/stats
  * Aggregate overview stats for memory dashboard widgets.
  */
 router.get('/stats', (req, res) => {
   try {
-    const totalRow = db.prepare('SELECT COUNT(*) as count FROM ims_memories').get();
-    const newestRow = db.prepare('SELECT * FROM ims_memories ORDER BY created_at DESC LIMIT 1').get();
-    const catRows = db.prepare('SELECT category, COUNT(*) as count FROM ims_memories GROUP BY category ORDER BY count DESC').all();
+    const totalRow = db.prepare('SELECT COUNT(*) as count FROM ims_memories WHERE deleted_at IS NULL').get();
+    const newestRow = db.prepare('SELECT * FROM ims_memories WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 1').get();
+    const catRows = db.prepare('SELECT category, COUNT(*) as count FROM ims_memories WHERE deleted_at IS NULL GROUP BY category ORDER BY count DESC').all();
 
     res.json({
       success: true,
@@ -117,7 +142,7 @@ router.put('/:id', (req, res) => {
 
 /**
  * DELETE /api/memories/:id
- * Delete a memory by its unique ID.
+ * Archive (soft-delete) a memory by its unique ID.
  */
 router.delete('/:id', (req, res) => {
   try {
@@ -133,7 +158,7 @@ router.delete('/:id', (req, res) => {
 
     res.json({
       success: true,
-      message: 'Memory deleted successfully.',
+      message: 'Memory moved to the archive.',
       id
     });
   } catch (err) {

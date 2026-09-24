@@ -21,7 +21,9 @@ import {
   Sun, 
   Moon,
   AlertCircle,
-  Database
+  Database,
+  Archive,
+  Undo2
 } from 'lucide-react';
 
 const CATEGORY_CONFIG = {
@@ -70,6 +72,11 @@ export default function MemoriesPortal({
 
   // Deletion confirm state
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+
+  // Archive: deleted memories are kept (with when they were deleted) and can be restored.
+  const [showArchive, setShowArchive] = useState(false);
+  const [archived, setArchived] = useState([]);
+  const [archiveSearch, setArchiveSearch] = useState('');
 
   // Notification helper
   const showToast = useCallback((msg, type = 'success') => {
@@ -193,6 +200,30 @@ export default function MemoriesPortal({
   };
 
   // Delete memory handler
+  const fetchArchive = useCallback(async () => {
+    try {
+      const d = await (await fetch(`/api/memories/archive?search=${encodeURIComponent(archiveSearch)}`)).json();
+      if (d.success) setArchived(d.memories);
+    } catch (err) {
+      console.error('[MemoriesPortal] Archive load error:', err);
+    }
+  }, [archiveSearch]);
+
+  useEffect(() => { if (showArchive) fetchArchive(); }, [showArchive, fetchArchive]);
+
+  const handleRestoreMemory = async (id) => {
+    try {
+      const res = await fetch(`/api/memories/${id}/restore`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to restore memory.');
+      showToast('Memory restored.');
+      fetchArchive();
+      fetchMemories();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
   const handleDeleteMemory = async (id) => {
     try {
       const res = await fetch(`/api/memories/${id}`, {
@@ -203,7 +234,7 @@ export default function MemoriesPortal({
         throw new Error(data.error || 'Failed to delete memory.');
       }
 
-      showToast('Memory purged.');
+      showToast('Memory moved to the archive.');
       setDeleteConfirmId(null);
       // Optimistic state filter
       setMemories(prev => prev.filter(m => m.id !== id));
@@ -250,7 +281,7 @@ export default function MemoriesPortal({
   }, [memories, searchQuery]);
 
   return (
-    <div className={`min-h-screen w-full flex flex-col font-sans transition-colors duration-300 ${
+    <div className={`h-screen overflow-y-auto w-full flex flex-col font-sans transition-colors duration-300 ${
       isDark ? 'bg-[#030712] text-[#f3f4f6]' : 'bg-[#f4efed] text-[#1f2937]'
     }`}>
       {/* Toast Notification */}
@@ -309,6 +340,16 @@ export default function MemoriesPortal({
 
         {/* Right Header Actions */}
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowArchive(true)}
+            className={`px-3 py-2 rounded-xl text-xs font-bold tracking-wide transition-all flex items-center gap-2 border active:scale-95 cursor-pointer ${
+              isDark ? 'bg-white/5 hover:bg-white/10 text-slate-300 border-white/10' : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 text-[#2E2B27] border-[#2E2B27]/10'
+            }`}
+            title="Deleted memories - review or restore"
+          >
+            <Archive size={15} />
+            <span>Archive</span>
+          </button>
           <button
             onClick={() => setIsAddModalOpen(true)}
             className="px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition-all flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-[0_0_15px_rgba(0,242,255,0.25)] active:scale-95 cursor-pointer"
@@ -604,6 +645,45 @@ export default function MemoriesPortal({
           )}
         </div>
       </main>
+
+      {/* Archive panel: deleted memories, newest deletion first */}
+      {showArchive && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className={`max-w-2xl w-full max-h-[85vh] flex flex-col rounded-2xl border p-6 shadow-2xl relative ${
+            isDark ? 'bg-slate-900 border-white/10 text-white' : 'bg-white border-[#2E2B27]/15 text-slate-900'
+          }`}>
+            <button onClick={() => setShowArchive(false)} className="absolute right-5 top-5 text-slate-400 hover:text-slate-200"><X size={18} /></button>
+            <h2 className="text-sm font-black uppercase tracking-wider mb-1 flex items-center gap-2"><Archive size={16} />Memory archive ({archived.length})</h2>
+            <p className="text-[11px] text-slate-500 mb-3">Deleted memories are kept here with when they were added and deleted. Restore any that you want back.</p>
+            <input
+              value={archiveSearch}
+              onChange={(e) => setArchiveSearch(e.target.value)}
+              placeholder="Search deleted memories..."
+              className={`w-full px-3 py-2 rounded-lg text-xs outline-none border mb-3 ${isDark ? 'bg-slate-950/60 border-white/10 text-slate-100' : 'bg-white border-[#2E2B27]/10 text-slate-900'}`}
+            />
+            <div className="overflow-y-auto flex flex-col gap-2">
+              {archived.length === 0 ? (
+                <p className="text-xs text-slate-500 py-6 text-center">No deleted memories.</p>
+              ) : archived.map((m) => {
+                const toDate = (str) => (str ? new Date(str.replace(' ', 'T') + 'Z').toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : '-');
+                return (
+                  <div key={m.id} className={`p-3 rounded-xl border text-xs flex items-start justify-between gap-3 ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-[#2E2B27]/10'}`}>
+                    <div className="min-w-0">
+                      <div className="font-semibold whitespace-pre-wrap break-words">{m.fact}</div>
+                      <div className="mt-1 text-[10px] text-slate-500">
+                        {m.category} &bull; added {toDate(m.created_at)}{m.updated_at ? ` \u2022 edited ${toDate(m.updated_at)}` : ''} &bull; deleted {toDate(m.deleted_at)}
+                      </div>
+                    </div>
+                    <button onClick={() => handleRestoreMemory(m.id)} className={`shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 ${isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}>
+                      <Undo2 size={12} /> Restore
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Memory Modal */}
       {isAddModalOpen && (
