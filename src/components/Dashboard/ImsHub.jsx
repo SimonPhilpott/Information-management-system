@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, Brain, Drama, Sun, Moon, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Brain, Drama, Music, Sun, Moon, ChevronRight } from 'lucide-react';
 
 // Each entry here is one card on the hub. Add a new one whenever a new
 // /ims/* page is built - this is the single place that needs to know about
@@ -21,6 +21,14 @@ const LINKS = [
     icon: Drama,
     gradient: 'from-purple-500 to-fuchsia-600',
     glow: 'rgba(192,38,211,0.3)'
+  },
+  {
+    path: '/ims/musicscan',
+    title: 'Music Scanner',
+    description: 'New album/EP releases from artists in MUZAK that you don\'t have yet, scanned nightly.',
+    icon: Music,
+    gradient: 'from-amber-500 to-orange-600',
+    glow: 'rgba(249,115,22,0.3)'
   }
 ];
 

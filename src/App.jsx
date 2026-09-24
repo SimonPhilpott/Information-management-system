@@ -23,6 +23,7 @@ import { checkIsEntertainment } from './utils/contentFilter';
 import DemoPortal from './components/Dashboard/DemoPortal';
 import MemoriesPortal from './components/Dashboard/MemoriesPortal';
 import PersonaPortal from './components/Dashboard/PersonaPortal';
+import MusicScanPortal from './components/Dashboard/MusicScanPortal';
 import ImsHub from './components/Dashboard/ImsHub';
 
 const getShortSummary = (text) => {
@@ -1321,6 +1322,17 @@ export default function App() {
   if (currentPath === '/ims/persona' || currentPath.startsWith('/ims/persona')) {
     return (
       <PersonaPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        currentPath={currentPath}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/musicscan' || currentPath.startsWith('/ims/musicscan')) {
+    return (
+      <MusicScanPortal
         theme={state.theme}
         onThemeToggle={actions.toggleTheme}
         currentPath={currentPath}

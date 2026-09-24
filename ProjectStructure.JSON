@@ -131,9 +131,11 @@
       ]
     },
     "pdf-knowledge-base/server/index.js": {
-      "description": "Backend API and WebSocket proxy routing ESP32-S3 hardware audio to Gemini Live, streaming model audio directly in 1024-byte chunks, managing session lifecycle, resetting upstream sockets on noWakeDetected, routing temporary setup.previewVoice previews without database mutation, and executing explicit memory operations (rememberFact, recallMemory, forgetMemory).",
+      "description": "Backend API and WebSocket proxy routing ESP32-S3 hardware audio to Gemini Live, streaming model audio directly in 1024-byte chunks, managing session lifecycle, resetting upstream sockets on noWakeDetected, routing temporary setup.previewVoice previews without database mutation, executing explicit memory operations (rememberFact, recallMemory, forgetMemory), polling Nightscout blood glucose every 60s and pushing to hardware, and executing real-time getWeather and getBloodGlucose tool calls.",
       "dependencies": [
         "pdf-knowledge-base/server/services/hardwareClientService.js",
+        "pdf-knowledge-base/server/services/weatherService.js",
+        "pdf-knowledge-base/server/services/glucoseService.js",
         "pdf-knowledge-base/server/db/database.js",
         "pdf-knowledge-base/server/routes/memories.js",
         "pdf-knowledge-base/server/routes/settings.js",
@@ -141,19 +143,27 @@
       ]
     },
     "pdf-knowledge-base/server/services/hardwareClientService.js": {
-      "description": "Hardware bridge service executing automated RAG tool searches, dynamic ims_persona_rules.md loading, explicit memory injection & tool declarations (rememberFact, recallMemory, forgetMemory), Umbriel default voice enforcement with non-mutating previewVoice setup payloads, authentic Yorkshire dialect & phonetic priming, turn-by-turn emotion matrix activation across 14 pixel faces, and non-blocking instant farewell execution.",
+      "description": "Hardware bridge service executing precision 3 wake-phrase gating ('Hey IMS', 'Hi IMS', 'Eh up IMS'), getWeather and getBloodGlucose tool declarations with weather & glucose commentary directives, automated RAG tool searches, dynamic ims_persona_rules.md loading, explicit memory injection & tool declarations (rememberFact, recallMemory, forgetMemory), Umbriel default voice enforcement with non-mutating previewVoice setup payloads, authentic Yorkshire dialect & phonetic priming, turn-by-turn emotion matrix activation across 14 pixel faces, and non-blocking instant farewell execution.",
       "dependencies": [
         "ims_persona_rules.md",
         "pdf-knowledge-base/server/db/database.js",
         "pdf-knowledge-base/server/services/subjectMatcherService.js"
       ]
     },
+    "pdf-knowledge-base/server/services/weatherService.js": {
+      "description": "Weather service integrating with Open-Meteo geocoding and forecast APIs, providing real-time temperatures, conditions, precipitation, wind metrics, and multi-day forecasts with in-memory TTL caching and Yorkshire Leeds fallback.",
+      "dependencies": []
+    },
+    "pdf-knowledge-base/server/services/glucoseService.js": {
+      "description": "Nightscout CGM service polling bgnow.sgvs every 60 seconds, extracting scaled mmol/L readings and directional trend arrows, classifying ranges (<4.0 red, 4.0-7.5 green, >7.5 yellow), broadcasting to active hardware sessions, and providing REST API /api/glucose.",
+      "dependencies": []
+    },
     "ims_persona_rules.md": {
-      "description": "Root configuration document defining core persona directives, authentic Yorkshire vocabulary and phonetic speech anchors, proactive conversational hooks, and 14-state facial emotion guidelines.",
+      "description": "Root configuration document defining precision 3 wake-phrase gating rules, core persona directives, authentic Yorkshire vocabulary and phonetic speech anchors, proactive conversational hooks, and 14-state facial emotion guidelines.",
       "dependencies": []
     },
     "firmware/esp32-s3-box-3/src/main.cpp": {
-      "description": "FreeRTOS firmware for ESP32-S3-BOX-3 with raw lwIP/BSD socket transport (RawTcpClient), 16KB SO_RCVBUF, TCP_NODELAY, boot-time backend personality synchronization (GET /device/personality), decoupled voice preview flow (previewVoiceIndex / activePreviewVoice) with explicit tap-to-commit confirmation, non-persisting 350ms settle debounce auditioning, display held in STANDBY during wake candidate verification, unconditional reset on noWakeDetected, active dialogue persistence until closing phrase or 14s idle timeout, strict sessionClosed notifications, touchToTalk intent signaling, official Google Gemini 30-voice descriptions, persistent Class-D speaker PA during dialogue, rapid 200ms post-drain turn-taking cooldown, 4000ms pause-tolerant playback drain window, pre-warmed PA on wake verify, physical top latching mute button (GPIO 1), non-blocking bounded playback queue pacing, and calibrated wake-word VAD.",
+      "description": "FreeRTOS firmware for ESP32-S3-BOX-3 with raw lwIP/BSD socket transport (RawTcpClient), 16KB SO_RCVBUF, TCP_NODELAY, authentic 22x22 XBM mechanical cog settings icon with 8 tapered orthogonal teeth and central axle bore, real-time Nightscout blood glucose widget vertically centered to the right of the face with range-based coloring (<4.0 red, 4.0-7.5 green, >7.5 yellow) and vector trend arrows, rebalanced geometry with centered face at FACE_CENTER_X=148, FACE_CENTER_Y=116 (7px below header), glucose widget shifted right at x=288, y=116, status text at y=188, double text height 16x16 XBM orange schedule indicator icons (bell for alarm, clock for timer, pen for reminder) with increased 18px date spacing and optical vertical alignment, silky-smooth 33 FPS background face dot breathing with 52-step dynamic range (8-60) and RGB565 delta caching while preserving 120ms expression cadence, flicker-free 66x80px bounding box updates on 60s WebSocket pushes, boot-time backend personality synchronization (GET /device/personality), decoupled voice preview flow (previewVoiceIndex / activePreviewVoice) with explicit tap-to-commit confirmation, non-persisting 350ms settle debounce auditioning, display held in STANDBY during wake candidate verification, unconditional reset on noWakeDetected, active dialogue persistence until closing phrase or 14s idle timeout, strict sessionClosed notifications, touchToTalk intent signaling, official Google Gemini 30-voice descriptions, persistent Class-D speaker PA during dialogue, rapid 200ms post-drain turn-taking cooldown, 4000ms pause-tolerant playback drain window, pre-warmed PA on wake verify, physical top latching mute button (GPIO 1), non-blocking bounded playback queue pacing, and calibrated wake-word VAD.",
       "dependencies": [
         "firmware/esp32-s3-box-3/include/config.h"
       ]

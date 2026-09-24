@@ -259,3 +259,14 @@ export function clearList(listName) {
   db.prepare(`DELETE FROM list_items WHERE list_name = ?`).run(normaliseListName(listName));
   return true;
 }
+
+export function getActiveScheduledStatus() {
+  const rows = db.prepare(`SELECT DISTINCT type FROM scheduled_items WHERE cancelled = 0`).all();
+  const types = new Set(rows.map((r) => r.type));
+  return {
+    hasAlarm: types.has('alarm'),
+    hasTimer: types.has('timer'),
+    hasReminder: types.has('reminder'),
+  };
+}
+

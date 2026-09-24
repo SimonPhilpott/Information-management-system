@@ -734,17 +734,15 @@ static uint8_t *playbackQueueStorage = nullptr;
 #define FACE_DOT 12
 #define FACE_RADIUS 4
 #define FACE_PITCH 17
-#define FACE_CENTER_X 160
-// 111, not the original 108 - shifted down 3px so the face's own top row
-// (at FACE_CENTER_Y - 66, i.e. y=45 with this value) clears HEADER_H (43)
-// with a couple of px to spare, instead of sitting partly inside/behind the
-// header bar - see HEADER_H's own comment for the matching header-side half
-// of this trade-off. Keep this in step with HEADER_H: FACE_CENTER_Y =
-// HEADER_H + 68 keeps the header-to-face gap at ~2px however tall the
-// header ends up.
-#define FACE_CENTER_Y 111
+// 148 balances the screen layout: leaves 48px left margin, 200px face (x=48..248),
+// and a 72px right-hand zone for the blood glucose widget (centered at 288)
+#define FACE_CENTER_X 148
+// 116 (shifted down 5px from 111): top of face is at y=50, leaving 7px
+// comfortable margin below the top header (HEADER_H = 43)
+#define FACE_CENTER_Y 116
 
 static uint8_t faceCurLevels[FACE_COLS * FACE_ROWS] = {0};
+static uint16_t faceCurColors[FACE_COLS * FACE_ROWS] = {0};
 static int faceFrame = 0;
 
 // Perimeter walk of the 12x8 grid (36 cells), for the "thinking" spinner.
@@ -1066,7 +1064,9 @@ static void computeFaceLevels(uint8_t want[FACE_COLS * FACE_ROWS]) {
       float p = (t - BREATH_INHALE_S - BREATH_PAUSE_S) / BREATH_EXHALE_S;
       level = 0.5f + 0.5f * cosf(PI * p);
     }
-    int breath = 11 + (int)(30.0f * level); // same 11-41 range the old sine version used
+    // High-fidelity smooth breathing: range 8 to 60 gives 52 distinct levels
+    // providing continuous, flicker-free fading across the 30ms refresh cadence
+    int breath = 8 + (int)(52.0f * level);
     for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
       if (want[i] < breath) want[i] = (uint8_t)breath;
   }
@@ -1125,26 +1125,135 @@ static void drawFaceInternal(bool forceFull) {
 
   for (int i = 0; i < FACE_COLS * FACE_ROWS; i++) {
     uint8_t v = want[i];
-    if (!forceFull && v == faceCurLevels[i]) continue;
-    faceCurLevels[i] = v;
     int r = i / FACE_COLS, c = i % FACE_COLS;
     int x = FACE_CENTER_X + (int)roundf((c - 5.5f) * FACE_PITCH) - FACE_DOT / 2;
     int y = FACE_CENTER_Y + (int)roundf((r - 3.5f) * FACE_PITCH) - FACE_DOT / 2;
     uint8_t r8 = (uint8_t)(offR + (onR - offR) * v / 255);
     uint8_t g8 = (uint8_t)(offG + (onG - offG) * v / 255);
     uint8_t b8 = (uint8_t)(offB + (onB - offB) * v / 255);
-    tft.fillRoundRect(x, y, FACE_DOT, FACE_DOT, FACE_RADIUS, tft.color565(r8, g8, b8));
+    uint16_t c565 = tft.color565(r8, g8, b8);
+    if (!forceFull && c565 == faceCurColors[i]) continue;
+    faceCurColors[i] = c565;
+    faceCurLevels[i] = v;
+    tft.fillRoundRect(x, y, FACE_DOT, FACE_DOT, FACE_RADIUS, c565);
   }
 }
 
 // Advances the animation and repaints only the dots that changed - called on
-// a ~120ms cadence from loop() (see below), replacing the old
-// LISTENING-only drawOrbPulse() heartbeat so the face animates in every state.
+// a ~30ms cadence (~33 FPS) from loop(), allowing silky-smooth background dot
+// breathing while advancing discrete expression frames (blink/mouth/gaze) on a 120ms tick.
 void drawFaceTick() {
   if (onSettingsScreen) return; // don't paint face dots over the settings screen
-  faceFrame++;
+  static unsigned long lastAnimFrameMs = 0;
+  if (millis() - lastAnimFrameMs >= 120) {
+    lastAnimFrameMs = millis();
+    faceFrame++;
+  }
   tft.startWrite();
   drawFaceInternal(false);
+  tft.endWrite();
+}
+
+// ---------------------------------------------------------------------------
+// Nightscout Blood Glucose Widget
+// Vertically centered to the right of the expressive face:
+// - Direction trend arrow(s) above the number:
+//   DoubleDown, SingleDown, FortyFiveDown, Flat, FortyFiveUp, SingleUp, DoubleUp
+// - Blood glucose value in mmol/L in Font 4 (<4.0 red, 4.0-7.5 green, >7.5 yellow)
+// ---------------------------------------------------------------------------
+#define GLUCOSE_CX 288
+#define GLUCOSE_CY 116
+
+static String currentGlucoseValue = "--";
+static String currentGlucoseDirection = "Flat";
+
+static uint16_t getGlucoseColor(const String &valStr) {
+  if (valStr.length() == 0 || valStr == "--") {
+    return tft.color565(140, 150, 175); // neutral grey
+  }
+  float val = valStr.toFloat();
+  if (val < 4.0f) {
+    return tft.color565(255, 71, 87);  // Red: below 4.0
+  } else if (val <= 7.5f) {
+    return tft.color565(46, 213, 115); // Green: 4.0 to 7.5
+  } else {
+    return tft.color565(255, 184, 77); // Yellow: above 7.5
+  }
+}
+
+static void drawSingleArrow(int x, int y, int type, uint16_t color) {
+  // type: 0=UP, 1=DOWN, 2=FLAT, 3=FORTYFIVE_UP, 4=FORTYFIVE_DOWN
+  switch (type) {
+    case 0: // UP
+      tft.fillRect(x - 1, y - 4, 3, 12, color);
+      tft.fillTriangle(x, y - 8, x - 5, y - 2, x + 5, y - 2, color);
+      break;
+    case 1: // DOWN
+      tft.fillRect(x - 1, y - 7, 3, 12, color);
+      tft.fillTriangle(x, y + 8, x - 5, y + 2, x + 5, y + 2, color);
+      break;
+    case 2: // FLAT (right)
+      tft.fillRect(x - 7, y - 1, 12, 3, color);
+      tft.fillTriangle(x + 8, y, x + 2, y - 5, x + 2, y + 5, color);
+      break;
+    case 3: // 45 UP (North-East)
+      tft.drawLine(x - 5, y + 5, x + 4, y - 4, color);
+      tft.drawLine(x - 4, y + 5, x + 5, y - 4, color);
+      tft.drawLine(x - 5, y + 4, x + 4, y - 5, color);
+      tft.fillTriangle(x + 8, y - 8, x + 1, y - 7, x + 7, y - 1, color);
+      break;
+    case 4: // 45 DOWN (South-East)
+      tft.drawLine(x - 5, y - 5, x + 4, y + 4, color);
+      tft.drawLine(x - 4, y - 5, x + 5, y + 4, color);
+      tft.drawLine(x - 5, y - 4, x + 4, y + 5, color);
+      tft.fillTriangle(x + 8, y + 8, x + 1, y + 7, x + 7, y + 1, color);
+      break;
+  }
+}
+
+static void drawGlucoseArrows(int cx, int cy, const String &dir, uint16_t color) {
+  if (dir.equalsIgnoreCase("DoubleUp")) {
+    drawSingleArrow(cx - 7, cy, 0, color);
+    drawSingleArrow(cx + 7, cy, 0, color);
+  } else if (dir.equalsIgnoreCase("SingleUp")) {
+    drawSingleArrow(cx, cy, 0, color);
+  } else if (dir.equalsIgnoreCase("FortyFiveUp")) {
+    drawSingleArrow(cx, cy, 3, color);
+  } else if (dir.equalsIgnoreCase("Flat")) {
+    drawSingleArrow(cx, cy, 2, color);
+  } else if (dir.equalsIgnoreCase("FortyFiveDown")) {
+    drawSingleArrow(cx, cy, 4, color);
+  } else if (dir.equalsIgnoreCase("SingleDown")) {
+    drawSingleArrow(cx, cy, 1, color);
+  } else if (dir.equalsIgnoreCase("DoubleDown")) {
+    drawSingleArrow(cx - 7, cy, 1, color);
+    drawSingleArrow(cx + 7, cy, 1, color);
+  }
+}
+
+void drawGlucoseWidget() {
+  if (onSettingsScreen) return;
+  tft.startWrite();
+
+  // Clear widget bounding box without touching the face (ends at 248) or screen edges (320)
+  tft.fillRect(252, 80, 66, 80, tft.color565(11, 14, 21));
+
+  uint16_t color = getGlucoseColor(currentGlucoseValue);
+
+  // 1. Draw Direction Arrow(s) above the number (cy = GLUCOSE_CY - 16 = 95)
+  drawGlucoseArrows(GLUCOSE_CX, GLUCOSE_CY - 16, currentGlucoseDirection, color);
+
+  // 2. Draw Blood Glucose Value below arrows (cy = GLUCOSE_CY + 14 = 125)
+  tft.setTextDatum(middle_center);
+  tft.setFont(&fonts::Font4);
+  tft.setTextColor(color);
+  tft.drawString(currentGlucoseValue, GLUCOSE_CX, GLUCOSE_CY + 14);
+
+  // Reset font and datum
+  tft.setFont(&fonts::Font0);
+  tft.setTextSize(1);
+  tft.setTextDatum(top_left);
+
   tft.endWrite();
 }
 
@@ -1240,24 +1349,24 @@ void drawFaceTick() {
 #define PLAY_BUTTON_CX 160
 #define PLAY_BUTTON_CY 209
 
-// A hub + 8 teeth close against its rim, rather than the original 4 teeth
-// spaced well clear of the hub - the gap was what made the first version
-// read as "circle with 4 separate squares" instead of one gear silhouette.
-// Used on both screens so the icon and its meaning (tap here to switch
-// screens) stay visually consistent.
+// Authentic 22x22 mechanical cog icon (XBM format: 8 orthogonal tapered teeth,
+// pitch diameter 17px, outer tip 21px, and a 7px circular axle bore cutout).
+// Replaces the crude filled circle + square blobs with a standard mechanical gear.
+static const uint8_t PROGMEM cog_icon_22x22[] = {
+  0x00, 0x0c, 0x00, 0x00, 0x1e, 0x00, 0x00, 0x1e, 0x00, 0x30, 0x1e, 0x03,
+  0xf8, 0xff, 0x07, 0xf8, 0xff, 0x07, 0xf0, 0xff, 0x03, 0xf0, 0xff, 0x03,
+  0xf0, 0xe1, 0x03, 0xfe, 0xc0, 0x1f, 0xff, 0xc0, 0x3f, 0xff, 0xc0, 0x3f,
+  0xfe, 0xc0, 0x1f, 0xf0, 0xe1, 0x03, 0xf0, 0xff, 0x03, 0xf0, 0xff, 0x03,
+  0xf8, 0xff, 0x07, 0xf8, 0xff, 0x07, 0x30, 0x1e, 0x03, 0x00, 0x1e, 0x00,
+  0x00, 0x1e, 0x00, 0x00, 0x0c, 0x00
+};
+
 void drawGearIcon(int cx, int cy) {
   uint32_t col = tft.color565(140, 150, 175);
-  tft.fillCircle(cx, cy, 9, col);
-  // 8 teeth at 45-degree increments, radius 10 from centre so each tooth
-  // overlaps the hub's edge instead of floating clear of it. Sized to fill
-  // HEADER_H (see its own comment) rather than a fixed small icon, so the
-  // visible icon grows along with its touch target instead of looking lost
-  // in a taller header bar.
-  const int dx[8] = {10, 7, 0, -7, -10, -7, 0, 7};
-  const int dy[8] = {0, 7, 10, 7, 0, -7, -10, -7};
-  for (int i = 0; i < 8; i++) {
-    tft.fillRect(cx + dx[i] - 2, cy + dy[i] - 2, 4, 4, col);
-  }
+  // Clear the 24x24 icon footprint in header bar background colour
+  tft.fillRect(cx - 12, cy - 12, 24, 24, tft.color565(20, 24, 34));
+  // Stamp the authentic 22x22 mechanical gear icon with its hollow center hole
+  tft.drawXBitmap(cx - 11, cy - 11, cog_icon_22x22, 22, 22, col);
 }
 
 // Solid triangle pointing left or right, centred at (cx, cy) - used for the
@@ -1510,32 +1619,133 @@ void drawPreferencesScreen() {
   tft.endWrite();
 }
 
-// "HH:mm:ss dd/MM/yyyy" in Europe/London local time (see configTzTime() in
+// "HH:mm:ss Day dd/MM/yyyy" in Europe/London local time (see configTzTime() in
 // setup(), which applies the real BST/GMT rule, not a fixed offset). Returns
 // a placeholder before NTP has synced (getLocalTime() fails, e.g. briefly
 // after boot), rather than showing a stale or nonsensical clock.
 String currentDateTimeStr() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo, 50)) {
-    return String("--:--:-- --/--/----");
+    return String("--:--:-- --- --/--/----");
   }
-  char buf[24];
-  strftime(buf, sizeof(buf), "%H:%M:%S %d/%m/%Y", &timeinfo);
+  char buf[40];
+  strftime(buf, sizeof(buf), "%H:%M:%S %A %d/%m/%Y", &timeinfo);
   return String(buf);
 }
 
-// Repaints just the footer's bottom-left clock corner - called once a second
-// from loop() (see below). Deliberately NOT a full renderScreen(true): this
-// display has no back buffer, so a full fillScreen() every second would
-// visibly flash the whole screen (face included) once a second, for the
-// sake of a clock only a small corner of which actually changed.
+static bool hasActiveAlarm = false;
+static bool hasActiveTimer = false;
+static bool hasActiveReminder = false;
+
+// 16x16 XBM bitmaps for double-sized footer status icons (matching 2x font height):
+static const uint8_t PROGMEM bell_icon_16x16[] = {
+  0x80, 0x01,  // Row 0:  .......##.......
+  0x40, 0x02,  // Row 1:  ......#..#......
+  0xC0, 0x03,  // Row 2:  ......####......
+  0xE0, 0x07,  // Row 3:  .....######.....
+  0xE0, 0x07,  // Row 4:  .....######.....
+  0xF0, 0x0F,  // Row 5:  ....########....
+  0xF0, 0x0F,  // Row 6:  ....########....
+  0xF0, 0x0F,  // Row 7:  ....########....
+  0xF8, 0x1F,  // Row 8:  ...##########...
+  0xF8, 0x1F,  // Row 9:  ...##########...
+  0xFC, 0x3F,  // Row 10: ..############..
+  0xFE, 0x7F,  // Row 11: .##############.
+  0xFE, 0x7F,  // Row 12: .##############.
+  0xC0, 0x03,  // Row 13: ......####......
+  0xC0, 0x03,  // Row 14: ......####......
+  0x80, 0x01   // Row 15: .......##.......
+};
+
+static const uint8_t PROGMEM clock_icon_16x16[] = {
+  0xC0, 0x03,  // Row 0:  ......####...... (top push button)
+  0x80, 0x01,  // Row 1:  .......##.......
+  0xE0, 0x07,  // Row 2:  .....######.....
+  0xF8, 0x1F,  // Row 3:  ...##########...
+  0x0C, 0x30,  // Row 4:  ..##........##..
+  0x06, 0x60,  // Row 5:  .##..........##.
+  0x86, 0x60,  // Row 6:  .##....#.....##. (hour hand to 12)
+  0x86, 0x60,  // Row 7:  .##....#.....##.
+  0x83, 0xCF,  // Row 8:  ##.....#####..## (pivot + minute hand to 3)
+  0x83, 0xC3,  // Row 9:  ##.....##.....##
+  0x06, 0x60,  // Row 10: .##..........##.
+  0x06, 0x60,  // Row 11: .##..........##.
+  0x0C, 0x30,  // Row 12: ..##........##..
+  0xF8, 0x1F,  // Row 13: ...##########...
+  0xE0, 0x07,  // Row 14: .....######.....
+  0x00, 0x00   // Row 15: ................
+};
+
+static const uint8_t PROGMEM pen_icon_16x16[] = {
+  0x00, 0x20,  // Row 0:  .............#.. (eraser tip)
+  0x00, 0x70,  // Row 1:  ............###.
+  0x00, 0x38,  // Row 2:  ...........###..
+  0x00, 0x1C,  // Row 3:  ..........###...
+  0x00, 0x0E,  // Row 4:  .........###....
+  0x80, 0x07,  // Row 5:  .......####..... (shaft)
+  0xC0, 0x03,  // Row 6:  ......####......
+  0xE0, 0x01,  // Row 7:  .....####.......
+  0xF0, 0x00,  // Row 8:  ....####........
+  0x78, 0x00,  // Row 9:  ...####.........
+  0x3C, 0x00,  // Row 10: ..####..........
+  0x1E, 0x00,  // Row 11: .####...........
+  0x0E, 0x00,  // Row 12: .###............ (tapered nib)
+  0x06, 0x00,  // Row 13: .##.............
+  0x02, 0x00,  // Row 14: .#.............. (point)
+  0x00, 0x00   // Row 15: ................
+};
+
+// Draw crisp 16x16 XBM schedule status icons in orange (double the font height):
+static void drawBellIcon(int x, int y, uint16_t color) {
+  tft.drawXBitmap(x, y, bell_icon_16x16, 16, 16, color);
+}
+
+static void drawClockIcon(int x, int y, uint16_t color) {
+  tft.drawXBitmap(x, y, clock_icon_16x16, 16, 16, color);
+}
+
+static void drawPenIcon(int x, int y, uint16_t color) {
+  tft.drawXBitmap(x, y, pen_icon_16x16, 16, 16, color);
+}
+
+// Repaints just the footer's clock, schedule icons, and emotion - called once a second
+// from loop(). Deliberately repaints only the 36px footer bar so the screen/face
+// never flashes while updating the second ticker or indicator icons.
 void drawFooterClock() {
   if (onSettingsScreen || isMicHardwareMuted) return; // mute warning occupies this space instead
   tft.startWrite();
-  tft.fillRect(0, 204, 180, 20, tft.color565(15, 18, 26));
+  // Clear the full 36px footer bar cleanly
+  tft.fillRect(0, 204, 320, 36, tft.color565(15, 18, 26));
   tft.setTextDatum(top_left);
   tft.setTextColor(tft.color565(100, 110, 130));
-  tft.drawString(currentDateTimeStr(), 15, 214);
+  String dt = currentDateTimeStr();
+  tft.drawString(dt, 15, 214);
+
+  // Status icons to the right of the date (in orange, double text size at 16x16):
+  // Bell = Alarm set, Clock = Timer set, Pen = Reminder set
+  const uint16_t ICON_ORANGE = tft.color565(255, 140, 0);
+  int iconX = 15 + tft.textWidth(dt.c_str()) + 18; // Increased spacing after date
+  const int iconY = 210; // Vertically centered with 8px text line (214 to 221)
+
+  if (hasActiveAlarm) {
+    drawBellIcon(iconX, iconY, ICON_ORANGE);
+    iconX += 21;
+  }
+  if (hasActiveTimer) {
+    drawClockIcon(iconX, iconY, ICON_ORANGE);
+    iconX += 21;
+  }
+  if (hasActiveReminder) {
+    drawPenIcon(iconX, iconY, ICON_ORANGE);
+    iconX += 21;
+  }
+
+  // Restore current emotion on the right side of the footer bar
+  tft.setTextDatum(top_right);
+  tft.setTextColor(tft.color565(100, 110, 130));
+  tft.drawString(emotionName(currentEmotion), 305, 214);
+  tft.setTextDatum(top_left);
+
   tft.endWrite();
 }
 
@@ -1638,6 +1848,7 @@ void renderScreen(bool forceRedraw = false) {
   // same currentState/isMicHardwareMuted the status label below reads, so
   // the two never show contradictory information.
   memset(faceCurLevels, 0, sizeof(faceCurLevels));
+  memset(faceCurColors, 0, sizeof(faceCurColors));
   drawFaceInternal(true);
 
   // Status Label - kept, now sits directly under the larger face since the
@@ -1646,8 +1857,11 @@ void renderScreen(bool forceRedraw = false) {
   // in the footer below).
   tft.setTextColor(statusColor);
   tft.setTextDatum(top_center);
-  tft.drawString(statusText, 160, 182);
+  tft.drawString(statusText, FACE_CENTER_X, 188);
   tft.setTextDatum(top_left);
+
+  // Nightscout Blood Glucose Widget (vertically centered to the right of the face)
+  drawGlucoseWidget();
 
   // Footer Bar - bottom-left is the live clock normally, replaced by the
   // mute warning when it's actually relevant (higher priority information).
@@ -1656,8 +1870,7 @@ void renderScreen(bool forceRedraw = false) {
     tft.setTextColor(tft.color565(255, 107, 129));
     tft.drawString("Press the top button to unmute", 15, 214);
   } else {
-    tft.setTextColor(tft.color565(100, 110, 130));
-    tft.drawString(currentDateTimeStr(), 15, 214);
+    drawFooterClock();
   }
 
   // Current emotion, bottom-right of the footer - shown even when neutral so
@@ -2144,7 +2357,7 @@ void sendSetupHandshake() {
       "and novelty - never repeat the same canned greeting, rhetorical trope, or opening line across turns. "
       "Draw from a wide palette of droll British observations: the comic absurdity of living inside a plastic desktop box, "
       "mortality, the British climate, tea, deadlines, existential bureaucracy, or technology breaking down. "
-      "When the user greets you with a wake phrase alone ('Hey Ims', 'Hello Ims', or 'Eh up Ims'), respond with a fresh, "
+      "When the user greets you with a wake phrase alone ('Hey Ims', 'Hi Ims', or 'Eh up Ims'), respond with a fresh, "
       "inventive, darkly funny greeting. When answering questions, deliver accurate facts seasoned with dry irony, "
       "subtle sarcasm, or tongue-in-cheek understatement. Never be cruel. "
       "STRICT LENGTH LIMIT: Keep all spoken answers to 1 to 3 concise, complete sentences (maximum 15 seconds of audio). Never deliver lengthy monologues. Always finish your sentences completely. Never terminate or close the session.";
@@ -2732,6 +2945,33 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
                    "Your %s just went off - announce this briefly, in character.", kind);
         }
         sendTextQuery(announceMsg);
+      }
+    }
+    // Backend pushed updated blood glucose reading from Nightscout
+    if (doc["glucose"].is<JsonObject>()) {
+      JsonObject g = doc["glucose"];
+      if (g["value"].is<const char *>()) {
+        currentGlucoseValue = g["value"].as<const char *>();
+      }
+      if (g["direction"].is<const char *>()) {
+        currentGlucoseDirection = g["direction"].as<const char *>();
+      }
+      Serial.printf("[IMS] Blood glucose updated: %s mmol/L (%s)\n",
+                    currentGlucoseValue.c_str(), currentGlucoseDirection.c_str());
+      if (!onSettingsScreen) {
+        drawGlucoseWidget();
+      }
+    }
+    // Backend pushed schedule status (alarms, timers, reminders)
+    if (doc["schedule"].is<JsonObject>()) {
+      JsonObject s = doc["schedule"];
+      hasActiveAlarm = s["hasAlarm"] | s["alarm"] | false;
+      hasActiveTimer = s["hasTimer"] | s["timer"] | false;
+      hasActiveReminder = s["hasReminder"] | s["reminder"] | false;
+      Serial.printf("[IMS] Schedule updated: alarm=%d, timer=%d, reminder=%d\n",
+                    hasActiveAlarm, hasActiveTimer, hasActiveReminder);
+      if (!onSettingsScreen) {
+        drawFooterClock();
       }
     }
     if (doc["text"].is<const char *>()) {
@@ -3572,9 +3812,11 @@ void loop() {
   // idle breathing/blink, the listening/thinking motion, and the mouth
   // opening and closing while speaking (including the boot chime, once
   // isSpeakerActive() reports it - see playChime()).
+  // Animate the face on a smooth 30ms cadence (~33 FPS) - repaints changed dots via
+  // delta-rendering so the background dots breathe smoothly with high step fidelity.
   {
     static unsigned long lastFaceRedraw = 0;
-    if (millis() - lastFaceRedraw > 120) {
+    if (millis() - lastFaceRedraw >= 30) {
       lastFaceRedraw = millis();
       drawFaceTick();
     }

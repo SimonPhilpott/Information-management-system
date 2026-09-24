@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 30
-- Verified Features: 30
+- Total Registered Features: 32
+- Verified Features: 32
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -30,7 +30,7 @@
 | FEAT-020 | Hardware Complete Audio Playback & Synthesis Continuity Guarantee | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | 4000ms pause-tolerant drain timer, 1-3 sentence spoken brevity limit, defensive PA/DAC unmute, and socket lifecycle logging | PASS |
 | FEAT-021 | Hardware Keep-Alive Ping, Amplifier Persistence & Fast Turn Transition | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | 15s WebSocket ping, persistent PA during dialogue, 200ms post-drain cooldown & 1-2 sentence spoken conciseness | PASS |
 | FEAT-022 | Hardware Interactive Voice Shuffling & Official Voice Descriptions | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | Immediate audio termination, 350ms settle debounce, 30 official voice descriptions, and wake-gating text exemption | PASS |
-| FEAT-023 | Hardware Strict 15 Wake-Phrase Initiation & Context Reset | [hardwareClientService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/hardwareClientService.js) | Dual-layer 15 wake-phrase gating, server audio buffering & sessionClosed context reset | PASS |
+| FEAT-023 | Hardware Precision 3 Wake-Phrase Gating & Room Chatter Rejection | [hardwareClientService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/hardwareClientService.js) | Dual-layer precision 3 wake-phrase gating ('Hey IMS', 'Hi IMS', 'Eh up IMS'), candidate speech verification & sessionClosed reset | PASS |
 | FEAT-024 | Hardware Yorkshire Persona, Dynamic Markdown Rulebook & Emotion Matrix | [hardwareClientService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/hardwareClientService.js) | Dynamic ims_persona_rules.md loading, Yorkshire phonetic priming, turn-by-turn setEmotion activation & non-blocking farewell | PASS |
 | FEAT-025 | Hardware Explicit Memory & Recall Subsystem | [hardwareClientService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/hardwareClientService.js) | rememberFact SQLite persistence, prompt pre-injection, and recallMemory / forgetMemory execution | PASS |
 | FEAT-026 | IMS Memory Management Portal | [MemoriesPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/MemoriesPortal.jsx) | /ims/memories route view, add, edit, and delete operations | PASS |
@@ -38,6 +38,9 @@
 | FEAT-028 | Unified Cross-Platform Voice Persistence & Preview Isolation | [useGeminiLive.js](file:///d:/Information%20management%20system/src/hooks/useGeminiLive.js) | Ephemeral Web previewVoice, decoupled Box-3 previewVoiceIndex, backend sync & default voice lock | PASS |
 | FEAT-029 | IMS Central Hub and Dynamic Persona Portal | [PersonaPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/PersonaPortal.jsx) | /ims central card navigation, /ims/persona Markdown editor, /api/persona-rules GET/PUT persistence | PASS |
 | FEAT-030 | Subject-Grounded Library Book Retrieval & Response Formulation | [subjectMatcherService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/subjectMatcherService.js) | Dynamic taxonomy scoring, book candidate resolution, & grounded prompt formulation | PASS |
+| FEAT-031 | Real-Time Live Weather Integration & Yorkshire Commentary | [weatherService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/weatherService.js) | Open-Meteo live API geocoding, WMO condition translation & getWeather tool response | PASS |
+| FEAT-032 | Nightscout Real-Time Blood Glucose Widget & CGM Monitoring | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | Nightscout 60s polling, WebSocket push, LCD vector arrows & Font 4 mmol/L range rendering | PASS |
+
 
 
 
@@ -119,12 +122,12 @@
 4. **Text-Turn Wake Gating Exemption:** On voice preview trigger, verify server-side `hardwareClientService.js` explicitly exempts direct text turns (`clientContent`) from `noWakeDetected` silence gating, ensuring preview speech "Hi, I'm <voice>" synthesizes and plays aloud reliably.
 5. **Preview Flow Reset Safety:** If server emits a `noWakeDetected` signal or WebSocket reconnects, verify `previewFlow` resets safely to `PREVIEW_IDLE`, restoring UI interactive indicators without locking the screen in "Speaking preview...".
 
-### Suite 23: Hardware Strict 15 Wake-Phrase Initiation & Context Reset (FEAT-023)
-1. **Approved Wake-Phrase Initiation:** Speak any of the 15 approved wake phrases ("Now then, IMS", "Alright, IMS?", "Ey up, IMS" / "Eh up, IMS", "How do, IMS?", "Yo, IMS", "Hey, IMS", "Evening, IMS", "Good day, IMS", "Morning IMS", "Quick question, IMS", "Help me, IMS", "You there, IMS?", "Talk to me, IMS", "Got a sec, IMS?", "Hi, IMS"); verify Gemini Live immediately responds aloud, transitioning device from `STANDBY` to `SPEAKING`.
+### Suite 23: Hardware Precision 3 Wake-Phrase Gating & Room Chatter Rejection (FEAT-023)
+1. **Approved Wake-Phrase Initiation:** Speak any of the 3 approved wake phrases ("Hey, IMS", "Hi, IMS", "Eh up, IMS" / "Ey up, IMS"); verify Gemini Live immediately responds aloud, transitioning device from `STANDBY` to `SPEAKING`.
 2. **Elimination of False Thinking Transitions:** During wake candidate speech verification (`!conversationOpen`), verify the LCD display stays firmly on `STANDBY` without displaying "GEMINI THINKING...".
-3. **Unauthorized Ambient Speech Dropping:** Speak direct queries or ambient conversation into the room without an approved wake opening (e.g. "When is my next meeting?", "What time is it?", or "IMS what is this?"); verify Gemini calls `noWakeDetected`, emits 0 audio bytes, and device remains silent in `STANDBY` with zero spoken audio.
+3. **Unauthorized Ambient Speech Dropping:** Speak direct queries or ambient conversation into the room without an approved wake opening (e.g. "When is my next meeting?", "What time is it?", casual conversation like "current", or unapproved greetings like "Now then", "Morning"); verify Gemini calls `noWakeDetected`, emits 0 audio bytes, and device remains silent in `STANDBY` with zero spoken audio.
 4. **Continuous Dialogue Flow:** After an approved wake phrase opens the dialogue (`conversationOpen = true`), speak follow-up questions naturally without repeating wake words; verify Gemini answers each turn and shows `LISTENING...` / `GEMINI THINKING...` / `SPEAKING`.
-5. **Explicit Closing Phrase Teardown:** Speak a closing phrase (e.g. "thanks, bye", "goodbye", "that's all, IMS"); verify Gemini delivers farewell speech, calls `endConversation`, and device returns to `STANDBY` with `conversationOpen = false`.
+5. **Explicit Closing Phrase Teardown:** Speak a closing phrase (e.g. "thanks, bye", "goodbye", "that's all, IMS", "stop talking"); verify Gemini delivers farewell speech, calls `endConversation`, and device returns to `STANDBY` with `conversationOpen = false`.
 6. **Session Idle Context Teardown:** Allow an open conversation to sit idle for 14s; verify firmware transitions `STATE_LISTENING` -> `STATE_STANDBY`, transmits `{"sessionClosed": true}`, and backend drops upstream Gemini session (code 1000) so old context cannot bleed into subsequent sessions.
 7. **Touch-To-Talk Wake Bypass:** Tap the LCD screen directly; verify firmware sends `{"touchToTalk": true}` and enters `STATE_LISTENING`, allowing direct query questions without requiring a spoken wake phrase.
 
@@ -135,6 +138,7 @@
 4. **Mid-Turn Emotional Transitions:** Present a prompt requiring evaluation and conclusion (e.g. checking a complex contract clause); verify Gemini calls `setEmotion` mid-turn, visibly transforming the LCD pixel matrix as the sentiment shifts from investigation to resolution.
 5. **Conversational Agency & Hook Engagement:** Engage in dialogue; verify IMS closes turns with active conversational hooks, counter-questions, or dry observations rather than subservient corporate assistant closures ("How may I assist you today?").
 6. **Non-Blocking Farewell Execution:** Speak a closing phrase ("Thanks, bye"); verify Gemini synthesizes and plays farewell audio immediately without lag, and Box-3 transitions to `STANDBY` as `conversationOpen` closes.
+7. **Smooth High-Step Background Dot Breathing:** Observe IMS's face on the LCD display during idle STANDBY state; verify the inactive background dots surrounding the mouth and eyes fade in and out continuously at ~33 FPS without visible stepping, stutter, or colour jumps across the 52-step dynamic range, while facial animations (blink, gaze, expressions) preserve their 120ms cadence.
 
 ### Suite 25: Hardware Explicit Memory & Recall Subsystem (FEAT-025)
 1. **Explicit Fact Ingestion ("Remember that / remember this"):** Speak a directive with an approved wake phrase (e.g. "Hey IMS, I left me car keys in the top drawer by the front door, remember that"); verify Gemini invokes `rememberFact`, logs `[rememberFact saved]` in server console, sets an expressive face (e.g. `cocky`), and delivers an affirmative in-character acknowledgment aloud.
@@ -179,6 +183,24 @@
 6. **UI Grounding Badge:** Verify `MessageBubble.jsx` displays visual grounding badge (`📚 Grounded in: [Subject Leaf Name] ([N] books)`) when `groundedSubjects` and `groundedBooks` are returned.
 7. **Hardware Audio RAG Prepend:** Verify `executeHardwareRAGSearch()` in `hardwareClientService.js` prepends detected subject headers to RAG context for Box-3 voice responses.
 
+### Suite 31: Real-Time Live Weather Integration & Yorkshire Commentary (FEAT-031)
+1. **Local Weather Voice Query:** Speak wake phrase and ask "What's the weather like today?"; verify Gemini calls `getWeather(location: "")`, receives Leeds / West Yorkshire conditions, and answers aloud with accurate temperature in °C and condition.
+2. **Specific Global City Weather Query:** Ask "What's the weather in Paris?" or "How is it in New York?"; verify `weatherService.js` executes geocoding and returns targeted forecast for the specified municipality.
+3. **WMO Meteorological Code Translation:** Verify WMO weather codes (e.g. 0 -> Clear sky, 51 -> Light drizzle, 61 -> Slight rain, 3 -> Overcast) correctly map to natural language conditions in the tool payload.
+4. **10-Minute TTL Cache Operation:** Issue two weather queries for the same location within 10 minutes; verify the second response serves from memory without executing an outbound network fetch.
+5. **Yorkshire Commentary Ingestion:** Verify Gemini's spoken audio frames incorporate authentic regional commentary matching the temperature and sky conditions (e.g. "cracking flags", "proper chilly", "chucking it down", "grab your big coat").
+
+### Suite 32: Nightscout Real-Time Blood Glucose Widget & CGM Monitoring (FEAT-032)
+1. **Nightscout 60s Background Polling:** Verify `glucoseService.js` polls Nightscout properties API every 60,000ms, extracting latest `scaled` mmol/L value and `direction` from `bgnow.sgvs`.
+2. **Range-Based Health Color Verification:** Verify numerical blood glucose value and trend arrows render in green (`#2ED573`) for 4.0-7.5 mmol/L, yellow/amber (`#FFB84D`) for >7.5 mmol/L, and red (`#FF4757`) for <4.0 mmol/L.
+3. **Geometric Vector Trend Arrow Rendering:** Verify all 7 Nightscout trend directions (`DoubleDown`, `SingleDown`, `FortyFiveDown`, `Flat`, `FortyFiveUp`, `SingleUp`, `DoubleUp`) render crisp geometric arrowheads above the glucose reading on the LCD without character clipping.
+4. **LCD Screen Layout & Padding Verification:** Verify `FACE_CENTER_X` is centered at 148, `FACE_CENTER_Y` is lowered to 116 (providing 7px margin below the header bar), the status label sits at y=188, and the glucose widget is centered at x=288, y=116 with balanced margins preventing overlap with the face or right bezel.
+5. **Flicker-Free Selective Invalidation:** Verify 60-second WebSocket push updates redraw only the 66x80px bounding box via `drawGlucoseWidget()` without causing a full-screen flash or interrupting active face dot animations.
+6. **Gemini Live getBloodGlucose Tool Calling:** Speak wake phrase and ask "Hey IMS, how's me blood sugar?"; verify Gemini calls `getBloodGlucose()`, reports the exact mmol/L value and trend direction aloud, and delivers reassuring Yorkshire commentary.
+7. **REST Endpoint Inspection:** Issue HTTP GET to `/api/glucose`; verify JSON payload returns `value`, `direction`, `range`, `colorHex`, and `timestamp`.
+8. **Footer Schedule Indicator Icons:** Set an alarm, timer, or reminder; verify the corresponding orange icon (16x16 XBM bell for alarm, clock for timer, pen for reminder) renders at double font height with 18px spacing to the right of the date string, optically centered at y=210, and automatically disappears when the alert is cancelled or dismissed without ghosting or clipping the emotion label.
+9. **Mechanical 22x22 Cog Settings Icon Verification:** Verify the header settings icon at (22, 21) renders an authentic 22x22 XBM mechanical cog with 8 symmetrical tapered teeth and a transparent hollow central axle bore against the header background (`#141822`), responding accurately to touch within its bounding box (`x < 55 && y < 45`).
+
 ## Section 3: Defensive Engineering Invariants
 1. Hardware watchdog timer (WDT) and auto-reconnect logic on ESP32 WebSocket disconnects.
 2. Anti-stutter ring buffer and I2S DMA queue sizing on ESP32 PSRAM to prevent audio underflow/overflow.
@@ -211,6 +233,10 @@
 29. Voice audition isolation invariant: Web previewVoice initializes an ephemeral WebSocket connection with dedicated AudioContext playback that automatically terminates on turnComplete without mutating voiceName or localStorage; firmware previewVoiceIndex and activePreviewVoice decouple arrow auditioning from personalityVoiceIndex, preventing auditions from altering NVS or sending mutating POST requests to SQLite without explicit user tap-to-commit.
 30. Persona rules runtime loading invariant: `loadPersonaRules` dynamically resolves `ims_persona_rules.md` across known relative root paths on each Gemini Live setup payload construction, and `savePersonaRules` safely performs atomic synchronous disk write via `/api/persona-rules` PUT endpoint with non-empty validation.
 31. Dynamic subject-grounded book scoping fallback invariant: if targeted subject-grounded vector filtering returns fewer than 3 chunks, vectorStore and chatService automatically execute a secondary broad library vector search to guarantee complete answer formulation and avoid starved context.
+32. Weather API error resilience and caching invariant: `weatherService.js` implements a 10-minute in-memory TTL cache to prevent redundant HTTP requests and rate-limiting, and catches all upstream network/geocoding failures to return structured fallback payloads, preventing unhandled promise rejections or tool execution failures in Gemini Live.
+33. Nightscout CGM error resilience & LCD bounding box invalidation invariant: `glucoseService.js` wraps Nightscout HTTP requests with a 7-second abort timeout and falls back to cached readings upon network interruptions, while `drawGlucoseWidget()` exclusively clears its 66x80px bounding box (`fillRect(252, 80, 66, 80)`) to ensure 60-second periodic updates never flash the display or disrupt ongoing face dot tick animations.
+34. Schedule status synchronization & indicator rendering invariant: `remindersService.js` provides `getActiveScheduledStatus()` querying SQLite `scheduled_items` for active types, `index.js` automatically broadcasts `schedule` status on connection, tool mutation, and 15s checks, and `drawFooterClock()` renders dedicated orange vector icons (bell for alarm, clock for timer, pen for reminder) within `fillRect(0, 204, 265, 20)` without overlapping the right-aligned emotion label.
+35. Settings cog icon XBM rendering invariant: `cog_icon_22x22` bitmap in PROGMEM is rendered via `tft.drawXBitmap(cx - 11, cy - 11, cog_icon_22x22, 22, 22, col)` preceded by a 24x24 background patch (`fillRect(cx - 12, cy - 12, 24, 24, color565(20, 24, 34))`), preventing residual artifacts or ghosting between redraw states while maintaining instant touch hit detection.
 
 
 

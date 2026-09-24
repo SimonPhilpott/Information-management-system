@@ -54,12 +54,16 @@ import graphRoutes from './routes/graph.js';
 import voiceRoutes from './routes/voice.js';
 import memoriesRoutes from './routes/memories.js';
 import personaRoutes from './routes/persona.js';
+import musicScanRoutes from './routes/musicScan.js';
 import { getAuthStatus } from './services/driveService.js';
 import { validateConfiguredModels } from './services/modelService.js';
 import { loadHnswFromDisk } from './services/hnswService.js';
 import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getPersonality, setPersonality, getCaptureLogging, setCaptureLogging } from './services/hardwareClientService.js';
-import { scheduleItem, listScheduledItems, cancelScheduledItem, addToList, readList, removeFromList, clearList, checkDueScheduledItems, stopAllRinging } from './services/remindersService.js';
+import { scheduleItem, listScheduledItems, cancelScheduledItem, addToList, readList, removeFromList, clearList, checkDueScheduledItems, stopAllRinging, getActiveScheduledStatus } from './services/remindersService.js';
 import { addMemory, getMemories, searchMemories, deleteMemory } from './db/database.js';
+import { getWeather } from './services/weatherService.js';
+import { startGlucosePoller, getGlucoseData } from './services/glucoseService.js';
+import { checkAndTriggerNightlyScan } from './services/musicScanService.js';
 
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -137,6 +141,24 @@ app.use('/api/graph', graphRoutes);
 app.use('/api/voice', voiceRoutes);
 app.use('/api/memories', memoriesRoutes);
 app.use('/api/persona-rules', personaRoutes);
+app.use('/api/music-scan', musicScanRoutes);
+
+app.get('/api/glucose', async (req, res) => {
+  try {
+    const data = await getGlucoseData();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/schedule', (req, res) => {
+  try {
+    res.json(getActiveScheduledStatus());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Serve static client build in production
 const clientDist = path.join(__dirname, '..', 'client', 'dist');
@@ -191,6 +213,21 @@ const browserWss = new WebSocketServer({ noServer: true });
 const hardwareWss = new WebSocketServer({ noServer: true });
 let activeBrowserSession = null;
 let activeHardwareSession = null;
+
+export function pushScheduleStatus(targetWs = null) {
+  const ws = targetWs || activeHardwareSession?.clientWs;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      const status = getActiveScheduledStatus();
+      ws.send(JSON.stringify({
+        schedule: status
+      }));
+      console.log(`[Schedule] Pushed status to hardware client:`, status);
+    } catch (err) {
+      console.error('[Schedule] Failed to push status:', err.message);
+    }
+  }
+}
 
 server.on('upgrade', (request, socket, head) => {
   const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
@@ -444,6 +481,14 @@ function handleLiveProxyConnection(ws, isHardware = false) {
 
     if (isHardware) {
       activeHardwareSession = { clientWs: ws, geminiWs: gWs };
+      pushScheduleStatus(ws);
+      getGlucoseData().then((glucose) => {
+        if (ws.readyState === WebSocket.OPEN && glucose?.value) {
+          ws.send(JSON.stringify({
+            glucose: { value: glucose.value, direction: glucose.direction }
+          }));
+        }
+      }).catch((err) => console.error('[Glucose] Initial device push error:', err.message));
     } else {
       activeBrowserSession = { clientWs: ws, geminiWs: gWs };
     }
@@ -723,7 +768,10 @@ function handleLiveProxyConnection(ws, isHardware = false) {
                 // farewell was actually "IMS, stop" for an alert or just an
                 // ordinary end of conversation.
                 const stopped = stopAllRinging();
-                if (stopped > 0) console.log(`${tag} 🔕 Dismissed ${stopped} ringing alert(s)`);
+                if (stopped > 0) {
+                  console.log(`${tag} 🔕 Dismissed ${stopped} ringing alert(s)`);
+                  pushScheduleStatus();
+                }
               }
               if (gWs.readyState === WebSocket.OPEN) {
                 gWs.send(JSON.stringify({
@@ -758,6 +806,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
               try {
                 const result = scheduleItem(call.args || {});
                 console.log(`${tag} ⏰ scheduleItem:`, result);
+                pushScheduleStatus();
                 respondToToolCall(call, result);
               } catch (err) {
                 console.error(`${tag} scheduleItem failed:`, err.message);
@@ -768,6 +817,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
             } else if (call.name === 'cancelScheduledItem') {
               const cancelled = cancelScheduledItem(call.args?.id);
               console.log(`${tag} ⏰ cancelScheduledItem(${call.args?.id}) -> ${cancelled}`);
+              pushScheduleStatus();
               respondToToolCall(call, { cancelled });
             } else if (call.name === 'addToList') {
               try {
@@ -829,6 +879,31 @@ function handleLiveProxyConnection(ws, isHardware = false) {
                 console.error(`${tag} forgetMemory failed:`, err.message);
                 respondToToolCall(call, { error: err.message });
               }
+            } else if (call.name === 'getWeather') {
+              const loc = call.args?.location || '';
+              console.log(`${tag} 🌦️ Executing getWeather tool for location: "${loc || 'local'}"`);
+              getWeather(call.args || {}).then((weatherData) => {
+                console.log(`${tag} 🌦️ Weather result for ${weatherData.location}: ${weatherData.current?.temperature_c}°C, ${weatherData.current?.condition}`);
+                respondToToolCall(call, weatherData);
+              }).catch((err) => {
+                console.error(`${tag} getWeather error:`, err.message);
+                respondToToolCall(call, { error: err.message, fallback: "Current weather conditions unavailable." });
+              });
+            } else if (call.name === 'getBloodGlucose') {
+              console.log(`${tag} 🩸 Executing getBloodGlucose tool`);
+              getGlucoseData().then((glucoseData) => {
+                console.log(`${tag} 🩸 Glucose result: ${glucoseData.value} mmol/L (${glucoseData.direction}, ${glucoseData.range})`);
+                respondToToolCall(call, {
+                  blood_glucose_mmol_l: glucoseData.value,
+                  trend_direction: glucoseData.direction,
+                  range_status: glucoseData.range,
+                  delta: glucoseData.delta,
+                  reading_time: new Date(glucoseData.timestamp).toLocaleTimeString('en-GB')
+                });
+              }).catch((err) => {
+                console.error(`${tag} getBloodGlucose error:`, err.message);
+                respondToToolCall(call, { error: err.message, fallback: "Blood glucose data currently unavailable." });
+              });
             } else {
               respondToToolCall(call, { status: 'acknowledged' });
             }
@@ -1332,6 +1407,7 @@ setInterval(() => {
   let fired;
   try {
     fired = checkDueScheduledItems();
+    pushScheduleStatus();
   } catch (err) {
     console.error('[Reminders] checkDueScheduledItems failed:', err.message);
     return;
@@ -1351,6 +1427,30 @@ setInterval(() => {
     }
   }
 }, 15000);
+
+// Music library scan (/ims/musicscan): checked once a minute against its own
+// configurable schedule_time, unlike reminders' 15s poll - it fires at most
+// once a day, so minute-granularity is more than enough and cheaper.
+setInterval(() => {
+  try {
+    checkAndTriggerNightlyScan();
+  } catch (err) {
+    console.error('[MusicScan] checkAndTriggerNightlyScan failed:', err.message);
+  }
+}, 60000);
+
+// Nightscout Blood Glucose: poll every 60s and push to active hardware client
+startGlucosePoller((glucose) => {
+  if (activeHardwareSession?.clientWs?.readyState === WebSocket.OPEN) {
+    try {
+      activeHardwareSession.clientWs.send(JSON.stringify({
+        glucose: { value: glucose.value, direction: glucose.direction }
+      }));
+    } catch (err) {
+      console.error('[Glucose] Failed to push update to hardware client:', err.message);
+    }
+  }
+});
 
 // Temporary debug endpoint: accepts a raw PCM POST body from the
 // MichalZaniewicz/esphome-esp32-s3-box-3-va reference firmware's on_data

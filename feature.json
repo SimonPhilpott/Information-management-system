@@ -268,11 +268,11 @@
         "Defensive cancellation of preview flow upon receiving synthetic noWakeDetected signals preventing display lockup"
       ]
     },
-    "Hardware Strict 15 Wake-Phrase Initiation & Context Reset": {
+    "Hardware Precision 3 Wake-Phrase Gating & Room Chatter Rejection": {
       "status": "enabled",
-      "description": "Strict wake-phrase enforcement architecture restricting voice initiation exclusively to 15 explicit British/conversational phrases, keeping LCD display firmly in STANDBY during candidate verification to eliminate false thinking screens, unblocking Gemini Live audio streaming directly to the hardware terminal, terminating upstream sessions on unapproved audio via noWakeDetected, and maintaining open dialogue turn-to-turn until explicit user farewell or 14s idle timeout.",
+      "description": "Strict wake-phrase enforcement architecture restricting voice initiation exclusively to 3 explicit phrases ('Hey IMS', 'Hi IMS', 'Eh up IMS' / 'Ey up IMS'), eliminating acoustic collisions with ambient room conversation, keeping LCD display firmly in STANDBY during candidate verification to eliminate false thinking screens, unblocking Gemini Live audio streaming directly to the hardware terminal, terminating upstream sessions on unapproved audio via noWakeDetected, and maintaining open dialogue turn-to-turn until explicit user farewell or idle timeout.",
       "subFeatures": [
-        "Strict enumeration of exactly 15 user-approved wake phrases in Gemini Live system instructions (including phonetic variants like 'Eh up, IMS')",
+        "Strict enumeration of exactly 3 user-approved wake phrases in Gemini Live system instructions ('Hey, IMS', 'Hi, IMS', 'Eh up, IMS' / 'Ey up, IMS') eliminating phonetic collisions with casual ambient speech",
         "Immediate response to wake phrase alone or wake phrase followed directly by question/request in same breath",
         "Firmware display guard holding screen in STANDBY during wake candidate verification, eliminating false 'GEMINI THINKING...' transitions",
         "Unconditional reset to STANDBY and conversation closure upon noWakeDetected tool invocation",
@@ -291,6 +291,7 @@
         "Mandatory turn-by-turn setEmotion tool invocation across 14 animated pixel expressions (joy, cocky, amazement, suspicious, confused, sad, devastated, anger, rage, fear, disgusted, bored, sleepy, love) with mid-reply sentiment transition support",
         "Removal of prompt neutrality suppression and passive corporate assistant tropes in favor of proactive conversational hooks, dry banter, and inquisitive turn closures",
         "Physical embodiment grounding as a dedicated ESP32-S3-BOX-3 desktop terminal with awareness of UK time, weather, and low-power hardware constraints",
+        "Silky-smooth 33 FPS background face dot breathing with 52-step dynamic range (8-60), RGB565 delta caching, and 120ms decoupled discrete expression timing",
         "Non-blocking endConversation tool declaration eliminating post-farewell thinking screen lag"
       ]
     },
@@ -364,6 +365,34 @@
         "Grounding prompt injection instructing Gemini to formulate answers and code directly from the matched library books",
         "UI grounded subjects badge in MessageBubble.jsx showing matched taxonomy subjects and book count",
         "Hardware Live Voice and REST chat RAG retrieval integration prepending targeted subject context to hardware voice responses"
+      ]
+    },
+    "Real-Time Live Weather Integration & Yorkshire Commentary": {
+      "status": "enabled",
+      "description": "Real-time weather service integration providing current atmospheric conditions, temperature, humidity, precipitation, wind speed, and multi-day forecasts for any global city or local UK area via the getWeather tool, backed by Open-Meteo geocoding and forecasting APIs with in-memory caching and authentic Yorkshire conversational commentary.",
+      "subFeatures": [
+        "Real-time weather retrieval via Open-Meteo free API without external API keys or rate-limit expiration",
+        "Automated Open-Meteo geocoding resolving any city, town, or region with fallback to Leeds / West Yorkshire, UK",
+        "WMO weather code interpretation mapping numeric meteorological codes to descriptive natural language conditions",
+        "10-minute in-memory TTL caching preventing redundant network requests on frequent repeated queries",
+        "Blocking getWeather tool declaration in Gemini Live hardware setup handshake returning structured temperature, precipitation, and forecast data",
+        "Yorkshire persona prompt directives and acoustic few-shot exemplars priming authentic regional weather commentary"
+      ]
+    },
+    "Nightscout Real-Time Blood Glucose Widget & CGM Monitoring": {
+      "status": "enabled",
+      "description": "Continuous real-time blood glucose and CGM monitoring service that polls Nightscout every 60 seconds and pushes live mmol/L glucose values and directional trend arrows to the ESP32-S3-BOX-3 hardware terminal, rendered vertically centered to the right of the expressive animated face with range-based health coloring (<4.0 red, 4.0-7.5 green, >7.5 yellow) and vector trend arrows.",
+      "subFeatures": [
+        "Nightscout properties API integration (polling https://simon-philpott-nightscout.herokuapp.com/api/v2/properties.json every 60 seconds)",
+        "Extracts latest scaled mmol/L reading, delta, mills timestamp, and directional trend from bgnow.sgvs",
+        "Range-based health color classification: Red for hypoglycemic danger (<4.0 mmol/L), Green for normal target range (4.0-7.5 mmol/L), Yellow for elevated readings (>7.5 mmol/L)",
+        "Geometric vector trend arrow renderer supporting all 7 Nightscout directions: DoubleDown, SingleDown, FortyFiveDown, Flat, FortyFiveUp, SingleUp, DoubleUp",
+        "Hardware terminal LCD layout: balanced geometry with centered face at FACE_CENTER_X=148, FACE_CENTER_Y=116 (7px below header), glucose widget shifted right at x=288, y=116, and status label positioned at y=188",
+        "Hardware terminal footer schedule indicator icons rendered in orange to the right of the date string at double text height (16x16 XBM bitmaps for alarm bell, timer clock, reminder pen) with increased 18px date spacing and vertical alignment, synchronized via pushScheduleStatus() and GET /api/schedule",
+        "Authentic 22x22 XBM mechanical settings cog icon rendered in header at (22, 21) replacing hand-drawn geometric primitives with 8 tapered orthogonal teeth and hollow central axle bore cutout",
+        "Flicker-free selective bounding box invalidation (66x80px at x=252) on 60-second updates without disrupting face animations or causing full screen flashes",
+        "Blocking getBloodGlucose Gemini Live tool allowing the user to ask verbally about blood sugar with caring Yorkshire commentary",
+        "Express REST API endpoint at GET /api/glucose exposing cached glucose data with error resilience and stale detection"
       ]
     }
   }
