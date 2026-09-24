@@ -12,9 +12,10 @@ import db from '../db/database.js';
 // that used to live in ims_persona_rules.md).
 //
 // 'standby' is the face Ims wears whenever it is idle (it is never chosen by
-// Gemini). Every face can also have eye movement: 'blink' squashes the eyes flat
-// now and then, and 'glance' slides any dim dot in the eyes (the pupil) one
-// column left or right - exactly what the standby eyes do.
+// Gemini). Any face can have ANIMATED EYES: an ordered timeline of cells, each a
+// picture of the eyes (the top five rows of the grid, 60 hex digits) plus how
+// long it stays up in milliseconds. The timeline loops. The mouth rows come from
+// the resting / speaking frames as usual, so eyes animate independently of talking.
 db.exec(`
   CREATE TABLE IF NOT EXISTS ims_faces (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,6 +33,7 @@ db.exec(`
 try { db.exec(`ALTER TABLE ims_faces ADD COLUMN open_grid TEXT`); } catch (_) { }
 try { db.exec(`ALTER TABLE ims_faces ADD COLUMN eye_blink INTEGER NOT NULL DEFAULT 0`); } catch (_) { }
 try { db.exec(`ALTER TABLE ims_faces ADD COLUMN eye_glance INTEGER NOT NULL DEFAULT 0`); } catch (_) { }
+try { db.exec(`ALTER TABLE ims_faces ADD COLUMN eye_anim TEXT`); } catch (_) { }
 
 const COLS = 12, ROWS = 8;
 
@@ -43,6 +45,66 @@ function makeGrid(...builders) {
   for (const b of builders) b({ put, set, row });
   return g.map((v) => Math.round(v / 17).toString(16)).join('');
 }
+
+// --- eye animation cells -----------------------------------------------------
+const EYE_LEN = 5 * COLS;          // rows 0-4
+const MAX_CELLS = 24;
+const EYE_RE = /^[0-9a-f]{60}$/;
+
+// Blink: every column of the eyes collapses onto its lowest lit dot.
+function collapseEyes(eyes) {
+  const v = eyes.split('').map((c) => parseInt(c, 16));
+  for (let c = 0; c < COLS; c++) {
+    let bottom = -1, peak = 0;
+    for (let r = 0; r < 5; r++) { const x = v[r * COLS + c]; if (x > 0) { bottom = r; peak = Math.max(peak, x); } }
+    if (bottom < 0) continue;
+    for (let r = 0; r < 5; r++) v[r * COLS + c] = 0;
+    v[bottom * COLS + c] = peak;
+  }
+  return v.map((x) => x.toString(16)).join('');
+}
+
+// Look left/right: each dim "pupil" dot slides one column into a lit dot beside it.
+function shiftEyes(eyes, dir) {
+  const v = eyes.split('').map((c) => parseInt(c, 16));
+  const src = v.slice();
+  for (let r = 0; r < 5; r++) for (let c = 0; c < COLS; c++) {
+    const x = src[r * COLS + c], nc = c + dir;
+    if (x > 0 && x <= 3 && nc >= 0 && nc < COLS && src[r * COLS + nc] >= 12) { v[r * COLS + nc] = x; v[r * COLS + c] = 15; }
+  }
+  return v.map((x) => x.toString(16)).join('');
+}
+
+// The four-cell timeline a face starts with: open, blink, look left, look right.
+function defaultEyeAnim(grid) {
+  const eyes = grid.slice(0, EYE_LEN);
+  return {
+    enabled: true,
+    cells: [
+      { name: 'Eyes open', ms: 5500, grid: eyes },
+      { name: 'Blink', ms: 250, grid: collapseEyes(eyes) },
+      { name: 'Look left', ms: 1200, grid: shiftEyes(eyes, -1) },
+      { name: 'Look right', ms: 1200, grid: shiftEyes(eyes, 1) },
+    ],
+  };
+}
+
+// Validates what the editor sends; returns a clean object (or null for "no animation").
+function cleanAnim(a) {
+  if (a === null || a === undefined) return null;
+  const enabled = Boolean(a.enabled);
+  const cells = Array.isArray(a.cells) ? a.cells : [];
+  if (cells.length > MAX_CELLS) throw new Error(`An eye animation can have at most ${MAX_CELLS} cells.`);
+  const clean = cells.map((c, i) => {
+    if (!EYE_RE.test(String(c?.grid || ''))) throw new Error(`Eye cell ${i + 1} is invalid.`);
+    const ms = Math.round(Number(c.ms));
+    if (!Number.isFinite(ms) || ms < 40 || ms > 60000) throw new Error(`Eye cell ${i + 1}: the duration must be between 40 and 60000 ms.`);
+    return { name: String(c.name || `Cell ${i + 1}`).trim().slice(0, 24), ms, grid: c.grid };
+  });
+  if (enabled && clean.length === 0) throw new Error('Add at least one cell to animate the eyes (or switch the animation off).');
+  return { enabled, cells: clean };
+}
+const parseAnim = (text) => { try { return text ? cleanAnim(JSON.parse(text)) : null; } catch (_) { return null; } };
 
 // The everyday eyes: two 3x3 blocks with a dim pupil dot, as on the device.
 const STANDBY_EYES = ({ row, set }) => { for (let r = 1; r <= 3; r++) { row(r, 2, 4); row(r, 7, 9); } set(2, 3, 30); set(2, 8, 30); };
@@ -113,25 +175,29 @@ const FACES = {
     'Late-night sessions (past 11 PM), early morning wake-ups before 8 AM, low-activity idle periods, long passive readouts, winding down after a long day (usually after 4pm).'],
 };
 
-// Eye movement ships on by default for the two everyday faces only.
-const DEFAULT_MOTION = { standby: { blink: true, glance: true }, neutral: { blink: true, glance: true } };
+// Animated eyes ship on for the two everyday faces only.
+const ANIMATED_BY_DEFAULT = ['standby', 'neutral'];
 const DEFAULTS = Object.fromEntries(Object.entries(FACES).map(([name, [color, eyes, closed, open, scenarios]]) => [
   name, { color, grid: makeGrid(eyes, closed), openGrid: makeGrid(eyes, open), scenarios,
-    blink: Boolean(DEFAULT_MOTION[name]?.blink), glance: Boolean(DEFAULT_MOTION[name]?.glance) }
+    anim: ANIMATED_BY_DEFAULT.includes(name) ? defaultEyeAnim(makeGrid(eyes, closed)) : null }
 ]));
 
 // Seed built-ins that are missing. Earlier versions stored eyes only (no
 // mouth) and no open frame: bring those rows up to the two-frame model, but
 // never touch scenarios (or, once present, frames) the user may have edited.
 {
-  const insert = db.prepare(`INSERT OR IGNORE INTO ims_faces (name, grid, open_grid, color, scenarios, builtin, eye_blink, eye_glance, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`);
-  for (const [name, d] of Object.entries(DEFAULTS)) insert.run(name, d.grid, d.openGrid, d.color, d.scenarios, d.blink ? 1 : 0, d.glance ? 1 : 0, Date.now());
+  const insert = db.prepare(`INSERT OR IGNORE INTO ims_faces (name, grid, open_grid, color, scenarios, builtin, eye_anim, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`);
+  for (const [name, d] of Object.entries(DEFAULTS)) insert.run(name, d.grid, d.openGrid, d.color, d.scenarios, d.anim ? JSON.stringify(d.anim) : null, Date.now());
   // The old neutral face had no eyes of its own (the firmware drew them). Give it
   // the real ones, once, unless it has already been redrawn.
   const oldNeutral = db.prepare(`SELECT * FROM ims_faces WHERE name = 'neutral' AND builtin = 1`).get();
-  if (oldNeutral && /^0+$/.test(String(oldNeutral.grid).slice(0, 5 * COLS))) {
+  if (oldNeutral && /^0+$/.test(String(oldNeutral.grid).slice(0, EYE_LEN))) {
     const d = DEFAULTS.neutral;
-    db.prepare(`UPDATE ims_faces SET grid = ?, open_grid = ?, eye_blink = 1, eye_glance = 1 WHERE id = ?`).run(d.grid, d.openGrid, oldNeutral.id);
+    db.prepare(`UPDATE ims_faces SET grid = ?, open_grid = ?, eye_anim = ? WHERE id = ?`).run(d.grid, d.openGrid, JSON.stringify(d.anim), oldNeutral.id);
+  }
+  // Faces that used the earlier blink/glance ticks become an equivalent timeline.
+  for (const r of db.prepare(`SELECT * FROM ims_faces WHERE eye_anim IS NULL AND (eye_blink = 1 OR eye_glance = 1)`).all()) {
+    db.prepare(`UPDATE ims_faces SET eye_anim = ? WHERE id = ?`).run(JSON.stringify(defaultEyeAnim(r.grid)), r.id);
   }
   const upgrade = db.prepare(`UPDATE ims_faces SET grid = ?, open_grid = ? WHERE name = ? AND builtin = 1 AND open_grid IS NULL`);
   for (const [name, d] of Object.entries(DEFAULTS)) upgrade.run(d.grid, d.openGrid, name);
@@ -147,7 +213,7 @@ const present = (r) => ({
   builtin: Boolean(r.builtin),
   shapeLocked: false, // every face can be redrawn
   selectable: r.name !== 'standby', // Ims never chooses the standby face itself
-  eyeBlink: Boolean(r.eye_blink), eyeGlance: Boolean(r.eye_glance),
+  eyeAnim: parseAnim(r.eye_anim) || { enabled: false, cells: [] },
   hasDefault: Boolean(r.builtin && DEFAULTS[r.name]),
   createdAt: new Date(r.created_at).toISOString(),
   updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null,
@@ -170,26 +236,26 @@ function checkFrames(grid, openGrid) {
   if (!GRID_RE.test(String(openGrid || ''))) throw new Error('The speaking (mouth open) face is invalid.');
 }
 
-export function createFace({ name, grid, openGrid, color, scenarios, eyeBlink, eyeGlance }) {
+export function createFace({ name, grid, openGrid, color, scenarios, eyeAnim }) {
   const n = normaliseName(name);
   if (!NAME_RE.test(n)) throw new Error('Name must be 2-23 characters: letters, numbers or underscores, starting with a letter.');
   checkFrames(grid, openGrid ?? grid);
   if (!COLOR_RE.test(String(color || ''))) throw new Error('Pick a colour.');
   if (db.prepare(`SELECT 1 FROM ims_faces WHERE LOWER(name) = ?`).get(n)) throw new Error(`A face called "${n}" already exists.`);
-  const info = db.prepare(`INSERT INTO ims_faces (name, grid, open_grid, color, scenarios, builtin, eye_blink, eye_glance, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`)
-    .run(n, grid, openGrid ?? grid, String(color).toUpperCase(), String(scenarios || '').trim(), eyeBlink ? 1 : 0, eyeGlance ? 1 : 0, Date.now());
+  const anim = cleanAnim(eyeAnim);
+  const info = db.prepare(`INSERT INTO ims_faces (name, grid, open_grid, color, scenarios, builtin, eye_anim, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)`)
+    .run(n, grid, openGrid ?? grid, String(color).toUpperCase(), String(scenarios || '').trim(), anim ? JSON.stringify(anim) : null, Date.now());
   return present(db.prepare(`SELECT * FROM ims_faces WHERE id = ?`).get(info.lastInsertRowid));
 }
 
 // Built-in faces keep their name; their frames and colour can be edited (and
 // reset to the defaults) - neutral too, which the device uses when idle and speaking.
-export function updateFace(id, { name, grid, openGrid, color, scenarios, eyeBlink, eyeGlance }) {
+export function updateFace(id, { name, grid, openGrid, color, scenarios, eyeAnim }) {
   const r = db.prepare(`SELECT * FROM ims_faces WHERE id = ? AND deleted_at IS NULL`).get(id);
   if (!r) throw new Error('Face not found.');
   const locked = false;
-  const next = { name: r.name, grid: r.grid, open_grid: r.open_grid || r.grid, color: r.color, scenarios: r.scenarios, eye_blink: r.eye_blink, eye_glance: r.eye_glance };
-  if (eyeBlink !== undefined) next.eye_blink = eyeBlink ? 1 : 0;
-  if (eyeGlance !== undefined) next.eye_glance = eyeGlance ? 1 : 0;
+  const next = { name: r.name, grid: r.grid, open_grid: r.open_grid || r.grid, color: r.color, scenarios: r.scenarios, eye_anim: r.eye_anim };
+  if (eyeAnim !== undefined) { const a = cleanAnim(eyeAnim); next.eye_anim = a ? JSON.stringify(a) : null; }
   if (scenarios !== undefined) next.scenarios = String(scenarios).trim();
   if (!locked) {
     if (name !== undefined && !r.builtin) {
@@ -205,8 +271,8 @@ export function updateFace(id, { name, grid, openGrid, color, scenarios, eyeBlin
     }
     if (color !== undefined) { if (!COLOR_RE.test(String(color))) throw new Error('Pick a colour.'); next.color = String(color).toUpperCase(); }
   }
-  db.prepare(`UPDATE ims_faces SET name = ?, grid = ?, open_grid = ?, color = ?, scenarios = ?, eye_blink = ?, eye_glance = ?, updated_at = ? WHERE id = ?`)
-    .run(next.name, next.grid, next.open_grid, next.color, next.scenarios, next.eye_blink, next.eye_glance, Date.now(), id);
+  db.prepare(`UPDATE ims_faces SET name = ?, grid = ?, open_grid = ?, color = ?, scenarios = ?, eye_anim = ?, updated_at = ? WHERE id = ?`)
+    .run(next.name, next.grid, next.open_grid, next.color, next.scenarios, next.eye_anim, Date.now(), id);
   return present(db.prepare(`SELECT * FROM ims_faces WHERE id = ?`).get(id));
 }
 
@@ -215,7 +281,7 @@ export function resetFace(id) {
   const r = db.prepare(`SELECT * FROM ims_faces WHERE id = ? AND deleted_at IS NULL AND builtin = 1`).get(id);
   const d = r && DEFAULTS[r.name];
   if (!d) throw new Error('Only built-in faces can be reset.');
-  db.prepare(`UPDATE ims_faces SET grid = ?, open_grid = ?, color = ?, eye_blink = ?, eye_glance = ?, updated_at = ? WHERE id = ?`).run(d.grid, d.openGrid, d.color, d.blink ? 1 : 0, d.glance ? 1 : 0, Date.now(), id);
+  db.prepare(`UPDATE ims_faces SET grid = ?, open_grid = ?, color = ?, eye_anim = ?, updated_at = ? WHERE id = ?`).run(d.grid, d.openGrid, d.color, d.anim ? JSON.stringify(d.anim) : null, Date.now(), id);
   return present(db.prepare(`SELECT * FROM ims_faces WHERE id = ?`).get(id));
 }
 
@@ -245,7 +311,11 @@ export function getFacePromptGuide() {
 // What to send the device for a chosen face. Every face except neutral goes as
 // its two frames (resting + speaking) and colour, so edits made in the Face
 // Designer - to built-ins as well as new designs - take effect immediately.
-const faceForDevice = (f) => ({ grid: f.grid, openGrid: f.openGrid, color: f.color, blink: f.eyeBlink, glance: f.eyeGlance });
+// Cells go over as {g, ms}: 60 hex digits of eyes and a duration.
+const faceForDevice = (f) => ({
+  grid: f.grid, openGrid: f.openGrid, color: f.color,
+  eyes: f.eyeAnim.enabled && f.eyeAnim.cells.length ? { cells: f.eyeAnim.cells.map((c) => ({ g: c.grid, ms: c.ms })) } : null,
+});
 
 export function getDevicePayload(name) {
   const f = getFaceByName(name);
@@ -254,13 +324,9 @@ export function getDevicePayload(name) {
   return { setEmotion: f.name, face: faceForDevice(f) };
 }
 
-// The idle face is drawn by the firmware unless the user has changed it in the
-// Face Designer. Returns the user's version, or null while it is still the
-// original (so the device keeps its built-in look).
+// The standby face as designed. It is always sent (never left to the firmware's
+// built-in look), so the timeline shown in the Face Designer is what the device runs.
 export function getStandbyOverride() {
   const f = getFaceByName('standby');
-  const d = DEFAULTS.standby;
-  if (!f || !d) return null;
-  if (f.grid === d.grid && f.openGrid === d.openGrid && f.color.toUpperCase() === d.color.toUpperCase() && f.eyeBlink === d.blink && f.eyeGlance === d.glance) return null;
-  return faceForDevice(f);
+  return f ? faceForDevice(f) : null;
 }

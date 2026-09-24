@@ -327,9 +327,18 @@ static uint8_t standbyFaceGrid[96];
 static uint8_t standbyFaceOpenGrid[96];
 static uint32_t standbyFaceRGB = 0x4CFF7A;
 static bool standbyCustomActive = false;
-static bool standbyBlink = false, standbyGlance = false;
-// Eye movement for the current designed face (set with setEmotion).
-static bool customFaceBlink = false, customFaceGlance = false;
+// Animated eyes: a looping timeline of cells, each 5 rows x 12 columns of dot
+// levels (the top of the face) plus how long it stays up. Set from the Face
+// Designer for the current designed face and for the standby face.
+#define MAX_EYE_CELLS 24
+struct EyeCell { uint8_t g[60]; uint16_t ms; };
+static EyeCell customEyeCells[MAX_EYE_CELLS];
+static int customEyeCount = 0;
+static unsigned long customEyeStartMs = 0;
+static EyeCell standbyEyeCells[MAX_EYE_CELLS];
+static int standbyEyeCount = 0;
+static unsigned long standbyEyeStartMs = 0;
+static uint32_t standbyFaceHash = 0;
 static char customFaceName[24] = "custom";
 enum FaceEmotion {
   EMOTION_NEUTRAL = 0,
@@ -847,41 +856,38 @@ static void applyBreathBackground(uint8_t want[FACE_COLS * FACE_ROWS]) {
     if (want[i] < breath) want[i] = (uint8_t)breath;
 }
 
-// Eye movement for any designed face, matching the standby eyes: every 12 s the
-// eyes blink (each column of the eye rows collapses onto its lowest lit dot) and
-// they glance left then right (a dim "pupil" dot slides one column into a lit
-// dot beside it, and the dot it left lights up). Only rows 0-4 are touched, so
-// the mouth is never affected.
-static void applyEyeMotion(uint8_t want[FACE_COLS * FACE_ROWS], int f, bool blink, bool glance) {
-  int t = f % 100;
-  if (blink && (t == 0 || t == 1 || t == 5 || t == 6)) {
-    for (int c = 0; c < FACE_COLS; c++) {
-      int bottom = -1;
-      uint8_t peak = 0;
-      for (int r = 0; r < 5; r++) {
-        uint8_t v = want[r * FACE_COLS + c];
-        if (v > 0) { bottom = r; if (v > peak) peak = v; }
-      }
-      if (bottom < 0) continue;
-      for (int r = 0; r < 5; r++) want[r * FACE_COLS + c] = 0;
-      want[bottom * FACE_COLS + c] = peak;
-    }
-    return;
+// Plays the eye timeline: finds the cell for the current moment in the loop and
+// replaces the top five rows of the face with it. The mouth rows are untouched.
+static void applyEyeTimeline(uint8_t want[FACE_COLS * FACE_ROWS], const EyeCell *cells, int count, unsigned long startMs) {
+  if (count <= 0) return;
+  uint32_t total = 0;
+  for (int i = 0; i < count; i++) total += cells[i].ms;
+  if (total == 0) return;
+  uint32_t t = (uint32_t)(millis() - startMs) % total;
+  int idx = 0;
+  for (; idx < count - 1; idx++) {
+    if (t < cells[idx].ms) break;
+    t -= cells[idx].ms;
   }
-  if (!glance) return;
-  int g = (t >= 30 && t < 40) ? -1 : ((t >= 50 && t < 60) ? 1 : 0);
-  if (g == 0) return;
-  uint8_t src[FACE_COLS * 5];
-  memcpy(src, want, sizeof(src));
-  for (int r = 0; r < 5; r++) {
-    for (int c = 0; c < FACE_COLS; c++) {
-      uint8_t v = src[r * FACE_COLS + c];
-      int nc = c + g;
-      if (v > 0 && v <= 60 && nc >= 0 && nc < FACE_COLS && src[r * FACE_COLS + nc] >= 200) {
-        want[r * FACE_COLS + nc] = v;
-        want[r * FACE_COLS + c] = 255;
-      }
-    }
+  memcpy(want, cells[idx].g, 60);
+}
+
+// Reads the {cells:[{g:"60 hex digits", ms}]} array the backend sends.
+static void parseEyeCells(JsonVariantConst arr, EyeCell *out, int &count) {
+  count = 0;
+  if (!arr.is<JsonArrayConst>()) return;
+  auto hexLevel = [](char ch) -> uint8_t {
+    int v = (ch >= '0' && ch <= '9') ? ch - '0' : (ch >= 'a' && ch <= 'f') ? ch - 'a' + 10 : (ch >= 'A' && ch <= 'F') ? ch - 'A' + 10 : 0;
+    return (uint8_t)(v * 17);
+  };
+  for (JsonObjectConst c : arr.as<JsonArrayConst>()) {
+    if (count >= MAX_EYE_CELLS) break;
+    const char *g = c["g"] | "";
+    if (strlen(g) < 60) continue;
+    for (int i = 0; i < 60; i++) out[count].g[i] = hexLevel(g[i]);
+    int ms = c["ms"] | 1000;
+    out[count].ms = (uint16_t)(ms < 40 ? 40 : (ms > 60000 ? 60000 : ms));
+    count++;
   }
 }
 
@@ -922,7 +928,7 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
       const uint8_t *frame = (speaking && amp > 100) ? customFaceOpenGrid : customFaceGrid;
       for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
         if (frame[i]) facePut(want, i / FACE_COLS, i % FACE_COLS, frame[i]);
-      if (customFaceBlink || customFaceGlance) applyEyeMotion(want, f, customFaceBlink, customFaceGlance);
+      if (customEyeCount > 0) applyEyeTimeline(want, customEyeCells, customEyeCount, customEyeStartMs);
       return;
     }
 
@@ -1172,6 +1178,7 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
       const uint8_t *nf = (amp > 100) ? standbyFaceOpenGrid : standbyFaceGrid;
       for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
         if (nf[i]) facePut(want, i / FACE_COLS, i % FACE_COLS, nf[i]);
+      if (standbyEyeCount > 0) applyEyeTimeline(want, standbyEyeCells, standbyEyeCount, standbyEyeStartMs);
       return;
     }
     int rowsOpen = 1 + amp * 3 / 256;
@@ -1183,7 +1190,7 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
     if (standbyCustomActive) {
       for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
         if (standbyFaceGrid[i]) facePut(want, i / FACE_COLS, i % FACE_COLS, standbyFaceGrid[i]);
-      if (standbyBlink || standbyGlance) applyEyeMotion(want, f, standbyBlink, standbyGlance);
+      if (standbyEyeCount > 0) applyEyeTimeline(want, standbyEyeCells, standbyEyeCount, standbyEyeStartMs);
     } else {
       for (int c = 3; c <= 8; c++) facePut(want, 6, c, 255);
       facePut(want, 5, 2, 255);
@@ -3229,6 +3236,15 @@ size_t resample24to16(const int16_t *in, size_t inSamples, int16_t *out,
 // Applies the backend's neutralFace: an object {grid, openGrid, color} switches the
 // everyday face to the user's design, anything else restores the built-in one.
 static void applyStandbyFace(JsonVariantConst nf) {
+  // The status push repeats this every 15 s: only act (and restart the eye
+  // timeline) when the design has really changed.
+  String sig;
+  serializeJson(nf, sig);
+  uint32_t h = 2166136261u;
+  for (size_t i = 0; i < sig.length(); i++) { h ^= (uint8_t)sig[i]; h *= 16777619u; }
+  if (h == standbyFaceHash) return;
+  standbyFaceHash = h;
+  standbyEyeStartMs = millis();
   if (nf.is<JsonObjectConst>() && nf["grid"].is<const char *>() && strlen(nf["grid"].as<const char *>()) >= 96) {
     const char *g = nf["grid"];
     const char *og = nf["openGrid"].is<const char *>() ? nf["openGrid"].as<const char *>() : g;
@@ -3239,11 +3255,11 @@ static void applyStandbyFace(JsonVariantConst nf) {
     };
     for (int i = 0; i < 96; i++) { standbyFaceGrid[i] = hexLevel(g[i]); standbyFaceOpenGrid[i] = hexLevel(og[i]); }
     standbyFaceRGB = (uint32_t)strtoul(nf["color"] | "4CFF7A", nullptr, 16);
-    standbyBlink = nf["blink"] | false;
-    standbyGlance = nf["glance"] | false;
+    parseEyeCells(nf["eyes"]["cells"], standbyEyeCells, standbyEyeCount);
     standbyCustomActive = true;
   } else {
     standbyCustomActive = false;
+    standbyEyeCount = 0;
   }
 }
 
@@ -3449,8 +3465,8 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
           }
           const char *col = doc["face"]["color"] | "4CFF7A";
           customFaceRGB = (uint32_t)strtoul(col, nullptr, 16);
-          customFaceBlink = doc["face"]["blink"] | false;
-          customFaceGlance = doc["face"]["glance"] | false;
+          parseEyeCells(doc["face"]["eyes"]["cells"], customEyeCells, customEyeCount);
+          customEyeStartMs = millis();
           strlcpy(customFaceName, doc["setEmotion"].as<const char *>(), sizeof(customFaceName));
           currentEmotion = EMOTION_CUSTOM;
         } else {
