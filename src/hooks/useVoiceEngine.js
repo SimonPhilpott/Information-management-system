@@ -163,19 +163,11 @@ export function useVoiceEngine() {
 
       await audio.play();
     } catch (err) {
-      console.error('[VoiceEngine] Premium TTS compilation failed, falling back to WebSpeech:', err);
-      
-      // Graceful degradation: Fall back to native local synthesis if backend service is unreachable
-      if (window.speechSynthesis) {
-        const utterance = new SpeechSynthesisUtterance(cleanText);
-        utterance.lang = 'en-GB';
-        utterance.onstart = () => setIsSpeaking(true);
-        utterance.onend = () => setIsSpeaking(false);
-        utterance.onerror = () => setIsSpeaking(false);
-        window.speechSynthesis.speak(utterance);
-      } else {
-        setIsSpeaking(false);
-      }
+      // Deliberately NO fallback voice: if Ims's own voice can't be
+      // synthesised, stay silent rather than let the browser's generic
+      // (often female) voice speak in its place.
+      console.error('[VoiceEngine] Ims voice synthesis failed - not speaking:', err);
+      setIsSpeaking(false);
     }
   }, [isTtsEnabled, interrupt]);
 

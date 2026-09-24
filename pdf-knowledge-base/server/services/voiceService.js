@@ -1,91 +1,57 @@
-import WebSocket from 'ws';
-import { v4 as uuidv4 } from 'uuid';
+import config from '../config.js';
+import { getSpokenStyleDirective } from './hardwareClientService.js';
 
-/**
- * Microsoft Edge Neural Text-to-Speech (TTS) Service
- * Communicates with the consumer platform read-aloud WebSocket endpoint
- * to synthesize incredibly realistic, human-like voice tracks without API keys.
- */
-export async function synthesizeNeuralSpeech(text, tone = 'friendly') {
-  return new Promise((resolve, reject) => {
-    // Map tone configurations to specific high-quality British Neural voices
-    let voice = 'en-GB-SoniaNeural'; // Warm friendly default female voice
-    if (tone === 'professional' || tone === 'investigator') {
-      voice = 'en-GB-RyanNeural'; // Professional, smart male research voice
-    }
+// Text-to-speech for the web app's "read aloud". It speaks with EXACTLY the
+// voice and personality saved on the IMS Personality screen (the same voice
+// live conversations use), via Gemini's own TTS model. There is deliberately
+// no fallback voice: if synthesis fails the caller gets an error and nothing
+// is spoken, rather than a different, generic voice quietly taking over.
+const TTS_MODEL = 'gemini-2.5-flash-preview-tts';
+const MAX_CHARS = 4000; // keep a single request bounded; longer text is trimmed at a sentence
 
-    const requestId = uuidv4().replace(/-/g, '');
-    const wsUrl = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/bootstrap/v1?trustedclienttoken=6A5AA1D4EAFF4E9B87E7D8D427DCE54F`;
+const SAMPLE_RATE = 24000; // Gemini TTS returns raw 24kHz 16-bit mono PCM
 
-    const ws = new WebSocket(wsUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edge/120.0.0.0',
-        'Origin': 'chrome-extension://jdiccldimpdaibdccjnbjmienimbocic'
+function pcmToWav(pcm) {
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write('WAVEfmt ', 8);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);            // PCM
+  header.writeUInt16LE(1, 22);            // mono
+  header.writeUInt32LE(SAMPLE_RATE, 24);
+  header.writeUInt32LE(SAMPLE_RATE * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm]);
+}
+
+function trimToSentence(text) {
+  if (text.length <= MAX_CHARS) return text;
+  const cut = text.slice(0, MAX_CHARS);
+  const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('? '), cut.lastIndexOf('! '));
+  return end > MAX_CHARS * 0.5 ? cut.slice(0, end + 1) : cut;
+}
+
+export async function synthesizeSpeech(text) {
+  if (!config.gemini.apiKey) throw new Error('No Gemini API key is configured on the server.');
+  const { voice, directive } = getSpokenStyleDirective();
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.gemini.apiKey },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: directive + trimToSentence(text) }] }],
+      generationConfig: {
+        responseModalities: ['AUDIO'],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } }
       }
-    });
-
-    let audioChunks = [];
-    let isFinished = false;
-
-    ws.on('open', () => {
-      // 1. Send Configuration Frame to negotiate monaural 24KHz 48Kbps MP3 streaming format
-      const configFrame = `Content-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}`;
-      ws.send(configFrame);
-
-      // 2. Escape special characters to construct valid SSML structure
-      const escapedText = text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&apos;');
-
-      const rateModifier = tone === 'direct' ? '+10%' : '+4%'; // Slightly faster for direct tone
-      const pitchModifier = tone === 'friendly' ? '+1Hz' : '0Hz';
-
-      const ssmlFrame = `X-RequestId:${requestId}\r\nContent-Type:application/ssml+xml\r\nPath:ssml\r\n\r\n<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-GB'><voice name='${voice}'><prosody pitch='${pitchModifier}' rate='${rateModifier}'>${escapedText}</prosody></voice></speak>`;
-      ws.send(ssmlFrame);
-    });
-
-    ws.on('message', (data, isBinary) => {
-      if (isBinary) {
-        // Binary payloads contain frame headers followed by standard MP3 audio chunks
-        // Look for double CRLF separator to extract clean audio bytes
-        const separator = Buffer.from('\r\n\r\n');
-        const index = data.indexOf(separator);
-        if (index !== -1) {
-          const audioPayload = data.subarray(index + 4);
-          audioChunks.push(audioPayload);
-        }
-      } else {
-        const textMessage = data.toString();
-        // synthesis is successfully complete when turn.end is received
-        if (textMessage.includes('Path:turn.end')) {
-          isFinished = true;
-          ws.close();
-        }
-      }
-    });
-
-    ws.on('close', () => {
-      if (isFinished && audioChunks.length > 0) {
-        resolve(Buffer.concat(audioChunks));
-      } else {
-        reject(new Error('Voice synthesis session terminated prematurely.'));
-      }
-    });
-
-    ws.on('error', (err) => {
-      console.error('[VoiceService] WebSocket error:', err);
-      reject(err);
-    });
-
-    // Prevent hanging network queries
-    setTimeout(() => {
-      if (!isFinished) {
-        ws.close();
-        reject(new Error('Voice synthesis session timed out.'));
-      }
-    }, 12000);
+    })
   });
+  if (!res.ok) throw new Error(`Gemini TTS returned HTTP ${res.status}`);
+  const data = await res.json();
+  const b64 = data?.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData?.data;
+  if (!b64) throw new Error('Gemini TTS returned no audio.');
+  return pcmToWav(Buffer.from(b64, 'base64'));
 }

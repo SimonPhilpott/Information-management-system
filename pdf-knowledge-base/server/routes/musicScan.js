@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
-  getConfig, saveConfig, getStatus, getResults,
+  getConfig, saveConfig, getStatus, getResultsMeta, getWindowResults, getTodayReleases,
+  getArtistList, getArtistDetail, saveArtistSettings, rescanArtist,
   isScanRunning, runScanNow, getNextScheduledRun
 } from '../services/musicScanService.js';
 
@@ -12,12 +13,60 @@ router.get('/', (req, res) => {
     config: getConfig(),
     status: getStatus(),
     isRunning: isScanRunning(),
-    nextScheduledRun: getNextScheduledRun()
+    nextScheduledRun: getNextScheduledRun(),
+    ...getResultsMeta()
   });
 });
 
+// Artists with a release inside the window (day|week|month|6months|year),
+// each with their FULL album list (owned / not owned / unlisted) and the
+// in-window releases flagged isNew.
 router.get('/results', (req, res) => {
-  res.json({ success: true, ...getResults() });
+  try {
+    res.json({ success: true, ...getResultsMeta(), ...getWindowResults(req.query.window || 'week') });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/today', (req, res) => {
+  res.json({ success: true, releases: getTodayReleases() });
+});
+
+// Compact list of every scanned artist (counts only) - details are fetched
+// per artist on expand so this stays small for ~1000 artists.
+router.get('/artists', (req, res) => {
+  res.json({ success: true, artists: getArtistList() });
+});
+
+// Artist names are folder names and may contain odd characters, so they
+// travel as query/body values rather than URL path segments.
+router.get('/artist', (req, res) => {
+  const detail = getArtistDetail(String(req.query.name || ''));
+  if (!detail) return res.status(404).json({ error: 'Artist not found in the last scan.' });
+  res.json({ success: true, artist: detail });
+});
+
+router.put('/artist/settings', (req, res) => {
+  const { name, searchName, aliases } = req.body || {};
+  if (!name || typeof name !== 'string') return res.status(400).json({ error: 'name is required.' });
+  try {
+    res.json({ success: true, settings: saveArtistSettings(name, { searchName, aliases }) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/artist/rescan', async (req, res) => {
+  const { name } = req.body || {};
+  if (!name || typeof name !== 'string') return res.status(400).json({ error: 'name is required.' });
+  try {
+    const artist = await rescanArtist(name);
+    if (!artist) return res.status(404).json({ error: 'Artist not found after rescan.' });
+    res.json({ success: true, artist });
+  } catch (err) {
+    res.status(409).json({ error: err.message });
+  }
 });
 
 router.put('/config', (req, res) => {

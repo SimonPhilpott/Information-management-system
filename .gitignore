@@ -66,3 +66,6 @@ playbook-builder 18/
 wake-word-voice-assistants-26.6.1/
 *.code-workspace
 
+
+# Local face-recognition models (downloaded, ~39MB)
+pdf-knowledge-base/server/python/models

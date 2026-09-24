@@ -6,6 +6,7 @@
 #include "config.h"
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include "camera.h"
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <lwip/sockets.h>
@@ -634,7 +635,16 @@ volatile unsigned long lastSpeechTimestamp = 0;
 // the very next tap.
 volatile bool isSpeakingDetected = false;
 volatile unsigned long speechStartTime = 0;
-const unsigned long SESSION_IDLE_TIMEOUT_MS = 14000;
+// How long IMS waits for a reply before giving up on a turn that never got an
+// answer (THINKING) or a conversation that was never started (LISTENING with
+// no open conversation). 25s leaves room for slow tool calls and for the
+// backend transparently resuming Gemini's session after a quiet spell.
+const unsigned long SESSION_IDLE_TIMEOUT_MS = 25000;
+// Once a conversation is OPEN it stays open until the user ends it ("thanks,
+// bye" -> endConversation), however long the pauses between questions. This
+// is only a far-off safety net so an abandoned open mic doesn't stream
+// forever; it is deliberately NOT a normal conversation timeout.
+const unsigned long CONVERSATION_IDLE_TIMEOUT_MS = 30UL * 60UL * 1000UL;
 bool textQuerySentOnce = false; // Mic-free "Hi, how are you" diagnostic, once per boot
 
 // Live mic RMS level, written every buffer by audioMicTask (Core 0) and read
@@ -755,9 +765,10 @@ static uint8_t *playbackQueueStorage = nullptr;
 #define FACE_DOT 12
 #define FACE_RADIUS 4
 #define FACE_PITCH 17
-// 148 balances the screen layout: leaves 48px left margin, 200px face (x=48..248),
-// and a 72px right-hand zone for the blood glucose widget (centered at 288)
-#define FACE_CENTER_X 148
+// 164: 64px left margin for the icon stack (24px icon + count), 200px face
+// (x=64..264), and a 56px right-hand zone for the blood glucose widget
+// (centered at 292) - gap to the face tightened to make room for the icons.
+#define FACE_CENTER_X 164
 // 116 (shifted down 5px from 111): top of face is at y=50, leaving 7px
 // comfortable margin below the top header (HEADER_H = 43)
 #define FACE_CENTER_Y 116
@@ -1182,7 +1193,7 @@ void drawFaceTick() {
 //   DoubleDown, SingleDown, FortyFiveDown, Flat, FortyFiveUp, SingleUp, DoubleUp
 // - Blood glucose value in mmol/L in Font 4 (<4.0 red, 4.0-7.5 green, >7.5 yellow)
 // ---------------------------------------------------------------------------
-#define GLUCOSE_CX 288
+#define GLUCOSE_CX 292
 #define GLUCOSE_CY 116
 
 static String currentGlucoseValue = "--";
@@ -1256,8 +1267,8 @@ void drawGlucoseWidget() {
   if (onSettingsScreen) return;
   tft.startWrite();
 
-  // Clear widget bounding box without touching the face (ends at 248) or screen edges (320)
-  tft.fillRect(252, 80, 66, 80, tft.color565(11, 14, 21));
+  // Clear widget bounding box without touching the face (ends at 264) or screen edges (320)
+  tft.fillRect(266, 80, 54, 80, tft.color565(11, 14, 21));
 
   uint16_t color = getGlucoseColor(currentGlucoseValue);
 
@@ -1673,84 +1684,249 @@ String currentDateTimeStr() {
   return String(buf);
 }
 
-static bool hasActiveAlarm = false;
-static bool hasActiveTimer = false;
-static bool hasActiveReminder = false;
+// Counts (not just booleans) so the left-of-face icon stack can show a
+// number badge, per the backend's expanded `schedule` WS push - see
+// pushScheduleStatus() in index.js. birthdayIsGreen takes priority over a
+// merely-upcoming (yellow) birthday whenever at least one is today, exactly
+// mirroring the backend's own getBirthdayFooterStatus() color rule.
+static int alarmCount = 0;
+static int timerCount = 0;
+static int reminderCount = 0;
+static int birthdayCount = 0;
+static bool birthdayIsGreen = false;
+static int newReleaseCount = 0;
+static bool cameraAttached = false; // pushed by the backend (schedule.camera.attached/awake)
+static bool cameraAwake = false;    // awake ~10 min after boot/use, then asleep
 
-// 16x16 XBM bitmaps for double-sized footer status icons (matching 2x font height):
-static const uint8_t PROGMEM bell_icon_16x16[] = {
-  0x80, 0x01,  // Row 0:  .......##.......
-  0x40, 0x02,  // Row 1:  ......#..#......
-  0xC0, 0x03,  // Row 2:  ......####......
-  0xE0, 0x07,  // Row 3:  .....######.....
-  0xE0, 0x07,  // Row 4:  .....######.....
-  0xF0, 0x0F,  // Row 5:  ....########....
-  0xF0, 0x0F,  // Row 6:  ....########....
-  0xF0, 0x0F,  // Row 7:  ....########....
-  0xF8, 0x1F,  // Row 8:  ...##########...
-  0xF8, 0x1F,  // Row 9:  ...##########...
-  0xFC, 0x3F,  // Row 10: ..############..
-  0xFE, 0x7F,  // Row 11: .##############.
-  0xFE, 0x7F,  // Row 12: .##############.
-  0xC0, 0x03,  // Row 13: ......####......
-  0xC0, 0x03,  // Row 14: ......####......
-  0x80, 0x01   // Row 15: .......##.......
+// 24x24 XBM status icons for the left-of-face stack: each is the 4px-cell pixel art
+// supplied as PNGs (birthday/timer/alarm/music/reminder.png), sampled to its
+// native cell grid and doubled, so the on-screen art matches the source exactly.
+static const uint8_t PROGMEM birthday_icon_24x24[] = {
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x00, 0x00,  // ........................
+  0x80, 0x99, 0x01,  // .......##..##..##.......
+  0x80, 0x99, 0x01,  // .......##..##..##.......
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x00, 0x00,  // ........................
+  0x80, 0x99, 0x01,  // .......##..##..##.......
+  0x80, 0x99, 0x01,  // .......##..##..##.......
+  0xE0, 0xFF, 0x07,  // .....##############.....
+  0xE0, 0xFF, 0x07,  // .....##############.....
+  0xF8, 0xFF, 0x1F,  // ...##################...
+  0xF8, 0xFF, 0x1F,  // ...##################...
+  0x98, 0x07, 0x1E,  // ...##..####......####...
+  0x98, 0x07, 0x1E,  // ...##..####......####...
+  0x78, 0xF8, 0x19,  // ...####....######..##...
+  0x78, 0xF8, 0x19,  // ...####....######..##...
+  0xF8, 0xFF, 0x1F,  // ...##################...
+  0xF8, 0xFF, 0x1F,  // ...##################...
+  0xFE, 0xFF, 0x7F,  // .######################.
+  0xFE, 0xFF, 0x7F,  // .######################.
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x00, 0x00  // ........................
 };
 
-static const uint8_t PROGMEM clock_icon_16x16[] = {
-  0xC0, 0x03,  // Row 0:  ......####...... (top push button)
-  0x80, 0x01,  // Row 1:  .......##.......
-  0xE0, 0x07,  // Row 2:  .....######.....
-  0xF8, 0x1F,  // Row 3:  ...##########...
-  0x0C, 0x30,  // Row 4:  ..##........##..
-  0x06, 0x60,  // Row 5:  .##..........##.
-  0x86, 0x60,  // Row 6:  .##....#.....##. (hour hand to 12)
-  0x86, 0x60,  // Row 7:  .##....#.....##.
-  0x83, 0xCF,  // Row 8:  ##.....#####..## (pivot + minute hand to 3)
-  0x83, 0xC3,  // Row 9:  ##.....##.....##
-  0x06, 0x60,  // Row 10: .##..........##.
-  0x06, 0x60,  // Row 11: .##..........##.
-  0x0C, 0x30,  // Row 12: ..##........##..
-  0xF8, 0x1F,  // Row 13: ...##########...
-  0xE0, 0x07,  // Row 14: .....######.....
-  0x00, 0x00   // Row 15: ................
+static const uint8_t PROGMEM timer_icon_24x24[] = {
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x00, 0x00,  // ........................
+  0xC0, 0xFF, 0x03,  // ......############......
+  0xC0, 0xFF, 0x03,  // ......############......
+  0xC0, 0x00, 0x03,  // ......##........##......
+  0xC0, 0x00, 0x03,  // ......##........##......
+  0xC0, 0x00, 0x03,  // ......##........##......
+  0xC0, 0x00, 0x03,  // ......##........##......
+  0x00, 0xFF, 0x00,  // ........########........
+  0x00, 0xFF, 0x00,  // ........########........
+  0x00, 0x3C, 0x00,  // ..........####..........
+  0x00, 0x3C, 0x00,  // ..........####..........
+  0x00, 0x3C, 0x00,  // ..........####..........
+  0x00, 0x3C, 0x00,  // ..........####..........
+  0x00, 0xCF, 0x00,  // ........####..##........
+  0x00, 0xCF, 0x00,  // ........####..##........
+  0xC0, 0x0C, 0x03,  // ......##..##....##......
+  0xC0, 0x0C, 0x03,  // ......##..##....##......
+  0xC0, 0xFF, 0x03,  // ......############......
+  0xC0, 0xFF, 0x03,  // ......############......
+  0xC0, 0xFF, 0x03,  // ......############......
+  0xC0, 0xFF, 0x03,  // ......############......
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x00, 0x00  // ........................
 };
 
-static const uint8_t PROGMEM pen_icon_16x16[] = {
-  0x00, 0x20,  // Row 0:  .............#.. (eraser tip)
-  0x00, 0x70,  // Row 1:  ............###.
-  0x00, 0x38,  // Row 2:  ...........###..
-  0x00, 0x1C,  // Row 3:  ..........###...
-  0x00, 0x0E,  // Row 4:  .........###....
-  0x80, 0x07,  // Row 5:  .......####..... (shaft)
-  0xC0, 0x03,  // Row 6:  ......####......
-  0xE0, 0x01,  // Row 7:  .....####.......
-  0xF0, 0x00,  // Row 8:  ....####........
-  0x78, 0x00,  // Row 9:  ...####.........
-  0x3C, 0x00,  // Row 10: ..####..........
-  0x1E, 0x00,  // Row 11: .####...........
-  0x0E, 0x00,  // Row 12: .###............ (tapered nib)
-  0x06, 0x00,  // Row 13: .##.............
-  0x02, 0x00,  // Row 14: .#.............. (point)
-  0x00, 0x00   // Row 15: ................
+static const uint8_t PROGMEM alarm_icon_24x24[] = {
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x00, 0x00,  // ........................
+  0x30, 0x00, 0x0C,  // ....##............##....
+  0x30, 0x00, 0x0C,  // ....##............##....
+  0x0C, 0xFF, 0x30,  // ..##....########....##..
+  0x0C, 0xFF, 0x30,  // ..##....########....##..
+  0xC0, 0xFF, 0x03,  // ......############......
+  0xC0, 0xFF, 0x03,  // ......############......
+  0xF0, 0xF3, 0x0F,  // ....######..########....
+  0xF0, 0xF3, 0x0F,  // ....######..########....
+  0xF0, 0xF3, 0x0F,  // ....######..########....
+  0xF0, 0xF3, 0x0F,  // ....######..########....
+  0xF0, 0xCF, 0x0F,  // ....########..######....
+  0xF0, 0xCF, 0x0F,  // ....########..######....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xC0, 0xFF, 0x03,  // ......############......
+  0xC0, 0xFF, 0x03,  // ......############......
+  0x30, 0xFF, 0x0C,  // ....##..########..##....
+  0x30, 0xFF, 0x0C,  // ....##..########..##....
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x00, 0x00  // ........................
 };
 
-// Draw crisp 16x16 XBM schedule status icons in orange (double the font height):
-static void drawBellIcon(int x, int y, uint16_t color) {
-  tft.drawXBitmap(x, y, bell_icon_16x16, 16, 16, color);
+static const uint8_t PROGMEM music_icon_24x24[] = {
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x00, 0x00,  // ........................
+  0xC0, 0xFF, 0x03,  // ......############......
+  0xC0, 0xFF, 0x03,  // ......############......
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xFC, 0xFC, 0x3F,  // ..######..############..
+  0xFC, 0xFC, 0x3F,  // ..######..############..
+  0x3C, 0xFF, 0x3F,  // ..####..##############..
+  0x3C, 0xFF, 0x3F,  // ..####..##############..
+  0xFC, 0xC3, 0x3F,  // ..########....########..
+  0xFC, 0xC3, 0x3F,  // ..########....########..
+  0xFC, 0xC3, 0x3C,  // ..########....##..####..
+  0xFC, 0xC3, 0x3C,  // ..########....##..####..
+  0xFC, 0xFF, 0x3C,  // ..##############..####..
+  0xFC, 0xFF, 0x3C,  // ..##############..####..
+  0xFC, 0x0F, 0x3F,  // ..##########....######..
+  0xFC, 0x0F, 0x3F,  // ..##########....######..
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xC0, 0xFF, 0x03,  // ......############......
+  0xC0, 0xFF, 0x03,  // ......############......
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x00, 0x00  // ........................
+};
+
+static const uint8_t PROGMEM reminder_icon_24x24[] = {
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0xC0, 0x00,  // ..............##........
+  0x00, 0xC0, 0x00,  // ..............##........
+  0x00, 0x30, 0x03,  // ............##..##......
+  0x00, 0x30, 0x03,  // ............##..##......
+  0x00, 0xFC, 0x0C,  // ..........######..##....
+  0x00, 0xFC, 0x0C,  // ..........######..##....
+  0x00, 0xFF, 0x33,  // ........##########..##..
+  0x00, 0xFF, 0x33,  // ........##########..##..
+  0xC0, 0xCF, 0x0F,  // ......######..######....
+  0xC0, 0xCF, 0x0F,  // ......######..######....
+  0xF0, 0xF3, 0x03,  // ....######..######......
+  0xF0, 0xF3, 0x03,  // ....######..######......
+  0xFC, 0xFC, 0x00,  // ..######..######........
+  0xFC, 0xFC, 0x00,  // ..######..######........
+  0xCC, 0x3F, 0x00,  // ..##..########..........
+  0xCC, 0x3F, 0x00,  // ..##..########..........
+  0x0C, 0x0F, 0x00,  // ..##....####............
+  0x0C, 0x0F, 0x00,  // ..##....####............
+  0xFC, 0x03, 0x00,  // ..########..............
+  0xFC, 0x03, 0x00,  // ..########..............
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x00, 0x00  // ........................
+};
+
+static const uint8_t PROGMEM camera_icon_24x24[] = {
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0xFF, 0x00,  // ........########........
+  0x00, 0xFF, 0x00,  // ........########........
+  0xC0, 0xFF, 0x03,  // ......############......
+  0xC0, 0xFF, 0x03,  // ......############......
+  0xF0, 0xC3, 0x0F,  // ....######....######....
+  0xF0, 0xC3, 0x0F,  // ....######....######....
+  0xF0, 0x3C, 0x0F,  // ....####..####..####....
+  0xF0, 0x3C, 0x0F,  // ....####..####..####....
+  0xF0, 0x3C, 0x0F,  // ....####..####..####....
+  0xF0, 0x3C, 0x0F,  // ....####..####..####....
+  0xF0, 0xC3, 0x0F,  // ....######....######....
+  0xF0, 0xC3, 0x0F,  // ....######....######....
+  0xC0, 0xFF, 0x03,  // ......############......
+  0xC0, 0xFF, 0x03,  // ......############......
+  0x00, 0x3C, 0x00,  // ..........####..........
+  0x00, 0x3C, 0x00,  // ..........####..........
+  0x00, 0xFF, 0x00,  // ........########........
+  0x00, 0xFF, 0x00,  // ........########........
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0x00, 0x00, 0x00,  // ........................
+  0x00, 0x00, 0x00  // ........................
+};
+
+static void drawCameraIcon(int x, int y, uint16_t color) { tft.drawXBitmap(x, y, camera_icon_24x24, 24, 24, color); }
+static void drawAlarmIcon(int x, int y, uint16_t color) { tft.drawXBitmap(x, y, alarm_icon_24x24, 24, 24, color); }
+static void drawTimerIcon(int x, int y, uint16_t color) { tft.drawXBitmap(x, y, timer_icon_24x24, 24, 24, color); }
+static void drawReminderIcon(int x, int y, uint16_t color) { tft.drawXBitmap(x, y, reminder_icon_24x24, 24, 24, color); }
+static void drawBirthdayIcon(int x, int y, uint16_t color) { tft.drawXBitmap(x, y, birthday_icon_24x24, 24, 24, color); }
+static void drawMusicIcon(int x, int y, uint16_t color) { tft.drawXBitmap(x, y, music_icon_24x24, 24, 24, color); }
+
+// Count drawn as plain text to the RIGHT of its icon (never over it), in the
+// icon's own colour. Above 9 is clipped to "9+" so it can't run into the face.
+static void drawIconCount(int iconX, int iconY, int count, uint16_t color) {
+  if (count <= 0) return;
+  tft.setTextDatum(middle_left);
+  tft.setTextColor(color);
+  tft.setFont(&fonts::DejaVu18); // anti-aliased, not the blocky bitmap Font0
+  tft.drawString(count > 9 ? "9+" : String(count), iconX + 24 + 4, iconY + 12);
+  tft.setFont(&fonts::Font0);
+  tft.setTextSize(1);
+  tft.setTextDatum(top_left);
 }
 
-static void drawClockIcon(int x, int y, uint16_t color) {
-  tft.drawXBitmap(x, y, clock_icon_16x16, 16, 16, color);
+// Left-of-face icon stack: alarms/timers/reminders/birthdays/new music
+// releases, one fixed vertical slot each (so a given icon type always lands in
+// the same place). Lives entirely in the margin left of the face grid (face
+// starts at FACE_CENTER_X - 100 = 64), so it repaints independently of the
+// face's diffed rendering. Only called when counts change or on a forced
+// redraw - nothing here needs the footer clock's once-a-second cadence.
+void drawStatusIconStack() {
+  if (onSettingsScreen) return;
+  tft.startWrite();
+  tft.fillRect(0, HEADER_H + 1, 62, 204 - HEADER_H - 1, tft.color565(11, 14, 21));
+
+  const uint16_t ICON_ORANGE = tft.color565(255, 140, 0);
+  const uint16_t COL_GREEN = tft.color565(70, 220, 120);
+  const uint16_t COL_YELLOW = tft.color565(255, 210, 60);
+  const int iconX = 12;
+  const int PITCH = 26; // six 24px slots must fit between the header and footer
+  int y = HEADER_H + 3;
+
+  if (alarmCount > 0) { drawAlarmIcon(iconX, y, ICON_ORANGE); drawIconCount(iconX, y, alarmCount, ICON_ORANGE); }
+  y += PITCH;
+  if (timerCount > 0) { drawTimerIcon(iconX, y, ICON_ORANGE); drawIconCount(iconX, y, timerCount, ICON_ORANGE); }
+  y += PITCH;
+  if (reminderCount > 0) { drawReminderIcon(iconX, y, ICON_ORANGE); drawIconCount(iconX, y, reminderCount, ICON_ORANGE); }
+  y += PITCH;
+  if (birthdayCount > 0) {
+    uint16_t cakeColor = birthdayIsGreen ? COL_GREEN : COL_YELLOW;
+    drawBirthdayIcon(iconX, y, cakeColor);
+    if (birthdayCount > 1) drawIconCount(iconX, y, birthdayCount, cakeColor);
+  }
+  y += PITCH;
+  if (newReleaseCount > 0) {
+    drawMusicIcon(iconX, y, ICON_ORANGE);
+    if (newReleaseCount > 1) drawIconCount(iconX, y, newReleaseCount, ICON_ORANGE);
+  }
+  y += PITCH;
+  // yellow = camera attached but asleep, green = awake and ready
+  if (cameraAttached) drawCameraIcon(iconX, y, cameraAwake ? COL_GREEN : COL_YELLOW);
+
+  tft.endWrite();
 }
 
-static void drawPenIcon(int x, int y, uint16_t color) {
-  tft.drawXBitmap(x, y, pen_icon_16x16, 16, 16, color);
-}
-
-// Repaints just the footer's clock, schedule icons, and emotion - called once a second
+// Repaints just the footer's clock and emotion - called once a second
 // from loop(). Deliberately repaints only the 36px footer bar so the screen/face
-// never flashes while updating the second ticker or indicator icons.
+// never flashes while updating the second ticker.
 void drawFooterClock() {
   if (onSettingsScreen || isMicHardwareMuted) return; // mute warning occupies this space instead
   tft.startWrite();
@@ -1761,31 +1937,33 @@ void drawFooterClock() {
   String dt = currentDateTimeStr();
   tft.drawString(dt, 15, 214);
 
-  // Status icons to the right of the date (in orange, double text size at 16x16):
-  // Bell = Alarm set, Clock = Timer set, Pen = Reminder set
-  const uint16_t ICON_ORANGE = tft.color565(255, 140, 0);
-  int iconX = 15 + tft.textWidth(dt.c_str()) + 18; // Increased spacing after date
-  const int iconY = 210; // Vertically centered with 8px text line (214 to 221)
-
-  if (hasActiveAlarm) {
-    drawBellIcon(iconX, iconY, ICON_ORANGE);
-    iconX += 21;
-  }
-  if (hasActiveTimer) {
-    drawClockIcon(iconX, iconY, ICON_ORANGE);
-    iconX += 21;
-  }
-  if (hasActiveReminder) {
-    drawPenIcon(iconX, iconY, ICON_ORANGE);
-    iconX += 21;
-  }
-
   // Restore current emotion on the right side of the footer bar
   tft.setTextDatum(top_right);
   tft.setTextColor(tft.color565(100, 110, 130));
   tft.drawString(emotionName(currentEmotion), 305, 214);
   tft.setTextDatum(top_left);
 
+  tft.endWrite();
+}
+
+// USB link indicator, directly under the WIFI one in the header's top-right
+// (the two rows are stacked symmetrically about the bar's vertical centre):
+// green while the USB port has a live connection to a host (the PC), red
+// when it doesn't. Drawn on its own small patch so it can update the moment
+// the cable is plugged/unplugged without a full-screen redraw.
+#define WIFI_ROW_Y (HEADER_CY - 7)
+#define USB_ROW_Y (HEADER_CY + 7)
+void drawUsbIndicator() {
+  if (onSettingsScreen) return;
+  tft.startWrite();
+  tft.fillRect(272, USB_ROW_Y - 7, 48, 14, tft.color565(20, 24, 34));
+  const bool up = Serial.isPlugged();
+  tft.fillCircle(280, USB_ROW_Y, 4, up ? tft.color565(46, 213, 115) : tft.color565(255, 71, 87));
+  tft.setTextDatum(middle_left);
+  tft.setTextColor(tft.color565(140, 150, 175));
+  tft.setTextSize(1);
+  tft.drawString("USB", 290, USB_ROW_Y);
+  tft.setTextDatum(top_left);
   tft.endWrite();
 }
 
@@ -1819,23 +1997,42 @@ void renderScreen(bool forceRedraw = false) {
   tft.fillRect(0, 0, 320, HEADER_H, tft.color565(20, 24, 34));
   tft.setTextColor(tft.color565(140, 150, 175));
   tft.setTextSize(1);
-  tft.setTextDatum(middle_center);
-  tft.drawString("(I)nformation (M)anagement (S)ystem", 160, HEADER_CY);
+  // Title with the bracketed initials in (faux) bold - Font0 has no bold
+  // face, so a bold letter is drawn twice, 1px apart. Each bold letter is
+  // therefore 1px wider than normal, and the whole line is shifted left of
+  // true centre by TITLE_SHIFT_LEFT so that extra width can't creep toward
+  // the WIFI/USB indicators at the right of the bar.
+  {
+    const int TITLE_SHIFT_LEFT = 6;
+    struct Seg { const char *txt; bool bold; };
+    static const Seg segs[] = {
+      {"(", false}, {"I", true}, {")nformation (", false}, {"M", true}, {")anagement (", false}, {"S", true}, {")ystem", false}};
+    int totalW = 0;
+    for (const Seg &sg : segs) totalW += tft.textWidth(sg.txt) + (sg.bold ? 1 : 0);
+    int x = 160 - totalW / 2 - TITLE_SHIFT_LEFT;
+    tft.setTextDatum(middle_left);
+    for (const Seg &sg : segs) {
+      tft.drawString(sg.txt, x, HEADER_CY);
+      if (sg.bold) tft.drawString(sg.txt, x + 1, HEADER_CY);
+      x += tft.textWidth(sg.txt) + (sg.bold ? 1 : 0);
+    }
+  }
   tft.setTextDatum(top_left); // reset - everything after this relies on left-anchored text
   drawGearIcon(HEADER_ICON_CX, HEADER_ICON_CY); // Phase 4 settings entry point
 
   tft.setTextDatum(middle_left);
 
   if (WiFi.status() == WL_CONNECTED) {
-    tft.fillCircle(280, HEADER_CY, 4, tft.color565(46, 213, 115));
+    tft.fillCircle(280, WIFI_ROW_Y, 4, tft.color565(46, 213, 115));
     tft.setTextColor(tft.color565(140, 150, 175));
-    tft.drawString("WIFI", 290, HEADER_CY);
+    tft.drawString("WIFI", 290, WIFI_ROW_Y);
   } else {
-    tft.fillCircle(280, HEADER_CY, 4, tft.color565(255, 71, 87));
+    tft.fillCircle(280, WIFI_ROW_Y, 4, tft.color565(255, 71, 87));
     tft.setTextColor(tft.color565(140, 150, 175));
-    tft.drawString("DISC", 290, HEADER_CY);
+    tft.drawString("DISC", 290, WIFI_ROW_Y);
   }
   tft.setTextDatum(top_left);
+  drawUsbIndicator();
 
   // Main Body Background - starts right at HEADER_H, not a leftover hardcoded
   // 34: that gap used to overpaint the bottom ~16px of the taller header with
@@ -1897,11 +2094,17 @@ void renderScreen(bool forceRedraw = false) {
   // in the footer below).
   tft.setTextColor(statusColor);
   tft.setTextDatum(top_center);
-  tft.drawString(statusText, FACE_CENTER_X, 188);
+  tft.drawString(statusText, FACE_CENTER_X, 191);
   tft.setTextDatum(top_left);
 
   // Nightscout Blood Glucose Widget (vertically centered to the right of the face)
   drawGlucoseWidget();
+
+  // Left-of-face alarm/timer/reminder/birthday/new-release icon stack - see
+  // its own comment. Redrawn here too (not just on schedule-WS-push) so a
+  // full-screen redraw (state transitions, leaving settings, etc.) doesn't
+  // leave this region blank until the next 15s poll happens to land.
+  drawStatusIconStack();
 
   // Footer Bar - bottom-left is the live clock normally, replaced by the
   // mute warning when it's actually relevant (higher priority information).
@@ -3009,16 +3212,24 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         drawGlucoseWidget();
       }
     }
-    // Backend pushed schedule status (alarms, timers, reminders)
+    // Backend pushed schedule status (alarms, timers, reminders, birthdays,
+    // today's new music releases) - see pushScheduleStatus() in index.js.
     if (doc["schedule"].is<JsonObject>()) {
       JsonObject s = doc["schedule"];
-      hasActiveAlarm = s["hasAlarm"] | s["alarm"] | false;
-      hasActiveTimer = s["hasTimer"] | s["timer"] | false;
-      hasActiveReminder = s["hasReminder"] | s["reminder"] | false;
-      Serial.printf("[IMS] Schedule updated: alarm=%d, timer=%d, reminder=%d\n",
-                    hasActiveAlarm, hasActiveTimer, hasActiveReminder);
+      alarmCount = s["alarmCount"] | 0;
+      timerCount = s["timerCount"] | 0;
+      reminderCount = s["reminderCount"] | 0;
+      birthdayCount = s["birthday"]["count"] | 0;
+      birthdayIsGreen = strcmp(s["birthday"]["color"] | "", "green") == 0;
+      newReleaseCount = s["newReleases"]["count"] | 0;
+      cameraAttached = s["camera"]["attached"] | false;
+      cameraAwake = s["camera"]["awake"] | false;
+      cameraSetAwake(cameraAwake);
+      Serial.printf("[IMS] Schedule updated: alarm=%d, timer=%d, reminder=%d, birthday=%d(green=%d), newReleases=%d, camera=%d\n",
+                    alarmCount, timerCount, reminderCount, birthdayCount, birthdayIsGreen, newReleaseCount, cameraAttached);
       if (!onSettingsScreen) {
         drawFooterClock();
+        drawStatusIconStack();
       }
     }
     if (doc["text"].is<const char *>()) {
@@ -3571,6 +3782,16 @@ void setup() {
     }
   }
 
+  // USB webcam on the dock. USB host and the PC serial link (COM3) share one
+  // USB PHY, so host mode only starts when no PC is attached (i.e. the box is
+  // running from the dock's own power). With a PC plugged in the camera stays
+  // off so flashing and serial logging keep working.
+  if (!Serial.isPlugged()) {
+    cameraBegin(IMS_PRIMARY_HOST, 3003);
+  } else {
+    Serial.println("[Camera] PC USB link present - camera disabled (unplug the PC cable and power from the dock to use it)");
+  }
+
   currentState = STATE_CONNECTING_SERVER;
   renderScreen(true);
 
@@ -3813,8 +4034,10 @@ void loop() {
   // Auto-return to STANDBY after idle conversation - covers LISTENING (user
   // never spoke) and THINKING (Gemini never responded at all, e.g. its VAD
   // never fired) so the mic doesn't stream indefinitely in either case.
+  const unsigned long idleLimitMs =
+      (currentState == STATE_LISTENING && conversationOpen) ? CONVERSATION_IDLE_TIMEOUT_MS : SESSION_IDLE_TIMEOUT_MS;
   if ((currentState == STATE_LISTENING || currentState == STATE_THINKING) &&
-      (millis() - lastSpeechTimestamp > SESSION_IDLE_TIMEOUT_MS)) {
+      (millis() - lastSpeechTimestamp > idleLimitMs)) {
     sendDebug("session_idle_timeout");
     if (currentState == STATE_LISTENING) sendAudioStreamEnd(); // was mid-stream
     sendSessionClosed();
@@ -3876,6 +4099,15 @@ void loop() {
   // lightweight drawFooterClock() (see its own comment), not a full
   // renderScreen(true), specifically to avoid flashing the whole screen
   // once a second.
+  {
+    static int lastUsbState = -1;
+    const int usbNow = Serial.isPlugged() ? 1 : 0;
+    if (usbNow != lastUsbState) {
+      lastUsbState = usbNow;
+      drawUsbIndicator();
+    }
+  }
+
   {
     static int lastRenderedSecond = -1;
     struct tm ti;

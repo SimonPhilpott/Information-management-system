@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, Brain, Drama, Music, Sun, Moon, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Sun, Moon, ChevronRight } from 'lucide-react';
 
 // Each entry here is one card on the hub. Add a new one whenever a new
 // /ims/* page is built - this is the single place that needs to know about
@@ -29,6 +29,62 @@ const LINKS = [
     icon: Music,
     gradient: 'from-amber-500 to-orange-600',
     glow: 'rgba(249,115,22,0.3)'
+  },
+  {
+    path: '/ims/alarms',
+    title: 'Alarms',
+    description: 'View, add, edit, and cancel every alarm set on IMS.',
+    icon: Bell,
+    gradient: 'from-red-500 to-rose-600',
+    glow: 'rgba(244,63,94,0.3)'
+  },
+  {
+    path: '/ims/timers',
+    title: 'Timers',
+    description: 'View, add, edit, and cancel every timer set on IMS.',
+    icon: Clock,
+    gradient: 'from-sky-500 to-blue-600',
+    glow: 'rgba(59,130,246,0.3)'
+  },
+  {
+    path: '/ims/reminders',
+    title: 'Reminders',
+    description: 'View, add, edit, and cancel every reminder set on IMS.',
+    icon: PenLine,
+    gradient: 'from-emerald-500 to-teal-600',
+    glow: 'rgba(16,185,129,0.3)'
+  },
+  {
+    path: '/ims/birthday',
+    title: 'Birthdays',
+    description: 'Add birthdays - a cake icon appears on IMS within a week of any of them.',
+    icon: Cake,
+    gradient: 'from-pink-500 to-fuchsia-600',
+    glow: 'rgba(236,72,153,0.3)'
+  },
+  {
+    path: '/ims/boardgames',
+    title: 'Board Games',
+    description: 'Your BoardGameGeek collection with expansions, and a want-to-sell tick.',
+    icon: Dices,
+    gradient: 'from-lime-500 to-green-600',
+    glow: 'rgba(132,204,22,0.3)'
+  },
+  {
+    path: '/ims/look',
+    title: 'Look',
+    description: 'See what IMS sees, take snapshots, and ask questions about them.',
+    icon: Eye,
+    gradient: 'from-cyan-500 to-indigo-600',
+    glow: 'rgba(56,189,248,0.3)'
+  },
+  {
+    path: '/ims/faces',
+    title: 'Faces',
+    description: 'Teach IMS who people are so it can recognise them in photos.',
+    icon: ScanFace,
+    gradient: 'from-violet-500 to-purple-600',
+    glow: 'rgba(139,92,246,0.3)'
   }
 ];
 
@@ -50,7 +106,7 @@ export default function ImsHub({
   };
 
   return (
-    <div className={`min-h-screen w-full flex flex-col font-sans transition-colors duration-300 ${
+    <div className={`h-screen overflow-y-auto w-full flex flex-col font-sans transition-colors duration-300 ${
       isDark ? 'bg-[#030712] text-[#f3f4f6]' : 'bg-[#f4efed] text-[#1f2937]'
     }`}>
       <header className={`px-6 py-4 flex items-center justify-between border-b backdrop-blur-xl sticky top-0 z-40 transition-colors duration-300 ${
@@ -64,10 +120,10 @@ export default function ImsHub({
                 ? 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5'
                 : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 text-[#2E2B27] border border-[#2E2B27]/10'
             }`}
-            title="Return to Main Dashboard"
+            title="Back to the dashboard"
           >
             <ArrowLeft size={16} />
-            <span className="hidden sm:inline">Return to IMS</span>
+            <span className="hidden sm:inline">Dashboard</span>
           </button>
 
           <div className="h-6 w-px bg-slate-500/20" />
@@ -95,12 +151,12 @@ export default function ImsHub({
         )}
       </header>
 
-      <main className="flex-1 max-w-5xl w-full mx-auto p-6 flex flex-col gap-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-6 flex flex-col gap-6">
         <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
           Everything about IMS the voice terminal that lives outside a normal chat - what it remembers, and who it is. More pages will land here over time.
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {LINKS.map((link) => {
             const Icon = link.icon;
             return (

@@ -144,10 +144,10 @@ export function scheduleItem({ type, label, whenSeconds, time, date, recurrence 
   };
 }
 
-export function listScheduledItems() {
-  const rows = db.prepare(
-    `SELECT id, type, label, fire_at, recurrence FROM scheduled_items WHERE cancelled = 0 ORDER BY fire_at ASC`
-  ).all();
+export function listScheduledItems(type = null) {
+  const rows = type
+    ? db.prepare(`SELECT id, type, label, fire_at, recurrence FROM scheduled_items WHERE cancelled = 0 AND type = ? ORDER BY fire_at ASC`).all(type)
+    : db.prepare(`SELECT id, type, label, fire_at, recurrence FROM scheduled_items WHERE cancelled = 0 ORDER BY fire_at ASC`).all();
   return rows.map((r) => ({
     id: r.id,
     type: r.type,
@@ -161,6 +161,31 @@ export function listScheduledItems() {
 export function cancelScheduledItem(id) {
   const info = db.prepare(`UPDATE scheduled_items SET cancelled = 1 WHERE id = ? AND cancelled = 0`).run(id);
   return info.changes > 0;
+}
+
+// Web-editing counterpart to scheduleItem() - used by the /ims/alarms,
+// /ims/reminders and /ims/timers pages, where a user revises an existing
+// entry rather than cancelling and recreating it. Any field not supplied
+// keeps its current value.
+export function updateScheduledItem(id, { label, whenSeconds, time, date, recurrence }) {
+  const existing = db.prepare(`SELECT * FROM scheduled_items WHERE id = ? AND cancelled = 0`).get(id);
+  if (!existing) throw new Error('Scheduled item not found');
+  const rec = recurrence !== undefined
+    ? (VALID_RECURRENCE.includes(recurrence) ? recurrence : 'once')
+    : existing.recurrence;
+  const fireAt = (whenSeconds !== undefined || time !== undefined || date !== undefined)
+    ? computeFireAt({ whenSeconds, time, date })
+    : existing.fire_at;
+  db.prepare(`UPDATE scheduled_items SET label = ?, fire_at = ?, recurrence = ?, ringing = 0, ring_count = 0 WHERE id = ?`)
+    .run(label !== undefined ? (label || null) : existing.label, fireAt, rec, id);
+  return {
+    id,
+    type: existing.type,
+    label: label !== undefined ? (label || null) : existing.label,
+    fireAt: new Date(fireAt).toISOString(),
+    secondsFromNow: Math.max(0, Math.round((fireAt - Date.now()) / 1000)),
+    recurrence: rec,
+  };
 }
 
 function nextOccurrence(prevFireAtMs, recurrence) {
@@ -261,12 +286,28 @@ export function clearList(listName) {
 }
 
 export function getActiveScheduledStatus() {
-  const rows = db.prepare(`SELECT DISTINCT type FROM scheduled_items WHERE cancelled = 0`).all();
-  const types = new Set(rows.map((r) => r.type));
+  const rows = db.prepare(`SELECT type, COUNT(*) as n FROM scheduled_items WHERE cancelled = 0 GROUP BY type`).all();
+  const counts = { alarm: 0, timer: 0, reminder: 0 };
+  for (const r of rows) counts[r.type] = r.n;
   return {
-    hasAlarm: types.has('alarm'),
-    hasTimer: types.has('timer'),
-    hasReminder: types.has('reminder'),
+    hasAlarm: counts.alarm > 0,
+    hasTimer: counts.timer > 0,
+    hasReminder: counts.reminder > 0,
+    alarmCount: counts.alarm,
+    timerCount: counts.timer,
+    reminderCount: counts.reminder,
   };
+}
+
+// Items firing today (London calendar date) - used by the morning report to
+// mention "you've got X on today", not the full outstanding list.
+export function getItemsDueToday() {
+  const today = londonParts(new Date());
+  const startMs = londonWallTimeToUtcMs(today.year, today.month, today.day, 0, 0, 0);
+  const endMs = londonWallTimeToUtcMs(today.year, today.month, today.day, 23, 59, 59);
+  const rows = db.prepare(
+    `SELECT id, type, label, fire_at FROM scheduled_items WHERE cancelled = 0 AND fire_at BETWEEN ? AND ? ORDER BY fire_at ASC`
+  ).all(startMs, endMs);
+  return rows.map((r) => ({ id: r.id, type: r.type, label: r.label, fireAt: new Date(r.fire_at).toISOString() }));
 }
 

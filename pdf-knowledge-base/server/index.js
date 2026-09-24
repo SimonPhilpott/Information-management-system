@@ -55,11 +55,22 @@ import voiceRoutes from './routes/voice.js';
 import memoriesRoutes from './routes/memories.js';
 import personaRoutes from './routes/persona.js';
 import musicScanRoutes from './routes/musicScan.js';
+import birthdayRoutes from './routes/birthdays.js';
+import scheduledRouter from './routes/scheduled.js';
+import cameraRoutes from './routes/camera.js';
+import boardgamesRoutes from './routes/boardgames.js';
+import peopleRoutes from './routes/people.js';
+import lookRoutes from './routes/look.js';
+import { getCameraStatus, getFrame, wakeCamera, setFrame, heartbeat, appendDeviceLog } from './services/cameraService.js';
+import { askLive } from './services/lookService.js';
 import { getAuthStatus } from './services/driveService.js';
 import { validateConfiguredModels } from './services/modelService.js';
 import { loadHnswFromDisk } from './services/hnswService.js';
-import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getPersonality, setPersonality, getCaptureLogging, setCaptureLogging } from './services/hardwareClientService.js';
-import { scheduleItem, listScheduledItems, cancelScheduledItem, addToList, readList, removeFromList, clearList, checkDueScheduledItems, stopAllRinging, getActiveScheduledStatus } from './services/remindersService.js';
+import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getWebPersonaBlock, getPersonality, setPersonality, getCaptureLogging, setCaptureLogging } from './services/hardwareClientService.js';
+import { scheduleItem, listScheduledItems, cancelScheduledItem, addToList, readList, removeFromList, clearList, checkDueScheduledItems, stopAllRinging, getActiveScheduledStatus, getItemsDueToday } from './services/remindersService.js';
+import { getBirthdayFooterStatus, getUpcomingBirthdays, listBirthdays } from './services/birthdayService.js';
+import { getTodayReleases, getWindowResults } from './services/musicScanService.js';
+import { isFirstInteractionToday, markMorningReportOffered, buildMorningReportDirective } from './services/morningReportService.js';
 import { addMemory, getMemories, searchMemories, deleteMemory } from './db/database.js';
 import { getWeather } from './services/weatherService.js';
 import { startGlucosePoller, getGlucoseData } from './services/glucoseService.js';
@@ -142,6 +153,14 @@ app.use('/api/voice', voiceRoutes);
 app.use('/api/memories', memoriesRoutes);
 app.use('/api/persona-rules', personaRoutes);
 app.use('/api/music-scan', musicScanRoutes);
+app.use('/api/birthdays', birthdayRoutes);
+app.use('/api/camera', cameraRoutes);
+app.use('/api/boardgames', boardgamesRoutes);
+app.use('/api/people', peopleRoutes);
+app.use('/api/look', lookRoutes);
+app.use('/api/alarms', scheduledRouter('alarm'));
+app.use('/api/timers', scheduledRouter('timer'));
+app.use('/api/reminders', scheduledRouter('reminder'));
 
 app.get('/api/glucose', async (req, res) => {
   try {
@@ -218,7 +237,17 @@ export function pushScheduleStatus(targetWs = null) {
   const ws = targetWs || activeHardwareSession?.clientWs;
   if (ws && ws.readyState === WebSocket.OPEN) {
     try {
-      const status = getActiveScheduledStatus();
+      // Bundles alarms/timers/reminders (counts, not just booleans, so the
+      // footer can show a number badge) with birthdays and today's new music
+      // releases - one message covers the whole left-of-face icon stack,
+      // since all of it is refreshed together on the same 15s poll (see the
+      // setInterval below) regardless of which single thing actually changed.
+      const status = {
+        ...getActiveScheduledStatus(),
+        birthday: getBirthdayFooterStatus(),
+        newReleases: { count: getTodayReleases().length },
+        camera: (({ attached, awake }) => ({ attached, awake }))(getCameraStatus())
+      };
       ws.send(JSON.stringify({
         schedule: status
       }));
@@ -243,6 +272,31 @@ server.on('upgrade', (request, socket, head) => {
     socket.destroy();
   }
 });
+
+// Every (re)connection to Gemini gets the SAVED voice re-applied, and the voice
+// actually sent is logged - so the voice can never silently be anything other
+// than the one chosen on the IMS Personality screen. Voice-audition setups
+// (which carry previewVoice) are left alone, since trying other voices is
+// their whole point.
+function pinSavedVoice(msgStr, tag, resumptionHandle = null) {
+  try {
+    const parsed = JSON.parse(msgStr);
+    if (!parsed.setup || parsed.setup.previewVoice) return msgStr;
+    // Session resumption: when Gemini cycles its upstream session (it does
+    // after ~30-40s of quiet), resume WITH the previous session's handle so
+    // the conversation's context carries over instead of starting cold and
+    // re-greeting. Without a handle this still asks for resumable updates.
+    parsed.setup.sessionResumption = resumptionHandle ? { handle: resumptionHandle } : {};
+    const voice = getPersonality().voice;
+    parsed.setup.generationConfig = parsed.setup.generationConfig || {};
+    const was = parsed.setup.generationConfig.speechConfig?.voiceConfig?.prebuiltVoiceConfig?.voiceName;
+    parsed.setup.generationConfig.speechConfig = { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } };
+    console.log(`${tag} 🎙️ Gemini setup voice = ${voice}${was && was !== voice ? ` (corrected from ${was})` : ''}`);
+    return JSON.stringify(parsed);
+  } catch (_) {
+    return msgStr;
+  }
+}
 
 function handleLiveProxyConnection(ws, isHardware = false) {
   const tag = isHardware ? '[HardwareLive]' : '[BrowserLive]';
@@ -293,6 +347,23 @@ function handleLiveProxyConnection(ws, isHardware = false) {
   console.log(`${tag} Client connected from ${remoteInfo}`);
   logCapture(`[${new Date().toISOString()}] ${tag} CLIENT CONNECTED from ${remoteInfo}\n`);
   if (isHardware) ws.isHardwareClient = true;
+
+  // Morning report: kicked off as early as possible (right at raw WS
+  // connect, well before the setup handshake message that actually needs
+  // it) since building it involves a real network call (getWeather) and the
+  // handshake handler below is synchronous. If it hasn't resolved by the
+  // time the handshake needs it, morningReportReady stays false and nothing
+  // is injected THIS connection - markMorningReportOffered() is only called
+  // once it's actually been used, so an unlucky race just means it's offered
+  // on the next reconnect/wake instead of being silently lost for the day.
+  let morningReportDirective = null;
+  let morningReportReady = false;
+  if (isHardware && isFirstInteractionToday()) {
+    buildMorningReportDirective().then((text) => {
+      morningReportDirective = text;
+      morningReportReady = true;
+    }).catch((err) => console.error(`${tag} [MorningReport] Failed to build directive:`, err.message));
+  }
 
   // Terminate only the prior session for THIS client type (browser vs hardware do not stomp each other)
   if (isHardware) {
@@ -345,6 +416,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
 
   let currentGeminiWs = null;
   let cachedSetupMsg = null;
+  let resumptionHandle = null; // latest Gemini session-resumption handle for this device connection
   let isClientClosed = false;
   const outboundQueue = [];
   let geminiFirstMessageLogged = false;
@@ -537,13 +609,14 @@ function handleLiveProxyConnection(ws, isHardware = false) {
       const hasQueuedSetup = outboundQueue.some(m => typeof m === 'string' && m.includes('"setup"'));
       if (cachedSetupMsg && !hasQueuedSetup) {
         console.log(`${tag} Replaying cached setup handshake to Gemini...`);
-        gWs.send(cachedSetupMsg);
+        gWs.send(pinSavedVoice(cachedSetupMsg, tag, resumptionHandle));
+        if (resumptionHandle) console.log(`${tag} 🔁 Resuming previous Gemini session (context preserved)`);
       }
       // Flush queued messages
       while (outboundQueue.length > 0) {
         const msg = outboundQueue.shift();
         console.log(`${tag} Flushing queued message to Gemini...`);
-        gWs.send(msg);
+        gWs.send(typeof msg === 'string' && msg.includes('"setup"') ? pinSavedVoice(msg, tag, resumptionHandle) : msg);
       }
     });
 
@@ -558,6 +631,12 @@ function handleLiveProxyConnection(ws, isHardware = false) {
         } catch (_) { }
       }
       const msgStr = data.toString();
+      if (msgStr.includes('sessionResumptionUpdate')) {
+        try {
+          const upd = JSON.parse(msgStr).sessionResumptionUpdate;
+          if (upd?.newHandle && upd.resumable !== false) resumptionHandle = upd.newHandle;
+        } catch (_) { }
+      }
       let parsedAudioBytes = null;
       let parsed = null;
       try {
@@ -889,6 +968,37 @@ function handleLiveProxyConnection(ws, isHardware = false) {
                 console.error(`${tag} getWeather error:`, err.message);
                 respondToToolCall(call, { error: err.message, fallback: "Current weather conditions unavailable." });
               });
+            } else if (call.name === 'lookAtCamera') {
+              wakeCamera();
+              const frame = getFrame();
+              const q = String(call.args?.question || 'What can you see?');
+              if (!frame || Date.now() - frame.at > 120000) {
+                console.log(`${tag} 📷 lookAtCamera: no fresh camera frame`);
+                respondToToolCall(call, { error: 'The camera is not delivering pictures right now.' });
+              } else {
+                askLive(q).then((snap) => {
+                  const last = snap.qa[snap.qa.length - 1];
+                  console.log(`${tag} 📷 lookAtCamera answered (snapshot ${snap.id})`);
+                  respondToToolCall(call, { answer: last?.answer, recognisedPeople: snap.faces.filter((f) => f.match).map((f) => f.match.name) });
+                }).catch((err) => {
+                  console.error(`${tag} lookAtCamera error:`, err.message);
+                  respondToToolCall(call, { error: err.message });
+                });
+              }
+            } else if (call.name === 'getUpcomingBirthdays') {
+              const days = Math.max(0, Math.min(366, Number(call.args?.withinDays ?? 7)));
+              const list = listBirthdays().filter((b) => b.daysUntil <= days)
+                .map((b) => ({ name: b.name, daysUntil: b.daysUntil, isToday: b.isToday, date: `${b.day}/${b.month}`, turningAge: b.turningAge }));
+              console.log(`${tag} 🎂 getUpcomingBirthdays(${days}d) -> ${list.length}`);
+              respondToToolCall(call, { withinDays: days, count: list.length, birthdays: list });
+            } else if (call.name === 'getNewMusicReleases') {
+              const period = ['today', 'week', 'month'].includes(call.args?.period) ? call.args.period : 'week';
+              const releases = period === 'today'
+                ? getTodayReleases().map((r) => ({ artist: r.artist, title: r.title, type: r.type, date: r.date, owned: r.owned }))
+                : getWindowResults(period === 'week' ? 'week' : 'month').artists.flatMap((a) =>
+                    a.releases.filter((r) => r.isNew).map((r) => ({ artist: a.name, title: r.title, type: r.type, date: r.date, owned: r.owned })));
+              console.log(`${tag} 💿 getNewMusicReleases(${period}) -> ${releases.length}`);
+              respondToToolCall(call, { period, count: releases.length, releases: releases.slice(0, 25) });
             } else if (call.name === 'getBloodGlucose') {
               console.log(`${tag} 🩸 Executing getBloodGlucose tool`);
               getGlucoseData().then((glucoseData) => {
@@ -1173,7 +1283,11 @@ function handleLiveProxyConnection(ws, isHardware = false) {
             // noWakeDetected/endConversation declarations added here never actually
             // reached Gemini for hardware clients.
             const previewVoice = parsed.setup.previewVoice || null;
-            const hardwareDefaults = getHardwareSetupPayload(previewVoice);
+            const hardwareDefaults = getHardwareSetupPayload(previewVoice, morningReportReady ? morningReportDirective : null);
+            if (morningReportReady) {
+              markMorningReportOffered();
+              morningReportReady = false; // don't re-inject if setup is replayed on this same connection
+            }
             parsed.setup.tools = hardwareDefaults.setup.tools;
             parsed.setup.systemInstruction = hardwareDefaults.setup.systemInstruction;
             // generationConfig carries the selected voice (or previewVoice if auditioning)
@@ -1194,8 +1308,27 @@ function handleLiveProxyConnection(ws, isHardware = false) {
             // memory (imspersonality.md), which needs to know what the user
             // actually said/asked about, not just what Ims replied.
             parsed.setup.inputAudioTranscription = {};
+            // Ask Gemini for resumable-session handles from the very first setup, so a
+            // later upstream reconnect can resume with context (see pinSavedVoice()).
+            parsed.setup.sessionResumption = {};
             msgStr = JSON.stringify(parsed);
             console.log(`${tag} 🔧 Augmented hardware setup handshake with searchLibrary/noWakeDetected/endConversation tools, wake-phrase-gated system prompt, and outputAudioTranscription`);
+          }
+          // Browser live sessions ship their own generic assistant prompt and
+          // voice. Ims must be the same Ims everywhere, so put the saved voice,
+          // personality sliders and ims_persona_rules.md in front of it and pin
+          // the saved voice. The voice-audition connection (no system prompt)
+          // is left alone - it exists specifically to try OTHER voices.
+          if (!isHardware && parsed.setup.systemInstruction && !parsed.setup.previewVoice) {
+            const persona = getWebPersonaBlock();
+            const original = (parsed.setup.systemInstruction.parts || []).map((p) => p.text || '').join('\n');
+            parsed.setup.systemInstruction = {
+              parts: [{ text: persona.text + "\n\nYOUR CURRENT TASK AND TOOLS (keep the identity, dialect, personality and voice above throughout): " + original }]
+            };
+            parsed.setup.generationConfig = parsed.setup.generationConfig || {};
+            parsed.setup.generationConfig.speechConfig = { voiceConfig: { prebuiltVoiceConfig: { voiceName: persona.voice } } };
+            msgStr = JSON.stringify(parsed);
+            console.log(`${tag} 🎭 Applied saved Ims voice (${persona.voice}), personality and persona rules to browser live session`);
           }
           cachedSetupMsg = msgStr;
           console.log(`${tag} Cached setup handshake for resilient reconnection.`);
@@ -1472,6 +1605,32 @@ const debugMicServer = http.createServer((req, res) => {
   // changes POST here, and reads current values on boot. Same server/port
   // as the mic upload above, same reasoning - a bare device HTTP request has
   // no way to satisfy the main app's session-based requireAdmin middleware.
+  // The box's camera: frames, a periodic "camera is attached" heartbeat, and
+  // diagnostic log lines. Same plain-HTTP reasoning as /device/personality -
+  // a bare device request can't satisfy the app's session login.
+  if (req.method === 'POST' && req.url.startsWith('/device/camera/')) {
+    const kind = req.url.split('?')[0].slice('/device/camera/'.length);
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => {
+      const body = Buffer.concat(chunks);
+      if (kind === 'frame') {
+        if (body.length < 200 || body[0] !== 0xFF || body[1] !== 0xD8) { res.writeHead(400).end('not a jpeg'); return; }
+        setFrame(body, 'device');
+        res.writeHead(200).end('ok');
+      } else if (kind === 'heartbeat') {
+        heartbeat({ boot: req.url.includes('boot=1') });
+        res.writeHead(200).end('ok');
+      } else if (kind === 'log') {
+        appendDeviceLog(body.toString('utf8').slice(0, 2000));
+        res.writeHead(200).end('ok');
+      } else {
+        res.writeHead(404).end();
+      }
+    });
+    return;
+  }
+
   if (req.url === '/device/personality') {
     if (req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' })

@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { spawn } from 'child_process';
+import { spawn, execFile } from 'child_process';
 
 // The scan engine lives outside this repo, in the pre-existing D:\Music
 // scanner project (it already has musicbrainzngs installed system-wide and
@@ -12,6 +12,7 @@ const SCRIPT_PATH = path.join(SCANNER_DIR, 'ims_scan_service.py');
 const CONFIG_PATH = path.join(SCANNER_DIR, 'ims_scan_config.json');
 const STATUS_PATH = path.join(SCANNER_DIR, 'ims_scan_status.json');
 const RESULTS_PATH = path.join(SCANNER_DIR, 'ims_scan_results.json');
+const ARTISTS_PATH = path.join(SCANNER_DIR, 'ims_scan_artists.json');
 const LOG_PATH = path.join(SCANNER_DIR, 'ims_scan_log.txt');
 
 const DEFAULT_CONFIG = {
@@ -49,8 +50,153 @@ export function getStatus() {
   return readJson(STATUS_PATH, { state: 'idle', phase: null, currentIndex: 0, totalArtists: 0, currentArtist: null });
 }
 
+// Results file shape (written by ims_scan_service.py):
+//   { lastScanCompleted, artistsScanned, artistsWithMissingReleases,
+//     artists: { [folderName]: { genre, mbName, mbId, releases: [{title, type,
+//       date, precision, owned}], unlisted: [folderName], error } } }
+// It's ~MBs, so it's cached by mtime rather than re-parsed on every request.
+let resultsCache = { mtimeMs: 0, data: null };
 export function getResults() {
-  return readJson(RESULTS_PATH, { lastScanCompleted: null, artistsScanned: 0, artistsWithMissingReleases: 0, results: [] });
+  try {
+    const stat = fs.statSync(RESULTS_PATH);
+    if (resultsCache.data && stat.mtimeMs === resultsCache.mtimeMs) return resultsCache.data;
+    const data = JSON.parse(fs.readFileSync(RESULTS_PATH, 'utf8'));
+    if (!data.artists || typeof data.artists !== 'object') data.artists = {};
+    resultsCache = { mtimeMs: stat.mtimeMs, data };
+    return data;
+  } catch (_) {
+    return { lastScanCompleted: null, artistsScanned: 0, artistsWithMissingReleases: 0, artists: {} };
+  }
+}
+
+export function getResultsMeta() {
+  const r = getResults();
+  return {
+    lastScanCompleted: r.lastScanCompleted || null,
+    artistsScanned: r.artistsScanned || 0,
+    artistsWithMissingReleases: r.artistsWithMissingReleases || 0
+  };
+}
+
+// --- per-artist name overrides / pseudonyms (read by the python scanner) ---
+export function getArtistOverrides() {
+  return readJson(ARTISTS_PATH, {});
+}
+
+export function saveArtistSettings(name, { searchName, aliases }) {
+  const all = getArtistOverrides();
+  const cleanAliases = (Array.isArray(aliases) ? aliases : []).map((a) => String(a).trim()).filter(Boolean);
+  const cleanSearch = String(searchName || '').trim();
+  if (!cleanSearch && cleanAliases.length === 0) delete all[name];
+  else all[name] = { searchName: cleanSearch, aliases: cleanAliases };
+  fs.writeFileSync(ARTISTS_PATH, JSON.stringify(all, null, 2), 'utf8');
+  return all[name] || { searchName: '', aliases: [] };
+}
+
+function summarise(name, entry, overrides) {
+  const ov = overrides[name] || {};
+  return {
+    name,
+    genre: entry.genre,
+    mbName: entry.mbName,
+    owned: entry.releases.filter((r) => r.owned).length,
+    notOwned: entry.releases.filter((r) => !r.owned).length,
+    unlisted: entry.unlisted.length,
+    searchName: ov.searchName || '',
+    aliases: ov.aliases || []
+  };
+}
+
+export function getArtistList() {
+  const overrides = getArtistOverrides();
+  return Object.entries(getResults().artists)
+    .map(([name, entry]) => summarise(name, entry, overrides))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+}
+
+export function getArtistDetail(name) {
+  const entry = getResults().artists[name];
+  if (!entry) return null;
+  return { ...summarise(name, entry, getArtistOverrides()), releases: entry.releases, unlistedAlbums: entry.unlisted, error: entry.error || null };
+}
+
+const londonDateFormatter = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit'
+});
+function todayLondonDateStr() {
+  const parts = Object.fromEntries(londonDateFormatter.formatToParts(new Date()).map((p) => [p.type, p.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+function addDays(dateStr, n) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+// How far back each view reaches. "day" is today only - it's the same set
+// the footer vinyl-icon count comes from.
+const WINDOW_DAYS = { day: 0, week: 7, month: 30, '6months': 182, year: 365 };
+
+// Day-precision dates are compared exactly. Month-precision dates (MusicBrainz
+// often only knows the month) only count for the 6-month/year views, where a
+// month overlapping the window is a fair "yes"; year-only dates are never
+// placed in a window, since which day they fall on is unknown.
+function inWindow(rel, cutoff, today, windowKey) {
+  if (rel.precision === 'day') return rel.date >= cutoff && rel.date <= today;
+  if (rel.precision === 'month' && (windowKey === '6months' || windowKey === 'year')) {
+    const monthStart = `${rel.date}-01`;
+    const [y, m] = rel.date.split('-').map(Number);
+    const monthEnd = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+    return monthEnd >= cutoff && monthStart <= today;
+  }
+  return false;
+}
+
+export function getWindowResults(windowKey) {
+  const days = WINDOW_DAYS[windowKey];
+  if (days === undefined) throw new Error(`Unknown window "${windowKey}"`);
+  const today = todayLondonDateStr();
+  const cutoff = addDays(today, -days);
+  const overrides = getArtistOverrides();
+  const out = [];
+  for (const [name, entry] of Object.entries(getResults().artists)) {
+    const releases = entry.releases.map((r) => ({ ...r, isNew: inWindow(r, cutoff, today, windowKey) }));
+    const newest = releases.filter((r) => r.isNew).map((r) => r.date).sort().pop();
+    if (!newest) continue;
+    out.push({ ...summarise(name, entry, overrides), releases, unlistedAlbums: entry.unlisted, newestDate: newest });
+  }
+  out.sort((a, b) => (b.newestDate.localeCompare(a.newestDate)) || a.name.localeCompare(b.name));
+  return { window: windowKey, cutoff, today, artists: out };
+}
+
+// Every release dated exactly today for an artist in the library, owned or
+// not - the "released today" list on the Day view, and the count shown next
+// to the vinyl icon on the device and in the morning report.
+export function getTodayReleases() {
+  const today = todayLondonDateStr();
+  const list = [];
+  for (const [name, entry] of Object.entries(getResults().artists)) {
+    for (const r of entry.releases) {
+      if (r.precision === 'day' && r.date === today) {
+        list.push({ artist: name, title: r.title, type: r.type, date: r.date, owned: r.owned });
+      }
+    }
+  }
+  return list.sort((a, b) => a.artist.localeCompare(b.artist));
+}
+
+// Re-scans one artist (a couple of MusicBrainz calls) after their search
+// name/aliases were edited. Refused while a full scan is running, since both
+// would write the same results file.
+export function rescanArtist(name) {
+  return new Promise((resolve, reject) => {
+    if (isScanRunning()) return reject(new Error('A full scan is running - try again once it finishes.'));
+    execFile(PYTHON_EXE, [SCRIPT_PATH, '--artist', name], {
+      cwd: SCANNER_DIR, timeout: 120000, env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+    }, (err, stdout, stderr) => {
+      if (err) return reject(new Error((stderr || stdout || err.message).toString().trim().split('\n').pop()));
+      resolve(getArtistDetail(name));
+    });
+  });
 }
 
 // Ground truth is the status file's own state, not just this process's

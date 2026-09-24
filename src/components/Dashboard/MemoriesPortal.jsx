@@ -113,11 +113,11 @@ export default function MemoriesPortal({
     fetchMemories();
   }, [fetchMemories]);
 
-  // Navigate back to main dashboard
+  // Navigate back to the IMS Hub
   const handleReturnHome = () => {
-    window.history.pushState(null, '', '/');
+    window.history.pushState(null, '', '/ims');
     if (setCurrentPath) {
-      setCurrentPath('/');
+      setCurrentPath('/ims');
     } else {
       window.dispatchEvent(new PopStateEvent('popstate'));
     }
@@ -279,10 +279,10 @@ export default function MemoriesPortal({
                 ? 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5' 
                 : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 text-[#2E2B27] border border-[#2E2B27]/10'
             }`}
-            title="Return to Main Dashboard"
+            title="Return to IMS Hub"
           >
             <ArrowLeft size={16} />
-            <span className="hidden sm:inline">Return to IMS</span>
+            <span className="hidden sm:inline">IMS Hub</span>
           </button>
 
           <div className="h-6 w-px bg-slate-500/20" />

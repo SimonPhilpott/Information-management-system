@@ -24,6 +24,11 @@ import DemoPortal from './components/Dashboard/DemoPortal';
 import MemoriesPortal from './components/Dashboard/MemoriesPortal';
 import PersonaPortal from './components/Dashboard/PersonaPortal';
 import MusicScanPortal from './components/Dashboard/MusicScanPortal';
+import ScheduledItemsPortal from './components/Dashboard/ScheduledItemsPortal';
+import BirthdayPortal from './components/Dashboard/BirthdayPortal';
+import BoardgamesPortal from './components/Dashboard/BoardgamesPortal';
+import LookPortal from './components/Dashboard/LookPortal';
+import FacesPortal from './components/Dashboard/FacesPortal';
 import ImsHub from './components/Dashboard/ImsHub';
 
 const getShortSummary = (text) => {
@@ -1336,6 +1341,79 @@ export default function App() {
         theme={state.theme}
         onThemeToggle={actions.toggleTheme}
         currentPath={currentPath}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/alarms' || currentPath.startsWith('/ims/alarms')) {
+    return (
+      <ScheduledItemsPortal
+        type="alarm"
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/timers' || currentPath.startsWith('/ims/timers')) {
+    return (
+      <ScheduledItemsPortal
+        type="timer"
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/reminders' || currentPath.startsWith('/ims/reminders')) {
+    return (
+      <ScheduledItemsPortal
+        type="reminder"
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/look' || currentPath.startsWith('/ims/look')) {
+    return (
+      <LookPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/faces' || currentPath.startsWith('/ims/faces')) {
+    return (
+      <FacesPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/boardgames' || currentPath.startsWith('/ims/boardgames')) {
+    return (
+      <BoardgamesPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/birthday' || currentPath.startsWith('/ims/birthday')) {
+    return (
+      <BirthdayPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
         setCurrentPath={setCurrentPath}
       />
     );

@@ -1,14 +1,15 @@
 import { Router } from 'express';
-import { synthesizeNeuralSpeech } from '../services/voiceService.js';
+import { synthesizeSpeech } from '../services/voiceService.js';
 
 const router = Router();
 
 /**
- * POST /api/voice/tts - Synthesize text to human-like premium neural audio stream
+ * POST /api/voice/tts - read text aloud in the saved IMS voice + personality
+ * (see voiceService.js: there is no fallback voice by design).
  */
 router.post('/tts', async (req, res) => {
   try {
-    const { text, tone } = req.body;
+    const { text } = req.body;
 
     if (!text || !text.trim()) {
       return res.status(400).json({ error: 'Text content is required for speech synthesis.' });
@@ -20,19 +21,18 @@ router.post('/tts', async (req, res) => {
       .replace(/[*_#`[\]()]/g, '')     // Remove general markdown syntax
       .trim();
 
-    const audioBuffer = await synthesizeNeuralSpeech(cleanText, tone || 'friendly');
+    const audioBuffer = await synthesizeSpeech(cleanText);
 
     res.set({
-      'Content-Type': 'audio/mpeg',
+      'Content-Type': 'audio/wav',
       'Content-Length': audioBuffer.length,
-      'Accept-Ranges': 'bytes',
       'Cache-Control': 'no-cache'
     });
 
     res.send(audioBuffer);
   } catch (err) {
-    console.error('[Voice Route] TTS Synthesis failed:', err);
-    res.status(500).json({ error: 'Failed to synthesize speech: ' + err.message });
+    console.error('[Voice Route] TTS Synthesis failed:', err.message);
+    res.status(502).json({ error: 'Failed to synthesize speech: ' + err.message });
   }
 });
 
