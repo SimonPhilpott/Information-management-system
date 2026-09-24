@@ -66,7 +66,7 @@ import { SqliteSessionStore } from './db/sessionStore.js';
 import { onDevicePush, onSchedulePush } from './services/deviceBus.js';
 import calendarRoutes from './routes/calendar.js';
 import { refreshEvents, getUpcomingEvents, getDeviceIcons, createEvent, describeEvents } from './services/calendarService.js';
-import { getDevicePayload, getNeutralOverride } from './services/faceDesignService.js';
+import { getDevicePayload, getStandbyOverride } from './services/faceDesignService.js';
 import boardgamesRoutes from './routes/boardgames.js';
 import peopleRoutes from './routes/people.js';
 import lookRoutes from './routes/look.js';
@@ -280,7 +280,7 @@ export function pushScheduleStatus(targetWs = null) {
         camera: (({ attached, awake }) => ({ attached, awake }))(getCameraStatus()),
         recording: { active: isRecordingActive() },
         calendar: { icons: getDeviceIcons() },
-        neutralFace: getNeutralOverride()
+        standbyFace: getStandbyOverride()
       };
       ws.send(JSON.stringify({
         schedule: status

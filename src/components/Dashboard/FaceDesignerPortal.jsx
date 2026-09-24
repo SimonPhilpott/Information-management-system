@@ -58,14 +58,46 @@ function DotGrid({ grid, color, size = 14, gap = 3, onPaint, editable = false })
   );
 }
 
-// The face "talking": alternates the two frames the way the device does.
+// Same eye movement as the device (see applyEyeMotion in the firmware): a blink
+// collapses each column of the eye rows (0-4) onto its lowest lit dot, and a
+// glance slides a dim "pupil" dot one column into a lit dot beside it.
+function withEyeMotion(grid, t, blink, glance) {
+  const v = grid.split('').map((ch) => parseInt(ch, 16) * 17);
+  const at = (r, c) => r * COLS + c;
+  if (blink && [0, 1, 5, 6].includes(t)) {
+    for (let c = 0; c < COLS; c++) {
+      let bottom = -1, peak = 0;
+      for (let r = 0; r < 5; r++) { const x = v[at(r, c)]; if (x > 0) { bottom = r; peak = Math.max(peak, x); } }
+      if (bottom < 0) continue;
+      for (let r = 0; r < 5; r++) v[at(r, c)] = 0;
+      v[at(bottom, c)] = peak;
+    }
+  } else if (glance) {
+    const g = t >= 30 && t < 40 ? -1 : t >= 50 && t < 60 ? 1 : 0;
+    if (g) {
+      const src = v.slice();
+      for (let r = 0; r < 5; r++) for (let c = 0; c < COLS; c++) {
+        const x = src[at(r, c)], nc = c + g;
+        if (x > 0 && x <= 60 && nc >= 0 && nc < COLS && src[at(r, nc)] >= 200) { v[at(r, nc)] = x; v[at(r, c)] = 255; }
+      }
+    }
+  }
+  return v.map((x) => Math.round(x / 17).toString(16)).join('');
+}
+
+// The face "talking" with its eye movement: alternates the two frames the way
+// the device does. The eye cycle runs three times faster than on the device
+// (every 4 seconds rather than 12) so you don't have to wait to see it.
 function TalkingPreview({ face }) {
   const [open, setOpen] = useState(false);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => setOpen((o) => !o), 260);
-    return () => clearInterval(id);
+    const a = setInterval(() => setOpen((o) => !o), 260);
+    const b = setInterval(() => setTick((n) => (n + 1) % 100), 40);
+    return () => { clearInterval(a); clearInterval(b); };
   }, []);
-  return <DotGrid grid={open ? face.openGrid : face.grid} color={face.color} size={9} gap={2} />;
+  const base = open ? face.openGrid : face.grid;
+  return <DotGrid grid={face.eyeBlink || face.eyeGlance ? withEyeMotion(base, tick, face.eyeBlink, face.eyeGlance) : base} color={face.color} size={9} gap={2} />;
 }
 
 export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
@@ -74,7 +106,7 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
   const [deleted, setDeleted] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [isNew, setIsNew] = useState(false);
-  const [draft, setDraft] = useState({ name: '', grid: EMPTY_GRID, openGrid: EMPTY_GRID, color: '4CFF7A', scenarios: '' });
+  const [draft, setDraft] = useState({ name: '', grid: EMPTY_GRID, openGrid: EMPTY_GRID, color: '4CFF7A', scenarios: '', eyeBlink: false, eyeGlance: false });
   const [frame, setFrame] = useState('grid');           // which frame is being painted
   const [brush, setBrush] = useState('f');
   const [busy, setBusy] = useState(false);
@@ -102,7 +134,7 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
     setSelectedId(face.id);
     setIsNew(false);
     setFrame('grid');
-    setDraft({ name: face.name, grid: face.grid, openGrid: face.openGrid, color: face.color, scenarios: face.scenarios });
+    setDraft({ name: face.name, grid: face.grid, openGrid: face.openGrid, color: face.color, scenarios: face.scenarios, eyeBlink: face.eyeBlink, eyeGlance: face.eyeGlance });
   }
 
   const startNew = (from = null) => {
@@ -110,8 +142,8 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
     setIsNew(true);
     setFrame('grid');
     setDraft(from
-      ? { name: `${from.name}_copy`, grid: from.grid, openGrid: from.openGrid, color: from.color, scenarios: from.scenarios }
-      : { name: '', grid: EMPTY_GRID, openGrid: EMPTY_GRID, color: '4CFF7A', scenarios: '' });
+      ? { name: `${from.name}_copy`, grid: from.grid, openGrid: from.openGrid, color: from.color, scenarios: from.scenarios, eyeBlink: from.eyeBlink, eyeGlance: from.eyeGlance }
+      : { name: '', grid: EMPTY_GRID, openGrid: EMPTY_GRID, color: '4CFF7A', scenarios: '', eyeBlink: false, eyeGlance: false });
   };
 
   const strokeLevel = useRef(brush);
@@ -183,8 +215,8 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
   const preview = async () => {
     try {
       const body = isNew || !selected
-        ? { name: draft.name || 'preview', grid: draft.grid, openGrid: draft.openGrid, color: draft.color }
-        : locked ? { name: selected.name } : { name: draft.name, grid: draft.grid, openGrid: draft.openGrid, color: draft.color };
+        ? { name: draft.name || 'preview', grid: draft.grid, openGrid: draft.openGrid, color: draft.color, eyeBlink: draft.eyeBlink, eyeGlance: draft.eyeGlance }
+        : { name: draft.name, grid: draft.grid, openGrid: draft.openGrid, color: draft.color, eyeBlink: draft.eyeBlink, eyeGlance: draft.eyeGlance };
       const res = await fetch('/api/face-designs/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || 'Preview failed.');
@@ -222,7 +254,7 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
                 } ${isDark ? 'bg-slate-950/40' : 'bg-white'}`}>
                 <DotGrid grid={f.grid} color={f.color} size={8} gap={2} />
                 <div className="mt-2 text-xs font-bold flex items-center gap-1.5">
-                  {f.name}{f.shapeLocked && <Lock size={10} className="opacity-50" title="Drawn by the firmware" />}
+                  {f.name}{f.selectable === false && <span className="ml-1 text-[9px] font-black uppercase tracking-wider text-emerald-500">auto</span>}
                 </div>
               </button>
             ))}
@@ -252,9 +284,9 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
 
           {(isNew || selected) && (
             <div className="flex flex-col gap-4">
-              {selected?.name === 'neutral' && !isNew && (
+              {selected?.name === 'standby' && !isNew && (
                 <p className={`text-[11px] leading-relaxed p-3 rounded-lg border ${isDark ? 'border-white/10 text-slate-400' : 'border-[#2E2B27]/10 text-slate-600'}`}>
-                  This is Ims's everyday face. Your dots and colour are used when Ims is idle and when it is speaking. While listening, thinking, connecting or recording it keeps its own state faces and colours, so you can always tell what it is doing.
+                  This is Ims's resting face - the one on screen whenever it is idle, and while it talks with no other face chosen. Ims never picks it, so there are no scenarios to write. Your dots, colour and eye movement replace the built-in look; while listening, thinking, connecting or recording Ims keeps its own state faces and colours so you can tell what it is doing. Use <strong>Reset to original</strong> to go back.
                 </p>
               )}
 
@@ -295,7 +327,19 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
                 <div className="flex-1 min-w-[14rem] flex flex-col gap-3">
                   <div>
                     <label className={label}><Mic size={10} className="inline mr-1" />Talking preview</label>
-                    <TalkingPreview face={{ grid: draft.grid, openGrid: draft.openGrid, color: draft.color }} />
+                    <TalkingPreview face={{ grid: draft.grid, openGrid: draft.openGrid, color: draft.color, eyeBlink: draft.eyeBlink, eyeGlance: draft.eyeGlance }} />
+                  </div>
+                  <div>
+                    <label className={label}>Eye movement</label>
+                    <label className="flex items-center gap-2 text-xs cursor-pointer mb-1">
+                      <input type="checkbox" checked={Boolean(draft.eyeBlink)} onChange={(e) => setDraft({ ...draft, eyeBlink: e.target.checked })} />
+                      Blink now and then
+                    </label>
+                    <label className="flex items-center gap-2 text-xs cursor-pointer">
+                      <input type="checkbox" checked={Boolean(draft.eyeGlance)} onChange={(e) => setDraft({ ...draft, eyeGlance: e.target.checked })} />
+                      Glance left and right
+                    </label>
+                    <p className="text-[10px] text-slate-500 mt-1.5 max-w-[16rem]">Works on the eyes (top five rows) just like the standby face. A blink flattens the eyes. To glance, use the <strong>Dim</strong> brush for a pupil inside a lit eye - the pupil slides sideways. The preview above runs 3x faster than the device.</p>
                   </div>
                   <div>
                     <label className={label}>Name</label>
@@ -323,7 +367,7 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
                 </div>
               </div>
 
-              <div>
+              <div className={selected?.selectable === false && !isNew ? 'hidden' : ''}>
                 <label className={label}>When Ims should use this face (scenarios)</label>
                 <textarea className={`${field} min-h-[110px] leading-relaxed`} value={draft.scenarios}
                   placeholder="Describe the moments this face fits - e.g. 'When teasing the user, when a plan goes exactly to plan, when winning an argument.'"

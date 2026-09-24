@@ -321,12 +321,15 @@ volatile unsigned long emotionSetAtMs = 0;
 static uint8_t customFaceGrid[96] = {0};      // resting frame (mouth closed)
 static uint8_t customFaceOpenGrid[96] = {0};  // speaking frame (mouth open)
 static uint32_t customFaceRGB = 0x4CFF7A;
-// The everyday face, when the user has redrawn/recoloured it in the Face
-// Designer (the backend sends it as neutralFace; null/absent = built-in smile).
-static uint8_t neutralFaceGrid[96];
-static uint8_t neutralFaceOpenGrid[96];
-static uint32_t neutralFaceRGB = 0x4CFF7A;
-static bool neutralCustomActive = false;
+// The standby (idle) face, when the user has redrawn/recoloured it in the Face
+// Designer (the backend sends it as standbyFace; null/absent = built-in look).
+static uint8_t standbyFaceGrid[96];
+static uint8_t standbyFaceOpenGrid[96];
+static uint32_t standbyFaceRGB = 0x4CFF7A;
+static bool standbyCustomActive = false;
+static bool standbyBlink = false, standbyGlance = false;
+// Eye movement for the current designed face (set with setEmotion).
+static bool customFaceBlink = false, customFaceGlance = false;
 static char customFaceName[24] = "custom";
 enum FaceEmotion {
   EMOTION_NEUTRAL = 0,
@@ -844,6 +847,44 @@ static void applyBreathBackground(uint8_t want[FACE_COLS * FACE_ROWS]) {
     if (want[i] < breath) want[i] = (uint8_t)breath;
 }
 
+// Eye movement for any designed face, matching the standby eyes: every 12 s the
+// eyes blink (each column of the eye rows collapses onto its lowest lit dot) and
+// they glance left then right (a dim "pupil" dot slides one column into a lit
+// dot beside it, and the dot it left lights up). Only rows 0-4 are touched, so
+// the mouth is never affected.
+static void applyEyeMotion(uint8_t want[FACE_COLS * FACE_ROWS], int f, bool blink, bool glance) {
+  int t = f % 100;
+  if (blink && (t == 0 || t == 1 || t == 5 || t == 6)) {
+    for (int c = 0; c < FACE_COLS; c++) {
+      int bottom = -1;
+      uint8_t peak = 0;
+      for (int r = 0; r < 5; r++) {
+        uint8_t v = want[r * FACE_COLS + c];
+        if (v > 0) { bottom = r; if (v > peak) peak = v; }
+      }
+      if (bottom < 0) continue;
+      for (int r = 0; r < 5; r++) want[r * FACE_COLS + c] = 0;
+      want[bottom * FACE_COLS + c] = peak;
+    }
+    return;
+  }
+  if (!glance) return;
+  int g = (t >= 30 && t < 40) ? -1 : ((t >= 50 && t < 60) ? 1 : 0);
+  if (g == 0) return;
+  uint8_t src[FACE_COLS * 5];
+  memcpy(src, want, sizeof(src));
+  for (int r = 0; r < 5; r++) {
+    for (int c = 0; c < FACE_COLS; c++) {
+      uint8_t v = src[r * FACE_COLS + c];
+      int nc = c + g;
+      if (v > 0 && v <= 60 && nc >= 0 && nc < FACE_COLS && src[r * FACE_COLS + nc] >= 200) {
+        want[r * FACE_COLS + nc] = v;
+        want[r * FACE_COLS + c] = 255;
+      }
+    }
+  }
+}
+
 static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
   memset(want, 0, FACE_COLS * FACE_ROWS);
   int f = faceFrame;
@@ -881,6 +922,7 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
       const uint8_t *frame = (speaking && amp > 100) ? customFaceOpenGrid : customFaceGrid;
       for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
         if (frame[i]) facePut(want, i / FACE_COLS, i % FACE_COLS, frame[i]);
+      if (customFaceBlink || customFaceGlance) applyEyeMotion(want, f, customFaceBlink, customFaceGlance);
       return;
     }
 
@@ -1093,7 +1135,10 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
     else if (idleT >= 50 && idleT < 60) gaze = 1;
   }
 
-  if (blink) {
+  const bool useStandbyDesign = standbyCustomActive && !listening && !thinking;
+  if (useStandbyDesign) {
+    // the redrawn standby face supplies its own eyes (below)
+  } else if (blink) {
     for (int k = 0; k < 3; k++) { facePut(want, 3, eyeL[k], 255); facePut(want, 3, eyeR[k], 255); }
   } else {
     int r0 = thinking ? 2 : 1;
@@ -1123,8 +1168,8 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
     uint32_t n = (uint32_t)(f * 73 + 151);
     n = (n ^ (n >> 5)) * 2654435761u;
     int amp = (int)((n >> 16) & 0xFF);
-    if (neutralCustomActive) {
-      const uint8_t *nf = (amp > 100) ? neutralFaceOpenGrid : neutralFaceGrid;
+    if (standbyCustomActive) {
+      const uint8_t *nf = (amp > 100) ? standbyFaceOpenGrid : standbyFaceGrid;
       for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
         if (nf[i]) facePut(want, i / FACE_COLS, i % FACE_COLS, nf[i]);
       return;
@@ -1135,9 +1180,10 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
       for (int c = 6 - half; c < 6 + half; c++) facePut(want, r, c, 255);
   } else {
     // Idle: the user's neutral design if they made one, else a fixed smile.
-    if (neutralCustomActive) {
+    if (standbyCustomActive) {
       for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
-        if (neutralFaceGrid[i]) facePut(want, i / FACE_COLS, i % FACE_COLS, neutralFaceGrid[i]);
+        if (standbyFaceGrid[i]) facePut(want, i / FACE_COLS, i % FACE_COLS, standbyFaceGrid[i]);
+      if (standbyBlink || standbyGlance) applyEyeMotion(want, f, standbyBlink, standbyGlance);
     } else {
       for (int c = 3; c <= 8; c++) facePut(want, 6, c, 255);
       facePut(want, 5, 2, 255);
@@ -1192,10 +1238,10 @@ static void drawFaceInternal(bool forceFull) {
   else if (currentState == STATE_SPEAKING || isSpeakerActive()) { onR = 165; onG = 94; onB = 234; }
   // A redesigned neutral face uses its own colour while idle or speaking; the
   // listening / thinking / connecting / recording colours stay, as they signal state.
-  if (neutralCustomActive && !isMicHardwareMuted && currentEmotion == EMOTION_NEUTRAL && !recordingActive &&
+  if (standbyCustomActive && !isMicHardwareMuted && currentEmotion == EMOTION_NEUTRAL && !recordingActive &&
       currentState != STATE_CONNECTING_WIFI && currentState != STATE_CONNECTING_SERVER &&
       currentState != STATE_LISTENING && currentState != STATE_THINKING) {
-    onR = (neutralFaceRGB >> 16) & 0xFF; onG = (neutralFaceRGB >> 8) & 0xFF; onB = neutralFaceRGB & 0xFF;
+    onR = (standbyFaceRGB >> 16) & 0xFF; onG = (standbyFaceRGB >> 8) & 0xFF; onB = standbyFaceRGB & 0xFF;
   }
   const int offR = 12, offG = 20, offB = 16;
 
@@ -3182,7 +3228,7 @@ size_t resample24to16(const int16_t *in, size_t inSamples, int16_t *out,
 // Gemini, resampled down to the 16kHz I2S bus rate before playback.
 // Applies the backend's neutralFace: an object {grid, openGrid, color} switches the
 // everyday face to the user's design, anything else restores the built-in one.
-static void applyNeutralFace(JsonVariantConst nf) {
+static void applyStandbyFace(JsonVariantConst nf) {
   if (nf.is<JsonObjectConst>() && nf["grid"].is<const char *>() && strlen(nf["grid"].as<const char *>()) >= 96) {
     const char *g = nf["grid"];
     const char *og = nf["openGrid"].is<const char *>() ? nf["openGrid"].as<const char *>() : g;
@@ -3191,11 +3237,13 @@ static void applyNeutralFace(JsonVariantConst nf) {
       int v = (ch >= '0' && ch <= '9') ? ch - '0' : (ch >= 'a' && ch <= 'f') ? ch - 'a' + 10 : (ch >= 'A' && ch <= 'F') ? ch - 'A' + 10 : 0;
       return (uint8_t)(v * 17);
     };
-    for (int i = 0; i < 96; i++) { neutralFaceGrid[i] = hexLevel(g[i]); neutralFaceOpenGrid[i] = hexLevel(og[i]); }
-    neutralFaceRGB = (uint32_t)strtoul(nf["color"] | "4CFF7A", nullptr, 16);
-    neutralCustomActive = true;
+    for (int i = 0; i < 96; i++) { standbyFaceGrid[i] = hexLevel(g[i]); standbyFaceOpenGrid[i] = hexLevel(og[i]); }
+    standbyFaceRGB = (uint32_t)strtoul(nf["color"] | "4CFF7A", nullptr, 16);
+    standbyBlink = nf["blink"] | false;
+    standbyGlance = nf["glance"] | false;
+    standbyCustomActive = true;
   } else {
-    neutralCustomActive = false;
+    standbyCustomActive = false;
   }
 }
 
@@ -3381,7 +3429,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
     // Backend forwarded Gemini's setEmotion tool call - purely cosmetic, just
     // updates which expression computeFaceLevels() draws. Doesn't touch
     // currentState/conversation flow at all.
-    if (doc.as<JsonObject>().containsKey("neutralFace")) applyNeutralFace(doc["neutralFace"]);
+    if (doc.as<JsonObject>().containsKey("standbyFace")) applyStandbyFace(doc["standbyFace"]);
     if (doc["setEmotion"].is<const char *>()) {
       // A face from /ims/facedesigner rides along as {grid, openGrid, color}:
       // two frames of 96 hex digits (0-f -> brightness 0-255) row by row, and rrggbb.
@@ -3401,6 +3449,8 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
           }
           const char *col = doc["face"]["color"] | "4CFF7A";
           customFaceRGB = (uint32_t)strtoul(col, nullptr, 16);
+          customFaceBlink = doc["face"]["blink"] | false;
+          customFaceGlance = doc["face"]["glance"] | false;
           strlcpy(customFaceName, doc["setEmotion"].as<const char *>(), sizeof(customFaceName));
           currentEmotion = EMOTION_CUSTOM;
         } else {
@@ -3484,7 +3534,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       cameraAwake = s["camera"]["awake"] | false;
       cameraSetAwake(cameraAwake);
       setRecordingMode(s["recording"]["active"] | false);
-      if (s.containsKey("neutralFace")) applyNeutralFace(s["neutralFace"]);
+      if (s.containsKey("standbyFace")) applyStandbyFace(s["standbyFace"]);
       {
         uint8_t nSensor = 0, nPod = 0, nRx = 0;
         for (JsonObject ic : s["calendar"]["icons"].as<JsonArray>()) {
