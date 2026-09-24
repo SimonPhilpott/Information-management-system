@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 32
-- Verified Features: 32
+- Total Registered Features: 33
+- Verified Features: 33
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -40,6 +40,7 @@
 | FEAT-030 | Subject-Grounded Library Book Retrieval & Response Formulation | [subjectMatcherService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/subjectMatcherService.js) | Dynamic taxonomy scoring, book candidate resolution, & grounded prompt formulation | PASS |
 | FEAT-031 | Real-Time Live Weather Integration & Yorkshire Commentary | [weatherService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/weatherService.js) | Open-Meteo live API geocoding, WMO condition translation & getWeather tool response | PASS |
 | FEAT-032 | Nightscout Real-Time Blood Glucose Widget & CGM Monitoring | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | Nightscout 60s polling, WebSocket push, LCD vector arrows & Font 4 mmol/L range rendering | PASS |
+| FEAT-033 | Hardware Preferences Screen Volume Control & Left-Aligned Logging Toggle | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | ES8311 DAC_VOLUME 11-step register calibration, NVS persistence, audio feedback chirp, and left-aligned capture logging pill | PASS |
 
 
 
@@ -201,6 +202,14 @@
 8. **Footer Schedule Indicator Icons:** Set an alarm, timer, or reminder; verify the corresponding orange icon (16x16 XBM bell for alarm, clock for timer, pen for reminder) renders at double font height with 18px spacing to the right of the date string, optically centered at y=210, and automatically disappears when the alert is cancelled or dismissed without ghosting or clipping the emotion label.
 9. **Mechanical 22x22 Cog Settings Icon Verification:** Verify the header settings icon at (22, 21) renders an authentic 22x22 XBM mechanical cog with 8 symmetrical tapered teeth and a transparent hollow central axle bore against the header background (`#141822`), responding accurately to touch within its bounding box (`x < 55 && y < 45`).
 
+### Suite 33: Hardware Preferences Screen Volume Control & Left-Aligned Logging Toggle (FEAT-033)
+1. **Preferences Screen Navigation:** Tap mechanical settings cog icon in top header bar; verify screen transitions immediately from Standby to Preferences screen with dark blue-grey background (`#0B0E14`), top header title "IMS PREFERENCES", and "BACK" button.
+2. **Left-Aligned Capture Logging Toggle:** Verify the Capture Logging toggle pill (width 70px, height 26px) renders on the left edge (`X = 15..85`) directly beneath the "CAPTURE LOGGING" header label (`X = 15`), displaying "ON" in bright green (`#2ED573`) when enabled and "OFF" in muted grey (`#57606F`) when disabled, with path text properly indented below.
+3. **Capture Logging Hit Detection:** Tap within the left pill boundary (`X = 10..95`, `Y = 58..94`); verify state toggles cleanly without affecting Row 2 controls below.
+4. **Side-by-Side Row 2 Layout:** Verify Row 2 features two distinct columns: "ALERT SOUND" on the left (`cx = 80`) and "VOLUME" on the right (`cx = 240`), each displaying interactive cyan left/right chevrons, central text value, and tap hints ("tap to preview" and "tap to test").
+5. **Volume Step Calibration & Audio Chirp:** Tap the volume right chevron (`touchX 270..315`) to increase volume or left chevron (`165..210`) to decrease volume in 10% steps (0% to 100%); verify ES8311 DAC_VOLUME register 0x32 updates immediately and a 120ms 660Hz sine tone plays to audition the chosen loudness.
+6. **NVS Persistence Across Reboots:** Set volume to a custom value (e.g. 90%), power cycle or hard-reset the device; verify `loadPersonalityFromNVS()` restores the volume level from flash memory without resetting to default.
+
 ## Section 3: Defensive Engineering Invariants
 1. Hardware watchdog timer (WDT) and auto-reconnect logic on ESP32 WebSocket disconnects.
 2. Anti-stutter ring buffer and I2S DMA queue sizing on ESP32 PSRAM to prevent audio underflow/overflow.
@@ -237,6 +246,7 @@
 33. Nightscout CGM error resilience & LCD bounding box invalidation invariant: `glucoseService.js` wraps Nightscout HTTP requests with a 7-second abort timeout and falls back to cached readings upon network interruptions, while `drawGlucoseWidget()` exclusively clears its 66x80px bounding box (`fillRect(252, 80, 66, 80)`) to ensure 60-second periodic updates never flash the display or disrupt ongoing face dot tick animations.
 34. Schedule status synchronization & indicator rendering invariant: `remindersService.js` provides `getActiveScheduledStatus()` querying SQLite `scheduled_items` for active types, `index.js` automatically broadcasts `schedule` status on connection, tool mutation, and 15s checks, and `drawFooterClock()` renders dedicated orange vector icons (bell for alarm, clock for timer, pen for reminder) within `fillRect(0, 204, 265, 20)` without overlapping the right-aligned emotion label.
 35. Settings cog icon XBM rendering invariant: `cog_icon_22x22` bitmap in PROGMEM is rendered via `tft.drawXBitmap(cx - 11, cy - 11, cog_icon_22x22, 22, 22, col)` preceded by a 24x24 background patch (`fillRect(cx - 12, cy - 12, 24, 24, color565(20, 24, 34))`), preventing residual artifacts or ghosting between redraw states while maintaining instant touch hit detection.
+36. Hardware speaker volume calibration & DAC write invariant: `currentVolumeIndex` is bounded to [0, 10] mapping to `VOLUME_REG_TABLE` (0x00 to 0xBF max scale, with default 70% at 0xB4); `applySpeakerVolume()` writes directly to ES8311 register 0x32 (`DAC_VOLUME`) over I2C and persists to NVS namespace "ims_prefs" without blocking or dropping audio DMA frames.
 
 
 

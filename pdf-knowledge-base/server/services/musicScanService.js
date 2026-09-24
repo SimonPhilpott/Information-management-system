@@ -71,23 +71,29 @@ export function runScanNow() {
     return { started: false, reason: `Scan engine not found at ${SCRIPT_PATH}.` };
   }
 
-  const logStream = fs.createWriteStream(LOG_PATH, { flags: 'a' });
-  logStream.write(`\n\n=== Scan started ${new Date().toISOString()} ===\n`);
+  fs.appendFileSync(LOG_PATH, `\n\n=== Scan started ${new Date().toISOString()} ===\n`);
+  // stdio is opened as raw file descriptors (not piped through this Node
+  // process) and the child is spawned detached + unref'd, so a scan that can
+  // legitimately run for 20-30+ minutes survives this backend restarting
+  // (node --watch reloads on every file save in dev) instead of dying with
+  // it - a piped stdout/stderr would otherwise tie the child's lifetime, and
+  // a non-detached child is killed outright when Node's process group exits.
+  const logFd = fs.openSync(LOG_PATH, 'a');
 
   scanProcess = spawn(PYTHON_EXE, [SCRIPT_PATH], {
     cwd: SCANNER_DIR,
-    env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+    env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+    detached: true,
+    stdio: ['ignore', logFd, logFd]
   });
-  scanProcess.stdout.on('data', (chunk) => logStream.write(chunk));
-  scanProcess.stderr.on('data', (chunk) => logStream.write(chunk));
+  scanProcess.unref();
+  fs.closeSync(logFd);
   scanProcess.on('exit', (code) => {
-    logStream.write(`=== Scan process exited with code ${code} ===\n`);
-    logStream.end();
+    fs.appendFileSync(LOG_PATH, `=== Scan process exited with code ${code} ===\n`);
     scanProcess = null;
   });
   scanProcess.on('error', (err) => {
-    logStream.write(`=== Scan process failed to start: ${err.message} ===\n`);
-    logStream.end();
+    fs.appendFileSync(LOG_PATH, `=== Scan process failed to start: ${err.message} ===\n`);
     scanProcess = null;
   });
 

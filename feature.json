@@ -394,6 +394,18 @@
         "Blocking getBloodGlucose Gemini Live tool allowing the user to ask verbally about blood sugar with caring Yorkshire commentary",
         "Express REST API endpoint at GET /api/glucose exposing cached glucose data with error resilience and stale detection"
       ]
+    },
+    "Hardware Preferences Screen Volume Control & Left-Aligned Logging Toggle": {
+      "status": "enabled",
+      "description": "Hardware terminal Preferences screen enhancement incorporating a calibrated 11-step master speaker volume control (0% to 100% in 10% increments) mapped to ES8311 DAC_VOLUME register 0x32, positioned side-by-side with Alert Sound on Row 2 with left/right touch chevrons, non-blocking test audio chirp feedback, NVS flash persistence, and left alignment of the Capture Logging toggle pill directly underneath its heading.",
+      "subFeatures": [
+        "Master speaker volume control with 11 discrete steps (0% to 100% in 10% increments) mapped to calibrated ES8311 DAC_VOLUME register 0x32 values (0x00 mute to 0xBF max scale)",
+        "Side-by-side Row 2 layout in drawPreferencesScreen() with Alert Sound in left column (cx=80) and Volume in right column (cx=240), each featuring interactive left/right chevrons, value label, and tap hints",
+        "Touch screen handler on Preferences screen with bounded tap regions: Alert Sound (left chevron 10-55, right chevron 105-155, preview 55-105) and Volume (left chevron 165-210, right chevron 270-315, test 210-270)",
+        "Immediate audio feedback chirp (120ms at 660Hz) played on volume adjustment or center tap to audition the newly selected volume level",
+        "Non-volatile storage (NVS) persistence under 'volume' key via Preferences library, automatically loaded on boot and written on volume changes",
+        "Capture Logging toggle pill repositioned to the left (X=15..85) directly under the 'CAPTURE LOGGING' header label (X=15), with updated hit-box detection (PREFS_TOGGLE_X0=15, PREFS_TOGGLE_X1=85)"
+      ]
     }
   }
 }

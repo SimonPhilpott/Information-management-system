@@ -464,6 +464,23 @@ bool captureLoggingEnabled = true;
 // the backend never needs to know this, since it's the DEVICE that decides
 // which sound to play locally on receiving a reminderFired frame.
 int alertSoundIndex = 0;
+
+#define VOLUME_LEVEL_COUNT 11
+// Register 0x32 (DAC_VOLUME) calibration table from 0% (mute) to 100% (0.0dB max scale)
+static const uint8_t VOLUME_REG_TABLE[VOLUME_LEVEL_COUNT] = {
+    0x00, // 0%: Mute (-95.5dB)
+    0x60, // 10%: -47.5dB
+    0x78, // 20%: -35.5dB
+    0x8C, // 30%: -25.5dB
+    0x9A, // 40%: -18.5dB
+    0xA4, // 50%: -13.5dB
+    0xAE, // 60%: -8.5dB
+    0xB4, // 70%: -5.5dB (default calibrated midpoint)
+    0xB8, // 80%: -3.5dB
+    0xBC, // 90%: -1.5dB
+    0xBF  // 100%: 0.0dB (max scale)
+};
+int currentVolumeIndex = 7; // Default 70% (-5.5dB)
 int settingsDraggingAxis = -1; // -1 = not currently dragging a slider
 bool settingsDirty = false;
 unsigned long settingsLastChangeMs = 0;
@@ -507,8 +524,11 @@ void loadPersonalityFromNVS() {
   captureLoggingEnabled = personalityPrefs.getBool("caplog", true);
   alertSoundIndex = personalityPrefs.getInt("alertsnd", 0);
   if (alertSoundIndex < 0 || alertSoundIndex >= ALERT_SOUND_COUNT) alertSoundIndex = 0;
+  currentVolumeIndex = personalityPrefs.getInt("volume", 7);
+  if (currentVolumeIndex < 0 || currentVolumeIndex >= VOLUME_LEVEL_COUNT) currentVolumeIndex = 7;
   personalityPrefs.end();
-  Serial.printf("[Personality] Loaded from NVS: voice=%s\n", PERSONALITY_VOICES[personalityVoiceIndex]);
+  Serial.printf("[Personality] Loaded from NVS: voice=%s, volume=%d%%\n",
+                PERSONALITY_VOICES[personalityVoiceIndex], currentVolumeIndex * 10);
 }
 
 void savePersonalityToNVS() {
@@ -519,6 +539,7 @@ void savePersonalityToNVS() {
   personalityPrefs.putString("voice", PERSONALITY_VOICES[personalityVoiceIndex]);
   personalityPrefs.putBool("caplog", captureLoggingEnabled);
   personalityPrefs.putInt("alertsnd", alertSoundIndex);
+  personalityPrefs.putInt("volume", currentVolumeIndex);
   personalityPrefs.end();
 }
 
@@ -1312,24 +1333,30 @@ void drawGlucoseWidget() {
 #define VOICE_NEXT_CHEVRON_CX 300
 #define VOICE_NEXT_LABEL_X 290
 
-// Preferences screen: two rows, "Capture Logging" (on/off toggle) then
-// "Alert Sound" (left/right cycle, like the voice picker but compact).
-#define PREFS_TOGGLE_X0 228
-#define PREFS_TOGGLE_X1 304
+// Preferences screen:
+// Row 1: Capture Logging (heading + left-aligned on/off pill toggle + path)
 #define PREFS_CAPLOG_LABEL_Y (HEADER_H + 8)
+#define PREFS_TOGGLE_X0 15
+#define PREFS_TOGGLE_X1 85
 #define PREFS_TOGGLE_Y0 (HEADER_H + 20)
-#define PREFS_TOGGLE_Y1 (HEADER_H + 50)
-#define PREFS_PATH_LINE1_Y (PREFS_TOGGLE_Y1 + 10)
-#define PREFS_PATH_LINE2_Y (PREFS_TOGGLE_Y1 + 24)
-#define PREFS_SOUND_LABEL_Y (PREFS_PATH_LINE2_Y + 18)
-#define PREFS_SOUND_ROW_CY (PREFS_SOUND_LABEL_Y + 26)
-#define PREFS_SOUND_HINT_Y (PREFS_SOUND_ROW_CY + 20)
-#define PREFS_SOUND_LEFT_ARROW_X0 90
-#define PREFS_SOUND_LEFT_ARROW_X1 130
-#define PREFS_SOUND_RIGHT_ARROW_X0 190
-#define PREFS_SOUND_RIGHT_ARROW_X1 230
-#define PREFS_SOUND_ROW_Y0 (PREFS_SOUND_LABEL_Y - 6)
-#define PREFS_SOUND_ROW_Y1 (PREFS_SOUND_ROW_CY + 20)
+#define PREFS_TOGGLE_Y1 (HEADER_H + 46)
+#define PREFS_PATH_LINE1_Y (PREFS_TOGGLE_Y1 + 8)
+#define PREFS_PATH_LINE2_Y (PREFS_TOGGLE_Y1 + 20)
+
+// Row 2: Alert Sound (left column) & Volume (right column) side-by-side
+#define PREFS_ROW2_LABEL_Y (PREFS_PATH_LINE2_Y + 16)
+#define PREFS_ROW2_CY (PREFS_ROW2_LABEL_Y + 22)
+#define PREFS_ROW2_HINT_Y (PREFS_ROW2_CY + 18)
+#define PREFS_ROW2_TOUCH_Y0 (PREFS_ROW2_LABEL_Y - 4)
+#define PREFS_ROW2_TOUCH_Y1 (PREFS_ROW2_HINT_Y + 14)
+
+#define PREFS_ALERT_COL_CX 80
+#define PREFS_ALERT_CHEVRON_LEFT_CX 25
+#define PREFS_ALERT_CHEVRON_RIGHT_CX 135
+
+#define PREFS_VOL_COL_CX 240
+#define PREFS_VOL_CHEVRON_LEFT_CX 185
+#define PREFS_VOL_CHEVRON_RIGHT_CX 295
 
 // Voice screen: left/right arrow tap zones flanking the voice name.
 #define VOICE_LEFT_ARROW_X0 10
@@ -1554,8 +1581,7 @@ void drawVoiceScreen() {
 }
 
 // Preferences sub-screen, one step further right than the voice picker.
-// Currently a single toggle controlling whether the backend writes a capture
-// folder per interaction.
+// Controls capture logging, alert sound selection, and hardware speaker volume.
 void drawPreferencesScreen() {
   tft.startWrite();
   tft.fillScreen(tft.color565(11, 14, 21));
@@ -1571,49 +1597,63 @@ void drawPreferencesScreen() {
   tft.setTextDatum(top_left);
   drawChevron(VOICE_BACK_CHEVRON_CX, VOICE_BACK_CHEVRON_CY, false, tft.color565(140, 150, 175));
 
+  // Row 1: Capture Logging heading (aligned left)
   tft.setTextColor(tft.color565(140, 150, 175));
   tft.drawString("CAPTURE LOGGING", 15, PREFS_CAPLOG_LABEL_Y);
 
-  // Toggle: a pill with the knob at whichever end matches the state.
+  // Left-aligned Toggle Pill under heading (X = 15 to 85)
   uint32_t trackCol = captureLoggingEnabled ? tft.color565(76, 255, 122) : tft.color565(45, 50, 62);
   int w = PREFS_TOGGLE_X1 - PREFS_TOGGLE_X0;
   int h = PREFS_TOGGLE_Y1 - PREFS_TOGGLE_Y0;
   tft.fillRoundRect(PREFS_TOGGLE_X0, PREFS_TOGGLE_Y0, w, h, h / 2, trackCol);
-  int knobR = h / 2 - 4;
+  int knobR = h / 2 - 3;
   int knobCx = captureLoggingEnabled ? (PREFS_TOGGLE_X1 - knobR - 4) : (PREFS_TOGGLE_X0 + knobR + 4);
   tft.fillCircle(knobCx, PREFS_TOGGLE_Y0 + h / 2, knobR, tft.color565(11, 14, 21));
   tft.setTextDatum(middle_center);
   tft.setTextColor(captureLoggingEnabled ? tft.color565(11, 14, 21) : tft.color565(140, 150, 175));
   tft.drawString(captureLoggingEnabled ? "ON" : "OFF",
-                 captureLoggingEnabled ? PREFS_TOGGLE_X0 + 24 : PREFS_TOGGLE_X1 - 24,
+                 captureLoggingEnabled ? PREFS_TOGGLE_X0 + 22 : PREFS_TOGGLE_X1 - 22,
                  PREFS_TOGGLE_Y0 + h / 2);
   tft.setTextDatum(top_left);
 
-  // The path the toggle controls, split across two lines - the full string is
-  // far wider than 320px at this text size.
+  // Path information
   tft.setTextColor(tft.color565(100, 110, 130));
   tft.drawString("D:\\Information management system\\", 15, PREFS_PATH_LINE1_Y);
   tft.drawString("pdf-knowledge-base\\server\\audio_captures", 15, PREFS_PATH_LINE2_Y);
 
-  // Alert sound: left/right cycle, same interaction language as the voice
-  // picker but compact - a single row rather than a whole screen, since
-  // there are only 4 short-named options here versus 30 voices.
+  // Row 2: ALERT SOUND and VOLUME side by side
+  // Left Column: Alert Sound
   tft.setTextColor(tft.color565(140, 150, 175));
-  tft.drawString("ALERT SOUND", 15, PREFS_SOUND_LABEL_Y);
-  drawChevron(110, PREFS_SOUND_ROW_CY, false, tft.color565(140, 150, 175));
-  drawChevron(210, PREFS_SOUND_ROW_CY, true, tft.color565(140, 150, 175));
+  tft.drawString("ALERT SOUND", 15, PREFS_ROW2_LABEL_Y);
+  drawChevron(PREFS_ALERT_CHEVRON_LEFT_CX, PREFS_ROW2_CY, false, tft.color565(140, 150, 175));
+  drawChevron(PREFS_ALERT_CHEVRON_RIGHT_CX, PREFS_ROW2_CY, true, tft.color565(140, 150, 175));
   tft.setTextDatum(middle_center);
   tft.setTextColor(tft.color565(76, 255, 122));
-  tft.drawString(ALERT_SOUND_NAMES[alertSoundIndex], 160, PREFS_SOUND_ROW_CY);
+  tft.drawString(ALERT_SOUND_NAMES[alertSoundIndex], PREFS_ALERT_COL_CX, PREFS_ROW2_CY);
   tft.setTextDatum(top_center);
   tft.setTextColor(tft.color565(100, 110, 130));
-  tft.drawString("(tap to preview)", 160, PREFS_SOUND_HINT_Y);
+  tft.drawString("(tap to preview)", PREFS_ALERT_COL_CX, PREFS_ROW2_HINT_Y);
+
+  // Right Column: Speaker Volume
+  tft.setTextDatum(top_left);
+  tft.setTextColor(tft.color565(140, 150, 175));
+  tft.drawString("VOLUME", 175, PREFS_ROW2_LABEL_Y);
+  drawChevron(PREFS_VOL_CHEVRON_LEFT_CX, PREFS_ROW2_CY, false, tft.color565(140, 150, 175));
+  drawChevron(PREFS_VOL_CHEVRON_RIGHT_CX, PREFS_ROW2_CY, true, tft.color565(140, 150, 175));
+  tft.setTextDatum(middle_center);
+  tft.setTextColor(tft.color565(76, 255, 122));
+  char volStr[16];
+  snprintf(volStr, sizeof(volStr), "%d%%", currentVolumeIndex * 10);
+  tft.drawString(volStr, PREFS_VOL_COL_CX, PREFS_ROW2_CY);
+  tft.setTextDatum(top_center);
+  tft.setTextColor(tft.color565(100, 110, 130));
+  tft.drawString("(tap to test)", PREFS_VOL_COL_CX, PREFS_ROW2_HINT_Y);
   tft.setTextDatum(top_left);
 
   tft.fillRect(0, 204, 320, 36, tft.color565(15, 18, 26));
   tft.setTextColor(tft.color565(100, 110, 130));
   tft.setTextDatum(top_center);
-  tft.drawString("Per-interaction capture folders", 160, 214);
+  tft.drawString("Capture logging & hardware audio setup", 160, 214);
   tft.setTextDatum(top_left);
 
   tft.endWrite();
@@ -1932,6 +1972,13 @@ uint8_t readCodecReg(uint8_t i2c_addr, uint8_t reg) {
   return value;
 }
 
+// Applies current volume index to ES8311 DAC_VOLUME register (0x32)
+void applySpeakerVolume() {
+  uint8_t regVal = VOLUME_REG_TABLE[currentVolumeIndex];
+  writeCodecReg(0x18, 0x32, regVal);
+  Serial.printf("[Audio] Applied speaker volume: %d%% (ES8311 reg 0x32 = 0x%02X)\n", currentVolumeIndex * 10, regVal);
+}
+
 // Speaker amplifier & DAC muting helper: disables Class-D PA and mutes ES8311 DAC
 // during microphone capture to eliminate acoustic coupling and electrical switching ripple.
 // During an active conversation (conversationOpen == true), PA_ENABLE_PIN is kept HIGH
@@ -2185,7 +2232,7 @@ void initCodecChips() {
   writeCodecReg(0x18, 0x45, 0x00); // GP control
   writeCodecReg(0x18, 0x44, 0x58); // Internal reference signal (ADCL + DACR)
   writeCodecReg(0x18, 0x31, 0x00); // DAC unmute (was never explicitly set before)
-  writeCodecReg(0x18, 0x32, 0xB4); // DAC volume balanced (-5.5dB, calibrated midpoint between 0dB and -11.5dB)
+  applySpeakerVolume();             // DAC volume from NVS (default 70% / 0xB4)
   Serial.println("[Hardware] ES7210 & ES8311 initialized successfully.");
 }
 
@@ -3893,26 +3940,61 @@ void loop() {
         onVoiceScreen = true;
         drawVoiceScreen();
         delay(200);
-      } else if (touchX >= PREFS_TOGGLE_X0 && touchX <= PREFS_TOGGLE_X1 &&
-                 touchY >= PREFS_TOGGLE_Y0 && touchY <= PREFS_TOGGLE_Y1) {
+      } else if (touchX >= PREFS_TOGGLE_X0 - 5 && touchX <= PREFS_TOGGLE_X1 + 10 &&
+                 touchY >= PREFS_TOGGLE_Y0 - 5 && touchY <= PREFS_TOGGLE_Y1 + 5) {
+        // Left-aligned Capture Logging toggle under heading
         captureLoggingEnabled = !captureLoggingEnabled;
         settingsDirty = true;
         settingsLastChangeMs = millis();
         drawPreferencesScreen();
         delay(200);
-      } else if (touchY >= PREFS_SOUND_ROW_Y0 && touchY <= PREFS_SOUND_ROW_Y1) {
-        // Alert sound: local tone, no Gemini/reconnect involved (unlike the
-        // voice picker), so it can preview immediately and synchronously.
-        int delta = 0;
-        if (touchX >= PREFS_SOUND_LEFT_ARROW_X0 - 20 && touchX < 160) delta = -1;
-        else if (touchX > 160 && touchX <= PREFS_SOUND_RIGHT_ARROW_X1 + 20) delta = 1;
-        if (delta != 0) {
-          alertSoundIndex = (alertSoundIndex + delta + ALERT_SOUND_COUNT) % ALERT_SOUND_COUNT;
-          settingsDirty = true;
-          settingsLastChangeMs = millis();
-          drawPreferencesScreen();
-          playAlertSound(alertSoundIndex);
-          delay(150);
+      } else if (touchY >= PREFS_ROW2_TOUCH_Y0 && touchY <= PREFS_ROW2_TOUCH_Y1) {
+        if (touchX < 160) {
+          // Left side: Alert Sound
+          int delta = 0;
+          if (touchX >= 10 && touchX <= 55) delta = -1;
+          else if (touchX >= 105 && touchX <= 155) delta = 1;
+          if (delta != 0) {
+            alertSoundIndex = (alertSoundIndex + delta + ALERT_SOUND_COUNT) % ALERT_SOUND_COUNT;
+            settingsDirty = true;
+            settingsLastChangeMs = millis();
+            drawPreferencesScreen();
+            playAlertSound(alertSoundIndex);
+            delay(150);
+          } else if (touchX > 55 && touchX < 105) {
+            playAlertSound(alertSoundIndex);
+            delay(150);
+          }
+        } else {
+          // Right side: Volume
+          int delta = 0;
+          if (touchX >= 165 && touchX <= 210) delta = -1;
+          else if (touchX >= 270 && touchX <= 315) delta = 1;
+          if (delta != 0) {
+            int newIdx = currentVolumeIndex + delta;
+            if (newIdx < 0) newIdx = 0;
+            if (newIdx >= VOLUME_LEVEL_COUNT) newIdx = VOLUME_LEVEL_COUNT - 1;
+            if (newIdx != currentVolumeIndex) {
+              currentVolumeIndex = newIdx;
+              applySpeakerVolume();
+              settingsDirty = true;
+              settingsLastChangeMs = millis();
+              drawPreferencesScreen();
+              // Play a brief clean test chirp at the new volume level so the user hears it immediately
+              setSpeakerMute(false);
+              playTone(660.0f, 120);
+              delay(20);
+              setSpeakerMute(true);
+              delay(120);
+            }
+          } else if (touchX > 210 && touchX < 270) {
+            // Center tap tests current volume
+            setSpeakerMute(false);
+            playTone(660.0f, 150);
+            delay(20);
+            setSpeakerMute(true);
+            delay(120);
+          }
         }
       }
     } else if (onVoiceScreen) {
