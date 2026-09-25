@@ -1,3 +1,4 @@
+import db from '../db/database.js';
 /**
  * Nightscout Blood Glucose Monitoring Service for IMS
  * Polls Nightscout API every 60 seconds and extracts blood glucose (mmol/L) and trend direction.
@@ -16,7 +17,8 @@ let cachedGlucose = {
   colorRgb: { r: 140, g: 150, b: 175 },
   timestamp: 0,
   stale: true,
-  delta: ''
+  delta: '',
+  dbPct: null
 };
 
 let pollTimer = null;
@@ -95,6 +97,9 @@ export async function fetchGlucose() {
     }
 
     const direction = latest.direction || 'Flat';
+    if (typeof latest.mgdl === 'number' && latest.mills) {
+      try { db.prepare('INSERT OR IGNORE INTO ns_entries (date, sgv, direction) VALUES (?, ?, ?)').run(latest.mills, Math.round(latest.mgdl), direction); } catch (_) { /* table not created yet */ }
+    }
     const classification = classifyGlucose(numeric);
     const deltaDisplay = data.delta?.display || '';
     const mills = latest.mills || data.bgnow.mills || Date.now();
@@ -109,7 +114,8 @@ export async function fetchGlucose() {
       colorRgb: { r: classification.r, g: classification.g, b: classification.b },
       timestamp: mills,
       stale: isStale,
-      delta: deltaDisplay
+      delta: deltaDisplay,
+      dbPct: Number.isFinite(data.dbsize?.dataPercentage) ? Math.round(data.dbsize.dataPercentage) : cachedGlucose.dbPct
     };
 
     console.log(`[Glucose] Updated: ${cachedGlucose.value} mmol/L (${cachedGlucose.direction}, ${cachedGlucose.range}) [delta: ${deltaDisplay}]`);

@@ -1,3 +1,4 @@
+import AccountChip from './AccountChip';
 import React from 'react';
 import { ArrowLeft, Sun, Moon, Check, AlertCircle } from 'lucide-react';
 
@@ -47,6 +48,8 @@ export default function PortalShell({
             </div>
           </div>
         </div>
+        <div className="flex items-center gap-2 shrink-0">
+        <AccountChip isDark={isDark} />
         {onThemeToggle && (
           <button onClick={onThemeToggle} className={`p-2 rounded-xl transition-all border ${
             isDark ? 'bg-white/5 hover:bg-white/10 text-amber-400 border-white/5' : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 text-slate-700 border-[#2E2B27]/10'
@@ -54,6 +57,7 @@ export default function PortalShell({
             {isDark ? <Sun size={16} /> : <Moon size={16} />}
           </button>
         )}
+        </div>
       </header>
       <main className={`flex-1 ${maxWidth} w-full mx-auto p-6 flex flex-col gap-5`}>{children}</main>
     </div>

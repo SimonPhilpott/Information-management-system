@@ -4,12 +4,14 @@ import { fileURLToPath } from 'url';
 import { getWeather } from './weatherService.js';
 import { getItemsDueToday } from './remindersService.js';
 import { getUpcomingBirthdays } from './birthdayService.js';
-import { getTodayReleases } from './musicScanService.js';
+import { getTodayReleases, getWants } from './musicScanService.js';
 import { identifyPeopleInView } from './lookService.js';
 import { getUpcomingEvents, getEventsOn, describeEvents } from './calendarService.js';
 import { getStatus as getStravaStatus, getSummary, listActivities } from './stravaService.js';
 import { getCurrentState, getStoredMatch } from './runGlucoseService.js';
 import { listGoals, assessGoal } from './goalService.js';
+import { getOvernight } from './glucoseHubService.js';
+import { getReportNews } from './newsService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STATE_PATH = path.join(__dirname, '..', 'data', 'morning_report_state.json');
@@ -40,8 +42,9 @@ function writeState(state) {
 // time of day ("morning") beyond that - if the first interaction of the day
 // happens to be at 3pm, that's still the user's "first thing today".
 export function isFirstInteractionToday() {
-  const { dateStr } = londonNow();
-  return readState().lastOfferedDate !== dateStr;
+  const { dateStr, hour } = londonNow();
+  // Not before 5am: an overnight reconnect must not use up the day's offer.
+  return hour >= 5 && readState().lastOfferedDate !== dateStr;
 }
 
 export function markMorningReportOffered() {
@@ -69,6 +72,11 @@ function buildHealthParts(rainPct) {
         else if (cur.bg > 13) note = ' - running high';
         out.push(`Glucose right now: ${cur.bg} mmol/L${trend}${iob}${note}. If they mention running today, their usual aim is to start around 9 and never drop below 5.`);
       }
+
+      try {
+        const n = getOvernight();
+        if (n) out.push(`Overnight: ${n.inRangePct}% in range, lowest ${n.min}${n.lows ? `, ${n.lows} low spell${n.lows > 1 ? 's' : ''}` : ''}, woke at ${n.endValue} mmol/L.`);
+      } catch (_) { /* no overnight data */ }
 
       const s = getSummary();
       const w = s.periods.last7, pw = w.previous;
@@ -118,11 +126,11 @@ function buildHealthParts(rainPct) {
   return out;
 }
 
-// Builds the system-prompt directive injected only into the first session of
-// the day - a proactive offer plus the actual content to deliver if the user
-// says yes, so Gemini doesn't need a second round-trip/tool-call to fetch it.
-export async function buildMorningReportDirective() {
+// Everything in the report, as short plain lines. Used for the first-of-the-day offer and by
+// the getDayReport tool, so it can be asked for at any time ("morning report", "day report").
+export async function buildReportParts() {
   const parts = [];
+  const hour = londonNow().hour;
   let weatherRain = null;
 
   // Face recognition (local): if the camera has a fresh view of someone enrolled
@@ -165,9 +173,16 @@ export async function buildMorningReportDirective() {
   }
 
   try {
-    await getUpcomingEvents(1); // refreshes the cache if stale
-    const today = getEventsOn(londonNow().dateStr);
-    if (today.length > 0) parts.push(`Calendar today: ${describeEvents(today).join('; ')}.`);
+    await getUpcomingEvents(2); // refreshes the cache if stale
+    const todayStr = londonNow().dateStr;
+    const nowHm = new Date().toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' });
+    const today = getEventsOn(todayStr).filter((e) => hour < 11 || !e.time || e.time >= nowHm);
+    parts.push(today.length > 0 ? `Calendar ${hour < 11 ? 'today' : 'for the rest of today'}: ${describeEvents(today).join('; ')}.` : `Calendar: nothing ${hour < 11 ? 'today' : 'else today'}.`);
+    if (hour >= 16) {
+      const t = new Date(Date.parse(`${todayStr}T12:00:00Z`) + 86400000).toISOString().slice(0, 10);
+      const tomorrow = getEventsOn(t);
+      if (tomorrow.length) parts.push(`Calendar tomorrow: ${describeEvents(tomorrow).join('; ')}.`);
+    }
   } catch (err) {
     console.warn('[MorningReport] Calendar skipped:', err.message);
   }
@@ -180,12 +195,33 @@ export async function buildMorningReportDirective() {
 
   const releases = getTodayReleases();
   if (releases.length > 0) {
-    const desc = releases.map((r) => `${r.artist} - "${r.title}" (${r.type})`);
+    let wanted = new Set();
+    try { wanted = new Set(getWants().map((w) => `${w.artist}|${w.title}`.toLowerCase())); } catch (_) { /* none */ }
+    const desc = releases.map((r) => `${r.artist} - "${r.title}" (${r.type})${wanted.has(`${r.artist}|${r.title}`.toLowerCase()) ? ' - ON THEIR WANT LIST, so lead with this one' : ''}`);
     parts.push(`New music out today from artists in the library: ${desc.join('; ')}.`);
   }
 
   try { parts.push(...buildHealthParts(weatherRain)); } catch (err) { console.warn('[MorningReport] Health/training skipped:', err.message); }
 
-  const join = parts.length > 3 ? " Where two items connect (rain and a run, a busy calendar and a pod change, a birthday and a free evening), point that out in a short clause rather than reading the list flat; keep the whole report brief and skip anything that isn't useful." : '';
-  return whoLine + "This is the user's first interaction with you today. Before anything else, warmly offer their morning report as part of your greeting (e.g. \"fancy your morning report?\") - keep the offer itself brief, one sentence. Only deliver the actual details below if they say yes; otherwise proceed normally. Morning report contents: " + parts.join(' ') + join;
+  try {
+    const news = await getReportNews();
+    if (news.length) parts.push(`News and interests (from their chosen sources; importance 1-5 is how much each source matters to them - lead with and give more time to the higher ones, say which source): ${news.map((n) => `[${n.source}, importance ${n.importance}${n.alsoIn ? `; also covered by ${n.alsoIn.join(', ')}` : ''}] ${n.headline}${n.summary ? ` - ${n.summary}` : ''}`).join(' | ')}.`);
+  } catch (err) { console.warn('[MorningReport] News skipped:', err.message); }
+
+  return { whoLine, parts, hour };
+}
+
+const DELIVERY = "HOW TO DELIVER IT: this report is the one exception to your usual length limit - cover EVERY item below, in this order, as a flowing spoken briefing of roughly 8 to 14 sentences. Don't read it like a list: link items where they connect (rain and a run, a low overnight and a planned run, a busy afternoon and a pod change). Give the news as three or four quick headlines in your own words, mixing sources; each story is listed once, so never repeat a story or tell it twice in different words. Never give insulin doses. ";
+
+// The first conversation of the day: offer the report, with its contents ready.
+export async function buildMorningReportDirective() {
+  const { whoLine, parts, hour } = await buildReportParts();
+  const name = hour < 12 ? 'morning report' : 'day report';
+  return whoLine + `This is the user's first conversation with you today. As part of your greeting, briefly offer their ${name} in one short sentence. Only deliver it if they say yes; otherwise carry on normally. ` + DELIVERY + 'CONTENTS: ' + parts.join(' ');
+}
+
+// For the getDayReport tool, any time of day.
+export async function getDayReport() {
+  const { whoLine, parts, hour } = await buildReportParts();
+  return { report: parts, instructions: whoLine + DELIVERY + (hour >= 16 ? 'It is later in the day, so frame it as a day report / evening round-up and include tomorrow where given.' : '') };
 }

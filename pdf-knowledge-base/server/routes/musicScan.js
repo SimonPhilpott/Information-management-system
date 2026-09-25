@@ -3,7 +3,7 @@ import {
   getConfig, saveConfig, getStatus, getResultsMeta, getWindowResults, getTodayReleases, getUpcomingReleases,
   getArtistList, getArtistDetail, saveArtistSettings, rescanArtist,
   isScanRunning, runScanNow, getNextScheduledRun
-} from '../services/musicScanService.js';
+, getWants, addWant, removeWant, getSavedRecommendations, recommendArtists } from '../services/musicScanService.js';
 
 const router = Router();
 
@@ -33,6 +33,12 @@ router.get('/results', (req, res) => {
 router.get('/upcoming', (req, res) => {
   res.json({ success: true, ...getResultsMeta(), releases: getUpcomingReleases() });
 });
+
+router.get('/wants', (req, res) => { try { res.json({ success: true, wants: getWants() }); } catch (err) { res.status(500).json({ success: false, error: err.message }); } });
+router.post('/wants', (req, res) => { try { res.json({ success: true, wants: addWant(req.body || {}) }); } catch (err) { res.status(400).json({ success: false, error: err.message }); } });
+router.delete('/wants', (req, res) => { try { res.json({ success: true, wants: removeWant(req.body || {}) }); } catch (err) { res.status(400).json({ success: false, error: err.message }); } });
+router.get('/recommendations', (req, res) => { res.json({ success: true, recommendations: getSavedRecommendations() }); });
+router.post('/recommendations', async (req, res) => { try { res.json({ success: true, recommendations: await recommendArtists() }); } catch (err) { res.status(400).json({ success: false, error: err.message }); } });
 
 router.get('/today', (req, res) => {
   res.json({ success: true, releases: getTodayReleases() });

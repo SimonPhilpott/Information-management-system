@@ -1,3 +1,4 @@
+import AccountChip from './AccountChip';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Brain, 
@@ -359,17 +360,20 @@ export default function MemoriesPortal({
           </button>
 
           {onThemeToggle && (
-            <button
-              onClick={onThemeToggle}
-              className={`p-2 rounded-xl transition-all border ${
-                isDark 
-                  ? 'bg-white/5 hover:bg-white/10 text-amber-400 border-white/5' 
-                  : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 text-slate-700 border-[#2E2B27]/10'
-              }`}
-              title={`Switch to ${isDark ? 'Light' : 'Dark'} Mode`}
-            >
-              {isDark ? <Sun size={16} /> : <Moon size={16} />}
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <AccountChip isDark={isDark} />
+              <button
+                onClick={onThemeToggle}
+                className={`p-2 rounded-xl transition-all border ${
+                  isDark 
+                    ? 'bg-white/5 hover:bg-white/10 text-amber-400 border-white/5' 
+                    : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 text-slate-700 border-[#2E2B27]/10'
+                }`}
+                title={`Switch to ${isDark ? 'Light' : 'Dark'} Mode`}
+              >
+                {isDark ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
+            </div>
           )}
         </div>
       </header>

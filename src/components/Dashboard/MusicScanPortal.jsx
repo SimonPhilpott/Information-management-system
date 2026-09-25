@@ -1,7 +1,8 @@
+import AccountChip from './AccountChip';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Music, ArrowLeft, Save, RotateCw, Check, AlertCircle, Sun, Moon,
-  PlayCircle, Clock, ChevronRight, ChevronDown, Pencil, X, Search, Disc3
+  PlayCircle, Clock, ChevronRight, ChevronDown, Pencil, X, Search, Disc3, Star, Headphones, Sparkles
 } from 'lucide-react';
 
 const VIEWS = [
@@ -11,8 +12,43 @@ const VIEWS = [
   { key: '6months', label: '6 Months' },
   { key: 'year', label: 'Year' },
   { key: 'upcoming', label: 'Upcoming' },
+  { key: 'wants', label: 'Want list' },
+  { key: 'discover', label: 'Discover' },
   { key: 'all', label: 'All Artists' }
 ];
+const UP_RANGES = [{ key: 'week', label: 'Next 7 days' }, { key: 'month', label: 'Next month' }, { key: 'all', label: 'All announced' }];
+
+// Search links to hear a release: MusicBrainz has no audio, so these open the services' own search.
+function ListenLinks({ artist, title }) {
+  const q = encodeURIComponent(`${artist} ${title || ''}`.trim());
+  const cls = 'px-1.5 py-0.5 rounded text-[9px] font-black uppercase border border-current opacity-70 hover:opacity-100';
+  return (
+    <span className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+      <a className={`${cls} text-emerald-500`} href={`https://open.spotify.com/search/${q}`} target="_blank" rel="noreferrer" title="Search on Spotify">Spotify</a>
+      <a className={`${cls} text-red-500`} href={`https://www.youtube.com/results?search_query=${q}`} target="_blank" rel="noreferrer" title="Search on YouTube">YouTube</a>
+    </span>
+  );
+}
+
+const wantId = (artist, title) => `${String(artist).toLowerCase()}|${String(title).toLowerCase()}`;
+function StarButton({ on, onClick }) {
+  return (
+    <button onClick={(e) => { e.stopPropagation(); onClick(); }} title={on ? 'Remove from want list' : 'Add to want list'}
+      className={`p-1 rounded shrink-0 ${on ? 'text-amber-400' : 'text-slate-500 hover:text-amber-400'}`}>
+      <Star size={13} fill={on ? 'currentColor' : 'none'} />
+    </button>
+  );
+}
+
+function inUpcomingRange(r, range, today) {
+  if (range === 'all') return true;
+  const days = range === 'week' ? 7 : 31;
+  const end = new Date(`${today}T12:00:00Z`); end.setUTCDate(end.getUTCDate() + days);
+  const endStr = end.toISOString().slice(0, 10);
+  if (r.precision === 'day') return r.date > today && r.date <= endStr;
+  if (r.precision === 'month') return range === 'month' && r.date <= endStr.slice(0, 7);
+  return false;
+}
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 // MusicBrainz often only knows a month or a year for a release, so show
@@ -25,7 +61,7 @@ function fmtDate(date, precision) {
   return y;
 }
 
-function ArtistCard({ artist, isDark, onChanged, showToast }) {
+function ArtistCard({ artist, isDark, onChanged, showToast, wantSet = new Set(), onToggleWant = () => {} }) {
   const [open, setOpen] = useState(false);
   const [fetched, setFetched] = useState(null);
   const [editing, setEditing] = useState(false);
@@ -151,6 +187,7 @@ function ArtistCard({ artist, isDark, onChanged, showToast }) {
                   <span className="opacity-50 text-[10px]">{r.type}</span>
                   {r.isNew && <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-500 text-white">New</span>}
                   <span className={`ml-auto shrink-0 tabular-nums ${r.owned ? GREEN : RED} opacity-80`}>{fmtDate(r.date, r.precision)}</span>
+                  {!r.owned && <StarButton on={wantSet.has(wantId(artist.name, r.title))} onClick={() => onToggleWant({ artist: artist.name, ...r })} />}
                 </div>
               ))}
               {detail.unlistedAlbums.map((title) => (
@@ -185,6 +222,12 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
   const [windowData, setWindowData] = useState(null);
   const [todayList, setTodayList] = useState([]);
   const [upcoming, setUpcoming] = useState([]);
+  const [upRange, setUpRange] = useState('month');
+  const [wants, setWants] = useState([]);
+  const [recs, setRecs] = useState(null);
+  const [recsBusy, setRecsBusy] = useState(false);
+  const wantSet = React.useMemo(() => new Set(wants.map((w) => wantId(w.artist, w.title))), [wants]);
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
   const [allArtists, setAllArtists] = useState([]);
   const [search, setSearch] = useState('');
   const [viewLoading, setViewLoading] = useState(false);
@@ -243,6 +286,32 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
     } catch (_) { /* leave the previous view data in place */ }
     finally { setViewLoading(false); }
   }, [view]);
+
+  const fetchWants = useCallback(async () => {
+    try { const d = await (await fetch('/api/music-scan/wants')).json(); if (d.success) setWants(d.wants); } catch (_) { /* keep */ }
+  }, []);
+  useEffect(() => { fetchWants(); }, [fetchWants]);
+  useEffect(() => {
+    if (view !== 'discover' || recs) return;
+    fetch('/api/music-scan/recommendations').then((r) => r.json()).then((d) => { if (d.success) setRecs(d.recommendations); }).catch(() => {});
+  }, [view, recs]);
+
+  const toggleWant = async (r) => {
+    const on = wantSet.has(wantId(r.artist, r.title));
+    const res = await fetch('/api/music-scan/wants', { method: on ? 'DELETE' : 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ artist: r.artist, title: r.title, date: r.date, precision: r.precision, type: r.type }) });
+    const d = await res.json();
+    if (d.success) { setWants(d.wants); showToast(on ? `Removed ${r.title} from your want list.` : `Added ${r.title} to your want list.`); }
+  };
+  const makeRecs = async () => {
+    setRecsBusy(true);
+    try {
+      const d = await (await fetch('/api/music-scan/recommendations', { method: 'POST' })).json();
+      if (!d.success) throw new Error(d.error);
+      setRecs(d.recommendations);
+    } catch (err) { showToast(err.message, 'error'); } finally { setRecsBusy(false); }
+  };
+  const upcomingShown = upcoming.filter((r) => inUpcomingRange(r, upRange, todayStr));
 
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
   useEffect(() => { fetchView(); }, [fetchView]);
@@ -359,11 +428,14 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
           </div>
         </div>
         {onThemeToggle && (
-          <button onClick={onThemeToggle} className={`p-2 rounded-xl transition-all border ${
-            isDark ? 'bg-white/5 hover:bg-white/10 text-amber-400 border-white/5' : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 text-slate-700 border-[#2E2B27]/10'
-          }`} title={`Switch to ${isDark ? 'Light' : 'Dark'} Mode`}>
-            {isDark ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <AccountChip isDark={isDark} />
+            <button onClick={onThemeToggle} className={`p-2 rounded-xl transition-all border ${
+              isDark ? 'bg-white/5 hover:bg-white/10 text-amber-400 border-white/5' : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 text-slate-700 border-[#2E2B27]/10'
+            }`} title={`Switch to ${isDark ? 'Light' : 'Dark'} Mode`}>
+              {isDark ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+          </div>
         )}
       </header>
 
@@ -420,12 +492,12 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
         <div className={panelClass}>
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <h2 className="text-xs font-black uppercase tracking-wider">
-              {view === 'all' ? 'All Artists' : view === 'upcoming' ? `Upcoming releases (${upcoming.length})` : `Released in the last ${windowLabel === 'Day' ? 'day (today)' : windowLabel.toLowerCase()}`}
+              {view === 'all' ? 'All Artists' : view === 'upcoming' ? `Upcoming releases (${upcomingShown.length})` : view === 'wants' ? `Want list (${wants.filter((w) => !w.owned).length})` : view === 'discover' ? 'Artists you might like' : `Released in the last ${windowLabel === 'Day' ? 'day (today)' : windowLabel.toLowerCase()}`}
             </h2>
-            <div className={`flex rounded-lg overflow-hidden border ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
+            <div className={`flex max-w-full overflow-x-auto rounded-lg border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
               {VIEWS.map((v) => (
                 <button key={v.key} onClick={() => setView(v.key)}
-                  className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-all ${
                     view === v.key ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white'
                       : isDark ? 'text-slate-400 hover:bg-white/5' : 'text-slate-600 hover:bg-black/5'
                   }`}>
@@ -439,7 +511,7 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
             <span className={`flex items-center gap-1.5 ${GREEN}`}><span className="w-2 h-2 rounded-full bg-emerald-500" />Owned</span>
             <span className={`flex items-center gap-1.5 ${RED}`}><span className="w-2 h-2 rounded-full bg-red-500" />Not owned</span>
             <span className="flex items-center gap-1.5 text-slate-500"><span className="w-2 h-2 rounded-full bg-slate-500" />Owned, not on MusicBrainz</span>
-            {view !== 'all' && view !== 'upcoming' && <span className="text-slate-500 text-[10px]">Highlighted rows are the releases inside this window. Year-only dates can't be placed in a window.</span>}
+            {!['all', 'upcoming', 'wants', 'discover'].includes(view) && <span className="text-slate-500 text-[10px]">Highlighted rows are the releases inside this window. Year-only dates can't be placed in a window.</span>}
           </div>
 
           {!hasData ? (
@@ -449,28 +521,79 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
           ) : (
             <>
               {view === 'upcoming' && (
-                viewLoading && upcoming.length === 0 ? (
-                  <div className="py-8 flex justify-center"><RotateCw size={18} className="animate-spin opacity-50" /></div>
-                ) : upcoming.length === 0 ? (
-                  <p className="text-xs text-slate-500 py-6 text-center">No announced releases from your artists yet. MusicBrainz only lists them once they are announced, so check again after the next scan.</p>
-                ) : (
-                  <div className={`rounded-xl border overflow-hidden ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
-                    <div className={`grid grid-cols-[7.5rem_1fr_1fr_4rem] gap-3 px-3 py-2 text-[10px] font-black uppercase tracking-wider ${isDark ? 'bg-white/5 text-slate-400' : 'bg-black/5 text-slate-600'}`}>
-                      <span>Release date</span><span>Album</span><span>Artist</span><span>Type</span>
+                <>
+                  <div className={`mb-3 inline-flex max-w-full overflow-x-auto rounded-lg border [scrollbar-width:none] ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
+                    {UP_RANGES.map((o) => (
+                      <button key={o.key} onClick={() => setUpRange(o.key)} className={`shrink-0 whitespace-nowrap px-3 py-1 text-[10px] font-bold uppercase tracking-wide ${upRange === o.key ? (isDark ? 'bg-white/10 text-white' : 'bg-black/10 text-slate-900') : 'text-slate-500'}`}>{o.label}</button>
+                    ))}
+                  </div>
+                  {viewLoading && upcoming.length === 0 ? (
+                    <div className="py-8 flex justify-center"><RotateCw size={18} className="animate-spin opacity-50" /></div>
+                  ) : upcomingShown.length === 0 ? (
+                    <p className="text-xs text-slate-500 py-6 text-center">{upcoming.length ? 'Nothing announced for this stretch - try a longer range.' : 'No announced releases from your artists yet. MusicBrainz only lists them once they are announced, so check again after the next scan.'}</p>
+                  ) : (
+                    <div className={`rounded-xl border overflow-hidden ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
+                      {upcomingShown.map((r, i) => (
+                        <div key={`${r.artist}-${r.title}-${i}`} className={`flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs ${i ? 'border-t' : ''} ${isDark ? 'border-white/5' : 'border-[#2E2B27]/5'}`}>
+                          <span className="w-24 shrink-0 tabular-nums font-semibold text-amber-500" title={r.precision === 'day' ? '' : 'MusicBrainz does not know the exact day yet'}>
+                            {fmtDate(r.date, r.precision)}{r.precision !== 'day' && <span className="ml-1 text-[9px] font-bold text-slate-500">TBC</span>}
+                          </span>
+                          <span className="min-w-0 flex-1 basis-48 break-words">
+                            <span className={`font-semibold ${r.owned ? GREEN : ''}`}>{r.title}</span>
+                            <span className="text-slate-500"> · </span>
+                            <span className="font-bold" title={r.mbName && r.mbName !== r.artist ? `Your folder: ${r.artist}` : undefined}>{r.mbName || r.artist}</span>
+                            <span className="ml-1.5 opacity-50 text-[10px]">{r.type}</span>
+                          </span>
+                          <span className="ml-auto flex items-center gap-1">
+                            <ListenLinks artist={r.mbName || r.artist} title={r.title} />
+                            <StarButton on={wantSet.has(wantId(r.artist, r.title))} onClick={() => toggleWant(r)} />
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                    {upcoming.map((r, i) => (
-                      <div key={`${r.artist}-${r.title}-${i}`}
-                        className={`grid grid-cols-[7.5rem_1fr_1fr_4rem] gap-3 px-3 py-2 text-xs items-center border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/5'}`}>
-                        <span className="tabular-nums font-semibold text-amber-500" title={r.precision === 'day' ? '' : 'MusicBrainz does not know the exact day yet'}>
-                          {fmtDate(r.date, r.precision)}{r.precision !== 'day' && <span className="ml-1 text-[9px] font-bold text-slate-500">TBC</span>}
-                        </span>
-                        <span className={`font-semibold min-w-0 break-words ${r.owned ? GREEN : ''}`}>{r.title}</span>
-                        <span className="min-w-0 break-words font-bold" title={r.mbName && r.mbName !== r.artist ? `Your folder: ${r.artist}` : undefined}>{r.mbName || r.artist}</span>
-                        <span className="opacity-60 text-[10px]">{r.type}</span>
+                  )}
+                </>
+              )}
+
+              {view === 'wants' && (
+                wants.length === 0 ? (
+                  <p className="text-xs text-slate-500 py-6 text-center">Star a release you haven't got (in Upcoming, or inside any artist) and it lands here. IMS mentions it in your morning report on the day it comes out.</p>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {wants.map((w) => (
+                      <div key={wantId(w.artist, w.title)} className={`flex flex-wrap items-center gap-x-3 gap-y-1 text-xs px-3 py-2 rounded-xl border ${isDark ? 'border-white/5' : 'border-[#2E2B27]/10'} ${w.owned ? 'opacity-50' : ''}`}>
+                        <span className={`w-24 shrink-0 tabular-nums font-semibold ${w.released ? 'text-emerald-500' : 'text-amber-500'}`}>{w.date ? fmtDate(w.date, w.precision) : 'Date unknown'}</span>
+                        <span className="min-w-0 flex-1 basis-48 break-words"><span className="font-semibold">{w.title}</span><span className="text-slate-500"> · </span><span className="font-bold">{w.artist}</span></span>
+                        <span className="text-[10px] font-bold uppercase">{w.owned ? <span className="text-emerald-500">Got it</span> : w.released ? <span className="text-emerald-500">Out now</span> : <span className="text-slate-500">Not out yet</span>}</span>
+                        <ListenLinks artist={w.artist} title={w.title} />
+                        <StarButton on onClick={() => toggleWant(w)} />
                       </div>
                     ))}
                   </div>
                 )
+              )}
+
+              {view === 'discover' && (
+                <div>
+                  <div className="flex flex-wrap items-center gap-3 mb-3">
+                    <p className="text-[11px] text-slate-500 flex-1 min-w-[12rem]">Suggested from the artists you own most of. Anything already in your library is left out.</p>
+                    <button onClick={makeRecs} disabled={recsBusy} className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-orange-600 text-white disabled:opacity-50">
+                      {recsBusy ? <RotateCw size={13} className="animate-spin" /> : <Sparkles size={13} />} {recs ? 'New suggestions' : 'Suggest artists'}
+                    </button>
+                  </div>
+                  {recs?.artists?.length ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {recs.artists.map((r) => (
+                        <div key={r.artist} className={`p-3 rounded-xl border text-xs flex flex-col gap-1 ${isDark ? 'border-white/10 bg-slate-950/40' : 'border-[#2E2B27]/10 bg-white'}`}>
+                          <div className="flex items-center gap-2"><span className="font-black text-sm flex-1 min-w-0 break-words">{r.artist}</span><ListenLinks artist={r.artist} title={r.startWith || ''} /></div>
+                          {r.why && <p className="text-slate-500">{r.why}</p>}
+                          {r.startWith && <p><span className="text-slate-500">Start with:</span> <b>{r.startWith}</b></p>}
+                          {Array.isArray(r.because) && r.because.length > 0 && <p className="text-[10px] text-slate-500">Because you own {r.because.join(', ')}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  ) : !recsBusy && <p className="text-xs text-slate-500 py-6 text-center">Press Suggest artists.</p>}
+                </div>
               )}
 
               {view === 'day' && (
@@ -490,7 +613,7 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
                           <span className="font-bold">{r.artist}</span>
                           <span className={`font-semibold ${r.owned ? GREEN : RED}`}>{r.title}</span>
                           <span className="opacity-50 text-[10px]">{r.type}</span>
-                          <span className="ml-auto tabular-nums text-slate-500">{fmtDate(r.date, 'day')}</span>
+                          <span className="ml-auto flex items-center gap-1"><ListenLinks artist={r.artist} title={r.title} />{!r.owned && <StarButton on={wantSet.has(wantId(r.artist, r.title))} onClick={() => toggleWant(r)} />}</span>
                         </div>
                       ))}
                     </div>
@@ -506,7 +629,7 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
                 </div>
               )}
 
-              {view === 'upcoming' ? null : viewLoading && artistsToShow.length === 0 ? (
+              {['upcoming', 'wants', 'discover'].includes(view) ? null : viewLoading && artistsToShow.length === 0 ? (
                 <div className="py-8 flex justify-center"><RotateCw size={18} className="animate-spin opacity-50" /></div>
               ) : artistsToShow.length === 0 ? (
                 <p className="text-xs text-slate-500 py-6 text-center">
@@ -516,7 +639,7 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
                 <div className="flex flex-col gap-2">
                   {view !== 'all' && <p className="text-[11px] text-slate-500">{artistsToShow.length} artist{artistsToShow.length === 1 ? '' : 's'}</p>}
                   {artistsToShow.map((a) => (
-                    <ArtistCard key={`${view}-${a.name}`} artist={a} isDark={isDark} showToast={showToast} onChanged={fetchView} />
+                    <ArtistCard key={`${view}-${a.name}`} artist={a} isDark={isDark} showToast={showToast} onChanged={fetchView} wantSet={wantSet} onToggleWant={toggleWant} />
                   ))}
                 </div>
               )}

@@ -298,6 +298,7 @@ volatile bool conversationOpen = false;
 // finishes so the farewell reply plays out in full before the conversation
 // actually closes.
 volatile bool conversationShouldClose = false;
+unsigned long conversationCloseAt = 0; // when endConversation arrived
 // A call/meeting is being recorded (the backend says so via schedule.recording).
 // While true the device is COMPLETELY silent and unreactive: it only streams the
 // mic. No speech, no alert sounds, no taps, no state changes - see handleFrame(),
@@ -806,6 +807,62 @@ static uint8_t *playbackQueueStorage = nullptr;
 // comfortable margin below the top header (HEADER_H = 43)
 #define FACE_CENTER_Y 116
 
+// How loud Ims's own voice is right now: the playback task writes the average level of each
+// audio chunk as it goes to the speaker, and the mouth follows it (real lip movement rather
+// than random flapping). The peak adapts, so quiet and loud voices both use the full mouth.
+static volatile uint16_t speakerLevel = 0;
+static volatile unsigned long speakerLevelAt = 0;
+
+static int voiceAmp(uint32_t noise) {
+  static float peak = 1500.0f, smooth = 0.0f;
+  if (millis() - speakerLevelAt > 150) return (int)((noise >> 16) & 0xFF); // no fresh audio: fall back to the old noise
+  float lv = (float)speakerLevel;
+  peak = lv > peak ? lv : peak * 0.995f;
+  if (peak < 800.0f) peak = 800.0f;
+  float target = lv < 120.0f ? 0.0f : lv * 255.0f / peak;
+  smooth = smooth * 0.35f + target * 0.65f;
+  return (int)(smooth > 255.0f ? 255.0f : smooth);
+}
+
+// Natural blinking and glances: random gaps (2.5-7 s), the odd double blink, and a glance to
+// one side every so often - instead of the same 12-second loop.
+static bool blinkingNow() {
+  static unsigned long nextBlinkAt = 0, blinkUntil = 0;
+  unsigned long now = millis();
+  if (!nextBlinkAt) nextBlinkAt = now + 2500;
+  if (now >= nextBlinkAt) {
+    blinkUntil = now + 130;
+    nextBlinkAt = (random(100) < 18) ? now + 300 : now + 2500 + random(4500);
+  }
+  return now < blinkUntil;
+}
+static int glanceNow() {
+  static unsigned long nextAt = 0, until = 0;
+  static int dir = 0;
+  unsigned long now = millis();
+  if (!nextAt) nextAt = now + 6000;
+  if (now >= nextAt) { dir = random(2) ? 1 : -1; until = now + 600 + random(1000); nextAt = now + 6000 + random(9000); }
+  return now < until ? dir : 0;
+}
+// Closes whatever eyes the face has for a blink, leaving brows and mouth alone.
+static void applyBlinkOverlay(uint8_t want[]) {
+  for (int r = 1; r <= 4; r++)
+    for (int c : {2, 3, 4, 7, 8, 9}) want[r * 12 + c] = 0;
+  for (int c : {2, 3, 4, 7, 8, 9}) want[3 * 12 + c] = 255;
+}
+
+// Night mode: 23:00-06:30, when nothing is going on, Ims sleeps - eyes shut, dim screen.
+static bool nightCached = false;
+static void refreshNight() {
+  static unsigned long lastCheck = 0;
+  if (lastCheck && millis() - lastCheck < 1000) return;
+  lastCheck = millis();
+  struct tm t;
+  if (!getLocalTime(&t, 5)) { nightCached = false; return; }
+  int m = t.tm_hour * 60 + t.tm_min;
+  nightCached = (m >= 23 * 60) || (m < 6 * 60 + 30);
+}
+
 static uint8_t faceCurLevels[FACE_COLS * FACE_ROWS] = {0};
 static uint16_t faceCurColors[FACE_COLS * FACE_ROWS] = {0};
 static int faceFrame = 0;
@@ -891,6 +948,11 @@ static void parseEyeCells(JsonVariantConst arr, EyeCell *out, int &count) {
   }
 }
 
+static bool imsAsleep() {
+  refreshNight();
+  return nightCached && currentState == STATE_STANDBY && !isSpeakerActive() && !recordingActive && currentEmotion == EMOTION_NEUTRAL;
+}
+
 static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
   memset(want, 0, FACE_COLS * FACE_ROWS);
   int f = faceFrame;
@@ -910,6 +972,12 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
     return;
   }
 
+  if (imsAsleep()) {
+    for (int k = 0; k < 3; k++) { facePut(want, 3, eyeL[k], 200); facePut(want, 3, eyeR[k], 200); }
+    facePut(want, 6, 5, 160); facePut(want, 6, 6, 160);
+    return;
+  }
+
   // Ported from expressionsupdate2.yaml's per-emotion upper/lower face
   // tables. Mutually exclusive with the phase-based rendering below, same as
   // the reference: an active emotion (set by Gemini's setEmotion tool call,
@@ -919,7 +987,7 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
   if (currentEmotion != EMOTION_NEUTRAL) {
     uint32_t n = (uint32_t)(f * 73 + 151);
     n = (n ^ (n >> 5)) * 2654435761u;
-    int amp = (int)((n >> 16) & 0xFF);
+    int amp = speaking ? voiceAmp(n) : (int)((n >> 16) & 0xFF);
 
     if (currentEmotion == EMOTION_CUSTOM) {
       // Every designed/edited face carries two frames: while speaking, flap
@@ -929,6 +997,7 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
       for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
         if (frame[i]) facePut(want, i / FACE_COLS, i % FACE_COLS, frame[i]);
       if (customEyeCount > 0) applyEyeTimeline(want, customEyeCells, customEyeCount, customEyeStartMs);
+      else if (blinkingNow()) applyBlinkOverlay(want);
       return;
     }
 
@@ -1012,6 +1081,7 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
         for (int c = 7; c <= 9; c++) facePut(want, 3, c, 255);
         break;
     }
+    if (currentEmotion != EMOTION_SLEEPY && blinkingNow()) applyBlinkOverlay(want);
 
     if (speaking) {
       switch (currentEmotion) {
@@ -1130,15 +1200,13 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
     return;
   }
 
-  int idleT = f % 100;
   bool blink = false;
   int gaze = 0;
   if (thinking) {
     gaze = ((f % 40) < 20) ? -1 : 1;
-  } else if (!listening && !speaking) {
-    blink = (idleT == 0 || idleT == 1 || idleT == 5 || idleT == 6);
-    if (idleT >= 30 && idleT < 40) gaze = -1;
-    else if (idleT >= 50 && idleT < 60) gaze = 1;
+  } else {
+    blink = blinkingNow();
+    if (!listening && !speaking) gaze = glanceNow();
   }
 
   const bool useStandbyDesign = standbyCustomActive && !listening && !thinking;
@@ -1173,7 +1241,7 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
     // reads as "talking" without flickering or repeating on a visible cycle.
     uint32_t n = (uint32_t)(f * 73 + 151);
     n = (n ^ (n >> 5)) * 2654435761u;
-    int amp = (int)((n >> 16) & 0xFF);
+    int amp = speaking ? voiceAmp(n) : (int)((n >> 16) & 0xFF);
     if (standbyCustomActive) {
       const uint8_t *nf = (amp > 100) ? standbyFaceOpenGrid : standbyFaceGrid;
       for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
@@ -1191,6 +1259,7 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
       for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
         if (standbyFaceGrid[i]) facePut(want, i / FACE_COLS, i % FACE_COLS, standbyFaceGrid[i]);
       if (standbyEyeCount > 0) applyEyeTimeline(want, standbyEyeCells, standbyEyeCount, standbyEyeStartMs);
+      else if (blink) applyBlinkOverlay(want);
     } else {
       for (int c = 3; c <= 8; c++) facePut(want, 6, c, 255);
       facePut(want, 5, 2, 255);
@@ -1215,6 +1284,7 @@ static void drawFaceInternal(bool forceFull) {
 
   int onR = 76, onG = 255, onB = 122; // default: soft green (idle/standby)
   if (isMicHardwareMuted) { onR = 255; onG = 71; onB = 87; }
+  else if (imsAsleep()) { onR = 60; onG = 90; onB = 140; }
   // Emotion colour takes priority over the phase palette below (matches
   // computeFaceLevels() treating an active emotion as a full override), but
   // never over the mute indicator above - the user needs that to always read
@@ -1245,7 +1315,7 @@ static void drawFaceInternal(bool forceFull) {
   else if (currentState == STATE_SPEAKING || isSpeakerActive()) { onR = 165; onG = 94; onB = 234; }
   // A redesigned neutral face uses its own colour while idle or speaking; the
   // listening / thinking / connecting / recording colours stay, as they signal state.
-  if (standbyCustomActive && !isMicHardwareMuted && currentEmotion == EMOTION_NEUTRAL && !recordingActive &&
+  if (standbyCustomActive && !isMicHardwareMuted && !imsAsleep() && currentEmotion == EMOTION_NEUTRAL && !recordingActive &&
       currentState != STATE_CONNECTING_WIFI && currentState != STATE_CONNECTING_SERVER &&
       currentState != STATE_LISTENING && currentState != STATE_THINKING) {
     onR = (standbyFaceRGB >> 16) & 0xFF; onG = (standbyFaceRGB >> 8) & 0xFF; onB = standbyFaceRGB & 0xFF;
@@ -1393,6 +1463,9 @@ static uint8_t calSensor = 0; // 0 none, 1 white, 2 orange
 static uint8_t calPod = 0;
 static uint8_t calRx = 0;
 
+// Nightscout database usage (percent), drawn under the icons: green to 70, orange 71-90, red 91+.
+static int nsDbPct = -1;
+
 static void drawCalendarIcons() {
   const uint16_t bg = tft.color565(11, 14, 21);
   const uint16_t white = tft.color565(255, 255, 255);
@@ -1403,6 +1476,16 @@ static void drawCalendarIcons() {
   if (calSensor) tft.drawXBitmap(x, 47, sensor_icon_24x24, 24, 24, calSensor == 2 ? orange : white);
   if (calPod) tft.drawXBitmap(x, 124, pod_icon_24x24, 24, 24, white);
   if (calRx) tft.drawXBitmap(x, 152, rx_icon_24x24, 24, 24, white);
+  tft.fillRect(266, 182, 54, 18, bg);
+  if (nsDbPct >= 0) {
+    const uint16_t c = nsDbPct <= 70 ? tft.color565(46, 213, 115) : nsDbPct <= 90 ? orange : tft.color565(255, 71, 87);
+    tft.setTextDatum(middle_center);
+    tft.setFont(&fonts::Font2);
+    tft.setTextColor(c);
+    tft.drawString(String("DB ") + nsDbPct + "%", 292, 191);
+    tft.setFont(&fonts::Font0);
+    tft.setTextDatum(top_left);
+  }
 }
 
 #define GLUCOSE_CX 292
@@ -2136,23 +2219,84 @@ void drawStatusIconStack() {
   tft.endWrite();
 }
 
+// Footer info from the backend (see pushScheduleStatus in index.js): weather now, the next
+// thing today, and the soonest timer (counted down here, once a second).
+static int infoTempC = -999;
+static char infoWeather[10] = "";
+static String infoNext = "";
+static String infoTimerLabel = "";
+static unsigned long infoTimerEndMs = 0;
+
+static void drawWeatherIcon(int x, int y, const char *kind) {
+  const uint16_t sun = tft.color565(255, 200, 60), cloud = tft.color565(170, 180, 200), rain = tft.color565(90, 160, 255),
+                 moon = tft.color565(210, 215, 235), snow = tft.color565(235, 240, 255), bolt = tft.color565(255, 220, 80);
+  const uint16_t bg = tft.color565(15, 18, 26);
+  if (!strcmp(kind, "sun")) { tft.fillCircle(x + 8, y + 8, 4, sun); for (int a = 0; a < 8; a++) { float r = a * PI / 4; tft.drawLine(x + 8 + cosf(r) * 6, y + 8 + sinf(r) * 6, x + 8 + cosf(r) * 8, y + 8 + sinf(r) * 8, sun); } return; }
+  if (!strcmp(kind, "moon")) { tft.fillCircle(x + 8, y + 8, 6, moon); tft.fillCircle(x + 11, y + 6, 5, bg); return; }
+  if (!strcmp(kind, "partsun")) { tft.fillCircle(x + 5, y + 5, 4, sun); }
+  // cloud (used by everything else)
+  tft.fillCircle(x + 6, y + 8, 4, cloud); tft.fillCircle(x + 10, y + 7, 5, cloud); tft.fillRoundRect(x + 2, y + 8, 13, 5, 2, cloud);
+  if (!strcmp(kind, "rain")) for (int i = 0; i < 3; i++) tft.drawLine(x + 4 + i * 4, y + 14, x + 3 + i * 4, y + 16, rain);
+  if (!strcmp(kind, "snow")) for (int i = 0; i < 3; i++) tft.fillCircle(x + 4 + i * 4, y + 15, 1, snow);
+  if (!strcmp(kind, "storm")) { tft.drawLine(x + 9, y + 12, x + 7, y + 15, bolt); tft.drawLine(x + 7, y + 15, x + 10, y + 15, bolt); tft.drawLine(x + 10, y + 15, x + 8, y + 18, bolt); }
+  if (!strcmp(kind, "fog")) for (int i = 0; i < 2; i++) tft.drawFastHLine(x + 2, y + 14 + i * 2, 13, cloud);
+}
+
+static void applyNightBrightness() {
+  static int applied = -1;
+  int want = imsAsleep() ? 18 : 180;
+  if (want != applied) { tft.setBrightness(want); applied = want; }
+}
+
 // Repaints just the footer's clock and emotion - called once a second
 // from loop(). Deliberately repaints only the 36px footer bar so the screen/face
 // never flashes while updating the second ticker.
 void drawFooterClock() {
+  applyNightBrightness();
   if (onSettingsScreen || isMicHardwareMuted) return; // mute warning occupies this space instead
   tft.startWrite();
   // Clear the full 36px footer bar cleanly
   tft.fillRect(0, 204, 320, 36, tft.color565(15, 18, 26));
   tft.setTextDatum(top_left);
   tft.setTextColor(tft.color565(100, 110, 130));
-  String dt = currentDateTimeStr();
-  tft.drawString(dt, 15, 214);
+  {
+    struct tm t;
+    char buf[24] = "--:--:--";
+    if (getLocalTime(&t, 20)) strftime(buf, sizeof(buf), "%H:%M:%S %a %d %b", &t);
+    tft.drawString(buf, 12, 214);
+  }
 
-  // Restore current emotion on the right side of the footer bar
-  tft.setTextDatum(top_right);
-  tft.setTextColor(tft.color565(100, 110, 130));
-  tft.drawString(emotionName(currentEmotion), 305, 214);
+  // Right side: soonest timer counting down, else the next thing today; weather at the far right.
+  int right = 308;
+  if (infoTempC > -100) {
+    char tbuf[8];
+    snprintf(tbuf, sizeof(tbuf), "%d", infoTempC);
+    tft.setTextDatum(top_right);
+    tft.setTextColor(tft.color565(170, 180, 200));
+    tft.drawString(tbuf, right - 4, 214);
+    int tw = tft.textWidth(tbuf);
+    tft.drawCircle(right - 1, 215, 1, tft.color565(170, 180, 200));
+    drawWeatherIcon(right - 4 - tw - 19, 209, infoWeather);
+    right = right - 4 - tw - 25;
+  }
+  String mid = "";
+  uint16_t midCol = tft.color565(140, 150, 175);
+  if (infoTimerEndMs && (long)(infoTimerEndMs - millis()) > 0) {
+    unsigned long left = (infoTimerEndMs - millis()) / 1000;
+    char tb[12];
+    if (left >= 3600) snprintf(tb, sizeof(tb), "%lu:%02lu:%02lu", left / 3600, (left / 60) % 60, left % 60);
+    else snprintf(tb, sizeof(tb), "%lu:%02lu", left / 60, left % 60);
+    mid = String("Timer ") + tb;
+    midCol = tft.color565(255, 140, 0);
+  } else if (infoNext.length()) {
+    mid = infoNext;
+  }
+  if (mid.length()) {
+    tft.setTextDatum(top_right);
+    tft.setTextColor(midCol);
+    while (mid.length() > 3 && tft.textWidth(mid) > right - 150) mid = mid.substring(0, mid.length() - 2);
+    tft.drawString(mid, right, 214);
+  }
   tft.setTextDatum(top_left);
 
   tft.endWrite();
@@ -3343,7 +3487,9 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       // next turn goes straight back to LISTENING instead of requiring
       // another wake phrase (see the SPEAKING auto-transition in loop()).
       conversationOpen = true;
-      conversationShouldClose = false;
+      // Gemini often sends endConversation just BEFORE the farewell audio, so only
+      // forget a close request that belongs to an earlier turn.
+      if (millis() - conversationCloseAt > 15000) conversationShouldClose = false;
       if (audioOutQueue) {
         xQueueReset(audioOutQueue);
       }
@@ -3458,6 +3604,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
     if (doc["endConversation"].as<bool>()) {
       Serial.println("[IMS] endConversation - closing conversation after this reply finishes");
       conversationShouldClose = true;
+      conversationCloseAt = millis();
     }
     // Backend forwarded Gemini's setEmotion tool call - purely cosmetic, just
     // updates which expression computeFaceLevels() draws. Doesn't touch
@@ -3547,6 +3694,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       if (g["direction"].is<const char *>()) {
         currentGlucoseDirection = g["direction"].as<const char *>();
       }
+      if (g["dbPct"].is<int>()) nsDbPct = g["dbPct"].as<int>();
       Serial.printf("[IMS] Blood glucose updated: %s mmol/L (%s)\n",
                     currentGlucoseValue.c_str(), currentGlucoseDirection.c_str());
       if (!onSettingsScreen) {
@@ -3568,6 +3716,15 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       cameraSetAwake(cameraAwake);
       setRecordingMode(s["recording"]["active"] | false);
       if (s.containsKey("standbyFace")) applyStandbyFace(s["standbyFace"]);
+      if (s["info"].is<JsonObject>()) {
+        JsonObject inf = s["info"];
+        infoTempC = inf["tempC"].is<int>() ? inf["tempC"].as<int>() : -999;
+        strlcpy(infoWeather, inf["weather"] | "cloud", sizeof(infoWeather));
+        infoNext = inf["next"] | "";
+        long secs = inf["timerSec"] | -1L;
+        infoTimerEndMs = secs >= 0 ? millis() + (unsigned long)secs * 1000UL : 0;
+        infoTimerLabel = inf["timerLabel"] | "";
+      }
       {
         uint8_t nSensor = 0, nPod = 0, nRx = 0;
         for (JsonObject ic : s["calendar"]["icons"].as<JsonArray>()) {
@@ -4028,6 +4185,14 @@ void audioPlaybackTask(void *param) {
       // The DMA drains at 16kHz stereo 16-bit = 64KB/s, so each
       // AUDIO_CHUNK_SAMPLES (512 stereo samples = 2048 bytes) chunk
       // completes in ~32ms worst-case.
+      {
+        const int16_t *s16 = (const int16_t *)msg.data;
+        size_t n = msg.len / 2;
+        uint32_t acc = 0, cnt = 0;
+        for (size_t i = 0; i < n; i += 4) { acc += (uint32_t)abs(s16[i]); cnt++; }
+        speakerLevel = cnt ? (uint16_t)(acc / cnt) : 0;
+        speakerLevelAt = millis();
+      }
       i2s_channel_write(i2sTxChan, msg.data, msg.len, &bytesWritten, portMAX_DELAY);
       lastPlaybackActiveTime = millis();
     }
@@ -4408,6 +4573,30 @@ void loop() {
   // nothing at all (e.g. "stop IMS"). The SPEAKING auto-transition above never
   // runs in that case, so without this the mic would stay open indefinitely.
   // Close straight away: back to STANDBY with the face and status reset.
+  // Safety net: never sit in THINKING for more than 30 s waiting for a reply that isn't coming.
+  {
+    static unsigned long thinkingSince = 0;
+    if (currentState == STATE_THINKING && !recordingActive) {
+      if (!thinkingSince) thinkingSince = millis();
+      if (millis() - thinkingSince > 30000) {
+        sendDebug("thinking_watchdog -> standby");
+        sendAudioStreamEnd();
+        sendSessionClosed();
+        currentState = STATE_STANDBY;
+        conversationOpen = false;
+        conversationShouldClose = false;
+        micStreamingActive = false;
+        isSpeakingDetected = false;
+        setSpeakerMute(true);
+        lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
+        renderScreen(true);
+        thinkingSince = 0;
+      }
+    } else {
+      thinkingSince = 0;
+    }
+  }
+
   if (conversationShouldClose && currentState == STATE_LISTENING) {
     sendAudioStreamEnd();
     sendSessionClosed();

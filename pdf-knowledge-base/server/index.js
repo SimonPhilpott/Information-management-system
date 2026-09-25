@@ -53,6 +53,10 @@ import gemsRoutes from './routes/gems.js';
 import graphRoutes from './routes/graph.js';
 import voiceRoutes from './routes/voice.js';
 import memoriesRoutes from './routes/memories.js';
+import glucoseHubRoutes from './routes/glucoseHub.js';
+import { describeForIms as describeGlucoseForIms, logCarbs } from './services/glucoseHubService.js';
+import { lookUpFood } from './services/foodService.js';
+import { isApprovedSession } from './middleware/requireSession.js';
 import personaRoutes from './routes/persona.js';
 import musicScanRoutes from './routes/musicScan.js';
 import birthdayRoutes from './routes/birthdays.js';
@@ -70,7 +74,7 @@ import plannerRoutes from './routes/planner.js';
 import goalRoutes from './routes/goals.js';
 import { getStatus as getStravaStatus, syncActivities as syncStrava, describeTraining } from './services/stravaService.js';
 import { logNightscout } from './services/runGlucoseService.js';
-import { refreshEvents, getUpcomingEvents, getDeviceIcons, createEvent, describeEvents } from './services/calendarService.js';
+import { refreshEvents, getUpcomingEvents, getDeviceIcons, createEvent, describeEvents, getEventsOn as getCalendarEventsOn } from './services/calendarService.js';
 import { getDevicePayload, getStandbyOverride } from './services/faceDesignService.js';
 import { pickJoke } from './services/jokeService.js';
 import boardgamesRoutes from './routes/boardgames.js';
@@ -81,11 +85,13 @@ import { askLive } from './services/lookService.js';
 import { getAuthStatus } from './services/driveService.js';
 import { validateConfiguredModels } from './services/modelService.js';
 import { loadHnswFromDisk } from './services/hnswService.js';
-import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getWebPersonaBlock, getPersonality, setPersonality, getCaptureLogging, setCaptureLogging } from './services/hardwareClientService.js';
+import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getWebPersonaBlock, getPersonality, setPersonality, getCaptureLogging, setCaptureLogging, recordReplyText } from './services/hardwareClientService.js';
 import { scheduleItem, listScheduledItems, cancelScheduledItem, addToList, readList, removeFromList, clearList, checkDueScheduledItems, stopAllRinging, getActiveScheduledStatus, getItemsDueToday, getHistorySummary } from './services/remindersService.js';
 import { getBirthdayFooterStatus, getUpcomingBirthdays, listBirthdays } from './services/birthdayService.js';
-import { getTodayReleases, getWindowResults, getUpcomingReleases } from './services/musicScanService.js';
-import { isFirstInteractionToday, markMorningReportOffered, buildMorningReportDirective } from './services/morningReportService.js';
+import { getTodayReleases, getWindowResults, getUpcomingReleases , getWants as getMusicWants } from './services/musicScanService.js';
+import { isFirstInteractionToday, markMorningReportOffered, buildMorningReportDirective, getDayReport } from './services/morningReportService.js';
+import { getNews } from './services/newsService.js';
+import newsRoutes from './routes/news.js';
 import { addMemory, getMemories, searchMemories, deleteMemory } from './db/database.js';
 import { getWeather } from './services/weatherService.js';
 import { startGlucosePoller, getGlucoseData } from './services/glucoseService.js';
@@ -124,25 +130,17 @@ app.use(session({
   saveUninitialized: false,
   cookie: {
     secure: false, // Set true in production with HTTPS
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-  }
+    maxAge: 180 * 24 * 60 * 60 * 1000 // one sign-in per device lasts; renewed on every visit
+  },
+  rolling: true
 }));
 
-// Restriction Middleware: Gates the app to the authorized user only
+// Every API call needs this browser to be signed in with an approved Google account. Only the
+// sign-in routes themselves are open. The device talks over its own TCP link, not this API.
 const requireAdmin = (req, res, next) => {
-  // Allow auth routes, memories database management, and static assets
-  if (req.path.startsWith('/api/auth') || req.path.startsWith('/api/memories') || !req.path.startsWith('/api')) {
-    return next();
-  }
-
-  const status = getAuthStatus();
-  const isAdmin = !config.adminEmail || status.email === config.adminEmail;
-
-  if (!isAdmin || (!req.session.user && !status.email)) {
-    return res.status(401).json({ error: 'Unauthorized: Admin access required.' });
-  }
-
-  next();
+  if (!req.path.startsWith('/api') || req.path.startsWith('/api/auth')) return next();
+  if (isApprovedSession(req)) return next();
+  return res.status(401).json({ error: 'Sign in with your Google account to use this.', signInRequired: true });
 };
 
 app.use(requireAdmin);
@@ -167,6 +165,8 @@ app.use('/api/gems', gemsRoutes);
 app.use('/api/graph', graphRoutes);
 app.use('/api/voice', voiceRoutes);
 app.use('/api/memories', memoriesRoutes);
+app.use('/api/glucose-hub', glucoseHubRoutes);
+app.use('/api/news', newsRoutes);
 app.use('/api/persona-rules', personaRoutes);
 app.use('/api/music-scan', musicScanRoutes);
 app.use('/api/birthdays', birthdayRoutes);
@@ -282,6 +282,38 @@ setInterval(refreshStrava, 30 * 60 * 1000);
 setTimeout(refreshCalendar, 10000);
 setInterval(refreshCalendar, 5 * 60 * 1000);
 
+// Weather for the device footer, refreshed every 30 minutes.
+let deviceWeather = null;
+const weatherKind = (c, day) => (/thunder/i.test(c) ? 'storm' : /snow/i.test(c) ? 'snow' : /rain|drizzle|shower/i.test(c) ? 'rain' : /fog/i.test(c) ? 'fog'
+  : /clear|sunny|mainly clear/i.test(c) ? (day ? 'sun' : 'moon') : /partly/i.test(c) ? (day ? 'partsun' : 'cloud') : 'cloud');
+const refreshDeviceWeather = () => getWeather({}).then((w) => {
+  if (w?.current) { deviceWeather = { tempC: w.current.temperature_c, weather: weatherKind(w.current.condition, w.current.is_daylight) }; pushScheduleStatus(); }
+}).catch(() => {});
+setTimeout(refreshDeviceWeather, 20000);
+setInterval(refreshDeviceWeather, 30 * 60 * 1000);
+
+// The footer line: the soonest timer (the device counts it down), otherwise the next thing today.
+function deviceInfo() {
+  const info = { ...(deviceWeather || {}) };
+  try {
+    const items = listScheduledItems();
+    const timer = items.filter((i) => i.type === 'timer').sort((a, b) => a.secondsFromNow - b.secondsFromNow)[0];
+    if (timer) { info.timerSec = timer.secondsFromNow; info.timerLabel = timer.label || ''; }
+    const now = new Date();
+    const hm = now.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' });
+    const today = now.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+    const next = [];
+    for (const e of getCalendarEventsOn(today)) if (e.time && e.time > hm) next.push({ time: e.time, what: e.title || e.summary || 'Event' });
+    for (const i of items.filter((x) => x.type !== 'timer')) {
+      const d = new Date(i.fireAt);
+      if (d.toLocaleDateString('en-CA', { timeZone: 'Europe/London' }) === today) next.push({ time: d.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' }), what: i.label || (i.type === 'alarm' ? 'Alarm' : 'Reminder') });
+    }
+    next.sort((a, b) => a.time.localeCompare(b.time));
+    if (next[0]) info.next = `${next[0].time} ${next[0].what}`.slice(0, 40);
+  } catch (err) { console.error('[Schedule] Footer info failed:', err.message); }
+  return info;
+}
+
 export function pushScheduleStatus(targetWs = null) {
   const ws = targetWs || activeHardwareSession?.clientWs;
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -298,7 +330,8 @@ export function pushScheduleStatus(targetWs = null) {
         camera: (({ attached, awake }) => ({ attached, awake }))(getCameraStatus()),
         recording: { active: isRecordingActive() },
         calendar: { icons: getDeviceIcons() },
-        standbyFace: getStandbyOverride()
+        standbyFace: getStandbyOverride(),
+        info: deviceInfo()
       };
       ws.send(JSON.stringify({
         schedule: status
@@ -438,6 +471,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
   // on the next reconnect/wake instead of being silently lost for the day.
   let morningReportDirective = null;
   let morningReportReady = false;
+  let morningOfferPending = false;
   if (isHardware && isFirstInteractionToday()) {
     buildMorningReportDirective().then((text) => {
       morningReportDirective = text;
@@ -511,6 +545,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
   // whatever structural pattern has been overused recently.
   let turnOpenerWords = [];
   let turnOpenerSaved = false;
+  let turnReplyText = '';
   // Tracks whether Gemini sent a turnComplete for the current generation turn.
   // Used to detect mid-turn disconnects (Gemini closes code=1000 before the turn
   // finished) and synthesise the missing turnComplete so the device does not
@@ -719,7 +754,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
       getGlucoseData().then((glucose) => {
         if (ws.readyState === WebSocket.OPEN && glucose?.value) {
           ws.send(JSON.stringify({
-            glucose: { value: glucose.value, direction: glucose.direction }
+            glucose: { value: glucose.value, direction: glucose.direction, dbPct: glucose.dbPct }
           }));
         }
       }).catch((err) => console.error('[Glucose] Initial device push error:', err.message));
@@ -850,6 +885,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
               if (currentTurnComplete) {
                 turnOpenerWords = [];
                 turnOpenerSaved = false;
+                turnReplyText = '';
               }
               // Mark this turn as incomplete until Gemini confirms otherwise.
               // Any audio chunk arriving means a generation turn is in flight.
@@ -889,6 +925,8 @@ function handleLiveProxyConnection(ws, isHardware = false) {
         if (parsed.serverContent?.outputTranscription?.text) {
           const spokenText = parsed.serverContent.outputTranscription.text;
           spokenTranscript += spokenText;
+          if (isHardware && morningOfferPending) { morningOfferPending = false; markMorningReportOffered(); }
+          turnReplyText += spokenText;
           console.log(`${tag} [SpokenTranscript] "${spokenText}"`);
           try {
             logCapture(
@@ -955,6 +993,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
             recordReplyOpener(turnOpenerWords.join(' '));
             turnOpenerSaved = true;
           }
+          if (isHardware && turnReplyText.trim()) { recordReplyText(turnReplyText); turnReplyText = ''; }
         }
 
         // DIAGNOSTIC: the thinking-trace text repeatedly says "I'm calling
@@ -1241,22 +1280,37 @@ function handleLiveProxyConnection(ws, isHardware = false) {
                 : getWindowResults(period === 'week' ? 'week' : 'month').artists.flatMap((a) =>
                     a.releases.filter((r) => r.isNew).map((r) => ({ artist: a.name, title: r.title, type: r.type, date: r.date, owned: r.owned })));
               console.log(`${tag} 💿 getNewMusicReleases(${period}) -> ${releases.length}`);
-              respondToToolCall(call, { period, count: releases.length, releases: releases.slice(0, 25) });
+              let wants = []; try { wants = getMusicWants().filter((w) => !w.owned).map((w) => ({ artist: w.artist, title: w.title, date: w.date, released: w.released })); } catch (_) { /* none */ }
+              respondToToolCall(call, { period, count: releases.length, releases: releases.slice(0, 25), wantList: wants.slice(0, 15), note: 'wantList is what the user has starred as wanted - mention if any of these are in the releases.' });
             } else if (call.name === 'getBloodGlucose') {
-              console.log(`${tag} 🩸 Executing getBloodGlucose tool`);
-              getGlucoseData().then((glucoseData) => {
-                console.log(`${tag} 🩸 Glucose result: ${glucoseData.value} mmol/L (${glucoseData.direction}, ${glucoseData.range})`);
-                respondToToolCall(call, {
-                  blood_glucose_mmol_l: glucoseData.value,
-                  trend_direction: glucoseData.direction,
-                  range_status: glucoseData.range,
-                  delta: glucoseData.delta,
-                  reading_time: new Date(glucoseData.timestamp).toLocaleTimeString('en-GB')
-                });
-              }).catch((err) => {
+              try {
+                const g = describeGlucoseForIms(call.args?.period || 'today');
+                console.log(`${tag} 🩸 getBloodGlucose(${call.args?.period || 'today'}) -> ${JSON.stringify(g.now).slice(0, 120)}`);
+                respondToToolCall(call, g);
+              } catch (err) {
                 console.error(`${tag} getBloodGlucose error:`, err.message);
-                respondToToolCall(call, { error: err.message, fallback: "Blood glucose data currently unavailable." });
-              });
+                respondToToolCall(call, { error: err.message, fallback: 'Blood glucose data currently unavailable.' });
+              }
+            } else if (call.name === 'getDayReport') {
+              getDayReport().then((r) => {
+                console.log(`${tag} 📰 getDayReport -> ${r.report.length} items`);
+                respondToToolCall(call, r);
+              }).catch((err) => respondToToolCall(call, { error: err.message }));
+            } else if (call.name === 'getNews') {
+              getNews({ topic: call.args?.topic, source: call.args?.source }).then((d) => {
+                console.log(`${tag} 📰 getNews(${call.args?.source || call.args?.topic || 'top'}) -> ${(d.items || []).length}`);
+                respondToToolCall(call, { ...d, note: 'Summarise the most interesting three or four in your own words and say where they are from; offer more on any of them.' });
+              }).catch((err) => respondToToolCall(call, { error: err.message }));
+            } else if (call.name === 'logCarbs') {
+              logCarbs({ grams: call.args?.grams, food: call.args?.food }).then((e) => {
+                console.log(`${tag} 🍞 logCarbs(${e.grams} g ${e.food || ''}) nightscout=${e.nightscout.sent}`);
+                respondToToolCall(call, { status: 'logged', grams: e.grams, food: e.food, sentToNightscout: e.nightscout.sent, ...(e.nightscout.sent ? {} : { nightscoutProblem: e.nightscout.reason }) });
+              }).catch((err) => respondToToolCall(call, { error: err.message }));
+            } else if (call.name === 'lookUpFood') {
+              lookUpFood(call.args?.food).then((d) => {
+                console.log(`${tag} 🥪 lookUpFood(${call.args?.food}) -> ${d.matches} matches, ${d.typicalCarbsPer100g} g/100g`);
+                respondToToolCall(call, d);
+              }).catch((err) => respondToToolCall(call, { error: err.message, fallback: 'Use your own knowledge of typical UK carb values and say it is an estimate.' }));
             } else {
               respondToToolCall(call, { status: 'acknowledged' });
             }
@@ -1545,7 +1599,9 @@ function handleLiveProxyConnection(ws, isHardware = false) {
             const recordingNow = isRecordingActive();
             const hardwareDefaults = getHardwareSetupPayload(previewVoice, morningReportReady && !recordingNow ? morningReportDirective : null);
             if (morningReportReady && !recordingNow) {
-              markMorningReportOffered();
+              // Only counts as offered once Ims actually speaks in this session (see the
+              // spoken-transcript handler) - a connection nobody talks to doesn't use it up.
+              morningOfferPending = true;
               morningReportReady = false; // don't re-inject if setup is replayed on this same connection
             }
             parsed.setup.tools = hardwareDefaults.setup.tools;
@@ -1844,7 +1900,7 @@ startGlucosePoller((glucose) => {
   if (activeHardwareSession?.clientWs?.readyState === WebSocket.OPEN) {
     try {
       activeHardwareSession.clientWs.send(JSON.stringify({
-        glucose: { value: glucose.value, direction: glucose.direction }
+        glucose: { value: glucose.value, direction: glucose.direction, dbPct: glucose.dbPct }
       }));
     } catch (err) {
       console.error('[Glucose] Failed to push update to hardware client:', err.message);

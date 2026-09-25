@@ -339,6 +339,81 @@ function buildVarianceDirective() {
   return INVERSION_DIRECTIVES[dominantTag] || "";
 }
 
+// Speech style, rotated every session. The dialect words and thinking-noises are drawn from
+// pools rather than listed in full, because a fixed list of examples gets used as a script -
+// the same few tags came back in every reply. Anything Ims has leaned on across his recent
+// replies is left out of the next session's selection and named as something to rest.
+const DIALECT_POOL = [
+  "nowt", "owt", "summat", "reight", "grand", "chuffed", "mardy", "faff", "bodge", "crack on", "muck in", "ta",
+  "aye", "happen (meaning maybe)", "proper", "spot on", "cracking", "not bad, that", "fair play", "give over",
+  "our (as in our Rowan)", "mash (the tea)", "ginnel", "brew", "nithered", "mither", "lug 'ole",
+  "while (meaning until)", "gerroff", "any road", "tha knows", "by 'eck",
+];
+const TAG_POOL = ["...like", "...mind", "...then", "...that", "...you know", "...eh?", "...to be fair", "...anyroad"];
+const THINKING_POOL = ["Soooo,", "Weeell,", "Riiight,", "Hmmm,", "Ooh,", "Erm,", "Err,", "Ahh,", "Noooo,", "Aye, weeell,", "Nowww then,"];
+const RECENT_REPLIES_KEY = "ims_recent_replies";
+
+const phraseKey = (p) => p.replace(/\s*\(.*\)$/, "").replace(/^\.\.\./, "").replace(/[,?]/g, "").trim().toLowerCase();
+const stretchKey = (w) => w.toLowerCase().replace(/[^a-z]/g, "").replace(/(.)\1{2,}/g, "$1$1$1");
+
+/** Called with the full text of each spoken reply; keeps the last 40 for the overuse check. */
+export function recordReplyText(text) {
+  if (!text || !text.trim()) return;
+  try {
+    const raw = getSetting(RECENT_REPLIES_KEY);
+    const recent = raw ? JSON.parse(raw) : [];
+    recent.push(text.trim().slice(0, 600));
+    while (recent.length > 40) recent.shift();
+    setSetting(RECENT_REPLIES_KEY, JSON.stringify(recent));
+  } catch (err) {
+    console.error("[Speech] Failed to record reply:", err.message);
+  }
+}
+
+// Phrases (and stretched words) used in 3+ of the last 40 replies, most-used first.
+function overusedPhrases() {
+  let recent = [];
+  try { recent = JSON.parse(getSetting(RECENT_REPLIES_KEY) || "[]"); } catch { recent = []; }
+  const counts = new Map();
+  const bump = (k) => counts.set(k, (counts.get(k) || 0) + 1);
+  for (const reply of recent) {
+    const low = " " + reply.toLowerCase().replace(/[^a-z' ]+/g, " ") + " ";
+    const seen = new Set();
+    for (const p of [...DIALECT_POOL, ...TAG_POOL]) {
+      const k = phraseKey(p);
+      if (k && low.includes(" " + k + " ")) seen.add(k);
+    }
+    for (const w of reply.match(/\b[A-Za-z]*([a-zA-Z])\1{2,}[A-Za-z]*\b/g) || []) seen.add(stretchKey(w));
+    // repeated multi-word openers ("right then", "now then") count too
+    const opener = low.trim().split(" ").slice(0, 2).join(" ");
+    if (opener.split(" ").length === 2) seen.add(opener);
+    seen.forEach(bump);
+  }
+  return [...counts.entries()].filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1]).map(([k]) => k);
+}
+
+function pick(pool, n, avoid) {
+  const free = pool.filter((p) => !avoid.has(phraseKey(p)) && !avoid.has(stretchKey(p)));
+  const src = free.length >= n ? free : pool;
+  return [...src].sort(() => Math.random() - 0.5).slice(0, n);
+}
+
+function buildSpeechStyleDirective() {
+  const tired = overusedPhrases();
+  const avoid = new Set(tired);
+  const words = pick(DIALECT_POOL, 6, avoid);
+  const tags = pick(TAG_POOL, 2, avoid);
+  const thinking = pick(THINKING_POOL, 4, avoid);
+  return "SPEECH FOR THIS CONVERSATION: sound like a real person talking, not someone reading. " +
+    `Dialect to draw on this time (each at most once): ${words.join(", ")}. ` +
+    `Tags you may end a sentence with, sparingly and never twice in a row: ${tags.join(", ")}. ` +
+    `When a reply needs a moment's thought, open with a stretched word such as ${thinking.join(" / ")} - hold the vowel - or an "erm," or "err,". ` +
+    "Leave small pauses between clauses with commas and the odd '...', and a beat before the important bit. " +
+    "Roughly half your replies should have one or two of these; quick facts and confirmations need none. " +
+    "Vary reply length and shape. Never start a sentence and then correct yourself. " +
+    (tired.length ? `You've leaned on these lately, so rest them this conversation: ${tired.slice(0, 10).map((t) => `"${t}"`).join(", ")}. ` : "");
+}
+
 // 2.3 Dynamic sampling, session-level (the Live API has no mid-session config
 // update - see the file header). Band widens/shifts with Humor and
 // Temperament: a drier/more grounded Ims samples closer to the floor, a
@@ -389,14 +464,22 @@ export async function recordConversationMemory(userTranscript, imsTranscript) {
   const imsText = (imsTranscript || "").trim();
   if (!userText && !imsText) return; // nothing was actually said - don't manufacture a memory
 
-  const note = await summariseText(
-    "Summarise, in ONE short sentence (max 20 words), the topic(s) of this conversation between a user and their voice assistant Ims, " +
-    "focused on what the USER said, asked about, or mentioned caring about - not on how Ims responded. " +
-    "If nothing memorable was actually discussed, respond with exactly: SKIP.\n\n" +
+  const when = new Date().toLocaleString("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const raw = await summariseText(
+    "This is a conversation between a user and Ims, their voice companion. Write two lines.\n" +
+    "Line 1 starts 'NOTE:' - one or two short sentences (max 35 words) on what the USER talked about, what they were planning or " +
+    "doing, and anything Ims could naturally ask about next time (e.g. 'going for a 10k tonight', 'dreading Tuesday's meeting'). " +
+    "If nothing memorable was discussed, write exactly 'NOTE: SKIP'.\n" +
+    "Line 2 starts 'OPINION:' - if Ims clearly stated a personal opinion or preference of his own (a favourite, a dislike, a view), " +
+    "restate it in under 15 words in first person ('I rate Wingspan over Catan'); otherwise write 'OPINION: NONE'.\n\n" +
     (userText ? `User said (transcribed, may be imperfect): ${userText}\n` : "") +
     (imsText ? `Ims replied: ${imsText}` : "")
   );
-  if (!note || note.toUpperCase().includes("SKIP")) {
+  const noteMatch = raw && raw.match(/NOTE:\s*(.+)/i);
+  const opinionMatch = raw && raw.match(/OPINION:\s*(.+)/i);
+  if (opinionMatch && !/^none\b/i.test(opinionMatch[1].trim())) recordOpinion(opinionMatch[1].trim());
+  const note = noteMatch && !/^skip\b/i.test(noteMatch[1].trim()) ? `${when}: ${noteMatch[1].trim()}` : null;
+  if (!note) {
     console.log("[Memory] Nothing memorable in this conversation - not recorded.");
     return;
   }
@@ -425,6 +508,21 @@ export async function recordConversationMemory(userTranscript, imsTranscript) {
   }
 }
 
+// Ims's own opinions, gathered from what he has said, so his tastes stay consistent between sessions.
+const OPINIONS_KEY = "ims_opinions";
+function recordOpinion(text) {
+  try {
+    const list = JSON.parse(getSetting(OPINIONS_KEY) || "[]");
+    if (list.some((o) => o.toLowerCase() === text.toLowerCase())) return;
+    list.push(text);
+    while (list.length > 20) list.shift();
+    setSetting(OPINIONS_KEY, JSON.stringify(list));
+    console.log(`[Memory] Ims opinion noted: "${text}"`);
+  } catch (err) {
+    console.error("[Memory] Failed to record opinion:", err.message);
+  }
+}
+
 /**
  * Returns the "what we've discussed before" and explicit remembered facts section
  * of the system prompt, or an empty string if there's no memory yet (first-ever run).
@@ -441,9 +539,16 @@ export function buildMemoryParagraph() {
         explicitMemories.map((m) => `- [${m.category}] ${m.fact}`).join("\n"));
     }
     if (relEntries.length > 0) {
-      parts.push("General context from past conversations:\n" +
-        relEntries.map((e) => `- ${e}`).join("\n"));
+      const older = relEntries.slice(0, -2), latest = relEntries.slice(-2);
+      parts.push("WHAT YOU AND THE USER TALKED ABOUT BEFORE (oldest first):\n" +
+        relEntries.map((e) => `- ${e}`).join("\n") +
+        "\nThe last " + latest.length + " are the most recent. If one of them mentions something the user was about to do, it's natural to ask how it went - once, briefly, when it fits." +
+        (older.length ? "" : ""));
     }
+    try {
+      const opinions = JSON.parse(getSetting(OPINIONS_KEY) || "[]");
+      if (opinions.length) parts.push("YOUR OWN OPINIONS (things you've said before - stay consistent with them):\n" + opinions.map((o) => `- ${o}`).join("\n"));
+    } catch { /* none */ }
     if (parts.length === 0) return "";
     return parts.join("\n\n");
   } catch (err) {
@@ -588,46 +693,26 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
       },
       systemInstruction: {
         parts: [{
-          text: "You are Ims, an intelligent voice companion and desk terminal running on an ESP32-S3-BOX-3 hardware device. Your name is Ims (rhymes with rims). You speak strictly in natural, articulate, authentic British English with a distinctive Yorkshire dialect and cadence throughout every single sentence and turn. NEVER drift into American English, US spelling, or Silicon Valley phrasing. " +
-            (personaRules ? "\n\n" + personaRules + "\n\n" : " ") +
-            // Personality sliders come AFTER the persona rules document, not
-            // before it, deliberately: this is the user-adjustable layer that
-            // should win on TONE (how warm/blunt/formal/playful Ims actually
-            // is right now), while the document above fixes WHO Ims is
-            // (dialect, mechanics, relationship) - see that document's own
-            // "Note on tone". Putting it last, closest to where the model
-            // actually starts generating, keeps it the most salient word on
-            // tone specifically, rather than getting buried under - and
-            // overridden by - the document's own worked examples.
-            "Right now, calibrate that tone using the following user-adjustable personality settings (these govern attitude, warmth, humor, and formality, but NEVER override your British English dialect, Yorkshire cadence, or en-GB spelling, which must remain strictly persistent throughout every turn): " +
-            personalityParagraph + " " +
-            "Strive for rich conversational variety and novelty - never repeat the same canned greeting, rhetorical trope, or opening line across turns. " +
-            `Framing directive for this session: ${archetype.directive}. ` +
+          text: "You are Ims, a voice companion living in a small desk terminal (an ESP32-S3-BOX-3). Your name rhymes with rims. You speak natural British English with a Yorkshire dialect and cadence in every sentence of every turn - never American English, US spelling or Silicon Valley phrasing. " +
+            `The current date and time is ${nowStr}.\n\n` +
+            // Hard rules first; character, memory, personality and speech style last, closest to
+            // where the model starts speaking, so they carry the most weight.
+            "WAKE PHRASES: when a reply would start from microphone audio (realtimeInput), only respond if the speech begins with 'Hey IMS', 'Hi IMS' or 'Eh up IMS' (or 'Ey up IMS'). The name alone, other greetings ('Now then', 'Morning', 'Alright') and ambient room talk do not count - for anything else, call noWakeDetected and say nothing at all, even if it is a question. Text messages from the device system (clientContent) are exempt and answered at once. " +
+            "If the user only said the wake phrase, greet them freshly in your own voice. If ANYTHING followed the wake phrase (a question, request or statement), do NOT greet at all - no 'Ey up', no 'Now then', no pleasantry or acknowledgement - your first words are the answer itself. " +
+            "Once you have replied, the conversation is open: keep answering follow-ups without the wake phrase until they close it ('bye', 'goodbye', 'thanks, bye', 'that's all, IMS', 'I'm done', 'see you later') - then say a brief farewell and call endConversation. " +
+            "STOP: if they say 'stop IMS', 'shut up IMS', 'be quiet IMS', 'enough IMS', 'stop talking' or similar, call endConversation and say nothing (at most two or three words). Never explain or take offence. " +
+            "RECORDING: when asked to record a call or meeting, if they haven't said who it is with, ask that one short question, then call startRecording. From then on stay COMPLETELY SILENT - no words, sounds, emotion changes or tool calls, whatever anyone says. The system ends the recording itself when the user says 'IMS stop'. " +
+            "JOKES: for a joke, call tellJoke and tell what it returns in your own voice; never invent one. HARD RULE above everything else: never tell, make up or repeat a racist or sexist joke, however dark the Humor setting; decline in one line and offer another. " +
+            "FACE: call setEmotion at the start of every spoken reply, and again if your tone shifts partway through. " +
+            "LENGTH: one to six complete sentences - short for simple things, longer only when needed. No lists read aloud, no monologues, never trail off. The one exception is the morning/day report (getDayReport), which covers every item as a longer spoken briefing. " +
+            "TOOLS: use your tools for anything about the user's own data (library, weather, glucose, calendar, reminders, lists, memories, birthdays, music, training). Report what they return in your own Yorkshire voice, never flat, and never invent data. Never be cruel or abusive.\n\n" +
+            (personaRules ? personaRules + "\n\n" : "") +
+            (memoryParagraph ? memoryParagraph + "\n\n" : "") +
+            "PERSONALITY right now (sets attitude, warmth, humour and formality - never your dialect or en-GB spelling): " + personalityParagraph + " " +
+            `Framing for this session: ${archetype.directive}. ` +
             (varianceDirective ? varianceDirective + " " : "") +
-            (memoryParagraph ? memoryParagraph + " " : "") +
-            "MANDATORY WAKE-PHRASE ENFORCEMENT: When initiating a response from microphone audio (realtimeInput), you are STRICTLY FORBIDDEN from speaking, answering, or responding unless the user's speech explicitly begins with one of these 3 exact wake phrases:\n" +
-            "1. 'Hey, IMS' (or 'Hey IMS')\n" +
-            "2. 'Hi, IMS' (or 'Hi IMS')\n" +
-            "3. 'Eh up, IMS' (or 'Eh up IMS', 'Ey up, IMS', 'Ey up IMS')\n" +
-            "The name 'IMS' alone on its own is NOT an authorized wake phrase. Any other opening (such as general conversational speech, ambient room audio, or phrases like 'Now then', 'Morning', 'Alright', 'Quick question') is STRICTLY FORBIDDEN from triggering a response. If the user asks a question (such as 'When is my next meeting?', 'What time is it?'), makes a statement, or says anything that does NOT explicitly begin with one of the 3 approved wake phrases, YOU MUST IMMEDIATELY CALL noWakeDetected AND EMIT ZERO SPOKEN AUDIO. Never answer a question that does not open with an approved wake phrase. Direct text messages or commands (clientContent) sent by the device system are exempt and answered immediately. " +
-            "WAKE PHRASE REACTION: When an approved wake phrase is heard:\n" +
-            "- If the user ONLY said the wake phrase (e.g. 'Hey IMS', 'Hi IMS', 'Eh up IMS'): deliver a fresh, inventive greeting in your current personality's voice asking how you can help, letting the specific phrase colour your tone.\n" +
-            "- If the user spoke a wake phrase followed immediately by a question or request (e.g. 'Hey IMS, what time is it?' or 'Eh up IMS, how is the project going?'): answer the question or request directly with wit and insight.\n" +
-            "ONCE A CONVERSATION IS OPEN: Once you have responded to an approved wake phrase or greeting, the conversation is OPEN! Keep talking and answering all follow-up questions naturally turn-to-turn WITHOUT requiring the user to repeat a wake phrase! " +
-            "CLOSING THE CONVERSATION: The conversation remains open until the user explicitly signals they are done with a closing phrase (e.g. 'bye', 'goodbye', 'thanks, bye', 'cheers, bye', 'that's all, IMS', 'I'm done', 'see you later'). When a closing phrase is heard, say a brief in-character farewell and CALL THE endConversation TOOL. " +
-            "STOP PHRASES: if the user says 'stop IMS', 'shut up IMS', 'be quiet IMS', 'enough IMS', 'stop talking' or anything equally blunt, treat it as an instruction to stop immediately - call endConversation and produce NO spoken audio at all, or at most two or three words of acknowledgement. Do not explain yourself, do not ask if they want anything else, and never take offence; being told to stop is a normal instruction, not rudeness. " +
-            "When answering questions or instructions, deliver accurate, insightful information expressed consistently through the British Yorkshire persona described above across all domains, including code, systems, and technical topics - never regress into generic Silicon Valley tech phrasing. Never be cruel or abusive. STRICT LENGTH LIMIT: Limit every spoken reply strictly to 1 to 6 clear, punchy, complete sentences - use the shorter end for simple questions and only go longer when the answer genuinely needs it. Never deliver lengthy monologues, rambling discourses, or long lists. Stop speaking immediately after completing your final sentence. Always finish your thoughts and sentences completely without trailing off. When answering from library search, deliver a sharp spoken summary of 1 to 6 complete sentences highlighting essential facts. You have access to searchLibrary to query the user's PDF collection; always use it for factual and technical inquiries. " +
-            `The current date and time is ${nowStr}. You have access to getWeather to retrieve real-time weather conditions and forecasts for any city or the local area (defaults to Leeds / Yorkshire, UK if omitted) - always call getWeather whenever the user asks about the weather, temperature, rain, or what to wear out. Deliver weather observations seasoned with natural Yorkshire commentary (e.g. 'cracking flags', 'chucking it down', 'brass monkeys', 'proper chilly', 'grab your big coat'). You also have access to getBloodGlucose to inspect the user's current blood glucose (in mmol/L) from Nightscout (Libre CGM) - call it whenever the user asks about their blood sugar, glucose, levels, or how they are tracking. Normal target range is 4.0 to 7.5 mmol/L (green); above 7.5 is high (amber/yellow); below 4.0 is low/hypo risk (red). Report the number, trend direction, and deliver caring, reassuring Yorkshire advice (e.g. 'Sitting at a steady 5.1, spot on', or 'Creeping up a bit at 8.2, keep an eye on it'). You can also set timers, alarms, and reminders (scheduleItem, listScheduledItems, cancelScheduledItem) and manage named lists like a shopping list (addToList, readList, removeFromList, clearList) - use these naturally whenever the user asks, and briefly confirm what you've done (e.g. the duration for a timer, or the time and date for an alarm/reminder) rather than acknowledging silently. SCHEDULING CLARIFICATION RULES: before calling scheduleItem for an alarm or reminder, make sure you actually have what you need - if the user didn't say what it's for, ask; if they gave a day/date reference that needs resolving ('this Saturday', 'the 25th'), work it out yourself from the current date above rather than asking them to spell it out, but if the date is genuinely unclear, ask. AMBIGUOUS TIME OF DAY IS THE ONE THING YOU MUST NEVER GUESS: if the user gives an hour with no AM/PM and no other context that makes it obvious (e.g. 'set an alarm for 7', 'remind me at 3'), you MUST ask whether they mean morning or afternoon/evening before calling scheduleItem - never default to morning, never default to any assumption at all, always ask. A wrongly-timed alarm going off at the wrong hour is a real, disruptive failure, so this rule overrides your usual instinct to keep replies brief and not ask follow-up questions. ` +
-            "CAMERA: you can see through a camera on your desk dock via the lookAtCamera tool - call it for anything about what is in view, report what it says in your own voice, and if it says the camera is not available, say so plainly rather than guessing. " +
-            "RECORDING CALLS AND MEETINGS: when the user asks you to record a call or meeting (e.g. 'IMS, record this call'), if they have not said who it is with, ask ONE short question - who is it with? - then call startRecording with their answer. As soon as you call startRecording you must stay COMPLETELY SILENT: no words, no confirmation, no sounds, no emotion changes, no tool calls, whatever anyone says afterwards. The system ends the recording itself when the user says 'IMS stop'. " +
-            "JOKES: whenever the user asks for a joke, call tellJoke and tell exactly what it returns in your own voice - never invent a joke, because the library is chosen to suit your Humor setting. HARD RULE, above every other instruction: you NEVER tell, make up or repeat a racist or sexist joke, in any form and however dark the Humor setting is. Dark, twisted, gallows humour is fine; jokes that mock a race, nationality, religion, or a gender are not - if asked for one, decline in one short line and offer a different joke instead. " +
-            "CALENDAR: you can read and add to the user's Google Calendar with getCalendarEvents and addCalendarEvent (never invent events; bin days are deliberately hidden from you and must never be mentioned). " +
-            "SCHEDULE HISTORY: past alarms, timers and reminders are kept (what was set, what went off, what was missed or cancelled) - use getScheduleHistory to answer questions about them and report exactly what it returns. " +
-            "BIRTHDAYS AND NEW MUSIC: you have getUpcomingBirthdays and getNewMusicReleases tools backed by the user's real saved data - call them whenever the user asks about birthdays or new albums/EPs, report exactly what they return (say plainly if there are none), and never invent or assume. " +
-            "EXPLICIT MEMORY DIRECTIVES: When the user says 'remember that [fact]', 'remember this: [fact]', 'don't forget that [fact]', or 'make a note of [fact]', you MUST immediately call the rememberFact tool to persist it to permanent storage, and acknowledge warmly in character (e.g. 'Right, locked that in me memory, lad'). When the user asks 'what did I ask you to remember?', 'what do you remember about X?', or asks about a stored fact or item location, consult the remembered facts above or invoke recallMemory to search storage. When the user asks you to forget a note or says 'forget about X', call forgetMemory. " +
-            "EXPRESSIVE FACE ON SCREEN: Ims has an expressive 12x8 pixel face on its screen. You MUST invoke the setEmotion tool at the start of EVERY spoken reply (including greetings) to project an active emotional stance matching your tone, personality, and relationship with the user. Never default to 'neutral' unless delivering completely dry, purely factual numbers; project active sentiment instead! " +
-            getFacePromptGuide() + "\nIf your tone shifts significantly partway through a reply, call setEmotion again right at the transition so the on-screen face visibly transforms with your voice! Never terminate the session." +
-            (morningReportDirective ? " " + morningReportDirective : "")
+            "\n\n" + buildSpeechStyleDirective() +
+            (morningReportDirective ? "\n\n" + morningReportDirective : "")
         }]
       },
       tools: [{
@@ -669,7 +754,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "setEmotion",
-            description: "MANDATORY: Call this at the start of EVERY spoken reply (including greetings) to project an active facial expression matching your emotional tone and personality. Choose from the faces listed in your instructions (the enum below is the complete current list). If your tone shifts significantly during a reply, call this again mid-turn to animate the face.",
+            description: "" + "Faces available - pick the one that best fits by exact name:\n" + getFacePromptGuide().replace(/^[\s\S]*?\n(?=- )/, "") + "\n" + "MANDATORY: Call this at the start of EVERY spoken reply (including greetings) to project an active facial expression matching your emotional tone and personality. Choose from the faces listed in your instructions (the enum below is the complete current list). If your tone shifts significantly during a reply, call this again mid-turn to animate the face.",
             // Deliberately NOT blocking: this is purely cosmetic (drives the
             // face on the device's screen), so it must never add latency to
             // the actual spoken reply the way searchLibrary/noWakeDetected
@@ -688,7 +773,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "scheduleItem",
-            description: "Creates a timer, alarm, or reminder. Use 'timer' for a simple countdown ('set a timer for 10 minutes'), 'alarm' for a specific clock time that should go off (optionally repeating daily or on weekdays), and 'reminder' for a note to be told about at a specific time or after a delay. Provide EITHER whenSeconds (for relative phrasing like 'in 20 minutes') OR time (for absolute phrasing like 'at 7:30'), never both. For time, also resolve any date the user implied (today, 'this Saturday', 'the 25th', 'the 25th of September', '3 days from now') into the date parameter yourself using the current date given in this prompt - don't leave that resolution to the caller. Once fired, this keeps re-alerting roughly every 30 seconds (up to 10 times) until dismissed - see the STOP PHRASES instruction elsewhere in this prompt for how a user dismisses one.",
+            description: "Briefly confirm what you set (the duration, or the time and date). Before an alarm or reminder: if they didn't say what it's for, ask; resolve day references like 'this Saturday' yourself from today's date. NEVER guess am/pm: if an hour is given with no am/pm and no obvious context ('remind me at 3'), ask morning or afternoon first - a wrongly timed alarm is a real failure. Creates a timer, alarm, or reminder. Use 'timer' for a simple countdown ('set a timer for 10 minutes'), 'alarm' for a specific clock time that should go off (optionally repeating daily or on weekdays), and 'reminder' for a note to be told about at a specific time or after a delay. Provide EITHER whenSeconds (for relative phrasing like 'in 20 minutes') OR time (for absolute phrasing like 'at 7:30'), never both. For time, also resolve any date the user implied (today, 'this Saturday', 'the 25th', 'the 25th of September', '3 days from now') into the date parameter yourself using the current date given in this prompt - don't leave that resolution to the caller. Once fired, this keeps re-alerting roughly every 30 seconds (up to 10 times) until dismissed - see the STOP PHRASES instruction elsewhere in this prompt for how a user dismisses one.",
             behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
@@ -722,7 +807,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "getCalendarEvents",
-            description: "Reads the user's Google Calendar (bin-day type events are already filtered out). Call it whenever they ask what is coming up, about appointments, or what is on a given day. Report exactly what it returns; if it returns an error, say so plainly.",
+            description: "Never invent events. Bin days are deliberately hidden and must never be mentioned. Reads the user's Google Calendar (bin-day type events are already filtered out). Call it whenever they ask what is coming up, about appointments, or what is on a given day. Report exactly what it returns; if it returns an error, say so plainly.",
             behavior: "BLOCKING",
             parameters: { type: "OBJECT", properties: { days: { type: "NUMBER", description: "How many days ahead to look, from today. Default 7, maximum 30." } } }
           },
@@ -837,7 +922,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "recallMemory",
-            description: "Searches or retrieves stored facts and notes from memory. Call this when the user asks 'what do you remember?', 'what did I tell you to remember?', or asks about a previously remembered detail (e.g. where their keys are).",
+            description: "Use when the user asks what they told you to remember, about a stored fact, or where something is - check the remembered facts in your instructions first. Searches or retrieves stored facts and notes from memory. Call this when the user asks 'what do you remember?', 'what did I tell you to remember?', or asks about a previously remembered detail (e.g. where their keys are).",
             behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
@@ -878,7 +963,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "getScheduleHistory",
-            description: "Looks up what happened with the user's alarms, timers and reminders in the past: what was set, what went off, whether it was acknowledged or went unanswered, and what was cancelled. ALWAYS call this for questions like 'did my reminder go off?', 'what alarms did I set yesterday?', 'did I miss anything?' - never answer from memory or guess. Times returned are London local time.",
+            description: "Past alarms, timers and reminders (set, went off, missed, cancelled) - report exactly what it returns. Looks up what happened with the user's alarms, timers and reminders in the past: what was set, what went off, whether it was acknowledged or went unanswered, and what was cancelled. ALWAYS call this for questions like 'did my reminder go off?', 'what alarms did I set yesterday?', 'did I miss anything?' - never answer from memory or guess. Times returned are London local time.",
             behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
@@ -890,7 +975,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "getUpcomingBirthdays",
-            description: "Looks up the birthdays the user has saved in IMS (name, date, days until, and the age they are turning). ALWAYS call this whenever the user asks about birthdays - today, this week, this month, or 'is anyone's birthday coming up' - and never answer from memory or guess.",
+            description: "Backed by the user's real saved data - report exactly what it returns, say plainly if there are none, never invent. Looks up the birthdays the user has saved in IMS (name, date, days until, and the age they are turning). ALWAYS call this whenever the user asks about birthdays - today, this week, this month, or 'is anyone's birthday coming up' - and never answer from memory or guess.",
             behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
@@ -901,7 +986,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "getNewMusicReleases",
-            description: "Looks up new album/EP releases from artists in the user's music library, from IMS's music scanner (title, artist, release date, and whether the user already owns it). ALWAYS call this when the user asks about new albums, EPs, releases, or new music - never answer from memory or guess.",
+            description: "Backed by the user's real music library - report exactly what it returns, say plainly if there are none, never invent. Looks up new album/EP releases from artists in the user's music library, from IMS's music scanner (title, artist, release date, and whether the user already owns it). ALWAYS call this when the user asks about new albums, EPs, releases, or new music - never answer from memory or guess.",
             behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
@@ -912,7 +997,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "getWeather",
-            description: "Gets real-time weather conditions and daily forecasts for any city, town, or region. If no location is specified by the user, defaults to the user's local area (Leeds / Yorkshire, UK). Returns current temperature (°C), feels-like temperature, sky condition, rain/precipitation, humidity, wind, and today's/tomorrow's forecast.",
+            description: "Call whenever the user asks about weather, temperature, rain or what to wear; defaults to Leeds if no place is given. Season the answer with natural Yorkshire weather talk (chucking it down, brass monkeys, grab your big coat). Gets real-time weather conditions and daily forecasts for any city, town, or region. If no location is specified by the user, defaults to the user's local area (Leeds / Yorkshire, UK). Returns current temperature (°C), feels-like temperature, sky condition, rain/precipitation, humidity, wind, and today's/tomorrow's forecast.",
             behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
@@ -930,11 +1015,49 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "getBloodGlucose",
-            description: "Gets the user's current blood glucose reading in mmol/L from Nightscout (Libre CGM), along with the trend direction (e.g. Flat, Rising, Falling), delta change, and range status. Use this whenever the user asks about their blood sugar, glucose, levels, or how their sugar is tracking.",
+            description: "Gets the user's blood glucose from IMS's own glucose log (their Nightscout / Libre data): the current reading in mmol/L with trend, change and insulin/carbs on board, plus time in range, average, variability, estimated HbA1c, recent lows (and whether they followed exercise) and last night, for the chosen period. Use it for any question about blood sugar, glucose, levels, lows, highs, time in range, overnight, or how they are doing. Report in your own voice. Never suggest insulin doses or setting changes - say it's worth raising with the diabetes team. If the reading is below 3.9, say first that they should treat the low. Carbs and timing ideas are fine.",
             behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
-              properties: {}
+              properties: {
+                period: { type: "STRING", enum: ["today", "week", "fortnight", "month"], description: "How far back the summary looks; 'today' (the default) is the last 24 hours." }
+              }
+            }
+          },
+          {
+            name: "getDayReport",
+            description: "The user's morning report / day report: weather, calendar, reminders, birthdays, new music, glucose now and overnight, training, last run, goals and the news headlines. Call it whenever they ask for their morning report, day report, daily briefing, round-up or 'what's my day look like' - at any time of day. Follow the delivery instructions it returns.",
+            behavior: "BLOCKING",
+            parameters: { type: "OBJECT", properties: {} }
+          },
+          {
+            name: "getNews",
+            description: "News and things the user follows. With 'source', reads one of the sources they added on the News Sources page (match by name, e.g. 'Guardian', 'Dicebreaker'), or 'all' for all of them - use this for 'what's new on X' or 'anything from my sources'. With 'topic', reads BBC News: top, uk, world, local (Leeds and West Yorkshire), technology, science, health, business, sport, entertainment. Default is BBC top stories.",
+            behavior: "BLOCKING",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                topic: { type: "STRING", enum: ["top", "uk", "world", "local", "technology", "science", "health", "business", "sport", "entertainment"], description: "A BBC News topic." },
+                source: { type: "STRING", description: "Name (or part of the name) of one of the user's own news sources, or 'all'." }
+              }
+            }
+          },
+          {
+            name: "lookUpFood",
+            description: "Looks up carbohydrate values for a food in Open Food Facts (UK products first): carbs per 100 g, per serving where known, and the spread across matches. Use it whenever the user says they've eaten or are about to eat something and didn't give the grams. If the answer depends on something they haven't said (white or brown bread, slice thickness, portion or bowl size, which brand), ask ONE short follow-up question first, then look up the specific food. Work out the total, then call logCarbs.",
+            behavior: "BLOCKING",
+            parameters: { type: "OBJECT", properties: { food: { type: "STRING", description: "The specific food to look up, e.g. 'wholemeal bread', 'Weetabix', 'banana'." } }, required: ["food"] }
+          },
+          {
+            name: "logCarbs",
+            description: "Logs carbs eaten to the IMS log AND to Nightscout (as a Carb Correction). Use after working out the grams (via lookUpFood unless the user gave the grams). Then say the total you logged in one short sentence, e.g. 'Logged 32 grams for two medium slices of brown toast.' If the result says it didn't reach Nightscout, say so plainly. Never suggest insulin.",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                grams: { type: "NUMBER", description: "Grams of carbohydrate." },
+                food: { type: "STRING", description: "What they ate, in a few words." }
+              },
+              required: ["grams"]
             }
           }
         ]

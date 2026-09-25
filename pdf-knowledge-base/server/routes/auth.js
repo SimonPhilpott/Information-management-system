@@ -3,6 +3,7 @@ import { google } from 'googleapis';
 import { createOAuth2Client, storeTokens, getAuthStatus, checkTokenHealth } from '../services/driveService.js';
 import config from '../config.js';
 import { publicOrigin, safeReturnPath } from '../middleware/publicOrigin.js';
+import { isApprovedSession } from '../middleware/requireSession.js';
 
 const router = Router();
 
@@ -115,6 +116,7 @@ router.get('/status', (req, res) => {
   res.json({
     ...status,
     user: req.session.user || null,
+    signedIn: isApprovedSession(req),
     isAuthorized: isAdmin && (!!req.session.user || !!status.email)
   });
 });
@@ -124,10 +126,9 @@ router.get('/status', (req, res) => {
  */
 router.post('/logout', async (req, res) => {
   try {
-    req.session.destroy();
-    const { default: db } = await import('../db/database.js');
-    db.prepare('DELETE FROM oauth_tokens WHERE id = 1').run();
-    res.json({ success: true });
+    // Signing out ends this browser's session only; the server keeps its own Google connection
+    // so the calendar, Drive and the device carry on working.
+    req.session.destroy(() => res.json({ success: true }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

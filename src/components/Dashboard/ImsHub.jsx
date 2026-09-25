@@ -1,5 +1,6 @@
+import AccountChip from './AccountChip';
 import React from 'react';
-import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight , Droplets , Newspaper } from 'lucide-react';
 
 // Each entry here is one card on the hub. Add a new one whenever a new
 // /ims/* page is built - this is the single place that needs to know about
@@ -9,7 +10,7 @@ const LINKS = [
   {
     path: '/ims/memories',
     title: 'Memories',
-    description: 'View, add, edit, and delete everything IMS has been told to remember.',
+    description: 'View, add, edit and delete everything IMS remembers.',
     icon: Brain,
     gradient: 'from-cyan-500 to-indigo-600',
     glow: 'rgba(0,242,255,0.3)'
@@ -17,7 +18,7 @@ const LINKS = [
   {
     path: '/ims/persona',
     title: 'Persona',
-    description: "Edit IMS's fixed dialect, identity, and tool-usage rules (ims_persona_rules.md).",
+    description: 'Edit the fixed dialect, identity and tool-usage rules.',
     icon: Drama,
     gradient: 'from-purple-500 to-fuchsia-600',
     glow: 'rgba(192,38,211,0.3)'
@@ -25,7 +26,7 @@ const LINKS = [
   {
     path: '/ims/musicscan',
     title: 'Music Scanner',
-    description: 'New album/EP releases from artists in MUZAK that you don\'t have yet, scanned nightly.',
+    description: 'Scan for new album and EP releases from your MUZAK artists.',
     icon: Music,
     gradient: 'from-amber-500 to-orange-600',
     glow: 'rgba(249,115,22,0.3)'
@@ -33,7 +34,7 @@ const LINKS = [
   {
     path: '/ims/alarms',
     title: 'Alarms',
-    description: 'View, add, edit, and cancel every alarm set on IMS.',
+    description: 'View, add, edit and cancel alarms.',
     icon: Bell,
     gradient: 'from-red-500 to-rose-600',
     glow: 'rgba(244,63,94,0.3)'
@@ -41,7 +42,7 @@ const LINKS = [
   {
     path: '/ims/timers',
     title: 'Timers',
-    description: 'View, add, edit, and cancel every timer set on IMS.',
+    description: 'View, add, edit and cancel timers.',
     icon: Clock,
     gradient: 'from-sky-500 to-blue-600',
     glow: 'rgba(59,130,246,0.3)'
@@ -49,7 +50,7 @@ const LINKS = [
   {
     path: '/ims/reminders',
     title: 'Reminders',
-    description: 'View, add, edit, and cancel every reminder set on IMS.',
+    description: 'View, add, edit and cancel reminders.',
     icon: PenLine,
     gradient: 'from-emerald-500 to-teal-600',
     glow: 'rgba(16,185,129,0.3)'
@@ -57,7 +58,7 @@ const LINKS = [
   {
     path: '/ims/birthday',
     title: 'Birthdays',
-    description: 'Add birthdays - a cake icon appears on IMS within a week of any of them.',
+    description: 'Track birthdays, with cake icons appearing on IMS.',
     icon: Cake,
     gradient: 'from-pink-500 to-fuchsia-600',
     glow: 'rgba(236,72,153,0.3)'
@@ -65,7 +66,7 @@ const LINKS = [
   {
     path: '/ims/boardgames',
     title: 'Board Games',
-    description: 'Your BoardGameGeek collection with expansions, and a want-to-sell tick.',
+    description: 'Track your BoardGameGeek collection, expansions and want-to-sell list.',
     icon: Dices,
     gradient: 'from-lime-500 to-green-600',
     glow: 'rgba(132,204,22,0.3)'
@@ -73,10 +74,12 @@ const LINKS = [
   {
     path: '/ims/look',
     title: 'Look',
-    description: 'See what IMS sees, take snapshots, and ask questions about them.',
+    description: 'See what IMS sees through the camera and ask questions.',
     icon: Eye,
     gradient: 'from-cyan-500 to-indigo-600',
     glow: 'rgba(56,189,248,0.3)'
+,
+    disabled: 'Needs the camera, which is not working yet.'
   },
   {
     path: '/ims/faces',
@@ -85,11 +88,13 @@ const LINKS = [
     icon: ScanFace,
     gradient: 'from-violet-500 to-purple-600',
     glow: 'rgba(139,92,246,0.3)'
+,
+    disabled: 'Needs the camera, which is not working yet.'
   },
   {
     path: '/ims/facedesigner',
     title: 'Face Designer',
-    description: "Design Ims's faces on a dot grid and say when each should be used.",
+    description: 'Design faces on a dot grid and schedule when they appear.',
     icon: Smile,
     gradient: 'from-yellow-400 to-amber-500',
     glow: 'rgba(250,204,21,0.3)'
@@ -97,7 +102,7 @@ const LINKS = [
   {
     path: '/ims/wifi',
     title: 'Wi-Fi',
-    description: 'Wi-Fi networks Ims can use. Passwords are encrypted and hidden until you reveal them.',
+    description: 'Manage Wi-Fi networks and encrypted passwords.',
     icon: Wifi,
     gradient: 'from-sky-400 to-blue-600',
     glow: 'rgba(56,189,248,0.3)'
@@ -105,7 +110,7 @@ const LINKS = [
   {
     path: '/ims/recordings',
     title: 'Recordings',
-    description: 'Transcripts of calls and meetings Ims recorded silently, with an AI summary.',
+    description: 'Silently record calls and meetings, with AI summaries.',
     icon: Mic,
     gradient: 'from-rose-500 to-red-600',
     glow: 'rgba(244,63,94,0.3)'
@@ -113,15 +118,31 @@ const LINKS = [
   {
     path: '/ims/calendar',
     title: 'Calendar',
-    description: 'Your Google Calendar: appointments, and rules that show icons or set reminders.',
+    description: 'Sync and view Google Calendar appointments and rules.',
     icon: CalendarDays,
     gradient: 'from-indigo-500 to-blue-600',
     glow: 'rgba(99,102,241,0.3)'
   },
   {
+    path: '/ims/news',
+    title: 'News Sources',
+    description: 'Choose the websites and feeds IMS gathers news and interests from, for the morning or day report.',
+    icon: Newspaper,
+    gradient: 'from-sky-500 to-blue-600',
+    glow: 'rgba(14,165,233,0.3)'
+  },
+  {
+    path: '/ims/glucose',
+    title: 'Blood Sugar',
+    description: 'Log and analyse glucose data, carbs, patterns and AI insights.',
+    icon: Droplets,
+    gradient: 'from-rose-500 to-red-600',
+    glow: 'rgba(244,63,94,0.3)'
+  },
+  {
     path: '/ims/activities',
     title: 'Activities',
-    description: 'Your Strava activities, logged for analysis: weekly load, records and an AI training review.',
+    description: 'Log and analyse Strava activities for training reviews.',
     icon: Activity,
     gradient: 'from-orange-500 to-red-600',
     glow: 'rgba(249,115,22,0.3)'
@@ -129,11 +150,19 @@ const LINKS = [
   {
     path: '/ims/runplanner',
     title: 'Run Planner',
-    description: 'Pick a Komoot route or distance and get carbs and timing to keep glucose steady, from your own data.',
+    description: 'Plan Komoot routes, timing and carbs to keep glucose steady.',
     icon: Route,
     gradient: 'from-emerald-500 to-teal-600',
     glow: 'rgba(16,185,129,0.3)'
   }
+];
+
+const SECTIONS = [
+  ['Core functions', ['/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings']],
+  ['Personal', ['/ims/musicscan', '/ims/boardgames', '/ims/news']],
+  ['Health and fitness', ['/ims/glucose', '/ims/activities', '/ims/runplanner']],
+  ['Customisation and system settings', ['/ims/facedesigner', '/ims/persona', '/ims/wifi']],
+  ['Disabled', ['/ims/look', '/ims/faces']],
 ];
 
 export default function ImsHub({
@@ -185,17 +214,20 @@ export default function ImsHub({
         </div>
 
         {onThemeToggle && (
-          <button
-            onClick={onThemeToggle}
-            className={`p-2 rounded-xl transition-all border ${
-              isDark
-                ? 'bg-white/5 hover:bg-white/10 text-amber-400 border-white/5'
-                : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 text-slate-700 border-[#2E2B27]/10'
-            }`}
-            title={`Switch to ${isDark ? 'Light' : 'Dark'} Mode`}
-          >
-            {isDark ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <AccountChip isDark={isDark} />
+            <button
+              onClick={onThemeToggle}
+              className={`p-2 rounded-xl transition-all border ${
+                isDark
+                  ? 'bg-white/5 hover:bg-white/10 text-amber-400 border-white/5'
+                  : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 text-slate-700 border-[#2E2B27]/10'
+              }`}
+              title={`Switch to ${isDark ? 'Light' : 'Dark'} Mode`}
+            >
+              {isDark ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+          </div>
         )}
       </header>
 
@@ -204,14 +236,19 @@ export default function ImsHub({
           Everything about IMS the voice terminal that lives outside a normal chat - what it remembers, and who it is. More pages will land here over time.
         </p>
 
+        {SECTIONS.map(([section, paths]) => (
+        <section key={section} className="flex flex-col gap-3">
+        <h2 className={`text-xs font-black uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{section}</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {LINKS.map((link) => {
+          {paths.map((p) => LINKS.find((l) => l.path === p)).filter(Boolean).map((link) => {
             const Icon = link.icon;
             return (
               <button
                 key={link.path}
-                onClick={() => navigateTo(link.path)}
-                className={`text-left p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-3 group hover:shadow-lg ${
+                onClick={() => !link.disabled && navigateTo(link.path)}
+                disabled={Boolean(link.disabled)}
+                title={link.disabled || undefined}
+                className={`text-left p-5 rounded-2xl border transition-all duration-200 flex flex-col gap-3 group ${link.disabled ? 'opacity-40 grayscale cursor-not-allowed' : 'hover:shadow-lg'} ${
                   isDark
                     ? 'bg-slate-900/50 hover:bg-slate-900/80 border-white/5 hover:border-white/20 shadow-[0_4px_20px_rgba(0,0,0,0.2)]'
                     : 'bg-white hover:bg-white/90 border-[#2E2B27]/10 hover:border-[#899981]/50 shadow-sm'
@@ -231,6 +268,7 @@ export default function ImsHub({
                   <p className={`text-xs mt-1 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                     {link.description}
                   </p>
+                  {link.disabled && <p className="text-[11px] mt-1 font-semibold text-slate-500">{link.disabled}</p>}
                 </div>
                 <span className={`text-[10px] font-mono tracking-wide ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
                   {link.path}
@@ -239,6 +277,8 @@ export default function ImsHub({
             );
           })}
         </div>
+        </section>
+        ))}
       </main>
     </div>
   );

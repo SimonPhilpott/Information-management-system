@@ -1,6 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import { spawn, execFile } from 'child_process';
+import { getSetting, setSetting } from '../db/database.js';
+import config from '../config.js';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // The scan engine lives outside this repo, in the pre-existing D:\Music
 // scanner project (it already has musicbrainzngs installed system-wide and
@@ -350,4 +353,64 @@ export function getNextScheduledRun() {
     y = next.getUTCFullYear(); mo = next.getUTCMonth() + 1; d = next.getUTCDate();
   }
   return new Date(londonWallTimeToUtcMs(y, mo, d, h, m)).toISOString();
+}
+
+// ---- want list and recommendations ---------------------------------------------------------------------
+const WANTS_KEY = 'music_wants';
+const RECS_KEY = 'music_recommendations';
+const wantKey = (w) => `${String(w.artist).toLowerCase()}|${String(w.title).toLowerCase()}`;
+
+export function getWants() {
+  let wants = [];
+  try { wants = JSON.parse(getSetting(WANTS_KEY) || '[]'); } catch { wants = []; }
+  const today = todayLondonDateStr();
+  const results = getResults().artists;
+  // Refresh each wanted release from the latest scan: its date may have firmed up, or it may now be owned.
+  return wants.map((w) => {
+    const r = results[w.artist]?.releases.find((x) => x.title.toLowerCase() === w.title.toLowerCase());
+    const cur = r ? { ...w, date: r.date, precision: r.precision, type: r.type, owned: Boolean(r.owned) } : w;
+    const released = cur.date && (cur.precision === 'day' ? cur.date <= today : cur.precision === 'month' ? cur.date < today.slice(0, 7) : Number(cur.date) < Number(today.slice(0, 4)));
+    return { ...cur, released: Boolean(released) };
+  }).sort((a, b) => Number(a.owned) - Number(b.owned) || String(a.date || '9999').localeCompare(String(b.date || '9999')));
+}
+
+export function addWant({ artist, title, date, precision, type }) {
+  if (!artist || !title) throw new Error('Need an artist and a title.');
+  let wants = [];
+  try { wants = JSON.parse(getSetting(WANTS_KEY) || '[]'); } catch { wants = []; }
+  if (!wants.some((w) => wantKey(w) === wantKey({ artist, title }))) wants.push({ artist, title, date: date || null, precision: precision || null, type: type || null, addedAt: Date.now() });
+  setSetting(WANTS_KEY, JSON.stringify(wants));
+  return getWants();
+}
+
+export function removeWant({ artist, title }) {
+  let wants = [];
+  try { wants = JSON.parse(getSetting(WANTS_KEY) || '[]'); } catch { wants = []; }
+  setSetting(WANTS_KEY, JSON.stringify(wants.filter((w) => wantKey(w) !== wantKey({ artist, title }))));
+  return getWants();
+}
+
+export function getSavedRecommendations() { try { return JSON.parse(getSetting(RECS_KEY) || 'null'); } catch { return null; } }
+
+// Artists you don't have yet, suggested from the ones you own most of. Anything already in the
+// library (by folder name or MusicBrainz name) is filtered out afterwards, whatever the AI says.
+export async function recommendArtists() {
+  const artists = Object.entries(getResults().artists);
+  if (!artists.length) throw new Error('Run a scan first so IMS knows your library.');
+  const owned = artists.map(([name, e]) => ({ name: e.mbName || name, genre: e.genre || '', n: e.releases.filter((r) => r.owned).length + (e.unlisted?.length || 0) }))
+    .sort((a, b) => b.n - a.n);
+  const have = new Set(artists.flatMap(([name, e]) => [name, e.mbName].filter(Boolean).map((x) => x.toLowerCase().replace(/^the /, ''))));
+  const top = owned.slice(0, 60).map((a) => `${a.name}${a.genre ? ` (${a.genre})` : ''}`).join('; ');
+  const prompt = `Here are the artists someone owns the most albums by: ${top}.
+They already own music by every artist in this list, so NEVER suggest any of them: ${[...new Set(artists.map(([name, e]) => e.mbName || name))].join('; ')}.
+Suggest 18 other artists they do not own who they would very likely enjoy, mixing close matches with a few braver picks. Real, findable artists only.
+Reply as JSON only: [{"artist": "...", "because": ["Owned Artist", "Owned Artist"], "why": "one short British-English sentence", "startWith": "one album to start with"}]`;
+  const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({ model: 'gemini-2.5-flash', generationConfig: { responseMimeType: 'application/json' } });
+  const text = (await model.generateContent(prompt)).response.text();
+  let list = [];
+  try { list = JSON.parse(text); } catch { throw new Error('The recommendation service returned something unreadable - try again.'); }
+  const picks = (Array.isArray(list) ? list : []).filter((r) => r && r.artist && !have.has(String(r.artist).toLowerCase().replace(/^the /, ''))).slice(0, 15);
+  const saved = { at: Date.now(), artists: picks };
+  setSetting(RECS_KEY, JSON.stringify(saved));
+  return saved;
 }

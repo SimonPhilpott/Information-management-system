@@ -34,6 +34,8 @@ import WifiPortal from './components/Dashboard/WifiPortal';
 import RecordingsPortal from './components/Dashboard/RecordingsPortal';
 import CalendarPortal from './components/Dashboard/CalendarPortal';
 import ActivitiesPortal from './components/Dashboard/ActivitiesPortal';
+import GlucosePortal from './components/Dashboard/GlucosePortal';
+import NewsPortal from './components/Dashboard/NewsPortal';
 import RunPlannerPortal from './components/Dashboard/RunPlannerPortal';
 import ImsHub from './components/Dashboard/ImsHub';
 
@@ -78,8 +80,7 @@ export default function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('auth') === 'success') {
-      window.history.replaceState({}, '', '/');
-      window.location.reload(); // Refresh to pick up new tokens
+      window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
 
@@ -1398,6 +1399,26 @@ export default function App() {
   if (currentPath === '/ims/runplanner' || currentPath.startsWith('/ims/runplanner')) {
     return (
       <RunPlannerPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/news' || currentPath.startsWith('/ims/news')) {
+    return (
+      <NewsPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/glucose' || currentPath.startsWith('/ims/glucose')) {
+    return (
+      <GlucosePortal
         theme={state.theme}
         onThemeToggle={actions.toggleTheme}
         setCurrentPath={setCurrentPath}
