@@ -1,6 +1,6 @@
 import AccountChip from './AccountChip';
 import React from 'react';
-import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight , Droplets , Newspaper } from 'lucide-react';
+import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight , Droplets , Newspaper , ListChecks , MessageSquareQuote } from 'lucide-react';
 
 // Each entry here is one card on the hub. Add a new one whenever a new
 // /ims/* page is built - this is the single place that needs to know about
@@ -124,6 +124,22 @@ const LINKS = [
     glow: 'rgba(99,102,241,0.3)'
   },
   {
+    path: '/ims/phrases',
+    title: 'Wake and Stop Phrases',
+    description: 'Record yourself saying the wake and stop phrases so Ims always recognises them, and add new ones.',
+    icon: MessageSquareQuote,
+    gradient: 'from-fuchsia-500 to-purple-600',
+    glow: 'rgba(192,38,211,0.3)'
+  },
+  {
+    path: '/ims/tasks',
+    title: 'Tasks',
+    description: 'Ask Ims to look into something in the background, and see what he found.',
+    icon: ListChecks,
+    gradient: 'from-teal-500 to-cyan-600',
+    glow: 'rgba(20,184,166,0.3)'
+  },
+  {
     path: '/ims/news',
     title: 'News Sources',
     description: 'Choose the websites and feeds IMS gathers news and interests from, for the morning or day report.',
@@ -158,10 +174,10 @@ const LINKS = [
 ];
 
 const SECTIONS = [
-  ['Core functions', ['/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings']],
+  ['Core functions', ['/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings', '/ims/tasks']],
   ['Personal', ['/ims/musicscan', '/ims/boardgames', '/ims/news']],
   ['Health and fitness', ['/ims/glucose', '/ims/activities', '/ims/runplanner']],
-  ['Customisation and system settings', ['/ims/facedesigner', '/ims/persona', '/ims/wifi']],
+  ['Customisation and system settings', ['/ims/facedesigner', '/ims/persona', '/ims/phrases', '/ims/wifi']],
   ['Disabled', ['/ims/look', '/ims/faces']],
 ];
 

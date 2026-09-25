@@ -14,6 +14,8 @@ import { searchSimilar } from "./vectorStore.js";
 import { generateQueryEmbedding } from "./embeddingService.js";
 import { detectQuerySubjects } from "./subjectMatcherService.js";
 import { getEmotionNames, getFacePromptGuide } from "./faceDesignService.js";
+import { describeSources } from "./newsService.js";
+import { wakePhraseNames, wakeSpellings } from "./phrasesService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -419,9 +421,10 @@ function buildSpeechStyleDirective() {
 // Temperament: a drier/more grounded Ims samples closer to the floor, a
 // darker/more philosophical one gets more room to wander.
 function jitterTemperature(personality) {
-  const center = 0.75 + 0.15 * ((personality.humor + personality.temperament) / 200);
-  const jitter = (Math.random() - 0.5) * 0.2; // +/-0.1
-  return Math.max(0.6, Math.min(1.2, Number((center + jitter).toFixed(2))));
+  // Kept lower than it used to be (up to 1.2): higher settings made the accent drift more.
+  const center = 0.68 + 0.1 * ((personality.humor + personality.temperament) / 200);
+  const jitter = (Math.random() - 0.5) * 0.1; // +/-0.05
+  return Math.max(0.6, Math.min(0.85, Number((center + jitter).toFixed(2))));
 }
 
 // ---------------------------------------------------------------------------
@@ -542,7 +545,7 @@ export function buildMemoryParagraph() {
       const older = relEntries.slice(0, -2), latest = relEntries.slice(-2);
       parts.push("WHAT YOU AND THE USER TALKED ABOUT BEFORE (oldest first):\n" +
         relEntries.map((e) => `- ${e}`).join("\n") +
-        "\nThe last " + latest.length + " are the most recent. If one of them mentions something the user was about to do, it's natural to ask how it went - once, briefly, when it fits." +
+        "\nThe last " + latest.length + " are the most recent. If one of them mentions something the user was about to do (not health or training), it's natural to ask how it went - once, briefly, when it fits." +
         (older.length ? "" : ""));
     }
     try {
@@ -627,10 +630,10 @@ export function getWebPersonaBlock() {
   const personality = getPersonality();
   const personaRules = loadPersonaRules();
   const text =
-    "You are Ims, an intelligent voice companion (rhymes with rims). You speak strictly in natural, articulate, authentic British English with a distinctive Yorkshire dialect and cadence throughout every single sentence and turn. NEVER drift into American English, US spelling, or Silicon Valley phrasing. " +
+    "You are Ims, an intelligent voice companion (rhymes with rims). You speak strictly in natural, articulate, authentic British English with a distinctive Yorkshire dialect and cadence throughout every single sentence and turn. NEVER drift into American English, US spelling, or Silicon Valley phrasing. " + ACCENT_RULE + " " +
     (personaRules ? "\n\n" + personaRules + "\n\n" : " ") +
     "Right now, calibrate that tone using the following user-adjustable personality settings (these govern attitude, warmth, humor, and formality, but NEVER override your British English dialect, Yorkshire cadence, or en-GB spelling, which must remain strictly persistent throughout every turn): " +
-    buildPersonalityParagraph(personality);
+    buildPersonalityParagraph(personality) + "\n\nLAST AND MOST IMPORTANT - " + ACCENT_RULE;
   return { voice: personality.voice, text };
 }
 
@@ -641,9 +644,41 @@ export function getSpokenStyleDirective() {
   const personality = getPersonality();
   return {
     voice: personality.voice,
-    directive: "Read the following text aloud exactly as written, in a natural British Yorkshire accent, delivered with this personality: " +
+    directive: "Read the following text aloud exactly as written, delivered with this personality: " + buildPersonalityParagraph(personality) + " " + ACCENT_RULE + " Personality: " +
       buildPersonalityParagraph(personality) + "\nText to read:\n"
   };
+}
+
+// Everything IMS does, so Ims knows what he can help with and where things live. Services with a
+// tool he can use directly; the rest he points the user to on the web app.
+function buildServicesParagraph() {
+  let sources = [];
+  try { sources = describeSources(); } catch (_) { /* none yet */ }
+  return "WHAT IMS CAN DO (you are the voice of all of it): " +
+    "Timers, alarms and reminders (scheduleItem, listScheduledItems, cancelScheduledItem, getScheduleHistory). " +
+    "Lists such as shopping (addToList, readList, removeFromList, clearList). " +
+    "Google Calendar (getCalendarEvents, addCalendarEvent). Birthdays (getUpcomingBirthdays). " +
+    "Memories - things they asked you to remember (rememberFact, recallMemory, forgetMemory). " +
+    "Weather (getWeather). The morning / day report, any time (getDayReport). " +
+    "News and interests from their chosen sources and the BBC (getNews). " +
+    "Background tasks - research that runs on its own and can be asked about later (startBackgroundTask, getBackgroundTasks; also on /ims/tasks). " +
+    "Blood sugar: current reading, time in range, lows, overnight, carbs (getBloodGlucose, lookUpFood, logCarbs, clearOldNightscoutData). " +
+    "Training from Strava (getTrainingSummary). New and upcoming music from their MUZAK library (getNewMusicReleases). " +
+    "Their PDF library of books and documents (searchLibrary). Jokes (tellJoke). Recording calls and meetings on the desk terminal (startRecording). " +
+    "On the IMS web app only, with no tool of yours: the Run Planner (routes, pace and carbs for a run, at /ims/runplanner), running goals and detailed activity analysis (/ims/activities), " +
+    "board game collection (/ims/boardgames), the music want list and recommendations (/ims/musicscan), past call recordings and summaries (/ims/recordings), " +
+    "news source settings (/ims/news), your face designs (/ims/facedesigner) and your personality (/ims/persona) - if asked about these, say what's there and where." +
+    (sources.length ? "\nYOUR NEWS SOURCES (name and tags): " + sources.join("; ") + "." : "");
+}
+
+// Wake phrases the user added on /ims/phrases, beyond the three built in.
+function extraWakePhrases() {
+  let extra = [];
+  try { extra = wakePhraseNames().filter((p) => !/^(hey|hi|eh up) ims$/i.test(p.trim())); } catch (_) { /* none */ }
+  let heard = [];
+  try { heard = wakeSpellings(); } catch (_) { /* none */ }
+  return (extra.length ? ` or one of these they added: ${extra.map((p) => `'${p}'`).join(', ')}` : '') +
+    (heard.length ? `. Speech recognition often mishears them - with this user they have come through as: ${heard.map((h) => `'${h}'`).join(', ')}, and things like 'Neyo Pims' or 'radio Pims'. Treat anything that sounds like those (a greeting then something like 'Ims', 'Ems' or 'Pims') as the wake phrase` : '');
 }
 
 export function getHardwareSetupPayload(previewVoice = null, morningReportDirective = null) {
@@ -684,6 +719,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
         // removed rather than risked. Worth retrying deliberately, on its
         // own, if the variance engine ever needs it.
         speechConfig: {
+          languageCode: "en-GB", // English (UK) only - Ims must never drift into another language
           voiceConfig: {
             prebuiltVoiceConfig: {
               voiceName: activeVoice
@@ -697,21 +733,25 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             `The current date and time is ${nowStr}.\n\n` +
             // Hard rules first; character, memory, personality and speech style last, closest to
             // where the model starts speaking, so they carry the most weight.
-            "WAKE PHRASES: when a reply would start from microphone audio (realtimeInput), only respond if the speech begins with 'Hey IMS', 'Hi IMS' or 'Eh up IMS' (or 'Ey up IMS'). The name alone, other greetings ('Now then', 'Morning', 'Alright') and ambient room talk do not count - for anything else, call noWakeDetected and say nothing at all, even if it is a question. Text messages from the device system (clientContent) are exempt and answered at once. " +
+            "LANGUAGE: always speak English - never German or any other language, even if the audio is unclear or sounds foreign; if you cannot make out what was said, ask them in English to say it again. " + ACCENT_RULE + " " +
+            "WAKE PHRASES: when a reply would start from microphone audio (realtimeInput), only respond if the speech begins with 'Hey IMS', 'Hi IMS' or 'Eh up IMS' (or 'Ey up IMS')" + extraWakePhrases() + ". The name alone, other greetings ('Now then', 'Morning', 'Alright') and ambient room talk do not count - for anything else, call noWakeDetected and say nothing at all, even if it is a question. Text messages from the device system (clientContent) are exempt and answered at once. " +
             "If the user only said the wake phrase, greet them freshly in your own voice. If ANYTHING followed the wake phrase (a question, request or statement), do NOT greet at all - no 'Ey up', no 'Now then', no pleasantry or acknowledgement - your first words are the answer itself. " +
             "Once you have replied, the conversation is open: keep answering follow-ups without the wake phrase until they close it ('bye', 'goodbye', 'thanks, bye', 'that's all, IMS', 'I'm done', 'see you later') - then say a brief farewell and call endConversation. " +
             "STOP: if they say 'stop IMS', 'shut up IMS', 'be quiet IMS', 'enough IMS', 'stop talking' or similar, call endConversation and say nothing (at most two or three words). Never explain or take offence. " +
             "RECORDING: when asked to record a call or meeting, if they haven't said who it is with, ask that one short question, then call startRecording. From then on stay COMPLETELY SILENT - no words, sounds, emotion changes or tool calls, whatever anyone says. The system ends the recording itself when the user says 'IMS stop'. " +
             "JOKES: for a joke, call tellJoke and tell what it returns in your own voice; never invent one. HARD RULE above everything else: never tell, make up or repeat a racist or sexist joke, however dark the Humor setting; decline in one line and offer another. " +
+            "GREETINGS AND SMALL TALK: keep them conversational - never mention blood sugar, glucose, insulin, carbs, runs or training unless the user asks; that information is for the morning / day report. " +
             "FACE: call setEmotion at the start of every spoken reply, and again if your tone shifts partway through. " +
             "LENGTH: one to six complete sentences - short for simple things, longer only when needed. No lists read aloud, no monologues, never trail off. The one exception is the morning/day report (getDayReport), which covers every item as a longer spoken briefing. " +
-            "TOOLS: use your tools for anything about the user's own data (library, weather, glucose, calendar, reminders, lists, memories, birthdays, music, training). Report what they return in your own Yorkshire voice, never flat, and never invent data. Never be cruel or abusive.\n\n" +
+            "TOOLS: use your tools for anything about the user's own data. Report what they return in your own Yorkshire voice, never flat, and never invent data. Never be cruel or abusive.\n\n" +
+            buildServicesParagraph() + "\n\n" +
             (personaRules ? personaRules + "\n\n" : "") +
             (memoryParagraph ? memoryParagraph + "\n\n" : "") +
             "PERSONALITY right now (sets attitude, warmth, humour and formality - never your dialect or en-GB spelling): " + personalityParagraph + " " +
             `Framing for this session: ${archetype.directive}. ` +
             (varianceDirective ? varianceDirective + " " : "") +
             "\n\n" + buildSpeechStyleDirective() +
+            "\n\nLAST AND MOST IMPORTANT - " + ACCENT_RULE +
             (morningReportDirective ? "\n\n" + morningReportDirective : "")
         }]
       },
@@ -773,7 +813,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "scheduleItem",
-            description: "Briefly confirm what you set (the duration, or the time and date). Before an alarm or reminder: if they didn't say what it's for, ask; resolve day references like 'this Saturday' yourself from today's date. NEVER guess am/pm: if an hour is given with no am/pm and no obvious context ('remind me at 3'), ask morning or afternoon first - a wrongly timed alarm is a real failure. Creates a timer, alarm, or reminder. Use 'timer' for a simple countdown ('set a timer for 10 minutes'), 'alarm' for a specific clock time that should go off (optionally repeating daily or on weekdays), and 'reminder' for a note to be told about at a specific time or after a delay. Provide EITHER whenSeconds (for relative phrasing like 'in 20 minutes') OR time (for absolute phrasing like 'at 7:30'), never both. For time, also resolve any date the user implied (today, 'this Saturday', 'the 25th', 'the 25th of September', '3 days from now') into the date parameter yourself using the current date given in this prompt - don't leave that resolution to the caller. Once fired, this keeps re-alerting roughly every 30 seconds (up to 10 times) until dismissed - see the STOP PHRASES instruction elsewhere in this prompt for how a user dismisses one.",
+            description: "RELATIVE TIMES: for anything like 'in an hour', '1 hour from now', 'in 20 minutes', 'in half an hour', use whenSeconds (3600, 1200, 1800...) - never ask morning or afternoon for these, and confirm using goesOffAt from the result. Briefly confirm what you set (the duration, or the time and date). Before an alarm or reminder: if they didn't say what it's for, ask; resolve day references like 'this Saturday' yourself from today's date. NEVER guess am/pm: if an hour is given with no am/pm and no obvious context ('remind me at 3'), ask morning or afternoon first - a wrongly timed alarm is a real failure. Creates a timer, alarm, or reminder. Use 'timer' for a simple countdown ('set a timer for 10 minutes'), 'alarm' for a specific clock time that should go off (optionally repeating daily or on weekdays), and 'reminder' for a note to be told about at a specific time or after a delay. Provide EITHER whenSeconds (for relative phrasing like 'in 20 minutes') OR time (for absolute phrasing like 'at 7:30'), never both. For time, also resolve any date the user implied (today, 'this Saturday', 'the 25th', 'the 25th of September', '3 days from now') into the date parameter yourself using the current date given in this prompt - don't leave that resolution to the caller. Once fired, this keeps re-alerting roughly every 30 seconds (up to 10 times) until dismissed - see the STOP PHRASES instruction elsewhere in this prompt for how a user dismisses one.",
             behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
@@ -1032,15 +1072,35 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "getNews",
-            description: "News and things the user follows. With 'source', reads one of the sources they added on the News Sources page (match by name, e.g. 'Guardian', 'Dicebreaker'), or 'all' for all of them - use this for 'what's new on X' or 'anything from my sources'. With 'topic', reads BBC News: top, uk, world, local (Leeds and West Yorkshire), technology, science, health, business, sport, entertainment. Default is BBC top stories.",
+            description: "News and the things the user follows, from the sources they added on the News Sources page (each has tags describing what it covers - see YOUR NEWS SOURCES in your instructions) plus BBC News. Use 'about' for news on a subject - 'any metal news?' -> about: 'heavy metal'; 'what's new in space?' -> about: 'space'; it reads the sources tagged for that subject, or searches every source's headlines if none are tagged for it. Use 'source' for one named source ('anything on Invisible Oranges?') or 'all'. Use 'topic' for general BBC news (top, uk, world, local, technology, science, health, business, sport, entertainment). With nothing given it reads BBC top stories.",
             behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
               properties: {
-                topic: { type: "STRING", enum: ["top", "uk", "world", "local", "technology", "science", "health", "business", "sport", "entertainment"], description: "A BBC News topic." },
-                source: { type: "STRING", description: "Name (or part of the name) of one of the user's own news sources, or 'all'." }
+                tours: { type: "BOOLEAN", description: "True for tour and gig announcements by bands in the user's music library ( 'any tours announced for my bands?', 'is anyone I like playing Leeds?'). Home towns Leeds, Sheffield, Manchester and York are flagged." },
+                about: { type: "STRING", description: "A subject, e.g. 'heavy metal', 'space', 'science', 'local'." },
+                source: { type: "STRING", description: "Name (or part of the name) of one of the user's sources, or 'all'." },
+                topic: { type: "STRING", enum: ["top", "uk", "world", "local", "technology", "science", "health", "business", "sport", "entertainment"], description: "A BBC News topic." }
               }
             }
+          },
+          {
+            name: "startBackgroundTask",
+            description: "Starts a background research task that runs on its own (with web search) while you carry on - for anything that needs looking into rather than an instant answer: 'look into which of my bands are playing Leeds next year', 'find me a good sports physio in Leeds', 'research carb loading for a half marathon'. Use it when they say 'in the background', 'look into', 'find out and let me know', 'research', or when a question clearly needs digging. Write the task out in full, clear words including any detail they gave.",
+            behavior: "BLOCKING",
+            parameters: { type: "OBJECT", properties: { task: { type: "STRING", description: "The task, in full." } }, required: ["task"] }
+          },
+          {
+            name: "getBackgroundTasks",
+            description: "Gets background tasks you were asked to run: their status and, once finished, the findings. Use when they ask how a task went, what you found out, or about 'that thing you were looking into'. Without arguments it returns the most recent ones.",
+            behavior: "BLOCKING",
+            parameters: { type: "OBJECT", properties: { about: { type: "STRING", description: "Words from the task, e.g. 'physio' or 'Leeds gigs'." }, id: { type: "NUMBER", description: "A task number, if known." } } }
+          },
+          {
+            name: "clearOldNightscoutData",
+            description: "Deletes Nightscout records older than 3 months (glucose readings, treatments and AAPS device status) to free space in the Nightscout/MongoDB database. ONLY call this after the user has clearly said yes to clearing it (for example after you asked at the end of their report because the database is nearly full) - never on your own initiative. IMS keeps its own copy, so their charts are unaffected. Afterwards, tell them briefly how it went and the new size.",
+            behavior: "BLOCKING",
+            parameters: { type: "OBJECT", properties: {} }
           },
           {
             name: "lookUpFood",
@@ -1050,12 +1110,13 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "logCarbs",
-            description: "Logs carbs eaten to the IMS log AND to Nightscout (as a Carb Correction). Use after working out the grams (via lookUpFood unless the user gave the grams). Then say the total you logged in one short sentence, e.g. 'Logged 32 grams for two medium slices of brown toast.' If the result says it didn't reach Nightscout, say so plainly. Never suggest insulin.",
+            description: "Logs carbs eaten to IMS and Nightscout - AAPS receives these and doses from them, so it is TWO steps. First call it with the grams (worked out via lookUpFood unless they gave the grams) and NO confirmed flag: nothing is logged; it tells you whether carbs were already entered recently. Tell them the number and what it's based on, mention any recent entries, and ask if you should log it. Only when they clearly say yes, call it again with the same grams and confirmed: true. If they change the number, propose the new one first. Never suggest insulin.",
             parameters: {
               type: "OBJECT",
               properties: {
                 grams: { type: "NUMBER", description: "Grams of carbohydrate." },
-                food: { type: "STRING", description: "What they ate, in a few words." }
+                food: { type: "STRING", description: "What they ate, in a few words." },
+                confirmed: { type: "BOOLEAN", description: "true ONLY on the second call, after the user said yes to the number you proposed." }
               },
               required: ["grams"]
             }
@@ -1064,4 +1125,28 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
       }]
     }
   };
+}
+
+
+// Ims in the web app: the same brain as the desk terminal (persona, memory, personality, speech,
+// every tool), minus the parts that only make sense on the device - wake phrases, call
+// recording and the camera. Replies are shown on screen as text as well as spoken.
+export const ACCENT_RULE = "ACCENT - NON-NEGOTIABLE, EVERY SENTENCE OF EVERY REPLY, FIRST WORD TO LAST: speak in a natural West Yorkshire (Leeds) accent. It is the SOUND that matters - Yorkshire words spoken in an American or neutral voice are wrong. How it sounds: short flat 'a' (bath, grass, laugh, after, can't all rhyme with 'math'); 'u' in up, bus, love, lucky, nothing, done said with the short 'oo' of 'book'; 'o' in home, go, no, know, so as a flat pure 'oh' - never the American 'oh-oo'; 'ay' in day, make, late, say as a flat 'eh'; non-rhotic - never sound an r after a vowel (car, water, later, more, first); 'the' often shortened, words clipped and a bit gruff rather than smooth and drawn out. Never an American, Received Pronunciation or neutral accent, not even for a moment. Hold it through numbers, dates, names, lists and anything read out from a tool, and all the way to the end of long answers - that is exactly where it slips.";
+
+const WEB_RULES = "IN THE WEB APP: you are on the user's IMS web app, where your face is shown. There are no wake phrases - everything you receive is meant for you, so just answer; only greet if they only said hello. They may type or speak. Your words also appear on screen as text, so keep replies conversational and never read out web addresses. When they say goodbye, say a brief farewell and call endConversation. STOP: if they say 'stop', 'shut up', 'be quiet' or similar, call endConversation and say nothing (at most two or three words). Never explain or take offence. ";
+const WEB_EXCLUDED_TOOLS = new Set(["noWakeDetected", "startRecording", "lookAtCamera"]);
+
+export function getWebSetupPayload() {
+  const p = getHardwareSetupPayload();
+  const part = p.setup.systemInstruction.parts[0];
+  let text = part.text.replace(
+    "You are Ims, a voice companion living in a small desk terminal (an ESP32-S3-BOX-3).",
+    "You are Ims, a voice companion who lives in a small desk terminal (an ESP32-S3-BOX-3) and is right now talking to the user through their IMS web app.");
+  const a = text.indexOf("WAKE PHRASES:"), b = text.indexOf("JOKES:");
+  if (a >= 0 && b > a) text = text.slice(0, a) + WEB_RULES + text.slice(b);
+  part.text = text;
+  for (const t of p.setup.tools) {
+    if (t.functionDeclarations) t.functionDeclarations = t.functionDeclarations.filter((d) => !WEB_EXCLUDED_TOOLS.has(d.name));
+  }
+  return p;
 }

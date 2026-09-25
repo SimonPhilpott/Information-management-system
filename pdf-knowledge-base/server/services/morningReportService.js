@@ -10,8 +10,9 @@ import { getUpcomingEvents, getEventsOn, describeEvents } from './calendarServic
 import { getStatus as getStravaStatus, getSummary, listActivities } from './stravaService.js';
 import { getCurrentState, getStoredMatch } from './runGlucoseService.js';
 import { listGoals, assessGoal } from './goalService.js';
-import { getOvernight } from './glucoseHubService.js';
-import { getReportNews } from './newsService.js';
+import { getOvernight, getNightscoutDbSize, getNightscoutWriteStatus } from './glucoseHubService.js';
+import { getReportNews, tourNewsForReport } from './newsService.js';
+import { unreportedTasks } from './tasksService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STATE_PATH = path.join(__dirname, '..', 'data', 'morning_report_state.json');
@@ -204,14 +205,32 @@ export async function buildReportParts() {
   try { parts.push(...buildHealthParts(weatherRain)); } catch (err) { console.warn('[MorningReport] Health/training skipped:', err.message); }
 
   try {
+    const tours = await tourNewsForReport();
+    if (tours.length) parts.push(`UK TOUR NEWS for bands in their music library (lead the news with these; Leeds, Sheffield, Manchester or York matter most, then the rest of the north; London is only a maybe - say where they're playing): ${tours.map((t) => `[${t.artist}, playing ${t.places.join(', ')}] ${t.headline}`).join(' | ')}.`);
     const news = await getReportNews();
     if (news.length) parts.push(`News and interests (from their chosen sources; importance 1-5 is how much each source matters to them - lead with and give more time to the higher ones, say which source): ${news.map((n) => `[${n.source}, importance ${n.importance}${n.alsoIn ? `; also covered by ${n.alsoIn.join(', ')}` : ''}] ${n.headline}${n.summary ? ` - ${n.summary}` : ''}`).join(' | ')}.`);
   } catch (err) { console.warn('[MorningReport] News skipped:', err.message); }
 
+  try {
+    const done = unreportedTasks();
+    if (done.length) parts.push(`BACKGROUND TASKS FINISHED since they last heard (give each a sentence or two): ${done.map((t) => `"${t.title}": ${t.summary}`).join(' | ')}`);
+  } catch (err) { console.warn('[MorningReport] Tasks skipped:', err.message); }
+
+  // Nightscout's database nearly full: the report ends by offering to clear it out.
+  try {
+    const db = await getNightscoutDbSize();
+    if (db && db.pct > 90) {
+      const connected = getNightscoutWriteStatus().configured;
+      parts.push(connected
+        ? `LAST ITEM - Nightscout database: ${db.pct.toFixed(1)}% full (${db.usedMb} of ${db.maxMb} MB). END the report by asking whether to clear it out, in your own words - e.g. "Shall I clear out your Mongo database? It's nearly full." If they say yes, call clearOldNightscoutData; if they say no, leave it.`
+        : `LAST ITEM - Nightscout database: ${db.pct.toFixed(1)}% full. End by mentioning it's nearly full, and that you can clear it out once Nightscout is connected on the Blood Sugar page.`);
+    }
+  } catch (err) { console.warn('[MorningReport] DB size skipped:', err.message); }
+
   return { whoLine, parts, hour };
 }
 
-const DELIVERY = "HOW TO DELIVER IT: this report is the one exception to your usual length limit - cover EVERY item below, in this order, as a flowing spoken briefing of roughly 8 to 14 sentences. Don't read it like a list: link items where they connect (rain and a run, a low overnight and a planned run, a busy afternoon and a pod change). Give the news as three or four quick headlines in your own words, mixing sources; each story is listed once, so never repeat a story or tell it twice in different words. Never give insulin doses. ";
+const DELIVERY = "HOW TO DELIVER IT - IN YOUR YORKSHIRE ACCENT FROM THE FIRST WORD TO THE LAST (long reports are where it slips; hold the flat northern vowels and never sound an r after a vowel): this report is the one exception to your usual length limit - cover EVERY item below, in this order, as a flowing spoken briefing of roughly 8 to 14 sentences. Don't read it like a list: link items where they connect (rain and a run, a low overnight and a planned run, a busy afternoon and a pod change). Give the news as three or four quick headlines in your own words, mixing sources; each story is listed once, so never repeat a story or tell it twice in different words. Never give insulin doses. ";
 
 // The first conversation of the day: offer the report, with its contents ready.
 export async function buildMorningReportDirective() {

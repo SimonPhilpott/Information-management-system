@@ -116,8 +116,9 @@ function isLondonWeekend(ms) {
 // here would be.
 function computeFireAt({ whenSeconds, time, date }) {
   const now = Date.now();
-  if (typeof whenSeconds === 'number' && whenSeconds > 0) {
-    return now + Math.round(whenSeconds) * 1000;
+  const secs = Number(whenSeconds); // Gemini sometimes sends the number as text ("3600")
+  if (Number.isFinite(secs) && secs > 0) {
+    return now + Math.round(secs) * 1000;
   }
   if (typeof time === 'string') {
     const m = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
@@ -171,6 +172,7 @@ export function scheduleItem({ type, label, whenSeconds, time, date, recurrence 
     label: label || null,
     fireAt: new Date(fireAt).toISOString(),
     secondsFromNow: Math.round((fireAt - Date.now()) / 1000),
+    goesOffAt: new Date(fireAt).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'long', hour: '2-digit', minute: '2-digit' }),
     recurrence: rec,
   };
 }
@@ -269,13 +271,15 @@ export function checkDueScheduledItems() {
   const fired = [];
   for (const item of due) {
     const ringCount = item.ring_count + 1;
-    fired.push({ id: item.id, type: item.type, label: item.label, ringCount, maxRings: MAX_RINGS });
+    // Reminders are announced once and done; alarms and timers repeat until dismissed.
+    const maxRings = item.type === 'reminder' ? 1 : MAX_RINGS;
+    fired.push({ id: item.id, type: item.type, label: item.label, ringCount, maxRings });
     if (!item.first_fired_at) {
       db.prepare(`UPDATE scheduled_items SET first_fired_at = ? WHERE id = ?`).run(now, item.id);
       logEvent(item, 'fired', { at: now, scheduledFor: item.scheduled_for || item.fire_at });
     }
-    if (ringCount >= MAX_RINGS) {
-      retireRinging({ ...item, ring_count: ringCount }, 'unanswered');
+    if (ringCount >= maxRings) {
+      retireRinging({ ...item, ring_count: ringCount }, item.type === 'reminder' ? 'delivered' : 'unanswered');
     } else {
       db.prepare(`UPDATE scheduled_items SET fire_at = ?, ringing = 1, ring_count = ? WHERE id = ?`)
         .run(now + RING_INTERVAL_MS, ringCount, item.id);

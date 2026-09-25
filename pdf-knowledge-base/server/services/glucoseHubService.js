@@ -166,7 +166,7 @@ export function getDay(day) {
   return { day, from, to, readings: rs, stats: statsOf(rs, Math.min(to, Date.now()) - from), treatments, carbs, activities, iob, lows: lowEvents(rs) };
 }
 
-// ---- carb log (by voice or on the page), also sent to Nightscout as a Carb Correction ---------------
+// ---- carb log (by voice or on the page), also sent to Nightscout as carbs (Meal Bolus, like AAPS) ---------------
 const NS_BASE = 'https://simon-philpott-nightscout.herokuapp.com';
 const NS_SECRET_KEY = 'nightscout_api_secret';
 try { db.exec('ALTER TABLE carb_log ADD COLUMN ns_id TEXT'); } catch (_) { /* already there */ }
@@ -175,20 +175,21 @@ export function getNightscoutWriteStatus() { return { configured: Boolean(getSet
 export function setNightscoutSecret(secret) {
   const v = String(secret || '').trim();
   if (v && v.length < 12) throw new Error('The Nightscout API secret is at least 12 characters.');
-  setSetting(NS_SECRET_KEY, v ? encryptSecret(v) : '');
+  setSetting(NS_SECRET_KEY, v ? JSON.stringify(encryptSecret(v)) : '');
   return getNightscoutWriteStatus();
 }
 function nsSecretHash() {
   const blob = getSetting(NS_SECRET_KEY);
   if (!blob) return null;
-  return crypto.createHash('sha1').update(decryptSecret(blob)).digest('hex');
+  return crypto.createHash('sha1').update(decryptSecret(JSON.parse(blob))).digest('hex');
 }
 export async function testNightscoutWrite() {
   const h = nsSecretHash();
   if (!h) throw new Error('No API secret saved.');
   const res = await fetch(`${NS_BASE}/api/v1/verifyauth`, { headers: { 'api-secret': h, Accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
   const d = await res.json().catch(() => ({}));
-  if (!/OK/i.test(JSON.stringify(d.message || d))) throw new Error('Nightscout did not accept that API secret.');
+  const m = d.message && typeof d.message === 'object' ? d.message : d;
+  if (!(m.canWrite === true || m.message === 'OK')) throw new Error('Nightscout did not accept that API secret - check it matches API_SECRET in Heroku.');
   return { ok: true };
 }
 async function postCarbsToNightscout(g, food, t) {
@@ -197,7 +198,8 @@ async function postCarbsToNightscout(g, food, t) {
   const res = await fetch(`${NS_BASE}/api/v1/treatments`, {
     method: 'POST', signal: AbortSignal.timeout(15000),
     headers: { 'api-secret': h, 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify([{ eventType: 'Carb Correction', carbs: g, created_at: new Date(t).toISOString(), enteredBy: 'IMS', notes: food || undefined }]),
+    body: JSON.stringify([{ eventType: 'Meal Bolus', carbs: g, // same type AAPS uses for carbs, so they show and count the same way
+       created_at: new Date(t).toISOString(), enteredBy: 'IMS', notes: food || undefined }]),
   });
   if (!res.ok) return { sent: false, reason: `Nightscout answered ${res.status}.` };
   const d = await res.json().catch(() => null);
@@ -267,3 +269,99 @@ DATA: ${JSON.stringify(facts)}`;
   setSetting(INSIGHT_KEY, JSON.stringify(saved));
   return saved;
 }
+
+// ---- Nightscout database size and clean-up --------------------------------------------------------------
+let dbSizeCache = { at: 0, data: null };
+export async function getNightscoutDbSize() {
+  if (dbSizeCache.data && Date.now() - dbSizeCache.at < 5 * 60000) return dbSizeCache.data;
+  try {
+    const res = await fetch(`${NS_BASE}/api/v2/properties/dbsize`, { signal: AbortSignal.timeout(10000), headers: { Accept: 'application/json' } });
+    const d = (await res.json()).dbsize;
+    const used = Number(d?.details?.dataSize ?? d?.totalDataSize ?? 0), max = Number(d?.details?.maxSize ?? 0);
+    // Nightscout's own percentage is a whole number; work it out to one decimal place, rounded up.
+    const pct = max > 0 ? Math.ceil((used / max) * 1000) / 10 : Number(d?.dataPercentage ?? 0);
+    const data = d ? { pct, usedMb: r1(used), maxMb: max || null } : null;
+    dbSizeCache = { at: Date.now(), data };
+    return data;
+  } catch (_) { return dbSizeCache.data; }
+}
+
+// Deletes Nightscout records older than `months` (glucose entries, treatments and AAPS device
+// status - the last is usually most of the space). IMS keeps its own copy, so its history and
+// charts are unaffected.
+export async function clearOldNightscout(months = 3) {
+  const h = nsSecretHash();
+  if (!h) throw new Error('Connect Nightscout with your API secret first (in the carb log box below).');
+  const cutoff = Date.now() - Math.max(1, Number(months) || 3) * 30 * 86400000;
+  const iso = new Date(cutoff).toISOString();
+  const jobs = [
+    ['glucose readings', `/api/v1/entries?find[date][$lte]=${cutoff}`],
+    ['treatments', `/api/v1/treatments?find[created_at][$lte]=${encodeURIComponent(iso)}`],
+    ['device status', `/api/v1/devicestatus?find[created_at][$lte]=${encodeURIComponent(iso)}`],
+  ];
+  const results = [];
+  for (const [label, path] of jobs) {
+    try {
+      const res = await fetch(`${NS_BASE}${path}`, { method: 'DELETE', headers: { 'api-secret': h, Accept: 'application/json' }, signal: AbortSignal.timeout(60000) });
+      const body = await res.json().catch(() => ({}));
+      results.push({ label, ok: res.ok, deleted: body?.n ?? body?.deletedCount ?? body?.result?.n ?? null, status: res.status });
+    } catch (err) {
+      results.push({ label, ok: false, error: err.message });
+    }
+  }
+  dbSizeCache = { at: 0, data: null };
+  return { cutoff: iso, results, dbSize: await getNightscoutDbSize() };
+}
+
+
+// Carbs already entered in the last `minutes` - from AAPS or IMS - read live from Nightscout
+// (falling back to IMS's own copy), so the same meal isn't counted twice now AAPS receives them.
+export async function recentCarbs(minutes = 20) {
+  const since = Date.now() - minutes * 60000;
+  const fmt = (t) => new Date(t).toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' });
+  try {
+    const res = await fetch(`${NS_BASE}/api/v1/treatments.json?find[created_at][$gte]=${encodeURIComponent(new Date(since).toISOString())}&find[carbs][$gt]=0&count=20`,
+      { signal: AbortSignal.timeout(8000), headers: { Accept: 'application/json' } });
+    if (res.ok) {
+      return (await res.json()).filter((t) => Number(t.carbs) > 0)
+        .map((t) => ({ grams: Math.round(Number(t.carbs)), at: fmt(Date.parse(t.created_at)), by: t.enteredBy || 'AAPS', notes: t.notes || null }));
+    }
+  } catch (_) { /* use the local copy */ }
+  const local = db.prepare('SELECT at, carbs FROM ns_treatments WHERE carbs > 0 AND at >= ?').all(since).map((t) => ({ grams: Math.round(t.carbs), at: fmt(t.at), by: 'Nightscout' }));
+  const logged = db.prepare('SELECT at, grams, food FROM carb_log WHERE at >= ?').all(since).map((t) => ({ grams: Math.round(t.grams), at: fmt(t.at), by: 'IMS', notes: t.food }));
+  return [...local, ...logged];
+}
+
+// ---- automatic clear-out ------------------------------------------------------------------------------
+// When switched on, the Nightscout database is checked hourly; at 95% full or more, everything older
+// than 3 months is cleared (as with the button). It won't run again within 24 hours of the last go, so
+// a database that stays full after clearing isn't hammered.
+const AUTO_KEY = 'ns_auto_clear';
+const AUTO_LAST_KEY = 'ns_auto_clear_last';
+const AUTO_THRESHOLD = 95;
+export function getAutoClear() {
+  let last = null;
+  try { last = JSON.parse(getSetting(AUTO_LAST_KEY) || 'null'); } catch { last = null; }
+  return { enabled: getSetting(AUTO_KEY) === 'true', threshold: AUTO_THRESHOLD, last };
+}
+export function setAutoClear(enabled) {
+  setSetting(AUTO_KEY, enabled ? 'true' : 'false');
+  return getAutoClear();
+}
+async function autoClearCheck() {
+  const { enabled, last } = getAutoClear();
+  if (!enabled || !nsSecretHash()) return;
+  if (last?.at && Date.now() - last.at < 24 * 3600000) return;
+  dbSizeCache = { at: 0, data: null };
+  const size = await getNightscoutDbSize();
+  if (!size || size.pct < AUTO_THRESHOLD) return;
+  console.log(`[Nightscout] Database at ${size.pct}% - auto-clearing records older than 3 months`);
+  try {
+    const r = await clearOldNightscout(3);
+    setSetting(AUTO_LAST_KEY, JSON.stringify({ at: Date.now(), before: size.pct, after: r.dbSize?.pct ?? null, ok: r.results.every((x) => x.ok) }));
+  } catch (err) {
+    setSetting(AUTO_LAST_KEY, JSON.stringify({ at: Date.now(), before: size.pct, ok: false, error: err.message }));
+  }
+}
+setTimeout(() => autoClearCheck().catch(() => {}), 60000);
+setInterval(() => autoClearCheck().catch(() => {}), 3600000);

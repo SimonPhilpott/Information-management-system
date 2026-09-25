@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { listFaces, createFace, updateFace, deleteFace, restoreFace, resetFace, getFaceByName, getDevicePayload } from '../services/faceDesignService.js';
+import { listFaces, createFace, updateFace, deleteFace, restoreFace, resetFace, getFaceByName, getDevicePayload, listFaceBackups, backupFace, restoreFaceBackup, deleteFaceBackup } from '../services/faceDesignService.js';
 import { pushToDevice, pushScheduleNow } from '../services/deviceBus.js';
 
 const router = Router();
@@ -44,6 +44,20 @@ router.post('/:id/reset', (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+// Backups of one face's full state (frames, colour, eye animation, scenarios).
+router.get('/:id/backups', (req, res) => {
+  try { res.json({ success: true, backups: listFaceBackups(req.params.id) }); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+router.post('/:id/backups', (req, res) => {
+  try { res.json({ success: true, backup: backupFace(req.params.id, req.body?.label) }); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+router.post('/backups/:bid/restore', (req, res) => {
+  try { const face = restoreFaceBackup(req.params.bid); pushScheduleNow(); res.json({ success: true, face }); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+router.delete('/backups/:bid', (req, res) => {
+  try { res.json({ success: deleteFaceBackup(req.params.bid) }); } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
 router.post('/:id/restore', (req, res) => {

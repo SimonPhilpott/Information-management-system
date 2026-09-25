@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Newspaper, Plus, Trash2, RotateCw, ExternalLink, ChevronDown, ChevronRight, Rss, Globe, AlertTriangle } from 'lucide-react';
+import { Newspaper, Plus, Trash2, RotateCw, ExternalLink, ChevronDown, ChevronRight, Rss, Globe, AlertTriangle, X, Sparkles, Tag } from 'lucide-react';
 import PortalShell from './PortalShell';
 
 const WEIGHT_LABEL = { 1: 'Just now and then', 2: 'Minor', 3: 'Normal', 4: 'Important', 5: 'Most important' };
@@ -14,11 +14,39 @@ function WeightPicker({ value, onChange }) {
   );
 }
 
-function SourceRow({ src, isDark, onChange, onDelete }) {
+// Tags say what a source covers; Ims uses them to pick sources ("any metal news?").
+function TagEditor({ src, onChange, onRetag, isDark }) {
+  const [adding, setAdding] = useState('');
+  const [busy, setBusy] = useState(false);
+  const tags = src.tags || [];
+  const save = (next) => onChange(src.id, { tags: next });
+  const add = () => { const t = adding.trim().toLowerCase(); if (t && !tags.includes(t)) save([...tags, t]); setAdding(''); };
+  return (
+    <div className="px-3 pb-2.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+      <Tag size={11} className="text-slate-500 shrink-0" />
+      {tags.map((t) => (
+        <span key={t} className={`flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full ${isDark ? 'bg-sky-500/15 text-sky-300' : 'bg-sky-100 text-sky-700'}`}>
+          {t}
+          <button onClick={() => save(tags.filter((x) => x !== t))} title="Remove tag" className="opacity-60 hover:opacity-100"><X size={10} /></button>
+        </span>
+      ))}
+      <input value={adding} onChange={(e) => setAdding(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add(); } }} onBlur={add}
+        placeholder="+ add tag" className={`w-24 px-2 py-0.5 rounded-full outline-none border bg-transparent ${isDark ? 'border-white/10' : 'border-[#2E2B27]/15'}`} />
+      <button onClick={async () => { setBusy(true); await onRetag(src.id); setBusy(false); }} disabled={busy} title="Suggest tags again from the latest headlines"
+        className="flex items-center gap-1 text-slate-500 hover:text-sky-500 disabled:opacity-50">
+        {busy ? <RotateCw size={11} className="animate-spin" /> : <Sparkles size={11} />} suggest
+      </button>
+    </div>
+  );
+}
+
+function SourceRow({ src, isDark, onChange, onDelete, onRetag }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState(null);
   const [err, setErr] = useState(null);
   const [name, setName] = useState(src.name);
+  const filterKey = JSON.stringify(src.filter || {});
+  useEffect(() => { setItems(null); setErr(null); }, [filterKey]);
   const [url, setUrl] = useState(src.url);
   const [savingUrl, setSavingUrl] = useState(false);
   useEffect(() => { setUrl(src.url); setItems(null); setErr(null); }, [src.url]);
@@ -52,6 +80,7 @@ function SourceRow({ src, isDark, onChange, onDelete }) {
         <a href={src.url} target="_blank" rel="noreferrer" className="text-slate-500 hover:text-sky-500 shrink-0" title={src.url}><ExternalLink size={13} /></a>
         <button onClick={() => onDelete(src)} className="text-slate-500 hover:text-red-500 shrink-0" title="Remove"><Trash2 size={13} /></button>
       </div>
+      <TagEditor src={src} onChange={onChange} onRetag={onRetag} isDark={isDark} />
       {src.lastError && <div className="px-3 pb-2 text-[11px] text-amber-500 flex items-center gap-1.5"><AlertTriangle size={12} />Last try failed: {src.lastError}</div>}
       {open && (
         <div className={`px-3 pb-3 pt-2 border-t ${border} text-xs flex flex-col gap-2`}>
@@ -64,12 +93,30 @@ function SourceRow({ src, isDark, onChange, onDelete }) {
             </button>
             <span className="w-full text-[10px] text-slate-500">Importance: {WEIGHT_LABEL[src.weight]} - {({ 1: 1, 2: 1, 3: 2, 4: 3, 5: 4 })[src.weight]} item{src.weight >= 3 ? 's' : ''} in the report{src.feedUrl && src.feedUrl !== src.url ? ` · reading its feed: ${src.feedUrl}` : ''}</span>
           </div>
+          <div className={`flex flex-wrap items-center gap-2 p-2 rounded-lg border ${border}`}>
+            <label className="flex items-center gap-1.5 cursor-pointer font-semibold">
+              <input type="checkbox" checked={Boolean(src.filter?.libraryOnly)}
+                onChange={async (e) => { await onChange(src.id, { filter: { libraryOnly: e.target.checked, genres: src.filter?.genres?.length ? src.filter.genres : ['metal', 'rock', 'desert'] } }); setItems(null); }} />
+              Only stories about bands in my MUZAK collection
+            </label>
+            {src.filter?.libraryOnly && (
+              <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                genres
+                <input defaultValue={(src.filter.genres || []).join(', ')} key={(src.filter.genres || []).join(',')}
+                  onBlur={async (e) => { await onChange(src.id, { filter: { libraryOnly: true, genres: e.target.value.split(',') } }); setItems(null); }}
+                  onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                  placeholder="metal, rock" className={`w-44 px-2 py-1 rounded-lg outline-none border ${isDark ? 'bg-slate-950/60 border-white/10' : 'bg-white border-[#2E2B27]/10'}`} />
+                <span>(matched against each artist's genre in the Music Scanner; blank = any)</span>
+              </span>
+            )}
+          </div>
           {!items && !err && <RotateCw size={14} className="animate-spin opacity-50" />}
           {err && <p className="text-amber-500">{err}</p>}
           {items && items.length === 0 && <p className="text-slate-500">Nothing there right now.</p>}
           {items && items.map((i) => (
             <div key={i.headline}>
               {i.link ? <a href={i.link} target="_blank" rel="noreferrer" className="font-semibold hover:underline">{i.headline}</a> : <span className="font-semibold">{i.headline}</span>}
+              {i.artist && <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-emerald-500/15 text-emerald-500">{i.artist}</span>}
               {i.summary && <p className="text-slate-500 mt-0.5">{i.summary}</p>}
             </div>
           ))}
@@ -113,6 +160,10 @@ export default function NewsPortal({ theme = 'dark', onThemeToggle, setCurrentPa
     if (patch.url) notify(`Address updated - ${d.source.kind === 'feed' ? 'found its feed' : 'reading headlines from the page'}.`);
     return true;
   };
+  const retag = async (id) => {
+    const d = await (await fetch(`/api/news/sources/${id}/autotag`, { method: 'POST' })).json();
+    if (d.success) setSources((s) => s.map((x) => (x.id === id ? d.source : x))); else notify(d.error, 'error');
+  };
   const remove = async (src) => {
     if (!window.confirm(`Remove ${src.name}?`)) return;
     await fetch(`/api/news/sources/${src.id}`, { method: 'DELETE' });
@@ -138,9 +189,9 @@ export default function NewsPortal({ theme = 'dark', onThemeToggle, setCurrentPa
 
       <div className={panel}>
         <h2 className="text-xs font-black uppercase tracking-wider mb-1">Your sources ({sources.length})</h2>
-        <p className="text-[11px] text-slate-500 mb-3">Ticked sources go into your morning / day report. The 1-5 buttons set how much each matters: 5 gets four items and comes first, 1 gets one. Open a source to change its address. Any of them can be asked for by name: "Hey IMS, anything new on Dicebreaker?" Open a source to see what IMS is reading from it.</p>
+        <p className="text-[11px] text-slate-500 mb-3">Ticked sources go into your morning / day report. The 1-5 buttons set how much each matters: 5 gets four items and comes first, 1 gets one. Tags describe what each source covers and are suggested automatically - edit them freely. Ims uses them to find the right sources when you ask about a subject, e.g. "Hey IMS, any metal news?". Open a source to change its address. Any of them can be asked for by name: "Hey IMS, anything new on Dicebreaker?" Open a source to see what IMS is reading from it.</p>
         <div className="flex flex-col gap-2">
-          {sources.map((src) => <SourceRow key={src.id} src={src} isDark={isDark} onChange={change} onDelete={remove} />)}
+          {sources.map((src) => <SourceRow key={src.id} src={src} isDark={isDark} onChange={change} onDelete={remove} onRetag={retag} />)}
           {!sources.length && <p className="text-xs text-slate-500">No sources yet.</p>}
         </div>
       </div>

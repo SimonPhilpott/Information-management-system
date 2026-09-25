@@ -628,6 +628,18 @@ export default defineConfig({
           });
         }
       },
+      '/api/ims-live': {
+        target: `ws://127.0.0.1:${ports.pdf_knowledge_base.server.port}`,
+        ws: true,
+        changeOrigin: true,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            if (err.code !== 'ECONNRESET') {
+              console.error('Vite WS Ims Proxy Error:', err);
+            }
+          });
+        }
+      },
       '/api/hardware-live': {
         target: `ws://127.0.0.1:${ports.pdf_knowledge_base.server.port}`,
         ws: true,

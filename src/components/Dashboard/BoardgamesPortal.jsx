@@ -26,6 +26,19 @@ function SellTick({ checked, onToggle, isDark, label = 'Want to sell' }) {
   );
 }
 
+// Opens eBay UK filtered to sold listings for this game, located in the UK, most recent first.
+// Only shown once a game is ticked "Want to sell".
+const ebaySoldUrl = (name) => `https://www.ebay.co.uk/sch/i.html?_nkw=${encodeURIComponent(name)}&LH_Sold=1&LH_Complete=1&LH_PrefLoc=1&_sop=13`;
+function EbaySold({ name, isDark }) {
+  return (
+    <a href={ebaySoldUrl(name)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
+      title={`Recent sold listings for "${name}" on eBay UK`}
+      className={`shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-wide ${isDark ? 'border-white/10 text-sky-400 hover:bg-white/5' : 'border-[#2E2B27]/15 text-sky-600 hover:bg-black/5'}`}>
+      <ExternalLink size={11} /> eBay sold
+    </a>
+  );
+}
+
 function GameRow({ game, isDark, onSell, defaultOpen }) {
   const [open, setOpen] = useState(defaultOpen);
   const ownedCount = game.expansions.filter((e) => e.owned).length;
@@ -57,6 +70,7 @@ function GameRow({ game, isDark, onSell, defaultOpen }) {
             </div>
           )}
         </div>
+        {game.wantToSell && <EbaySold name={game.name} isDark={isDark} />}
         <SellTick checked={game.wantToSell} isDark={isDark} onToggle={(v) => onSell(game.id, v)} />
       </div>
 
@@ -68,7 +82,8 @@ function GameRow({ game, isDark, onSell, defaultOpen }) {
               <span className={e.owned ? (isDark ? 'text-emerald-400 font-semibold' : 'text-emerald-700 font-semibold') : muted}>{e.name}</span>
               {!e.owned && <span className="opacity-60 text-[10px]">not owned</span>}
               {e.owned && (
-                <span className="ml-auto">
+                <span className="ml-auto flex items-center gap-1.5">
+                  {e.wantToSell && <EbaySold name={e.name} isDark={isDark} />}
                   <SellTick checked={e.wantToSell} isDark={isDark} onToggle={(v) => onSell(e.id, v)} />
                 </span>
               )}
@@ -357,7 +372,7 @@ export default function BoardgamesPortal({ theme = 'dark', onThemeToggle, setCur
                   <div key={e.id} className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
                     <span className="font-semibold">{e.name}</span>
                     {e.year && <span className="opacity-50">({e.year})</span>}
-                    <span className="ml-auto"><SellTick checked={e.wantToSell} isDark={isDark} onToggle={(v) => setSell(e.id, v)} /></span>
+                    <span className="ml-auto flex items-center gap-1.5">{e.wantToSell && <EbaySold name={e.name} isDark={isDark} />}<SellTick checked={e.wantToSell} isDark={isDark} onToggle={(v) => setSell(e.id, v)} /></span>
                   </div>
                 ))}
               </div>

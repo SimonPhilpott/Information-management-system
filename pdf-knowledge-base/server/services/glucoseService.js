@@ -115,7 +115,7 @@ export async function fetchGlucose() {
       timestamp: mills,
       stale: isStale,
       delta: deltaDisplay,
-      dbPct: Number.isFinite(data.dbsize?.dataPercentage) ? Math.round(data.dbsize.dataPercentage) : cachedGlucose.dbPct
+      dbPct: (() => { const u = Number(data.dbsize?.details?.dataSize ?? data.dbsize?.totalDataSize), m = Number(data.dbsize?.details?.maxSize); return m > 0 && Number.isFinite(u) ? Math.ceil((u / m) * 1000) / 10 : cachedGlucose.dbPct; })()
     };
 
     console.log(`[Glucose] Updated: ${cachedGlucose.value} mmol/L (${cachedGlucose.direction}, ${cachedGlucose.range}) [delta: ${deltaDisplay}]`);

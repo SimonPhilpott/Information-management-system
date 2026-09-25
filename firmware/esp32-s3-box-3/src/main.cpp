@@ -698,6 +698,11 @@ volatile int currentMicRms = 0;
 // only) while this stays true and audio keeps flowing, right up until
 // Gemini's own response actually starts arriving.
 volatile bool micStreamingActive = false;
+// Recording a wake/stop phrase for /ims/phrases: the mic streams to the server (not Gemini) until then.
+volatile unsigned long phraseCaptureUntil = 0;
+// Mic stall watchdog: the ES7210 occasionally stops delivering sound (every sample exactly 0) until
+// it's reset. audioMicTask records when the silence started; loop() repairs it (see micStallCheck).
+volatile unsigned long micZeroSinceMs = 0;
 
 
 // Audio Queue: Core 0 (audioMicTask) produces mic chunks, Core 1 (loop) is the
@@ -1464,7 +1469,7 @@ static uint8_t calPod = 0;
 static uint8_t calRx = 0;
 
 // Nightscout database usage (percent), drawn under the icons: green to 70, orange 71-90, red 91+.
-static int nsDbPct = -1;
+static float nsDbPct = -1.0f;
 
 static void drawCalendarIcons() {
   const uint16_t bg = tft.color565(11, 14, 21);
@@ -1477,12 +1482,14 @@ static void drawCalendarIcons() {
   if (calPod) tft.drawXBitmap(x, 124, pod_icon_24x24, 24, 24, white);
   if (calRx) tft.drawXBitmap(x, 152, rx_icon_24x24, 24, 24, white);
   tft.fillRect(266, 182, 54, 18, bg);
-  if (nsDbPct >= 0) {
+  if (nsDbPct >= 0.0f) {
     const uint16_t c = nsDbPct <= 70 ? tft.color565(46, 213, 115) : nsDbPct <= 90 ? orange : tft.color565(255, 71, 87);
     tft.setTextDatum(middle_center);
     tft.setFont(&fonts::Font2);
     tft.setTextColor(c);
-    tft.drawString(String("DB ") + nsDbPct + "%", 292, 191);
+    char dbBuf[16];
+    snprintf(dbBuf, sizeof(dbBuf), "DB %.1f%%", nsDbPct);
+    tft.drawString(dbBuf, 292, 191);
     tft.setFont(&fonts::Font0);
     tft.setTextDatum(top_left);
   }
@@ -2226,20 +2233,21 @@ static char infoWeather[10] = "";
 static String infoNext = "";
 static String infoTimerLabel = "";
 static unsigned long infoTimerEndMs = 0;
+static String infoUpcoming[6];
+static int infoUpcomingCount = 0;
 
-static void drawWeatherIcon(int x, int y, const char *kind) {
-  const uint16_t sun = tft.color565(255, 200, 60), cloud = tft.color565(170, 180, 200), rain = tft.color565(90, 160, 255),
-                 moon = tft.color565(210, 215, 235), snow = tft.color565(235, 240, 255), bolt = tft.color565(255, 220, 80);
-  const uint16_t bg = tft.color565(15, 18, 26);
-  if (!strcmp(kind, "sun")) { tft.fillCircle(x + 8, y + 8, 4, sun); for (int a = 0; a < 8; a++) { float r = a * PI / 4; tft.drawLine(x + 8 + cosf(r) * 6, y + 8 + sinf(r) * 6, x + 8 + cosf(r) * 8, y + 8 + sinf(r) * 8, sun); } return; }
-  if (!strcmp(kind, "moon")) { tft.fillCircle(x + 8, y + 8, 6, moon); tft.fillCircle(x + 11, y + 6, 5, bg); return; }
-  if (!strcmp(kind, "partsun")) { tft.fillCircle(x + 5, y + 5, 4, sun); }
-  // cloud (used by everything else)
-  tft.fillCircle(x + 6, y + 8, 4, cloud); tft.fillCircle(x + 10, y + 7, 5, cloud); tft.fillRoundRect(x + 2, y + 8, 13, 5, 2, cloud);
-  if (!strcmp(kind, "rain")) for (int i = 0; i < 3; i++) tft.drawLine(x + 4 + i * 4, y + 14, x + 3 + i * 4, y + 16, rain);
-  if (!strcmp(kind, "snow")) for (int i = 0; i < 3; i++) tft.fillCircle(x + 4 + i * 4, y + 15, 1, snow);
-  if (!strcmp(kind, "storm")) { tft.drawLine(x + 9, y + 12, x + 7, y + 15, bolt); tft.drawLine(x + 7, y + 15, x + 10, y + 15, bolt); tft.drawLine(x + 10, y + 15, x + 8, y + 18, bolt); }
-  if (!strcmp(kind, "fog")) for (int i = 0; i < 2; i++) tft.drawFastHLine(x + 2, y + 14 + i * 2, 13, cloud);
+static void drawWeatherIcon(LovyanGFX &g, int x, int y, const char *kind) {
+  const uint16_t sun = g.color565(255, 200, 60), cloud = g.color565(170, 180, 200), rain = g.color565(90, 160, 255),
+                 moon = g.color565(210, 215, 235), snow = g.color565(235, 240, 255), bolt = g.color565(255, 220, 80);
+  const uint16_t bg = g.color565(15, 18, 26);
+  if (!strcmp(kind, "sun")) { g.fillCircle(x + 8, y + 8, 4, sun); for (int a = 0; a < 8; a++) { float r = a * PI / 4; g.drawLine(x + 8 + cosf(r) * 6, y + 8 + sinf(r) * 6, x + 8 + cosf(r) * 8, y + 8 + sinf(r) * 8, sun); } return; }
+  if (!strcmp(kind, "moon")) { g.fillCircle(x + 8, y + 8, 6, moon); g.fillCircle(x + 11, y + 6, 5, bg); return; }
+  if (!strcmp(kind, "partsun")) { g.fillCircle(x + 5, y + 5, 4, sun); }
+  g.fillCircle(x + 6, y + 8, 4, cloud); g.fillCircle(x + 10, y + 7, 5, cloud); g.fillRoundRect(x + 2, y + 8, 13, 5, 2, cloud);
+  if (!strcmp(kind, "rain")) for (int i = 0; i < 3; i++) g.drawLine(x + 4 + i * 4, y + 14, x + 3 + i * 4, y + 16, rain);
+  if (!strcmp(kind, "snow")) for (int i = 0; i < 3; i++) g.fillCircle(x + 4 + i * 4, y + 15, 1, snow);
+  if (!strcmp(kind, "storm")) { g.drawLine(x + 9, y + 12, x + 7, y + 15, bolt); g.drawLine(x + 7, y + 15, x + 10, y + 15, bolt); g.drawLine(x + 10, y + 15, x + 8, y + 18, bolt); }
+  if (!strcmp(kind, "fog")) for (int i = 0; i < 2; i++) g.drawFastHLine(x + 2, y + 14 + i * 2, 13, cloud);
 }
 
 static void applyNightBrightness() {
@@ -2248,58 +2256,69 @@ static void applyNightBrightness() {
   if (want != applied) { tft.setBrightness(want); applied = want; }
 }
 
-// Repaints just the footer's clock and emotion - called once a second
-// from loop(). Deliberately repaints only the 36px footer bar so the screen/face
-// never flashes while updating the second ticker.
+// The footer is drawn into an off-screen buffer and pushed in one go, so the once-a-second
+// update doesn't flicker (it used to be cleared and redrawn directly on screen).
+static LGFX_Sprite footerSprite(&tft);
+static bool footerSpriteReady = false;
+
 void drawFooterClock() {
   applyNightBrightness();
   if (onSettingsScreen || isMicHardwareMuted) return; // mute warning occupies this space instead
-  tft.startWrite();
-  // Clear the full 36px footer bar cleanly
-  tft.fillRect(0, 204, 320, 36, tft.color565(15, 18, 26));
-  tft.setTextDatum(top_left);
-  tft.setTextColor(tft.color565(100, 110, 130));
+  if (!footerSpriteReady) {
+    footerSprite.setColorDepth(16);
+    footerSprite.setPsram(true);
+    footerSpriteReady = footerSprite.createSprite(320, 36) != nullptr;
+  }
+  LovyanGFX &g = footerSpriteReady ? (LovyanGFX &)footerSprite : (LovyanGFX &)tft;
+  const int oy = footerSpriteReady ? 0 : 204; // y offset: sprite-local or on screen
+  g.fillRect(0, oy, 320, 36, g.color565(15, 18, 26));
+  g.setFont(&fonts::Font0);
+  g.setTextSize(1);
+  g.setTextDatum(top_left);
+  g.setTextColor(g.color565(100, 110, 130));
   {
     struct tm t;
     char buf[24] = "--:--:--";
     if (getLocalTime(&t, 20)) strftime(buf, sizeof(buf), "%H:%M:%S %a %d %b", &t);
-    tft.drawString(buf, 12, 214);
+    g.drawString(buf, 12, oy + 10);
   }
 
-  // Right side: soonest timer counting down, else the next thing today; weather at the far right.
+  // Right side: the soonest timer counting down, else today's upcoming items (rotating every
+  // 3 s when there's more than one); weather at the far right.
   int right = 308;
   if (infoTempC > -100) {
     char tbuf[8];
     snprintf(tbuf, sizeof(tbuf), "%d", infoTempC);
-    tft.setTextDatum(top_right);
-    tft.setTextColor(tft.color565(170, 180, 200));
-    tft.drawString(tbuf, right - 4, 214);
-    int tw = tft.textWidth(tbuf);
-    tft.drawCircle(right - 1, 215, 1, tft.color565(170, 180, 200));
-    drawWeatherIcon(right - 4 - tw - 19, 209, infoWeather);
+    g.setTextDatum(top_right);
+    g.setTextColor(g.color565(170, 180, 200));
+    g.drawString(tbuf, right - 4, oy + 10);
+    int tw = g.textWidth(tbuf);
+    g.drawCircle(right - 1, oy + 11, 1, g.color565(170, 180, 200));
+    drawWeatherIcon(g, right - 4 - tw - 19, oy + 5, infoWeather);
     right = right - 4 - tw - 25;
   }
   String mid = "";
-  uint16_t midCol = tft.color565(140, 150, 175);
+  uint16_t midCol = g.color565(140, 150, 175);
   if (infoTimerEndMs && (long)(infoTimerEndMs - millis()) > 0) {
     unsigned long left = (infoTimerEndMs - millis()) / 1000;
     char tb[12];
     if (left >= 3600) snprintf(tb, sizeof(tb), "%lu:%02lu:%02lu", left / 3600, (left / 60) % 60, left % 60);
     else snprintf(tb, sizeof(tb), "%lu:%02lu", left / 60, left % 60);
     mid = String("Timer ") + tb;
-    midCol = tft.color565(255, 140, 0);
+    midCol = g.color565(255, 140, 0);
+  } else if (infoUpcomingCount > 0) {
+    mid = infoUpcoming[(millis() / 3000) % infoUpcomingCount];
   } else if (infoNext.length()) {
     mid = infoNext;
   }
   if (mid.length()) {
-    tft.setTextDatum(top_right);
-    tft.setTextColor(midCol);
-    while (mid.length() > 3 && tft.textWidth(mid) > right - 150) mid = mid.substring(0, mid.length() - 2);
-    tft.drawString(mid, right, 214);
+    g.setTextDatum(top_right);
+    g.setTextColor(midCol);
+    while (mid.length() > 3 && g.textWidth(mid) > right - 150) mid = mid.substring(0, mid.length() - 2);
+    g.drawString(mid, right, oy + 10);
   }
-  tft.setTextDatum(top_left);
-
-  tft.endWrite();
+  g.setTextDatum(top_left);
+  if (footerSpriteReady) footerSprite.pushSprite(0, 204);
 }
 
 // USB link indicator, directly under the WIFI one in the header's top-right
@@ -2332,10 +2351,14 @@ void renderScreen(bool forceRedraw = false) {
   if (onSettingsScreen) return;
   static bool lastRenderedMute = false;
   static int lastRenderedEmotion = -1;
-  if (!forceRedraw && currentState == lastRenderedState && isMicHardwareMuted == lastRenderedMute &&
+  // VERIFYING (checking a possible wake phrase) looks exactly like STANDBY, so moving between
+  // the two must not repaint the screen - a full repaint blanks it for a moment, which showed
+  // as the face flickering whenever room noise set off a wake check.
+  const TerminalState shownState = currentState == STATE_VERIFYING ? STATE_STANDBY : currentState;
+  if (!forceRedraw && shownState == lastRenderedState && isMicHardwareMuted == lastRenderedMute &&
       currentEmotion == lastRenderedEmotion)
     return;
-  lastRenderedState = currentState;
+  lastRenderedState = shownState;
   lastRenderedMute = isMicHardwareMuted;
   lastRenderedEmotion = currentEmotion;
 
@@ -3202,7 +3225,7 @@ void beginVerifying() {
   lastSpeechTimestamp = millis();
   isSpeakingDetected = true;
   speechStartTime = millis();
-  renderScreen(true);
+  renderScreen();
 }
 
 // Spoken turn complete: flips the display to THINKING and pre-warms the speaker PA.
@@ -3578,7 +3601,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       conversationShouldClose = false;
       setSpeakerMute(true);
       lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
-      renderScreen(true);
+      renderScreen(); // no full repaint: a rejected wake check looks the same as standby
     }
     // The user said "IMS stop" / "stop IMS": abandon everything and go quiet. Sent by
     // the backend even while Gemini is still "thinking".
@@ -3651,6 +3674,16 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
     // channel with portMAX_DELAY, which would collide with audioPlaybackTask
     // (Core 0) writing Gemini's own audio to that same channel if a reply
     // were in flight.
+    // The phrases page asked for a recording from this microphone.
+    if (doc["phraseCapture"].is<JsonObject>()) {
+      int secs = doc["phraseCapture"]["seconds"] | 3;
+      if (currentState == STATE_STANDBY && !recordingActive && !isMicHardwareMuted) {
+        phraseCaptureUntil = millis() + (unsigned long)secs * 1000UL;
+        micStreamingActive = true;
+        lastTranscript = "Say the phrase now...";
+        renderScreen(true);
+      }
+    }
     if (doc["reminderFired"].is<JsonObject>()) {
       JsonObject rf = doc["reminderFired"];
       const char *kind = rf["type"] | "reminder";
@@ -3674,13 +3707,13 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         // reply) - so the existing STOP PHRASES handling in the system
         // prompt already covers "IMS stop" here for free, with no new
         // dismiss-alert mechanism needed.
-        char announceMsg[128];
+        char announceMsg[200];
         if (label[0] != '\0') {
           snprintf(announceMsg, sizeof(announceMsg),
-                   "Your %s for \"%s\" just went off - announce this briefly, in character.", kind, label);
+                   "Your %s for \"%s\" just went off - announce this briefly, in character, in your Yorkshire accent (flat northern vowels, no American r).", kind, label);
         } else {
           snprintf(announceMsg, sizeof(announceMsg),
-                   "Your %s just went off - announce this briefly, in character.", kind);
+                   "Your %s just went off - announce this briefly, in character, in your Yorkshire accent (flat northern vowels, no American r).", kind);
         }
         sendTextQuery(announceMsg);
       }
@@ -3694,7 +3727,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       if (g["direction"].is<const char *>()) {
         currentGlucoseDirection = g["direction"].as<const char *>();
       }
-      if (g["dbPct"].is<int>()) nsDbPct = g["dbPct"].as<int>();
+      if (g["dbPct"].is<float>() || g["dbPct"].is<int>()) nsDbPct = g["dbPct"].as<float>();
       Serial.printf("[IMS] Blood glucose updated: %s mmol/L (%s)\n",
                     currentGlucoseValue.c_str(), currentGlucoseDirection.c_str());
       if (!onSettingsScreen) {
@@ -3724,6 +3757,14 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         long secs = inf["timerSec"] | -1L;
         infoTimerEndMs = secs >= 0 ? millis() + (unsigned long)secs * 1000UL : 0;
         infoTimerLabel = inf["timerLabel"] | "";
+        infoUpcomingCount = 0;
+        if (inf["upcoming"].is<JsonArray>()) {
+          for (JsonVariant v : inf["upcoming"].as<JsonArray>()) {
+            if (infoUpcomingCount >= 6) break;
+            const char *u = v | "";
+            if (*u) infoUpcoming[infoUpcomingCount++] = u;
+          }
+        }
       }
       {
         uint8_t nSensor = 0, nPod = 0, nRx = 0;
@@ -4025,6 +4066,8 @@ void audioMicTask(void *param) {
         }
         int rms = monoSampleCount > 0 ? (int)sqrt((double)(sumSquare / monoSampleCount)) : 0;
         currentMicRms = rms;
+        if (sumSquare == 0 && monoSampleCount > 0) { if (!micZeroSinceMs) micZeroSinceMs = millis(); }
+        else micZeroSinceMs = 0;
 
         // Circular pre-roll buffer in PSRAM: maintain recent 512ms of audio
         // Reset while speaker is active or cooling down to avoid capturing speaker echo
@@ -4077,7 +4120,7 @@ void audioMicTask(void *param) {
         // time the settings screen is open (see the touch handler in loop()),
         // so without this a wake candidate could fire and steal focus while
         // the user is mid-drag on a slider.
-        bool canWakeDetect = (!isSpeakerCoolingDown()) && !isMicHardwareMuted &&
+        bool canWakeDetect = (!isSpeakerCoolingDown()) && !isMicHardwareMuted && !phraseCaptureUntil &&
                              (currentState == STATE_STANDBY) && !onSettingsScreen;
         bool wakeTriggeredThisChunk = false;
         static int wakeStreak = 0;
@@ -4365,7 +4408,43 @@ void setup() {
   xTaskCreatePinnedToCore(audioPlaybackTask, "PlaybackTask", 4096, NULL, 4, NULL, 0);
 }
 
+// A real room is never perfectly silent, so 20 s of exact zeros means the mic chip has stalled.
+// First re-initialise the codecs; if the mic is still dead 20 s later, restart - but only when idle.
+static void micStallCheck() {
+  static unsigned long reinitAt = 0;
+  static int attempts = 0;
+  const unsigned long now = millis();
+  if (isMicHardwareMuted || !micZeroSinceMs) {
+    if (!micZeroSinceMs && attempts) { sendDebug("mic_stall_recovered"); attempts = 0; reinitAt = 0; }
+    return;
+  }
+  if (now - micZeroSinceMs < 20000) return;
+  if (attempts == 0) {
+    Serial.println("[Mic] Stalled (exact silence for 20 s) - re-initialising the codecs");
+    sendDebug("mic_stall_reinit");
+    initCodecChips();
+    applySpeakerVolume(); // the codec re-init resets the speaker level
+    if (!isSpeakerActive()) setSpeakerMute(true);
+    attempts = 1; reinitAt = now;
+    micZeroSinceMs = now; // give the re-init a fresh 20 s
+    return;
+  }
+  if (now - reinitAt > 20000 && currentState == STATE_STANDBY && !recordingActive && !isSpeakerActive()) {
+    Serial.println("[Mic] Still stalled after re-init - restarting");
+    sendDebug("mic_stall_restart");
+    delay(200);
+    esp_restart();
+  }
+}
+
 void loop() {
+  micStallCheck();
+  if (phraseCaptureUntil && (long)(millis() - phraseCaptureUntil) >= 0) {
+    phraseCaptureUntil = 0;
+    if (currentState == STATE_STANDBY) micStreamingActive = false;
+    lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
+    renderScreen(true);
+  }
   // Connection management: reconnect on an 8s interval (prevents
   // session-kill thrash), and detect the connect/disconnect edge via
   // wasConnected so state only resets once per actual transition.
@@ -4643,7 +4722,7 @@ void loop() {
     isSpeakingDetected = false;
     conversationOpen = false;
     setSpeakerMute(true);
-    renderScreen(true);
+    renderScreen();
   }
 
   // Emotion decay: an expression set by setEmotion() shouldn't sit on IMS's

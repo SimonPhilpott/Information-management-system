@@ -7,6 +7,7 @@ import { MeshCanvas } from './components/KnowledgeMesh/MeshCanvas';
 import { OrbitalNav } from './components/Navigation/OrbitalNav';
 import Layout from './components/Dashboard/Layout';
 import ChatInterface from './components/Dashboard/ChatInterface';
+import HomeChat from './components/Ims/HomeChat';
 import { IntelligenceDrawer } from './components/Editor/IntelligenceDrawer';
 import { AdminPanel } from './components/Admin/AdminPanel';
 import CatalogBrowser from './components/Dashboard/CatalogBrowser';
@@ -36,6 +37,8 @@ import CalendarPortal from './components/Dashboard/CalendarPortal';
 import ActivitiesPortal from './components/Dashboard/ActivitiesPortal';
 import GlucosePortal from './components/Dashboard/GlucosePortal';
 import NewsPortal from './components/Dashboard/NewsPortal';
+import TasksPortal from './components/Dashboard/TasksPortal';
+import PhrasesPortal from './components/Dashboard/PhrasesPortal';
 import RunPlannerPortal from './components/Dashboard/RunPlannerPortal';
 import ImsHub from './components/Dashboard/ImsHub';
 
@@ -1406,6 +1409,26 @@ export default function App() {
     );
   }
 
+  if (currentPath === '/ims/phrases' || currentPath.startsWith('/ims/phrases')) {
+    return (
+      <PhrasesPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/tasks' || currentPath.startsWith('/ims/tasks')) {
+    return (
+      <TasksPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
   if (currentPath === '/ims/news' || currentPath.startsWith('/ims/news')) {
     return (
       <NewsPortal
@@ -2202,7 +2225,7 @@ export default function App() {
             )} {/* end sunburst HUD conditional */}
           </section>
         ) : (
-          <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <HomeChat theme={state.theme}>
             <ChatInterface
               messages={state.messages}
               isTyping={state.isTyping}
@@ -2225,7 +2248,7 @@ export default function App() {
               geminiLive={actions.geminiLive}
               showCitations={state.showCitations}
             />
-          </div>
+          </HomeChat>
         )}
       </Layout>
       <AnimatePresence>

@@ -54,7 +54,7 @@ import graphRoutes from './routes/graph.js';
 import voiceRoutes from './routes/voice.js';
 import memoriesRoutes from './routes/memories.js';
 import glucoseHubRoutes from './routes/glucoseHub.js';
-import { describeForIms as describeGlucoseForIms, logCarbs } from './services/glucoseHubService.js';
+import { describeForIms as describeGlucoseForIms, logCarbs, clearOldNightscout, recentCarbs } from './services/glucoseHubService.js';
 import { lookUpFood } from './services/foodService.js';
 import { isApprovedSession } from './middleware/requireSession.js';
 import personaRoutes from './routes/persona.js';
@@ -67,7 +67,7 @@ import wifiRoutes from './routes/wifi.js';
 import recordingRoutes from './routes/recordings.js';
 import { isRecordingActive, startRecording, stopRecording, appendRecordingText, onRecordingChange, isCancelCommand } from './services/recordingService.js';
 import { SqliteSessionStore } from './db/sessionStore.js';
-import { onDevicePush, onSchedulePush } from './services/deviceBus.js';
+import { onDevicePush, onSchedulePush, onDeviceCapture } from './services/deviceBus.js';
 import calendarRoutes from './routes/calendar.js';
 import stravaRoutes from './routes/strava.js';
 import plannerRoutes from './routes/planner.js';
@@ -85,13 +85,17 @@ import { askLive } from './services/lookService.js';
 import { getAuthStatus } from './services/driveService.js';
 import { validateConfiguredModels } from './services/modelService.js';
 import { loadHnswFromDisk } from './services/hnswService.js';
-import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getWebPersonaBlock, getPersonality, setPersonality, getCaptureLogging, setCaptureLogging, recordReplyText } from './services/hardwareClientService.js';
+import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getWebPersonaBlock, getPersonality, setPersonality, getCaptureLogging, setCaptureLogging, recordReplyText, getWebSetupPayload, ACCENT_RULE } from './services/hardwareClientService.js';
 import { scheduleItem, listScheduledItems, cancelScheduledItem, addToList, readList, removeFromList, clearList, checkDueScheduledItems, stopAllRinging, getActiveScheduledStatus, getItemsDueToday, getHistorySummary } from './services/remindersService.js';
 import { getBirthdayFooterStatus, getUpcomingBirthdays, listBirthdays } from './services/birthdayService.js';
 import { getTodayReleases, getWindowResults, getUpcomingReleases , getWants as getMusicWants } from './services/musicScanService.js';
 import { isFirstInteractionToday, markMorningReportOffered, buildMorningReportDirective, getDayReport } from './services/morningReportService.js';
 import { getNews } from './services/newsService.js';
 import newsRoutes from './routes/news.js';
+import tasksRoutes from './routes/tasks.js';
+import phrasesRoutes from './routes/phrases.js';
+import { matchesWake, matchesStop } from './services/phrasesService.js';
+import { createTask, describeTasksForIms } from './services/tasksService.js';
 import { addMemory, getMemories, searchMemories, deleteMemory } from './db/database.js';
 import { getWeather } from './services/weatherService.js';
 import { startGlucosePoller, getGlucoseData } from './services/glucoseService.js';
@@ -123,7 +127,7 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
-app.use(session({
+const sessionMiddleware = session({
   store: new SqliteSessionStore(), // logins survive backend restarts
   secret: config.sessionSecret,
   resave: false,
@@ -133,7 +137,8 @@ app.use(session({
     maxAge: 180 * 24 * 60 * 60 * 1000 // one sign-in per device lasts; renewed on every visit
   },
   rolling: true
-}));
+});
+app.use(sessionMiddleware);
 
 // Every API call needs this browser to be signed in with an approved Google account. Only the
 // sign-in routes themselves are open. The device talks over its own TCP link, not this API.
@@ -167,6 +172,8 @@ app.use('/api/voice', voiceRoutes);
 app.use('/api/memories', memoriesRoutes);
 app.use('/api/glucose-hub', glucoseHubRoutes);
 app.use('/api/news', newsRoutes);
+app.use('/api/tasks', tasksRoutes);
+app.use('/api/phrases', phrasesRoutes);
 app.use('/api/persona-rules', personaRoutes);
 app.use('/api/music-scan', musicScanRoutes);
 app.use('/api/birthdays', birthdayRoutes);
@@ -252,6 +259,7 @@ const server = app.listen(config.port, async () => {
 
 // WebSocket Servers for Gemini Live Proxy (Dedicated Browser vs Hardware Endpoints)
 const browserWss = new WebSocketServer({ noServer: true });
+const imsWebWss = new WebSocketServer({ noServer: true });
 const hardwareWss = new WebSocketServer({ noServer: true });
 let activeBrowserSession = null;
 let activeHardwareSession = null;
@@ -266,6 +274,12 @@ onDevicePush((message) => {
 });
 
 onSchedulePush(() => pushScheduleStatus());
+
+onDeviceCapture(({ seconds, resolve, reject }) => {
+  const ws = activeHardwareSession?.clientWs;
+  if (!ws || ws.readyState !== WebSocket.OPEN || !ws.capturePhrase) return reject(new Error('The IMS device is not connected.'));
+  ws.capturePhrase(seconds).then(resolve, reject);
+});
 
 // Google Calendar: refresh every 5 minutes (also applies any "remind" rules)
 // and re-send the icons. Silent no-op until the user has connected Calendar.
@@ -310,6 +324,7 @@ function deviceInfo() {
     }
     next.sort((a, b) => a.time.localeCompare(b.time));
     if (next[0]) info.next = `${next[0].time} ${next[0].what}`.slice(0, 40);
+    info.upcoming = next.slice(0, 6).map((n) => `${n.time} ${n.what}`.slice(0, 40));
   } catch (err) { console.error('[Schedule] Footer info failed:', err.message); }
   return info;
 }
@@ -345,9 +360,17 @@ export function pushScheduleStatus(targetWs = null) {
 
 server.on('upgrade', (request, socket, head) => {
   const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
-  if (pathname === '/api/live') {
-    browserWss.handleUpgrade(request, socket, head, (ws) => {
-      browserWss.emit('connection', ws, request);
+  if (pathname === '/api/live' || pathname === '/api/ims-live') {
+    // Browser voice sockets reach Ims's tools (glucose, memories, calendar...), so they need
+    // the same signed-in Google session as the rest of the app.
+    sessionMiddleware(request, {}, () => {
+      if (!isApprovedSession(request)) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+      const wss = pathname === '/api/ims-live' ? imsWebWss : browserWss;
+      wss.handleUpgrade(request, socket, head, (ws) => wss.emit('connection', ws, request));
     });
   } else if (pathname === '/api/hardware-live') {
     hardwareWss.handleUpgrade(request, socket, head, (ws) => {
@@ -362,9 +385,9 @@ server.on('upgrade', (request, socket, head) => {
 // plain neutral English, and the voice follows whatever the text in front of it sounds
 // like. So every result that Ims is about to read out carries a reminder to voice it in
 // the usual British Yorkshire accent.
-const VOICE_REMINDER = 'DELIVERY REMINDER: report this in your normal British Yorkshire voice and accent - Northern cadence and vocabulary (proper, reight, summat, mind, like, then) in EVERY sentence, including when reading out numbers, dates, times and lists. Do not slip into an American accent or American phrasing just because this data is plain English.';
+const VOICE_REMINDER = () => `DELIVERY REMINDER: ${ACCENT_RULE}`;
 function withVoiceReminder(output) {
-  return output && typeof output === 'object' && !Array.isArray(output) ? { ...output, deliveryReminder: VOICE_REMINDER } : output;
+  return output && typeof output === 'object' && !Array.isArray(output) ? { ...output, deliveryReminder: VOICE_REMINDER() } : output;
 }
 
 // While a call/meeting is being recorded the upstream Gemini session is only a
@@ -411,8 +434,38 @@ function pinSavedVoice(msgStr, tag, resumptionHandle = null) {
   }
 }
 
-function handleLiveProxyConnection(ws, isHardware = false) {
-  const tag = isHardware ? '[HardwareLive]' : '[BrowserLive]';
+// "Hey / Hi / Eh up IMS", allowing for how speech-to-text spells the name (Ims, Ems, Eems, Hims...).
+const WAKE_RX = /\b(hey|hi|hiya|heya|hello|eh up|ey up|ay up|aye up|ayup|eyup|oi)\b[\s,.!?'-]*(h?[aei]{1,2}m+e?[sz]\b|i\.?\s?m\.?\s?s\b)/i;
+// Speech-to-text often mangles the short wake phrase ("Hey IMS" -> "HMs", "Eh up Ims" -> "Anya Pims",
+// "Hi IMS" -> "Hiya."). Gemini hears the audio itself, so when it has decided to answer, these
+// count too: a name-like word near the start, or a bare greeting. Ordinary sentences don't.
+const NAME_TOKEN = /\b(i\.?\s?m\.?\s?s|ims|imz|ems|eems|emms|hims|aims|hms|h\.?\s?m\.?\s?s|pims|mims|m's|ms|him's|hymns?|\w*pms|\w*ims\w*)\b/i;
+const GREETING_ONLY = /^\W*(hi|hiya|hi ya|heya|hey|hey up|hello|eh up|ey up|ay up|aye up|ayup|eyup|anya|now then)\W*$/i;
+const looksAddressed = (t) => {
+  const text = String(t || '').trim();
+  const opening = text.split(/\s+/).slice(0, 5).join(' ');
+  if (WAKE_RX.test(text) || NAME_TOKEN.test(opening) || GREETING_ONLY.test(text) || matchesWake(text)) return true; // + spellings recorded on /ims/phrases
+  // A wake phrase is only a few words, and speech-to-text garbles it differently every time
+  // ("Eh up IMS" -> "I am I am", "Ayo Pimsup him's"). For short utterances Gemini's own judgement
+  // from the audio decides; only longer sentences with nothing name-like are blocked - that's
+  // people talking in the room.
+  return text.split(/\s+/).filter(Boolean).length <= 4;
+};
+// Strict enough to overrule Gemini's own "no wake phrase" verdict: a recorded spelling, the full
+// wake phrase, or a short utterance ending in something like the name ("Neyo Pims", "radio Pims").
+const heardLikeWake = (t) => {
+  const text = String(t || '').trim();
+  if (!text) return false;
+  if (matchesWake(text) || WAKE_RX.test(text)) return true;
+  const words = text.split(/\s+/).filter(Boolean);
+  return words.length <= 4 && /\b(\w*pims|\w*pms|ims|ems|eems|him's|hims|hymns?|m's)\W*$/i.test(text);
+};
+const FOLLOW_UP_MS = 10000; // after Ims stops talking, a reply within this long needs no wake phrase
+
+function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
+  const imsWeb = Boolean(opts.imsWeb);
+  const imsBrain = isHardware || imsWeb; // sessions that run Ims's own tools on the server
+  const tag = isHardware ? '[HardwareLive]' : imsWeb ? '[ImsWeb]' : '[BrowserLive]';
 
   // Most connections are just the device sitting in standby, reconnecting
   // periodically with no real interaction at all - creating a folder for
@@ -546,6 +599,66 @@ function handleLiveProxyConnection(ws, isHardware = false) {
   let turnOpenerWords = [];
   let turnOpenerSaved = false;
   let turnReplyText = '';
+
+  // Live sessions are billed while open, so an Ims conversation closes after 15 s of silence:
+  // nothing heard from the user (transcribed words or typed text), nothing from Ims still
+  // playing, and no reply or tool call in progress. The desk goes back to standby; the web app
+  // is told the session went to sleep. Room noise doesn't count - only transcribed words do.
+  const SILENCE_CLOSE_MS = 15000;
+  let lastActivityAt = Date.now();
+  let silenceClosedAt = 0; // mic frames still in flight when the session closed are dropped
+  let webAudioEndAt = 0;
+  const silenceTimer = imsBrain ? setInterval(() => {
+    if (isClientClosed || !currentGeminiWs || currentGeminiWs.readyState !== WebSocket.OPEN) return;
+    if (!currentTurnComplete) return; // Ims is thinking or speaking
+    if (isHardware && isRecordingActive()) return;
+    const playingUntil = isHardware ? (paceSentMs ? paceStart + paceSentMs : 0) : webAudioEndAt;
+    const quietSince = Math.max(lastActivityAt, playingUntil, turnCompleteAt || 0);
+    if (Date.now() - quietSince < SILENCE_CLOSE_MS) return;
+    console.log(`${tag} 💤 15 s of silence - closing the Gemini session`);
+    silenceClosedAt = Date.now();
+    try { logCapture(`[${new Date().toISOString()}] ${tag} SILENCE CLOSE (15s)\n`); } catch (_) { }
+    isConversationActive = false;
+    touchToTalkActive = false;
+    try { currentGeminiWs.close(1000, 'Silence timeout'); } catch (_) { }
+    currentGeminiWs = null;
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(isHardware ? { cancelConversation: true } : { sessionIdle: true }));
+  }, 1000) : null;
+
+  // Audio pacing for the device. Gemini generates speech much faster than it plays (a 45 s
+  // report arrives in ~10 s), and the device can only hold ~33 s of audio - once that fills,
+  // chunks get dropped and the speech sounds sped up. So audio is released no more than
+  // PACE_LEAD_MS ahead of playback. Control messages that must follow the audio (turnComplete,
+  // text) go through the same queue so their order is kept.
+  const PACE_LEAD_MS = 15000;
+  const PCM_BYTES_PER_MS = 48; // 24 kHz, 16-bit mono from Gemini
+  const paceQueue = [];
+  let paceTimer = null, paceSentMs = 0, paceStart = 0;
+  const pacePump = () => {
+    while (paceQueue.length) {
+      const now = Date.now();
+      if (paceSentMs && now - paceStart > paceSentMs + 2000) paceSentMs = 0; // device has played everything: new window
+      if (!paceSentMs) paceStart = now;
+      const item = paceQueue[0];
+      if (item.bin && paceSentMs - (now - paceStart) > PACE_LEAD_MS) break;
+      if (judgePendingUntil && now < judgePendingUntil) break; // waiting to confirm he was addressed
+      paceQueue.shift();
+      if (ws.readyState !== WebSocket.OPEN) continue;
+      if (item.bin) { ws.send(item.bin, { binary: true }); paceSentMs += item.bin.length / PCM_BYTES_PER_MS; }
+      else ws.send(item.json);
+    }
+    if (!paceQueue.length && paceTimer) { clearInterval(paceTimer); paceTimer = null; }
+  };
+  const paceSend = (item) => {
+    paceQueue.push(item);
+    pacePump();
+    if (paceQueue.length && !paceTimer) paceTimer = setInterval(pacePump, 40);
+  };
+  const paceFlush = () => {
+    paceQueue.length = 0;
+    paceSentMs = 0;
+    if (paceTimer) { clearInterval(paceTimer); paceTimer = null; }
+  };
   // Tracks whether Gemini sent a turnComplete for the current generation turn.
   // Used to detect mid-turn disconnects (Gemini closes code=1000 before the turn
   // finished) and synthesise the missing turnComplete so the device does not
@@ -567,7 +680,17 @@ function handleLiveProxyConnection(ws, isHardware = false) {
   // the same user speech and must not be dropped.
   let turnHadAudio = false;
   const turnHasTrigger = () => energeticMicFrames >= 8 || userTranscriptSeen || textTurnSent;
-  const resetTurnTriggers = () => { energeticMicFrames = 0; userTranscriptSeen = false; textTurnSent = false; stopWindow = ''; };
+  const resetTurnTriggers = () => { energeticMicFrames = 0; userTranscriptSeen = false; textTurnSent = false; stopWindow = ''; heardThisTurn = ''; heardStartAt = 0; };
+  // Wake gate (desk only): Ims may only speak when what was just heard contains a wake phrase,
+  // or it is a follow-up that started within FOLLOW_UP_MS of him finishing - or a tap / device text.
+  let heardThisTurn = '';
+  // Carbs go to Nightscout and AAPS takes them in, so they are only sent after Ims has proposed a
+  // number and the user has answered since (spoken or typed) - see the logCarbs handler.
+  let pendingCarbs = null;
+  let lastUserInputAt = 0;
+  let heardStartAt = 0;
+  let followUpUntil = 0;
+  let judgePendingUntil = 0; // Gemini started replying before the transcript arrived: hold his voice until we can check
   let stopWindow = ''; // the last few words the user said, for the "IMS stop" command
 
   // "IMS stop" / "stop IMS" at any point - including while Ims is "thinking" - cancels
@@ -583,6 +706,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
     userSpokenTranscript = '';
     spokenTranscript = '';
     resetTurnTriggers();
+    paceFlush();
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ cancelConversation: true }));
     if (stopAllRinging() > 0) pushScheduleStatus(); // it also silences a ringing alarm/timer/reminder
     unsolicitedTurn = true; // anything Gemini still sends for the cancelled request is dropped
@@ -747,6 +871,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
     if (isClientClosed) return null;
     const gWs = new WebSocket(geminiUrl);
     geminiConnectedAt = Date.now();
+    lastActivityAt = Date.now(); // a fresh session gets its full 15 s before the silence close
 
     if (isHardware) {
       activeHardwareSession = { clientWs: ws, geminiWs: gWs };
@@ -848,14 +973,47 @@ function handleLiveProxyConnection(ws, isHardware = false) {
           const heardForStop = parsed.serverContent?.inputTranscription?.text;
           if (heardForStop) {
             stopWindow = (stopWindow + heardForStop).slice(-70);
-            if (isCancelCommand(stopWindow)) { cancelConversation(); return; }
+            if (isCancelCommand(stopWindow) || matchesStop(stopWindow)) { cancelConversation(); return; }
           }
-          if (parsed.serverContent?.inputTranscription?.text) { userTranscriptSeen = true; unsolicitedTurn = false; }
+          if (parsed.serverContent?.inputTranscription?.text) {
+            userTranscriptSeen = true; unsolicitedTurn = false;
+            if (!heardStartAt) heardStartAt = Date.now();
+            heardThisTurn = (heardThisTurn + parsed.serverContent.inputTranscription.text).slice(-400);
+            if (judgePendingUntil) {
+              judgePendingUntil = 0;
+              if (!looksAddressed(heardThisTurn)) {
+                unsolicitedTurn = true;
+                console.warn(`${tag} 🔇 Not addressed to Ims (late transcript) - dropping the held reply. Heard: "${heardThisTurn.slice(0, 80)}"`);
+                try { logCapture(`[${new Date().toISOString()}] ${tag} REPLY DROPPED - NOT ADDRESSED (late): "${heardThisTurn.slice(0, 120)}"\n`); } catch (_) { }
+                paceFlush();
+                if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ noWakeDetected: true }));
+              } else {
+                pacePump();
+              }
+            }
+          }
           const startsModelOutput = parsed.serverContent?.modelTurn || parsed.serverContent?.outputTranscription || parsed.toolCall;
           if (startsModelOutput && currentTurnComplete && !unsolicitedTurn && !turnHasTrigger()) {
+            // Nothing new from the user since his last reply - Gemini repeating itself. Drop it.
             unsolicitedTurn = true;
             console.warn(`${tag} 🔇 Dropping an unsolicited model turn (nothing from the user since the last one ended)`);
-            try { logCapture(`[${new Date().toISOString()}] ${tag} UNSOLICITED MODEL TURN DROPPED\n`); } catch (_) { }
+            try { logCapture(`[${new Date().toISOString()}] ${tag} UNSOLICITED MODEL TURN DROPPED
+`); } catch (_) { }
+            paceFlush();
+          }
+          if (startsModelOutput && currentTurnComplete && !unsolicitedTurn) {
+            const followUp = heardStartAt ? heardStartAt <= followUpUntil : (energeticMicFrames >= 8 && Date.now() <= followUpUntil);
+            const addressed = textTurnSent || touchToTalkActive || looksAddressed(heardThisTurn) || followUp;
+            if (!addressed && !heardThisTurn.trim()) {
+              // No transcript yet - hold his voice for up to 1.5 s until it arrives (see above).
+              judgePendingUntil = Date.now() + 1500;
+            } else if (!addressed) {
+              unsolicitedTurn = true;
+              console.warn(`${tag} 🔇 Not addressed to Ims (no wake phrase, not a follow-up) - dropping the reply. Heard: "${heardThisTurn.slice(0, 80)}"`);
+              try { logCapture(`[${new Date().toISOString()}] ${tag} REPLY DROPPED - NOT ADDRESSED: "${heardThisTurn.slice(0, 120)}"\n`); } catch (_) { }
+              paceFlush();
+              if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ noWakeDetected: true }));
+            }
           }
           if (unsolicitedTurn) {
             for (const call of parsed.toolCall?.functionCalls || []) {
@@ -896,6 +1054,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
               // place a capture folder actually gets created.
               ensureCaptureFolder();
               const rawBytes = Buffer.from(part.inlineData.data, 'base64');
+              if (imsWeb) webAudioEndAt = Math.max(webAudioEndAt, Date.now()) + rawBytes.length / 48;
               parsedAudioBytes = rawBytes;
               audioChunks.push(rawBytes);
               const elapsedSec = ((Date.now() - captureStartTime) / 1000).toFixed(2);
@@ -951,6 +1110,8 @@ function handleLiveProxyConnection(ws, isHardware = false) {
         // what the user actually said, not just what Ims replied).
         if (parsed.serverContent?.inputTranscription?.text) {
           const heardText = parsed.serverContent.inputTranscription.text;
+          if (/[a-z0-9]/i.test(heardText)) lastUserInputAt = Date.now();
+          if (/[a-z0-9]/i.test(heardText) && (!isHardware || looksAddressed(heardThisTurn) || Date.now() <= followUpUntil || touchToTalkActive)) lastActivityAt = Date.now();
           userSpokenTranscript += heardText;
           try {
             logCapture(
@@ -959,6 +1120,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
 
         }
 
+        if (parsed.serverContent?.interrupted && isHardware) paceFlush(); // the user cut in - drop what hasn't been sent yet
         if (parsed.serverContent?.interrupted) {
           // msSinceOwnAudio small (a couple hundred ms or less) points at the
           // model interrupting ITS OWN in-flight generation (a self-revision,
@@ -978,7 +1140,11 @@ function handleLiveProxyConnection(ws, isHardware = false) {
           if (!parsed.toolCall) {
             currentTurnComplete = true; // Gemini confirmed the turn ended cleanly
             turnCompleteAt = Date.now();
-            if (turnHadAudio) { resetTurnTriggers(); turnHadAudio = false; }
+            if (turnHadAudio) {
+              resetTurnTriggers(); turnHadAudio = false;
+              const playEnd = isHardware ? (paceSentMs ? paceStart + paceSentMs : Date.now()) : Math.max(Date.now(), webAudioEndAt);
+              followUpUntil = playEnd + FOLLOW_UP_MS;
+            }
           }
           console.log(`${tag} ✅ Gemini reported TURN COMPLETE (hasToolCall=${!!parsed.toolCall})`);
           try {
@@ -993,7 +1159,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
             recordReplyOpener(turnOpenerWords.join(' '));
             turnOpenerSaved = true;
           }
-          if (isHardware && turnReplyText.trim()) { recordReplyText(turnReplyText); turnReplyText = ''; }
+          if (imsBrain && turnReplyText.trim()) { recordReplyText(turnReplyText); turnReplyText = ''; }
         }
 
         // DIAGNOSTIC: the thinking-trace text repeatedly says "I'm calling
@@ -1017,7 +1183,8 @@ function handleLiveProxyConnection(ws, isHardware = false) {
         // Browser clients run their own handleSearchTool() in useGeminiLive.js and respond themselves -
         // auto-responding here too raced it with a second, less-formatted toolResponse for the same
         // call.id, degrading library answers and destabilizing the turn-taking/interrupt state.
-        if (isHardware && parsed.toolCall?.functionCalls) {
+        if (imsBrain && parsed.toolCall?.functionCalls) {
+          lastActivityAt = Date.now();
           // Shared by every new reminders/lists branch below, all of which
           // are synchronous - reduces 7 near-identical toolResponse blocks to
           // one call each, so a copy-paste slip can't silently mismatch a
@@ -1050,13 +1217,23 @@ function handleLiveProxyConnection(ws, isHardware = false) {
                   gWs.send(JSON.stringify({
                     toolResponse: {
                       functionResponses: [{
-                        response: { output: { text: "Search failed: " + err.message } },
+                        response: { output: withVoiceReminder({ text: "Search failed: " + err.message }) },
                         id: call.id
                       }]
                     }
                   }));
                 }
               });
+            } else if (call.name === 'noWakeDetected' && isHardware && heardLikeWake(heardThisTurn)) {
+              // Gemini said "no wake phrase", but what it heard is one of the ways the wake phrase
+              // actually comes through (recorded on /ims/phrases). Answer instead.
+              console.log(`${tag} 🔔 noWakeDetected overridden - "${heardThisTurn.slice(0, 60)}" matches a known wake-phrase spelling`);
+              try { logCapture(`[${new Date().toISOString()}] ${tag} NOWAKE OVERRIDDEN: "${heardThisTurn.slice(0, 80)}"\n`); } catch (_) { }
+              if (gWs.readyState === WebSocket.OPEN) {
+                gWs.send(JSON.stringify({ toolResponse: { functionResponses: [{ response: { output: withVoiceReminder({ status: 'overruled', note: 'That WAS the wake phrase - speech-to-text just mangled it. Reply to the user now.' }) }, id: call.id }] } }));
+                gWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `(System: the user just said the wake phrase - it was transcribed as "${heardThisTurn.trim()}". Greet them briefly, or answer if they asked something - in your Yorkshire accent.)` }] }], turnComplete: true } }));
+                textTurnSent = true;
+              }
             } else if (call.name === 'noWakeDetected' || call.name === 'endConversation') {
               console.log(`${tag} 🔔 ${call.name} tool call from Gemini - forwarding to hardware client`);
               if (call.name === 'noWakeDetected') {
@@ -1069,10 +1246,10 @@ function handleLiveProxyConnection(ws, isHardware = false) {
                 touchToTalkActive = false;
                 turnWakePhraseVerified = false;
               }
-              if (isHardware && ws.readyState === WebSocket.OPEN) {
+              if (imsBrain && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ [call.name]: true }));
               }
-              if (call.name === 'endConversation' && isHardware) {
+              if (call.name === 'endConversation' && imsBrain) {
                 // Phase 3 memory: fire-and-forget, never blocks the tool ack
                 // above - a slow/failed summarisation call must not delay
                 // the farewell reply reaching the device.
@@ -1093,7 +1270,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
                 gWs.send(JSON.stringify({
                   toolResponse: {
                     functionResponses: [{
-                      response: { output: { status: 'acknowledged' } },
+                      response: { output: withVoiceReminder({ status: 'acknowledged' }) },
                       id: call.id
                     }]
                   }
@@ -1105,14 +1282,14 @@ function handleLiveProxyConnection(ws, isHardware = false) {
               // needed. main.cpp maps the string to its emotion index.
               const emotion = call.args?.emotion || 'neutral';
               console.log(`${tag} 🎭 setEmotion(${emotion}) - forwarding to hardware client`);
-              if (isHardware && ws.readyState === WebSocket.OPEN) {
+              if (imsBrain && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify(getDevicePayload(emotion)));
               }
               if (gWs.readyState === WebSocket.OPEN) {
                 gWs.send(JSON.stringify({
                   toolResponse: {
                     functionResponses: [{
-                      response: { output: { status: 'acknowledged' } },
+                      response: { output: withVoiceReminder({ status: 'acknowledged' }) },
                       id: call.id
                     }]
                   }
@@ -1297,15 +1474,56 @@ function handleLiveProxyConnection(ws, isHardware = false) {
                 respondToToolCall(call, r);
               }).catch((err) => respondToToolCall(call, { error: err.message }));
             } else if (call.name === 'getNews') {
-              getNews({ topic: call.args?.topic, source: call.args?.source }).then((d) => {
-                console.log(`${tag} 📰 getNews(${call.args?.source || call.args?.topic || 'top'}) -> ${(d.items || []).length}`);
+              getNews({ topic: call.args?.topic, source: call.args?.source, about: call.args?.about, tours: call.args?.tours }).then((d) => {
+                console.log(`${tag} 📰 getNews(${call.args?.about || call.args?.source || call.args?.topic || 'top'}) -> ${(d.items || []).length}`);
                 respondToToolCall(call, { ...d, note: 'Summarise the most interesting three or four in your own words and say where they are from; offer more on any of them.' });
               }).catch((err) => respondToToolCall(call, { error: err.message }));
             } else if (call.name === 'logCarbs') {
-              logCarbs({ grams: call.args?.grams, food: call.args?.food }).then((e) => {
-                console.log(`${tag} 🍞 logCarbs(${e.grams} g ${e.food || ''}) nightscout=${e.nightscout.sent}`);
-                respondToToolCall(call, { status: 'logged', grams: e.grams, food: e.food, sentToNightscout: e.nightscout.sent, ...(e.nightscout.sent ? {} : { nightscoutProblem: e.nightscout.reason }) });
+              const grams = Math.round(Number(call.args?.grams));
+              const food = call.args?.food || null;
+              const confirmedOk = call.args?.confirmed === true && pendingCarbs && Math.abs(pendingCarbs.grams - grams) <= 1 &&
+                lastUserInputAt > pendingCarbs.at && Date.now() - pendingCarbs.at < 5 * 60000;
+              if (!confirmedOk) {
+                // Step 1: propose. Nothing is sent until the user says yes.
+                recentCarbs(20).then((recent) => {
+                  pendingCarbs = { grams, food, at: Date.now() };
+                  console.log(`${tag} 🍞 logCarbs proposed ${grams} g ${food || ''} (recent: ${recent.length})`);
+                  respondToToolCall(call, {
+                    status: 'needs_confirmation', grams, food,
+                    say: `Tell them the total and what you based it on, then ask if you should log it - e.g. "That's about ${grams} grams, shall I log it?". Only after they say yes, call logCarbs again with the same grams and confirmed: true. If they give a different number, propose that instead.`,
+                    ...(recent.length ? { alreadyLoggedRecently: recent, warning: 'Carbs were already entered in the last 20 minutes (listed). Mention them and ask whether this is extra food or the same meal - never log the same meal twice.' } : {}),
+                  });
+                }).catch((err) => respondToToolCall(call, { error: err.message }));
+              } else {
+                // Step 2: confirmed after the proposal - send it.
+                pendingCarbs = null;
+                logCarbs({ grams, food }).then((e) => {
+                  console.log(`${tag} 🍞 logCarbs(${e.grams} g ${e.food || ''}) confirmed, nightscout=${e.nightscout.sent}`);
+                  respondToToolCall(call, { status: 'logged', grams: e.grams, food: e.food, sentToNightscout: e.nightscout.sent, ...(e.nightscout.sent ? { note: 'It will show in AAPS once it syncs.' } : { nightscoutProblem: e.nightscout.reason }) });
+                }).catch((err) => respondToToolCall(call, { error: err.message }));
+              }
+            } else if (call.name === 'clearOldNightscoutData') {
+              clearOldNightscout(3).then((r) => {
+                const ok = r.results.every((x) => x.ok);
+                console.log(`${tag} 🧹 clearOldNightscoutData -> ${ok ? 'ok' : 'partly failed'}, now ${r.dbSize?.pct}%`);
+                respondToToolCall(call, {
+                  status: ok ? 'cleared' : 'partly failed',
+                  olderThan: r.cutoff.slice(0, 10),
+                  deleted: r.results.map((x) => `${x.label}: ${x.ok ? (x.deleted ?? 'done') : 'failed'}`),
+                  databaseNowPercent: r.dbSize?.pct ?? null,
+                });
               }).catch((err) => respondToToolCall(call, { error: err.message }));
+            } else if (call.name === 'startBackgroundTask') {
+              createTask({ request: call.args?.task, origin: isHardware ? 'desk' : 'web' }).then((t) => {
+                console.log(`${tag} 🧵 startBackgroundTask #${t.id}: ${t.title}`);
+                respondToToolCall(call, { status: 'started', id: t.id, title: t.title, note: 'Tell them briefly you are on it and they can ask how it went later (or it will be in their next day report). Do not guess the answer now.' });
+              }).catch((err) => respondToToolCall(call, { error: err.message }));
+            } else if (call.name === 'getBackgroundTasks') {
+              try {
+                const tasks = describeTasksForIms({ id: call.args?.id, about: call.args?.about });
+                console.log(`${tag} 🧵 getBackgroundTasks -> ${tasks.length}`);
+                respondToToolCall(call, { tasks, note: tasks.length ? 'Give the summary of finished ones in your own words; offer more detail. Say which are still running.' : 'No background tasks yet.' });
+              } catch (err) { respondToToolCall(call, { error: err.message }); }
             } else if (call.name === 'lookUpFood') {
               lookUpFood(call.args?.food).then((d) => {
                 console.log(`${tag} 🥪 lookUpFood(${call.args?.food}) -> ${d.matches} matches, ${d.typicalCarbsPer100g} g/100g`);
@@ -1326,23 +1544,23 @@ function handleLiveProxyConnection(ws, isHardware = false) {
           if (parsedAudioBytes) {
             const CHUNK_SIZE = 1024;
             for (let i = 0; i < parsedAudioBytes.length; i += CHUNK_SIZE) {
-              const subChunk = parsedAudioBytes.subarray(i, i + CHUNK_SIZE);
-              ws.send(subChunk, { binary: true });
+              paceSend({ bin: Buffer.from(parsedAudioBytes.subarray(i, i + CHUNK_SIZE)) });
             }
           }
           // Forward lightweight text snippet if available:
           if (parsed?.serverContent?.modelTurn?.parts) {
             for (const part of parsed.serverContent.modelTurn.parts) {
               if (part.text) {
-                ws.send(JSON.stringify({ text: part.text }));
+                paceSend({ json: JSON.stringify({ text: part.text }) });
               }
             }
           }
           if (parsed?.setupComplete) {
+            paceFlush();
             ws.send(JSON.stringify({ setupComplete: {} }));
           }
           if (parsed?.serverContent?.turnComplete && !parsed.toolCall) {
-            ws.send(JSON.stringify({ turnComplete: true }));
+            paceSend({ json: JSON.stringify({ turnComplete: true }) });
           }
         } else {
           // Forward standard text JSON frame to web browser client
@@ -1410,7 +1628,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
         currentTurnComplete = true; // Reset for next turn
         turnCompleteAt = Date.now();
         console.log(`${tag} Gracefully handling code ${code} from Gemini. Keeping client socket open and preparing seamless upstream reconnect.`);
-        currentGeminiWs = null;
+        if (currentGeminiWs === gWs) currentGeminiWs = null;
         return;
       }
 
@@ -1453,7 +1671,27 @@ function handleLiveProxyConnection(ws, isHardware = false) {
     return currentGeminiWs;
   };
 
+  // Wake/stop phrase recording from the device microphone (see /ims/phrases): while this is set, mic
+  // frames are collected here and never reach Gemini.
+  let phraseCapture = null;
+  if (isHardware) {
+    ws.capturePhrase = (seconds = 3) => new Promise((resolve, reject) => {
+      if (phraseCapture) return reject(new Error('Already recording - wait a moment.'));
+      if (isConversationActive || !currentTurnComplete || isRecordingActive()) return reject(new Error('Ims is busy - try again when he is on standby.'));
+      phraseCapture = { chunks: [] };
+      try { ws.send(JSON.stringify({ phraseCapture: { seconds } })); } catch (err) { phraseCapture = null; return reject(err); }
+      setTimeout(() => {
+        const pcm = Buffer.concat(phraseCapture?.chunks || []);
+        phraseCapture = null;
+        if (pcm.length < 16000) reject(new Error('No sound came from the device - it may have been busy. Try again.'));
+        else resolve(pcm);
+      }, seconds * 1000 + 800);
+    });
+  }
+
   ws.on('message', (message, isBinary) => {
+    if (isBinary && phraseCapture) { phraseCapture.chunks.push(Buffer.from(message)); return; }
+    if (isBinary && isHardware && silenceClosedAt && Date.now() - silenceClosedAt < 2500) return; // don't reopen a session we just closed
     // Hardware firmware debug telemetry ({"debug":"..."}) - log only, never
     // forward to Gemini (it would reject these as malformed clientContent).
     if (!isBinary) {
@@ -1576,7 +1814,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
       // which Gemini rejects with 1007 "Request contains an invalid argument."
       try {
         const parsedCtrl = JSON.parse(msgStr);
-        if (parsedCtrl.clientContent?.turns?.length) textTurnSent = true;
+        if (parsedCtrl.clientContent?.turns?.length) { textTurnSent = true; lastActivityAt = Date.now(); lastUserInputAt = Date.now(); }
         if (parsedCtrl.clientContent && Array.isArray(parsedCtrl.clientContent.turns) && parsedCtrl.clientContent.turns.length === 0) {
           console.warn(`${tag} ⚠️ Suppressed empty clientContent turns to prevent Gemini 1007 rejection.`);
           return;
@@ -1630,19 +1868,32 @@ function handleLiveProxyConnection(ws, isHardware = false) {
             msgStr = JSON.stringify(parsed);
             console.log(`${tag} 🔧 Augmented hardware setup handshake with searchLibrary/noWakeDetected/endConversation tools, wake-phrase-gated system prompt, and outputAudioTranscription`);
           }
+          if (imsWeb) {
+            const web = getWebSetupPayload();
+            parsed.setup.model = web.setup.model;
+            parsed.setup.tools = web.setup.tools;
+            parsed.setup.systemInstruction = web.setup.systemInstruction;
+            parsed.setup.generationConfig = web.setup.generationConfig;
+            parsed.setup.outputAudioTranscription = {};
+            parsed.setup.inputAudioTranscription = {};
+            parsed.setup.sessionResumption = {};
+            delete parsed.setup.imsWeb;
+            msgStr = JSON.stringify(parsed);
+            console.log(`${tag} 🧠 Web Ims session: same persona, memory and tools as the desk terminal`);
+          }
           // Browser live sessions ship their own generic assistant prompt and
           // voice. Ims must be the same Ims everywhere, so put the saved voice,
           // personality sliders and ims_persona_rules.md in front of it and pin
           // the saved voice. The voice-audition connection (no system prompt)
           // is left alone - it exists specifically to try OTHER voices.
-          if (!isHardware && parsed.setup.systemInstruction && !parsed.setup.previewVoice) {
+          if (!isHardware && !imsWeb && parsed.setup.systemInstruction && !parsed.setup.previewVoice) {
             const persona = getWebPersonaBlock();
             const original = (parsed.setup.systemInstruction.parts || []).map((p) => p.text || '').join('\n');
             parsed.setup.systemInstruction = {
               parts: [{ text: persona.text + "\n\nYOUR CURRENT TASK AND TOOLS (keep the identity, dialect, personality and voice above throughout): " + original }]
             };
             parsed.setup.generationConfig = parsed.setup.generationConfig || {};
-            parsed.setup.generationConfig.speechConfig = { voiceConfig: { prebuiltVoiceConfig: { voiceName: persona.voice } } };
+            parsed.setup.generationConfig.speechConfig = { languageCode: 'en-GB', voiceConfig: { prebuiltVoiceConfig: { voiceName: persona.voice } } };
             msgStr = JSON.stringify(parsed);
             console.log(`${tag} 🎭 Applied saved Ims voice (${persona.voice}), personality and persona rules to browser live session`);
           }
@@ -1672,6 +1923,8 @@ function handleLiveProxyConnection(ws, isHardware = false) {
 
   ws.on('close', (code, reason) => {
     isClientClosed = true;
+    paceFlush();
+    if (silenceTimer) clearInterval(silenceTimer);
     if (offRecordingChange) offRecordingChange();
     flushMicWavToDisk();
     flushWavToDisk();
@@ -1716,6 +1969,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
 }
 
 browserWss.on('connection', (ws) => handleLiveProxyConnection(ws, false));
+imsWebWss.on('connection', (ws) => handleLiveProxyConnection(ws, false, { imsWeb: true }));
 hardwareWss.on('connection', (ws) => handleLiveProxyConnection(ws, true));
 
 // ---------------------------------------------------------------------------

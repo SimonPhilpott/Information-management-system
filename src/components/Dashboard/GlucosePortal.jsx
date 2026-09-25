@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Droplets, RotateCw, Sparkles, ChevronLeft, ChevronRight, Plus, Trash2, AlertTriangle, Moon } from 'lucide-react';
+import { Droplets, RotateCw, Sparkles, ChevronLeft, ChevronRight, Plus, Trash2, AlertTriangle, Moon, Database, ExternalLink, Eraser } from 'lucide-react';
+
+const MONGO_URL = 'https://cloud.mongodb.com/v2/5fabc4b4fcf8b709ce8ab13c#/explorer/6542751e47463e28ff4eeb80';
+const NIGHTSCOUT_URL = 'https://simon-philpott-nightscout.herokuapp.com';
+const HEROKU_SETTINGS_URL = 'https://dashboard.heroku.com/apps/simon-philpott-nightscout/settings';
 import PortalShell from './PortalShell';
 import Prose from './Prose';
 
@@ -117,6 +121,9 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
   const [carbForm, setCarbForm] = useState({ grams: '', food: '' });
   const [nsWrite, setNsWrite] = useState(null);
   const [nsSecret, setNsSecret] = useState('');
+  const [dbSize, setDbSize] = useState(null);
+  const [showConnect, setShowConnect] = useState(false);
+  const [autoClear, setAutoClear] = useState(null);
   const [busy, setBusy] = useState('');
   const [notification, setNotification] = useState(null);
   const notify = (msg, type = 'success') => { setNotification({ msg, type }); setTimeout(() => setNotification(null), 3500); };
@@ -140,7 +147,7 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadDay(); }, [loadDay]);
   useEffect(() => { loadCarbs(); }, [loadCarbs]);
-  useEffect(() => { fetch('/api/glucose-hub/nightscout').then((r) => r.json()).then((d) => d.success && setNsWrite(d.configured)).catch(() => {}); }, []);
+  useEffect(() => { fetch('/api/glucose-hub/nightscout').then((r) => r.json()).then((d) => { if (d.success) { setNsWrite(d.configured); setDbSize(d.dbSize); setAutoClear(d.autoClear); } }).catch(() => {}); }, []);
   useEffect(() => { const t = setInterval(() => { load(); if (day === todayStr()) loadDay(); }, 60000); return () => clearInterval(t); }, [load, loadDay, day]);
 
   const addCarbs = async () => {
@@ -158,6 +165,23 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
       notify(d.configured ? 'Nightscout accepted the secret - carbs will be sent there.' : 'Removed - carbs stay in IMS only.');
     } catch (err) { notify(err.message, 'error'); } finally { setBusy(''); }
   };
+  const toggleAutoClear = async (enabled) => {
+    const d = await (await fetch('/api/glucose-hub/nightscout/auto-clear', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) })).json();
+    if (d.success) { setAutoClear(d.autoClear); notify(enabled ? 'Auto-clear on: at 95% full, records older than 3 months are cleared.' : 'Auto-clear off.'); }
+  };
+  const clearOld = async () => {
+    if (!window.confirm('Delete every Nightscout record (glucose readings, treatments and AAPS device status) older than 3 months?\n\nThis cannot be undone in Nightscout. IMS keeps its own copy, so your charts here are not affected.')) return;
+    setBusy('cleanup');
+    try {
+      const d = await (await fetch('/api/glucose-hub/nightscout/cleanup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ months: 3 }) })).json();
+      if (!d.success) throw new Error(d.error);
+      if (d.dbSize) setDbSize(d.dbSize);
+      const failed = d.results.filter((r) => !r.ok);
+      const counts = d.results.filter((r) => r.ok && r.deleted != null).map((r) => `${r.deleted} ${r.label}`).join(', ');
+      notify(failed.length ? `Some deletes failed: ${failed.map((r) => r.label).join(', ')}` : `Cleared records older than 3 months${counts ? ` (${counts})` : ''}.`, failed.length ? 'error' : 'success');
+    } catch (err) { notify(err.message, 'error'); } finally { setBusy(''); }
+  };
+  const dbColour = (p) => (p == null ? 'text-slate-500' : p <= 70 ? 'text-emerald-500' : p <= 90 ? 'text-orange-500' : 'text-red-500');
   const delCarbs = async (id) => { await fetch(`/api/glucose-hub/carbs/${id}`, { method: 'DELETE' }); loadCarbs(); loadDay(); };
   const analyse = async () => {
     setBusy('insight');
@@ -185,6 +209,53 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
     <PortalShell title="Blood Sugar" subtitle="/ims/glucose • your glucose, from IMS's own log"
       icon={Droplets} gradient={gradient} glow="rgba(244,63,94,0.3)"
       isDark={isDark} onThemeToggle={onThemeToggle} setCurrentPath={setCurrentPath} notification={notification} maxWidth="max-w-5xl">
+
+      {/* Nightscout database */}
+      <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
+        <span className={`flex items-center gap-1.5 font-bold ${dbColour(dbSize?.pct)}`} title={dbSize ? `${dbSize.usedMb} MB of ${dbSize.maxMb} MB used` : 'Nightscout database size'}>
+          <Database size={13} /> Nightscout DB {dbSize ? `${Number(dbSize.pct).toFixed(1)}%` : '--'}
+          {dbSize && <span className="font-normal text-slate-500">({dbSize.usedMb} of {dbSize.maxMb} MB)</span>}
+        </span>
+        <a href={MONGO_URL} target="_blank" rel="noreferrer" className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1.5 border text-emerald-600 ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-[#2E2B27]/10 hover:bg-black/5'}`}>
+          <ExternalLink size={12} /> MongoDB
+        </a>
+        <a href={NIGHTSCOUT_URL} target="_blank" rel="noreferrer" className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1.5 border text-sky-600 ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-[#2E2B27]/10 hover:bg-black/5'}`}>
+          <ExternalLink size={12} /> Nightscout
+        </a>
+        {nsWrite ? (
+          <>
+          <label className="flex items-center gap-1.5 cursor-pointer font-semibold" title={autoClear?.last ? `Last auto-clear: ${new Date(autoClear.last.at).toLocaleString('en-GB')} (${autoClear.last.before}% before${autoClear.last.after != null ? `, ${autoClear.last.after}% after` : ''}${autoClear.last.ok === false ? ', had problems' : ''})` : 'Checked hourly'}>
+            <input type="checkbox" checked={Boolean(autoClear?.enabled)} onChange={(e) => toggleAutoClear(e.target.checked)} /> Auto-clear at 95%
+          </label>
+          <button onClick={clearOld} disabled={busy === 'cleanup'} title="Delete Nightscout records older than 3 months"
+            className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1.5 border disabled:opacity-40 ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-[#2E2B27]/10 hover:bg-black/5'}`}>
+            {busy === 'cleanup' ? <RotateCw size={12} className="animate-spin" /> : <Eraser size={12} />} Clear over 3 months
+          </button>
+          </>
+        ) : (
+          <button onClick={() => setShowConnect((v) => !v)} className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1.5 bg-gradient-to-r ${gradient} text-white`}>
+            <Database size={12} /> Connect Nightscout
+          </button>
+        )}
+      </div>
+      {!nsWrite && showConnect && (
+        <div className={`${panel} text-xs flex flex-col gap-2`}>
+          <h2 className="text-xs font-black uppercase tracking-wider">Connect Nightscout</h2>
+          <p className="text-slate-500">
+            IMS needs your Nightscout <b>API secret</b> to send carbs there and to clear old records. It's the <b>API_SECRET</b> setting on Heroku: open{' '}
+            <a href={HEROKU_SETTINGS_URL} target="_blank" rel="noreferrer" className="text-sky-500 hover:underline">your Heroku app settings</a>, press <b>Reveal Config Vars</b> and copy API_SECRET.
+            It's also the password Nightscout asks for when you open its <a href={NIGHTSCOUT_URL} target="_blank" rel="noreferrer" className="text-sky-500 hover:underline">settings</a> to authenticate.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <input type="password" autoComplete="off" className={`${field} flex-1 min-w-[12rem]`} placeholder="API secret" value={nsSecret}
+              onChange={(e) => setNsSecret(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && nsSecret && saveNsSecret(nsSecret)} />
+            <button onClick={() => saveNsSecret(nsSecret)} disabled={!nsSecret || busy === 'ns'} className={`px-3 py-2 rounded-xl text-xs font-bold bg-gradient-to-r ${gradient} text-white disabled:opacity-40`}>
+              {busy === 'ns' ? 'Checking...' : 'Connect'}
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-500">IMS checks it with Nightscout before saving, and stores it encrypted on the IMS server.</p>
+        </div>
+      )}
 
       {/* right now */}
       <div className={`${panel} flex flex-wrap items-center gap-6`}>

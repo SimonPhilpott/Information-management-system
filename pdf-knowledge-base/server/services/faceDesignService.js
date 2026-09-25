@@ -330,3 +330,37 @@ export function getStandbyOverride() {
   const f = getFaceByName('standby');
   return f ? faceForDevice(f) : null;
 }
+
+// ---- backups -----------------------------------------------------------------------------------------
+// A backup is a snapshot of everything about one face - resting and speaking frames, colour, eye
+// animation and scenarios - so a redesign can be undone. Restoring first backs up the current state.
+db.exec(`CREATE TABLE IF NOT EXISTS ims_face_backups (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, face_id INTEGER NOT NULL, label TEXT, snapshot TEXT NOT NULL, created_at INTEGER NOT NULL
+)`);
+
+const snapshotOf = (r) => ({ grid: r.grid, openGrid: r.open_grid || r.grid, color: r.color, scenarios: r.scenarios, eyeAnim: parseAnim(r.eye_anim) || { enabled: false, cells: [] } });
+const presentBackup = (b) => ({ id: b.id, faceId: b.face_id, label: b.label, createdAt: new Date(b.created_at).toISOString(), ...JSON.parse(b.snapshot) });
+
+export function listFaceBackups(faceId) {
+  return db.prepare('SELECT * FROM ims_face_backups WHERE face_id = ? ORDER BY created_at DESC').all(Number(faceId)).map(presentBackup);
+}
+
+export function backupFace(faceId, label = '') {
+  const r = db.prepare('SELECT * FROM ims_faces WHERE id = ? AND deleted_at IS NULL').get(Number(faceId));
+  if (!r) throw new Error('Face not found.');
+  const info = db.prepare('INSERT INTO ims_face_backups (face_id, label, snapshot, created_at) VALUES (?, ?, ?, ?)')
+    .run(r.id, String(label || '').trim().slice(0, 60) || null, JSON.stringify(snapshotOf(r)), Date.now());
+  return presentBackup(db.prepare('SELECT * FROM ims_face_backups WHERE id = ?').get(info.lastInsertRowid));
+}
+
+export function restoreFaceBackup(backupId) {
+  const b = db.prepare('SELECT * FROM ims_face_backups WHERE id = ?').get(Number(backupId));
+  if (!b) throw new Error('Backup not found.');
+  const face = db.prepare('SELECT * FROM ims_faces WHERE id = ? AND deleted_at IS NULL').get(b.face_id);
+  if (!face) throw new Error('That face no longer exists.');
+  backupFace(face.id, 'Before restoring');
+  const s = JSON.parse(b.snapshot);
+  return updateFace(face.id, { grid: s.grid, openGrid: s.openGrid, color: s.color, scenarios: s.scenarios, eyeAnim: s.eyeAnim });
+}
+
+export const deleteFaceBackup = (backupId) => db.prepare('DELETE FROM ims_face_backups WHERE id = ?').run(Number(backupId)).changes > 0;

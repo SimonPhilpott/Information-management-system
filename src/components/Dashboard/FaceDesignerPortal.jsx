@@ -21,7 +21,7 @@ const FRAMES = [
 
 // Draws a 12x8 dot grid. Unlit dots are faint, matching the device's
 // (breathing) background dots behind every face.
-function DotGrid({ grid, color, size = 14, gap = 3, onPaint, editable = false, editRange = null }) {
+function DotGrid({ grid, color, size = 14, gap = 3, onPaint, editable = false, editRange = null, fluid = false }) {
   const [painting, setPainting] = useState(false);
   useEffect(() => {
     const up = () => setPainting(false);
@@ -41,7 +41,7 @@ function DotGrid({ grid, color, size = 14, gap = 3, onPaint, editable = false, e
         onMouseDown={paintable ? (e) => { e.preventDefault(); setPainting(true); onPaint(i, true); } : undefined}
         onMouseEnter={paintable ? () => { if (painting) onPaint(i, false); } : undefined}
         style={{
-          width: size, height: size, borderRadius: size * 0.33,
+          ...(fluid ? { width: '100%', aspectRatio: '1', borderRadius: '33%' } : { width: size, height: size, borderRadius: size * 0.33 }),
           background: `#${color}`,
           ...(lit > 0 ? { opacity: 0.25 + 0.75 * lit } : { animation: 'imsBreath 4.5s ease-in-out infinite' }),
           cursor: paintable ? 'pointer' : 'default',
@@ -53,7 +53,7 @@ function DotGrid({ grid, color, size = 14, gap = 3, onPaint, editable = false, e
   }
   return (
     <div className="p-2 rounded-lg select-none"
-      style={{ display: 'grid', gridTemplateColumns: `repeat(${COLS}, ${size}px)`, gap, background: '#0b0e15', width: 'fit-content' }}>
+      style={{ display: 'grid', gridTemplateColumns: fluid ? `repeat(${COLS}, minmax(0, 1fr))` : `repeat(${COLS}, ${size}px)`, gap, background: '#0b0e15', width: fluid ? '100%' : 'fit-content', boxSizing: 'border-box' }}>
       <style>{'@keyframes imsBreath { 0% { opacity: .05 } 33% { opacity: .24 } 44% { opacity: .24 } 100% { opacity: .05 } }'}</style>
       {cells}
     </div>
@@ -107,7 +107,7 @@ const isAnimated = (anim) => Boolean(anim?.enabled && anim.cells?.length);
 
 // The face "talking" with its eyes animating in real time, alternating the two
 // mouth frames the way the device does.
-function TalkingPreview({ face, size = 9, gap = 2 }) {
+function TalkingPreview({ face, size = 9, gap = 2, fluid = false }) {
   const [open, setOpen] = useState(false);
   const [, setNow] = useState(0);
   const start = useRef(Date.now());
@@ -119,15 +119,67 @@ function TalkingPreview({ face, size = 9, gap = 2 }) {
   const base = open ? face.openGrid : face.grid;
   const cells = face.eyeAnim?.cells || [];
   const grid = isAnimated(face.eyeAnim) ? cells[cellAt(cells, Date.now() - start.current)].grid + base.slice(EYE_LEN) : base;
-  return <DotGrid grid={grid} color={face.color} size={size} gap={gap} />;
+  return <DotGrid grid={grid} color={face.color} size={size} gap={gap} fluid={fluid} />;
 }
 
 // A face in the list: still until the pointer is over it, then it plays its eye
 // timeline and flaps its mouth, so you can see how it will look on Ims.
+// Backups of one face: everything about it (resting and speaking frames, colour, eye animation,
+// scenarios) as last saved. Restoring backs up the current state first, so it can be undone too.
+function FaceBackups({ face, isDark, showToast, onRestored }) {
+  const [backups, setBackups] = useState([]);
+  const [label, setLabel] = useState('');
+  const [hoverId, setHoverId] = useState(null);
+  const load = useCallback(async () => {
+    const d = await (await fetch(`/api/face-designs/${face.id}/backups`)).json();
+    if (d.success) setBackups(d.backups);
+  }, [face.id]);
+  useEffect(() => { load(); }, [load]);
+  const backup = async () => {
+    const d = await (await fetch(`/api/face-designs/${face.id}/backups`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label }) })).json();
+    if (!d.success) return showToast(d.error || 'Backup failed.', 'error');
+    setLabel(''); showToast('Backed up.'); load();
+  };
+  const restore = async (b) => {
+    if (!window.confirm(`Restore "${face.name}" to the backup from ${new Date(b.createdAt).toLocaleString('en-GB')}? The current version is backed up first.`)) return;
+    const d = await (await fetch(`/api/face-designs/backups/${b.id}/restore`, { method: 'POST' })).json();
+    if (!d.success) return showToast(d.error || 'Restore failed.', 'error');
+    showToast('Restored.'); load(); onRestored();
+  };
+  const remove = async (b) => { await fetch(`/api/face-designs/backups/${b.id}`, { method: 'DELETE' }); load(); };
+  const border = isDark ? 'border-white/10' : 'border-[#2E2B27]/10';
+  return (
+    <div className={`mt-4 pt-4 border-t ${border}`}>
+      <h3 className="text-xs font-black uppercase tracking-wider mb-1">Backups of "{face.name}"</h3>
+      <p className="text-[11px] text-slate-500 mb-2">Saves everything about this face as last saved - both frames, colour, eye animation and scenarios. Save your edits first if you want them in the backup. Restoring backs up the current version first.</p>
+      <div className="flex flex-wrap gap-2 mb-3">
+        <input value={label} onChange={(e) => setLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && backup()} placeholder="Label (optional), e.g. before the new eyes"
+          className={`flex-1 min-w-[12rem] px-3 py-2 rounded-lg text-xs outline-none border ${isDark ? 'bg-slate-950/60 border-white/10' : 'bg-white border-[#2E2B27]/10'}`} />
+        <button onClick={backup} className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 ${isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}><Save size={13} /> Back up now</button>
+      </div>
+      {backups.length ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {backups.map((b) => (
+            <div key={b.id} className={`p-2 rounded-xl border ${border} flex flex-col gap-1.5`} onMouseEnter={() => setHoverId(b.id)} onMouseLeave={() => setHoverId(null)}>
+              {hoverId === b.id ? <TalkingPreview face={b} size={8} gap={2} fluid /> : <DotGrid grid={b.grid} color={b.color} size={8} gap={2} fluid />}
+              <div className="text-[11px] font-semibold break-words">{b.label || 'Backup'}</div>
+              <div className="text-[10px] text-slate-500">{new Date(b.createdAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}{b.eyeAnim?.enabled ? ' · animated eyes' : ''}</div>
+              <div className="flex gap-1">
+                <button onClick={() => restore(b)} className="flex-1 px-2 py-1 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 bg-amber-500 text-slate-900"><Undo2 size={11} /> Restore</button>
+                <button onClick={() => remove(b)} title="Delete backup" className="px-2 py-1 rounded-lg text-[11px] text-red-400 hover:bg-red-500/10"><Trash2 size={11} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : <p className="text-xs text-slate-500">No backups of this face yet.</p>}
+    </div>
+  );
+}
+
 function FaceThumb({ face, hovering }) {
   return hovering
-    ? <TalkingPreview face={face} size={8} gap={2} />
-    : <DotGrid grid={face.grid} color={face.color} size={8} gap={2} />;
+    ? <TalkingPreview face={face} size={8} gap={2} fluid />
+    : <DotGrid grid={face.grid} color={face.color} size={8} gap={2} fluid />;
 }
 
 export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
@@ -537,6 +589,10 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
                   </button>
                 )}
               </div>
+              {!isNew && selected && (
+                <FaceBackups face={selected} isDark={isDark} showToast={showToast}
+                  onRestored={async () => { const list = await load(); const f = list.find((x) => x.id === selected.id); if (f) select(f); }} />
+              )}
             </div>
           )}
         </div>

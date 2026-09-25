@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getSummary, getDay, logCarbs, listCarbs, deleteCarbs, analyse, getSavedInsight, getNightscoutWriteStatus, setNightscoutSecret, testNightscoutWrite } from '../services/glucoseHubService.js';
+import { getSummary, getDay, logCarbs, listCarbs, deleteCarbs, analyse, getSavedInsight, getNightscoutWriteStatus, setNightscoutSecret, testNightscoutWrite, getNightscoutDbSize, clearOldNightscout, getAutoClear, setAutoClear } from '../services/glucoseHubService.js';
 import { lookUpFood } from '../services/foodService.js';
 
 const router = Router();
@@ -26,7 +26,11 @@ router.delete('/carbs/:id', async (req, res) => {
 router.get('/food', async (req, res) => {
   try { res.json({ success: true, ...(await lookUpFood(req.query.q)) }); } catch (err) { fail(res, err, 400); }
 });
-router.get('/nightscout', (req, res) => res.json({ success: true, ...getNightscoutWriteStatus() }));
+router.get('/nightscout', async (req, res) => res.json({ success: true, ...getNightscoutWriteStatus(), dbSize: await getNightscoutDbSize(), autoClear: getAutoClear() }));
+router.put('/nightscout/auto-clear', (req, res) => res.json({ success: true, autoClear: setAutoClear(Boolean(req.body?.enabled)) }));
+router.post('/nightscout/cleanup', async (req, res) => {
+  try { res.json({ success: true, ...(await clearOldNightscout(req.body?.months || 3)) }); } catch (err) { fail(res, err, 400); }
+});
 router.put('/nightscout', async (req, res) => {
   try {
     const st = setNightscoutSecret(req.body?.secret);
