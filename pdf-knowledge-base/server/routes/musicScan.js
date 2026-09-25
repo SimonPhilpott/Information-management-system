@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  getConfig, saveConfig, getStatus, getResultsMeta, getWindowResults, getTodayReleases,
+  getConfig, saveConfig, getStatus, getResultsMeta, getWindowResults, getTodayReleases, getUpcomingReleases,
   getArtistList, getArtistDetail, saveArtistSettings, rescanArtist,
   isScanRunning, runScanNow, getNextScheduledRun
 } from '../services/musicScanService.js';
@@ -27,6 +27,11 @@ router.get('/results', (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+// Announced future releases for artists in the library, soonest first.
+router.get('/upcoming', (req, res) => {
+  res.json({ success: true, ...getResultsMeta(), releases: getUpcomingReleases() });
 });
 
 router.get('/today', (req, res) => {

@@ -61,12 +61,18 @@ import cameraRoutes from './routes/camera.js';
 import faceDesignRoutes from './routes/faceDesigns.js';
 import wifiRoutes from './routes/wifi.js';
 import recordingRoutes from './routes/recordings.js';
-import { isRecordingActive, startRecording, stopRecording, appendRecordingText, onRecordingChange } from './services/recordingService.js';
+import { isRecordingActive, startRecording, stopRecording, appendRecordingText, onRecordingChange, isCancelCommand } from './services/recordingService.js';
 import { SqliteSessionStore } from './db/sessionStore.js';
 import { onDevicePush, onSchedulePush } from './services/deviceBus.js';
 import calendarRoutes from './routes/calendar.js';
+import stravaRoutes from './routes/strava.js';
+import plannerRoutes from './routes/planner.js';
+import goalRoutes from './routes/goals.js';
+import { getStatus as getStravaStatus, syncActivities as syncStrava, describeTraining } from './services/stravaService.js';
+import { logNightscout } from './services/runGlucoseService.js';
 import { refreshEvents, getUpcomingEvents, getDeviceIcons, createEvent, describeEvents } from './services/calendarService.js';
 import { getDevicePayload, getStandbyOverride } from './services/faceDesignService.js';
+import { pickJoke } from './services/jokeService.js';
 import boardgamesRoutes from './routes/boardgames.js';
 import peopleRoutes from './routes/people.js';
 import lookRoutes from './routes/look.js';
@@ -78,7 +84,7 @@ import { loadHnswFromDisk } from './services/hnswService.js';
 import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getWebPersonaBlock, getPersonality, setPersonality, getCaptureLogging, setCaptureLogging } from './services/hardwareClientService.js';
 import { scheduleItem, listScheduledItems, cancelScheduledItem, addToList, readList, removeFromList, clearList, checkDueScheduledItems, stopAllRinging, getActiveScheduledStatus, getItemsDueToday, getHistorySummary } from './services/remindersService.js';
 import { getBirthdayFooterStatus, getUpcomingBirthdays, listBirthdays } from './services/birthdayService.js';
-import { getTodayReleases, getWindowResults } from './services/musicScanService.js';
+import { getTodayReleases, getWindowResults, getUpcomingReleases } from './services/musicScanService.js';
 import { isFirstInteractionToday, markMorningReportOffered, buildMorningReportDirective } from './services/morningReportService.js';
 import { addMemory, getMemories, searchMemories, deleteMemory } from './db/database.js';
 import { getWeather } from './services/weatherService.js';
@@ -169,6 +175,9 @@ app.use('/api/face-designs', faceDesignRoutes);
 app.use('/api/wifi', wifiRoutes);
 app.use('/api/recordings', recordingRoutes);
 app.use('/api/calendar', calendarRoutes);
+app.use('/api/strava', stravaRoutes);
+app.use('/api/planner', plannerRoutes);
+app.use('/api/goals', goalRoutes);
 app.use('/api/boardgames', boardgamesRoutes);
 app.use('/api/people', peopleRoutes);
 app.use('/api/look', lookRoutes);
@@ -261,6 +270,15 @@ onSchedulePush(() => pushScheduleStatus());
 // Google Calendar: refresh every 5 minutes (also applies any "remind" rules)
 // and re-send the icons. Silent no-op until the user has connected Calendar.
 const refreshCalendar = () => refreshEvents({ force: true }).then(() => pushScheduleStatus()).catch((err) => console.error('[Calendar] refresh failed:', err.message));
+// Strava: once connected, pull anything new every 30 minutes (well inside the rate limits).
+const refreshStrava = () => { const st = getStravaStatus(); if (st.connected && st.canReadActivities) syncStrava().catch((err) => console.error('[Strava] sync failed:', err.message)); };
+// Nightscout only keeps a few hours, so glucose / IOB / treatments are logged locally every
+// 5 minutes; that log is what runs are matched against (services/runGlucoseService.js).
+const logGlucoseHistory = () => logNightscout().catch((err) => console.error('[NightscoutLog]', err.message));
+setTimeout(logGlucoseHistory, 15000);
+setInterval(logGlucoseHistory, 5 * 60 * 1000);
+setTimeout(refreshStrava, 20000);
+setInterval(refreshStrava, 30 * 60 * 1000);
 setTimeout(refreshCalendar, 10000);
 setInterval(refreshCalendar, 5 * 60 * 1000);
 
@@ -306,6 +324,15 @@ server.on('upgrade', (request, socket, head) => {
     socket.destroy();
   }
 });
+
+// The accent drifts to American right after Ims looks something up: a tool result is
+// plain neutral English, and the voice follows whatever the text in front of it sounds
+// like. So every result that Ims is about to read out carries a reminder to voice it in
+// the usual British Yorkshire accent.
+const VOICE_REMINDER = 'DELIVERY REMINDER: report this in your normal British Yorkshire voice and accent - Northern cadence and vocabulary (proper, reight, summat, mind, like, then) in EVERY sentence, including when reading out numbers, dates, times and lists. Do not slip into an American accent or American phrasing just because this data is plain English.';
+function withVoiceReminder(output) {
+  return output && typeof output === 'object' && !Array.isArray(output) ? { ...output, deliveryReminder: VOICE_REMINDER } : output;
+}
 
 // While a call/meeting is being recorded the upstream Gemini session is only a
 // transcriber: no tools, told to say nothing. (Anything it does say is also
@@ -489,6 +516,43 @@ function handleLiveProxyConnection(ws, isHardware = false) {
   // finished) and synthesise the missing turnComplete so the device does not
   // get stuck in SPEAKING state with a partially-played response.
   let currentTurnComplete = true; // true initially (no active turn yet)
+  // Guard against unsolicited replies. Gemini sometimes starts a new turn on its
+  // own right after finishing one (seen: it re-said the last sentence of an
+  // answer, unprompted). A genuine turn always follows something the user did
+  // since the last turn ended: real speech on the mic, a transcription of it, or
+  // a text turn from the device (reminder announcement, voice preview). A model
+  // turn that follows none of those is dropped - nothing reaches the speaker.
+  let energeticMicFrames = 0;
+  let userTranscriptSeen = false;
+  let textTurnSent = false;
+  let unsolicitedTurn = false;
+  // Triggers are only cleared once a turn that actually SPOKE has finished. Gemini
+  // reports a tool call (e.g. the wake-phrase check) as its own finished turn, and
+  // its real answer follows it a moment later - that answer is still a reply to
+  // the same user speech and must not be dropped.
+  let turnHadAudio = false;
+  const turnHasTrigger = () => energeticMicFrames >= 8 || userTranscriptSeen || textTurnSent;
+  const resetTurnTriggers = () => { energeticMicFrames = 0; userTranscriptSeen = false; textTurnSent = false; stopWindow = ''; };
+  let stopWindow = ''; // the last few words the user said, for the "IMS stop" command
+
+  // "IMS stop" / "stop IMS" at any point - including while Ims is "thinking" - cancels
+  // the whole conversation: nothing more is said, Gemini's work is abandoned (its
+  // connection is closed) and the device goes back to plain standby. Silent.
+  const cancelConversation = () => {
+    console.log(`${tag} ✋ Stop command heard - cancelling the conversation, back to standby`);
+    try { logCapture(`[${new Date().toISOString()}] ${tag} STOP COMMAND - CONVERSATION CANCELLED\n`); } catch (_) { }
+    isConversationActive = false;
+    touchToTalkActive = false;
+    currentTurnComplete = true;
+    turnCompleteAt = Date.now();
+    userSpokenTranscript = '';
+    spokenTranscript = '';
+    resetTurnTriggers();
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ cancelConversation: true }));
+    if (stopAllRinging() > 0) pushScheduleStatus(); // it also silences a ringing alarm/timer/reminder
+    unsolicitedTurn = true; // anything Gemini still sends for the cancelled request is dropped
+    restartUpstream();
+  };
   let turnCompleteAt = 0; // when currentTurnComplete last flipped true - see isModelSpeakingNow's POST_TURN_ECHO_GRACE_MS
 
   // Strict session lifecycle state for hardware clients
@@ -745,11 +809,41 @@ function handleLiveProxyConnection(ws, isHardware = false) {
           return;
         }
 
+        if (isHardware) {
+          const heardForStop = parsed.serverContent?.inputTranscription?.text;
+          if (heardForStop) {
+            stopWindow = (stopWindow + heardForStop).slice(-70);
+            if (isCancelCommand(stopWindow)) { cancelConversation(); return; }
+          }
+          if (parsed.serverContent?.inputTranscription?.text) { userTranscriptSeen = true; unsolicitedTurn = false; }
+          const startsModelOutput = parsed.serverContent?.modelTurn || parsed.serverContent?.outputTranscription || parsed.toolCall;
+          if (startsModelOutput && currentTurnComplete && !unsolicitedTurn && !turnHasTrigger()) {
+            unsolicitedTurn = true;
+            console.warn(`${tag} 🔇 Dropping an unsolicited model turn (nothing from the user since the last one ended)`);
+            try { logCapture(`[${new Date().toISOString()}] ${tag} UNSOLICITED MODEL TURN DROPPED\n`); } catch (_) { }
+          }
+          if (unsolicitedTurn) {
+            for (const call of parsed.toolCall?.functionCalls || []) {
+              if (gWs.readyState === WebSocket.OPEN) {
+                gWs.send(JSON.stringify({ toolResponse: { functionResponses: [{ response: { output: { status: 'acknowledged' } }, id: call.id }] } }));
+              }
+            }
+            if (parsed.serverContent?.turnComplete && !parsed.toolCall) {
+              unsolicitedTurn = false;
+              currentTurnComplete = true;
+              turnCompleteAt = Date.now();
+              resetTurnTriggers();
+            }
+            return;
+          }
+        }
+
         // Check for incoming audio parts
         if (parsed.serverContent?.modelTurn?.parts) {
           for (const part of parsed.serverContent.modelTurn.parts) {
             if (part.inlineData?.mimeType?.startsWith('audio/') && part.inlineData.data) {
               lastModelAudioTime = Date.now();
+              turnHadAudio = true;
               // currentTurnComplete was true -> this chunk starts a NEW turn,
               // so reset the opener-fingerprint tracker (see the
               // outputTranscription handler below) before flipping it false.
@@ -846,6 +940,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
           if (!parsed.toolCall) {
             currentTurnComplete = true; // Gemini confirmed the turn ended cleanly
             turnCompleteAt = Date.now();
+            if (turnHadAudio) { resetTurnTriggers(); turnHadAudio = false; }
           }
           console.log(`${tag} ✅ Gemini reported TURN COMPLETE (hasToolCall=${!!parsed.toolCall})`);
           try {
@@ -891,7 +986,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
           const respondToToolCall = (call, output) => {
             if (gWs.readyState === WebSocket.OPEN) {
               gWs.send(JSON.stringify({
-                toolResponse: { functionResponses: [{ response: { output }, id: call.id }] }
+                toolResponse: { functionResponses: [{ response: { output: withVoiceReminder(output) }, id: call.id }] }
               }));
             }
           };
@@ -903,7 +998,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
                   gWs.send(JSON.stringify({
                     toolResponse: {
                       functionResponses: [{
-                        response: { output: { text: contextText } },
+                        response: { output: withVoiceReminder({ text: contextText }) },
                         id: call.id
                       }]
                     }
@@ -998,6 +1093,29 @@ function handleLiveProxyConnection(ws, isHardware = false) {
               console.log(`${tag} 🎙️ startRecording tool call`);
               respondToToolCall(call, { status: 'recording', instruction: 'Recording has started. Say nothing at all from now on.' });
               startRecording(call.args?.withWhom, 'voice');
+            } else if (call.name === 'tellJoke') {
+              const humor = getPersonality().humor;
+              const topic = String(call.args?.topic || '').trim();
+              let pick = null;
+              try { pick = pickJoke({ humor, topic }); } catch (err) { console.error(`${tag} 😄 tellJoke failed:`, err.message); }
+              if (!pick) {
+                respondToToolCall(call, { error: 'The joke library is not ready yet. Say so plainly and offer to try again in a bit - do not make a joke up.' });
+              } else {
+                console.log(`${tag} 😄 tellJoke(humor=${humor}, tone=${pick.tone}, topic="${topic}") -> score ${pick.score}, darkness ${pick.darkness}`);
+                respondToToolCall(call, {
+                  joke: pick.joke,
+                  tone: pick.tone,
+                  ...(topic && !pick.onTopic ? { note: `None of the jokes are about "${topic}" - say that briefly, then tell this one.` } : {}),
+                  instruction: 'Tell exactly this joke, in your own voice, with good comic timing (a beat before the punchline). Keep the joke itself as written - you may swap any Americanisms for British wording. Do not tell a different joke, do not explain it, and do not make up or add another one.'
+                });
+              }
+            } else if (call.name === 'getTrainingSummary') {
+              const days = call.args?.period === 'week' ? 7 : call.args?.period === 'year' ? 365 : 28;
+              try {
+                const st = getStravaStatus();
+                if (!st.connected || !st.activityCount) respondToToolCall(call, { error: 'Strava is not connected or has no activities yet. Say so plainly.' });
+                else { console.log(`${tag} 🏃 getTrainingSummary(${days}d)`); respondToToolCall(call, describeTraining(days)); }
+              } catch (err) { respondToToolCall(call, { error: err.message }); }
             } else if (call.name === 'getCalendarEvents') {
               const days = Math.max(1, Math.min(30, Number(call.args?.days ?? 7)));
               getUpcomingEvents(days).then((events) => {
@@ -1115,8 +1233,10 @@ function handleLiveProxyConnection(ws, isHardware = false) {
               console.log(`${tag} 🎂 getUpcomingBirthdays(${days}d) -> ${list.length}`);
               respondToToolCall(call, { withinDays: days, count: list.length, birthdays: list });
             } else if (call.name === 'getNewMusicReleases') {
-              const period = ['today', 'week', 'month'].includes(call.args?.period) ? call.args.period : 'week';
-              const releases = period === 'today'
+              const period = ['today', 'week', 'month', 'upcoming'].includes(call.args?.period) ? call.args.period : 'week';
+              const releases = period === 'upcoming'
+                ? getUpcomingReleases().map((r) => ({ artist: r.mbName || r.artist, title: r.title, type: r.type, date: r.date, precision: r.precision, owned: r.owned }))
+                : period === 'today'
                 ? getTodayReleases().map((r) => ({ artist: r.artist, title: r.title, type: r.type, date: r.date, owned: r.owned }))
                 : getWindowResults(period === 'week' ? 'week' : 'month').artists.flatMap((a) =>
                     a.releases.filter((r) => r.isNew).map((r) => ({ artist: a.name, title: r.title, type: r.type, date: r.date, owned: r.owned })));
@@ -1180,6 +1300,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
     });
 
     gWs.on('close', (code, reason) => {
+      unsolicitedTurn = false; // a dropped turn never carries over to a new upstream session
       clearInterval(pingInterval);
       clearInterval(silenceInterval);
       flushWavToDisk();
@@ -1363,6 +1484,17 @@ function handleLiveProxyConnection(ws, isHardware = false) {
         suppressedMicFrameCount = 0;
       }
 
+      if (isHardware) {
+        // Real speech (not silence or a faint tail of the speaker) counts as the
+        // user having done something - see the unsolicited-turn guard above.
+        const samples = Math.floor(message.length / 2);
+        let sumSq = 0;
+        for (let i = 0; i < samples; i++) { const v = message.readInt16LE(i * 2); sumSq += v * v; }
+        // Ignore the first 3 s after a turn ends: the speaker's own tail and room echo are
+        // loud enough on the mic to look like speech. A quick follow-up from the user is
+        // still recognised through its transcription instead.
+        if (samples > 0 && Math.sqrt(sumSq / samples) > 300 && Date.now() - turnCompleteAt > 3000 && ++energeticMicFrames >= 8) unsolicitedTurn = false; // the user is talking: stop dropping
+      }
       const base64Audio = Buffer.from(message).toString('base64');
       const realtimePayload = JSON.stringify({
         realtimeInput: {
@@ -1390,6 +1522,7 @@ function handleLiveProxyConnection(ws, isHardware = false) {
       // which Gemini rejects with 1007 "Request contains an invalid argument."
       try {
         const parsedCtrl = JSON.parse(msgStr);
+        if (parsedCtrl.clientContent?.turns?.length) textTurnSent = true;
         if (parsedCtrl.clientContent && Array.isArray(parsedCtrl.clientContent.turns) && parsedCtrl.clientContent.turns.length === 0) {
           console.warn(`${tag} ⚠️ Suppressed empty clientContent turns to prevent Gemini 1007 rejection.`);
           return;

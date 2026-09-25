@@ -46,6 +46,11 @@ function decrypt(blob) {
   return Buffer.concat([decipher.update(Buffer.from(blob.data, 'base64')), decipher.final()]).toString('utf8');
 }
 
+// Shared with other services that keep secrets at rest (e.g. Strava credentials): the
+// same AES-256-GCM scheme and key as the Wi-Fi passwords.
+export const encryptSecret = (plain) => encrypt(String(plain));
+export const decryptSecret = (blob) => decrypt(blob);
+
 function read() {
   try {
     if (fs.existsSync(FILE)) return JSON.parse(fs.readFileSync(FILE, 'utf8'));

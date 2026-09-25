@@ -33,6 +33,8 @@ import FaceDesignerPortal from './components/Dashboard/FaceDesignerPortal';
 import WifiPortal from './components/Dashboard/WifiPortal';
 import RecordingsPortal from './components/Dashboard/RecordingsPortal';
 import CalendarPortal from './components/Dashboard/CalendarPortal';
+import ActivitiesPortal from './components/Dashboard/ActivitiesPortal';
+import RunPlannerPortal from './components/Dashboard/RunPlannerPortal';
 import ImsHub from './components/Dashboard/ImsHub';
 
 const getShortSummary = (text) => {
@@ -1386,6 +1388,26 @@ export default function App() {
   if (currentPath === '/ims/look' || currentPath.startsWith('/ims/look')) {
     return (
       <LookPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/runplanner' || currentPath.startsWith('/ims/runplanner')) {
+    return (
+      <RunPlannerPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/activities' || currentPath.startsWith('/ims/activities')) {
+    return (
+      <ActivitiesPortal
         theme={state.theme}
         onThemeToggle={actions.toggleTheme}
         setCurrentPath={setCurrentPath}

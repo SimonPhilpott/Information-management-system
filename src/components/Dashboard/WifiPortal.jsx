@@ -58,7 +58,7 @@ export default function WifiPortal({ theme = 'dark', onThemeToggle, setCurrentPa
 
   const signIn = async () => {
     try {
-      const d = await (await fetch('/api/auth/url')).json();
+      const d = await (await fetch(`/api/auth/url?returnTo=${encodeURIComponent(window.location.pathname)}`)).json();
       if (d.url) window.location.href = d.url;
     } catch (err) { showToast(err.message, 'error'); }
   };

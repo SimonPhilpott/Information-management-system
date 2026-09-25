@@ -2,17 +2,32 @@ import { Router } from 'express';
 import { google } from 'googleapis';
 import { createOAuth2Client, storeTokens, getAuthStatus, checkTokenHealth } from '../services/driveService.js';
 import config from '../config.js';
+import { publicOrigin, safeReturnPath } from '../middleware/publicOrigin.js';
 
 const router = Router();
+
+// Where to send the browser after the Google round trip: the address it started on, and the page it was on.
+const backTo = (req, query) => {
+  const base = req.session?.returnBase || config.clientUrl;
+  const p = req.session?.returnTo || '/';
+  return `${base}${p}${p.includes('?') ? '&' : '?'}${query}`;
+};
 
 /**
  * GET /api/auth/url - Generate OAuth consent URL
  */
 router.get('/url', (req, res) => {
-  const dynamicRedirectUri = config.google.redirectUri;
-  
+  // Sign in on the address the browser is actually using: through ngrok that is the ngrok
+  // address (which must be listed as an authorised redirect URI in the Google Cloud console),
+  // otherwise localhost. The same address is where the browser is sent back afterwards, so the
+  // session cookie lands on the right site.
+  const origin = publicOrigin(req);
+  const dynamicRedirectUri = origin ? `${origin}/api/auth/callback` : config.google.redirectUri;
+
   // Store the redirect URI in session for the callback
   req.session.redirectUri = dynamicRedirectUri;
+  req.session.returnBase = origin || config.clientUrl;
+  req.session.returnTo = safeReturnPath(req.query.returnTo);
   
   const oauth2Client = new google.auth.OAuth2(
     config.google.clientId,
@@ -37,11 +52,11 @@ router.get('/callback', async (req, res) => {
   // Handle user denying access
   if (error) {
     console.warn('[Auth] OAuth error:', error);
-    return res.redirect(`${config.clientUrl}?auth=error&message=${encodeURIComponent(error)}`);
+    return res.redirect(backTo(req, `auth=error&message=${encodeURIComponent(error)}`));
   }
 
   if (!code) {
-    return res.redirect(`${config.clientUrl}?auth=error&message=${encodeURIComponent('No authorisation code received')}`);
+    return res.redirect(backTo(req, `auth=error&message=${encodeURIComponent('No authorisation code received')}`));
   }
 
   // Use the redirect URI stored in the session, or fallback to config
@@ -66,7 +81,7 @@ router.get('/callback', async (req, res) => {
       const approvedEmails = config.adminEmail.split(',').map(email => email.trim().toLowerCase());
       if (!approvedEmails.includes(userEmail.toLowerCase())) {
         console.warn(`Unauthorized login attempt from: ${userEmail}`);
-        return res.redirect(`${config.clientUrl}?auth=error&message=${encodeURIComponent('Unauthorized: This application is restricted to approved users.')}`);
+        return res.redirect(backTo(req, `auth=error&message=${encodeURIComponent('Unauthorized: This application is restricted to approved users.')}`));
       }
     }
 
@@ -79,10 +94,10 @@ router.get('/callback', async (req, res) => {
     storeTokens(tokens, userInfo.data);
 
     // Redirect back to client
-    res.redirect(`${config.clientUrl}?auth=success`);
+    res.redirect(backTo(req, "auth=success"));
   } catch (err) {
     console.error('OAuth callback error:', err);
-    res.redirect(`${config.clientUrl}?auth=error&message=${encodeURIComponent(err.message)}`);
+    res.redirect(backTo(req, `auth=error&message=${encodeURIComponent(err.message)}`));
   }
 });
 

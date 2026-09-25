@@ -72,6 +72,14 @@ const NAME = "(?:ims|i\\.?['’]?\\s?m\\.?\\s?s\\.?|im's|imz|aims|eims)";
 const STOP_RE = new RegExp(`\\b${NAME}[\\s,.!?-]+(?:please\\s+)?(?:stop|end|finish)(?:\\s+(?:the\\s+)?(?:recording|call|meeting))?[\\s.!?]*$`, 'i');
 const STOP_TAIL_RE = new RegExp(`(?:\\b(?:hey|hi|eh up)[\\s,]+)?${NAME}[\\s,.!?-]+(?:please\\s+)?(?:stop|end|finish)(?:\\s+(?:the\\s+)?(?:recording|call|meeting))?[\\s.!?]*$`, 'i');
 
+// "IMS stop" / "stop IMS" (also cancel, enough) at the end of what was just said.
+// Used to cancel whatever Ims is doing and return it to standby - see index.js.
+const CANCEL_WORD = '(?:stop|cancel|enough)';
+const CANCEL_TAIL = '(?:\\s+(?:please|now|it|thanks|everything))*[\\s.!?]*$';
+const CANCEL_RE_A = new RegExp(`\\b${NAME}[\\s,.!?-]+(?:please\\s+)?${CANCEL_WORD}${CANCEL_TAIL}`, 'i');
+const CANCEL_RE_B = new RegExp(`\\b${CANCEL_WORD}(?:\\s+it)?[\\s,.!?-]+${NAME}[\\s.!?]*$`, 'i');
+export const isCancelCommand = (text) => CANCEL_RE_A.test(String(text || '').trim()) || CANCEL_RE_B.test(String(text || '').trim());
+
 // Feed each transcription fragment. Returns true when it contained the stop phrase.
 export function appendRecordingText(fragment) {
   if (!active || !fragment) return false;

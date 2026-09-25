@@ -184,6 +184,31 @@ export function getTodayReleases() {
   return list.sort((a, b) => a.artist.localeCompare(b.artist));
 }
 
+// Announced releases still to come, soonest first, for every artist in the
+// library. MusicBrainz often only knows the month (or year) of a release, so
+// those are kept with their real precision: a month counts as upcoming from its
+// own month onward, a year only once it is a later year than this one.
+export function getUpcomingReleases() {
+  const today = todayLondonDateStr();
+  const thisMonth = today.slice(0, 7);
+  const thisYear = Number(today.slice(0, 4));
+  const list = [];
+  for (const [name, entry] of Object.entries(getResults().artists)) {
+    for (const r of entry.releases) {
+      const d = r.date || '';
+      const upcoming = (r.precision === 'day' && d > today)
+        || (r.precision === 'month' && d >= thisMonth)
+        || (r.precision === 'year' && Number(d) > thisYear);
+      if (!upcoming) continue;
+      // Sort key: unknown days/months sort after the known ones in the same period.
+      const sortKey = r.precision === 'day' ? d : r.precision === 'month' ? `${d}-99` : `${d}-99-99`;
+      list.push({ artist: name, mbName: entry.mbName || null, title: r.title, type: r.type, date: d, precision: r.precision, owned: Boolean(r.owned), sortKey });
+    }
+  }
+  return list.sort((a, b) => a.sortKey.localeCompare(b.sortKey) || a.artist.localeCompare(b.artist))
+    .map(({ sortKey, ...rest }) => rest);
+}
+
 // Re-scans one artist (a couple of MusicBrainz calls) after their search
 // name/aliases were edited. Refused while a full scan is running, since both
 // would write the same results file.

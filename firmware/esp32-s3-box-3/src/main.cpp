@@ -3434,6 +3434,23 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
       renderScreen(true);
     }
+    // The user said "IMS stop" / "stop IMS": abandon everything and go quiet. Sent by
+    // the backend even while Gemini is still "thinking".
+    if (doc["cancelConversation"].as<bool>()) {
+      Serial.println("[IMS] cancelConversation - stop command heard, back to STANDBY");
+      setSpeakerMute(true);
+      if (audioPlaybackQueue) xQueueReset(audioPlaybackQueue);
+      if (audioOutQueue) xQueueReset(audioOutQueue);
+      modelTurnActive = false;
+      micStreamingActive = false;
+      isSpeakingDetected = false;
+      conversationOpen = false;
+      conversationShouldClose = false;
+      currentEmotion = EMOTION_NEUTRAL;
+      currentState = STATE_STANDBY;
+      lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
+      renderScreen(true);
+    }
     // Backend forwarded Gemini's endConversation tool call (user said "bye"/
     // "goodbye"/etc.) - don't cut the farewell reply short. Just mark that
     // the conversation should close once STATE_SPEAKING naturally finishes

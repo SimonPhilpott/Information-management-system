@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Sun, Moon, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight } from 'lucide-react';
 
 // Each entry here is one card on the hub. Add a new one whenever a new
 // /ims/* page is built - this is the single place that needs to know about
@@ -117,6 +117,22 @@ const LINKS = [
     icon: CalendarDays,
     gradient: 'from-indigo-500 to-blue-600',
     glow: 'rgba(99,102,241,0.3)'
+  },
+  {
+    path: '/ims/activities',
+    title: 'Activities',
+    description: 'Your Strava activities, logged for analysis: weekly load, records and an AI training review.',
+    icon: Activity,
+    gradient: 'from-orange-500 to-red-600',
+    glow: 'rgba(249,115,22,0.3)'
+  },
+  {
+    path: '/ims/runplanner',
+    title: 'Run Planner',
+    description: 'Pick a Komoot route or distance and get carbs and timing to keep glucose steady, from your own data.',
+    icon: Route,
+    gradient: 'from-emerald-500 to-teal-600',
+    glow: 'rgba(16,185,129,0.3)'
   }
 ];
 

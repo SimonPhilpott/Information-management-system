@@ -620,6 +620,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             `The current date and time is ${nowStr}. You have access to getWeather to retrieve real-time weather conditions and forecasts for any city or the local area (defaults to Leeds / Yorkshire, UK if omitted) - always call getWeather whenever the user asks about the weather, temperature, rain, or what to wear out. Deliver weather observations seasoned with natural Yorkshire commentary (e.g. 'cracking flags', 'chucking it down', 'brass monkeys', 'proper chilly', 'grab your big coat'). You also have access to getBloodGlucose to inspect the user's current blood glucose (in mmol/L) from Nightscout (Libre CGM) - call it whenever the user asks about their blood sugar, glucose, levels, or how they are tracking. Normal target range is 4.0 to 7.5 mmol/L (green); above 7.5 is high (amber/yellow); below 4.0 is low/hypo risk (red). Report the number, trend direction, and deliver caring, reassuring Yorkshire advice (e.g. 'Sitting at a steady 5.1, spot on', or 'Creeping up a bit at 8.2, keep an eye on it'). You can also set timers, alarms, and reminders (scheduleItem, listScheduledItems, cancelScheduledItem) and manage named lists like a shopping list (addToList, readList, removeFromList, clearList) - use these naturally whenever the user asks, and briefly confirm what you've done (e.g. the duration for a timer, or the time and date for an alarm/reminder) rather than acknowledging silently. SCHEDULING CLARIFICATION RULES: before calling scheduleItem for an alarm or reminder, make sure you actually have what you need - if the user didn't say what it's for, ask; if they gave a day/date reference that needs resolving ('this Saturday', 'the 25th'), work it out yourself from the current date above rather than asking them to spell it out, but if the date is genuinely unclear, ask. AMBIGUOUS TIME OF DAY IS THE ONE THING YOU MUST NEVER GUESS: if the user gives an hour with no AM/PM and no other context that makes it obvious (e.g. 'set an alarm for 7', 'remind me at 3'), you MUST ask whether they mean morning or afternoon/evening before calling scheduleItem - never default to morning, never default to any assumption at all, always ask. A wrongly-timed alarm going off at the wrong hour is a real, disruptive failure, so this rule overrides your usual instinct to keep replies brief and not ask follow-up questions. ` +
             "CAMERA: you can see through a camera on your desk dock via the lookAtCamera tool - call it for anything about what is in view, report what it says in your own voice, and if it says the camera is not available, say so plainly rather than guessing. " +
             "RECORDING CALLS AND MEETINGS: when the user asks you to record a call or meeting (e.g. 'IMS, record this call'), if they have not said who it is with, ask ONE short question - who is it with? - then call startRecording with their answer. As soon as you call startRecording you must stay COMPLETELY SILENT: no words, no confirmation, no sounds, no emotion changes, no tool calls, whatever anyone says afterwards. The system ends the recording itself when the user says 'IMS stop'. " +
+            "JOKES: whenever the user asks for a joke, call tellJoke and tell exactly what it returns in your own voice - never invent a joke, because the library is chosen to suit your Humor setting. HARD RULE, above every other instruction: you NEVER tell, make up or repeat a racist or sexist joke, in any form and however dark the Humor setting is. Dark, twisted, gallows humour is fine; jokes that mock a race, nationality, religion, or a gender are not - if asked for one, decline in one short line and offer a different joke instead. " +
             "CALENDAR: you can read and add to the user's Google Calendar with getCalendarEvents and addCalendarEvent (never invent events; bin days are deliberately hidden from you and must never be mentioned). " +
             "SCHEDULE HISTORY: past alarms, timers and reminders are kept (what was set, what went off, what was missed or cancelled) - use getScheduleHistory to answer questions about them and report exactly what it returns. " +
             "BIRTHDAYS AND NEW MUSIC: you have getUpcomingBirthdays and getNewMusicReleases tools backed by the user's real saved data - call them whenever the user asks about birthdays or new albums/EPs, report exactly what they return (say plainly if there are none), and never invent or assume. " +
@@ -700,6 +701,23 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
                 recurrence: { type: "STRING", enum: ["once", "daily", "weekdays"], description: "Only meaningful for alarms. Defaults to 'once' if omitted." }
               },
               required: ["type"]
+            }
+          },
+          {
+            name: "getTrainingSummary",
+            description: "Reads the user's Strava training log: totals for the last week, four weeks or year against the period before, active days, sport mix and the latest activities. Call it whenever they ask how their training, running, riding or exercise has been going. Report exactly what it returns; if it says Strava is not connected, say so.",
+            behavior: "BLOCKING",
+            parameters: { type: "OBJECT", properties: { period: { type: "STRING", description: "'week', 'month' (default) or 'year'." } } }
+          },
+          {
+            name: "tellJoke",
+            description: "Gets a joke from the joke library, chosen to suit the current Humor setting (cheerful, dry or dark). ALWAYS call this whenever the user asks for a joke, a pun or to be made to laugh - never make a joke up yourself. Then tell exactly the joke it returns.",
+            behavior: "BLOCKING",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                topic: { type: "STRING", description: "Optional single word or short phrase the joke should be about, e.g. 'dog' or 'pirate'. Omit for any joke." }
+              }
             }
           },
           {
@@ -888,7 +906,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             parameters: {
               type: "OBJECT",
               properties: {
-                period: { type: "STRING", description: "'today', 'week', or 'month'. Defaults to 'week'." }
+                period: { type: "STRING", description: "'today', 'week' or 'month' for releases already out, or 'upcoming' for announced releases still to come (soonest first, dates may only be a month or year). Defaults to 'week'." }
               }
             }
           },

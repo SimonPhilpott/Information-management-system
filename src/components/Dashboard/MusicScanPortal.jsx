@@ -10,6 +10,7 @@ const VIEWS = [
   { key: 'month', label: 'Month' },
   { key: '6months', label: '6 Months' },
   { key: 'year', label: 'Year' },
+  { key: 'upcoming', label: 'Upcoming' },
   { key: 'all', label: 'All Artists' }
 ];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -97,12 +98,12 @@ function ArtistCard({ artist, isDark, onChanged, showToast }) {
         role="button" tabIndex={0}
         onClick={() => setOpen(!open)}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setOpen(!open); }}
-        className="w-full px-3 py-2.5 flex items-center gap-2 cursor-pointer text-left"
+        className="w-full px-3 py-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 cursor-pointer text-left"
       >
         {open ? <ChevronDown size={14} className="shrink-0 opacity-60" /> : <ChevronRight size={14} className="shrink-0 opacity-60" />}
-        <span className="font-bold truncate">{artist.name}</span>
+        <span className="font-bold min-w-0 flex-1 basis-40 break-words">{artist.name}</span>
         <span className={`hidden sm:inline text-[10px] uppercase tracking-wider ${GREY}`}>{artist.genre}</span>
-        <span className="ml-auto flex items-center gap-3 shrink-0 text-[11px] font-semibold">
+        <span className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-0.5 text-[11px] font-semibold">
           <span className={GREEN}>{owned} owned</span>
           <span className={RED}>{notOwned} not owned</span>
           {unlistedCount > 0 && <span className={GREY}>{unlistedCount} unlisted</span>}
@@ -183,6 +184,7 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
   const [view, setView] = useState('day');
   const [windowData, setWindowData] = useState(null);
   const [todayList, setTodayList] = useState([]);
+  const [upcoming, setUpcoming] = useState([]);
   const [allArtists, setAllArtists] = useState([]);
   const [search, setSearch] = useState('');
   const [viewLoading, setViewLoading] = useState(false);
@@ -227,6 +229,9 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
       if (view === 'all') {
         const d = await (await fetch('/api/music-scan/artists')).json();
         if (d.success) setAllArtists(d.artists);
+      } else if (view === 'upcoming') {
+        const d = await (await fetch('/api/music-scan/upcoming')).json();
+        if (d.success) setUpcoming(d.releases);
       } else {
         const d = await (await fetch(`/api/music-scan/results?window=${view}`)).json();
         if (d.success) setWindowData(d);
@@ -415,7 +420,7 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
         <div className={panelClass}>
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <h2 className="text-xs font-black uppercase tracking-wider">
-              {view === 'all' ? 'All Artists' : `Released in the last ${windowLabel === 'Day' ? 'day (today)' : windowLabel.toLowerCase()}`}
+              {view === 'all' ? 'All Artists' : view === 'upcoming' ? `Upcoming releases (${upcoming.length})` : `Released in the last ${windowLabel === 'Day' ? 'day (today)' : windowLabel.toLowerCase()}`}
             </h2>
             <div className={`flex rounded-lg overflow-hidden border ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
               {VIEWS.map((v) => (
@@ -434,7 +439,7 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
             <span className={`flex items-center gap-1.5 ${GREEN}`}><span className="w-2 h-2 rounded-full bg-emerald-500" />Owned</span>
             <span className={`flex items-center gap-1.5 ${RED}`}><span className="w-2 h-2 rounded-full bg-red-500" />Not owned</span>
             <span className="flex items-center gap-1.5 text-slate-500"><span className="w-2 h-2 rounded-full bg-slate-500" />Owned, not on MusicBrainz</span>
-            {view !== 'all' && <span className="text-slate-500 text-[10px]">Highlighted rows are the releases inside this window. Year-only dates can't be placed in a window.</span>}
+            {view !== 'all' && view !== 'upcoming' && <span className="text-slate-500 text-[10px]">Highlighted rows are the releases inside this window. Year-only dates can't be placed in a window.</span>}
           </div>
 
           {!hasData ? (
@@ -443,6 +448,31 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
             </p>
           ) : (
             <>
+              {view === 'upcoming' && (
+                viewLoading && upcoming.length === 0 ? (
+                  <div className="py-8 flex justify-center"><RotateCw size={18} className="animate-spin opacity-50" /></div>
+                ) : upcoming.length === 0 ? (
+                  <p className="text-xs text-slate-500 py-6 text-center">No announced releases from your artists yet. MusicBrainz only lists them once they are announced, so check again after the next scan.</p>
+                ) : (
+                  <div className={`rounded-xl border overflow-hidden ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
+                    <div className={`grid grid-cols-[7.5rem_1fr_1fr_4rem] gap-3 px-3 py-2 text-[10px] font-black uppercase tracking-wider ${isDark ? 'bg-white/5 text-slate-400' : 'bg-black/5 text-slate-600'}`}>
+                      <span>Release date</span><span>Album</span><span>Artist</span><span>Type</span>
+                    </div>
+                    {upcoming.map((r, i) => (
+                      <div key={`${r.artist}-${r.title}-${i}`}
+                        className={`grid grid-cols-[7.5rem_1fr_1fr_4rem] gap-3 px-3 py-2 text-xs items-center border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/5'}`}>
+                        <span className="tabular-nums font-semibold text-amber-500" title={r.precision === 'day' ? '' : 'MusicBrainz does not know the exact day yet'}>
+                          {fmtDate(r.date, r.precision)}{r.precision !== 'day' && <span className="ml-1 text-[9px] font-bold text-slate-500">TBC</span>}
+                        </span>
+                        <span className={`font-semibold min-w-0 break-words ${r.owned ? GREEN : ''}`}>{r.title}</span>
+                        <span className="min-w-0 break-words font-bold" title={r.mbName && r.mbName !== r.artist ? `Your folder: ${r.artist}` : undefined}>{r.mbName || r.artist}</span>
+                        <span className="opacity-60 text-[10px]">{r.type}</span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+
               {view === 'day' && (
                 <div className={`mb-5 p-4 rounded-xl border ${isDark ? 'border-amber-500/30 bg-amber-500/5' : 'border-amber-400/50 bg-amber-50'}`}>
                   <div className="flex items-center gap-2 mb-2">
@@ -476,7 +506,7 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
                 </div>
               )}
 
-              {viewLoading && artistsToShow.length === 0 ? (
+              {view === 'upcoming' ? null : viewLoading && artistsToShow.length === 0 ? (
                 <div className="py-8 flex justify-center"><RotateCw size={18} className="animate-spin opacity-50" /></div>
               ) : artistsToShow.length === 0 ? (
                 <p className="text-xs text-slate-500 py-6 text-center">
