@@ -109,6 +109,11 @@ import { getWeather } from './services/weatherService.js';
 import { startGlucosePoller, getGlucoseData } from './services/glucoseService.js';
 import { checkAndTriggerNightlyScan } from './services/musicScanService.js';
 
+// A tool call the model has written out as text instead of calling it: setEmotion(emotion='happy'),
+// default_api.endConversation(), print(...) - never meant to be seen or kept.
+const TOOL_TEXT = /(?:\bprint\s*\(\s*)?\b(?:default_api\.)?(?:setEmotion|noWakeDetected|endConversation|lookAtCamera|startRecording|[a-z]+[A-Z]\w*)\s*\((?:[^()]|\([^()]*\))*\)\s*\)?/g;
+const stripToolText = (text) => String(text).replace(TOOL_TEXT, '').replace(/[ 	]{2,}/g, ' ');
+
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -236,11 +241,11 @@ app.post('/api/system/trace', async (req, res) => {
 });
 
 // Backups (/ims/backups): status, and a backup on demand.
-app.get('/api/backups', async (req, res) => {
+app.get('/api/ims-backups', async (req, res) => {
   const { backupStatus } = await import('./services/backupService.js');
   res.json({ success: true, ...backupStatus() });
 });
-app.post('/api/backups', async (req, res) => {
+app.post('/api/ims-backups', async (req, res) => {
   const { runBackup } = await import('./services/backupService.js');
   try { res.json({ success: true, result: await runBackup({ reason: 'manual' }) }); } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
@@ -1142,9 +1147,11 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         // to the corresponding audio chunk, not as one block at the end.
         if (parsed.serverContent?.outputTranscription?.text) {
           const spokenText = parsed.serverContent.outputTranscription.text;
-          spokenTranscript += spokenText;
+          // the model now and then writes a tool call into its transcript ("setEmotion(emotion='happy')") -
+          // it isn't spoken, so keep it out of the record (cleaned over the whole turn, as it can arrive in pieces)
+          spokenTranscript = stripToolText(spokenTranscript + spokenText);
           if (isHardware && morningOfferPending) { morningOfferPending = false; markMorningReportOffered(); }
-          turnReplyText += spokenText;
+          turnReplyText = stripToolText(turnReplyText + spokenText);
           console.log(`${tag} [SpokenTranscript] "${spokenText}"`);
           try {
             logCapture(

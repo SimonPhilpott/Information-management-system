@@ -11,10 +11,59 @@ import { ZoomIn, ZoomOut, Move, MapPin } from 'lucide-react';
 const MAPS = {
   lotr: { src: '/maps/middle-earth.svg', w: 3200, h: 2400, alt: 'Map of Middle-earth', beyond: 'Beyond the map',
     credit: <>Map: <a className="underline" href="https://commons.wikimedia.org/wiki/File:Map_of_Middle-Earth.svg" target="_blank" rel="noreferrer">"Map of Middle-Earth" by k1tesurfen</a>, CC BY-SA 4.0</> },
-  // Arkham: an HD fan map of the town; scenarios elsewhere (Dunwich, Innsmouth, the Yucatán...) sit in the strip below it
-  ahlcg: { src: '/maps/arkham.jpg', w: 4320, h: 5616, alt: 'Map of Arkham', beyond: 'Beyond Arkham', credit: <>Map: HD Arkham map (fan-made, shared on Reddit)</> },
+  // Arkham Horror: several maps (the server lists them with the pins) - this is the one shown until they arrive
+  ahlcg: { id: 'arkham', name: 'Arkham', src: '/maps/arkham.jpg', w: 4320, h: 5616, credit: 'HD Arkham map (fan-made, shared on Reddit)' },
 };
 const W = 100;
+
+// Old, worn paper: the edge is a rectangle roughed up with fractal noise - a slow wander, then a fine fray -
+// with a few nicks and one or two deeper tears, the same for a map every time. The paper just inside the edge
+// is browned and darker where it's torn, like a map that has been folded, handled and left in a damp drawer.
+// Drawn at the map's own proportions (so nothing is stretched) and in % of it, so it scales with the zoom.
+function wornPaper(seed, w, h) {
+  let n = [...seed].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+  const rnd = () => ((n = (n * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const W = 1000, H = Math.round((1000 * h) / w), m = 16;
+  // the outline, walked round clockwise, with nicks and tears bitten into it
+  const pts = [];
+  const side = (x0, y0, x1, y1, ix, iy) => {
+    const len = Math.hypot(x1 - x0, y1 - y0), steps = Math.round(len / 6);
+    const bites = [];
+    const count = 2 + Math.floor(rnd() * 3);
+    for (let k = 0; k < count; k++) { const deep = rnd() < 0.3; bites.push({ at: 0.08 + rnd() * 0.84, half: (deep ? 14 + rnd() * 16 : 5 + rnd() * 8) / len, depth: deep ? 16 + rnd() * 22 : 5 + rnd() * 7 }); }
+    for (let k = 0; k < steps; k++) {
+      const t = k / steps;
+      let d = 0;
+      for (const b of bites) { const u = Math.abs(t - b.at) / b.half; if (u < 1) d = Math.max(d, b.depth * (1 - u) ** 1.4 * (0.75 + rnd() * 0.25)); }
+      pts.push([x0 + (x1 - x0) * t + ix * d, y0 + (y1 - y0) * t + iy * d]);
+    }
+  };
+  // the corners are worn round, a little differently each
+  const r = () => 6 + rnd() * 14;
+  const [a, b, c, d] = [r(), r(), r(), r()];
+  side(m + a, m, W - m - b, m, 0, 1);
+  side(W - m, m + b, W - m, H - m - c, -1, 0);
+  side(W - m - c, H - m, m + d, H - m, 0, -1);
+  side(m, H - m - d, m, m + a, 1, 0);
+  const path = `M${pts.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join('L')}Z`;
+  const s1 = Math.floor(rnd() * 900), s2 = Math.floor(rnd() * 900);
+  const rough = `<filter id='r' x='-5%' y='-5%' width='110%' height='110%'>
+    <feTurbulence type='fractalNoise' baseFrequency='0.022' numOctaves='3' seed='${s1}' result='a'/>
+    <feDisplacementMap in='SourceGraphic' in2='a' scale='18' xChannelSelector='R' yChannelSelector='G' result='b'/>
+    <feTurbulence type='fractalNoise' baseFrequency='0.45' numOctaves='2' seed='${s2}' result='f'/>
+    <feDisplacementMap in='b' in2='f' scale='4.5' xChannelSelector='R' yChannelSelector='G'/></filter>`;
+  const svg = (body) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${W} ${H}' preserveAspectRatio='none'>${body}</svg>`)}")`;
+  return {
+    mask: svg(`<defs>${rough}</defs><path d='${path}' fill='#000' filter='url(#r)'/>`),
+    // browning along the edge: a soft dark band hugging the torn edge, a stronger scorch right at it, and
+    // a few faint damp stains creeping in
+    edge: svg(`<defs>${rough}<filter id='s' x='-10%' y='-10%' width='120%' height='120%'><feGaussianBlur stdDeviation='14'/></filter><filter id='t' x='-10%' y='-10%' width='120%' height='120%'><feGaussianBlur stdDeviation='3'/></filter>
+      <filter id='d'><feTurbulence type='fractalNoise' baseFrequency='0.012' numOctaves='3' seed='${s2}'/><feColorMatrix values='0 0 0 0 .36  0 0 0 0 .23  0 0 0 0 .08  0 0 0 -2.2 1.25'/></filter></defs>
+      <g filter='url(#s)'><g filter='url(#r)'><path d='${path}' fill='none' stroke='rgb(92,58,22)' stroke-opacity='.38' stroke-width='55'/></g></g>
+      <g filter='url(#t)'><g filter='url(#r)'><path d='${path}' fill='none' stroke='rgb(60,36,12)' stroke-opacity='.5' stroke-width='10'/></g></g>
+      <rect width='${W}' height='${H}' filter='url(#d)' opacity='.08'/>`),
+  };
+}
 
 async function api(url, opts = {}) {
   const res = await fetch(url, { ...opts, headers: { 'Content-Type': 'application/json' }, body: opts.body ? JSON.stringify(opts.body) : undefined });
@@ -64,10 +113,12 @@ function Scroll({ entry }) {
   );
 }
 
-export default function CampaignMap({ c, ui, route, packOf = {}, byCode, edit, toast, extras = [], title = 'The road so far', summary = null, chronicle = null, showPlayed = true, game = 'lotr' }) {
-  const M = MAPS[game] || MAPS.lotr;
-  const H = (100 * M.h) / M.w;
+export default function CampaignMap({ c, ui, route, packOf = {}, byCode, edit, toast, extras = [], title = 'The road so far', summary = null, chronicle = null, showPlayed = true, game = 'lotr', allMaps = false }) {
   const arkham = game === 'ahlcg';
+  // Arkham Horror has several maps, as tabs: on the main screen all of them; in a campaign, the ones its
+  // scenarios are on - opening on the map of the next scenario to play, unless one's been picked.
+  const [maps, setMaps] = useState([MAPS.ahlcg]);
+  const [picked, setPicked] = useState(null);
   const [offTip, setOffTip] = useState(null); // a scenario beyond the map, opened from the strip
   const [pins, setPins] = useState({});
   const [zoom, setZoom] = useState(1);
@@ -109,7 +160,7 @@ export default function CampaignMap({ c, ui, route, packOf = {}, byCode, edit, t
     let alive = true, tries = 0;
     // Arkham's scenarios are placed in the background the first time - check back while they are
     const load = () => api(`/api/decks/campaigns/map/pins?game=${game}`, { method: 'POST', body: { names: want } })
-      .then((d) => { if (!alive) return; setPins((ps) => ({ ...d.pins, ...ps })); if (d.pending && ++tries < 30) setTimeout(load, 5000); })
+      .then((d) => { if (!alive) return; setPins((ps) => ({ ...ps, ...d.pins })); if (d.maps?.length) setMaps(d.maps); if (d.pending && ++tries < 30) setTimeout(load, 5000); })
       .catch((err) => toast(err.message, 'error'));
     load();
     return () => { alive = false; };
@@ -135,7 +186,18 @@ export default function CampaignMap({ c, ui, route, packOf = {}, byCode, edit, t
     const plays = c.scenarios.filter((s) => s.name === name);
     return { plays, won: plays.some((p) => p.result === 'won'), lost: plays.length > 0 && !plays.some((p) => p.result === 'won') };
   };
-  const at = (name) => (pins[name] && pins[name].x != null ? { x: pins[name].x, y: pins[name].y * (H / 100) } : null);
+  // which map is showing
+  const onMap = (name, id) => (arkham ? pins[name]?.at?.[id] : pins[name]?.x != null ? pins[name] : null);
+  const tabs = arkham ? maps.filter((m) => allMaps || names.some((n) => onMap(n, m.id))) : [];
+  const nextUp = route.find((n) => pins[n] && !status(n).won);
+  const latest = [...c.scenarios].sort((a, b) => `${a.date} ${a.time || ''}`.localeCompare(`${b.date} ${b.time || ''}`)).pop()?.name;
+  const autoMap = [nextUp, latest, ...names].map((n) => n && tabs.find((m) => onMap(n, m.id))).find(Boolean)?.id;
+  const mapId = arkham ? (tabs.some((m) => m.id === picked) ? picked : autoMap || tabs[0]?.id || 'arkham') : null;
+  const M = arkham ? maps.find((m) => m.id === mapId) || maps[0] : MAPS[game] || MAPS.lotr;
+  const H = (100 * M.h) / M.w;
+  const paper = useMemo(() => (M.ragged ? wornPaper(M.id || M.src, M.w, M.h) : null), [M.ragged, M.id, M.src, M.w, M.h]);
+  const mask = paper?.mask;
+  const at = (name) => { const p = arkham ? onMap(name, mapId) : pins[name]; return p && p.x != null ? { x: p.x, y: p.y * (H / 100) } : null; };
   const roadPts = route.map(at).filter(Boolean);
   // The gold road runs from the start through every won scenario in order, up to the first gap.
   let done = 0;
@@ -144,21 +206,26 @@ export default function CampaignMap({ c, ui, route, packOf = {}, byCode, edit, t
   const full = roadPath(roadPts), gold = roadPath(donePts);
   const nextName = route.find((n) => pins[n] && !status(n).won);
   const beyond = names.filter((n) => pins[n]?.offMap);
+  const pos = (name) => (arkham ? onMap(name, mapId) : pins[name]);
 
   // Dragging a pin (players only, in "move pins" mode).
   const toMap = (e) => {
     const r = svgRef.current.getBoundingClientRect();
     return { x: Math.max(0, Math.min(100, ((e.clientX - r.left) / r.width) * 100)), y: Math.max(0, Math.min(100, ((e.clientY - r.top) / r.height) * 100)) };
   };
-  const onMove = (e) => { if (drag) { const p = toMap(e); setPins((ps) => ({ ...ps, [drag]: { ...ps[drag], x: +p.x.toFixed(2), y: +p.y.toFixed(2) } })); } };
+  const onMove = (e) => {
+    if (!drag) return;
+    const p = toMap(e), xy = { x: +p.x.toFixed(2), y: +p.y.toFixed(2) };
+    setPins((ps) => ({ ...ps, [drag]: arkham ? { ...ps[drag], at: { ...ps[drag].at, [mapId]: xy } } : { ...ps[drag], ...xy } }));
+  };
   const onUp = async () => {
     if (!drag) return;
-    const p = pins[drag];
+    const p = pos(drag);
     setDrag(null);
-    try { await api(`/api/decks/campaigns/map/pins?game=${game}`, { method: 'PUT', body: { scenario: drag, x: p.x, y: p.y } }); } catch (err) { toast(err.message, 'error'); }
+    try { await api(`/api/decks/campaigns/map/pins?game=${game}`, { method: 'PUT', body: { scenario: drag, x: p.x, y: p.y, map: mapId } }); } catch (err) { toast(err.message, 'error'); }
   };
 
-  const tip = hover && at(hover) ? { name: hover, ...status(hover), pos: pins[hover] } : null;
+  const tip = hover && at(hover) ? { name: hover, ...status(hover), pos: pos(hover) } : null;
   const earned = (name) => c.cards.filter((x) => x.fromScenario === name);
   // What a scenario's pop-up says: where, the lore, the chronicle's summary, every play, what was earned.
   const card = (x) => (
@@ -203,13 +270,30 @@ export default function CampaignMap({ c, ui, route, packOf = {}, byCode, edit, t
         <button onClick={() => setZoom((z) => Math.min(4, z + 0.5))} disabled={zoom >= 4} className={`p-1.5 rounded-lg disabled:opacity-30 ${ui.soft}`}><ZoomIn size={14} /></button>
       </div>
       {moving && <p className={`text-xs mb-2 ${ui.muted}`}>Drag any pin to where the scenario really happens - it moves for everyone.</p>}
+      {tabs.length > 1 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {tabs.map((m) => {
+            const count = names.filter((n) => onMap(n, m.id)).length;
+            const here = nextUp && onMap(nextUp, m.id);
+            return (
+              <button key={m.id} onClick={() => { setPicked(m.id); setHover(null); setOffTip(null); }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 ${m.id === mapId ? ui.primary : ui.soft}`} title={here ? `${nextUp} - the next to play - is here` : undefined}>
+                {m.name}{count > 0 && <span className="opacity-60 font-normal">{count}</span>}{here && <span className="w-2 h-2 rounded-full" style={{ background: '#3f9b3a', boxShadow: '0 0 0 2px #ffd24a' }} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div ref={boxRef} className={`rounded-xl overflow-auto border border-black/10 ${zoom > 1 ? 'max-h-[85vh]' : ''}`}
         style={{ cursor: zoom > 1 && !moving ? (panning ? 'grabbing' : 'grab') : undefined, userSelect: panning ? 'none' : undefined }}
         onPointerDown={panStart}
         onPointerMove={(e) => { onMove(e); panMove(e); }} onPointerUp={() => { onUp(); panEnd(); }} onPointerLeave={() => { onUp(); panEnd(); }}
         onClickCapture={(e) => { if (pan.justDragged) { pan.justDragged = false; e.stopPropagation(); } }}>
-        <div className="relative" style={{ width: `${zoom * 100}%`, aspectRatio: `${M.w} / ${M.h}` }}>
-          <img src={M.src} alt={M.alt} className="absolute inset-0 w-full h-full select-none" draggable={false} />
+        <div className="relative" style={{ width: `${zoom * 100}%`, aspectRatio: `${M.w} / ${M.h}`, filter: mask ? 'drop-shadow(0 2px 3px rgba(0,0,0,.4))' : undefined }}>
+          <div className="absolute inset-0" style={mask ? { WebkitMaskImage: mask, maskImage: mask, WebkitMaskSize: '100% 100%', maskSize: '100% 100%', WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat' } : undefined}>
+            <img key={M.src} src={M.src} alt={M.alt || `Map of ${M.name}`} className="absolute inset-0 w-full h-full select-none" draggable={false} />
+            {paper && <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: `${paper.edge}, radial-gradient(ellipse at center, transparent 72%, rgba(80,52,20,.1) 100%)`, backgroundSize: '100% 100%', mixBlendMode: 'multiply' }} />}
+          </div>
           <svg ref={svgRef} key={runKey} viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 w-full h-full fill-current" style={{ color: 'transparent' }}>
             <style>{`
               .road-all { fill: none; stroke: rgba(60,40,20,.55); stroke-width: .28; stroke-dasharray: .8 .6; }
@@ -220,13 +304,14 @@ export default function CampaignMap({ c, ui, route, packOf = {}, byCode, edit, t
               .next-ring { fill: none; stroke: #ffd24a; stroke-width: .55px; filter: drop-shadow(0 0 .7px #ffcc33) drop-shadow(0 0 1.4px #f5b800); animation: glint 1.6s ease-in-out infinite; }
               .next-halo { fill: none; stroke: #ffd24a; animation: halo 1.6s ease-out infinite; }
             `}</style>
-            {full && <path d={full} className="road-all" />}
-            {gold && <path d={gold} pathLength="1" className="road-gold" />}
+            {full && <path d={full} className="road-all" style={{ strokeWidth: 0.28 / zoom, strokeDasharray: `${0.8 / zoom} ${0.6 / zoom}` }} />}
+            {gold && <path d={gold} pathLength="1" className="road-gold" style={{ strokeWidth: 0.55 / zoom }} />}
             {gold && donePts.length > 1 && (
-              <circle r=".7" style={{ fill: '#fff7d6', filter: 'drop-shadow(0 0 1px #f5c542)' }}>
+              <circle r={0.7 / zoom} style={{ fill: '#fff7d6', filter: 'drop-shadow(0 0 1px #f5c542)' }}>
                 <animateMotion dur="3.2s" fill="freeze" path={gold} calcMode="spline" keySplines=".42 0 .58 1" keyTimes="0;1" keyPoints="0;1" />
               </circle>
             )}
+            {/* pins (and the road) are scaled back by the zoom, so they stay the same size on screen */}
             {names.map((n) => {
               const p = at(n);
               if (!p) return null;
@@ -235,7 +320,7 @@ export default function CampaignMap({ c, ui, route, packOf = {}, byCode, edit, t
               const colour = st.won ? '#f5c542' : isNext ? '#3f9b3a' : '#cdb38a';
               const onRoute = route.includes(n);
               return (
-                <g key={n} transform={`translate(${p.x} ${p.y})`} style={{ cursor: moving ? 'grab' : panning ? 'grabbing' : 'pointer' }}
+                <g key={n} transform={`translate(${p.x} ${p.y}) scale(${1 / zoom})`} style={{ cursor: moving ? 'grab' : panning ? 'grabbing' : 'pointer' }}
                   onPointerEnter={() => !drag && !pan.current?.moved && setHover(n)} onPointerLeave={() => !drag && setHover((h) => (h === n ? null : h))}
                   onClick={() => setHover((h) => (h === n ? null : n))}
                   onPointerDown={(e) => { if (moving) { e.preventDefault(); setDrag(n); setHover(null); } }}>
@@ -263,7 +348,7 @@ export default function CampaignMap({ c, ui, route, packOf = {}, byCode, edit, t
       </div>
       {beyond.length > 0 && (
         <div className="mt-3">
-          <div className="text-[11px] font-black uppercase tracking-wider mb-1.5">{M.beyond}</div>
+          <div className="text-[11px] font-black uppercase tracking-wider mb-1.5">{arkham ? 'Beyond every map' : M.beyond}</div>
           <div className="flex flex-wrap gap-2">
             {beyond.map((n) => {
               const st = status(n), isNext = n === nextName;
@@ -283,7 +368,7 @@ export default function CampaignMap({ c, ui, route, packOf = {}, byCode, edit, t
         <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#3f9b3a', boxShadow: '0 0 0 2px #ffd24a' }} /> next to play</span>
         <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#cdb38a' }} /> still ahead</span>
         <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full border-2 border-red-600" style={{ background: '#cdb38a' }} /> lost, not yet won</span>
-        <span className="ml-auto">{M.credit}</span>
+        <span className="ml-auto">{typeof M.credit === 'string' ? `Map: ${M.credit}` : M.credit}</span>
       </div>
     </div>
   );

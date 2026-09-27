@@ -16,6 +16,11 @@ const TOOL_LABELS = {
   startBackgroundTask: 'started a background task', getBackgroundTasks: 'checked on his background tasks',
 };
 const SILENT_TOOLS = new Set(['setEmotion', 'endConversation', 'noWakeDetected']);
+// a tool call written out as text (whole, or the start of one still arriving)
+const stripToolText = (t) => t
+  .replace(/(?:\bprint\s*\(\s*)?\b(?:default_api\.)?(?:setEmotion|noWakeDetected|endConversation|lookAtCamera|startRecording|[a-z]+[A-Z]\w*)\s*\((?:[^()]|\([^()]*\))*\)\s*\)?/g, '')
+  .replace(/(?:\bprint\s*\(\s*)?\b(?:default_api\.)?(?:setEmotion|noWakeDetected|endConversation|lookAtCamera|startRecording|[a-z]+[A-Z]\w*)\s*\([^)]*$/, '')
+  .replace(/[ 	]{2,}/g, ' ');
 
 const b64ToInt16 = (b64) => { const bin = atob(b64); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return new Int16Array(u8.buffer); };
 const int16ToB64 = (i16) => { const u8 = new Uint8Array(i16.buffer); let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
@@ -50,10 +55,13 @@ export function useImsLive() {
   }, []);
 
   // ---- chat text -----------------------------------------------------------------------------------
+  // Ims's transcript can carry a tool call he wrote out rather than called ("setEmotion(emotion='happy')") -
+  // he never says it, so it's never shown. Cleaned over the whole message, as it can arrive in pieces.
   const appendText = (role, text) => setMessages((m) => {
     const last = m[m.length - 1];
-    if (last && last.role === role && !last.done) return [...m.slice(0, -1), { ...last, text: last.text + text }];
-    return [...m.filter((x) => !(x.role !== role && !x.done && !x.text.trim())), { id: Date.now() + Math.random(), role, text, done: false }];
+    const clean = (t) => (role === 'ims' ? stripToolText(t) : t);
+    if (last && last.role === role && !last.done) return [...m.slice(0, -1), { ...last, text: clean(last.text + text) }];
+    return [...m.filter((x) => !(x.role !== role && !x.done && !x.text.trim())), { id: Date.now() + Math.random(), role, text: clean(text), done: false }];
   });
   const finishAll = () => setMessages((m) => m.map((x) => (x.done ? x : { ...x, done: true, text: x.text.trim() })).filter((x) => x.text || x.role === 'tool'));
   const addNote = (role, text) => setMessages((m) => [...m, { id: Date.now() + Math.random(), role, text, done: true }]);

@@ -9,8 +9,8 @@ import { getAuthenticatedClient } from './driveService.js';
 // Nightly backup of everything IMS keeps for its services: the SQLite database (a consistent copy taken
 // while it's in use - memories, birthdays, reminders, lists, carbs, tasks, campaigns, decks, chronicles,
 // settings...) plus the files that aren't in it (config, phrase recordings, campaign banners, chronicle
-// pictures and narration, campaign setups and map places). Zipped, kept on the PC (last 7) and uploaded
-// to "IMS Backups" in the owner's Google Drive (last 30). Things that can be rebuilt or fetched again are
+// pictures and narration, campaign setups and map places). Zipped, kept on the PC (last 10) and uploaded
+// to "IMS Backups" in the owner's Google Drive (last 10). Things that can be rebuilt or fetched again are
 // left out: the PDF library (it lives in Drive), the vector index, the joke dataset, card and rulebook caches.
 // Runs once a night after 03:00 London time, or on demand from /ims/backups.
 
@@ -18,14 +18,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA = path.join(__dirname, '..', 'data');
 const LOCAL = path.join(DATA, 'backups');
 const DRIVE_FOLDER = 'IMS Backups';
-const KEEP_LOCAL = 7, KEEP_DRIVE = 30;
+const KEEP_LOCAL = 10, KEEP_DRIVE = 10;
 
 // What goes in, relative to data/ (files or folders; missing ones are skipped).
 const FILES = [
   'database.sqlite', 'boardgames_config.json', 'boardgames_cache.json', 'bgg_collection.csv', 'morning_report_state.json', 'wifi_networks.json',
   'phrase_recordings', 'faces',
   'decks/campaign_banners', 'decks/chronicle_art', 'decks/chronicle_audio',
-  'decks/ahlcg_campaign_setups.json', 'decks/arkham_places.json', 'decks/middle_earth_places.json',
+  'decks/ahlcg_campaign_setups.json', 'decks/arkham_places.json', 'decks/arkham_maps.json', 'decks/middle_earth_places.json',
   'decks/lotr_rulebooks.json', 'decks/ahlcg_rulebooks.json',
 ];
 

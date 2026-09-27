@@ -9,12 +9,12 @@ export default function BackupsPortal({ theme = 'dark', onThemeToggle, setCurren
   const [st, setSt] = useState(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
-  const load = useCallback(() => fetch('/api/backups').then((r) => r.json()).then((d) => d.success && setSt(d)).catch(() => {}), []);
+  const load = useCallback(() => fetch('/api/ims-backups').then((r) => r.json()).then((d) => d.success && setSt(d)).catch(() => {}), []);
   useEffect(() => { load(); }, [load]);
   const now = async () => {
     setBusy(true); setNote(null);
     try {
-      const d = await (await fetch('/api/backups', { method: 'POST' })).json();
+      const d = await (await fetch('/api/ims-backups', { method: 'POST' })).json();
       setNote(d.success ? { ok: true, msg: `Backed up - ${d.result.sizeMb} MB${d.result.drive?.uploaded ? ', and saved to Google Drive' : ` (not uploaded: ${d.result.drive?.error})`}.` } : { ok: false, msg: d.error });
     } catch (err) { setNote({ ok: false, msg: err.message }); }
     setBusy(false); load();
@@ -44,7 +44,7 @@ export default function BackupsPortal({ theme = 'dark', onThemeToggle, setCurren
       </div>
 
       <div className={panel}>
-        <div className="font-bold mb-2 flex items-center gap-2"><HardDrive size={15} className="opacity-60" /> On this PC <span className={`font-normal text-xs ${muted}`}>(the last {st?.keepLocal ?? 7}, in server/data/backups)</span></div>
+        <div className="font-bold mb-2 flex items-center gap-2"><HardDrive size={15} className="opacity-60" /> On this PC <span className={`font-normal text-xs ${muted}`}>(the last {st?.keepLocal ?? 10}, in server/data/backups)</span></div>
         {!st?.local?.length ? <div className={`text-sm ${muted}`}>None yet.</div> : (
           <div className="flex flex-col gap-1 text-sm">{st.local.map((f) => <div key={f.name} className="flex justify-between"><span className="font-mono text-xs">{f.name}</span><span className={muted}>{f.sizeMb} MB</span></div>)}</div>
         )}

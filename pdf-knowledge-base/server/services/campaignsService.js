@@ -1007,3 +1007,35 @@ ${body}`;
   const out = JSON.parse((await model.generateContent(prompt)).response.text());
   return { title: String(out.title || '').replace(/^["']|["']$/g, '').trim().slice(0, 120) || title };
 }
+
+// ---- voice notes -----------------------------------------------------------------------------------------------
+// A spoken note for a campaign (the notes, the campaign log, a scenario's notable moments): Gemini writes down
+// what was said, told the campaign's own names (heroes, investigators, scenarios, players, campaign cards) so
+// "Glorfindel" or "The Midnight Masks" come out spelt right. Returns plain text; the page adds it as a bullet.
+export async function transcribeVoiceNote(id, audio, mimeType = 'audio/webm', by) {
+  if (!audio?.length) throw new Error('No recording came through.');
+  if (audio.length > 15 * 1024 * 1024) throw new Error('That recording is too long - keep voice notes under a few minutes.');
+  const c = getCampaign(id, by);
+  if (!c) throw Object.assign(new Error('Campaign not found'), { status: 404 });
+  const v = imsView(c, imsLookups());
+  const names = [...new Set([
+    c.name, c.kind, ...v.route, ...c.scenarios.map((s) => s.name),
+    ...v.players.flatMap((p) => [p.name, ...p.heroes]), ...c.cards.map((x) => x.name),
+  ].filter(Boolean))].slice(0, 150);
+  const game = c.game === 'ahlcg' ? 'the Arkham Horror card game' : 'the Lord of the Rings card game';
+  const prompt = `Transcribe this voice note, spoken in English (a Yorkshire accent), about a campaign of ${game}. Write exactly what was said as clean text: proper punctuation and capitals, no filler words ("um", "er"), no false starts, no timestamps, no speaker labels, and nothing added. Keep it in the speaker's words.
+Names that may come up - spell them like this: ${names.join('; ')}.
+If nothing intelligible was said, return an empty string.`;
+  const config = (await import('../config.js')).default;
+  const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.gemini.apiKey },
+    body: JSON.stringify({
+      contents: [{ parts: [{ inlineData: { mimeType: String(mimeType).split(';')[0], data: Buffer.from(audio).toString('base64') } }, { text: prompt }] }],
+      generationConfig: { temperature: 0, thinkingConfig: { thinkingBudget: 0 } },
+    }),
+    signal: AbortSignal.timeout(60000),
+  });
+  if (!res.ok) throw new Error(`Gemini returned HTTP ${res.status}`);
+  const text = ((await res.json())?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').trim();
+  return { text: text.replace(/^["']|["']$/g, '').replace(/\s*\n+\s*/g, ' ').trim() };
+}

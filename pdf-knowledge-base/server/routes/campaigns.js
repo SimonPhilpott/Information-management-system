@@ -3,7 +3,7 @@ import express, { Router } from 'express';
 import {
   CAMPAIGN_KINDS, getCampaignCards, listCampaigns, getCampaign, createCampaign, updateCampaign, deleteCampaign,
   saveScenario, removeScenario, saveCampaignCard, removeCampaignCard, addNote, removeNote, campaignScenarios,
-  setBanner, removeBanner, bannerFile, voteDelete, campaignKinds, addLogEntry, updateLogEntry, removeLogEntry, arkhamSetup,
+  setBanner, removeBanner, bannerFile, voteDelete, campaignKinds, transcribeVoiceNote, addLogEntry, updateLogEntry, removeLogEntry, arkhamSetup,
 } from '../services/campaignsService.js';
 import { arkhamPins, arkhamLore, moveArkhamPin } from '../services/decks/arkhamMap.js';
 import { OWNER, canonEmail, listInvites, personName } from '../services/decksService.js';
@@ -40,7 +40,7 @@ router.post('/map/lore', wrap(async (req) => {
   const items = (Array.isArray(req.body?.items) ? req.body.items : []).slice(0, 200).map((x) => ({ name: String(x.name || ''), pack: x.pack ? String(x.pack) : null })).filter((x) => x.name);
   return gameOf(req) === 'ahlcg' ? arkhamLore(items.map((x) => x.name)) : scenarioLore(items);
 }));
-router.put('/map/pins', wrap(async (req) => { (gameOf(req) === 'ahlcg' ? moveArkhamPin : movePin)(req.body?.scenario, req.body?.x, req.body?.y, who(req)); return {}; }));
+router.put('/map/pins', wrap(async (req) => { (gameOf(req) === 'ahlcg' ? moveArkhamPin : movePin)(req.body?.scenario, req.body?.x, req.body?.y, who(req), req.body?.map); return {}; }));
 // An Arkham campaign type's setup from its guide: the chaos bag at each difficulty and the log's sections.
 router.get('/arkham/setup', wrap(async (req) => ({ setup: await arkhamSetup(String(req.query.kind || '')) })));
 router.delete('/map/pins', wrap(async (req) => ({ reset: resetPin(req.body?.scenario) })));
@@ -85,6 +85,8 @@ router.get('/:id/banner', (req, res) => {
   res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
   res.sendFile(f);
 });
+// A spoken note: written down (with the campaign's names spelt right) for the page to add as a bullet.
+router.post('/:id/voice-note', express.raw({ type: ['audio/*', 'video/webm'], limit: '16mb' }), wrap(async (req) => transcribeVoiceNote(req.params.id, req.body, req.headers['content-type'], who(req))));
 router.post('/:id/banner', express.raw({ type: 'image/*', limit: '9mb' }), wrap(async (req) => ({ campaign: setBanner(req.params.id, req.body, req.headers['content-type'], who(req)) })));
 router.delete('/:id/banner', wrap(async (req) => ({ campaign: removeBanner(req.params.id, who(req)) })));
 

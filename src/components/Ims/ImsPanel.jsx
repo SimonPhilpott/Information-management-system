@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Mic, MicOff, Send, Volume2, VolumeX, Square, Trash2 } from 'lucide-react';
+import { Mic, MicOff, Send, Volume2, VolumeX, Square, Trash2, Utensils } from 'lucide-react';
+import PhotoCarbs from '../Dashboard/PhotoCarbs';
 import ImsFace from './ImsFace';
 import { useImsLive } from '../../hooks/useImsLive';
 
@@ -16,6 +17,9 @@ export default function ImsPanel({ theme = 'dark' }) {
   const ims = useImsLive();
   const [text, setText] = useState('');
   const listRef = useRef(null);
+  // carbs from a photo: the food button opens the camera; the plate's estimate shows above the input
+  const [plate, setPlate] = useState(null);
+  const [carbNote, setCarbNote] = useState(null);
   const compact = ims.messages.length > 0;
 
   useEffect(() => { listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' }); }, [ims.messages]);
@@ -70,12 +74,26 @@ export default function ImsPanel({ theme = 'dark' }) {
         ))}
       </div>
 
+      {plate && (
+        <div className={`px-4 pt-3 border-t ${border} max-h-[60vh] overflow-y-auto`}>
+          <PhotoCarbs file={plate} isDark={isDark} gradient="from-emerald-500 to-teal-600"
+            field={`w-full px-2.5 py-1.5 rounded-lg text-sm outline-none border ${isDark ? 'bg-slate-900/60 border-white/10' : 'bg-white border-[#2E2B27]/10'}`}
+            notify={(msg, kind) => { setCarbNote({ msg, error: kind === 'error' }); setTimeout(() => setCarbNote(null), 5000); }}
+            onLogged={() => setPlate(null)} onCancel={() => setPlate(null)} />
+        </div>
+      )}
+      {carbNote && <div className={`px-4 pt-2 text-xs ${carbNote.error ? 'text-red-500' : 'text-emerald-500'}`}>{carbNote.msg}</div>}
+
       {/* input */}
       <div className={`px-4 py-3 border-t ${border} flex items-end gap-2`}>
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={1}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
           placeholder="Type to Ims..." className={`flex-1 resize-none px-3.5 py-2.5 rounded-xl text-sm outline-none border max-h-32 ${isDark ? 'bg-slate-900/60 border-white/10' : 'bg-white border-[#2E2B27]/10'}`} />
         <button onClick={submit} disabled={!text.trim()} title="Send" className="p-3 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white disabled:opacity-40"><Send size={16} /></button>
+        <label title="Carbs from a photo of your food" className={`p-3 rounded-xl cursor-pointer border ${border} ${isDark ? 'bg-slate-800/70' : 'bg-white'}`}>
+          <Utensils size={16} />
+          <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) setPlate(f); }} />
+        </label>
         <button onClick={ims.toggleMic} title={ims.micOn ? 'Stop talking' : 'Talk to Ims'}
           className={`p-3 rounded-xl text-white ${ims.micOn ? 'bg-red-500 animate-pulse' : 'bg-gradient-to-r from-emerald-500 to-teal-600'}`}>
           {ims.micOn ? <MicOff size={16} /> : <Mic size={16} />}

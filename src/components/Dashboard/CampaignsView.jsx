@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import CardHover from './CardHover';
+import VoiceNoteButton, { addBullet } from './VoiceNote';
 import CampaignMap, { ScrollRollers } from './CampaignMap';
 import Chronicle, { useChronicle } from './Chronicle';
 import { Plus, ChevronLeft, Trash2, Flag, Skull, Gift, ScrollText, Swords, Save, X, Undo2, ImagePlus, Crop, Pencil } from 'lucide-react';
@@ -332,10 +333,10 @@ export function OverallJourney({ ui, toast, list, game = 'lotr' }) {
       </div>
       <div className="flex flex-wrap justify-end gap-x-5 gap-y-1 -mb-3">
         <label className={`text-xs flex items-center gap-2 ${ui.muted}`}><input type="checkbox" checked={showMine} onChange={(e) => setShowMine(e.target.checked)} /> Show the campaign scenarios</label>
-        <label className={`text-xs flex items-center gap-2 ${ui.muted}`}><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> {arkham ? 'Show every scenario (Arkham and beyond)' : 'Show every scenario in Middle-earth'}</label>
+        <label className={`text-xs flex items-center gap-2 ${ui.muted}`}><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> {arkham ? 'Show every scenario (on every map)' : 'Show every scenario in Middle-earth'}</label>
       </div>
-      <CampaignMap c={merged} ui={ui} game={game} route={showMine ? journey : []} showPlayed={showMine} packOf={packOf} byCode={{}} edit={false} toast={toast}
-        extras={showAll ? official.map((x) => x.name) : []} title={arkham ? 'Your investigations across Arkham' : 'Your journey through Middle-earth'}
+      <CampaignMap c={merged} ui={ui} game={game} allMaps={arkham} route={showMine ? journey : []} showPlayed={showMine} packOf={packOf} byCode={{}} edit={false} toast={toast}
+        extras={showAll ? official.map((x) => x.name) : []} title={arkham ? 'Your investigations' : 'Your journey through Middle-earth'}
         summary={arkham ? `${beaten.size} cases closed · ${journey.length} investigated` : `${beaten.size} places conquered · ${journey.length} visited`} />
     </>
   );
@@ -584,8 +585,8 @@ function Players({ ui, c, edit, decks, byCode, setPlayers, section, go }) {
           return (
             <div key={p.email} className={`rounded-xl border p-3 ${ui.row}`}>
               <div className="flex items-center gap-2">
-                <b className="text-sm flex-1">{p.name}</b>
-                <select className={`${ui.field} !w-auto !py-1 text-xs`} value={p.deckId || ''} disabled={!edit} onChange={(e) => update(p.email, { deckId: e.target.value ? Number(e.target.value) : null })}>
+                <b className="text-sm sm:flex-1 shrink-0">{p.name}</b>
+                <select className={`${ui.field} !w-auto flex-1 sm:flex-none min-w-0 sm:max-w-[16rem] !py-1 text-xs`} value={p.deckId || ''} disabled={!edit} onChange={(e) => update(p.email, { deckId: e.target.value ? Number(e.target.value) : null })}>
                   <option value="">No deck chosen</option>
                   {theirs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
@@ -731,7 +732,10 @@ function ScenarioLog({ ui, c, edit, scenarios, call, section, campCards = [] }) 
           <select className={`${ui.field} !py-1.5 text-sm`} value={d.difficulty} onChange={(e) => setD({ ...d, difficulty: e.target.value })}><option>easy</option><option>normal</option><option>nightmare</option></select>
           <input className={`${ui.field} !py-1.5 text-sm`} type="number" value={d.score} onChange={(e) => setD({ ...d, score: e.target.value })} placeholder="Score" />
           <WhenInput ui={ui} className="sm:col-span-2" value={d} onChange={(w) => setD({ ...d, ...w })} />
-          <input className={`${ui.field} sm:col-span-4 !py-1.5 text-sm`} value={d.notes} onChange={(e) => setD({ ...d, notes: e.target.value })} placeholder="Notable moments - they're written into the chronicle..." />
+          <div className="sm:col-span-4 flex gap-2">
+            <textarea rows={2} className={`${ui.field} flex-1 !py-1.5 text-sm min-h-[8rem] sm:min-h-0`} value={d.notes} onChange={(e) => setD({ ...d, notes: e.target.value })} placeholder="Notable moments - they're written into the chronicle..." />
+            <VoiceNoteButton ui={ui} campaignId={c.id} onText={(t) => setD((x) => ({ ...x, notes: addBullet(x.notes, t) }))} />
+          </div>
           <div className="sm:col-span-6 flex gap-2">
             <button onClick={save} disabled={!d.name} className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 disabled:opacity-40 ${ui.primary}`}><Save size={14} /> Save</button>
             <button onClick={() => setOpen(false)} className={`px-4 py-2 rounded-xl text-sm font-bold ${ui.soft}`}>Cancel</button>
@@ -753,13 +757,16 @@ function ScenarioLog({ ui, c, edit, scenarios, call, section, campCards = [] }) 
               {editing?.id === s.id ? (
                 <div className="basis-full pl-8 flex flex-col gap-1.5">
                   <label className={`text-xs flex flex-wrap items-center gap-2 ${ui.muted}`}>Played <WhenInput ui={ui} className="!w-auto" value={editing} onChange={(w) => setEditing({ ...editing, ...w })} /></label>
-                  <textarea rows={3} autoFocus className={`${ui.field} !py-1.5 text-sm`} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} placeholder="Notable moments - a hero's great deed, a narrow escape, a choice made... The chronicle's chapter is rewritten to include them." />
+                  <div className="flex gap-2">
+                    <textarea rows={3} autoFocus className={`${ui.field} flex-1 !py-1.5 text-sm min-h-[8rem] sm:min-h-0`} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} placeholder="Notable moments - a hero's great deed, a narrow escape, a choice made... The chronicle's chapter is rewritten to include them." />
+                    <VoiceNoteButton ui={ui} campaignId={c.id} onText={(t) => setEditing((x) => ({ ...x, notes: addBullet(x.notes, t) }))} />
+                  </div>
                   <div className="flex gap-2">
                     <button onClick={() => saveEdit(s)} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 ${ui.primary}`}><Save size={12} /> Save</button>
                     <button onClick={() => setEditing(null)} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${ui.soft}`}>Cancel</button>
                   </div>
                 </div>
-              ) : s.notes && <div className={`basis-full text-xs pl-8 ${ui.muted}`}><b>Notable moments:</b> {s.notes}</div>}
+              ) : s.notes && <div className={`basis-full text-xs pl-8 whitespace-pre-line ${ui.muted}`}><b>Notable moments:</b> {s.notes}</div>}
             </div>
           ))}
           <div className="text-xs text-right font-bold mt-1">Campaign total: {c.totalScore}</div>
@@ -858,9 +865,12 @@ export function Notes({ ui, c, edit, call, section, me }) {
     <div className={ui.panel}>
       <h2 className={section}><ScrollText size={14} className="opacity-60" /> Notes</h2>
       {edit && (
-        <div className="flex gap-2 items-end mb-3">
-          <textarea className={ui.field} rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder="Anything to remember - campaign log entries, decisions, what to try next time..." />
-          <button onClick={add} disabled={!text.trim()} className={`px-4 py-2.5 rounded-xl text-sm font-bold shrink-0 disabled:opacity-40 ${ui.primary}`}>Add note</button>
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-end mb-3">
+          <textarea className={`${ui.field} flex-1 min-h-[10rem] sm:min-h-0`} rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder="Anything to remember - campaign log entries, decisions, what to try next time... or tap the mic and say it." />
+          <div className="flex gap-2 items-stretch">
+            <VoiceNoteButton ui={ui} campaignId={c.id} onText={(t) => setText((x) => addBullet(x, t))} />
+            <button onClick={add} disabled={!text.trim()} className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-bold shrink-0 disabled:opacity-40 ${ui.primary}`}>Add note</button>
+          </div>
         </div>
       )}
       {!c.notes.length ? <p className={`text-sm ${ui.muted}`}>No notes yet.</p> : c.notes.map((n) => (

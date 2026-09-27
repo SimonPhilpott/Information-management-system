@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, ChevronLeft, Trash2, ScrollText, Save, X, Pencil, Skull, Brain, HeartCrack, Sparkles, Shuffle, RotateCcw, BookOpen, Users } from 'lucide-react';
 import CardHover from './CardHover';
+import VoiceNoteButton, { addBullet } from './VoiceNote';
 import CampaignMap from './CampaignMap';
 import Chronicle, { useChronicle } from './Chronicle';
 import { CampaignBanner, Rulebooks, GeneralRuleCheck, RuleCheck, Notes, WhenInput, playWhen, OverallJourney } from './CampaignsView';
@@ -230,8 +231,8 @@ function Investigators({ ui, c, edit, decks, byCode, call, section, go, xpOf }) 
           return (
             <div key={p.email} className={`rounded-xl border p-3 ${ui.row} ${status !== 'active' ? 'opacity-80' : ''}`}>
               <div className="flex items-center gap-2">
-                <b className="text-sm flex-1">{p.name}</b>
-                <select className={`${ui.field} !w-auto !py-1 text-xs`} value={p.deckId || ''} disabled={!edit} onChange={(e) => save(p.email, { deckId: e.target.value ? Number(e.target.value) : null })}>
+                <b className="text-sm sm:flex-1 shrink-0">{p.name}</b>
+                <select className={`${ui.field} !w-auto flex-1 sm:flex-none min-w-0 sm:max-w-[16rem] !py-1 text-xs`} value={p.deckId || ''} disabled={!edit} onChange={(e) => save(p.email, { deckId: e.target.value ? Number(e.target.value) : null })}>
                   <option value="">No deck chosen</option>
                   {decks.filter((d) => d.owner === p.email).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
@@ -333,6 +334,7 @@ function CampaignLog({ ui, c, edit, call, section }) {
             <div className="text-xs font-bold uppercase tracking-wider mb-2">{sec}</div>
             {log.filter((e) => e.section === sec).map((e) => (
               <div key={e.id} className="flex items-start gap-2 text-sm py-0.5">
+                <span className="opacity-60">•</span>
                 <span className="flex-1" style={{ textDecoration: e.crossed ? 'line-through' : 'none', opacity: e.crossed ? 0.55 : 1 }}>{e.text}</span>
                 {edit && <button onClick={() => call(`/log/${e.id}`, 'PUT', { crossed: !e.crossed })} title={e.crossed ? 'Uncross' : 'Cross it out'} className={`px-1.5 rounded text-[10px] ${ui.soft}`}>{e.crossed ? 'uncross' : 'cross out'}</button>}
                 {edit && <button onClick={() => call(`/log/${e.id}`, 'DELETE')} className="text-red-400"><X size={12} /></button>}
@@ -341,7 +343,8 @@ function CampaignLog({ ui, c, edit, call, section }) {
             {edit && (
               <div className="flex gap-1.5 mt-2">
                 <input className={`${ui.field} !py-1 text-sm`} value={drafts[sec] || ''} onChange={(e) => setDrafts({ ...drafts, [sec]: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && add(sec)} placeholder="Record in the log..." />
-                <button onClick={() => add(sec)} className={`px-2 rounded-lg ${ui.soft}`}><Plus size={14} /></button>
+                <VoiceNoteButton ui={ui} campaignId={c.id} onText={(t) => setDrafts((d) => ({ ...d, [sec]: d[sec]?.trim() ? `${d[sec].trim()} ${t}` : t }))} />
+                <button onClick={() => add(sec)} className={`px-2 rounded-lg ${ui.soft}`} title="Record in the log"><Plus size={14} /></button>
               </div>
             )}
           </div>
@@ -381,7 +384,10 @@ function ArkhamScenarioLog({ ui, c, edit, scenarios, call, section }) {
           <input className={`${ui.field} !py-1.5 text-sm`} type="number" min="0" value={d.xp} onChange={(e) => setD({ ...d, xp: e.target.value })} placeholder="XP each" title="Experience each investigator earned" />
           {own.length > 0 && others.length > 0 && <label className={`sm:col-span-6 flex items-center gap-2 text-xs ${ui.muted}`}><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> Show scenarios from other campaigns and standalones</label>}
           <WhenInput ui={ui} className="sm:col-span-2" value={d} onChange={(w) => setD({ ...d, ...w })} />
-          <input className={`${ui.field} sm:col-span-4 !py-1.5 text-sm`} value={d.notes} onChange={(e) => setD({ ...d, notes: e.target.value })} placeholder="Notable moments - they go into the case file..." />
+          <div className="sm:col-span-4 flex gap-2">
+            <textarea rows={2} className={`${ui.field} flex-1 !py-1.5 text-sm min-h-[8rem] sm:min-h-0`} value={d.notes} onChange={(e) => setD({ ...d, notes: e.target.value })} placeholder="Notable moments - they go into the case file..." />
+            <VoiceNoteButton ui={ui} campaignId={c.id} onText={(t) => setD((x) => ({ ...x, notes: addBullet(x.notes, t) }))} />
+          </div>
           <div className="sm:col-span-6 flex gap-2">
             <button onClick={save} disabled={!d.name} className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 disabled:opacity-40 ${ui.primary}`}><Save size={14} /> Save</button>
             <button onClick={() => setOpen(false)} className={`px-4 py-2 rounded-xl text-sm font-bold ${ui.soft}`}>Cancel</button>
@@ -405,13 +411,16 @@ function ArkhamScenarioLog({ ui, c, edit, scenarios, call, section }) {
                     <select className={`${ui.field} !w-auto !py-1 text-xs`} value={editing.resolution} onChange={(e) => setEditing({ ...editing, resolution: e.target.value })}>{['No resolution', 'R1', 'R2', 'R3', 'R4', 'R5'].map((r) => <option key={r}>{r}</option>)}</select>
                     <input className={`${ui.field} !w-20 !py-1 text-xs`} type="number" min="0" value={editing.xp} onChange={(e) => setEditing({ ...editing, xp: e.target.value })} placeholder="XP" />
                   </div>
-                  <textarea rows={3} className={`${ui.field} !py-1.5 text-sm`} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} placeholder="Notable moments - the case file's entry is rewritten to include them." />
+                  <div className="flex gap-2">
+                    <textarea rows={3} className={`${ui.field} flex-1 !py-1.5 text-sm min-h-[8rem] sm:min-h-0`} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} placeholder="Notable moments - the case file's entry is rewritten to include them." />
+                    <VoiceNoteButton ui={ui} campaignId={c.id} onText={(t) => setEditing((x) => ({ ...x, notes: addBullet(x.notes, t) }))} />
+                  </div>
                   <div className="flex gap-2">
                     <button onClick={() => saveEdit(s)} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 ${ui.primary}`}><Save size={12} /> Save</button>
                     <button onClick={() => setEditing(null)} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${ui.soft}`}>Cancel</button>
                   </div>
                 </div>
-              ) : s.notes && <div className={`basis-full text-xs pl-8 ${ui.muted}`}><b>Notable moments:</b> {s.notes}</div>}
+              ) : s.notes && <div className={`basis-full text-xs pl-8 whitespace-pre-line ${ui.muted}`}><b>Notable moments:</b> {s.notes}</div>}
             </div>
           ))}
         </div>
