@@ -4,7 +4,7 @@ import {
   Waves, Mic, Wrench, Gauge, Hand, Moon, Plug, CalendarDays, HardDrive, Droplets, Syringe, Activity, Route,
   CloudSun, Apple, Music, Dices, Rss, Database, Layers, FileText, Lock, Settings, Boxes, Server, Code,
   Terminal, GitBranch, Clock, Timer, RefreshCw, Scale, ChevronRight, AlertTriangle, Info, Smile, Drama,
-  MessageSquareQuote, Wifi, Newspaper, Heart, Radio, Speaker, Cake, Bell, ListChecks, Eye, Maximize2, Minimize2,
+  MessageSquareQuote, Wifi, Newspaper, Heart, Radio, Speaker, Cake, Bell, ListChecks, Eye, Maximize2, Minimize2, Eraser,
 } from 'lucide-react';
 import PortalShell from './PortalShell';
 import ImsFace from '../Ims/ImsFace';
@@ -512,7 +512,11 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
                       <button onClick={runTest} disabled={running || !prompt.trim()} className="px-3 py-1.5 rounded-lg text-[12px] font-bold bg-violet-600 text-white disabled:opacity-40">{running ? '...' : 'Run'}</button>
                     </div>
                     {(trace.length > 0 || answer) && (
-                      <div className={`mt-2 max-h-56 overflow-y-auto rounded-lg p-2 text-[11px] leading-snug ${isDark ? 'bg-slate-950/60' : 'bg-slate-50'}`}>
+                      <div className={`relative mt-2 max-h-56 overflow-y-auto rounded-lg p-2 pr-8 text-[11px] leading-snug ${isDark ? 'bg-slate-950/60' : 'bg-slate-50'}`}>
+                    {!running && (
+                      <button onClick={() => { setTrace([]); setAnswer(null); setHot({}); }} title="Clear the log and the highlights"
+                        className={`sticky top-0 float-right -mr-6 p-1 rounded-md ${isDark ? 'bg-slate-800 hover:bg-slate-700' : 'bg-white hover:bg-slate-100 border border-slate-200'}`}><Eraser size={13} /></button>
+                    )}
                         {trace.map((t, i) => (
                           <div key={i} className="flex gap-1.5"><span className={`tabular-nums shrink-0 ${muted}`}>{(t.at / 1000).toFixed(1)}s</span><span>{t.label}</span></div>
                         ))}
