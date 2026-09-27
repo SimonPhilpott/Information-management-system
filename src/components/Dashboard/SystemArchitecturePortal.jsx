@@ -198,8 +198,8 @@ const ACTIONS = [
   { icon: Wifi, title: 'Wi-Fi', sub: 'Desk terminal networks', path: '/ims/wifi', accent: 'blue' },
 ];
 
-// hot: rows being used by a test prompt - { 'card|row': { at, uses, pulse } }. A row lights up in its card's
-// colour when used and fades back; one used again while the prompt is still running pulses until it's done.
+// hot: rows used by a test prompt - { 'card|row': { at, uses, pulse } }. A row lights up in its card's colour
+// when used and stays lit; one used again pulses while the prompt runs. They clear when the prompt is emptied.
 const rowHot = (hot, card, main) => hot?.[`${card}|${main}`];
 // The badge counts the card's own rows, so it can't drift from the list; Services counts its hub pages
 // (the number at the end of each group) instead.
@@ -207,7 +207,7 @@ const countOf = (card) => (card.key === 'services' ? card.rows.reduce((n, r) => 
 function Card({ card, isDark, cardRef, onOpen, hot, now = 0 }) {
   const a = ACCENTS[card.accent];
   const Icon = card.icon;
-  const anyLit = card.rows.some((r) => { const h = rowHot(hot, card.key, r.main); return h && (h.pulse || now - h.at < 1800); });
+  const anyLit = card.rows.some((r) => Boolean(rowHot(hot, card.key, r.main)));
   return (
     <div ref={cardRef} className={`relative z-10 rounded-2xl border p-3.5 transition-shadow duration-700 ${isDark ? 'bg-slate-900/80 border-white/10' : 'bg-white border-slate-200/80 shadow-[0_6px_24px_rgba(15,23,42,0.06)]'}`}
       style={anyLit ? { boxShadow: `0 0 0 2px ${a.line}, 0 0 26px ${a.line}66` } : undefined}>
@@ -224,8 +224,7 @@ function Card({ card, isDark, cardRef, onOpen, hot, now = 0 }) {
             <div key={r.main} className={`flex items-start gap-2.5 rounded-md -mx-1.5 px-1.5 py-[1px] ${(() => { const h = rowHot(hot, card.key, r.main); return h?.pulse ? 'arch-pulse' : ''; })()}`}
               style={(() => {
                 const h = rowHot(hot, card.key, r.main);
-                const lit = h && (h.pulse || now - h.at < 1800);
-                return { backgroundColor: lit ? `${a.line}40` : 'transparent', transition: lit ? 'background-color .25s ease-out' : 'background-color 2.2s ease-in', '--pulse': `${a.line}66` };
+                return { backgroundColor: h ? `${a.line}40` : 'transparent', transition: 'background-color .3s ease-out', '--pulse': `${a.line}66` };
               })()}>
               <RowIcon size={16} className={`${a.text} mt-0.5 shrink-0`} />
               <div className="min-w-0 flex-1">
@@ -249,7 +248,10 @@ function Connectors({ wrapRef, centreRef, refs, cards }) {
   const measure = useCallback(() => {
     const wrap = wrapRef.current, centre = centreRef.current;
     if (!wrap || !centre || getComputedStyle(wrap).display === 'none') return;
-    const W = wrap.getBoundingClientRect(), C = centre.getBoundingClientRect();
+    // screen positions come back zoomed (Fit to screen); the svg draws in unzoomed units
+    const scale = wrap.offsetWidth ? wrap.getBoundingClientRect().width / wrap.offsetWidth : 1;
+    const box = (el) => { const r = el.getBoundingClientRect(); return { left: r.left / scale, top: r.top / scale, right: r.right / scale, bottom: r.bottom / scale, width: r.width / scale, height: r.height / scale }; };
+    const W = box(wrap), C = box(centre);
     const cx = C.left + C.width / 2 - W.left, cy = C.top + C.height / 2 - W.top;
     const out = [];
     // where each card's line leaves it (its facing edge, level with its middle), to order the ends on Ims
@@ -257,7 +259,7 @@ function Connectors({ wrapRef, centreRef, refs, cards }) {
     for (const card of cards) {
       const el = refs.current[card.key];
       if (!el) continue;
-      const R = el.getBoundingClientRect();
+      const R = box(el);
       starts[card.key] = { side: card.side, y: (R.top + R.bottom) / 2 - W.top };
     }
     const slotOf = (card) => {
@@ -267,7 +269,7 @@ function Connectors({ wrapRef, centreRef, refs, cards }) {
     cards.forEach((card, i) => {
       const el = refs.current[card.key];
       if (!el) return;
-      const R = el.getBoundingClientRect();
+      const R = box(el);
       const r = { l: R.left - W.left, t: R.top - W.top, rr: R.right - W.left, b: R.bottom - W.top };
       const c = { l: C.left - W.left, t: C.top - W.top, rr: C.right - W.left, b: C.bottom - W.top };
       let x1, y1, x2, y2, d;
@@ -295,7 +297,8 @@ function Connectors({ wrapRef, centreRef, refs, cards }) {
   useLayoutEffect(() => {
     measure();
     const ro = new ResizeObserver(measure);
-    if (wrapRef.current) ro.observe(wrapRef.current);
+    // every card and Ims itself, so a card growing (the test trace) moves the lines with it
+    for (const el of [wrapRef.current, centreRef.current, ...Object.values(refs.current)]) if (el) ro.observe(el);
     window.addEventListener('resize', measure);
     return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
   }, [measure, wrapRef]);
@@ -386,10 +389,9 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
         }
       }
     } catch (err) { setAnswer(`Error: ${err.message}`); }
-    // the last use: rows that were pulsing now fade back too
-    setHot((h) => Object.fromEntries(Object.entries(h).map(([k, v]) => [k, { ...v, pulse: false, at: Date.now() }])));
+    // done: repeated rows stop pulsing, and everything used stays lit until the prompt is cleared
+    setHot((h) => Object.fromEntries(Object.entries(h).map(([k, v]) => [k, { ...v, pulse: false }])));
     setRunning(false);
-    setTimeout(() => setHot((h) => (Object.values(h).some((v) => v.pulse) ? h : {})), 2600);
   };
 
   // Fit to screen: the view goes full screen and is zoomed down until all of it fits (CSS zoom, so the
@@ -505,7 +507,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
                   <div className="mt-4 text-left">
                     <div className={`text-[11px] font-black uppercase tracking-wider mb-1 ${muted}`}>Test a prompt</div>
                     <div className="flex gap-1.5">
-                      <input value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && runTest()} disabled={running}
+                      <input value={prompt} onChange={(e) => { setPrompt(e.target.value); if (!e.target.value.trim()) { setHot({}); setTrace([]); setAnswer(null); } }} onKeyDown={(e) => e.key === 'Enter' && runTest()} disabled={running}
                         placeholder="Ims, any birthdays coming up?" className={`flex-1 min-w-0 px-2.5 py-1.5 rounded-lg text-[12.5px] outline-none border ${isDark ? 'bg-slate-950/70 border-white/10' : 'bg-white border-slate-200'}`} />
                       <button onClick={runTest} disabled={running || !prompt.trim()} className="px-3 py-1.5 rounded-lg text-[12px] font-bold bg-violet-600 text-white disabled:opacity-40">{running ? '...' : 'Run'}</button>
                     </div>
