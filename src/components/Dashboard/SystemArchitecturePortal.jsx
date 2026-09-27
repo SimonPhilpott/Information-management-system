@@ -4,7 +4,7 @@ import {
   Waves, Mic, Wrench, Gauge, Hand, Moon, Plug, CalendarDays, HardDrive, Droplets, Syringe, Activity, Route,
   CloudSun, Apple, Music, Dices, Rss, Database, Layers, FileText, Lock, Settings, Boxes, Server, Code,
   Terminal, GitBranch, Clock, Timer, RefreshCw, Scale, ChevronRight, AlertTriangle, Info, Smile, Drama,
-  MessageSquareQuote, Wifi, Newspaper, Heart, Radio, Speaker, Cake, Bell, ListChecks, Eye,
+  MessageSquareQuote, Wifi, Newspaper, Heart, Radio, Speaker, Cake, Bell, ListChecks, Eye, Maximize2, Minimize2,
 } from 'lucide-react';
 import PortalShell from './PortalShell';
 import ImsFace from '../Ims/ImsFace';
@@ -335,6 +335,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
   const togglePanel = () => setPanelOpen((v) => { keep('archPanel', !v); return !v; });
   const toggleSupport = () => setSupportOpen((v) => { keep('archSupport', !v); return !v; });
 
+
   // ---- test prompt: runs through Ims, lighting up each part of the map as it's used
   const [prompt, setPrompt] = useState('');
   const [running, setRunning] = useState(false);
@@ -390,6 +391,44 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
     setRunning(false);
     setTimeout(() => setHot((h) => (Object.values(h).some((v) => v.pulse) ? h : {})), 2600);
   };
+
+  // Fit to screen: the view goes full screen and is zoomed down until all of it fits (CSS zoom, so the
+  // connector lines still measure correctly). Leaving full screen puts it back.
+  const fitRef = useRef(null);
+  const [fitted, setFitted] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const fit = useCallback(() => {
+    const el = fitRef.current;
+    if (!el) return;
+    let z = 1;
+    // zooming out widens the layout (so it gets shorter) - settle over a few passes
+    for (let i = 0; i < 4; i++) {
+      el.style.zoom = z;
+      const h = el.scrollHeight * z, w = el.scrollWidth * z;
+      const next = Math.min(1, (window.innerHeight - 16) / h * z, (window.innerWidth - 16) / w * z);
+      if (Math.abs(next - z) < 0.01) break;
+      z = next;
+    }
+    el.style.zoom = '';
+    setZoom(z);
+  }, []);
+  useEffect(() => {
+    const onChange = () => { const on = document.fullscreenElement === fitRef.current; setFitted(on); if (!on) setZoom(1); };
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+  useEffect(() => {
+    if (!fitted) return undefined;
+    const t = setTimeout(fit, 120);
+    window.addEventListener('resize', fit);
+    return () => { clearTimeout(t); window.removeEventListener('resize', fit); };
+  }, [fitted, fit, panelOpen, supportOpen, trace.length, answer]);
+  const toggleFit = async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await fitRef.current?.requestFullscreen();
+    } catch (_) { /* full screen not allowed here */ }
+  };
   const wrapRef = useRef(null), centreRef = useRef(null), cardRefs = useRef({}), panelRef = useRef(null);
 
   useEffect(() => {
@@ -423,7 +462,16 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
         @keyframes archPulse { 0%, 100% { box-shadow: 0 0 0 0 var(--pulse); } 50% { box-shadow: 0 0 0 5px transparent; filter: brightness(1.15); } }
         .arch-pulse { animation: archPulse 1s ease-in-out infinite; }
       `}</style>
-      <div className="flex flex-col xl:flex-row gap-6 items-start">
+      <div className="flex justify-end -mt-2 mb-2">
+        <button onClick={toggleFit} className={`px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 border ${isDark ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}`}>
+          <Maximize2 size={14} /> Fit to screen</button>
+      </div>
+      <div ref={fitRef} className={`flex flex-col xl:flex-row gap-6 items-start ${fitted ? `overflow-hidden p-2 ${isDark ? 'bg-[#030712] text-slate-100' : 'bg-[#F4F1EC] text-slate-900'}` : ''}`}
+        style={fitted ? { zoom } : undefined}>
+        {fitted && (
+          <button onClick={toggleFit} title="Leave full screen (Esc)" className={`fixed top-3 right-3 z-50 px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 border ${isDark ? 'border-white/10 bg-slate-800' : 'border-slate-200 bg-white'}`}
+            style={{ zoom: 1 / zoom }}><Minimize2 size={14} /> Exit full screen</button>
+        )}
         {/* the map */}
         <div ref={wrapRef} className="relative flex-1 min-w-0 w-full">
           <Connectors wrapRef={wrapRef} centreRef={centreRef} refs={cardRefs} cards={cards} />
