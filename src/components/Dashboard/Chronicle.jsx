@@ -177,10 +177,15 @@ const Doodle = ({ kind = 'sign', style }) => (
     </>}
   </svg>
 );
-const Paperclip = ({ style }) => (
-  <svg viewBox="0 0 24 64" style={{ position: 'absolute', width: 22, height: 60, zIndex: 3, filter: 'drop-shadow(1px 2px 1px rgba(0,0,0,.35))', ...style }} fill="none" stroke="#8f959c" strokeWidth="2.6" strokeLinecap="round">
-    <path d="M17 22 V50 A7 7 0 0 1 3 50 V12 A5 5 0 0 1 13 12 V46 A2 2 0 0 1 9 46 V20" />
-  </svg>
+// A strip of old sticky tape: yellowed, see-through, torn at both ends, scuffed and creased.
+const TAPE_BG = 'linear-gradient(180deg, rgba(255,250,215,.10), rgba(255,248,205,.24) 45%, rgba(236,220,160,.30)), repeating-linear-gradient(93deg, rgba(120,100,50,.05) 0 2px, transparent 2px 7px), radial-gradient(ellipse at 30% 60%, rgba(120,95,40,.16), transparent 55%), radial-gradient(ellipse at 80% 30%, rgba(255,255,255,.35), transparent 40%), rgba(238,226,170,.42)';
+const TAPE_CLIP = 'polygon(0% 8%, 3% 0%, 6% 10%, 9% 2%, 12% 9%, 15% 1%, 18% 6%, 82% 4%, 85% 0%, 88% 9%, 91% 2%, 94% 10%, 97% 1%, 100% 7%, 100% 93%, 97% 100%, 94% 90%, 91% 99%, 88% 91%, 85% 100%, 82% 95%, 18% 96%, 15% 100%, 12% 92%, 9% 99%, 6% 90%, 3% 100%, 0% 92%)';
+const Tape = ({ style }) => (
+  <div aria-hidden="true" style={{ position: 'absolute', width: 96, height: 30, zIndex: 3, background: TAPE_BG, clipPath: TAPE_CLIP,
+    boxShadow: 'inset 0 0 6px rgba(120,95,40,.25)', filter: 'drop-shadow(0 1px 1.5px rgba(0,0,0,.28))', mixBlendMode: 'multiply', ...style }}>
+    <div style={{ position: 'absolute', inset: '38% 8% auto 12%', height: 1, background: 'rgba(255,255,255,.45)', transform: 'rotate(-1.5deg)' }} />
+    <div style={{ position: 'absolute', inset: 'auto 20% 30% 30%', height: 1, background: 'rgba(110,90,40,.18)' }} />
+  </div>
 );
 
 const Rule = ({ tight }) => <div style={{ textAlign: 'center', opacity: .55, letterSpacing: '.4em', margin: tight ? '10px 0 2px' : '10px 0 16px' }}>~ ❦ ~</div>;
@@ -490,7 +495,8 @@ export default function Chronicle({ c, chron, byCode = {}, setC, toast = () => {
         <div className={cls} key={i} style={{ justifyContent: 'center', alignItems: 'center' }}>
           {redo}
           <div className="j-photo" style={{ transform: `rotate(${(i % 2 ? 1.8 : -2.4)}deg)`, maxWidth: '86%' }}>
-            <Paperclip style={{ top: -22, left: '30%', transform: 'rotate(-8deg)' }} />
+            <Tape style={{ top: -12, left: -26, transform: 'rotate(-34deg)' }} />
+            <Tape style={{ top: -10, right: -28, transform: 'rotate(31deg)', width: 88 }} />
             <img src={pg.art} alt="" style={{ display: 'block', maxWidth: '100%', maxHeight: '58vh', filter: 'sepia(.25) contrast(1.05)' }} />
             <div className="j-note" style={{ position: 'absolute', left: 12, right: 12, bottom: 4, fontSize: 19, color: '#2c2c33', textAlign: 'center' }}>{pg.ch.title}</div>
           </div>

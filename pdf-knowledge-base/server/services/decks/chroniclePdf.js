@@ -127,7 +127,7 @@ function bookHtml(c, chron, heroes) {
 }
 
 // Arkham Horror's chronicle as a PDF: the investigators' case file - typewritten on lined paper, a
-// handwritten margin note on each entry, the photographs clipped in, a stamped title page.
+// handwritten margin note on each entry, the photographs taped in with old sticky tape, a stamped title page.
 function caseFileHtml(c, chron, heroes) {
   const photo = (n) => {
     const key = String(chron.art?.[n] || '').split('/').pop();
@@ -166,7 +166,8 @@ function caseFileHtml(c, chron, heroes) {
   .print { position: relative; background: #fbf8ef; padding: 3mm 3mm 10mm; box-shadow: 0 2mm 5mm rgba(0,0,0,.35); transform: rotate(-2deg); max-width: 100%; }
   .print img { display: block; max-width: 100%; max-height: 138mm; filter: sepia(.25) contrast(1.05); }
   .print .cap { position: absolute; left: 3mm; right: 3mm; bottom: 1.2mm; text-align: center; font-family: 'Reenie Beanie', cursive; font-size: 14pt; color: #2c2c33; }
-  .clip { position: absolute; top: -7mm; left: 30%; width: 7mm; height: 19mm; transform: rotate(-8deg); }
+  .tape { position: absolute; width: 26mm; height: 8mm; z-index: 3; background: linear-gradient(180deg, rgba(255,250,215,.10), rgba(255,248,205,.24) 45%, rgba(236,220,160,.30)), repeating-linear-gradient(93deg, rgba(120,100,50,.05) 0 2px, transparent 2px 7px), radial-gradient(ellipse at 30% 60%, rgba(120,95,40,.16), transparent 55%), radial-gradient(ellipse at 80% 30%, rgba(255,255,255,.35), transparent 40%), rgba(238,226,170,.42); clip-path: polygon(0% 8%, 3% 0%, 6% 10%, 9% 2%, 12% 9%, 15% 1%, 18% 6%, 82% 4%, 85% 0%, 88% 9%, 91% 2%, 94% 10%, 97% 1%, 100% 7%, 100% 93%, 97% 100%, 94% 90%, 91% 99%, 88% 91%, 85% 100%, 82% 95%, 18% 96%, 15% 100%, 12% 92%, 9% 99%, 6% 90%, 3% 100%, 0% 92%); box-shadow: inset 0 0 2mm rgba(120,95,40,.25); mix-blend-mode: multiply; }
+  .tape.l { top: -3mm; left: -7mm; transform: rotate(-34deg); } .tape.r { top: -3mm; right: -7mm; transform: rotate(31deg); width: 24mm; }
   .idx { display: flex; align-items: baseline; gap: 2mm; margin-bottom: 3mm; }
   .idx .isub { display: block; font-family: 'Reenie Beanie', cursive; color: #1f3f8f; font-size: 13pt; line-height: 1; }
   .idx .dots { flex: 1; border-bottom: 1px dotted ${INK}; opacity: .4; transform: translateY(-1mm); }
@@ -194,7 +195,7 @@ function caseFileHtml(c, chron, heroes) {
     const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
     const newPage = () => { const s = document.createElement('section'); s.className = 'page'; const b = document.createElement('div'); b.className = 'body'; s.appendChild(b); document.body.appendChild(s); return b; };
     const over = (b) => b.scrollHeight > b.clientHeight + 1;
-    const clip = '<svg class="clip" viewBox="0 0 24 64" fill="none" stroke="#8f959c" stroke-width="2.6" stroke-linecap="round"><path d="M17 22 V50 A7 7 0 0 1 3 50 V12 A5 5 0 0 1 13 12 V46 A2 2 0 0 1 9 46 V20" /></svg>';
+    const clip = '<div class="tape l"></div><div class="tape r"></div>';
     const starts = [];
     for (const e of entries) {
       if (e.art) {
