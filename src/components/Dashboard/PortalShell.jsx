@@ -1,4 +1,5 @@
 import AccountChip from './AccountChip';
+import { useAuth } from '../../AuthGate';
 import React from 'react';
 import { ArrowLeft, Sun, Moon, Check, AlertCircle } from 'lucide-react';
 
@@ -8,6 +9,8 @@ export default function PortalShell({
   title, subtitle, icon: Icon, gradient, glow, isDark, onThemeToggle, setCurrentPath,
   notification, maxWidth = 'max-w-6xl', children
 }) {
+  const { user } = useAuth();
+  const guest = Boolean(user?.guest); // invited deck builder users only have that page
   const goHub = () => {
     window.history.pushState(null, '', '/ims');
     if (setCurrentPath) setCurrentPath('/ims');
@@ -16,7 +19,7 @@ export default function PortalShell({
   return (
     // h-screen + overflow-y-auto: the app shell doesn't scroll the document,
     // so each page is its own scroll container.
-    <div className={`h-screen overflow-y-auto w-full flex flex-col font-sans transition-colors duration-300 ${
+    <div className={`h-screen h-[100dvh] overflow-y-auto w-full flex flex-col font-sans transition-colors duration-300 ${
       isDark ? 'bg-[#030712] text-[#f3f4f6]' : 'bg-[#f4efed] text-[#1f2937]'
     }`}>
       {notification && (
@@ -28,16 +31,16 @@ export default function PortalShell({
           <span className="text-xs font-semibold">{notification.msg}</span>
         </div>
       )}
-      <header className={`px-6 py-4 flex items-center justify-between border-b backdrop-blur-xl sticky top-0 z-40 shrink-0 ${
+      <header className={`px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-b backdrop-blur-xl sticky top-0 z-40 shrink-0 ${
         isDark ? 'bg-[#030712]/80 border-white/5' : 'bg-[#f4efed]/85 border-[#2E2B27]/10'
       }`}>
-        <div className="flex items-center gap-4">
-          <button onClick={goHub} title="Return to IMS Hub" className={`p-2 rounded-xl flex items-center gap-2 text-xs font-bold transition-all active:scale-95 ${
+        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+          {!guest && <><button onClick={goHub} title="Return to IMS Hub" className={`p-2 rounded-xl flex items-center gap-2 text-xs font-bold transition-all active:scale-95 ${
             isDark ? 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5' : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 text-[#2E2B27] border border-[#2E2B27]/10'
           }`}>
             <ArrowLeft size={16} /><span className="hidden sm:inline">IMS Hub</span>
           </button>
-          <div className="h-6 w-px bg-slate-500/20" />
+          <div className="h-6 w-px bg-slate-500/20" /></>}
           <div className="flex items-center gap-3">
             <div className={`p-2 rounded-xl bg-gradient-to-tr ${gradient} shadow-[0_0_15px_var(--glow)]`} style={{ '--glow': glow }}>
               <Icon size={18} className="text-white" />
@@ -59,7 +62,7 @@ export default function PortalShell({
         )}
         </div>
       </header>
-      <main className={`flex-1 ${maxWidth} w-full mx-auto p-6 flex flex-col gap-5`}>{children}</main>
+      <main className={`flex-1 ${maxWidth} w-full mx-auto p-4 sm:p-6 flex flex-col gap-5`}>{children}</main>
     </div>
   );
 }

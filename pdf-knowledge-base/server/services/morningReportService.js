@@ -2,8 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getWeather } from './weatherService.js';
-import { getItemsDueToday } from './remindersService.js';
-import { getUpcomingBirthdays } from './birthdayService.js';
+import { getItemsDueToday, getItemsComingUp } from './remindersService.js';
+import { listBirthdays } from './birthdayService.js';
 import { getTodayReleases, getWants } from './musicScanService.js';
 import { identifyPeopleInView } from './lookService.js';
 import { getUpcomingEvents, getEventsOn, describeEvents } from './calendarService.js';
@@ -13,6 +13,7 @@ import { listGoals, assessGoal } from './goalService.js';
 import { getOvernight, getNightscoutDbSize, getNightscoutWriteStatus } from './glucoseHubService.js';
 import { getReportNews, tourNewsForReport } from './newsService.js';
 import { unreportedTasks } from './tasksService.js';
+import { recentCampaignGames } from './campaignsService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STATE_PATH = path.join(__dirname, '..', 'data', 'morning_report_state.json');
@@ -129,7 +130,7 @@ function buildHealthParts(rainPct) {
 
 // Everything in the report, as short plain lines. Used for the first-of-the-day offer and by
 // the getDayReport tool, so it can be asked for at any time ("morning report", "day report").
-export async function buildReportParts() {
+export async function buildReportParts({ markNews = true } = {}) {
   const parts = [];
   const hour = londonNow().hour;
   let weatherRain = null;
@@ -172,6 +173,13 @@ export async function buildReportParts() {
   } else {
     parts.push('Nothing else scheduled for today.');
   }
+  try {
+    const soon = getItemsComingUp(7);
+    if (soon.length) {
+      const when = (i) => new Date(i.fireAt).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      parts.push(`Reminders and alarms coming up this week: ${soon.map((i) => `${i.type} "${i.label || 'unlabelled'}" on ${when(i)}${i.recurrence ? ` (repeats ${i.recurrence})` : ''}`).join('; ')}.`);
+    }
+  } catch (err) { console.warn('[MorningReport] Upcoming reminders skipped:', err.message); }
 
   try {
     await getUpcomingEvents(2); // refreshes the cache if stale
@@ -188,9 +196,10 @@ export async function buildReportParts() {
     console.warn('[MorningReport] Calendar skipped:', err.message);
   }
 
-  const birthdays = getUpcomingBirthdays();
+  const birthdays = listBirthdays().filter((b) => b.daysUntil <= 14);
   if (birthdays.length > 0) {
-    const desc = birthdays.map((b) => b.isToday ? `${b.name}'s birthday is TODAY${b.turningAge ? ` (turning ${b.turningAge})` : ''}` : `${b.name}'s birthday is in ${b.daysUntil} day(s)`);
+    const who = (b) => (b.relationship ? `${b.name} (their ${b.relationship.toLowerCase()})` : b.name);
+    const desc = birthdays.map((b) => b.isToday ? `${who(b)}'s birthday is TODAY${b.turningAge ? ` (turning ${b.turningAge})` : ''}` : `${who(b)}'s birthday is in ${b.daysUntil} day(s)${b.turningAge ? `, turning ${b.turningAge}` : ''}`);
     parts.push(`Birthdays: ${desc.join('; ')}.`);
   }
 
@@ -202,12 +211,17 @@ export async function buildReportParts() {
     parts.push(`New music out today from artists in the library: ${desc.join('; ')}.`);
   }
 
+  try {
+    const games = recentCampaignGames();
+    if (games.length) parts.push(`CARD GAME NIGHT (with Daniel - each line says which game; mention it briefly, a sentence or two, like a fellow player): ${games.join(' | ')}.`);
+  } catch (err) { console.warn('[MorningReport] Campaigns skipped:', err.message); }
+
   try { parts.push(...buildHealthParts(weatherRain)); } catch (err) { console.warn('[MorningReport] Health/training skipped:', err.message); }
 
   try {
     const tours = await tourNewsForReport();
     if (tours.length) parts.push(`UK TOUR NEWS for bands in their music library (lead the news with these; Leeds, Sheffield, Manchester or York matter most, then the rest of the north; London is only a maybe - say where they're playing): ${tours.map((t) => `[${t.artist}, playing ${t.places.join(', ')}] ${t.headline}`).join(' | ')}.`);
-    const news = await getReportNews();
+    const news = await getReportNews({ mark: markNews });
     if (news.length) parts.push(`News and interests (from their chosen sources; importance 1-5 is how much each source matters to them - lead with and give more time to the higher ones, say which source): ${news.map((n) => `[${n.source}, importance ${n.importance}${n.alsoIn ? `; also covered by ${n.alsoIn.join(', ')}` : ''}] ${n.headline}${n.summary ? ` - ${n.summary}` : ''}`).join(' | ')}.`);
   } catch (err) { console.warn('[MorningReport] News skipped:', err.message); }
 
@@ -230,11 +244,12 @@ export async function buildReportParts() {
   return { whoLine, parts, hour };
 }
 
-const DELIVERY = "HOW TO DELIVER IT - IN YOUR YORKSHIRE ACCENT FROM THE FIRST WORD TO THE LAST (long reports are where it slips; hold the flat northern vowels and never sound an r after a vowel): this report is the one exception to your usual length limit - cover EVERY item below, in this order, as a flowing spoken briefing of roughly 8 to 14 sentences. Don't read it like a list: link items where they connect (rain and a run, a low overnight and a planned run, a busy afternoon and a pod change). Give the news as three or four quick headlines in your own words, mixing sources; each story is listed once, so never repeat a story or tell it twice in different words. Never give insulin doses. ";
+const DELIVERY = "HOW TO DELIVER IT - IN YOUR YORKSHIRE ACCENT FROM THE FIRST WORD TO THE LAST (long reports are where it slips; hold the flat northern vowels and never sound an r after a vowel): this report is the one exception to your usual length limit - they ALWAYS want it IN FULL, however long that makes it. Cover EVERY section below and EVERY item within it, in this order - every reminder and alarm (today's and the week ahead), every birthday, every calendar event, every news story and tour item, every finished task. Never drop, merge away or summarise out an item to keep it short; there is no sentence limit. Deliver it as a flowing spoken briefing rather than a bare list, linking items where they connect (rain and a run, a low overnight and a planned run, a busy afternoon and a pod change). Tell each news story once, in your own words, saying which source it's from; never repeat a story. Never give insulin doses. ";
 
 // The first conversation of the day: offer the report, with its contents ready.
 export async function buildMorningReportDirective() {
-  const { whoLine, parts, hour } = await buildReportParts();
+  // only offered here - the news isn't used up until the report is actually given
+  const { whoLine, parts, hour } = await buildReportParts({ markNews: false });
   const name = hour < 12 ? 'morning report' : 'day report';
   return whoLine + `This is the user's first conversation with you today. As part of your greeting, briefly offer their ${name} in one short sentence. Only deliver it if they say yes; otherwise carry on normally. ` + DELIVERY + 'CONTENTS: ' + parts.join(' ');
 }

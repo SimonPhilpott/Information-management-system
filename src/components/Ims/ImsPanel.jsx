@@ -9,8 +9,8 @@ const STATUS_TEXT = {
 };
 const STATUS_DOT = { asleep: 'bg-slate-500', connecting: 'bg-amber-400', ready: 'bg-emerald-400', listening: 'bg-emerald-400 animate-pulse', thinking: 'bg-sky-400 animate-pulse', speaking: 'bg-violet-400' };
 
-// Ims on the home page: his face (compact, shrinking once a conversation gets going), the chat,
-// a text box and a mic. Voice replies can be switched off to have him answer in text only.
+// Ims on the home page: his face, full width, with the voice-replies switch and his status under it,
+// then the chat, a text box and a mic. Voice replies can be switched off to have him answer in text only.
 export default function ImsPanel({ theme = 'dark' }) {
   const isDark = theme === 'dark';
   const ims = useImsLive();
@@ -26,22 +26,17 @@ export default function ImsPanel({ theme = 'dark' }) {
 
   return (
     <div className={`flex flex-col h-full min-h-0 ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
-      {/* face and controls */}
-      <div className={`flex items-center gap-4 px-4 py-3 border-b ${border} transition-all`}>
-        <ImsFace face={ims.face} status={ims.status} levelRef={ims.levelRef} width={compact ? 96 : 200} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-lg font-black tracking-tight">Ims</span>
-            <span className={`w-2 h-2 rounded-full ${STATUS_DOT[ims.status]}`} />
-            <span className={`text-xs ${muted}`}>{STATUS_TEXT[ims.status]}</span>
-          </div>
-          {!compact && <p className={`text-xs mt-1 ${muted}`}>Same Ims as on your desk: he knows your calendar, glucose, runs, music and library, and remembers what you've talked about.</p>}
-          {ims.error && <p className="text-xs mt-1 text-red-500">{ims.error}</p>}
-          <div className="flex flex-wrap items-center gap-2 mt-2">
-            <button onClick={() => ims.setVoiceReplies(!ims.voiceReplies)} title={ims.voiceReplies ? 'Voice replies on - tap for text only' : 'Text-only replies - tap to hear him'}
-              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border ${border} ${ims.voiceReplies ? '' : 'opacity-70'}`}>
-              {ims.voiceReplies ? <Volume2 size={13} /> : <VolumeX size={13} />} {ims.voiceReplies ? 'Voice replies' : 'Text only'}
-            </button>
+      {/* face, then voice replies and his status */}
+      <div className={`px-4 pt-3 pb-2 border-b ${border}`}>
+        <ImsFace face={ims.face} status={ims.status} levelRef={ims.levelRef} width="100%" className="max-w-xl mx-auto" />
+        <div className="flex flex-wrap items-center gap-2 mt-2 max-w-xl mx-auto">
+          <button onClick={() => ims.setVoiceReplies(!ims.voiceReplies)} title={ims.voiceReplies ? 'Voice replies on - tap for text only' : 'Text-only replies - tap to hear him'}
+            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border ${border} ${ims.voiceReplies ? '' : 'opacity-70'}`}>
+            {ims.voiceReplies ? <Volume2 size={13} /> : <VolumeX size={13} />} {ims.voiceReplies ? 'Voice replies' : 'Text only'}
+          </button>
+          <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[ims.status]}`} />
+          <span className={`text-xs ${muted} min-w-0 truncate`}>{STATUS_TEXT[ims.status]}</span>
+          <div className="ml-auto flex items-center gap-2">
             {ims.status === 'speaking' && (
               <button onClick={ims.stopSpeaking} className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border ${border}`}><Square size={11} /> Stop</button>
             )}
@@ -50,6 +45,7 @@ export default function ImsPanel({ theme = 'dark' }) {
             )}
           </div>
         </div>
+        {ims.error && <p className="text-xs mt-1 text-red-500 max-w-xl mx-auto">{ims.error}</p>}
       </div>
 
       {/* conversation */}
@@ -57,7 +53,6 @@ export default function ImsPanel({ theme = 'dark' }) {
         {!compact && (
           <div className={`m-auto text-center text-sm ${muted} max-w-md`}>
             <p>Ask him anything: "what's my day look like?", "how's my blood sugar been this week?", "I've just had two slices of toast", "any news from my sources?"</p>
-            <p className="text-xs mt-2">He closes the conversation after 15 seconds of quiet to keep costs down - just speak or type again.</p>
           </div>
         )}
         {ims.messages.map((m) => (

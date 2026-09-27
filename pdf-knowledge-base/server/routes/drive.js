@@ -27,14 +27,16 @@ registerAuthCallback(() => {
  * POST /api/drive/sync - Sync PDFs from Google Drive and index them
  */
 router.post('/sync', async (req, res) => {
-  const syncProg = getSyncProgress();
-  if (indexProgress.active || syncProg.active) {
-    return res.status(400).json({ error: 'Sync already in progress' });
-  }
-
+  if (!startSyncAndIndex()) return res.status(400).json({ error: 'Sync already in progress' });
   res.json({ message: 'Sync started', status: 'syncing' });
+});
 
-  // Run in background
+// Sync the library from Drive, then index anything new. Shared by the Sync button and anything else
+// that adds books (e.g. the LOTR LCG rulebook import). Returns false if a sync is already running.
+export const getIndexProgress = () => ({ ...indexProgress });
+export function startSyncAndIndex() {
+  const syncProg = getSyncProgress();
+  if (indexProgress.active || syncProg.active) return false;
   (async () => {
     try {
       // Phase 1: Download PDFs from Drive
@@ -161,7 +163,8 @@ router.post('/sync', async (req, res) => {
       };
     }
   })();
-});
+  return true;
+}
 
 /**
  * GET /api/drive/status - Get sync/index progress

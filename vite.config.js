@@ -272,7 +272,9 @@ const backupPlugin = () => ({
           res.end(JSON.stringify({ error: err.message }));
         });
       } else {
-        res.setHeader('Content-Type', 'text/html'); // Restore default header for other requests
+        // Clear it for other requests so Vite sets the right type itself (forcing text/html here
+        // served the app manifest, icons and SVGs as HTML, which stops "Install app" working)
+        res.removeHeader('Content-Type');
         next();
       }
     });

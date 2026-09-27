@@ -45,9 +45,9 @@ export default function OnboardingSetup({ authStatus, onComplete, API }) {
    */
   const handleConnect = async () => {
     const currentOrigin = window.location.origin;
-    console.log('[Auth] Fetching auth URL from:', `${API}/api/auth/url?clientUrl=${encodeURIComponent(currentOrigin)}`);
+    console.log('[Auth] Fetching auth URL from:', `${API}/api/auth/url?full=1&clientUrl=${encodeURIComponent(currentOrigin)}`);
     try {
-      const res = await fetch(`${API}/api/auth/url?clientUrl=${encodeURIComponent(currentOrigin)}`);
+      const res = await fetch(`${API}/api/auth/url?full=1&clientUrl=${encodeURIComponent(currentOrigin)}`);
       const { url } = await res.json();
       console.log('[Auth] Redirecting to:', url);
       window.location.href = url;

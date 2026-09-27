@@ -4,9 +4,11 @@ IMS is a personal knowledge and home-assistant system built around **Ims**, a Yo
 
 - a **voice terminal** (custom firmware) that talks to Gemini Live through a local proxy,
 - a **web app** for chatting with your PDF library (RAG over Google Drive + Gemini),
-- a set of **`/ims` services** for the things Ims knows about and can do: memories, persona, music releases, alarms/timers/reminders, birthdays, board games, and a camera ("Look" and "Faces").
+- a set of **`/ims` services** for the things Ims knows about and can do: memories, persona, music releases, alarms/timers/reminders, birthdays, calendar, blood sugar (Nightscout), Strava activities and a run planner, news, background tasks, board games, dev ideas, and a camera ("Look" and "Faces"),
+- the **Campaign Manager** (`/campaigns`) for card-game campaigns - a tab per game: **Lord of the Rings LCG** and **Arkham Horror LCG** - with decks, maps, rule checks, and an illustrated, narrated chronicle,
+- a **System Architecture** page (`/ims/architecture`) with a live test box that lights up every part of the system a prompt uses.
 
-Everything runs on your own machine. The only cloud services used are Google (Drive, Gemini) and, optionally, BoardGameGeek, MusicBrainz and Open-Meteo for data lookups. Face recognition is fully local.
+Everything runs on your own machine. Cloud services used: Google (Drive, Calendar, Gemini) plus data sources such as Nightscout, Strava, Komoot, BoardGameGeek, MusicBrainz, Open-Meteo, Open Food Facts, RingsDB, Hall of Beorn, ArkhamDB and the news feeds. Face recognition is fully local.
 
 > **Status:** the voice terminal, web app, and all `/ims` services are working. The dock **webcam driver is experimental** (see [Camera](#camera-status-and-hardware-notes)).
 
@@ -171,8 +173,34 @@ The **IMS Hub** (`/ims`) links to every service below. Each page has a back butt
 | `/ims/alarms`, `/ims/timers`, `/ims/reminders` | Create, edit and cancel entries; changes reach the device within ~15 s. Ims chimes/speaks them when they fire. An **Archive** tab keeps everything that has finished, with when it was set, when it went off, and whether it was acknowledged, went unanswered or was cancelled, plus a full event timeline. Ask Ims "did my reminder go off?" or "what alarms did I set yesterday?" |
 | `/ims/birthday` | Names, day/month and optional birth year. A cake icon appears on the device within 7 days (yellow), or green on the day (green wins if both apply). Deleting archives; the Archive tab lists deleted birthdays (restorable) and those that passed in the last 30 days |
 | `/ims/boardgames` | Your BoardGameGeek collection, with expandable expansions (owned vs not owned) and a **want-to-sell tick** per game/expansion. Needs a BGG API token (see below) |
+| `/ims/glucose` | **Blood sugar.** Nightscout readings every minute, time in range, overnight summary and carb logging (carbs are posted to Nightscout as a Meal Bolus and picked up by AndroidAPS - insulin is never sent). Old Nightscout data can be auto-cleared after 3 months |
+| `/ims/news` | **News sources.** RSS feeds with tags and an importance weighting (1-5) used by the morning report and `getNews`; UK tour news for bands in your music library |
+| `/ims/tasks` | **Background tasks.** Research Ims runs on its own (with Google Search) and reports on later, or in the next day report |
+| `/ims/devideas` | **Dev ideas.** Ideas for improving IMS, saved by Ims (`saveDevIdea`) or automatically when a tool fails, for pickup in Claude Code |
+| `/ims/phrases` | **Wake and stop phrases.** Record how you say them; your recorded spellings feed the wake gate |
+| `/ims/architecture` | **System Architecture.** How IMS is built: every client, model, connection, data store and service around Ims. The **Test a prompt** box under Ims runs a prompt through Ims's own persona and tools (read-only tools for real; anything that would change something is only shown), and each part of the map lights up in its card's colour as it's used, pulsing while it's used repeatedly, then fading back. The side panel and the "Across the whole system" row fold away to fit the map on one screen |
+| `/campaigns` | **Campaign Manager** - see below |
 | `/ims/look` | See what Ims sees: live view, snapshots, and questions about the live view or any saved photo (answered by Gemini, with recognised people named) |
 | `/ims/faces` | Teach Ims who people are: capture a face, name it, add notes, add more samples. Recognition is **local** |
+
+### Campaign Manager (`/campaigns`)
+
+A tab per game, each with its **campaigns first and decks second**, and entirely separate data. Invited guests (e.g. Daniel) sign in with a basic Google sign-in and can use the whole Campaign Manager and nothing else.
+
+**Lord of the Rings LCG** (`/campaigns/lotr`)
+- **Decks** from RingsDB (import by link, including shared private decks), card images on hover, owned-pack tracking, test hands, AI insights (synergies, swaps, focus areas, scenario and partner-deck tuning using Hall of Beorn's encounter cards) and a Q&A per deck; CSV/JSON export.
+- **Campaigns**: players and decks, fallen heroes, scenarios played (date and time, result, score, notable moments), boons and burdens (with suggestions from the scenario's product after a win), threat penalty, notes, rule checks, a banner image, and deleting only when every player agrees.
+- **Map of Middle-earth** with numbered pins, the gold road of wins, lore pop-ups, and an overall journey across every campaign.
+- **Chronicle**: a quill-and-ink book (Elven Common Speak titles, page turning, a fixed page size) with a chapter per scenario written in Tolkien's style, wholly in-world, illustrated with ink engravings, a Roll of the Fallen with epitaphs, an index, a PDF download, editing (text, titles, pictures from an editable description, locks, rewrite), and a **narrator** (deep, aged voice) whose readings are recorded as chapters are written.
+- **Rulebooks**: the official FFG rulebooks downloaded into the library and indexed; rule checks across every rulebook or per campaign/scenario, answered with quoted citations that open the rulebook at the page.
+
+**Arkham Horror LCG** (`/campaigns/ahlcg`)
+- **Decks** from ArkhamDB (investigator, class colours, health and sanity, card images), AI insights with Arkham focus areas and XP upgrades.
+- **Campaigns**: investigators with physical/mental trauma, XP earned/spent and fate (killed / insane); the **chaos bag** read from the campaign's own guide at your difficulty (add/remove tokens, reset, draw a token); the **campaign log** under the guide's own sections, with crossing out; scenarios with resolutions and XP; rule checks against the Arkham rulebooks.
+- **Map of Arkham** with pins at the landmarks and a "Beyond Arkham" strip for Dunwich, Innsmouth and the rest; overall progress across every campaign.
+- **Chronicle as an investigator's case file**: typewritten notes on lined paper, handwritten margin notes, 1920s photographs paperclipped in, pencil sketches, noir Lovecraftian prose, "The Lost", a case-file PDF, and a weary Miskatonic archivist narrator.
+
+Ims knows every campaign (`getCampaigns`) and mentions a game played that day or the night before in the day report.
 
 ### BoardGameGeek token
 
@@ -180,11 +208,11 @@ BGG's XML API returns HTTP 401 without an application token (registration became
 
 ### Morning report
 
-The first time you talk to Ims each day (London date), it offers your morning report along with its greeting: today's weather (with a heads-up if rain is likely), reminders/alarms due today, birthdays coming up, and new music out today. If the camera has a fresh view of someone enrolled on `/ims/faces`, Ims greets them by name; it never guesses at unknown faces.
+The first time you talk to Ims each day (London date), it offers your morning report along with its greeting (a day report after noon; ask for it any time). It is always given **in full**, with no length limit: weather, alarms/timers/reminders today and the week ahead, calendar (today, and tomorrow from 4pm), birthdays in the next 14 days, new music out today, a card game played today or last night, glucose now and overnight, training and the last run, running goals, UK tour news, news from your weighted sources, finished background tasks, and a Nightscout storage warning when it is over 90% full. News stories are only marked as told once the report is actually given. If the camera has a fresh view of someone enrolled on `/ims/faces`, Ims greets them by name; it never guesses at unknown faces.
 
 ### Ims tools during a conversation
 
-Beyond searching your library, Ims can call: weather, blood glucose (Nightscout), timers/alarms/reminders, lists, memories, `getUpcomingBirthdays`, `getNewMusicReleases`, `getScheduleHistory` (past alarms/timers/reminders) and `lookAtCamera`. The birthday, music and camera tools return real data, and Ims is instructed to say plainly when there is none instead of guessing.
+Ims has 35 tools: library search, weather, calendar (read and add), blood glucose and carbs (Nightscout), food carb look-ups, training (Strava), timers/alarms/reminders and their history, lists, memories, birthdays, new music, news, the day report, background tasks, dev ideas, board games, card-game campaigns, jokes, recording, and the camera. Every conversation also starts with a **snapshot of everything saved** - next birthday and reminder, every birthday, alarms and reminders, lists, the next 14 days of calendar, tasks, dev ideas, carbs today, music want list and upcoming releases, memories, board games, campaigns and decks - and Ims treats that snapshot as authoritative when a tool looks less far ahead.
 
 **Jokes.** Ask for a joke and Ims calls `tellJoke`, which picks from about 80,000 jokes from the [r/Jokes dataset](https://github.com/orionw/rJokesData) (Reddit terms apply; kept in the git-ignored `server/data/jokes`). The Humor slider on IMS Personality is a style axis (Cheerful - Dry - Dark), so the jokes scale with it: clean and wholesome at the low end, short dry one-liners in the middle, dark and twisted towards the top, always preferring better-scored jokes and not repeating one until they are used up. **Core rule: never a racist or sexist joke.** Anything about race, nationality, religion, gender or wives/girlfriends, plus hate, sexual, self-harm and real-tragedy material, is filtered out at import and never stored. Set it up with `node scripts/importJokes.js` (about 90 seconds; downloads the data if it is missing).
 

@@ -13,7 +13,7 @@ export default function BirthdayPortal({ theme = 'dark', onThemeToggle, setCurre
   const [notification, setNotification] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
-  const [form, setForm] = useState({ name: '', month: 1, day: 1, birthYear: '' });
+  const [form, setForm] = useState({ name: '', relationship: '', month: 1, day: 1, birthYear: '' });
   const [tab, setTab] = useState('active');   // 'active' | 'archive'
   const [archive, setArchive] = useState({ deleted: [], recentlyPassed: [] });
 
@@ -65,8 +65,8 @@ export default function BirthdayPortal({ theme = 'dark', onThemeToggle, setCurre
     else window.dispatchEvent(new PopStateEvent('popstate'));
   };
 
-  const startCreate = () => { setIsCreating(true); setEditingId(null); setForm({ name: '', month: 1, day: 1, birthYear: '' }); };
-  const startEdit = (b) => { setEditingId(b.id); setIsCreating(false); setForm({ name: b.name, month: b.month, day: b.day, birthYear: b.birthYear || '' }); };
+  const startCreate = () => { setIsCreating(true); setEditingId(null); setForm({ name: '', relationship: '', month: 1, day: 1, birthYear: '' }); };
+  const startEdit = (b) => { setEditingId(b.id); setIsCreating(false); setForm({ name: b.name, relationship: b.relationship || '', month: b.month, day: b.day, birthYear: b.birthYear || '' }); };
   const cancelForm = () => { setEditingId(null); setIsCreating(false); };
 
   const submitForm = async () => {
@@ -76,7 +76,7 @@ export default function BirthdayPortal({ theme = 'dark', onThemeToggle, setCurre
       const res = await fetch(url, {
         method: editingId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: form.name, month: Number(form.month), day: Number(form.day), birthYear: form.birthYear ? Number(form.birthYear) : null })
+        body: JSON.stringify({ name: form.name, relationship: form.relationship, month: Number(form.month), day: Number(form.day), birthYear: form.birthYear ? Number(form.birthYear) : null })
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to save.');
@@ -186,9 +186,13 @@ export default function BirthdayPortal({ theme = 'dark', onThemeToggle, setCurre
 
           {(isCreating || editingId) && (
             <div className={`mb-4 p-4 rounded-xl border grid grid-cols-1 sm:grid-cols-4 gap-3 ${isDark ? 'bg-slate-950/40 border-white/10' : 'bg-white border-[#2E2B27]/10'}`}>
-              <div className="sm:col-span-4">
+              <div className="sm:col-span-2">
                 <label className="text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70">Name</label>
                 <input className={fieldClass} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Who's birthday?" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70">Relationship to me</label>
+                <input className={fieldClass} value={form.relationship} onChange={(e) => setForm({ ...form, relationship: e.target.value })} placeholder="e.g. Dad, Son, Sister in law, Friend" />
               </div>
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70">Month</label>
@@ -232,6 +236,7 @@ export default function BirthdayPortal({ theme = 'dark', onThemeToggle, setCurre
                   <div>
                     <div className="font-bold flex items-center gap-2">
                       {b.name}
+                      {b.relationship && <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${isDark ? 'bg-white/5 text-slate-300' : 'bg-black/5 text-slate-600'}`}>{b.relationship}</span>}
                       {b.isToday && <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/20 text-emerald-400">Today!</span>}
                       {!b.isToday && b.daysUntil <= 7 && <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-500/20 text-amber-400">In {b.daysUntil}d</span>}
                     </div>
@@ -265,7 +270,7 @@ export default function BirthdayPortal({ theme = 'dark', onThemeToggle, setCurre
                   {archive.recentlyPassed.map((b) => (
                     <div key={b.id} className={`p-3 rounded-xl border text-xs flex items-center justify-between ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
                       <div>
-                        <div className="font-bold">{b.name}</div>
+                        <div className="font-bold">{b.name}{b.relationship ? <span className="font-normal text-slate-500"> • {b.relationship}</span> : null}</div>
                         <div className="text-[11px] text-slate-500">{MONTH_NAMES[b.month - 1]} {b.day}{b.turnedAge ? ` • turned ${b.turnedAge}` : ''}</div>
                       </div>
                       <span className="text-[11px] text-slate-500">{b.daysSince} day{b.daysSince === 1 ? '' : 's'} ago</span>
@@ -284,7 +289,7 @@ export default function BirthdayPortal({ theme = 'dark', onThemeToggle, setCurre
                   {archive.deleted.map((b) => (
                     <div key={b.id} className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-3 ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
                       <div>
-                        <div className="font-bold">{b.name}</div>
+                        <div className="font-bold">{b.name}{b.relationship ? <span className="font-normal text-slate-500"> • {b.relationship}</span> : null}</div>
                         <div className="text-[11px] text-slate-500">
                           {MONTH_NAMES[b.month - 1]} {b.day}{b.birthYear ? ` • born ${b.birthYear}` : ''} • added {new Date(b.createdAt).toLocaleDateString('en-GB')} • deleted {new Date(b.deletedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
                         </div>

@@ -2,7 +2,7 @@ import AccountChip from './AccountChip';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Dices, ArrowLeft, RotateCw, Check, AlertCircle, Sun, Moon, ChevronRight, ChevronDown,
-  Search, Save, ExternalLink, KeyRound
+  Search, Save, ExternalLink, KeyRound, Plus, Trash2, Undo2
 } from 'lucide-react';
 
 // The "Want to sell" tick. A real toggle button rather than a bare checkbox so
@@ -39,7 +39,16 @@ function EbaySold({ name, isDark }) {
   );
 }
 
-function GameRow({ game, isDark, onSell, defaultOpen }) {
+// Small bin button: removes a game or expansion from the collection (it can be restored).
+function RemoveBtn({ name, onRemove }) {
+  return (
+    <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`Remove ${name} from your collection? You can restore it from the Removed list.`)) onRemove(); }}
+      title="Remove from collection" className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10 shrink-0"><Trash2 size={13} /></button>
+  );
+}
+const ManualTag = () => <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-sky-500/15 text-sky-500 align-middle">added by you</span>;
+
+function GameRow({ game, isDark, onSell, defaultOpen, onDecks, onRemove }) {
   const [open, setOpen] = useState(defaultOpen);
   const ownedCount = game.expansions.filter((e) => e.owned).length;
   const hasExp = game.expansions.length > 0;
@@ -61,7 +70,7 @@ function GameRow({ game, isDark, onSell, defaultOpen }) {
           : <div className={`w-9 h-9 rounded shrink-0 ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`} />}
         <div className="min-w-0 flex-1">
           <div className="font-bold text-[13px] truncate">
-            {game.name} {game.year ? <span className={`font-normal ${muted}`}>({game.year})</span> : null}
+            {game.name} {game.year ? <span className={`font-normal ${muted}`}>({game.year})</span> : null}{game.manual && <ManualTag />}
           </div>
           {hasExp && (
             <div className={`text-[11px] ${muted}`}>
@@ -70,8 +79,13 @@ function GameRow({ game, isDark, onSell, defaultOpen }) {
             </div>
           )}
         </div>
+        {game.deckGame && (
+          <button onClick={(e) => { e.stopPropagation(); onDecks(game.deckGame); }} title="Build and test decks for this game"
+            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-gradient-to-r from-emerald-600 to-teal-700 text-white shrink-0">Campaign manager</button>
+        )}
         {game.wantToSell && <EbaySold name={game.name} isDark={isDark} />}
         <SellTick checked={game.wantToSell} isDark={isDark} onToggle={(v) => onSell(game.id, v)} />
+        <RemoveBtn name={game.name} onRemove={() => onRemove(game.id)} />
       </div>
 
       {open && hasExp && (
@@ -79,12 +93,13 @@ function GameRow({ game, isDark, onSell, defaultOpen }) {
           {game.expansions.map((e) => (
             <div key={e.id} className="flex items-center gap-2 py-1 pl-7">
               <span className={`w-2 h-2 rounded-full shrink-0 ${e.owned ? 'bg-emerald-500' : isDark ? 'bg-slate-600' : 'bg-slate-300'}`} />
-              <span className={e.owned ? (isDark ? 'text-emerald-400 font-semibold' : 'text-emerald-700 font-semibold') : muted}>{e.name}</span>
+              <span className={e.owned ? (isDark ? 'text-emerald-400 font-semibold' : 'text-emerald-700 font-semibold') : muted}>{e.name}{e.manual && <ManualTag />}</span>
               {!e.owned && <span className="opacity-60 text-[10px]">not owned</span>}
               {e.owned && (
                 <span className="ml-auto flex items-center gap-1.5">
                   {e.wantToSell && <EbaySold name={e.name} isDark={isDark} />}
                   <SellTick checked={e.wantToSell} isDark={isDark} onToggle={(v) => onSell(e.id, v)} />
+                  <RemoveBtn name={e.name} onRemove={() => onRemove(e.id)} />
                 </span>
               )}
             </div>
@@ -179,6 +194,41 @@ export default function BoardgamesPortal({ theme = 'dark', onThemeToggle, setCur
   };
 
   // Optimistic: flip the tick immediately, roll back if the save fails.
+  const [adding, setAdding] = useState(false);
+  const [draftGame, setDraftGame] = useState({ name: '', year: '', type: 'base', parentId: '', bggLink: '' });
+  const [showRemoved, setShowRemoved] = useState(false);
+  const addGame = async () => {
+    try {
+      const res = await fetch('/api/boardgames/games', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...draftGame, parentId: draftGame.parentId ? Number(draftGame.parentId) : null }) });
+      const d = await res.json();
+      if (!res.ok || !d.success) throw new Error(d.error || 'Could not add the game.');
+      showToast(`Added ${d.game.name}.`);
+      setDraftGame({ name: '', year: '', type: 'base', parentId: '', bggLink: '' });
+      setAdding(false);
+      load();
+    } catch (err) { showToast(err.message, 'error'); }
+  };
+  const removeGame = async (id) => {
+    try { await fetch(`/api/boardgames/games/${id}`, { method: 'DELETE' }); showToast('Removed from your collection.'); load(); } catch (err) { showToast(err.message, 'error'); }
+  };
+  const restoreGame = async (id) => {
+    try { await fetch(`/api/boardgames/games/${id}/restore`, { method: 'POST' }); showToast('Back in your collection.'); load(); } catch (err) { showToast(err.message, 'error'); }
+  };
+
+  // BoardGameGeek's "Export collection" CSV - loads the collection without the API token.
+  const importCsv = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const res = await fetch('/api/boardgames/import-csv', { method: 'POST', headers: { 'Content-Type': 'text/csv' }, body: await file.text() });
+      const d = await res.json();
+      if (!res.ok || !d.success) throw new Error(d.error || 'Import failed.');
+      showToast(`Imported ${d.games} games and ${d.expansions} expansions.`);
+      load();
+    } catch (err) { showToast(err.message, 'error'); }
+  };
+
   const setSell = async (id, wantToSell) => {
     const apply = (val) => setData((prev) => {
       const flag = (x) => (x.id === id ? { ...x, wantToSell: val } : x);
@@ -308,7 +358,8 @@ export default function BoardgamesPortal({ theme = 'dark', onThemeToggle, setCur
             </div>
           ) : (
             <div className="text-[11px] text-slate-500 mb-3">
-              {data.fetchedAt ? <>Last refreshed <strong>{new Date(data.fetchedAt).toLocaleString('en-GB')}</strong>.</> : 'Not fetched yet.'}
+              {data.fetchedAt ? <>{data.source === 'csv' ? 'Loaded from a BGG collection CSV' : 'Last refreshed'} <strong>{new Date(data.fetchedAt).toLocaleString('en-GB')}</strong>.</> : 'Not fetched yet.'}
+              {' '}<label className="underline cursor-pointer font-semibold">Import a BGG collection CSV<input type="file" accept=".csv,text/csv" className="hidden" onChange={importCsv} /></label>
               {status.state === 'error' && <span className="text-red-400 ml-2">Last refresh failed: {status.error}</span>}
             </div>
           )}
@@ -328,6 +379,50 @@ export default function BoardgamesPortal({ theme = 'dark', onThemeToggle, setCur
               <Save size={13} /> Save
             </button>
           </div>
+        </div>
+
+        {/* Add a game by hand */}
+        <div className={panelClass}>
+          <div className="flex items-center gap-3">
+            <h2 className="text-xs font-black uppercase tracking-wider flex-1">Add a game</h2>
+            {!adding && <button onClick={() => setAdding(true)} className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-gradient-to-r from-lime-500 to-green-600 text-white active:scale-95"><Plus size={14} /> Add</button>}
+          </div>
+          {adding && (
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-6 gap-3 items-end">
+              <div className="sm:col-span-3">
+                <label className="text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70">Name</label>
+                <input className={fieldClass} value={draftGame.name} onChange={(e) => setDraftGame({ ...draftGame, name: e.target.value })} placeholder="e.g. Marvel Champions: The Card Game" autoFocus />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70">Year</label>
+                <input className={fieldClass} type="number" value={draftGame.year} onChange={(e) => setDraftGame({ ...draftGame, year: e.target.value })} placeholder="optional" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70">Type</label>
+                <select className={fieldClass} value={draftGame.type} onChange={(e) => setDraftGame({ ...draftGame, type: e.target.value })}>
+                  <option value="base">Base game</option><option value="expansion">Expansion</option>
+                </select>
+              </div>
+              {draftGame.type === 'expansion' && (
+                <div className="sm:col-span-3">
+                  <label className="text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70">Expansion for</label>
+                  <select className={fieldClass} value={draftGame.parentId} onChange={(e) => setDraftGame({ ...draftGame, parentId: e.target.value })}>
+                    <option value="">Choose a game...</option>
+                    {data.games.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  </select>
+                </div>
+              )}
+              <div className={draftGame.type === 'expansion' ? 'sm:col-span-3' : 'sm:col-span-6'}>
+                <label className="text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70">BoardGameGeek link (optional)</label>
+                <input className={fieldClass} value={draftGame.bggLink} onChange={(e) => setDraftGame({ ...draftGame, bggLink: e.target.value })} placeholder="https://boardgamegeek.com/boardgame/285774/..." />
+              </div>
+              <div className="sm:col-span-6 flex gap-2">
+                <button onClick={addGame} disabled={!draftGame.name.trim()} className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-gradient-to-r from-lime-500 to-green-600 text-white disabled:opacity-40"><Save size={13} /> Add to collection</button>
+                <button onClick={() => setAdding(false)} className={`px-4 py-2 rounded-xl text-xs font-bold ${isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}>Cancel</button>
+              </div>
+              <p className="sm:col-span-6 text-[11px] text-slate-500">The BGG link is worth adding when you have it - it ties the game to BoardGameGeek (and turns on things like the deck builder for games that have one). Games you add or remove here stay that way through CSV imports and BGG refreshes.</p>
+            </div>
+          )}
         </div>
 
         {/* Collection */}
@@ -356,7 +451,7 @@ export default function BoardgamesPortal({ theme = 'dark', onThemeToggle, setCur
           ) : (
             <div className="flex flex-col gap-2">
               {visible.map((g) => (
-                <GameRow key={g.id} game={g} isDark={isDark} onSell={setSell}
+                <GameRow key={g.id} game={g} isDark={isDark} onSell={setSell} onRemove={removeGame} onDecks={() => { window.history.pushState(null, '', '/campaigns/lotr'); if (setCurrentPath) setCurrentPath('/campaigns/lotr'); }}
                   defaultOpen={Boolean(q) && g.expansions.some((e) => e.name.toLowerCase().includes(q))} />
               ))}
             </div>
@@ -372,10 +467,28 @@ export default function BoardgamesPortal({ theme = 'dark', onThemeToggle, setCur
                   <div key={e.id} className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
                     <span className="font-semibold">{e.name}</span>
                     {e.year && <span className="opacity-50">({e.year})</span>}
-                    <span className="ml-auto flex items-center gap-1.5">{e.wantToSell && <EbaySold name={e.name} isDark={isDark} />}<SellTick checked={e.wantToSell} isDark={isDark} onToggle={(v) => setSell(e.id, v)} /></span>
+                    {e.manual && <ManualTag />}
+                    <span className="ml-auto flex items-center gap-1.5">{e.wantToSell && <EbaySold name={e.name} isDark={isDark} />}<SellTick checked={e.wantToSell} isDark={isDark} onToggle={(v) => setSell(e.id, v)} /><RemoveBtn name={e.name} onRemove={() => removeGame(e.id)} /></span>
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+          {(data.removed || []).length > 0 && !sellOnly && !q && (
+            <div className="mt-6">
+              <button onClick={() => setShowRemoved(!showRemoved)} className="text-[11px] font-black uppercase tracking-wider opacity-70">
+                Removed from your collection ({data.removed.length}) {showRemoved ? '▾' : '▸'}
+              </button>
+              {showRemoved && (
+                <div className="flex flex-col gap-1 mt-2">
+                  {data.removed.map((e) => (
+                    <div key={e.id} className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
+                      <span className="font-semibold opacity-70">{e.name}</span>{e.year && <span className="opacity-50">({e.year})</span>}
+                      <button onClick={() => restoreGame(e.id)} className={`ml-auto px-3 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5 ${isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}><Undo2 size={12} /> Restore</button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

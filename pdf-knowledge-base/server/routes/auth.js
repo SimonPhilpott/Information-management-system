@@ -3,7 +3,8 @@ import { google } from 'googleapis';
 import { createOAuth2Client, storeTokens, getAuthStatus, checkTokenHealth } from '../services/driveService.js';
 import config from '../config.js';
 import { publicOrigin, safeReturnPath } from '../middleware/publicOrigin.js';
-import { isApprovedSession } from '../middleware/requireSession.js';
+import { isApprovedSession, isGuestSession } from '../middleware/requireSession.js';
+import { isInvited, rememberPerson, logSignIn, canonEmail, personName } from '../services/decksService.js';
 
 const router = Router();
 
@@ -36,13 +37,20 @@ router.get('/url', (req, res) => {
     dynamicRedirectUri
   );
   
-  const authUrl = oauth2Client.generateAuthUrl({
-    access_type: 'offline',
-    scope: config.google.scopes,
-    prompt: 'consent'
-  });
-  res.json({ url: authUrl });
+  // Every sign-in asks Google for name and email only. The Drive and Calendar consent that IMS
+  // itself runs on is a second step for the owner alone - when they ask for it (?full=1) or when
+  // IMS's Google connection is missing (see the callback) - so nobody else is ever shown it.
+  req.session.fullFlow = req.query.full === '1';
+  res.json({ url: authUrlFor(oauth2Client, req.session.fullFlow) });
 });
+
+const ownerEmails = () => (config.adminEmail ? config.adminEmail.split(',').map(canonEmail) : []);
+function authUrlFor(client, full) {
+  return full
+    ? client.generateAuthUrl({ access_type: 'offline', scope: config.google.scopes, prompt: 'consent', login_hint: ownerEmails()[0] || undefined })
+    : client.generateAuthUrl({ scope: ['openid', 'email', 'profile'], prompt: 'select_account' });
+}
+
 
 /**
  * GET /api/auth/callback - Handle OAuth callback
@@ -53,10 +61,12 @@ router.get('/callback', async (req, res) => {
   // Handle user denying access
   if (error) {
     console.warn('[Auth] OAuth error:', error);
+    logSignIn(null, 'google-error', error);
     return res.redirect(backTo(req, `auth=error&message=${encodeURIComponent(error)}`));
   }
 
   if (!code) {
+    logSignIn(null, 'no-code', 'Google sent no authorisation code');
     return res.redirect(backTo(req, `auth=error&message=${encodeURIComponent('No authorisation code received')}`));
   }
 
@@ -77,27 +87,47 @@ router.get('/callback', async (req, res) => {
     const userInfo = await oauth2.userinfo.get();
     const userEmail = userInfo.data.email;
 
-    // RESTRICTION: Only allow the configured admin email list
-    if (config.adminEmail) {
-      const approvedEmails = config.adminEmail.split(',').map(email => email.trim().toLowerCase());
-      if (!approvedEmails.includes(userEmail.toLowerCase())) {
-        console.warn(`Unauthorized login attempt from: ${userEmail}`);
-        return res.redirect(backTo(req, `auth=error&message=${encodeURIComponent('Unauthorized: This application is restricted to approved users.')}`));
+    const isOwner = !config.adminEmail || ownerEmails().includes(canonEmail(userEmail));
+    const full = Boolean(req.session.fullFlow);
+    delete req.session.fullFlow;
+
+    if (!isOwner) {
+      // Invited to the deck builder: name and email only, no tokens kept.
+      if (!full && isInvited(userEmail)) {
+        req.session.user = { email: userEmail, name: userInfo.data.name, picture: userInfo.data.picture, role: 'guest' };
+        rememberPerson({ email: userEmail, name: userInfo.data.name, picture: userInfo.data.picture });
+        req.session.returnTo = '/campaigns';
+        console.log(`[Auth] Deck builder sign-in (guest): ${userEmail}`);
+        logSignIn(userEmail, 'signed-in', 'Deck builder guest');
+        return res.redirect(backTo(req, 'auth=success'));
       }
+      console.warn(`[Auth] Sign-in refused: ${userEmail}`);
+      logSignIn(userEmail, 'refused', full ? 'Tried the owner-only Google connection' : 'Not invited - wrong Google account?');
+      return res.redirect(backTo(req, `auth=error&message=${encodeURIComponent(`${userEmail} doesn't have access. If you were invited, sign in again and choose the Google account the invite was sent to.`)}`));
     }
 
-    req.session.user = {
-      email: userEmail,
-      name: userInfo.data.name,
-      picture: userInfo.data.picture
-    };
+    rememberPerson({ email: userEmail, name: userInfo.data.name, picture: userInfo.data.picture }, 'owner');
+    // the owner's own name (Simon Philpott), not the Google account's display name
+    req.session.user = { email: userEmail, name: personName(userEmail), picture: userInfo.data.picture };
 
-    storeTokens(tokens, userInfo.data);
+    if (full) {
+      storeTokens(tokens, userInfo.data);   // IMS's own Drive/Calendar connection
+    } else {
+      // The owner signed in with name and email; if IMS has no working Google connection, go straight
+      // on to the full consent (their account is pre-selected).
+      const status = getAuthStatus();
+      if (!status.authenticated || status.authError) {
+        req.session.fullFlow = true;
+        console.log('[Auth] Owner signed in; Google connection needs renewing - asking for Drive/Calendar consent');
+        return res.redirect(authUrlFor(new google.auth.OAuth2(config.google.clientId, config.google.clientSecret, redirectUri), true));
+      }
+    }
 
     // Redirect back to client
     res.redirect(backTo(req, "auth=success"));
   } catch (err) {
     console.error('OAuth callback error:', err);
+    logSignIn(null, 'error', `${err.message}${req.session?.redirectUri ? '' : ' (no sign-in session - cookie lost between starting and finishing)'}`);
     res.redirect(backTo(req, `auth=error&message=${encodeURIComponent(err.message)}`));
   }
 });
@@ -115,8 +145,10 @@ router.get('/status', (req, res) => {
 
   res.json({
     ...status,
-    user: req.session.user || null,
+    // names come from IMS's own record (e.g. Simon Philpott), not the Google display name
+    user: req.session.user ? { ...req.session.user, name: personName(req.session.user.email) || req.session.user.name } : null,
     signedIn: isApprovedSession(req),
+    guest: !isApprovedSession(req) && isGuestSession(req),   // an invited deck builder user
     isAuthorized: isAdmin && (!!req.session.user || !!status.email)
   });
 });

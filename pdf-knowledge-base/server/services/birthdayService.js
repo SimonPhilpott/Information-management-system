@@ -14,6 +14,15 @@ db.exec(`
 // can be reviewed or restored from the /ims/birthday archive.
 try { db.exec(`ALTER TABLE birthdays ADD COLUMN deleted_at INTEGER`); } catch (_) { }
 try { db.exec(`ALTER TABLE birthdays ADD COLUMN updated_at INTEGER`); } catch (_) { }
+// Relationship to the user ("Dad", "Sister in law"). Names typed as "Name - Relationship" before
+// this field existed are split once, the first time it's added.
+try {
+  db.exec(`ALTER TABLE birthdays ADD COLUMN relationship TEXT`);
+  for (const r of db.prepare(`SELECT id, name FROM birthdays`).all()) {
+    const m = /^(.+?)\s+[-–]\s+(.+)$/.exec(r.name || '');
+    if (m) db.prepare(`UPDATE birthdays SET name = ?, relationship = ? WHERE id = ?`).run(m[1].trim(), m[2].trim(), r.id);
+  }
+} catch (_) { /* already there */ }
 
 const LONDON_TZ = 'Europe/London';
 const londonPartsFormatter = new Intl.DateTimeFormat('en-GB', {
@@ -44,6 +53,7 @@ function rowToBirthday(row, today) {
   return {
     id: row.id,
     name: row.name,
+    relationship: row.relationship || null,
     birthYear: row.birth_year,
     month: row.birth_month,
     day: row.birth_day,
@@ -59,7 +69,7 @@ export function listBirthdays() {
   return rows.map((r) => rowToBirthday(r, today)).sort((a, b) => a.daysUntil - b.daysUntil);
 }
 
-export function addBirthday({ name, birthYear, month, day }) {
+export function addBirthday({ name, birthYear, month, day, relationship }) {
   if (!name || !String(name).trim()) throw new Error('name is required');
   const m = Number(month), d = Number(day);
   if (!(m >= 1 && m <= 12)) throw new Error('month must be 1-12');
@@ -67,12 +77,12 @@ export function addBirthday({ name, birthYear, month, day }) {
   const y = birthYear ? Number(birthYear) : null;
   if (y && (y < 1900 || y > new Date().getFullYear())) throw new Error('birthYear looks invalid');
   const info = db.prepare(
-    `INSERT INTO birthdays (name, birth_year, birth_month, birth_day, created_at) VALUES (?, ?, ?, ?, ?)`
-  ).run(String(name).trim(), y, m, d, Date.now());
-  return rowToBirthday({ id: info.lastInsertRowid, name: String(name).trim(), birth_year: y, birth_month: m, birth_day: d }, todayLondonParts());
+    `INSERT INTO birthdays (name, birth_year, birth_month, birth_day, relationship, created_at) VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(String(name).trim(), y, m, d, String(relationship || '').trim() || null, Date.now());
+  return rowToBirthday({ id: info.lastInsertRowid, name: String(name).trim(), birth_year: y, birth_month: m, birth_day: d, relationship: String(relationship || '').trim() || null }, todayLondonParts());
 }
 
-export function updateBirthday(id, { name, birthYear, month, day }) {
+export function updateBirthday(id, { name, birthYear, month, day, relationship }) {
   const existing = db.prepare(`SELECT * FROM birthdays WHERE id = ? AND deleted_at IS NULL`).get(id);
   if (!existing) throw new Error('Birthday not found');
   const updated = {
@@ -80,9 +90,10 @@ export function updateBirthday(id, { name, birthYear, month, day }) {
     birth_year: birthYear !== undefined ? (birthYear ? Number(birthYear) : null) : existing.birth_year,
     birth_month: month !== undefined ? Number(month) : existing.birth_month,
     birth_day: day !== undefined ? Number(day) : existing.birth_day,
+    relationship: relationship !== undefined ? (String(relationship || '').trim() || null) : existing.relationship,
   };
-  db.prepare(`UPDATE birthdays SET name = ?, birth_year = ?, birth_month = ?, birth_day = ?, updated_at = ? WHERE id = ?`)
-    .run(updated.name, updated.birth_year, updated.birth_month, updated.birth_day, Date.now(), id);
+  db.prepare(`UPDATE birthdays SET name = ?, birth_year = ?, birth_month = ?, birth_day = ?, relationship = ?, updated_at = ? WHERE id = ?`)
+    .run(updated.name, updated.birth_year, updated.birth_month, updated.birth_day, updated.relationship, Date.now(), id);
   return rowToBirthday({ id, ...updated }, todayLondonParts());
 }
 
@@ -125,13 +136,12 @@ export function getUpcomingBirthdays() {
   return listBirthdays().filter((b) => b.daysUntil <= 7);
 }
 
-// Footer icon rule: green wins outright whenever at least one birthday is
-// TODAY, regardless of how many others are merely upcoming this week - never
-// shown as yellow+green at once, just one icon, one colour, one count of
-// everything in the 0-7 day window.
+// Cake icon on the desk screen: one icon, one colour, counting every birthday in the next 14 days.
+// The nearest one sets the colour - green if any is TODAY, else orange if any is within a week,
+// else white (8-14 days off).
 export function getBirthdayFooterStatus() {
-  const upcoming = getUpcomingBirthdays();
+  const upcoming = listBirthdays().filter((b) => b.daysUntil <= 14);
   if (upcoming.length === 0) return { count: 0, color: null };
-  const anyToday = upcoming.some((b) => b.isToday);
-  return { count: upcoming.length, color: anyToday ? 'green' : 'yellow' };
+  const color = upcoming.some((b) => b.isToday) ? 'green' : upcoming.some((b) => b.daysUntil <= 7) ? 'orange' : 'white';
+  return { count: upcoming.length, color };
 }

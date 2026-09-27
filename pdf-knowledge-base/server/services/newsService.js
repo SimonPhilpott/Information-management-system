@@ -355,10 +355,12 @@ async function pickStories(sources, limit) {
 // ---- what Ims and the report use ----------------------------------------------------------------------
 // The report: a few fresh stories from each source marked "in report". More important sources
 // (weight 1-5) get more stories and come first. No story appears twice.
-export async function getReportNews() {
+// mark: false when the report is only being offered - the stories are only "told" once the report is
+// actually given (an offer that's turned down, or taken later, mustn't use them up).
+export async function getReportNews({ mark = true } = {}) {
   const sources = db.prepare('SELECT * FROM news_sources WHERE in_report = 1 ORDER BY weight DESC, id').all();
   const { stories } = await pickStories(sources, (src) => REPORT_ITEMS[src.weight ?? 3] ?? 2);
-  markTold(stories);
+  if (mark) markTold(stories);
   return stories;
 }
 

@@ -183,18 +183,179 @@ export function setWantToSell(id, wantToSell) {
 }
 
 export function getGames() {
-  let cache = { fetchedAt: null, games: [], orphanExpansions: [] };
-  try {
-    if (fs.existsSync(CACHE_PATH)) cache = JSON.parse(fs.readFileSync(CACHE_PATH, 'utf8'));
-  } catch (_) { /* treat as empty */ }
+  const raw = readCache();
+  const edited = applyEdits(raw);
+  const cache = { ...raw, games: edited.games, orphanExpansions: edited.orphanExpansions };
   const selling = getFlags();
   return {
     fetchedAt: cache.fetchedAt,
+    source: cache.source || 'bgg',
     games: cache.games.map((g) => ({
       ...g,
       wantToSell: selling.has(g.id),
       expansions: g.expansions.map((e) => ({ ...e, wantToSell: selling.has(e.id) })),
     })),
     orphanExpansions: cache.orphanExpansions.map((e) => ({ ...e, wantToSell: selling.has(e.id) })),
+    removed: edited.removed,
+  };
+}
+
+// ---- CSV import (BoardGameGeek's "Export collection" CSV) -----------------------------------------------
+// Used until the BGG API token arrives, and any time after. Owned items only; an expansion is filed
+// under the owned base game whose name it starts with ("Spirit Island: Jagged Earth" under
+// "Spirit Island", "The Lord of the Rings: The Card Game – The Black Riders" under the LCG).
+function parseCsv(text) {
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ',') { row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += ch;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  const [head, ...body] = rows.filter((r) => r.length > 1);
+  return body.map((r) => Object.fromEntries(head.map((h, i) => [h.trim(), (r[i] ?? '').trim()])));
+}
+
+export function importCollectionCsv(text, { source = 'csv' } = {}) {
+  const items = parseCsv(String(text || '').replace(/^\uFEFF/, '')).filter((r) => r.objectid && (r.own === undefined || r.own === '1'));
+  if (!items.length) throw new Error('No owned games found - is this the CSV from BoardGameGeek\'s "Export collection"?');
+  const num = (v) => (v === '' || v === undefined || Number(v) === 0 ? null : Number(v));
+  const toItem = (r) => ({
+    id: Number(r.objectid), name: r.objectname, year: num(r.yearpublished), thumbnail: null,
+    players: r.minplayers ? `${r.minplayers}${r.maxplayers && r.maxplayers !== r.minplayers ? `-${r.maxplayers}` : ''}` : null,
+    playingTime: num(r.playingtime), weight: num(r.avgweight) ? +Number(r.avgweight).toFixed(2) : null,
+    bggRating: num(r.average) ? +Number(r.average).toFixed(2) : null, rank: num(r.rank), myRating: num(r.rating),
+  });
+  const isExp = (r) => (r.itemtype || '').toLowerCase() === 'expansion';
+  const base = items.filter((r) => !isExp(r)).map((r) => ({ ...toItem(r), expansions: [] }));
+  const orphanExpansions = [];
+  const byLongest = [...base].sort((a, b) => b.name.length - a.name.length);
+  for (const r of items.filter(isExp)) {
+    const e = { ...toItem(r), owned: true };
+    const parent = byLongest.find((g) => e.name.startsWith(g.name) && /^\s*[:–—-]/.test(e.name.slice(g.name.length)));
+    if (parent) parent.expansions.push(e); else orphanExpansions.push(e);
+  }
+  for (const g of base) g.expansions.sort((a, b) => a.name.localeCompare(b.name));
+  base.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(CACHE_PATH, JSON.stringify({ fetchedAt: new Date().toISOString(), username: getConfig().username, source, games: base, orphanExpansions }), 'utf8');
+  return { games: base.length, expansions: items.length - base.length, orphanExpansions: orphanExpansions.length };
+}
+
+// First run with no collection yet: load the CSV kept in data/ (saved from the user's BGG export).
+const SEED_CSV = path.join(DATA_DIR, 'bgg_collection.csv');
+try {
+  if (!fs.existsSync(CACHE_PATH) && fs.existsSync(SEED_CSV)) importCollectionCsv(fs.readFileSync(SEED_CSV, 'utf8'));
+} catch (err) { console.error('[Boardgames] CSV seed import failed:', err.message); }
+
+// ---- manual changes to the collection ------------------------------------------------------------------
+// Games added by hand (before BGG knows, or not on BGG at all) and games removed, kept apart from
+// the CSV/BGG data so a fresh import or refresh never undoes them. A hand-added game without a BGG
+// id gets a negative id, so it still works with "want to sell" and the rest.
+db.exec(`CREATE TABLE IF NOT EXISTS boardgame_edits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, bgg_id INTEGER, name TEXT, year INTEGER,
+  item_type TEXT, parent_id INTEGER, created_at INTEGER NOT NULL
+)`);
+
+export function addGame({ name, year, type = 'base', parentId = null, bggLink = '' }) {
+  const n = String(name || '').trim();
+  if (!n) throw new Error('Give the game a name.');
+  const m = String(bggLink || '').match(/boardgame(?:expansion)?\/(\d+)/i) || String(bggLink || '').trim().match(/^(\d+)$/);
+  const bggId = m ? Number(m[1]) : null;
+  const isExp = type === 'expansion';
+  if (isExp && !parentId) throw new Error('Choose which game the expansion is for.');
+  const cache = readCache();
+  const all = [...cache.games, ...cache.games.flatMap((g) => g.expansions), ...cache.orphanExpansions, ...manualItems()];
+  if (bggId && all.some((g) => g.id === bggId)) throw new Error('That game is already in your collection.');
+  const info = db.prepare('INSERT INTO boardgame_edits (kind, bgg_id, name, year, item_type, parent_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run('add', bggId, n.slice(0, 200), year ? Number(year) || null : null, isExp ? 'expansion' : 'base', isExp ? Number(parentId) : null, Date.now());
+  // Adding back a game that was removed simply restores it.
+  if (bggId) db.prepare(`DELETE FROM boardgame_edits WHERE kind = 'remove' AND bgg_id = ?`).run(bggId);
+  return { id: bggId || -info.lastInsertRowid, name: n };
+}
+
+export function removeGame(id) {
+  const n = Number(id);
+  if (n < 0) return db.prepare(`DELETE FROM boardgame_edits WHERE id = ? AND kind = 'add'`).run(-n).changes > 0;
+  const manual = db.prepare(`SELECT id FROM boardgame_edits WHERE kind = 'add' AND bgg_id = ?`).get(n);
+  if (manual) return db.prepare('DELETE FROM boardgame_edits WHERE id = ?').run(manual.id).changes > 0;
+  db.prepare(`INSERT INTO boardgame_edits (kind, bgg_id, created_at) VALUES ('remove', ?, ?)`).run(n, Date.now());
+  return true;
+}
+export function restoreGame(id) {
+  return db.prepare(`DELETE FROM boardgame_edits WHERE kind = 'remove' AND bgg_id = ?`).run(Number(id)).changes > 0;
+}
+
+function readCache() {
+  try { if (fs.existsSync(CACHE_PATH)) return JSON.parse(fs.readFileSync(CACHE_PATH, 'utf8')); } catch (_) { /* treat as empty */ }
+  return { fetchedAt: null, games: [], orphanExpansions: [] };
+}
+function manualItems() {
+  return db.prepare(`SELECT * FROM boardgame_edits WHERE kind = 'add' ORDER BY created_at`).all().map((r) => ({
+    id: r.bgg_id || -r.id, name: r.name, year: r.year, thumbnail: null, manual: true, type: r.item_type, parentId: r.parent_id, owned: true,
+  }));
+}
+
+// The collection as imported, with the manual additions merged in and removals taken out.
+function applyEdits(cache) {
+  const removed = new Set(db.prepare(`SELECT bgg_id FROM boardgame_edits WHERE kind = 'remove'`).all().map((r) => r.bgg_id));
+  const games = cache.games.filter((g) => !removed.has(g.id)).map((g) => ({ ...g, expansions: g.expansions.filter((e) => !removed.has(e.id)) }));
+  const orphanExpansions = cache.orphanExpansions.filter((e) => !removed.has(e.id));
+  const manual = manualItems();
+  for (const m of manual.filter((x) => x.type !== 'expansion')) games.push({ ...m, expansions: [] });
+  for (const m of manual.filter((x) => x.type === 'expansion')) {
+    const parent = games.find((g) => g.id === m.parentId);
+    if (parent) parent.expansions = [...parent.expansions, m].sort((a, b) => (b.owned - a.owned) || a.name.localeCompare(b.name));
+    else orphanExpansions.push(m);
+  }
+  games.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  const all = [...cache.games, ...cache.games.flatMap((g) => g.expansions), ...cache.orphanExpansions];
+  const removedList = [...removed].map((id) => all.find((g) => g.id === id)).filter(Boolean).map((g) => ({ id: g.id, name: g.name, year: g.year || null }));
+  return { games, orphanExpansions, removed: removedList };
+}
+
+// ---- for Ims ----------------------------------------------------------------------------------------------
+// Counts, plus a filtered list when asked ("two-player games under an hour", "anything by name").
+export function collectionSummary() {
+  const d = getGames();
+  const exps = d.games.flatMap((g) => g.expansions).filter((e) => e.owned !== false);
+  return {
+    baseGames: d.games.length,
+    expansions: exps.length + d.orphanExpansions.length,
+    gamesWithExpansions: d.games.filter((g) => g.expansions.some((e) => e.owned !== false)).length,
+    wantToSell: d.games.filter((g) => g.wantToSell).length + exps.filter((e) => e.wantToSell).length + d.orphanExpansions.filter((e) => e.wantToSell).length,
+    source: d.source === 'csv' ? 'BoardGameGeek collection export' : 'BoardGameGeek',
+  };
+}
+
+export function describeCollectionForIms({ query = '', players = null, maxMinutes = null, sortBy = null, limit = 15 } = {}) {
+  const d = getGames();
+  const summary = collectionSummary();
+  const q = String(query || '').trim().toLowerCase();
+  const fitsPlayers = (g) => {
+    if (!players) return true;
+    const [lo, hi] = String(g.players || '').split('-').map(Number);
+    return Number.isFinite(lo) && players >= lo && players <= (Number.isFinite(hi) ? hi : lo);
+  };
+  let list = d.games.filter((g) => (!q || g.name.toLowerCase().includes(q) || g.expansions.some((e) => e.name.toLowerCase().includes(q)))
+    && fitsPlayers(g) && (!maxMinutes || (g.playingTime && g.playingTime <= maxMinutes)));
+  if (sortBy === 'rating') list = list.sort((a, b) => (b.bggRating || 0) - (a.bggRating || 0));
+  else if (sortBy === 'weight') list = list.sort((a, b) => (b.weight || 0) - (a.weight || 0));
+  else if (sortBy === 'expansions') list = list.sort((a, b) => b.expansions.length - a.expansions.length);
+  const filtered = Boolean(q || players || maxMinutes || sortBy);
+  return {
+    ...summary,
+    ...(filtered ? {
+      matching: list.length,
+      games: list.slice(0, limit).map((g) => ({
+        name: g.name, year: g.year || null, players: g.players || null, minutes: g.playingTime || null,
+        weight: g.weight || null, bggRating: g.bggRating || null, expansionsOwned: g.expansions.filter((e) => e.owned !== false).map((e) => e.name),
+        wantToSell: Boolean(g.wantToSell),
+      })),
+    } : {}),
   };
 }

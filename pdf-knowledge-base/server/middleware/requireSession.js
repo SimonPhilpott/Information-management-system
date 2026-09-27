@@ -14,6 +14,15 @@ export function isApprovedSession(req) {
   return approved.includes(email.toLowerCase());
 }
 
+// Someone the owner invited to the deck builder (routes/auth.js guest sign-in). They only ever get
+// the deck builder's API; revoking the invite locks them out on their next request.
+export function isGuestSession(req) {
+  const u = req.session?.user;
+  return Boolean(u?.email && u.role === 'guest' && guestCheck && guestCheck(u.email));
+}
+let guestCheck = null;
+export const setGuestCheck = (fn) => { guestCheck = fn; };
+
 export function requireSession(req, res, next) {
   if (isApprovedSession(req)) return next();
   res.status(401).json({ error: 'Sign in with your Google account to use this.', signInRequired: true });

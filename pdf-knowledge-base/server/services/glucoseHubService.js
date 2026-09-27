@@ -170,6 +170,7 @@ export function getDay(day) {
 const NS_BASE = 'https://simon-philpott-nightscout.herokuapp.com';
 const NS_SECRET_KEY = 'nightscout_api_secret';
 try { db.exec('ALTER TABLE carb_log ADD COLUMN ns_id TEXT'); } catch (_) { /* already there */ }
+try { db.exec('ALTER TABLE carb_log ADD COLUMN ns_identifier TEXT'); } catch (_) { /* already there */ }
 
 export function getNightscoutWriteStatus() { return { configured: Boolean(getSetting(NS_SECRET_KEY)) }; }
 export function setNightscoutSecret(secret) {
@@ -192,19 +193,55 @@ export async function testNightscoutWrite() {
   if (!(m.canWrite === true || m.message === 'OK')) throw new Error('Nightscout did not accept that API secret - check it matches API_SECRET in Heroku.');
   return { ok: true };
 }
-async function postCarbsToNightscout(g, food, t) {
+// Carbs go in through Nightscout's API v3, not v1. AAPS's NSClient syncs with v3, which only
+// sees records that have srvModified - a v1 POST never gets one, so AAPS never picked those carbs
+// up even though they showed in Nightscout (COB stayed 0). v3 won't take the API secret, only a
+// JWT from an access token, so IMS has its own "IMS" subject with a narrow "ims" role
+// (treatments only), created here with the API secret the first time it's needed.
+const NS_ROLE = { name: 'ims', permissions: ['api:treatments:create', 'api:treatments:read', 'api:treatments:update', 'api:treatments:delete'], notes: 'IMS carb logging' };
+let nsJwt = null; // { token, exp }
+async function nsV3Headers() {
+  if (nsJwt && nsJwt.exp - 300 > Date.now() / 1000) return { Authorization: `Bearer ${nsJwt.token}`, 'Content-Type': 'application/json', Accept: 'application/json' };
   const h = nsSecretHash();
-  if (!h) return { sent: false, reason: 'No Nightscout API secret saved on the Blood Sugar page yet.' };
-  const res = await fetch(`${NS_BASE}/api/v1/treatments`, {
-    method: 'POST', signal: AbortSignal.timeout(15000),
-    headers: { 'api-secret': h, 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify([{ eventType: 'Meal Bolus', carbs: g, // same type AAPS uses for carbs, so they show and count the same way
-       created_at: new Date(t).toISOString(), enteredBy: 'IMS', notes: food || undefined }]),
+  if (!h) throw new Error('No Nightscout API secret saved on the Blood Sugar page yet.');
+  const admin = { 'api-secret': h, 'Content-Type': 'application/json', Accept: 'application/json' };
+  const get = async (path) => (await fetch(`${NS_BASE}${path}`, { headers: admin, signal: AbortSignal.timeout(15000) })).json();
+  const post = (path, body) => fetch(`${NS_BASE}${path}`, { method: 'POST', headers: admin, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+  const roles = await get('/api/v2/authorization/roles');
+  if (!Array.isArray(roles)) throw new Error('Nightscout would not list access roles - check the API secret.');
+  if (!roles.some((r) => r.name === NS_ROLE.name)) await post('/api/v2/authorization/roles', NS_ROLE);
+  let subject = (await get('/api/v2/authorization/subjects')).find((x) => x.name === 'IMS');
+  if (!subject) {
+    await post('/api/v2/authorization/subjects', { name: 'IMS', roles: [NS_ROLE.name], notes: 'IMS carb logging (API v3)' });
+    subject = (await get('/api/v2/authorization/subjects')).find((x) => x.name === 'IMS');
+  } else if (!(subject.roles || []).includes(NS_ROLE.name)) {
+    await fetch(`${NS_BASE}/api/v2/authorization/subjects`, { method: 'PUT', headers: admin, body: JSON.stringify({ ...subject, roles: [NS_ROLE.name] }), signal: AbortSignal.timeout(15000) });
+  }
+  if (!subject?.accessToken) throw new Error('Could not set up the IMS access token in Nightscout.');
+  const j = await (await fetch(`${NS_BASE}/api/v2/authorization/request/${subject.accessToken}`, { signal: AbortSignal.timeout(15000) })).json();
+  if (!j.token) throw new Error('Nightscout did not issue a token for IMS.');
+  nsJwt = { token: j.token, exp: j.exp || Date.now() / 1000 + 3600 };
+  return { Authorization: `Bearer ${j.token}`, 'Content-Type': 'application/json', Accept: 'application/json' };
+}
+
+async function postCarbsToNightscout(g, food, t) {
+  if (!nsSecretHash()) return { sent: false, reason: 'No Nightscout API secret saved on the Blood Sugar page yet.' };
+  const headers = await nsV3Headers();
+  const res = await fetch(`${NS_BASE}/api/v3/treatments`, {
+    method: 'POST', headers, signal: AbortSignal.timeout(15000),
+    // Meal Bolus with carbs only - the same shape AAPS gives carbs it enters itself
+    body: JSON.stringify({ eventType: 'Meal Bolus', carbs: g, date: t, utcOffset: -new Date(t).getTimezoneOffset(), app: 'IMS', enteredBy: 'IMS', notes: food || undefined }),
   });
-  if (!res.ok) return { sent: false, reason: `Nightscout answered ${res.status}.` };
-  const d = await res.json().catch(() => null);
-  const id = Array.isArray(d) ? d[0]?._id : d?._id;
-  return { sent: true, id: id || null };
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok || !d.identifier) return { sent: false, reason: `Nightscout answered ${res.status}${d.message ? `: ${d.message}` : ''}.` };
+  // The local copy of Nightscout (ns_treatments) is keyed by the Mongo _id from the v1 feed; look it
+  // up so the carb log can tell when its entry has come back and not count it twice.
+  let id = null;
+  try {
+    const v1 = await (await fetch(`${NS_BASE}/api/v1/treatments.json?find[identifier]=${encodeURIComponent(d.identifier)}&count=1`, { headers: { 'api-secret': nsSecretHash(), Accept: 'application/json' }, signal: AbortSignal.timeout(15000) })).json();
+    id = v1?.[0]?._id || null;
+  } catch (_) { /* matched later by time */ }
+  return { sent: true, id, identifier: d.identifier };
 }
 
 export async function logCarbs({ grams, food, at }) {
@@ -214,15 +251,18 @@ export async function logCarbs({ grams, food, at }) {
   const info = db.prepare('INSERT INTO carb_log (at, grams, food, source) VALUES (?, ?, ?, ?)').run(t, g, food ? String(food).slice(0, 120) : null, 'voice');
   let ns;
   try { ns = await postCarbsToNightscout(g, food, t); } catch (err) { ns = { sent: false, reason: err.message }; }
-  if (ns.id) db.prepare('UPDATE carb_log SET ns_id = ? WHERE id = ?').run(ns.id, info.lastInsertRowid);
+  if (ns.id || ns.identifier) db.prepare('UPDATE carb_log SET ns_id = ?, ns_identifier = ? WHERE id = ?').run(ns.id || null, ns.identifier || null, info.lastInsertRowid);
   return { id: info.lastInsertRowid, at: t, grams: g, food: food || null, nightscout: ns };
 }
 export function listCarbs(days = 7) {
   return db.prepare('SELECT id, at, grams, food, ns_id FROM carb_log WHERE at >= ? ORDER BY at DESC').all(Date.now() - days * 86400000);
 }
 export async function deleteCarbs(id) {
-  const row = db.prepare('SELECT ns_id FROM carb_log WHERE id = ?').get(Number(id));
-  if (row?.ns_id) {
+  const row = db.prepare('SELECT ns_id, ns_identifier FROM carb_log WHERE id = ?').get(Number(id));
+  if (row?.ns_identifier) {
+    // v3 delete marks it invalid, which AAPS syncs - so the carbs come off the loop too
+    try { await fetch(`${NS_BASE}/api/v3/treatments/${encodeURIComponent(row.ns_identifier)}`, { method: 'DELETE', headers: await nsV3Headers(), signal: AbortSignal.timeout(15000) }); } catch (_) { /* best effort */ }
+  } else if (row?.ns_id) {
     const h = nsSecretHash();
     if (h) await fetch(`${NS_BASE}/api/v1/treatments/${encodeURIComponent(row.ns_id)}`, { method: 'DELETE', headers: { 'api-secret': h }, signal: AbortSignal.timeout(15000) }).catch(() => {});
   }

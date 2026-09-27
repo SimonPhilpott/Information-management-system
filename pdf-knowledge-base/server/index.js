@@ -56,7 +56,9 @@ import memoriesRoutes from './routes/memories.js';
 import glucoseHubRoutes from './routes/glucoseHub.js';
 import { describeForIms as describeGlucoseForIms, logCarbs, clearOldNightscout, recentCarbs } from './services/glucoseHubService.js';
 import { lookUpFood } from './services/foodService.js';
-import { isApprovedSession } from './middleware/requireSession.js';
+import { isApprovedSession, isGuestSession, setGuestCheck } from './middleware/requireSession.js';
+import { isInvited } from './services/decksService.js';
+setGuestCheck(isInvited);
 import personaRoutes from './routes/persona.js';
 import musicScanRoutes from './routes/musicScan.js';
 import birthdayRoutes from './routes/birthdays.js';
@@ -85,7 +87,7 @@ import { askLive } from './services/lookService.js';
 import { getAuthStatus } from './services/driveService.js';
 import { validateConfiguredModels } from './services/modelService.js';
 import { loadHnswFromDisk } from './services/hnswService.js';
-import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getWebPersonaBlock, getPersonality, setPersonality, getCaptureLogging, setCaptureLogging, recordReplyText, getWebSetupPayload, ACCENT_RULE } from './services/hardwareClientService.js';
+import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getWebPersonaBlock, getPersonality, setPersonality, getCaptureLogging, setCaptureLogging, recordReplyText, getWebSetupPayload, ACCENT_RULE, refreshLiveContext } from './services/hardwareClientService.js';
 import { scheduleItem, listScheduledItems, cancelScheduledItem, addToList, readList, removeFromList, clearList, checkDueScheduledItems, stopAllRinging, getActiveScheduledStatus, getItemsDueToday, getHistorySummary } from './services/remindersService.js';
 import { getBirthdayFooterStatus, getUpcomingBirthdays, listBirthdays } from './services/birthdayService.js';
 import { getTodayReleases, getWindowResults, getUpcomingReleases , getWants as getMusicWants } from './services/musicScanService.js';
@@ -93,10 +95,16 @@ import { isFirstInteractionToday, markMorningReportOffered, buildMorningReportDi
 import { getNews } from './services/newsService.js';
 import newsRoutes from './routes/news.js';
 import tasksRoutes from './routes/tasks.js';
+import devIdeasRoutes from './routes/devIdeas.js';
+import decksRoutes from './routes/decks.js';
+import campaignsRoutes from './routes/campaigns.js';
+import { addIdea as addDevIdea, flagToolFailure } from './services/devIdeasService.js';
+import { describeCollectionForIms } from './services/boardgamesService.js';
+import { campaignsForIms } from './services/campaignsService.js';
 import phrasesRoutes from './routes/phrases.js';
 import { matchesWake, matchesStop } from './services/phrasesService.js';
 import { createTask, describeTasksForIms } from './services/tasksService.js';
-import { addMemory, getMemories, searchMemories, deleteMemory } from './db/database.js';
+import appDb, { addMemory, getMemories, searchMemories, deleteMemory } from './db/database.js';
 import { getWeather } from './services/weatherService.js';
 import { startGlucosePoller, getGlucoseData } from './services/glucoseService.js';
 import { checkAndTriggerNightlyScan } from './services/musicScanService.js';
@@ -145,6 +153,8 @@ app.use(sessionMiddleware);
 const requireAdmin = (req, res, next) => {
   if (!req.path.startsWith('/api') || req.path.startsWith('/api/auth')) return next();
   if (isApprovedSession(req)) return next();
+  // Invited guests: the deck builder only, never invites or anything else in IMS.
+  if (isGuestSession(req) && req.path.startsWith('/api/decks/') && !req.path.startsWith('/api/decks/invites')) return next();
   return res.status(401).json({ error: 'Sign in with your Google account to use this.', signInRequired: true });
 };
 
@@ -173,6 +183,9 @@ app.use('/api/memories', memoriesRoutes);
 app.use('/api/glucose-hub', glucoseHubRoutes);
 app.use('/api/news', newsRoutes);
 app.use('/api/tasks', tasksRoutes);
+app.use('/api/dev-ideas', devIdeasRoutes);
+app.use('/api/decks/campaigns', campaignsRoutes);  // campaign tracking - part of the deck builder, so guests can use it
+app.use('/api/decks', decksRoutes);
 app.use('/api/phrases', phrasesRoutes);
 app.use('/api/persona-rules', personaRoutes);
 app.use('/api/music-scan', musicScanRoutes);
@@ -191,6 +204,36 @@ app.use('/api/look', lookRoutes);
 app.use('/api/alarms', scheduledRouter('alarm'));
 app.use('/api/timers', scheduledRouter('timer'));
 app.use('/api/reminders', scheduledRouter('reminder'));
+
+// Live figures for the System Architecture page (/ims/architecture).
+app.get('/api/system/architecture', async (req, res) => {
+  const count = (sql) => { try { return appDb.prepare(sql).get().c; } catch (_) { return null; } };
+  const deviceLinks = await new Promise((resolve) => hardwareTcpServer.getConnections((err, n) => resolve(err ? 0 : n)));
+  res.json({
+    success: true,
+    tables: count("SELECT COUNT(*) c FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"),
+    newsSources: count('SELECT COUNT(*) c FROM news_sources'),
+    birthdays: count('SELECT COUNT(*) c FROM birthdays WHERE deleted_at IS NULL'),
+    tasks: count('SELECT COUNT(*) c FROM tasks'),
+    scheduled: count('SELECT COUNT(*) c FROM scheduled_items'),
+    deviceOnline: deviceLinks > 0 || !!activeHardwareSession,
+    uptimeSec: Math.round(process.uptime()),
+    node: process.version,
+  });
+});
+
+// A test prompt from the System Architecture page: run through Ims's brain, each step streamed back as a
+// line of JSON so the page can light up what's being used (read-only tools run; nothing is changed).
+app.post('/api/system/trace', async (req, res) => {
+  res.setHeader('Content-Type', 'application/x-ndjson');
+  res.setHeader('Cache-Control', 'no-cache');
+  const emit = (o) => res.write(`${JSON.stringify(o)}\n`);
+  try {
+    const { traceTestPrompt } = await import('./services/traceService.js');
+    await traceTestPrompt(req.body?.prompt, emit);
+  } catch (err) { emit({ type: 'error', error: err.message }); }
+  res.end();
+});
 
 app.get('/api/glucose', async (req, res) => {
   try {
@@ -426,8 +469,12 @@ function pinSavedVoice(msgStr, tag, resumptionHandle = null) {
     const voice = getPersonality().voice;
     parsed.setup.generationConfig = parsed.setup.generationConfig || {};
     const was = parsed.setup.generationConfig.speechConfig?.voiceConfig?.prebuiltVoiceConfig?.voiceName;
-    parsed.setup.generationConfig.speechConfig = { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } };
+    // languageCode must survive this rebuild - dropping it let Ims drift out of English (UK)
+    parsed.setup.generationConfig.speechConfig = { languageCode: 'en-GB', voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } };
     console.log(`${tag} 🎙️ Gemini setup voice = ${voice}${was && was !== voice ? ` (corrected from ${was})` : ''}`);
+    // Fresh date/time and records for this session, not the ones from when the device connected.
+    const part = parsed.setup.systemInstruction?.parts?.[0];
+    if (part?.text) part.text = refreshLiveContext(part.text);
     return JSON.stringify(parsed);
   } catch (_) {
     return msgStr;
@@ -1190,6 +1237,14 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           // one call each, so a copy-paste slip can't silently mismatch a
           // call.id or skip the OPEN check.
           const respondToToolCall = (call, output) => {
+            // Anything that fails is logged to the dev ideas queue as a prompt for Claude Code.
+            if (output && output.error) {
+              try {
+                const f = flagToolFailure({ tool: call.name, error: output.error, args: call.args, heard: heardThisTurn, where: isHardware ? 'desk terminal' : 'web app' });
+                console.log(`${tag} 💡 ${call.name} failure ${f.duplicate ? 'already flagged' : 'flagged'} as dev idea #${f.id}`);
+                output = { ...output, flaggedForFixing: `Logged as dev idea #${f.id} for Claude Code. Tell them briefly it didn't work and you've flagged it to be fixed.` };
+              } catch (_) { /* never let flagging break the reply */ }
+            }
             if (gWs.readyState === WebSocket.OPEN) {
               gWs.send(JSON.stringify({
                 toolResponse: { functionResponses: [{ response: { output: withVoiceReminder(output) }, id: call.id }] }
@@ -1443,11 +1498,15 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               console.log(`${tag} 🕘 getScheduleHistory(${kind || 'all'}, ${period}) -> ${summary.events.length} events`);
               respondToToolCall(call, summary);
             } else if (call.name === 'getUpcomingBirthdays') {
-              const days = Math.max(0, Math.min(366, Number(call.args?.withinDays ?? 7)));
+              const who = String(call.args?.name || '').trim().toLowerCase();
+              const days = Math.max(0, Math.min(366, Number(call.args?.withinDays ?? (who ? 366 : 31))));
               const list = listBirthdays().filter((b) => b.daysUntil <= days)
-                .map((b) => ({ name: b.name, daysUntil: b.daysUntil, isToday: b.isToday, date: `${b.day}/${b.month}`, turningAge: b.turningAge }));
-              console.log(`${tag} 🎂 getUpcomingBirthdays(${days}d) -> ${list.length}`);
-              respondToToolCall(call, { withinDays: days, count: list.length, birthdays: list });
+                .filter((b) => !who || `${b.name} ${b.relationship || ''}`.toLowerCase().includes(who))
+                .map((b) => ({ name: b.name, relationship: b.relationship, daysUntil: b.daysUntil, isToday: b.isToday, date: `${b.day}/${b.month}`, turningAge: b.turningAge }));
+              console.log(`${tag} 🎂 getUpcomingBirthdays(${days}d${who ? `, ${who}` : ''}) -> ${list.length}`);
+              // always say which birthday is next, however far off - "none in the window" isn't "none"
+              const next = listBirthdays()[0];
+              respondToToolCall(call, { withinDays: days, count: list.length, birthdays: list, nextBirthday: next ? { name: next.name, relationship: next.relationship, daysUntil: next.daysUntil, turningAge: next.turningAge } : null });
             } else if (call.name === 'getNewMusicReleases') {
               const period = ['today', 'week', 'month', 'upcoming'].includes(call.args?.period) ? call.args.period : 'week';
               const releases = period === 'upcoming'
@@ -1518,6 +1577,24 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 console.log(`${tag} 🧵 startBackgroundTask #${t.id}: ${t.title}`);
                 respondToToolCall(call, { status: 'started', id: t.id, title: t.title, note: 'Tell them briefly you are on it and they can ask how it went later (or it will be in their next day report). Do not guess the answer now.' });
               }).catch((err) => respondToToolCall(call, { error: err.message }));
+            } else if (call.name === 'saveDevIdea') {
+              try {
+                const idea = addDevIdea({ text: call.args?.idea, source: isHardware ? 'desk' : 'web' });
+                console.log(`${tag} 💡 saveDevIdea #${idea.id}: ${idea.text.slice(0, 60)}`);
+                respondToToolCall(call, { status: 'saved', id: idea.id, note: 'Confirm in a few words that it is saved for Claude Code. Do not start discussing how to build it.' });
+              } catch (err) { respondToToolCall(call, { error: err.message }); }
+            } else if (call.name === 'getBoardGames') {
+              try {
+                const out = describeCollectionForIms({ query: call.args?.query, players: Number(call.args?.players) || null, maxMinutes: Number(call.args?.maxMinutes) || null, sortBy: call.args?.sortBy || null });
+                console.log(`${tag} 🎲 getBoardGames -> ${out.baseGames} games, ${out.expansions} expansions${out.matching !== undefined ? `, ${out.matching} matching` : ''}`);
+                respondToToolCall(call, { ...out, note: out.matching !== undefined ? 'Say how many match and name a few; offer more if there are lots.' : 'Give the counts.' });
+              } catch (err) { respondToToolCall(call, { error: err.message }); }
+            } else if (call.name === 'getCampaigns') {
+              try {
+                const campaigns = campaignsForIms({ name: call.args?.name, chronicle: Boolean(call.args?.chronicle) });
+                console.log(`${tag} 🗺️ getCampaigns(${call.args?.name || 'all'}) -> ${campaigns.length}`);
+                respondToToolCall(call, { campaigns, note: campaigns.length ? 'Answer what they asked in a sentence or two, like a fellow player. Chronicle text is written in the voice of Middle-earth - if reading it, read it as written.' : 'No campaign matches that - say which ones there are.' });
+              } catch (err) { respondToToolCall(call, { error: err.message }); }
             } else if (call.name === 'getBackgroundTasks') {
               try {
                 const tasks = describeTasksForIms({ id: call.args?.id, about: call.args?.about });

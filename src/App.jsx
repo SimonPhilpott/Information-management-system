@@ -38,6 +38,10 @@ import ActivitiesPortal from './components/Dashboard/ActivitiesPortal';
 import GlucosePortal from './components/Dashboard/GlucosePortal';
 import NewsPortal from './components/Dashboard/NewsPortal';
 import TasksPortal from './components/Dashboard/TasksPortal';
+import SystemArchitecturePortal from './components/Dashboard/SystemArchitecturePortal';
+import DevIdeasPortal from './components/Dashboard/DevIdeasPortal';
+import DecksPortal from './components/Dashboard/DecksPortal';
+import { isCampaignPath, canonicalCampaignPath } from './components/Dashboard/campaignPaths';
 import PhrasesPortal from './components/Dashboard/PhrasesPortal';
 import RunPlannerPortal from './components/Dashboard/RunPlannerPortal';
 import ImsHub from './components/Dashboard/ImsHub';
@@ -1412,6 +1416,40 @@ export default function App() {
   if (currentPath === '/ims/phrases' || currentPath.startsWith('/ims/phrases')) {
     return (
       <PhrasesPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (isCampaignPath(currentPath)) {
+    // old /ims/decks addresses (and bare /campaigns) become their /campaigns/<game> ones
+    const canonical = canonicalCampaignPath(currentPath);
+    if (canonical !== currentPath) window.history.replaceState(null, '', canonical + window.location.search);
+    return (
+      <DecksPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+        currentPath={canonical}
+      />
+    );
+  }
+
+  if (currentPath.startsWith('/ims/devideas')) {
+    return (
+      <DevIdeasPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath.startsWith('/ims/architecture')) {
+    return (
+      <SystemArchitecturePortal
         theme={state.theme}
         onThemeToggle={actions.toggleTheme}
         setCurrentPath={setCurrentPath}

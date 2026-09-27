@@ -87,7 +87,7 @@ export default function SyncStatus({ syncStatus, onSync, compact = false, onLogi
       return;
     }
     try {
-      const res = await fetch('/api/auth/url');
+      const res = await fetch('/api/auth/url?full=1');
       const data = await res.json();
       if (data.url) window.location.href = data.url;
     } catch (err) {

@@ -1384,28 +1384,29 @@ void drawFaceTick() {
 // pod change icon below it, and the prescription icon under that.
 // ---------------------------------------------------------------------------
 static const uint8_t PROGMEM pod_icon_24x24[] = {
+  // Omnipod: flat top with rounded corners, straight sides, curved bottom
   0x00, 0x00, 0x00,  // ........................
   0x00, 0x00, 0x00,  // ........................
-  0x00, 0x3C, 0x00,  // ..........####..........
-  0x00, 0x7E, 0x00,  // .........######.........
-  0x00, 0xFF, 0x00,  // ........########........
+  0xE0, 0xFF, 0x07,  // .....##############.....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xF0, 0xFF, 0x0F,  // ....################....
+  0xE0, 0xFF, 0x07,  // .....##############.....
+  0xE0, 0xFF, 0x07,  // .....##############.....
+  0xC0, 0xFF, 0x03,  // ......############......
   0x80, 0xFF, 0x01,  // .......##########.......
-  0xC0, 0xFF, 0x03,  // ......############......
-  0xC0, 0xFF, 0x03,  // ......############......
-  0xE0, 0xFF, 0x07,  // .....##############.....
-  0xE0, 0xFF, 0x07,  // .....##############.....
-  0xF0, 0xFF, 0x0F,  // ....################....
-  0xF0, 0xFF, 0x0F,  // ....################....
-  0xF0, 0xFF, 0x0F,  // ....################....
-  0xF0, 0xFF, 0x0F,  // ....################....
-  0xF8, 0xFF, 0x1F,  // ...##################...
-  0xF8, 0xFF, 0x1F,  // ...##################...
-  0xF8, 0xFF, 0x1F,  // ...##################...
-  0xF8, 0xFF, 0x1F,  // ...##################...
-  0xF8, 0xFF, 0x1F,  // ...##################...
-  0xF8, 0xC3, 0x1F,  // ...#######....#######...
-  0xF0, 0xC3, 0x0F,  // ....######....######....
-  0xC0, 0xC3, 0x03,  // ......####....####......
+  0x00, 0x7E, 0x00,  // .........######.........
   0x00, 0x00, 0x00,  // ........................
   0x00, 0x00, 0x00,  // ........................
 };
@@ -1988,14 +1989,13 @@ String currentDateTimeStr() {
 
 // Counts (not just booleans) so the left-of-face icon stack can show a
 // number badge, per the backend's expanded `schedule` WS push - see
-// pushScheduleStatus() in index.js. birthdayIsGreen takes priority over a
-// merely-upcoming (yellow) birthday whenever at least one is today, exactly
-// mirroring the backend's own getBirthdayFooterStatus() color rule.
+// pushScheduleStatus() in index.js. The cake colour comes from the backend's
+// getBirthdayFooterStatus(): 2 = green (today), 1 = orange (within a week), 0 = white (within 2 weeks).
 static int alarmCount = 0;
 static int timerCount = 0;
 static int reminderCount = 0;
 static int birthdayCount = 0;
-static bool birthdayIsGreen = false;
+static uint8_t birthdayColor = 0;
 static int newReleaseCount = 0;
 static bool cameraAttached = false; // pushed by the backend (schedule.camera.attached/awake)
 static bool cameraAwake = false;    // awake ~10 min after boot/use, then asleep
@@ -2165,21 +2165,111 @@ static const uint8_t PROGMEM camera_icon_24x24[] = {
   0x00, 0x00, 0x00  // ........................
 };
 
-static void drawCameraIcon(int x, int y, uint16_t color) { tft.drawXBitmap(x, y, camera_icon_24x24, 24, 24, color); }
-static void drawAlarmIcon(int x, int y, uint16_t color) { tft.drawXBitmap(x, y, alarm_icon_24x24, 24, 24, color); }
-static void drawTimerIcon(int x, int y, uint16_t color) { tft.drawXBitmap(x, y, timer_icon_24x24, 24, 24, color); }
-static void drawReminderIcon(int x, int y, uint16_t color) { tft.drawXBitmap(x, y, reminder_icon_24x24, 24, 24, color); }
-static void drawBirthdayIcon(int x, int y, uint16_t color) { tft.drawXBitmap(x, y, birthday_icon_24x24, 24, 24, color); }
-static void drawMusicIcon(int x, int y, uint16_t color) { tft.drawXBitmap(x, y, music_icon_24x24, 24, 24, color); }
+// The icons are 12x12 pixel art stored doubled. Rather than drawing the blocky doubled
+// bitmap, smoothIcon() finds the 12x12 source grid, upscales it with Scale2x three times
+// (rounds off staircases and corners but keeps single cells and holes), then averages each
+// 4x4 block down to one screen pixel and blends that coverage against the background.
+static bool iconBit(const uint8_t *bmp, int x, int y) {
+  if (x < 0 || y < 0 || x > 23 || y > 23) return false;
+  return (pgm_read_byte(&bmp[y * 3 + (x >> 3)]) >> (x & 7)) & 1;
+}
+static void scale2x(const uint8_t *src, int n, uint8_t *dst) {
+  auto at = [&](int r, int c) -> uint8_t { return (r < 0 || c < 0 || r >= n || c >= n) ? 0 : src[r * n + c]; };
+  const int m = n * 2;
+  for (int r = 0; r < n; r++)
+    for (int c = 0; c < n; c++) {
+      const uint8_t P = at(r, c), A = at(r - 1, c), B = at(r, c + 1), C = at(r, c - 1), D = at(r + 1, c);
+      dst[(2 * r) * m + 2 * c]         = (C == A && C != D && A != B) ? A : P;
+      dst[(2 * r) * m + 2 * c + 1]     = (A == B && A != C && B != D) ? B : P;
+      dst[(2 * r + 1) * m + 2 * c]     = (D == C && D != B && C != A) ? C : P;
+      dst[(2 * r + 1) * m + 2 * c + 1] = (B == D && B != A && D != C) ? D : P;
+    }
+}
+static void smoothIcon(const uint8_t *bmp, int x0, int y0, uint16_t color) {
+  // Which way the 2x2 cells are aligned (the source art isn't always on even pixels).
+  int offX = 0, offY = 0;
+  for (int o = 0; o < 2; o++) {
+    bool okX = true, okY = true;
+    for (int a = 0; a < 24; a++)
+      for (int b = o; b + 1 < 24; b += 2) {
+        if (iconBit(bmp, b, a) != iconBit(bmp, b + 1, a)) okX = false;
+        if (iconBit(bmp, a, b) != iconBit(bmp, a, b + 1)) okY = false;
+      }
+    if (okX) offX = o;
+    if (okY) offY = o;
+  }
+  // 13x13 source cells (so an offset grid still fits); cell 0 starts at pixel off-2.
+  static uint8_t g0[13 * 13], g1[26 * 26], g2[52 * 52], g3[104 * 104];
+  for (int r = 0; r < 13; r++)
+    for (int c = 0; c < 13; c++) g0[r * 13 + c] = iconBit(bmp, offX - 1 + 2 * c, offY - 1 + 2 * r) ? 1 : 0;
+  scale2x(g0, 13, g1); scale2x(g1, 26, g2); scale2x(g2, 52, g3);
+
+  const int bgR = 11, bgG = 14, bgB = 21;
+  const int fR = ((color >> 11) & 31) * 255 / 31, fG = ((color >> 5) & 63) * 255 / 63, fB = (color & 31) * 255 / 31;
+  for (int py = 0; py < 24; py++)
+    for (int px = 0; px < 24; px++) {
+      const int gy = (py - offY + 2) * 4, gx = (px - offX + 2) * 4;
+      int hits = 0;
+      for (int sy = 0; sy < 4; sy++)
+        for (int sx = 0; sx < 4; sx++) hits += g3[(gy + sy) * 104 + gx + sx];
+      if (!hits) continue;
+      tft.drawPixel(x0 + px, y0 + py, tft.color565(bgR + (fR - bgR) * hits / 16, bgG + (fG - bgG) * hits / 16, bgB + (fB - bgB) * hits / 16));
+    }
+}
+
+static void drawCameraIcon(int x, int y, uint16_t color) { smoothIcon(camera_icon_24x24, x, y, color); }
+static void drawAlarmIcon(int x, int y, uint16_t color) { smoothIcon(alarm_icon_24x24, x, y, color); }
+static void drawTimerIcon(int x, int y, uint16_t color) { smoothIcon(timer_icon_24x24, x, y, color); }
+// The reminder pencil is drawn from vector geometry (pointed tip, body, rounded eraser) straight
+// to 4-bit coverage, two pixels a byte, low nibble first - pixel art couldn't give it a clear tip.
+static const uint8_t PROGMEM pencil_alpha_24x24[] = {
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xA6, 0x6A, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xA0, 0xFF, 0xFF, 0x0A,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFA, 0xFF, 0xFF, 0x6F,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x90, 0xFF, 0xFF, 0xFF, 0xAF,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x31, 0xFF, 0xFF, 0xFF, 0xAF,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xA0, 0x1D, 0xF3, 0xFF, 0xFF, 0x6F,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFA, 0xDF, 0x31, 0xFF, 0xFF, 0x0A,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0xA0, 0xFF, 0xFF, 0x1D, 0xF3, 0xAF, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0xFA, 0xFF, 0xFF, 0xDF, 0x31, 0x09, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0xA0, 0xFF, 0xFF, 0xFF, 0xFF, 0x1D, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0xFA, 0xFF, 0xFF, 0xFF, 0xFF, 0x0A, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0xA0, 0xFF, 0xFF, 0xFF, 0xFF, 0xAF, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0xD1, 0xFF, 0xFF, 0xFF, 0xFF, 0x0A, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x60, 0x13, 0xFD, 0xFF, 0xFF, 0xAF, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0xD0, 0x3F, 0xD1, 0xFF, 0xFF, 0x0A, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0xF2, 0xFF, 0x13, 0xFD, 0xAF, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0xF7, 0xFF, 0x3F, 0xD1, 0x0A, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0xFD, 0xFF, 0xFF, 0x13, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x20, 0xFF, 0xFF, 0xDF, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x70, 0xFF, 0x7D, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0xA0, 0x27, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+static void drawReminderIcon(int x, int y, uint16_t color) {
+  const int fR = ((color >> 11) & 31) * 255 / 31, fG = ((color >> 5) & 63) * 255 / 63, fB = (color & 31) * 255 / 31;
+  for (int i = 0; i < 576; i++) {
+    const uint8_t b = pgm_read_byte(&pencil_alpha_24x24[i >> 1]);
+    const int a = (i & 1) ? (b >> 4) : (b & 15);
+    if (!a) continue;
+    tft.drawPixel(x + (i % 24), y + (i / 24), tft.color565(11 + (fR - 11) * a / 15, 14 + (fG - 14) * a / 15, 21 + (fB - 21) * a / 15));
+  }
+}
+static void drawBirthdayIcon(int x, int y, uint16_t color) { smoothIcon(birthday_icon_24x24, x, y, color); }
+static void drawMusicIcon(int x, int y, uint16_t color) { smoothIcon(music_icon_24x24, x, y, color); }
 
 // Count drawn as plain text to the RIGHT of its icon (never over it), in the
 // icon's own colour. Above 9 is clipped to "9+" so it can't run into the face.
 static void drawIconCount(int iconX, int iconY, int count, uint16_t color) {
   if (count <= 0) return;
-  tft.setTextDatum(middle_left);
+  // Placed by the baseline so the digits (about 13px tall, no descenders) sit centred on the
+  // icon's middle - the font's "middle" datum counts descender space and left them riding high.
+  tft.setTextDatum(baseline_left);
   tft.setTextColor(color);
   tft.setFont(&fonts::DejaVu18); // anti-aliased, not the blocky bitmap Font0
-  tft.drawString(count > 9 ? "9+" : String(count), iconX + 24 + 4, iconY + 12);
+  tft.drawString(count > 9 ? "9+" : String(count), iconX + 24 + 4, iconY + 12 + 7);
   tft.setFont(&fonts::Font0);
   tft.setTextSize(1);
   tft.setTextDatum(top_left);
@@ -2210,9 +2300,9 @@ void drawStatusIconStack() {
   if (reminderCount > 0) { drawReminderIcon(iconX, y, ICON_ORANGE); drawIconCount(iconX, y, reminderCount, ICON_ORANGE); }
   y += PITCH;
   if (birthdayCount > 0) {
-    uint16_t cakeColor = birthdayIsGreen ? COL_GREEN : COL_YELLOW;
+    uint16_t cakeColor = birthdayColor == 2 ? COL_GREEN : birthdayColor == 1 ? tft.color565(255, 140, 0) : tft.color565(255, 255, 255);
     drawBirthdayIcon(iconX, y, cakeColor);
-    if (birthdayCount > 1) drawIconCount(iconX, y, birthdayCount, cakeColor);
+    drawIconCount(iconX, y, birthdayCount, cakeColor);
   }
   y += PITCH;
   if (newReleaseCount > 0) {
@@ -3742,7 +3832,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       timerCount = s["timerCount"] | 0;
       reminderCount = s["reminderCount"] | 0;
       birthdayCount = s["birthday"]["count"] | 0;
-      birthdayIsGreen = strcmp(s["birthday"]["color"] | "", "green") == 0;
+      { const char *bc = s["birthday"]["color"] | ""; birthdayColor = strcmp(bc, "green") == 0 ? 2 : (strcmp(bc, "orange") == 0 || strcmp(bc, "yellow") == 0) ? 1 : 0; }
       newReleaseCount = s["newReleases"]["count"] | 0;
       cameraAttached = s["camera"]["attached"] | false;
       cameraAwake = s["camera"]["awake"] | false;
@@ -3779,8 +3869,8 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
           if (!onSettingsScreen) drawGlucoseWidget();
         }
       }
-      Serial.printf("[IMS] Schedule updated: alarm=%d, timer=%d, reminder=%d, birthday=%d(green=%d), newReleases=%d, camera=%d\n",
-                    alarmCount, timerCount, reminderCount, birthdayCount, birthdayIsGreen, newReleaseCount, cameraAttached);
+      Serial.printf("[IMS] Schedule updated: alarm=%d, timer=%d, reminder=%d, birthday=%d(colour=%d), newReleases=%d, camera=%d\n",
+                    alarmCount, timerCount, reminderCount, birthdayCount, birthdayColor, newReleaseCount, cameraAttached);
       if (!onSettingsScreen) {
         drawFooterClock();
         drawStatusIconStack();

@@ -1,6 +1,6 @@
 import AccountChip from './AccountChip';
 import React from 'react';
-import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight , Droplets , Newspaper , ListChecks , MessageSquareQuote } from 'lucide-react';
+import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight , Droplets , Newspaper , ListChecks , MessageSquareQuote , Network , Lightbulb , Layers } from 'lucide-react';
 
 // Each entry here is one card on the hub. Add a new one whenever a new
 // /ims/* page is built - this is the single place that needs to know about
@@ -70,6 +70,14 @@ const LINKS = [
     icon: Dices,
     gradient: 'from-lime-500 to-green-600',
     glow: 'rgba(132,204,22,0.3)'
+  },
+  {
+    path: '/campaigns',
+    title: 'Campaign Manager',
+    description: 'Card game campaigns - Lord of the Rings LCG with the map, the chronicle and rule checks - plus deck building with AI insights.',
+    icon: Layers,
+    gradient: 'from-emerald-600 to-teal-700',
+    glow: 'rgba(16,185,129,0.3)'
   },
   {
     path: '/ims/look',
@@ -164,6 +172,22 @@ const LINKS = [
     glow: 'rgba(249,115,22,0.3)'
   },
   {
+    path: '/ims/devideas',
+    title: 'Dev Ideas',
+    description: 'Ideas for improving IMS, said to Ims or typed here, picked up in Claude Code with /ideas.',
+    icon: Lightbulb,
+    gradient: 'from-amber-400 to-orange-600',
+    glow: 'rgba(251,146,60,0.3)'
+  },
+  {
+    path: '/ims/architecture',
+    title: 'System Architecture',
+    description: 'A map of how Ims is built: clients, AI models, connections, data, services and environment.',
+    icon: Network,
+    gradient: 'from-fuchsia-500 to-violet-600',
+    glow: 'rgba(168,85,247,0.3)'
+  },
+  {
     path: '/ims/runplanner',
     title: 'Run Planner',
     description: 'Plan Komoot routes, timing and carbs to keep glucose steady.',
@@ -175,9 +199,9 @@ const LINKS = [
 
 const SECTIONS = [
   ['Core functions', ['/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings', '/ims/tasks']],
-  ['Personal', ['/ims/musicscan', '/ims/boardgames', '/ims/news']],
+  ['Personal', ['/ims/musicscan', '/ims/boardgames', '/campaigns', '/ims/news']],
   ['Health and fitness', ['/ims/glucose', '/ims/activities', '/ims/runplanner']],
-  ['Customisation and system settings', ['/ims/facedesigner', '/ims/persona', '/ims/phrases', '/ims/wifi']],
+  ['Customisation and system settings', ['/ims/facedesigner', '/ims/persona', '/ims/phrases', '/ims/wifi', '/ims/devideas', '/ims/architecture']],
   ['Disabled', ['/ims/look', '/ims/faces']],
 ];
 

@@ -434,7 +434,7 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
               <div className="flex flex-wrap items-start gap-5">
                 <div>
                   {/* Which frame is being painted */}
-                  <div className="flex gap-2 mb-2">
+                  <div className="flex flex-wrap gap-2 mb-2">
                     {FRAMES.map((fr) => (
                       <button key={fr.key} onClick={() => setFrame(fr.key)} title={fr.hint}
                         className={`px-3 py-1.5 rounded-lg text-[11px] font-bold ${activeFrame === fr.key ? `bg-gradient-to-r ${gradient} text-slate-900` : isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}>
@@ -448,7 +448,10 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
                       </button>
                     )}
                   </div>
-                  <DotGrid grid={shownGrid} color={draft.color} size={22} gap={4} editable={!locked} editRange={editRange} onPaint={paint} />
+                  {/* fills the column on a phone, full size (22px dots) on wider screens */}
+                  <div style={{ maxWidth: 12 * 22 + 11 * 4 + 16 }}>
+                    <DotGrid grid={shownGrid} color={draft.color} size={22} gap={4} fluid editable={!locked} editRange={editRange} onPaint={paint} />
+                  </div>
                   <p className="text-[10px] text-slate-500 mt-1.5">
                     {activeFrame === 'cell' ? `Painting the eyes of cell "${cell?.name}" (top five rows). The greyed rows are the mouth.`
                       : animated ? `Painting the ${activeFrame === 'grid' ? 'closed' : 'open'} mouth (bottom three rows). The eyes above come from the animation cell you have selected.`

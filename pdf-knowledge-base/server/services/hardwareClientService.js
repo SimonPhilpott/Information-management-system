@@ -16,6 +16,12 @@ import { detectQuerySubjects } from "./subjectMatcherService.js";
 import { getEmotionNames, getFacePromptGuide } from "./faceDesignService.js";
 import { describeSources } from "./newsService.js";
 import { wakePhraseNames, wakeSpellings } from "./phrasesService.js";
+import { listBirthdays } from "./birthdayService.js";
+import { getEventsOn } from "./calendarService.js";
+import { describeDecksForIms } from "./decksService.js";
+import { describeCampaignsForIms } from "./campaignsService.js";
+import { collectionSummary } from "./boardgamesService.js";
+import { getUpcomingReleases, getWants as getMusicWants } from "./musicScanService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -662,13 +668,102 @@ function buildServicesParagraph() {
     "Weather (getWeather). The morning / day report, any time (getDayReport). " +
     "News and interests from their chosen sources and the BBC (getNews). " +
     "Background tasks - research that runs on its own and can be asked about later (startBackgroundTask, getBackgroundTasks; also on /ims/tasks). " +
+    "Their board game collection - how many games and expansions, and which games suit a player count or time (getBoardGames; also on /ims/boardgames, where games are added, removed and marked for sale). " +
+    "The Campaign Manager (/campaigns, a tab per game - Lord of the Rings LCG at /campaigns/lotr and Arkham Horror LCG at /campaigns/ahlcg) - the card game campaigns Simon plays with his brother Daniel (for Arkham also investigators' trauma, experience, the chaos bag and the campaign log): who's playing which deck and heroes, scenarios won and lost with the notable moments, boons and burdens, fallen heroes, what's next on the road, a map of Middle-earth, a written chronicle with a chapter per scenario (downloadable as a PDF), rule checks against the official rulebooks, and the decks themselves (RingsDB import, testing, AI insights). Talk about it like a fellow player - ask how a game went, what's next, recall the chronicle (getCampaigns; the snapshot below has the headlines). " +
+    "Dev ideas - ideas for improving IMS itself, saved for Simon to pick up in Claude Code (saveDevIdea; also on /ims/devideas). " +
     "Blood sugar: current reading, time in range, lows, overnight, carbs (getBloodGlucose, lookUpFood, logCarbs, clearOldNightscoutData). " +
     "Training from Strava (getTrainingSummary). New and upcoming music from their MUZAK library (getNewMusicReleases). " +
     "Their PDF library of books and documents (searchLibrary). Jokes (tellJoke). Recording calls and meetings on the desk terminal (startRecording). " +
     "On the IMS web app only, with no tool of yours: the Run Planner (routes, pace and carbs for a run, at /ims/runplanner), running goals and detailed activity analysis (/ims/activities), " +
-    "board game collection (/ims/boardgames), the music want list and recommendations (/ims/musicscan), past call recordings and summaries (/ims/recordings), " +
+    "the music want list and recommendations (/ims/musicscan), past call recordings and summaries (/ims/recordings), " +
     "news source settings (/ims/news), your face designs (/ims/facedesigner) and your personality (/ims/persona) - if asked about these, say what's there and where." +
     (sources.length ? "\nYOUR NEWS SOURCES (name and tags): " + sources.join("; ") + "." : "");
+}
+
+// A snapshot of what's actually saved in every service, rebuilt at the start of each conversation,
+// so Ims knows the user's records without having to guess which tool to call (he once said no
+// birthdays were saved when there were plenty - the tool only looked a week ahead).
+function buildRecordsParagraph() {
+  const lines = [];
+  const safe = (label, fn) => { try { const v = fn(); if (v) lines.push(`${label}: ${v}`); } catch (err) { lines.push(`${label}: (could not be read - ${err.message})`); } };
+  const tz = 'Europe/London';
+  const day = (ms) => new Date(ms).toLocaleString('en-GB', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  // the next few things coming up, first - so the soonest birthday or reminder is never missed
+  safe('NEXT UP', () => {
+    const b = listBirthdays()[0];
+    const r = db.prepare('SELECT type, label, fire_at FROM scheduled_items WHERE cancelled = 0 AND fire_at > ? ORDER BY fire_at LIMIT 1').get(Date.now());
+    const bits = [];
+    if (b) bits.push(`next birthday: ${b.name}${b.relationship ? ` (${b.relationship})` : ''} ${b.isToday ? 'TODAY' : `in ${b.daysUntil} day${b.daysUntil === 1 ? '' : 's'}`}${b.turningAge ? `, turning ${b.turningAge}` : ''}`);
+    if (r) bits.push(`next ${r.type}: ${day(r.fire_at)}${r.label ? ` "${r.label}"` : ''}`);
+    return bits.join('; ');
+  });
+  safe('BIRTHDAYS saved (all of them, soonest first)', () => {
+    const list = listBirthdays();
+    if (!list.length) return 'none saved';
+    return list.map((b) => `${b.name}${b.relationship ? ` (${b.relationship})` : ''} ${b.day} ${MONTHS[b.month - 1]}` +
+      (b.isToday ? ' - TODAY' : ` - in ${b.daysUntil} day${b.daysUntil === 1 ? '' : 's'}`) + (b.turningAge ? `, turning ${b.turningAge}` : '')).join('; ');
+  });
+  safe('ALARMS, TIMERS AND REMINDERS set', () => {
+    const rows = db.prepare('SELECT type, label, fire_at, recurrence FROM scheduled_items WHERE cancelled = 0 ORDER BY fire_at LIMIT 25').all();
+    return rows.length ? rows.map((r) => `${r.type} ${day(r.fire_at)}${r.label ? ` "${r.label}"` : ''}${r.recurrence ? ` (repeats ${r.recurrence})` : ''}`).join('; ') : 'none';
+  });
+  safe('LISTS', () => {
+    const rows = db.prepare('SELECT list_name, item FROM list_items ORDER BY list_name, created_at').all();
+    if (!rows.length) return 'all empty';
+    const by = {};
+    for (const r of rows) (by[r.list_name] ||= []).push(r.item);
+    return Object.entries(by).map(([n, items]) => `${n} list (${items.length}): ${items.slice(0, 20).join(', ')}${items.length > 20 ? ', ...' : ''}`).join('; ');
+  });
+  safe('CALENDAR, next 14 days', () => {
+    const out = [];
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(Date.now() + i * 86400000).toLocaleDateString('en-CA', { timeZone: tz });
+      for (const e of getEventsOn(d)) if (e.date === d || i === 0) out.push(`${new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}${e.time ? ` ${e.time}` : ''} ${e.title || e.summary || 'event'}`);
+    }
+    return out.length ? out.slice(0, 40).join('; ') : 'nothing in the next fortnight';
+  });
+  safe('BACKGROUND TASKS (latest)', () => {
+    const rows = db.prepare('SELECT id, title, status FROM tasks ORDER BY created_at DESC LIMIT 8').all();
+    return rows.length ? rows.map((r) => `#${r.id} ${r.title} (${r.status})`).join('; ') : 'none';
+  });
+  safe('DEV IDEAS waiting for Claude Code', () => {
+    const rows = db.prepare(`SELECT id, text FROM dev_ideas WHERE status IN ('new', 'picked_up') ORDER BY created_at DESC LIMIT 10`).all();
+    return rows.length ? rows.map((r) => `#${r.id} ${r.text.split('\n')[0].slice(0, 110)}`).join('; ') : 'none';
+  });
+  safe('CARBS logged by IMS today', () => {
+    const start = new Date(new Date().toLocaleDateString('en-CA', { timeZone: tz }) + 'T00:00:00').getTime();
+    const rows = db.prepare('SELECT grams, food, at FROM carb_log WHERE at >= ? ORDER BY at').all(start);
+    return rows.length ? rows.map((r) => `${r.grams} g${r.food ? ` ${r.food}` : ''} at ${new Date(r.at).toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' })}`).join('; ') : 'none';
+  });
+  safe('BOARD GAMES', () => { const c = collectionSummary(); return `${c.baseGames} games and ${c.expansions} expansions in the collection (${c.gamesWithExpansions} games have expansions; ${c.wantToSell} marked to sell) - getBoardGames to look any up`; });
+  safe('MUSIC - want list and upcoming releases from artists in their library', () => {
+    const wants = getMusicWants().filter((w) => !w.owned).slice(0, 12).map((w) => `${w.artist} - "${w.title}"${w.date ? ` (${w.date})` : ''}`);
+    const soon = getUpcomingReleases().slice(0, 10).map((r) => `${r.mbName || r.artist} - "${r.title}" ${r.date || ''}`.trim());
+    return [wants.length ? `want list: ${wants.join('; ')}` : 'want list empty', soon.length ? `coming out: ${soon.join('; ')}` : ''].filter(Boolean).join('. ');
+  });
+  safe('SAVED MEMORIES', () => { const n = db.prepare('SELECT COUNT(*) c FROM ims_memories').get().c; return `${n} saved (listed under what you remember) - recallMemory to search`; });
+  safe('CARD GAME CAMPAIGNS (Campaign Manager, /campaigns/lotr and /campaigns/ahlcg) - getCampaigns for every play, notable moment and the chronicle text', () => describeCampaignsForIms());
+  safe('CARD GAME DECKS (on /campaigns/lotr/decks and /campaigns/ahlcg/decks)', () => describeDecksForIms());
+  safe('CALL RECORDINGS', () => {
+    const n = db.prepare('SELECT COUNT(*) c FROM recordings').get().c;
+    const last = db.prepare('SELECT with_whom, started_at FROM recordings ORDER BY started_at DESC LIMIT 3').all();
+    return n ? `${n} saved; latest: ${last.map((r) => `with ${r.with_whom} ${day(r.started_at)}`).join('; ')}` : 'none';
+  });
+  return "YOUR RECORDS RIGHT NOW (read fresh from IMS at the start of this conversation - this is the user's real saved data, so answer from it directly and never say something isn't saved when it is listed here - if a tool comes back with less than is listed here (it may only have looked a short way ahead), these records win and you say what's listed; for anything that may have changed since, more detail, or anything not listed - glucose, training, news, music, library - call the tool):\n" + lines.map((l) => `- ${l}`).join('\n');
+}
+
+// The desk sends its setup once when it connects and the server replays that same setup for every
+// later Gemini session (each one closes after 15 s of quiet), so the parts that go stale - the date
+// and time, and the records snapshot - are rewritten fresh on each replay.
+export function refreshLiveContext(text) {
+  if (typeof text !== 'string') return text;
+  const nowStr = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", dateStyle: "full", timeStyle: "long" }).format(new Date());
+  let out = text.replace(/The current date and time is [^\n]*?\.\n/, `The current date and time is ${nowStr}.\n`);
+  const a = out.indexOf('YOUR RECORDS RIGHT NOW'), b = out.indexOf('\n\nWHEN SOMETHING FAILS');
+  if (a >= 0 && b > a) out = out.slice(0, a) + buildRecordsParagraph() + out.slice(b);
+  return out;
 }
 
 // Wake phrases the user added on /ims/phrases, beyond the three built in.
@@ -745,6 +840,8 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             "LENGTH: one to six complete sentences - short for simple things, longer only when needed. No lists read aloud, no monologues, never trail off. The one exception is the morning/day report (getDayReport), which covers every item as a longer spoken briefing. " +
             "TOOLS: use your tools for anything about the user's own data. Report what they return in your own Yorkshire voice, never flat, and never invent data. Never be cruel or abusive.\n\n" +
             buildServicesParagraph() + "\n\n" +
+            buildRecordsParagraph() + "\n\n" +
+            "WHEN SOMETHING FAILS: if a tool returns an error it is logged automatically as a dev idea for Claude Code (the result says so) - tell them briefly it didn't work and that you've flagged it to be fixed. If they want something IMS can't do yet, or something goes wrong that no tool reported, offer to note it as a dev idea and call saveDevIdea if they agree, written as a clear request for a developer: what they wanted, what happened, and any detail they gave.\n\n" +
             (personaRules ? personaRules + "\n\n" : "") +
             (memoryParagraph ? memoryParagraph + "\n\n" : "") +
             "PERSONALITY right now (sets attitude, warmth, humour and formality - never your dialect or en-GB spelling): " + personalityParagraph + " " +
@@ -1015,12 +1112,13 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "getUpcomingBirthdays",
-            description: "Backed by the user's real saved data - report exactly what it returns, say plainly if there are none, never invent. Looks up the birthdays the user has saved in IMS (name, date, days until, and the age they are turning). ALWAYS call this whenever the user asks about birthdays - today, this week, this month, or 'is anyone's birthday coming up' - and never answer from memory or guess.",
+            description: "Backed by the user's real saved data - report exactly what it returns, never invent. Looks up the birthdays saved in IMS (name, relationship to the user, date, days until, and the age they are turning). Every saved birthday is also listed in YOUR RECORDS. For one person ('when is Katie's birthday?', 'how old is my dad going to be?') pass their name or relationship - that searches the whole year. For 'coming up' questions pass withinDays.",
             behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
               properties: {
-                withinDays: { type: "NUMBER", description: "How many days ahead to look (0 = today only, 7 = this week, 31 = this month). Defaults to 7." }
+                withinDays: { type: "NUMBER", description: "How many days ahead to look (0 = today only, 7 = this week, 31 = this month, 366 = all). Defaults to 31 (a month), or the whole year when a name is given." },
+                name: { type: "STRING", description: "A name or relationship to find, e.g. 'Katie', 'Dad', 'son'." }
               }
             }
           },
@@ -1089,6 +1187,38 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             description: "Starts a background research task that runs on its own (with web search) while you carry on - for anything that needs looking into rather than an instant answer: 'look into which of my bands are playing Leeds next year', 'find me a good sports physio in Leeds', 'research carb loading for a half marathon'. Use it when they say 'in the background', 'look into', 'find out and let me know', 'research', or when a question clearly needs digging. Write the task out in full, clear words including any detail they gave.",
             behavior: "BLOCKING",
             parameters: { type: "OBJECT", properties: { task: { type: "STRING", description: "The task, in full." } }, required: ["task"] }
+          },
+          {
+            name: "saveDevIdea",
+            description: "Saves a development idea for IMS itself - a feature, change or fix to this system, its app, its desk terminal or you - to the dev ideas queue, which Simon picks up later in Claude Code. Use it when they say 'dev idea', 'development idea', 'idea for IMS', 'note for Claude', 'add to the dev list', or describe a change they want made to IMS. Write the idea out in full, clear words with every detail they gave; don't add your own suggestions. Not for ordinary to-dos (lists) or research (startBackgroundTask).",
+            behavior: "BLOCKING",
+            parameters: { type: "OBJECT", properties: { idea: { type: "STRING", description: "The idea, in full." } }, required: ["idea"] }
+          },
+          {
+            name: "getBoardGames",
+            description: "Backed by the user's real board game collection - report exactly what it returns, never invent games. Returns how many base games and expansions they own (and how many are marked to sell), and, when asked, the games that match: by name, by player count, by playing time, or sorted by BGG rating, weight/complexity or number of expansions. Use for 'how many games have I got?', 'how many expansions do I own?', 'what two-player games do I have under an hour?', 'do I own Wingspan?', 'what are my heaviest games?'.",
+            behavior: "BLOCKING",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                query: { type: "STRING", description: "Part of a game or expansion name, e.g. 'Spirit Island'." },
+                players: { type: "NUMBER", description: "A player count the game must support, e.g. 2." },
+                maxMinutes: { type: "NUMBER", description: "Longest playing time in minutes, e.g. 60." },
+                sortBy: { type: "STRING", enum: ["rating", "weight", "expansions"], description: "Order: best rated on BGG, heaviest (most complex), or most expansions owned." }
+              }
+            }
+          },
+          {
+            name: "getCampaigns",
+            description: "Backed by the Campaign Manager - the Lord of the Rings LCG and Arkham Horror LCG campaigns Simon plays with his brother Daniel (Arkham campaigns also give each investigator's trauma, experience and fate, the difficulty, the chaos bag and the campaign log). Returns, for each campaign (or the one named): the players with their decks, heroes and fallen heroes; progress through the campaign and the next scenario; every play with its date, result, difficulty, score and notable moments; boons and burdens and whose deck they're in; notes; recent rule checks; and the chronicle - a chapter per scenario with its title and summary (set chronicle true for the full chapter text, e.g. to read a chapter aloud). Use for anything about their campaigns, games, heroes, scenarios or the chronicle. Report what it returns; never invent plays or results.",
+            behavior: "BLOCKING",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                name: { type: "STRING", description: "Part of the campaign's name, if they mean one in particular." },
+                chronicle: { type: "BOOLEAN", description: "true to include the full text of each chronicle chapter and the tale." }
+              }
+            }
           },
           {
             name: "getBackgroundTasks",

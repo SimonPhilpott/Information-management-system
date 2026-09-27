@@ -647,7 +647,7 @@ export function useAppLogic() {
     const currentOrigin = window.location.origin;
     console.log('[Auth] Fetching redirect URL...');
     try {
-      const data = await fetch(`${API}/api/auth/url?clientUrl=${encodeURIComponent(currentOrigin)}`).then(r => r.json());
+      const data = await fetch(`${API}/api/auth/url?full=1&clientUrl=${encodeURIComponent(currentOrigin)}`).then(r => r.json());
       if (data.url) {
         window.location.href = data.url;
       } else {

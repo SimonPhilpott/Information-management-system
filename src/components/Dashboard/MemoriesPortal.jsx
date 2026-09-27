@@ -300,10 +300,10 @@ export default function MemoriesPortal({
       )}
 
       {/* Top Header */}
-      <header className={`px-6 py-4 flex items-center justify-between border-b backdrop-blur-xl sticky top-0 z-40 transition-colors duration-300 ${
+      <header className={`px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-b backdrop-blur-xl sticky top-0 z-40 transition-colors duration-300 ${
         isDark ? 'bg-[#030712]/80 border-white/5' : 'bg-[#f4efed]/85 border-[#2E2B27]/10'
       }`}>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
           <button 
             onClick={handleReturnHome}
             className={`p-2 rounded-xl flex items-center gap-2 text-xs font-bold transition-all active:scale-95 ${
@@ -325,14 +325,14 @@ export default function MemoriesPortal({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-base font-black tracking-tight leading-none uppercase">
+                <h1 className="text-sm sm:text-base font-black tracking-tight leading-none uppercase">
                   IMS Memories Hub
                 </h1>
                 <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-brand-cyan/15 text-brand-cyan border border-brand-cyan/25">
                   SQLite
                 </span>
               </div>
-              <span className="text-[10px] font-semibold text-slate-500 tracking-wider">
+              <span className="hidden sm:inline text-[10px] font-semibold text-slate-500 tracking-wider">
                 /ims/memories • Persistent Fact & Recall Subsystem
               </span>
             </div>
@@ -340,7 +340,7 @@ export default function MemoriesPortal({
         </div>
 
         {/* Right Header Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 ml-auto">
           <button
             onClick={() => setShowArchive(true)}
             className={`px-3 py-2 rounded-xl text-xs font-bold tracking-wide transition-all flex items-center gap-2 border active:scale-95 cursor-pointer ${
@@ -349,14 +349,14 @@ export default function MemoriesPortal({
             title="Deleted memories - review or restore"
           >
             <Archive size={15} />
-            <span>Archive</span>
+            <span className="hidden sm:inline">Archive</span>
           </button>
           <button
             onClick={() => setIsAddModalOpen(true)}
             className="px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition-all flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-[0_0_15px_rgba(0,242,255,0.25)] active:scale-95 cursor-pointer"
           >
             <Plus size={15} />
-            <span>Add Memory</span>
+            <span className="hidden sm:inline">Add Memory</span>
           </button>
 
           {onThemeToggle && (

@@ -214,6 +214,7 @@ html,
 body,
 #root {
   height: 100vh !important;
+  height: 100dvh !important;
   width: 100vw !important;
   overflow: hidden !important;
   margin: 0;
@@ -276,6 +277,7 @@ a:hover {
   display: flex;
   flex-direction: column;
   height: 100vh !important;
+  height: 100dvh !important;
   width: 100vw !important;
   position: fixed;
   inset: 0;
@@ -548,8 +550,10 @@ a:hover {
   flex: 1 1 0%;
   overflow: hidden;
   height: calc(100vh - var(--topbar-height) - var(--statusbar-height)) !important;
+  height: calc(100dvh - var(--topbar-height) - var(--statusbar-height)) !important;
   min-height: 0;
   max-height: calc(100vh - var(--topbar-height) - var(--statusbar-height)) !important;
+  max-height: calc(100dvh - var(--topbar-height) - var(--statusbar-height)) !important;
 }
 
 .app-statusbar {
@@ -2711,6 +2715,7 @@ a:hover {
     width: 320px;
     max-width: 90%;
     height: calc(100vh - var(--topbar-height)) !important;
+    height: calc(100dvh - var(--topbar-height)) !important;
     background: var(--bg-primary);
     transform: translateX(100%);
     transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);

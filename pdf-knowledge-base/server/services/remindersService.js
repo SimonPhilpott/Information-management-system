@@ -348,6 +348,16 @@ export function getActiveScheduledStatus() {
 
 // Items firing today (London calendar date) - used by the morning report to
 // mention "you've got X on today", not the full outstanding list.
+// Alarms, timers and reminders after today, within the next `days` days (for the day report).
+export function getItemsComingUp(days = 7) {
+  const today = londonParts(new Date());
+  const startMs = londonWallTimeToUtcMs(today.year, today.month, today.day, 23, 59, 59) + 1000;
+  const rows = db.prepare(
+    `SELECT id, type, label, fire_at, recurrence FROM scheduled_items WHERE cancelled = 0 AND fire_at BETWEEN ? AND ? ORDER BY fire_at ASC`
+  ).all(startMs, startMs + days * 86400000);
+  return rows.map((r) => ({ id: r.id, type: r.type, label: r.label, recurrence: r.recurrence || null, fireAt: new Date(r.fire_at).toISOString() }));
+}
+
 export function getItemsDueToday() {
   const today = londonParts(new Date());
   const startMs = londonWallTimeToUtcMs(today.year, today.month, today.day, 0, 0, 0);

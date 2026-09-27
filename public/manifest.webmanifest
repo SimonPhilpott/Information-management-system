@@ -1,0 +1,22 @@
+{
+  "name": "IMS - Information Management System",
+  "short_name": "Ims",
+  "description": "Ims, your Yorkshire voice assistant - chat, blood sugar, calendar, music and more.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#030712",
+  "theme_color": "#030712",
+  "icons": [
+    { "src": "/ims-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/ims-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/ims-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Talk to Ims", "url": "/", "icons": [{ "src": "/ims-icon-192.png", "sizes": "192x192" }] },
+    { "name": "Blood sugar", "url": "/ims/glucose", "icons": [{ "src": "/ims-icon-192.png", "sizes": "192x192" }] },
+    { "name": "Dev ideas", "url": "/ims/devideas", "icons": [{ "src": "/ims-icon-192.png", "sizes": "192x192" }] }
+  ]
+}
