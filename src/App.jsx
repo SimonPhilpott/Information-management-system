@@ -40,6 +40,7 @@ import NewsPortal from './components/Dashboard/NewsPortal';
 import TasksPortal from './components/Dashboard/TasksPortal';
 import SystemArchitecturePortal from './components/Dashboard/SystemArchitecturePortal';
 import DevIdeasPortal from './components/Dashboard/DevIdeasPortal';
+import BackupsPortal from './components/Dashboard/BackupsPortal';
 import DecksPortal from './components/Dashboard/DecksPortal';
 import { isCampaignPath, canonicalCampaignPath } from './components/Dashboard/campaignPaths';
 import PhrasesPortal from './components/Dashboard/PhrasesPortal';
@@ -1435,6 +1436,10 @@ export default function App() {
         currentPath={canonical}
       />
     );
+  }
+
+  if (currentPath.startsWith('/ims/backups')) {
+    return <BackupsPortal theme={state.theme} onThemeToggle={actions.toggleTheme} setCurrentPath={setCurrentPath} />;
   }
 
   if (currentPath.startsWith('/ims/devideas')) {

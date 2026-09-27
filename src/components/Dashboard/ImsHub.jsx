@@ -1,6 +1,6 @@
 import AccountChip from './AccountChip';
 import React from 'react';
-import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight , Droplets , Newspaper , ListChecks , MessageSquareQuote , Network , Lightbulb , Layers } from 'lucide-react';
+import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight , Droplets , Newspaper , ListChecks , MessageSquareQuote , Network , Lightbulb , Layers , DatabaseBackup } from 'lucide-react';
 
 // Each entry here is one card on the hub. Add a new one whenever a new
 // /ims/* page is built - this is the single place that needs to know about
@@ -172,6 +172,14 @@ const LINKS = [
     glow: 'rgba(249,115,22,0.3)'
   },
   {
+    path: '/ims/backups',
+    title: 'Backups',
+    description: 'All the data from every service, backed up each night to this PC and Google Drive - or back up now.',
+    icon: DatabaseBackup,
+    gradient: 'from-emerald-500 to-cyan-600',
+    glow: 'rgba(16,185,129,0.3)'
+  },
+  {
     path: '/ims/devideas',
     title: 'Dev Ideas',
     description: 'Ideas for improving IMS, said to Ims or typed here, picked up in Claude Code with /ideas.',
@@ -201,7 +209,7 @@ const SECTIONS = [
   ['Core functions', ['/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings', '/ims/tasks']],
   ['Personal', ['/ims/musicscan', '/ims/boardgames', '/campaigns', '/ims/news']],
   ['Health and fitness', ['/ims/glucose', '/ims/activities', '/ims/runplanner']],
-  ['Customisation and system settings', ['/ims/facedesigner', '/ims/persona', '/ims/phrases', '/ims/wifi', '/ims/devideas', '/ims/architecture']],
+  ['Customisation and system settings', ['/ims/facedesigner', '/ims/persona', '/ims/phrases', '/ims/wifi', '/ims/devideas', '/ims/backups', '/ims/architecture']],
   ['Disabled', ['/ims/look', '/ims/faces']],
 ];
 

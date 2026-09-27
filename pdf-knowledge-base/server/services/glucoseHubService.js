@@ -244,11 +244,11 @@ async function postCarbsToNightscout(g, food, t) {
   return { sent: true, id, identifier: d.identifier };
 }
 
-export async function logCarbs({ grams, food, at }) {
+export async function logCarbs({ grams, food, at, source = 'voice' }) {
   const g = Math.round(Number(grams));
   if (!Number.isFinite(g) || g <= 0 || g > 400) throw new Error('Give the carbs in grams (1 to 400).');
   const t = at ? Number(new Date(at)) : Date.now();
-  const info = db.prepare('INSERT INTO carb_log (at, grams, food, source) VALUES (?, ?, ?, ?)').run(t, g, food ? String(food).slice(0, 120) : null, 'voice');
+  const info = db.prepare('INSERT INTO carb_log (at, grams, food, source) VALUES (?, ?, ?, ?)').run(t, g, food ? String(food).slice(0, 120) : null, ['voice', 'photo', 'page'].includes(source) ? source : 'voice');
   let ns;
   try { ns = await postCarbsToNightscout(g, food, t); } catch (err) { ns = { sent: false, reason: err.message }; }
   if (ns.id || ns.identifier) db.prepare('UPDATE carb_log SET ns_id = ?, ns_identifier = ? WHERE id = ?').run(ns.id || null, ns.identifier || null, info.lastInsertRowid);
@@ -405,3 +405,42 @@ async function autoClearCheck() {
 }
 setTimeout(() => autoClearCheck().catch(() => {}), 60000);
 setInterval(() => autoClearCheck().catch(() => {}), 3600000);
+
+// ---- carbs from a photo ------------------------------------------------------------------------------------
+// A photo of a plate (from the phone): Gemini names each food with a portion and its carbs, and says how sure it
+// is. Nothing is logged here - the page shows the estimate, the user corrects it, and only their confirmed
+// total is logged. note: anything they add ("the rice was a full cup", "no sauce").
+export async function estimateCarbsFromPhoto(image, mimeType = 'image/jpeg', note = '') {
+  if (!image?.length) throw new Error('No photo came through.');
+  if (image.length > 12 * 1024 * 1024) throw new Error('The photo is too big - try again.');
+  const config = (await import('../config.js')).default;
+  const prompt = `You are helping someone with type 1 diabetes count carbohydrates. Look at this photo of food and estimate the carbs as accurately as you can, for a UK diet.
+List each separate food or drink you can see, with: name (plain, specific - e.g. "white basmati rice", "garlic naan"), portion (your estimate of the amount, in grams or a household measure, as seen), carbs (grams of carbohydrate in that portion), and confidence ("high", "medium" or "low").
+Use standard nutrition values (like the UK's McCance and Widdowson data or pack labels). Count only carbohydrate, not sugar alone, and not fibre. Judge the portion from the plate, cutlery and anything else for scale.
+Also give: total (the sum of the carbs), summary (a short description of the meal, under 60 characters, for a log), and caution (one sentence on anything that makes the estimate uncertain - hidden ingredients, sauces, unclear portions - or "" if none).
+If there is no food in the photo, return no items and say so in caution.${note ? `\nWhat the person says about it (believe this over the picture): ${note}` : ''}`;
+  const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.gemini.apiKey },
+    body: JSON.stringify({
+      contents: [{ parts: [{ inlineData: { mimeType, data: Buffer.from(image).toString('base64') } }, { text: prompt }] }],
+      generationConfig: {
+        responseMimeType: 'application/json', temperature: 0.2,
+        responseSchema: {
+          type: 'OBJECT',
+          properties: {
+            items: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, portion: { type: 'STRING' }, carbs: { type: 'NUMBER' }, confidence: { type: 'STRING', enum: ['high', 'medium', 'low'] } }, required: ['name', 'portion', 'carbs', 'confidence'] } },
+            total: { type: 'NUMBER' }, summary: { type: 'STRING' }, caution: { type: 'STRING' },
+          },
+          required: ['items', 'total', 'summary', 'caution'],
+        },
+      },
+    }),
+    signal: AbortSignal.timeout(60000),
+  });
+  if (!res.ok) throw new Error(`Gemini returned HTTP ${res.status}`);
+  const text = (await res.json())?.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text;
+  if (!text) throw new Error('Could not read the photo - try another.');
+  const out = JSON.parse(text);
+  const items = (out.items || []).map((i) => ({ name: String(i.name).slice(0, 80), portion: String(i.portion || '').slice(0, 60), carbs: Math.max(0, Math.round(Number(i.carbs) || 0)), confidence: i.confidence || 'medium' }));
+  return { items, total: items.reduce((n, i) => n + i.carbs, 0), summary: String(out.summary || '').slice(0, 80), caution: String(out.caution || '') };
+}

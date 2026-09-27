@@ -108,7 +108,7 @@ const spokes = (live) => [
       { icon: Bell, main: 'Core functions - 8', sub: 'Alarms, timers, reminders, birthdays, calendar, memories, recordings, tasks' },
       { icon: Heart, main: 'Personal - 4', sub: 'Music scanner, board games, Campaign Manager (LOTR and Arkham), news' },
       { icon: Droplets, main: 'Health and fitness - 3', sub: 'Blood sugar, activities, run planner' },
-      { icon: Settings, main: 'Customisation and system - 6', sub: 'Face designer, persona, wake and stop phrases, Wi-Fi, dev ideas, this page' },
+      { icon: Settings, main: 'Customisation and system - 7', sub: 'Face designer, persona, wake and stop phrases, Wi-Fi, dev ideas, backups, this page' },
       { icon: Eye, main: 'Disabled - 2', sub: 'Look and Faces, until the camera works' },
     ],
   },
@@ -134,7 +134,7 @@ const supporting = [
       { icon: Clock, main: 'Every 5 minutes', sub: 'Nightscout history log; Google Calendar sync' },
       { icon: Activity, main: 'Every 30 minutes', sub: 'Strava activities; weather' },
       { icon: Database, main: 'Hourly', sub: 'Nightscout storage auto-clear check' },
-      { icon: Music, main: 'Nightly', sub: 'Music scan at its scheduled time' },
+      { icon: Music, main: 'Nightly', sub: 'Music scan at its scheduled time; backup of all service data to the PC and Google Drive after 3am' },
     ],
   },
   {
@@ -165,7 +165,7 @@ const FINDINGS = [
   { level: 'info', title: 'Test prompts are safe', sub: 'The test box under Ims runs read-only tools for real; anything that would change something is shown but not done' },
   { level: 'warn', title: 'Camera not working', sub: 'Look and Faces stay disabled until it does' },
   { level: 'warn', title: 'Fixed server address', sub: 'The desk terminal connects to 192.168.1.78 (include/config.h) - if the PC gets a new IP, it cannot connect' },
-  { level: 'info', title: 'One host', sub: 'Backend, database and tunnel all run on one Windows PC - when it is off, Ims is offline everywhere' },
+  { level: 'info', title: 'One host', sub: 'Backend, database and tunnel all run on one Windows PC - when it is off, Ims is offline everywhere. Everything is backed up nightly to Google Drive (/ims/backups)' },
   { level: 'info', title: 'Nightscout storage', sub: 'MongoDB free tier - usage shows on the desk screen; old data can be auto-cleared after 3 months' },
 ];
 

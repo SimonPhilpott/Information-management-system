@@ -235,6 +235,16 @@ app.post('/api/system/trace', async (req, res) => {
   res.end();
 });
 
+// Backups (/ims/backups): status, and a backup on demand.
+app.get('/api/backups', async (req, res) => {
+  const { backupStatus } = await import('./services/backupService.js');
+  res.json({ success: true, ...backupStatus() });
+});
+app.post('/api/backups', async (req, res) => {
+  const { runBackup } = await import('./services/backupService.js');
+  try { res.json({ success: true, result: await runBackup({ reason: 'manual' }) }); } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
 app.get('/api/glucose', async (req, res) => {
   try {
     const data = await getGlucoseData();
@@ -338,6 +348,8 @@ setTimeout(refreshStrava, 20000);
 setInterval(refreshStrava, 30 * 60 * 1000);
 setTimeout(refreshCalendar, 10000);
 setInterval(refreshCalendar, 5 * 60 * 1000);
+// Nightly backup of every service's data (database and files) to the PC and Google Drive, after 03:00.
+import('./services/backupService.js').then((m) => m.startNightlyBackups()).catch((err) => console.error('[Backup] Scheduler failed to start:', err.message));
 
 // Weather for the device footer, refreshed every 30 minutes.
 let deviceWeather = null;

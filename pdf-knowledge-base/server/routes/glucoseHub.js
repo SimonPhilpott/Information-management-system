@@ -1,5 +1,6 @@
+import express from 'express';
 import { Router } from 'express';
-import { getSummary, getDay, logCarbs, listCarbs, deleteCarbs, analyse, getSavedInsight, getNightscoutWriteStatus, setNightscoutSecret, testNightscoutWrite, getNightscoutDbSize, clearOldNightscout, getAutoClear, setAutoClear } from '../services/glucoseHubService.js';
+import { estimateCarbsFromPhoto, getSummary, getDay, logCarbs, listCarbs, deleteCarbs, analyse, getSavedInsight, getNightscoutWriteStatus, setNightscoutSecret, testNightscoutWrite, getNightscoutDbSize, clearOldNightscout, getAutoClear, setAutoClear } from '../services/glucoseHubService.js';
 import { lookUpFood } from '../services/foodService.js';
 
 const router = Router();
@@ -16,6 +17,11 @@ router.post('/insight', async (req, res) => {
 });
 router.get('/carbs', (req, res) => {
   try { res.json({ success: true, carbs: listCarbs(Number(req.query.days) || 7) }); } catch (err) { fail(res, err); }
+});
+// A plate photo from the phone: an estimate to check - nothing is logged until it's confirmed.
+router.post('/carbs/photo', express.raw({ type: 'image/*', limit: '12mb' }), async (req, res) => {
+  try { res.json({ success: true, ...(await estimateCarbsFromPhoto(req.body, String(req.headers['content-type'] || 'image/jpeg').split(';')[0], String(req.query.note || '').slice(0, 300))) }); }
+  catch (err) { fail(res, err, 400); }
 });
 router.post('/carbs', async (req, res) => {
   try { res.json({ success: true, entry: await logCarbs(req.body || {}) }); } catch (err) { fail(res, err, 400); }
