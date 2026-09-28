@@ -166,11 +166,12 @@ export function getDay(day) {
   return { day, from, to, readings: rs, stats: statsOf(rs, Math.min(to, Date.now()) - from), treatments, carbs, activities, iob, lows: lowEvents(rs) };
 }
 
-// ---- carb log (by voice or on the page), also sent to Nightscout as carbs (Meal Bolus, like AAPS) ---------------
+// ---- carb log (by voice or on the page), sent to Nightscout as an informational Note (AAPS handles bolus & treatments) ---------------
 const NS_BASE = 'https://simon-philpott-nightscout.herokuapp.com';
 const NS_SECRET_KEY = 'nightscout_api_secret';
 try { db.exec('ALTER TABLE carb_log ADD COLUMN ns_id TEXT'); } catch (_) { /* already there */ }
 try { db.exec('ALTER TABLE carb_log ADD COLUMN ns_identifier TEXT'); } catch (_) { /* already there */ }
+try { db.exec('ALTER TABLE carb_log ADD COLUMN insulin REAL'); } catch (_) { /* already there */ }
 
 export function getNightscoutWriteStatus() { return { configured: Boolean(getSetting(NS_SECRET_KEY)) }; }
 export function setNightscoutSecret(secret) {
@@ -193,10 +194,8 @@ export async function testNightscoutWrite() {
   if (!(m.canWrite === true || m.message === 'OK')) throw new Error('Nightscout did not accept that API secret - check it matches API_SECRET in Heroku.');
   return { ok: true };
 }
-// Carbs go in through Nightscout's API v3, not v1. AAPS's NSClient syncs with v3, which only
-// sees records that have srvModified - a v1 POST never gets one, so AAPS never picked those carbs
-// up even though they showed in Nightscout (COB stayed 0). v3 won't take the API secret, only a
-// JWT from an access token, so IMS has its own "IMS" subject with a narrow "ims" role
+// Carbs / meal notes go in through Nightscout's API v3, not v1. AAPS's NSClient syncs with v3, which only
+// sees records that have srvModified. IMS has its own "IMS" subject with a narrow "ims" role
 // (treatments only), created here with the API secret the first time it's needed.
 const NS_ROLE = { name: 'ims', permissions: ['api:treatments:create', 'api:treatments:read', 'api:treatments:update', 'api:treatments:delete'], notes: 'IMS carb logging' };
 let nsJwt = null; // { token, exp }
@@ -227,10 +226,20 @@ async function nsV3Headers() {
 async function postCarbsToNightscout(g, food, t) {
   if (!nsSecretHash()) return { sent: false, reason: 'No Nightscout API secret saved on the Blood Sugar page yet.' };
   const headers = await nsV3Headers();
+  const noteText = food ? `🍽️ Food Log (${g}g carbs): ${food}` : `🍽️ Food Log: ${g}g carbs`;
+  // Informational Note treatment: No numeric carbs or insulin properties attached, so Nightscout
+  // and AAPS loop engines do not double-count active carbs/boluses when AAPS executes delivery.
+  const treatmentBody = {
+    eventType: 'Note',
+    date: t,
+    utcOffset: -new Date(t).getTimezoneOffset(),
+    app: 'IMS',
+    enteredBy: 'IMS',
+    notes: noteText.slice(0, 500),
+  };
   const res = await fetch(`${NS_BASE}/api/v3/treatments`, {
     method: 'POST', headers, signal: AbortSignal.timeout(15000),
-    // Meal Bolus with carbs only - the same shape AAPS gives carbs it enters itself
-    body: JSON.stringify({ eventType: 'Meal Bolus', carbs: g, date: t, utcOffset: -new Date(t).getTimezoneOffset(), app: 'IMS', enteredBy: 'IMS', notes: food || undefined }),
+    body: JSON.stringify(treatmentBody),
   });
   const d = await res.json().catch(() => ({}));
   if (!res.ok || !d.identifier) return { sent: false, reason: `Nightscout answered ${res.status}${d.message ? `: ${d.message}` : ''}.` };
@@ -241,21 +250,21 @@ async function postCarbsToNightscout(g, food, t) {
     const v1 = await (await fetch(`${NS_BASE}/api/v1/treatments.json?find[identifier]=${encodeURIComponent(d.identifier)}&count=1`, { headers: { 'api-secret': nsSecretHash(), Accept: 'application/json' }, signal: AbortSignal.timeout(15000) })).json();
     id = v1?.[0]?._id || null;
   } catch (_) { /* matched later by time */ }
-  return { sent: true, id, identifier: d.identifier };
+  return { sent: true, id, identifier: d.identifier, note: noteText };
 }
 
-export async function logCarbs({ grams, food, at, source = 'voice' }) {
+export async function logCarbs({ grams, food, at, source = 'voice', insulin = null }) {
   const g = Math.round(Number(grams));
   if (!Number.isFinite(g) || g <= 0 || g > 400) throw new Error('Give the carbs in grams (1 to 400).');
   const t = at ? Number(new Date(at)) : Date.now();
-  const info = db.prepare('INSERT INTO carb_log (at, grams, food, source) VALUES (?, ?, ?, ?)').run(t, g, food ? String(food).slice(0, 120) : null, ['voice', 'photo', 'page'].includes(source) ? source : 'voice');
+  const info = db.prepare('INSERT INTO carb_log (at, grams, food, source, insulin) VALUES (?, ?, ?, ?, ?)').run(t, g, food ? String(food).slice(0, 120) : null, ['voice', 'photo', 'page'].includes(source) ? source : 'voice', null);
   let ns;
   try { ns = await postCarbsToNightscout(g, food, t); } catch (err) { ns = { sent: false, reason: err.message }; }
   if (ns.id || ns.identifier) db.prepare('UPDATE carb_log SET ns_id = ?, ns_identifier = ? WHERE id = ?').run(ns.id || null, ns.identifier || null, info.lastInsertRowid);
-  return { id: info.lastInsertRowid, at: t, grams: g, food: food || null, nightscout: ns };
+  return { id: info.lastInsertRowid, at: t, grams: g, food: food || null, insulin: null, nightscout: ns };
 }
 export function listCarbs(days = 7) {
-  return db.prepare('SELECT id, at, grams, food, ns_id FROM carb_log WHERE at >= ? ORDER BY at DESC').all(Date.now() - days * 86400000);
+  return db.prepare('SELECT id, at, grams, food, insulin, ns_id FROM carb_log WHERE at >= ? ORDER BY at DESC').all(Date.now() - days * 86400000);
 }
 export async function deleteCarbs(id) {
   const row = db.prepare('SELECT ns_id, ns_identifier FROM carb_log WHERE id = ?').get(Number(id));

@@ -24,6 +24,7 @@ import { checkIsEntertainment } from './utils/contentFilter';
 import DemoPortal from './components/Dashboard/DemoPortal';
 import MemoriesPortal from './components/Dashboard/MemoriesPortal';
 import PersonaPortal from './components/Dashboard/PersonaPortal';
+import DayReportPortal from './components/Dashboard/DayReportPortal';
 import MusicScanPortal from './components/Dashboard/MusicScanPortal';
 import ScheduledItemsPortal from './components/Dashboard/ScheduledItemsPortal';
 import BirthdayPortal from './components/Dashboard/BirthdayPortal';
@@ -1342,6 +1343,17 @@ export default function App() {
   if (currentPath === '/ims/persona' || currentPath.startsWith('/ims/persona')) {
     return (
       <PersonaPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        currentPath={currentPath}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/dayreport' || currentPath.startsWith('/ims/dayreport')) {
+    return (
+      <DayReportPortal
         theme={state.theme}
         onThemeToggle={actions.toggleTheme}
         currentPath={currentPath}

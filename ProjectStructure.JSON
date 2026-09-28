@@ -92,6 +92,23 @@
       "description": "Interactive Google Drive file explorer and catalog management modal with search, subject filters, and options to run sync indexing and trigger HNSW builds.",
       "dependencies": []
     },
+    "src/components/Dashboard/CampaignsView.jsx": {
+      "description": "Campaign management dashboard and detail viewer for LotR LCG and Arkham Horror with overall journey map, rulebook references, deck connections, and configurable scenario pushpin defaults.",
+      "dependencies": [
+        "src/components/Dashboard/CampaignMap.jsx"
+      ]
+    },
+    "src/components/Dashboard/ArkhamCampaigns.jsx": {
+      "description": "Arkham Horror LCG campaign manager with case logs, chaos bag state, investigator trackers, and campaign map with pushpin defaults.",
+      "dependencies": [
+        "src/components/Dashboard/CampaignMap.jsx",
+        "src/components/Dashboard/CampaignsView.jsx"
+      ]
+    },
+    "src/components/Dashboard/CampaignMap.jsx": {
+      "description": "Interactive illustrated vector SVG and image campaign map supporting multi-game maps (Middle-earth, Arkham), pushpin coordinate positioning, Catmull-Rom road routes, and scenario lore tooltips.",
+      "dependencies": []
+    },
     "src/hooks/useGeminiLive.js": {
       "description": "Multimodal Gemini Live Web Audio streaming hook with hardware echo cancellation, anti-stutter buffer, ephemeral previewVoice isolation without state mutation, backend personality sync, and voice keep-alive/farewell tools.",
       "dependencies": []
@@ -182,6 +199,61 @@
     },
     "firmware/esp32-s3-box-3-mictest/src/main.cpp": {
       "description": "Isolated ESP32-S3-BOX-3 microphone validation and loopback test firmware with register dump and serial WAV streaming.",
+      "dependencies": []
+    },
+    "src/components/Dashboard/Chronicle.jsx": {
+      "description": "Book and journal view for LOTR LCG and Arkham Horror campaigns, supporting leaf-turning animation, title and index spreads, full chapter reading, manual and chronicler text edits, plate photo generation, and whole-file vs single-entry sequential narrator voice playback accessible from page 1.",
+      "dependencies": []
+    },
+    "pdf-knowledge-base/server/services/campaignsService.js": {
+      "description": "Core campaign and chronicle state service managing scenario progress, deck history, fallen investigators/heroes, chronicle chapter generation, take management, and TTS audio pre-warming with __intro support.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/decks/chronicleVoice.js",
+        "pdf-knowledge-base/server/services/decks/chronicleArt.js"
+      ]
+    },
+    "src/components/Dashboard/PhotoCarbs.jsx": {
+      "description": "Food analysis and carbohydrate counting interface for IMS, dispatching Assisted Delivery Inter-App Android Intents (info.nightscout.androidaps.action.OPEN_BOLUS_WIZARD) to pre-fill the AndroidAPS Bolus Wizard with carb counts and food notes, logging informational Note treatments in Nightscout, and offering clipboard fallback for desktop/non-Android devices.",
+      "dependencies": []
+    },
+    "pdf-knowledge-base/server/services/glucoseHubService.js": {
+      "description": "Nightscout glucose hub and analytics service supporting API v3 informational Note treatment synchronization for food logging (avoiding duplicate active carbs or insulin during AAPS closed-loop execution), plus local SQLite carb_log persistence.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js",
+        "pdf-knowledge-base/server/services/wifiService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/morningReportService.js": {
+      "description": "Daily spoken briefing and first-interaction morning/day report synthesis service, integrating weather, calendar, reminders, birthdays, music releases, current & overnight glucose, mandatory Omnipod and CGM sensor change/fit status, Strava training trends, news headlines, Nightscout database maintenance, and user-configurable subject reordering, custom notes, and service linking.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/calendarService.js",
+        "pdf-knowledge-base/server/services/glucoseHubService.js",
+        "pdf-knowledge-base/server/services/runGlucoseService.js",
+        "pdf-knowledge-base/server/services/weatherService.js",
+        "pdf-knowledge-base/server/services/remindersService.js"
+      ]
+    },
+    "src/components/Dashboard/DayReportPortal.jsx": {
+      "description": "Interactive configuration portal for day and morning report subjects at /ims/dayreport, featuring step-by-step reordering, enable toggles, custom subject creation linked to IMS services, section-tailored focus note placeholders, non-tour note sanitization, and real-time live preview generation with high-contrast solid black font (#000000) over white briefing cards.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx"
+      ]
+    },
+    "pdf-knowledge-base/server/routes/dayReport.js": {
+      "description": "Express router for day report configuration management, providing GET/PUT /api/day-report/config, POST /api/day-report/reset, and GET /api/day-report/preview.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/morningReportService.js"
+      ]
+    },
+    "src/components/Dashboard/PersonaPortal.jsx": {
+      "description": "Interactive configuration portal for ims_persona_rules.md at /ims/persona, supporting dedicated section opening sentence fields, bold item title and description inputs, item creation controls, full vertical text visibility, and section expand/collapse.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx",
+        "src/utils/personaSections.js"
+      ]
+    },
+    "src/utils/personaSections.js": {
+      "description": "Markdown parser and serializer for ims_persona_rules.md, parsing and assembling document intro, section headers, opening sentences, and bullet items wrapped in **title** descriptions.",
       "dependencies": []
     }
   }

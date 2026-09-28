@@ -747,6 +747,38 @@ const NUMBER_WORDS = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven',
 export function chapterForReading(id, name, by) {
   const c = getCampaign(id, by);
   if (!c) { const e = new Error('Campaign not found.'); e.status = 404; throw e; }
+  if (name === '__intro') {
+    const heroes = [...new Set((c.players || []).flatMap((p) => p.deckHeroes || []))].map((h) => heroName(h, c.game)).filter(Boolean);
+    if (c.game === 'ahlcg') {
+      const paragraphs = [`Case File: ${c.name}`];
+      if (c.kind) paragraphs.push(`Re: ${c.kind}`);
+      paragraphs.push('Confidential.');
+      if (heroes.length > 0) paragraphs.push(`Investigators: ${heroes.join(', ')} - God help them.`);
+      paragraphs.push("Compiled from the investigators' own notes, police reports and newspaper clippings. Not for circulation.");
+      return {
+        heading: 'Miskatonic University. Orne Library, Special Collections',
+        paragraphs,
+        take: c.introTake || 0,
+        game: c.game,
+      };
+    }
+    const paragraphs = [];
+    const kind = (c.kind || '').replace(/\s*(saga|campaign|cycle)$/i, '');
+    if (kind) paragraphs.push(`Being a tale of ${kind}.`);
+    if (heroes.length > 0) {
+      const heroList = heroes.length > 1
+        ? `${heroes.slice(0, -1).join(', ')} and ${heroes[heroes.length - 1]}`
+        : heroes[0];
+      paragraphs.push(`As it befell ${heroList}, and those who walked with them.`);
+    }
+    paragraphs.push('Set down by the chronicler, from the telling of those who were there.');
+    return {
+      heading: `Here beginneth the Chronicle of ${c.name}`,
+      paragraphs,
+      take: c.introTake || 0,
+      game: c.game,
+    };
+  }
   if (name === '__fallen') {
     const roll = rollOfTheFallen(c);
     if (!roll.length) { const e = new Error('No hero has fallen.'); e.status = 404; throw e; }
@@ -771,7 +803,9 @@ export async function newTake(id, name, by) {
   const c = mustEdit(id, by);
   const { forgetReading, narrate } = await import('./decks/chronicleVoice.js');
   forgetReading(chapterForReading(id, name, by));
-  if (name === '__tale') {
+  if (name === '__intro') {
+    save(c.id, { introTake: (c.introTake || 0) + 1 });
+  } else if (name === '__tale') {
     save(c.id, { epilogue: { ...c.epilogue, take: (c.epilogue?.take || 0) + 1 } });
   } else {
     const chapters = chronicleOf(id);
@@ -792,10 +826,10 @@ function prepareReadings(id) {
     const c = getCampaign(id, OWNER);
     if (!c) return;
     const chapters = chronicleOf(id);
-    const names = [...scenarioOrder(c).filter((n) => chapters[n]), ...(c.epilogue?.story ? ['__tale'] : [])];
+    const names = ['__intro', ...scenarioOrder(c).filter((n) => chapters[n]), ...(c.epilogue?.story ? ['__tale'] : [])];
     const { artAndWait } = await import('./decks/chronicleArt.js');
     if (rollOfTheFallen(c).some((r) => r.epitaph)) names.push('__fallen');
-    for (const n of names.filter((x) => x !== '__fallen')) {
+    for (const n of names.filter((x) => x !== '__fallen' && x !== '__intro')) {
       try { await artAndWait(chapterForArt(c, n)); } catch (err) { console.warn(`[Chronicle] Picture for "${n}" not made: ${err.message}`); }
     }
     for (const n of names) {
@@ -839,7 +873,7 @@ function cardInfo(game = 'lotr') {
   return cardInfoMemo[game];
 }
 const heroWithTraits = (code, game = 'lotr') => { const h = cardInfo(game)[code]; return h ? `${h.name}${h.subname ? `, ${h.subname}` : ''}${h.traits ? ` (${h.traits})` : ''}` : code; };
-const heroName = (code, game = 'lotr') => cardInfo(game)[code]?.name || code;
+function heroName(code, game = 'lotr') { return cardInfo(game)[code]?.name || code; }
 const placeOf = (scenario) => { try { return db.prepare('SELECT place FROM scenario_lore WHERE name = ?').get(scenario)?.place || ''; } catch (_) { return ''; } };
 
 // ---- illustrated chapters -----------------------------------------------------------------------------------

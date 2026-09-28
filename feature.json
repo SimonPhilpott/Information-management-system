@@ -406,6 +406,91 @@
         "Non-volatile storage (NVS) persistence under 'volume' key via Preferences library, automatically loaded on boot and written on volume changes",
         "Capture Logging toggle pill repositioned to the left (X=15..85) directly under the 'CAPTURE LOGGING' header label (X=15), with updated hit-box detection (PREFS_TOGGLE_X0=15, PREFS_TOGGLE_X1=85)"
       ]
+    },
+    "Campaign Map Pushpin Defaults & Scoped View Configuration": {
+      "status": "enabled",
+      "description": "Configurable scenario pushpin visibility and routing defaults across main overview and individual campaign views. On the main campaign screen, 'Show every scenario (on every map)' is enabled by default to present a comprehensive global world view, while in individual campaign detail views, 'Show the campaign scenarios' is enabled by default with focused route sequencing and toggle controls to reveal global scenarios on demand.",
+      "subFeatures": [
+        "Main campaign overview (OverallJourney) defaults showAll to true ('Show every scenario (on every map)') and showMine to false",
+        "Individual campaign view (CampaignDetail) defaults showMine to true ('Show the campaign scenarios') and showAll to false with Middle-earth toggle controls",
+        "Arkham campaign view (ArkhamDetail) defaults showMine to true and showAll to false with allMaps tab synchronization ('Show every scenario (on every map)')",
+        "Preserved campaign route calculation, summary metrics, and gold/won path rendering on toggle states"
+      ]
+    },
+    "Chronicle & Case File Sequential Narration & Scope Selection": {
+      "status": "enabled",
+      "description": "Unified voice narration controls across LOTR LCG and Arkham Horror campaigns accessible from the first page (cover and index spreads), featuring a scope switch between sequential whole-file narration ('Whole case file' / 'Whole chronicle') and single entry ('Case file' / 'Chapter'), with automated page turning synchronized to audio progression and complete introductory text narration.",
+      "subFeatures": [
+        "Unconditional bottom control bar rendering ensuring the Narrator voice button is accessible on page 1 (title cover and index spreads)",
+        "Interactive scope switch toggle between 'Whole case file' / 'Case file' (Arkham) and 'Whole chronicle' / 'Chapter' (LOTR)",
+        "Sequential whole-file playlist execution starting with __intro narration followed sequentially by each recorded chapter, epilogue, and roll of the fallen",
+        "Server-side __intro voice synthesis in campaignsService.js generating thematic Miskatonic archivist cover notes for Arkham and chronicler incipit for LOTR",
+        "Background audio pre-warming of __intro narration in prepareReadings() alongside chapter takes",
+        "Synchronized visual page turning via go(starts[idx]) as each sequential track begins playback",
+        "Robust audio playback cancellation with monotonic playSeqId counter and full cleanup on stop or unmount"
+      ]
+    },
+    "Photo Food Insulin Dose & Nightscout Treatment Integration": {
+      "status": "enabled",
+      "description": "Calculates meal bolus insulin doses directly within the photo food analysis modal on IMS's main screen based on the user's standard day time-scheduled Insulin unit to Carb ratio profile (00:00-10:00 at 1u:6.0g, 10:00-23:00 at 1u:7.5g, and 23:00-00:00 at 1u:8.5g), uploading both carbohydrate grams and insulin dose to Nightscout as a Meal Bolus treatment via API v3, while providing an interactive toggle to exclude the suggested insulin treatment to send carbs only when desired.",
+      "subFeatures": [
+        "Time-scheduled IC ratio profile lookup engine: 00:00-10:00 (1u per 6.0g carbs), 10:00-23:00 (1u per 7.5g carbs), and 23:00-00:00 (1u per 8.5g carbs)",
+        "Dynamic suggested insulin dose calculation auto-updated on plate carb revisions with 0.1u precision",
+        "Step increment/decrement controls (±0.5u) and direct decimal input field for manual bolus fine-tuning",
+        "Interactive toggle button ('Remove Insulin' / 'Add Insulin') allowing the user to exclude the suggested insulin treatment and log carbs alone",
+        "Enhanced Nightscout API v3 treatment logging payload transmitting body.insulin alongside body.carbs and meal notes",
+        "SQLite database migration adding insulin REAL column to carb_log table for comprehensive history tracking"
+      ]
+    },
+    "Omnipod & Sensor Change Briefing in Daily Report": {
+      "status": "enabled",
+      "description": "Mandatory inclusion in IMS's morning report and day report (getDayReport) summarising whether an Omnipod pod change or CGM sensor fitting is due today or tomorrow, positioned directly following the overnight glucose summary and derived from active device screen icons and calendar event rules.",
+      "subFeatures": [
+        "Inspects active device icons (pod, sensor, prescription) derived from Google Calendar rules",
+        "Mandatory spoken briefing slot positioned immediately following the overnight glucose summary",
+        "Distinguishes between pod changes due today vs none due today",
+        "Differentiates sensor fitting timing (due today white icon vs due tomorrow orange warmup icon vs none due)",
+        "Includes prescription and Libre sensor reorder notices if active",
+        "Synchronized prompt directives in getDayReport and first-interaction morning report offer"
+      ]
+    },
+    "Day Report Configuration & Service Integration Portal": {
+      "status": "enabled",
+      "description": "Configurable morning and day report management portal located under the Personal heading at /ims/dayreport, supporting drag-free subject sequence reordering, section enable/disable toggling, custom per-section prompt notes, standalone and service-linked custom items, factory reset, and real-time live preview rendering.",
+      "subFeatures": [
+        "Web portal interface at /ims/dayreport styled with theme compatibility (Oatmeal light and slate dark) with beforeunload unsaved changes protection",
+        "Express REST endpoints supporting GET, PUT /api/day-report/config, POST /api/day-report/reset, and GET /api/day-report/preview",
+        "Interactive up/down sequence controls for reordering report subjects across all 16 built-in and user-added sections",
+        "Toggle controls for enabling and disabling specific briefing subjects",
+        "Expandable custom notes per subject appended to Gemini system instructions with tailored, context-specific placeholders for each subject and non-tour note sanitization",
+        "Custom subject modal supporting standalone prompts or service linking across 14 available IMS subsystems",
+        "Live day report preview generation executing real data assembly and rendering formatted bullet points and raw text copy in high-contrast solid black font (#000000) over clean white briefing cards",
+        "Central navigation card in ImsHub under the Personal heading and direct route handling in App.jsx"
+      ]
+    },
+    "IMS Dynamic Persona & Dialect Rules Editor": {
+      "status": "enabled",
+      "description": "Interactive configuration portal for ims_persona_rules.md at /ims/persona, supporting section opening sentences in dedicated tall text boxes, structured bold item title and description editing, item reordering and duplication, item creation, and section expansion with full item visibility.",
+      "subFeatures": [
+        "Dedicated opening sentence text box per section with empty fallback state and full vertical height",
+        "Structured bold items parsing and assembling (**title** description) with dedicated inputs",
+        "Add item controls (+ Add Item) with automatic unique ID assignment and markdown formatting",
+        "Section reordering, duplication, removal, and expand/collapse controls with full item visibility",
+        "Bi-directional synchronization between structured section cards and raw markdown editor mode",
+        "Automatic history versioning on save and real-time Gemini Live prompt reload without restart"
+      ]
+    },
+    "AAPS Inter-App Intent Integration for Food Logging": {
+      "status": "enabled",
+      "description": "Integration between IMS Food Logging (PhotoCarbs) and AndroidAPS (AAPS) using Assisted Delivery Inter-App Android Intents (info.nightscout.androidaps.action.OPEN_BOLUS_WIZARD). Removes manual insulin dose calculations and active carb/bolus treatments from IMS, posting informational Note treatments to Nightscout to prevent duplicate carb logging while pre-filling carbs and meal notes directly in the AAPS Bolus Wizard on Android devices.",
+      "subFeatures": [
+        "AAPS Bolus Wizard intent launching (info.nightscout.androidaps.action.OPEN_BOLUS_WIZARD) pre-filling numeric carbs (d.carbs) and meal notes (S.notes)",
+        "Assisted Delivery compliance requiring physical user tap confirmation in AAPS before insulin delivery",
+        "Removal of manual insulin dosing stepper, IC ratio calculations, and suggested bolus inputs from PhotoCarbs",
+        "Nightscout informational Note treatment logging (eventType: 'Note') preserving meal timeline review without adding duplicate active carbs or insulin to loop algorithms",
+        "Desktop and non-Android platform detection with automatic carb copy-to-clipboard and manual intent link fallback",
+        "Local SQLite carb_log persistence retaining meal breakdown and carbohydrate totals for IMS history and LLM context"
+      ]
     }
   }
 }

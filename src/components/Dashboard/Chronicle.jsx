@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, X, Download, Pencil, RefreshCw, Volume2, Pause, Square, Loader2, Lock, LockOpen, Image as ImageIcon } from 'lucide-react';
 
 // The Chronicle: a campaign's story as an old quill-and-ink book. Closed, it's a leather cover; opened,
@@ -336,35 +336,143 @@ export default function Chronicle({ c, chron, byCode = {}, setC, toast = () => {
   const shown = [pages[at], wide ? pages[at + 1] : null].filter((p) => (p?.kind === 'chapter' || p?.kind === 'plate') && p.ch);
   const current = (shown.find((p) => p.head) || shown[0]) || null;
 
-  // Read aloud by the Narrator: the reading is made on the server when the chapter is written, then plays.
+  // Read aloud by the Narrator: either the whole file/chronicle sequentially (including the intro)
+  // or a single chapter / case file entry.
   const audio = useRef(null);
-  const [voice, setVoice] = useState(null); // { chapter, state: 'preparing' | 'playing' | 'paused' }
-  const stopReading = () => { audio.current?.pause(); audio.current = null; setVoice(null); };
-  useEffect(() => () => audio.current?.pause(), []);
-  useEffect(() => { if (!open) stopReading(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
-  const readAloud = async (x, fresh = false) => {
+  const playSeqId = useRef(0);
+  const [scope, setScope] = useState('whole'); // 'whole' | 'single'
+  const [voice, setVoice] = useState(null); // { chapter, state: 'preparing' | 'playing' | 'paused', mode: 'whole' | 'single', index, total, label }
+
+  const stopReading = useCallback(() => {
+    playSeqId.current++;
+    if (audio.current) {
+      audio.current.pause();
+      audio.current.onended = null;
+      audio.current.onerror = null;
+      audio.current = null;
+    }
+    setVoice(null);
+  }, []);
+
+  useEffect(() => () => {
+    playSeqId.current++;
+    if (audio.current) {
+      audio.current.pause();
+      audio.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open) stopReading();
+  }, [open, stopReading]);
+
+  const playSequence = async (items) => {
     stopReading();
-    setVoice({ chapter: x.name, state: 'preparing' });
-    try {
-      if (fresh) await api(`/api/decks/campaigns/${c.id}/chronicle/voice/new-take`, { method: 'POST', body: { chapter: x.name } });
-      let d;
-      for (let i = 0; i < 80; i++) {
-        d = await api(`/api/decks/campaigns/${c.id}/chronicle/voice`, { method: 'POST', body: { chapter: x.name } });
-        if (d.ready) break;
-        await sleep(4000);
+    const seqId = playSeqId.current;
+
+    for (let idx = 0; idx < items.length; idx++) {
+      if (playSeqId.current !== seqId) return;
+      const item = items[idx];
+
+      setVoice({
+        chapter: item.name,
+        state: 'preparing',
+        mode: items.length > 1 ? 'whole' : 'single',
+        index: idx + 1,
+        total: items.length,
+        label: item.title ? `${item.label}: ${item.title}` : item.label,
+      });
+
+      try {
+        let d;
+        for (let i = 0; i < 80; i++) {
+          if (playSeqId.current !== seqId) return;
+          d = await api(`/api/decks/campaigns/${c.id}/chronicle/voice`, { method: 'POST', body: { chapter: item.name } });
+          if (d?.ready) break;
+          await sleep(3000);
+        }
+        if (playSeqId.current !== seqId) return;
+        if (!d?.ready) throw new Error('The narrator is taking too long - try again in a minute.');
+
+        if (typeof item.page === 'number') {
+          go(item.page);
+        }
+
+        const a = new Audio(d.url);
+        audio.current = a;
+
+        setVoice({
+          chapter: item.name,
+          state: 'playing',
+          mode: items.length > 1 ? 'whole' : 'single',
+          index: idx + 1,
+          total: items.length,
+          label: item.title ? `${item.label}: ${item.title}` : item.label,
+        });
+
+        await new Promise((resolve, reject) => {
+          a.onended = () => resolve();
+          a.onerror = () => reject(new Error('Audio playback failed.'));
+        });
+
+        if (playSeqId.current !== seqId) return;
+      } catch (err) {
+        if (playSeqId.current === seqId) {
+          stopReading();
+          toast(err.message || 'Narration error', 'error');
+        }
+        return;
       }
-      if (!d?.ready) throw new Error('The narrator is taking too long - try again in a minute.');
-      const a = new Audio(d.url);
-      audio.current = a;
-      a.onended = () => { if (audio.current === a) { audio.current = null; setVoice(null); } };
-      await a.play();
-      setVoice({ chapter: x.name, state: 'playing' });
-    } catch (err) { setVoice(null); toast(err.message, 'error'); }
+    }
+
+    if (playSeqId.current === seqId) {
+      stopReading();
+    }
   };
+
+  const startNarrating = () => {
+    if (scope === 'whole') {
+      const items = [
+        { name: '__intro', page: 0, label: journal ? 'Case File Intro' : 'Chronicle Intro', title: journal ? 'Orne Library Special Collections' : `Here beginneth the Chronicle of ${c.name}` }
+      ];
+      chapters.forEach((x, idx) => {
+        if (x.ch) {
+          items.push({
+            name: x.name,
+            page: starts[idx] ?? 0,
+            label: x.label,
+            title: x.ch.title || x.name,
+          });
+        }
+      });
+      playSequence(items);
+    } else if (current) {
+      playSequence([{
+        name: current.name,
+        page: at,
+        label: current.label,
+        title: current.ch.title || current.name,
+      }]);
+    } else {
+      playSequence([{
+        name: '__intro',
+        page: 0,
+        label: journal ? 'Case File Intro' : 'Chronicle Intro',
+        title: journal ? 'Orne Library Special Collections' : `Here beginneth the Chronicle of ${c.name}`,
+      }]);
+    }
+  };
+
   const togglePause = () => {
     const a = audio.current;
     if (!a) return;
-    if (a.paused) { a.play(); setVoice((v) => v && { ...v, state: 'playing' }); } else { a.pause(); setVoice((v) => v && { ...v, state: 'paused' }); }
+    if (a.paused) {
+      a.play().catch(() => {});
+      setVoice((v) => v && { ...v, state: 'playing' });
+    } else {
+      a.pause();
+      setVoice((v) => v && { ...v, state: 'paused' });
+    }
   };
 
   // Editing a chapter by hand, and having it written afresh.
@@ -651,27 +759,65 @@ export default function Chronicle({ c, chron, byCode = {}, setC, toast = () => {
         {!flip && canBack && <button className="chron-corner l" onClick={() => go(at - step)} title="Turn back" aria-label="Turn back" />}
         {!flip && canOn && <button className="chron-corner r" onClick={() => go(at + step)} title="Turn the page" aria-label="Turn the page" />}
       </div>
-      {current && (
-        <div className="flex flex-wrap items-center gap-2 mt-3 px-1" style={{ fontFamily: journal ? "'Special Elite', monospace" : FELL, color: '#d8b56a' }}>
-          <span className="italic text-sm flex-1 min-w-[10rem] truncate">{current.label}: {current.ch.title}</span>
-          {voice?.chapter === current.name ? (
-            voice.state === 'preparing'
-              ? <span className="flex items-center gap-2 text-sm italic"><Loader2 size={15} className="animate-spin" /> The narrator is clearing his throat... (a minute or so if the chapter is new)</span>
-              : <>
-                  <button className="px-3 py-1.5 rounded-full text-sm flex items-center gap-1.5" style={btnStyle} onClick={togglePause}>{voice.state === 'paused' ? <><Volume2 size={15} /> Carry on</> : <><Pause size={15} /> Pause</>}</button>
-                  <button className="px-3 py-1.5 rounded-full text-sm flex items-center gap-1.5" style={btnStyle} onClick={stopReading}><Square size={13} /> Stop</button>
-                </>
-          ) : <button className="px-3 py-1.5 rounded-full text-sm flex items-center gap-1.5" style={btnStyle} onClick={() => readAloud(current)} title="The narrator reads this chapter aloud"><Volume2 size={15} /> Narrator</button>}
-          {c.canEdit && editMode && !current.roll && <button className="p-2 rounded-full" style={btnStyle} onClick={() => toggleLock(current)}
-            title={current.ch.locked ? 'Locked - no edits or rewrites. Click to unlock.' : 'Lock this chapter against edits and rewrites'} aria-label={current.ch.locked ? 'Unlock chapter' : 'Lock chapter'}>
-            {current.ch.locked ? <Lock size={15} /> : <LockOpen size={15} style={{ opacity: .6 }} />}</button>}
-          {c.canEdit && editMode && !current.ch.locked && <>
-            <button className="px-3 py-1.5 rounded-full text-sm flex items-center gap-1.5" style={btnStyle} title="Edit this chapter's words"
-              onClick={() => setEditing({ chapter: current.name, label: current.label, title: current.ch.title, summary: current.ch.summary || '', text: current.ch.paragraphs.join('\n\n'), tale: current.name === '__tale' })}><Pencil size={14} /> Edit text</button>
-            <button className="px-3 py-1.5 rounded-full text-sm flex items-center gap-1.5" style={btnStyle} title="Have the chronicler write this chapter afresh" onClick={() => rewrite(current)}><RefreshCw size={14} /> Rewrite</button>
-          </>}
+      <div className="flex flex-wrap items-center gap-2 mt-3 px-1" style={{ fontFamily: journal ? "'Special Elite', monospace" : FELL, color: '#d8b56a' }}>
+        <span className="italic text-sm flex-1 min-w-[10rem] truncate">
+          {voice ? (voice.mode === 'whole' ? `Whole ${journal ? 'file' : 'chronicle'} (${voice.index}/${voice.total}) · ${voice.label}` : voice.label) : (current ? `${current.label}: ${current.ch.title}` : (journal ? `Case File: ${c.name}` : `Chronicle of ${c.name}`))}
+        </span>
+        {voice ? (
+          voice.state === 'preparing' ? (
+            <div className="flex items-center gap-2">
+              <span className="flex items-center gap-2 text-sm italic"><Loader2 size={15} className="animate-spin" /> The narrator is clearing his throat... {voice.mode === 'whole' ? `(${voice.index}/${voice.total})` : ''}</span>
+              <button className="px-3 py-1.5 rounded-full text-sm flex items-center gap-1.5" style={btnStyle} onClick={stopReading}><Square size={13} /> Stop</button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button className="px-3 py-1.5 rounded-full text-sm flex items-center gap-1.5" style={btnStyle} onClick={togglePause}>{voice.state === 'paused' ? <><Volume2 size={15} /> Carry on</> : <><Pause size={15} /> Pause</>}</button>
+              <button className="px-3 py-1.5 rounded-full text-sm flex items-center gap-1.5" style={btnStyle} onClick={stopReading}><Square size={13} /> Stop</button>
+            </div>
+          )
+        ) : (
+          <div className="flex items-center gap-2">
+            <div className="inline-flex items-center rounded-full p-0.5" style={{ background: 'rgba(0,0,0,.25)', border: '1px solid rgba(235,224,200,.2)' }}>
+              <button
+                type="button"
+                className="px-2.5 py-1 rounded-full text-xs transition-colors"
+                style={scope === 'whole' ? { background: '#6b1d0e', color: '#f4e4bc', border: '1px solid rgba(244,228,188,.4)', fontWeight: 'bold' } : { background: 'transparent', color: 'rgba(216,181,106,.7)', border: '1px solid transparent' }}
+                onClick={() => setScope('whole')}
+                title={journal ? 'Narrate the whole case file sequentially' : 'Narrate the whole chronicle sequentially'}
+              >
+                {journal ? 'Whole case file' : 'Whole chronicle'}
+              </button>
+              <button
+                type="button"
+                className="px-2.5 py-1 rounded-full text-xs transition-colors"
+                style={scope === 'single' ? { background: '#6b1d0e', color: '#f4e4bc', border: '1px solid rgba(244,228,188,.4)', fontWeight: 'bold' } : { background: 'transparent', color: 'rgba(216,181,106,.7)', border: '1px solid transparent' }}
+                onClick={() => setScope('single')}
+                title={journal ? 'Narrate this case file entry only' : 'Narrate this chapter only'}
+              >
+                {journal ? 'Case file' : 'Chapter'}
+              </button>
+            </div>
+            <button
+              className="px-3 py-1.5 rounded-full text-sm flex items-center gap-1.5"
+              style={btnStyle}
+              onClick={startNarrating}
+              title={scope === 'whole'
+                ? (journal ? 'Sequentially narrate the whole case file from the intro' : 'Sequentially narrate the whole chronicle from the intro')
+                : (journal ? 'The narrator reads this case file entry aloud' : 'The narrator reads this chapter aloud')}
+            >
+              <Volume2 size={15} /> Narrator
+            </button>
+          </div>
+        )}
+        {current && c.canEdit && editMode && !current.roll && <button className="p-2 rounded-full" style={btnStyle} onClick={() => toggleLock(current)}
+          title={current.ch.locked ? 'Locked - no edits or rewrites. Click to unlock.' : 'Lock this chapter against edits and rewrites'} aria-label={current.ch.locked ? 'Unlock chapter' : 'Lock chapter'}>
+          {current.ch.locked ? <Lock size={15} /> : <LockOpen size={15} style={{ opacity: .6 }} />}</button>}
+        {current && c.canEdit && editMode && !current.ch.locked && <>
+          <button className="px-3 py-1.5 rounded-full text-sm flex items-center gap-1.5" style={btnStyle} title="Edit this chapter's words"
+            onClick={() => setEditing({ chapter: current.name, label: current.label, title: current.ch.title, summary: current.ch.summary || '', text: current.ch.paragraphs.join('\n\n'), tale: current.name === '__tale' })}><Pencil size={14} /> Edit text</button>
+          <button className="px-3 py-1.5 rounded-full text-sm flex items-center gap-1.5" style={btnStyle} title="Have the chronicler write this chapter afresh" onClick={() => rewrite(current)}><RefreshCw size={14} /> Rewrite</button>
+        </>}
         </div>
-      )}
       {artEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3" style={{ background: 'rgba(0,0,0,.6)' }} onClick={() => setArtEdit(null)}>
           <div className="chron-page single w-full max-w-2xl flex flex-col gap-2" style={{ aspectRatio: 'auto', maxHeight: '92vh', overflow: 'auto' }} onClick={(e) => e.stopPropagation()}>

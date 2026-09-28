@@ -278,8 +278,8 @@ export function RuleCheck({ ui, c, scenarios, setC, toast, section }) {
 export function OverallJourney({ ui, toast, list, game = 'lotr' }) {
   const arkham = game === 'ahlcg';
   const [scenarios, setScenarios] = useState([]);
-  const [showAll, setShowAll] = useState(false);
-  const [showMine, setShowMine] = useState(true);
+  const [showAll, setShowAll] = useState(true);
+  const [showMine, setShowMine] = useState(false);
   useEffect(() => { api(`/api/decks/campaigns/scenarios?game=${game}`).then((d) => setScenarios(d.scenarios)).catch(() => {}); }, [game]);
   const plays = useMemo(() => list.flatMap((c) => c.scenarios.map((s) => ({ ...s, campaign: c.name })))
     .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.id).localeCompare(String(b.id))), [list]);
@@ -484,6 +484,8 @@ export function CampaignDetail({ id, ui, toast, go }) {
   const [cards, setCards] = useState(null);       // full card list, for hero names
   const [campCards, setCampCards] = useState([]); // campaign cards (boons/burdens)
   const [scenarios, setScenarios] = useState([]);
+  const [showMine, setShowMine] = useState(true);
+  const [showAll, setShowAll] = useState(false);
   const [opts, setOpts] = useState(null);
   const load = useCallback(() => api(`/api/decks/campaigns/${id}`).then((d) => setC(d.campaign)).catch((err) => toast(err.message, 'error')), [id, toast]);
   useEffect(() => {
@@ -533,7 +535,15 @@ export function CampaignDetail({ id, ui, toast, go }) {
         return <CampaignTale c={c} ui={ui} edit={edit} complete={complete} setC={setC} toast={toast} />;
       })()}
       {c.scenarios.length > 0 && <Chronicle c={c} chron={chron} byCode={byCode} setC={setC} toast={toast} />}
-      {scenarios.length > 0 && <CampaignMap c={c} ui={ui} route={campaignRoute(scenarios, c)} packOf={Object.fromEntries(scenarios.map((x) => [x.name, x.pack]))} byCode={byCode} edit={edit} toast={toast} chronicle={chron?.chapters} />}
+      {scenarios.length > 0 && (
+        <>
+          <div className="flex flex-wrap justify-end gap-x-5 gap-y-1 -mb-3">
+            <label className={`text-xs flex items-center gap-2 ${ui.muted}`}><input type="checkbox" checked={showMine} onChange={(e) => setShowMine(e.target.checked)} /> Show the campaign scenarios</label>
+            <label className={`text-xs flex items-center gap-2 ${ui.muted}`}><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> Show every scenario in Middle-earth</label>
+          </div>
+          <CampaignMap c={c} ui={ui} route={showMine ? campaignRoute(scenarios, c) : []} showPlayed={showMine} extras={showAll ? scenarios.filter((x) => !x.community).map((x) => x.name) : []} packOf={Object.fromEntries(scenarios.map((x) => [x.name, x.pack]))} byCode={byCode} edit={edit} toast={toast} chronicle={chron?.chapters} summary={`${new Set(c.scenarios.filter((s) => s.result === 'won').map((s) => s.name)).size} of ${campaignRoute(scenarios, c).length} scenarios won`} />
+        </>
+      )}
       <Players ui={ui} c={c} edit={edit} decks={decks} byCode={byCode} setPlayers={setPlayers} section={section} go={go} />
       <ScenarioLog ui={ui} c={c} edit={edit} scenarios={scenarios} call={call} section={section} campCards={campCards} byCode={byCode} />
       <RuleCheck ui={ui} c={c} scenarios={scenarios} setC={setC} toast={toast} section={section} />

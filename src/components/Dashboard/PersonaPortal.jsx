@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Drama, Save, RotateCw, Undo2, ArrowUp, ArrowDown, Trash2, Copy, Plus,
-  ChevronDown, ChevronRight, FileText, History, ListTree, Code2, ChevronsUpDown
+  ChevronDown, ChevronRight, FileText, History, ListTree, Code2, ChevronsUpDown, Sparkles
 } from 'lucide-react';
 import PortalShell from './PortalShell';
 import { parsePersona, assemblePersona, newId, SECTION_TEMPLATES } from '../../utils/personaSections';
@@ -116,13 +116,23 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
     setModel((m) => ({ ...m, sections: m.sections.filter((_, k) => k !== i) }));
   };
   const duplicate = (i) => setModel((m) => {
-    const copy = { ...m.sections[i], id: newId(), title: `${m.sections[i].title} (copy)` };
+    const copy = {
+      ...m.sections[i],
+      id: newId(),
+      title: `${m.sections[i].title} (copy)`,
+      items: (m.sections[i].items || []).map((it) => ({ ...it, id: newId() }))
+    };
     const next = [...m.sections];
     next.splice(i + 1, 0, copy);
     return { ...m, sections: next };
   });
   const addSection = (tpl) => {
-    const s = { id: newId(), title: tpl.title, body: tpl.body };
+    const s = {
+      id: newId(),
+      title: tpl.title,
+      opening: tpl.opening || '',
+      items: Array.isArray(tpl.items) ? tpl.items.map((it) => ({ ...it, id: newId() })) : []
+    };
     setModel((m) => ({ ...m, sections: [...m.sections, s] }));
     setExpanded((e) => new Set(e).add(s.id));
     setShowTemplates(false);
@@ -131,6 +141,75 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
   const toggle = (id) => setExpanded((e) => { const n = new Set(e); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const allOpen = model.sections.length > 0 && model.sections.every((s) => expanded.has(s.id));
   const toggleAll = () => setExpanded(allOpen ? new Set() : new Set(model.sections.map((s) => s.id)));
+
+  // --- item operations within a section ---
+  const addItem = (sectionId) => {
+    setModel((m) => ({
+      ...m,
+      sections: m.sections.map((s) => {
+        if (s.id !== sectionId) return s;
+        const currentItems = Array.isArray(s.items) ? s.items : [];
+        return {
+          ...s,
+          items: [...currentItems, { id: newId(), title: '', description: '' }]
+        };
+      })
+    }));
+  };
+
+  const updateItem = (sectionId, itemId, patch) => {
+    setModel((m) => ({
+      ...m,
+      sections: m.sections.map((s) => {
+        if (s.id !== sectionId) return s;
+        return {
+          ...s,
+          items: (s.items || []).map((it) => (it.id === itemId ? { ...it, ...patch } : it))
+        };
+      })
+    }));
+  };
+
+  const removeItem = (sectionId, itemId) => {
+    setModel((m) => ({
+      ...m,
+      sections: m.sections.map((s) => {
+        if (s.id !== sectionId) return s;
+        return {
+          ...s,
+          items: (s.items || []).filter((it) => it.id !== itemId)
+        };
+      })
+    }));
+  };
+
+  const moveItem = (sectionId, itemIdx, delta) => {
+    setModel((m) => ({
+      ...m,
+      sections: m.sections.map((s) => {
+        if (s.id !== sectionId) return s;
+        const items = [...(s.items || [])];
+        const targetIdx = itemIdx + delta;
+        if (targetIdx < 0 || targetIdx >= items.length) return s;
+        [items[itemIdx], items[targetIdx]] = [items[targetIdx], items[itemIdx]];
+        return { ...s, items };
+      })
+    }));
+  };
+
+  const duplicateItem = (sectionId, itemIdx) => {
+    setModel((m) => ({
+      ...m,
+      sections: m.sections.map((s) => {
+        if (s.id !== sectionId) return s;
+        const items = [...(s.items || [])];
+        const orig = items[itemIdx];
+        const copy = { ...orig, id: newId(), title: orig.title ? `${orig.title} (copy)` : '' };
+        items.splice(itemIdx + 1, 0, copy);
+        return { ...s, items };
+      })
+    }));
+  };
 
   // --- history ---
   const openHistory = async () => {
@@ -166,8 +245,7 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
         <FileText size={14} className="shrink-0 mt-0.5 opacity-70" />
         <span>
           This document defines Ims's fixed dialect, identity and tool-usage rules - the personality sliders separately control tone within it.
-          Each card below is one section of <code>ims_persona_rules.md</code>: edit them, add new ones from a template, reorder or remove them, and the file is rebuilt (sections renumbered) when you save. Changes apply from Ims's next conversation.
-          Which <strong>faces</strong> Ims uses, and when, now lives in the Face Designer.
+          Each card below is one section of <code>ims_persona_rules.md</code>: edit the opening context, configure separate <strong>**title**</strong> items and descriptions, add new rules, and reorder them. The file is rebuilt and renumbered cleanly when you save.
         </span>
       </div>
 
@@ -220,38 +298,220 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {/* Intro */}
+          {/* Top Document Title & Intro */}
           <div className={`${panel} p-4`}>
-            <label className="text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70">Document title &amp; introduction</label>
-            <textarea className={`${field} font-mono min-h-[80px] leading-relaxed`} value={model.intro}
-              onChange={(e) => setModel({ ...model, intro: e.target.value })} spellCheck={false} />
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[11px] font-black uppercase tracking-wider opacity-70 flex items-center gap-1.5">
+                <FileText size={12} />
+                <span>Document Title &amp; Introduction</span>
+              </label>
+              <span className="text-[10px] text-slate-500">Header lines of ims_persona_rules.md</span>
+            </div>
+            <textarea
+              className={`${field} font-mono leading-relaxed resize-y`}
+              style={{ minHeight: '90px' }}
+              rows={Math.max(3, (model.intro || '').split('\n').length + 1)}
+              value={model.intro}
+              onChange={(e) => setModel({ ...model, intro: e.target.value })}
+              spellCheck={false}
+            />
           </div>
 
           {model.sections.map((s, i) => {
             const open = expanded.has(s.id);
-            const lines = s.body ? s.body.split('\n').length : 0;
+            const itemCount = s.items?.length || 0;
             return (
               <div key={s.id} className={panel}>
                 <div className="p-3 flex items-center gap-2">
-                  <button onClick={() => toggle(s.id)} className={iconBtn} title={open ? 'Collapse' : 'Expand'}>
+                  <button onClick={() => toggle(s.id)} className={iconBtn} title={open ? 'Collapse section' : 'Expand section'}>
                     {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   </button>
                   <span className="w-7 h-7 rounded-lg bg-purple-500/15 text-purple-400 text-xs font-black flex items-center justify-center shrink-0">{i + 1}</span>
-                  <input className={`${field} font-bold`} value={s.title} onChange={(e) => updateSection(s.id, { title: e.target.value })} />
-                  <span className="hidden sm:inline text-[10px] text-slate-500 shrink-0 tabular-nums">{lines} lines</span>
+                  <input className={`${field} font-bold flex-1`} value={s.title} onChange={(e) => updateSection(s.id, { title: e.target.value })} />
+                  <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] text-slate-400 shrink-0 px-2 py-0.5 rounded-md bg-white/5 border border-white/5">
+                    <span>{itemCount} {itemCount === 1 ? 'item' : 'items'}</span>
+                    {s.opening && <span className="text-purple-400 font-semibold">• intro</span>}
+                  </span>
                   <button onClick={() => move(i, -1)} disabled={i === 0} className={iconBtn} title="Move up"><ArrowUp size={14} /></button>
                   <button onClick={() => move(i, 1)} disabled={i === model.sections.length - 1} className={iconBtn} title="Move down"><ArrowDown size={14} /></button>
-                  <button onClick={() => duplicate(i)} className={iconBtn} title="Duplicate"><Copy size={14} /></button>
-                  <button onClick={() => remove(i)} className={`${iconBtn} text-red-400`} title="Remove"><Trash2 size={14} /></button>
+                  <button onClick={() => duplicate(i)} className={iconBtn} title="Duplicate section"><Copy size={14} /></button>
+                  <button onClick={() => remove(i)} className={`${iconBtn} text-red-400`} title="Remove section"><Trash2 size={14} /></button>
                 </div>
+
                 {open ? (
-                  <div className="px-3 pb-3">
-                    <textarea className={`${field} font-mono leading-relaxed`} spellCheck={false}
-                      style={{ minHeight: `${Math.min(30, Math.max(6, lines + 1)) * 1.45}rem` }}
-                      value={s.body} onChange={(e) => updateSection(s.id, { body: e.target.value })} />
+                  <div className="px-4 pb-4 space-y-4">
+                    {/* Opening Sentence / Introductory Text Box */}
+                    <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-[#2E2B27]/10'}`}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
+                          <Sparkles size={12} />
+                          <span>Opening Sentence / Section Context</span>
+                        </label>
+                        <span className="text-[10px] text-slate-500">
+                          Text displayed above the items • Empty if none
+                        </span>
+                      </div>
+                      <textarea
+                        className={`w-full px-3.5 py-2.5 rounded-xl text-xs leading-relaxed outline-none border resize-y transition-all ${
+                          isDark
+                            ? 'bg-slate-950/80 border-white/10 focus:border-purple-400 text-slate-100 placeholder-slate-600'
+                            : 'bg-white border-[#2E2B27]/15 focus:border-purple-600 text-slate-900 placeholder-slate-400'
+                        }`}
+                        rows={Math.max(3, (s.opening || '').split('\n').length + 1)}
+                        style={{ minHeight: '84px' }}
+                        value={s.opening || ''}
+                        placeholder="Enter opening sentence or introductory context for this section (e.g. The voice model's default accent is American. Yorkshire words are not enough...)"
+                        onChange={(e) => updateSection(s.id, { opening: e.target.value })}
+                        spellCheck={false}
+                      />
+                    </div>
+
+                    {/* Section Items & Rules */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between pt-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
+                            Section Rules &amp; Items
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/15 text-purple-400 border border-purple-500/25">
+                            {itemCount} {itemCount === 1 ? 'item' : 'items'}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => addItem(s.id)}
+                          className="px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 transition-all active:scale-95 shadow-xs"
+                        >
+                          <Plus size={13} />
+                          <span>Add Item</span>
+                        </button>
+                      </div>
+
+                      {(!s.items || s.items.length === 0) ? (
+                        <div className={`p-4 rounded-xl border border-dashed text-center text-xs ${
+                          isDark ? 'border-white/10 text-slate-500 bg-white/[0.02]' : 'border-[#2E2B27]/15 text-slate-500 bg-black/[0.01]'
+                        }`}>
+                          <span>No bullet items in this section yet. Click below or "Add Item" above to add one.</span>
+                        </div>
+                      ) : (
+                        <div className="space-y-2.5">
+                          {s.items.map((it, itemIdx) => {
+                            const itemLines = (it.description || '').split('\n').length;
+                            return (
+                              <div
+                                key={it.id}
+                                className={`p-3 rounded-xl border transition-all ${
+                                  isDark
+                                    ? 'bg-slate-950/50 border-white/10 hover:border-purple-500/30'
+                                    : 'bg-white border-[#2E2B27]/10 hover:border-purple-500/40 shadow-xs'
+                                }`}
+                              >
+                                {/* Item Top Row: Bullet/Index, Title input wrapped in **, and Item Actions */}
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="w-5 h-5 rounded-md bg-purple-500/15 text-purple-400 text-[10px] font-black flex items-center justify-center shrink-0">
+                                    {itemIdx + 1}
+                                  </span>
+                                  <div className="flex-1 flex items-center gap-1">
+                                    <span className="text-xs font-black font-mono text-purple-400 select-none">**</span>
+                                    <input
+                                      type="text"
+                                      className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-bold outline-none border transition-all ${
+                                        isDark
+                                          ? 'bg-slate-900 border-white/10 focus:border-purple-400 text-slate-100 placeholder-slate-600'
+                                          : 'bg-slate-50 border-[#2E2B27]/15 focus:border-purple-600 text-slate-900 placeholder-slate-400'
+                                      }`}
+                                      placeholder="Title (e.g. Name: or How Ims sounds:)"
+                                      value={it.title}
+                                      onChange={(e) => updateItem(s.id, it.id, { title: e.target.value })}
+                                    />
+                                    <span className="text-xs font-black font-mono text-purple-400 select-none">**</span>
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => moveItem(s.id, itemIdx, -1)}
+                                      disabled={itemIdx === 0}
+                                      className={iconBtn}
+                                      title="Move item up"
+                                    >
+                                      <ArrowUp size={13} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => moveItem(s.id, itemIdx, 1)}
+                                      disabled={itemIdx === s.items.length - 1}
+                                      className={iconBtn}
+                                      title="Move item down"
+                                    >
+                                      <ArrowDown size={13} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => duplicateItem(s.id, itemIdx)}
+                                      className={iconBtn}
+                                      title="Duplicate item"
+                                    >
+                                      <Copy size={13} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeItem(s.id, it.id)}
+                                      className={`${iconBtn} text-red-400 hover:text-red-300`}
+                                      title="Remove item"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Item Description Textarea */}
+                                <textarea
+                                  className={`w-full px-3 py-2 rounded-lg text-xs leading-relaxed outline-none border transition-all resize-y ${
+                                    isDark
+                                      ? 'bg-slate-950/80 border-white/5 focus:border-purple-400/50 text-slate-200 placeholder-slate-600'
+                                      : 'bg-slate-50/70 border-[#2E2B27]/10 focus:border-purple-600 text-slate-800 placeholder-slate-400'
+                                  }`}
+                                  rows={Math.max(2, itemLines)}
+                                  style={{ minHeight: '52px' }}
+                                  placeholder="Item description / rule details..."
+                                  value={it.description}
+                                  onChange={(e) => updateItem(s.id, it.id, { description: e.target.value })}
+                                  spellCheck={false}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Button to add another item */}
+                      <button
+                        type="button"
+                        onClick={() => addItem(s.id)}
+                        className={`w-full py-2.5 rounded-xl border border-dashed flex items-center justify-center gap-2 text-xs font-bold transition-all active:scale-[0.99] ${
+                          isDark
+                            ? 'border-purple-500/30 hover:border-purple-400 text-purple-300 hover:bg-purple-500/10'
+                            : 'border-purple-400/40 hover:border-purple-600 text-purple-700 hover:bg-purple-50'
+                        }`}
+                      >
+                        <Plus size={14} />
+                        <span>Add another item with title &amp; description</span>
+                      </button>
+                    </div>
                   </div>
                 ) : (
-                  s.body && <p className="px-14 pb-3 -mt-1 text-[11px] text-slate-500 truncate">{s.body.split('\n').find((l) => l.trim()) || ''}</p>
+                  <div className="px-14 pb-3 -mt-1 text-[11px] text-slate-500 truncate flex items-center gap-2">
+                    {s.opening ? (
+                      <span className="italic truncate">{s.opening}</span>
+                    ) : s.items?.length > 0 ? (
+                      <span className="truncate">
+                        <strong className="text-slate-400 font-semibold">{s.items[0].title}</strong>{' '}
+                        {s.items[0].description}
+                      </span>
+                    ) : (
+                      <span className="opacity-50">Empty section</span>
+                    )}
+                  </div>
                 )}
               </div>
             );

@@ -98,6 +98,7 @@ import tasksRoutes from './routes/tasks.js';
 import devIdeasRoutes from './routes/devIdeas.js';
 import decksRoutes from './routes/decks.js';
 import campaignsRoutes from './routes/campaigns.js';
+import dayReportRoutes from './routes/dayReport.js';
 import { addIdea as addDevIdea, flagToolFailure } from './services/devIdeasService.js';
 import { describeCollectionForIms } from './services/boardgamesService.js';
 import { campaignsForIms } from './services/campaignsService.js';
@@ -209,6 +210,7 @@ app.use('/api/look', lookRoutes);
 app.use('/api/alarms', scheduledRouter('alarm'));
 app.use('/api/timers', scheduledRouter('timer'));
 app.use('/api/reminders', scheduledRouter('reminder'));
+app.use('/api/day-report', dayReportRoutes);
 
 // Live figures for the System Architecture page (/ims/architecture).
 app.get('/api/system/architecture', async (req, res) => {
@@ -738,6 +740,13 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   let userTranscriptSeen = false;
   let textTurnSent = false;
   let unsolicitedTurn = false;
+  // Tracks when the getDayReport tool response was last sent. Gemini sometimes
+  // fires a genuine turnComplete mid-report (it finished the first batch of
+  // audio) and then immediately starts a second turn to continue - that
+  // continuation looks like an unsolicited turn but is legitimate. Give a
+  // 120-second grace window after dispatching the report tool-response so the
+  // continuation is not dropped.
+  let dayReportSentAt = 0;
   // Triggers are only cleared once a turn that actually SPOKE has finished. Gemini
   // reports a tool call (e.g. the wake-phrase check) as its own finished turn, and
   // its real answer follows it a moment later - that answer is still a reply to
@@ -1058,12 +1067,22 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           }
           const startsModelOutput = parsed.serverContent?.modelTurn || parsed.serverContent?.outputTranscription || parsed.toolCall;
           if (startsModelOutput && currentTurnComplete && !unsolicitedTurn && !turnHasTrigger()) {
-            // Nothing new from the user since his last reply - Gemini repeating itself. Drop it.
-            unsolicitedTurn = true;
-            console.warn(`${tag} 🔇 Dropping an unsolicited model turn (nothing from the user since the last one ended)`);
-            try { logCapture(`[${new Date().toISOString()}] ${tag} UNSOLICITED MODEL TURN DROPPED
-`); } catch (_) { }
-            paceFlush();
+            // Allow a continuation turn within 120 s of a getDayReport tool response:
+            // Gemini sometimes fires turnComplete after the first batch of audio
+            // (e.g. after device-changes) then starts a new turn to continue the
+            // remaining sections (training, goals, tours, news, tasks). That looks
+            // unsolicited but is the expected behaviour with a long report.
+            const dayReportGrace = dayReportSentAt && (Date.now() - dayReportSentAt) < 120000;
+            if (dayReportGrace) {
+              console.log(`${tag} 📰 Allowing day-report continuation turn (${Math.round((Date.now() - dayReportSentAt) / 1000)}s since report sent)`);
+              try { logCapture(`[${new Date().toISOString()}] ${tag} DAY REPORT CONTINUATION ALLOWED\n`); } catch (_) { }
+            } else {
+              // Nothing new from the user since his last reply - Gemini repeating itself. Drop it.
+              unsolicitedTurn = true;
+              console.warn(`${tag} 🔇 Dropping an unsolicited model turn (nothing from the user since the last one ended)`);
+              try { logCapture(`[${new Date().toISOString()}] ${tag} UNSOLICITED MODEL TURN DROPPED\n`); } catch (_) { }
+              paceFlush();
+            }
           }
           if (startsModelOutput && currentTurnComplete && !unsolicitedTurn) {
             const followUp = heardStartAt ? heardStartAt <= followUpUntil : (energeticMicFrames >= 8 && Date.now() <= followUpUntil);
@@ -1548,7 +1567,8 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               }
             } else if (call.name === 'getDayReport') {
               getDayReport().then((r) => {
-                console.log(`${tag} 📰 getDayReport -> ${r.report.length} items`);
+                console.log(`${tag} 📰 getDayReport -> ${r.sectionCount} sections, ${r.report.length} chars`);
+                dayReportSentAt = Date.now();
                 respondToToolCall(call, r);
               }).catch((err) => respondToToolCall(call, { error: err.message }));
             } else if (call.name === 'getNews') {

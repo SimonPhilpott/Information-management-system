@@ -1164,7 +1164,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "getDayReport",
-            description: "The user's morning report / day report: weather, calendar, reminders, birthdays, new music, glucose now and overnight, training, last run, goals and the news headlines. Call it whenever they ask for their morning report, day report, daily briefing, round-up or 'what's my day look like' - at any time of day. Follow the delivery instructions it returns.",
+            description: "The user's morning report / day report: weather, calendar, reminders, birthdays, new music, glucose now and overnight, whether an Omnipod or sensor change/fitting is due, training, last run, goals and the news headlines. Call it whenever they ask for their morning report, day report, daily briefing, round-up or 'what's my day look like' - at any time of day. Follow the delivery instructions it returns.",
             behavior: "BLOCKING",
             parameters: { type: "OBJECT", properties: {} }
           },

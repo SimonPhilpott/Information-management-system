@@ -122,6 +122,8 @@ export function ArkhamDetail({ id, ui, toast, go }) {
   const [decks, setDecks] = useState([]);
   const [cards, setCards] = useState(null);
   const [scenarios, setScenarios] = useState([]);
+  const [showMine, setShowMine] = useState(true);
+  const [showAll, setShowAll] = useState(false);
   const [opts, setOpts] = useState(null);
   const load = useCallback(() => api(`/api/decks/campaigns/${id}`).then((d) => setC(d.campaign)).catch((err) => toast(err.message, 'error')), [id, toast]);
   useEffect(() => {
@@ -170,7 +172,15 @@ export function ArkhamDetail({ id, ui, toast, go }) {
       </div>
 
       {c.scenarios.length > 0 && <Chronicle c={c} chron={chron} byCode={byCode} setC={setC} toast={toast} />}
-      {scenarios.length > 0 && <CampaignMap c={c} ui={ui} game="ahlcg" route={route} packOf={Object.fromEntries(scenarios.map((x) => [x.name, x.pack]))} byCode={byCode} edit={edit} toast={toast} chronicle={chron?.chapters} title="The case so far" summary={`${new Set(c.scenarios.filter((s) => s.result === 'won').map((s) => s.name)).size} of ${route.length || '?'} scenarios completed`} />}
+      {scenarios.length > 0 && (
+        <>
+          <div className="flex flex-wrap justify-end gap-x-5 gap-y-1 -mb-3">
+            <label className={`text-xs flex items-center gap-2 ${ui.muted}`}><input type="checkbox" checked={showMine} onChange={(e) => setShowMine(e.target.checked)} /> Show the campaign scenarios</label>
+            <label className={`text-xs flex items-center gap-2 ${ui.muted}`}><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> Show every scenario (on every map)</label>
+          </div>
+          <CampaignMap c={c} ui={ui} game="ahlcg" allMaps={showAll} route={showMine ? route : []} showPlayed={showMine} extras={showAll ? scenarios.filter((x) => !x.community).map((x) => x.name) : []} packOf={Object.fromEntries(scenarios.map((x) => [x.name, x.pack]))} byCode={byCode} edit={edit} toast={toast} chronicle={chron?.chapters} title="The case so far" summary={`${new Set(c.scenarios.filter((s) => s.result === 'won').map((s) => s.name)).size} of ${route.length || '?'} scenarios completed`} />
+        </>
+      )}
       <Investigators ui={ui} c={c} edit={edit} decks={decks} byCode={byCode} call={call} section={section} go={go} xpOf={xpOf} />
       <ChaosBag ui={ui} c={c} edit={edit} call={call} section={section} toast={toast} />
       <CampaignLog ui={ui} c={c} edit={edit} call={call} section={section} />
