@@ -338,7 +338,16 @@ export function estimateDemand(input = {}) {
 }
 
 export function estimatePlan(input = {}) {
-  const targets = getTargets();
+  // Allow callers to pass live target overrides directly in the request body so the simulation
+  // can respond instantly to slider changes without requiring the user to persist them first.
+  const savedTargets = getTargets();
+  const targets = {
+    ...savedTargets,
+    ...(input.startTarget !== undefined && Number.isFinite(Number(input.startTarget)) ? { startTarget: Math.max(5, Math.min(15, Number(input.startTarget))) } : {}),
+    ...(input.floor !== undefined && Number.isFinite(Number(input.floor)) ? { floor: Math.max(3.5, Math.min(8, Number(input.floor))) } : {}),
+    ...(input.sensMult !== undefined && Number.isFinite(Number(input.sensMult)) ? { sensMult: Math.max(1, Math.min(10, Number(input.sensMult))) } : {}),
+    ...(input.weightKg !== undefined && (input.weightKg === null || input.weightKg === '' || Number.isFinite(Number(input.weightKg))) ? { weightKg: input.weightKg === null || input.weightKg === '' ? null : Math.max(30, Math.min(200, Number(input.weightKg))) } : {}),
+  };
   const loop = getLoopSettings();
   const assumed = [];
   const isf = loop.isf ?? (assumed.push('ISF 1.6 mmol/L per unit (no loop settings logged yet)'), 1.6);

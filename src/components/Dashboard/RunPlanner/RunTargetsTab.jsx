@@ -1,13 +1,19 @@
 import React from 'react';
-import { Sliders, Save, RotateCw, Shield, AlertTriangle, Zap, HeartPulse } from 'lucide-react';
+import { Sliders, Save, RotateCw, Shield, Zap, HeartPulse, RefreshCw } from 'lucide-react';
 
 /**
  * Tab 3: Runner Targets & Physiologic Assumptions
+ *
+ * Props:
+ *   hasPlan        – true when a simulation result already exists; enables live graph updates
+ *   onTargetChange – callback(newTargets) fired on every field change for debounced re-estimation
  */
 export default function RunTargetsTab({
   targets,
   setTargets,
   saveTargets,
+  hasPlan = false,
+  onTargetChange = null,
   busy = '',
   isDark = true,
   panelClass = '',
@@ -24,18 +30,41 @@ export default function RunTargetsTab({
     );
   }
 
+  // Helper: update state AND fire live re-estimation in one call
+  const updateField = (patch) => {
+    const next = { ...targets, ...patch };
+    setTargets(next);
+    if (onTargetChange) onTargetChange(next);
+  };
+
   return (
     <div className="flex flex-col gap-4">
       {/* Overview Card */}
       <div className={panelClass}>
-        <div className="flex items-center gap-2 mb-3">
-          <Sliders size={16} className="text-emerald-500" />
-          <h2 className={`text-xs font-black uppercase tracking-wider ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>
-            Metabolic Targets & Physiological Assumptions
-          </h2>
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Sliders size={16} className="text-emerald-500" />
+            <h2 className={`text-xs font-black uppercase tracking-wider ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>
+              Metabolic Targets &amp; Physiological Assumptions
+            </h2>
+          </div>
+          {/* Live-update indicator — only shown when a plan exists */}
+          {hasPlan && (
+            <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${
+              isDark
+                ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/25'
+                : 'bg-emerald-50 text-emerald-800 border border-emerald-300'
+            }`}>
+              <RefreshCw size={10} className="animate-spin" style={{ animationDuration: '3s' }} />
+              Live — graph updates as you type
+            </span>
+          )}
         </div>
         <p className={`text-xs leading-relaxed mb-4 ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>
-          These baseline parameters govern the simulation engine, predictive glucose decay curves, and when in-run carbohydrates are prescribed. Adjust your exercise sensitivity multiplier, hypo safety floors, and pre-run target zones.
+          These baseline parameters govern the simulation engine, predictive glucose decay curves, and when in-run carbohydrates are prescribed.
+          {hasPlan
+            ? ' Changes are applied to the graph instantly — no need to regenerate.'
+            : ' Adjust your exercise sensitivity multiplier, hypo safety floors, and pre-run target zones.'}
         </p>
 
         {/* Input Matrix */}
@@ -49,10 +78,12 @@ export default function RunTargetsTab({
               type="number"
               step="0.1"
               value={targets.startTarget || ''}
-              onChange={(e) => setTargets({ ...targets, startTarget: e.target.value })}
+              onChange={(e) => updateField({ startTarget: e.target.value })}
               placeholder="e.g. 8.0"
             />
-            <p className={`text-[10px] mt-1 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>Recommended safe start level (7.0 - 9.0)</p>
+            <p className={`text-[10px] mt-1 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
+              Recommended safe start level (7.0–9.0)
+            </p>
           </div>
 
           <div>
@@ -64,10 +95,12 @@ export default function RunTargetsTab({
               type="number"
               step="0.1"
               value={targets.floor || ''}
-              onChange={(e) => setTargets({ ...targets, floor: e.target.value })}
+              onChange={(e) => updateField({ floor: e.target.value })}
               placeholder="e.g. 4.5"
             />
-            <p className={`text-[10px] mt-1 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>Hard hypo threshold triggering carb stop</p>
+            <p className={`text-[10px] mt-1 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
+              Hard hypo threshold triggering carb stop
+            </p>
           </div>
 
           <div>
@@ -82,11 +115,13 @@ export default function RunTargetsTab({
                 min="1.0"
                 max="10.0"
                 value={targets.sensMult || ''}
-                onChange={(e) => setTargets({ ...targets, sensMult: e.target.value })}
-                placeholder="e.g. 1.5 - 3.0"
+                onChange={(e) => updateField({ sensMult: e.target.value })}
+                placeholder="e.g. 1.5 – 3.0"
               />
             </div>
-            <p className={`text-[10px] mt-1 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>Multiplier on active IOB decay (1.0 to 10.0)</p>
+            <p className={`text-[10px] mt-1 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
+              Multiplier on active IOB decay (1.0 to 10.0)
+            </p>
           </div>
 
           <div>
@@ -98,18 +133,24 @@ export default function RunTargetsTab({
               type="number"
               step="0.5"
               value={targets.weightKg ?? ''}
-              onChange={(e) => setTargets({ ...targets, weightKg: e.target.value })}
+              onChange={(e) => updateField({ weightKg: e.target.value })}
               placeholder="e.g. 72"
             />
-            <p className={`text-[10px] mt-1 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>Used for climbing gravitational work</p>
+            <p className={`text-[10px] mt-1 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
+              Used for climbing gravitational work
+            </p>
           </div>
         </div>
 
-        {/* Action Button */}
+        {/* Action Button Row */}
         <div className={`flex items-center justify-between pt-2 border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/10'}`}>
           <div className={`text-[11px] flex items-center gap-1.5 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
             <Shield size={13} className="text-emerald-500" />
-            <span>Settings synchronize with the simulation model and AndroidAPS pre-bolus wizard.</span>
+            <span>
+              {hasPlan
+                ? 'Changes are reflected live on the graph above. Save Targets to persist them.'
+                : 'Settings synchronize with the simulation model and AndroidAPS pre-bolus wizard.'}
+            </span>
           </div>
 
           <button
@@ -138,7 +179,7 @@ export default function RunTargetsTab({
         <div className={`p-4 rounded-xl border ${isDark ? 'bg-slate-900/30 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/10'}`}>
           <div className={`flex items-center gap-2 text-xs font-bold mb-2 ${isDark ? 'text-amber-400' : 'text-amber-800'}`}>
             <HeartPulse size={14} />
-            <span>Basal Rate Reduction & Temp Targets</span>
+            <span>Basal Rate Reduction &amp; Temp Targets</span>
           </div>
           <p className={`text-[11px] leading-relaxed ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>
             In closed-loop systems (AAPS / CamAPS), setting an Exercise Temp Target (8.0–9.0 mmol/L) 60–90 minutes before setting off reduces basal infusion, ensuring low circulating insulin when exercise begins. This significantly flattens the drop and reduces required in-run carbs.

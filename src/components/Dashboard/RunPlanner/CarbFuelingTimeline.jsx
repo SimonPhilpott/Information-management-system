@@ -3,14 +3,16 @@ import { Cookie, Clock, Sparkles, ChevronDown, ChevronUp, AlertCircle, Droplets,
 import { dist } from '../../../utils/units';
 
 // Helper for delta badge
-const renderDeltaBadge = (current, baseline, type = 'carbs') => {
+const renderDeltaBadge = (current, baseline, type = 'carbs', isDark = true) => {
   if (baseline == null || baseline <= 0 || current == null) return null;
   const pct = Math.round(((current - baseline) / baseline) * 100);
-  if (pct === 0) return <span className="text-[9px] font-bold text-slate-500 tabular-nums">0%</span>;
+  if (pct === 0) return <span className={`text-[10px] font-black tabular-nums px-2 py-0.5 rounded-full ${isDark ? 'bg-white/10 text-slate-300' : 'bg-[#2E2B27]/10 text-[#2E2B27]'}`}>0%</span>;
   const isPos = pct > 0;
-  const tone = isPos ? 'text-yellow-400 bg-yellow-500/15 border-yellow-500/30' : 'text-amber-400 bg-amber-500/15 border-amber-500/30';
+  const tone = isPos 
+    ? (isDark ? 'text-yellow-400 bg-yellow-500/15 border-yellow-500/30' : 'text-amber-950 bg-amber-100 border-amber-300 font-bold')
+    : (isDark ? 'text-amber-400 bg-amber-500/15 border-amber-500/30' : 'text-orange-950 bg-orange-100 border-orange-300 font-bold');
   return (
-    <span className={`px-1.5 py-0.5 rounded text-[9px] font-black tabular-nums border ${tone}`} title={`${isPos ? '+' : ''}${pct}% vs original plan`}>
+    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black tabular-nums border ${tone}`} title={`${isPos ? '+' : ''}${pct}% vs original plan`}>
       {isPos ? '+' : ''}{pct}%
     </span>
   );
@@ -35,31 +37,31 @@ export function PlanChart({ plan, isDark }) {
   return (
     <div className="overflow-x-auto">
       <svg viewBox={`0 0 ${W} ${H1 + GAP + H2 + 16}`} className="w-full min-w-[560px]" role="img" aria-label="Predicted glucose over the run">
-        <rect x={X(0)} y={0} width={X(dur) - X(0)} height={H1 + GAP + H2} fill="rgba(249,115,22,0.08)" />
-        <text x={X(0) + 4} y={11} fontSize="9" fill="#f97316">run</text>
-        <line x1={PADL} x2={W - PADR} y1={Y(plan.settings.floor)} y2={Y(plan.settings.floor)} stroke="#ef4444" strokeDasharray="4 3" strokeOpacity="0.7" />
-        <text x={2} y={Y(plan.settings.floor) + 3} fontSize="9" fill="#ef4444">{plan.settings.floor}</text>
-        <line x1={PADL} x2={W - PADR} y1={Y(plan.settings.startTarget)} y2={Y(plan.settings.startTarget)} stroke="#22c55e" strokeDasharray="4 3" strokeOpacity="0.5" />
-        <text x={2} y={Y(plan.settings.startTarget) + 3} fontSize="9" fill="#22c55e">{plan.settings.startTarget}</text>
-        <path d={path(plan.withoutCarbs)} fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="4 3" />
-        <path d={path(plan.prediction)} fill="none" stroke="#38bdf8" strokeWidth="2.2" strokeLinejoin="round" />
+        <rect x={X(0)} y={0} width={X(dur) - X(0)} height={H1 + GAP + H2} fill={isDark ? "rgba(249,115,22,0.08)" : "rgba(249,115,22,0.12)"} />
+        <text x={X(0) + 4} y={11} fontSize="9" fontWeight="700" fill={isDark ? "#f97316" : "#c2410c"}>run</text>
+        <line x1={PADL} x2={W - PADR} y1={Y(plan.settings.floor)} y2={Y(plan.settings.floor)} stroke="#ef4444" strokeDasharray="4 3" strokeOpacity="0.8" />
+        <text x={2} y={Y(plan.settings.floor) + 3} fontSize="9" fontWeight="700" fill="#dc2626">{plan.settings.floor}</text>
+        <line x1={PADL} x2={W - PADR} y1={Y(plan.settings.startTarget)} y2={Y(plan.settings.startTarget)} stroke="#16a34a" strokeDasharray="4 3" strokeOpacity="0.8" />
+        <text x={2} y={Y(plan.settings.startTarget) + 3} fontSize="9" fontWeight="700" fill="#16a34a">{plan.settings.startTarget}</text>
+        <path d={path(plan.withoutCarbs)} fill="none" stroke={isDark ? "#94a3b8" : "#64748b"} strokeWidth="1.5" strokeDasharray="4 3" />
+        <path d={path(plan.prediction)} fill="none" stroke="#0284c7" strokeWidth="2.4" strokeLinejoin="round" />
         {plan.plan.stops.map((s, i) => (
           <g key={i}>
-            <line x1={X(s.minute)} x2={X(s.minute)} y1={10} y2={H1} stroke="#facc15" strokeWidth="1.2" strokeOpacity="0.8" />
-            <text x={X(s.minute) + 3} y={20 + (i % 2) * 10} fontSize="9" fontWeight="700" fill="#facc15">{s.grams} g</text>
+            <line x1={X(s.minute)} x2={X(s.minute)} y1={10} y2={H1} stroke={isDark ? "#facc15" : "#b45309"} strokeWidth="1.5" strokeOpacity="0.85" />
+            <text x={X(s.minute) + 3} y={20 + (i % 2) * 10} fontSize="9" fontWeight="800" fill={isDark ? "#facc15" : "#78350f"}>{s.grams} g</text>
           </g>
         ))}
-        <path d={area} fill="rgba(148,163,184,0.25)" stroke="#94a3b8" strokeWidth="1" />
-        <text x={2} y={H1 + GAP + 10} fontSize="9" fill="currentColor" opacity="0.5">{Math.round(eMax)}m</text>
-        {ticks.map((m) => (<text key={m} x={X(m)} y={H1 + GAP + H2 + 12} fontSize="9" textAnchor="middle" fill="currentColor" opacity="0.55">{m === 0 ? 'start' : `${m}m`}</text>))}
+        <path d={area} fill={isDark ? "rgba(148,163,184,0.25)" : "rgba(120,53,15,0.12)"} stroke={isDark ? "#94a3b8" : "#b45309"} strokeWidth="1.2" />
+        <text x={2} y={H1 + GAP + 10} fontSize="9" fontWeight="700" fill="currentColor" opacity="0.7">{Math.round(eMax)}m</text>
+        {ticks.map((m) => (<text key={m} x={X(m)} y={H1 + GAP + H2 + 12} fontSize="9" fontWeight="600" textAnchor="middle" fill="currentColor" opacity="0.8">{m === 0 ? 'start' : `${m}m`}</text>))}
       </svg>
-      <div className={`flex flex-wrap gap-x-4 gap-y-1 text-[10px] mt-1 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
-        <span><span className="inline-block w-3 h-0.5 bg-sky-400 align-middle mr-1" />estimated glucose with plan</span>
-        <span><span className={`inline-block w-3 h-0.5 ${isDark ? 'bg-slate-400' : 'bg-[#6A645D]'} align-middle mr-1`} />with no carbs</span>
-        <span><span className="inline-block w-3 h-0.5 bg-yellow-400 align-middle mr-1" />carb stop</span>
-        <span><span className="inline-block w-3 h-0.5 bg-red-500 align-middle mr-1" />hypo floor</span>
-        <span><span className="inline-block w-3 h-0.5 bg-green-500 align-middle mr-1" />start target</span>
-        <span>shaded area = route elevation</span>
+      <div className={`flex flex-wrap gap-x-4 gap-y-1 text-[10px] mt-1 ${isDark ? 'text-slate-400' : 'text-[#2E2B27] font-medium'}`}>
+        <span><span className="inline-block w-3 h-1 bg-sky-500 align-middle mr-1 rounded" />estimated glucose with plan</span>
+        <span><span className={`inline-block w-3 h-1 ${isDark ? 'bg-slate-400' : 'bg-slate-600'} align-middle mr-1 rounded`} />with no carbs</span>
+        <span><span className={`inline-block w-3 h-1 ${isDark ? 'bg-yellow-400' : 'bg-amber-600'} align-middle mr-1 rounded`} />carb stop</span>
+        <span><span className="inline-block w-3 h-1 bg-red-500 align-middle mr-1 rounded" />hypo floor</span>
+        <span><span className="inline-block w-3 h-1 bg-green-600 align-middle mr-1 rounded" />start target</span>
+        <span className="opacity-75">shaded area = route elevation</span>
       </div>
     </div>
   );
@@ -88,32 +90,34 @@ export default function CarbFuelingTimeline({
     <div className={`p-4 rounded-2xl border transition-all ${isDark ? 'bg-slate-900/40 border-white/10' : 'bg-white border-[#2E2B27]/10 shadow-sm'} mb-4`}>
       {/* Header & Quick Stats */}
       <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 pb-3 border-b ${isDark ? 'border-white/5' : 'border-[#2E2B27]/10'}`}>
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
-            <Cookie size={16} />
+        <div className="flex items-center gap-2.5">
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isDark ? 'bg-amber-500/10 border border-amber-500/20 text-amber-400' : 'bg-amber-500/20 border border-amber-600/30 text-amber-800'}`}>
+            <Cookie size={17} />
           </div>
           <div>
-            <h3 className={`text-xs font-black uppercase tracking-wider flex items-center gap-2 ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>
+            <h3 className={`text-xs font-black uppercase tracking-wider flex items-center gap-2 ${isDark ? 'text-slate-100' : 'text-[#2E2B27]'}`}>
               Carb Strategy & Fueling Timeline
-              {originalBaseline && renderDeltaBadge(totalCarbs, baselineCarbs, 'carbs')}
+              {originalBaseline && renderDeltaBadge(totalCarbs, baselineCarbs, 'carbs', isDark)}
             </h3>
-            <p className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>Planned carbohydrate schedule timed to elevation gradients and aerobic demand</p>
+            <p className={`text-[11px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/80 font-medium'}`}>
+              Planned carbohydrate schedule timed to elevation gradients and aerobic demand
+            </p>
           </div>
         </div>
 
         {/* Aggregate KPI chips */}
         <div className="flex items-center gap-2">
-          <div className={`px-2.5 py-1.5 rounded-lg border text-right ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/10'}`}>
-            <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>Total Fuel</div>
-            <div className={`text-sm font-black tabular-nums ${isDark ? 'text-yellow-400' : 'text-amber-800'}`}>{totalCarbs} <span className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>g</span></div>
+          <div className={`px-3 py-1.5 rounded-xl border text-right ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/15'}`}>
+            <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/70'}`}>Total Fuel</div>
+            <div className={`text-sm font-black tabular-nums ${isDark ? 'text-yellow-400' : 'text-amber-950'}`}>{totalCarbs} <span className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-[#2E2B27]'}`}>g</span></div>
           </div>
-          <div className={`px-2.5 py-1.5 rounded-lg border text-right ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/10'}`}>
-            <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>Fuel Rate</div>
-            <div className="text-sm font-black tabular-nums text-sky-500">{carbRatePerHour} <span className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>g/h</span></div>
+          <div className={`px-3 py-1.5 rounded-xl border text-right ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/15'}`}>
+            <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/70'}`}>Fuel Rate</div>
+            <div className={`text-sm font-black tabular-nums ${isDark ? 'text-sky-400' : 'text-sky-900'}`}>{carbRatePerHour} <span className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-[#2E2B27]'}`}>g/h</span></div>
           </div>
-          <div className={`px-2.5 py-1.5 rounded-lg border text-right ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/10'}`}>
-            <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>Stops</div>
-            <div className="text-sm font-black tabular-nums text-emerald-500">{stops.length}</div>
+          <div className={`px-3 py-1.5 rounded-xl border text-right ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/15'}`}>
+            <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/70'}`}>Stops</div>
+            <div className={`text-sm font-black tabular-nums ${isDark ? 'text-emerald-400' : 'text-emerald-900'}`}>{stops.length}</div>
           </div>
         </div>
       </div>
@@ -121,8 +125,8 @@ export default function CarbFuelingTimeline({
       {/* Visual Timeline Milestones Bar */}
       {stops.length > 0 ? (
         <div className="mb-5">
-          <div className={`text-[10px] font-bold uppercase tracking-wider mb-2.5 flex items-center gap-1.5 ${isDark ? 'text-slate-400' : 'text-[#2E2B27]'}`}>
-            <Clock size={12} className="text-amber-500" />
+          <div className={`text-xs font-black uppercase tracking-wider mb-3 flex items-center gap-1.5 ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>
+            <Clock size={13} className={isDark ? 'text-amber-400' : 'text-amber-700'} />
             Milestone Fueling Schedule
           </div>
 
@@ -130,18 +134,20 @@ export default function CarbFuelingTimeline({
             {stops.map((s, idx) => (
               <div
                 key={idx}
-                className={`relative p-3 rounded-xl border transition-all ${
+                className={`relative p-3.5 rounded-xl border transition-all ${
                   isDark
                     ? 'bg-slate-950/60 border-amber-500/20 hover:border-amber-500/40 shadow-sm'
-                    : 'bg-[#FAF7F2] border-amber-500/30 hover:border-amber-500/50 shadow-sm'
+                    : 'bg-[#FAF7F2] border-amber-500/30 hover:border-amber-600/50 shadow-sm'
                 }`}
               >
                 {/* Step Index & Time Badge */}
-                <div className="flex items-center justify-between mb-2">
-                  <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${isDark ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30' : 'bg-amber-100 text-amber-900 border border-amber-300'}`}>
+                <div className="flex items-center justify-between mb-2.5">
+                  <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                    isDark ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-amber-600 text-white font-black shadow-xs'
+                  }`}>
                     Stop {idx + 1} • {s.minute} min
                   </span>
-                  <span className={`text-[10px] font-bold tabular-nums ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>
+                  <span className={`text-xs font-black tabular-nums ${isDark ? 'text-slate-300' : 'text-[#2E2B27]'}`}>
                     km {dist(s.km, units, 1)}
                   </span>
                 </div>
@@ -149,26 +155,34 @@ export default function CarbFuelingTimeline({
                 {/* Grams & Quick Steppers */}
                 <div className="flex items-center justify-between my-2">
                   <div className="flex items-center gap-2">
-                    <span className={`text-lg font-black tabular-nums ${isDark ? 'text-yellow-400' : 'text-amber-800'}`}>
-                      {s.grams} <span className={`text-xs font-bold ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>g</span>
+                    <span className={`text-lg font-black tabular-nums ${isDark ? 'text-yellow-400' : 'text-amber-950'}`}>
+                      {s.grams} <span className={`text-xs font-bold ${isDark ? 'text-slate-400' : 'text-[#2E2B27]'}`}>g</span>
                     </span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${isDark ? 'bg-slate-800 text-slate-300 border-white/5' : 'bg-white text-[#2E2B27] border-[#2E2B27]/10 font-bold'}`}>
+                    <span className={`text-[10px] px-2 py-0.5 rounded border ${isDark ? 'bg-slate-800 text-slate-300 border-white/5' : 'bg-white text-[#2E2B27] border-[#2E2B27]/20 font-black shadow-2xs'}`}>
                       Fast Gel
                     </span>
                   </div>
 
                   {onStepCarbs && (
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => onStepCarbs(-5)}
-                        className={`w-6 h-6 rounded flex items-center justify-center border active:scale-95 text-xs font-bold ${isDark ? 'border-white/10 hover:bg-white/10 text-slate-300' : 'border-[#2E2B27]/15 hover:bg-[#2E2B27]/5 text-[#2E2B27]'}`}
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center border active:scale-95 text-sm font-black transition-all ${
+                          isDark
+                            ? 'border-white/10 bg-white/5 hover:bg-white/10 text-slate-200'
+                            : 'border-[#2E2B27]/20 bg-white hover:bg-amber-100 text-[#2E2B27] shadow-xs'
+                        }`}
                         title="Reduce plan carbs by 5g"
                       >
                         -
                       </button>
                       <button
                         onClick={() => onStepCarbs(5)}
-                        className={`w-6 h-6 rounded flex items-center justify-center border active:scale-95 text-xs font-bold ${isDark ? 'border-white/10 hover:bg-white/10 text-slate-300' : 'border-[#2E2B27]/15 hover:bg-[#2E2B27]/5 text-[#2E2B27]'}`}
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center border active:scale-95 text-sm font-black transition-all ${
+                          isDark
+                            ? 'border-white/10 bg-white/5 hover:bg-white/10 text-slate-200'
+                            : 'border-[#2E2B27]/20 bg-white hover:bg-amber-100 text-[#2E2B27] shadow-xs'
+                        }`}
                         title="Increase plan carbs by 5g"
                       >
                         +
@@ -178,8 +192,10 @@ export default function CarbFuelingTimeline({
                 </div>
 
                 {/* Guidance Pill */}
-                <div className={`text-[10px] leading-tight mt-1 flex items-center gap-1 ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>
-                  <Zap size={11} className="text-amber-500 shrink-0" />
+                <div className={`text-[11px] leading-snug mt-2 p-1.5 rounded-lg flex items-center gap-1.5 ${
+                  isDark ? 'bg-amber-500/10 text-amber-200 border border-amber-500/20' : 'bg-amber-100/70 text-amber-950 border border-amber-300 font-medium'
+                }`}>
+                  <Zap size={13} className="text-amber-600 shrink-0" />
                   <span>Take before fatigue sets in. Chase with 2-3 sips water.</span>
                 </div>
               </div>
@@ -187,15 +203,15 @@ export default function CarbFuelingTimeline({
           </div>
         </div>
       ) : (
-        <div className={`p-3 rounded-xl border text-center text-xs mb-4 ${isDark ? 'border-dashed border-white/10 text-slate-400' : 'border-dashed border-[#2E2B27]/15 text-[#6A645D]'}`}>
+        <div className={`p-3.5 rounded-xl border text-center text-xs mb-4 ${isDark ? 'border-dashed border-white/10 text-slate-400' : 'border-dashed border-[#2E2B27]/20 text-[#2E2B27] bg-[#FAF7F2] font-medium'}`}>
           No in-run carb stops required for this distance and metabolic state. Carry emergency hypo treatment as standard.
         </div>
       )}
 
       {/* Trajectory Elevation & Glucose Infographic Chart */}
-      <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/10'}`}>
-        <div className={`text-[10px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1.5 ${isDark ? 'text-slate-400' : 'text-[#2E2B27]'}`}>
-          <Sparkles size={12} className="text-sky-500" />
+      <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/10'}`}>
+        <div className={`text-xs font-black uppercase tracking-wider mb-2.5 flex items-center gap-2 ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>
+          <Sparkles size={13} className="text-sky-500" />
           Physiologic Glucose Trajectory vs Course Topography
         </div>
         <PlanChart plan={plan} isDark={isDark} />

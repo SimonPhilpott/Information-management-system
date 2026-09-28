@@ -246,6 +246,8 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
   const [notification, setNotification] = useState(null);
   const fileRef = useRef(null);
   const bookFileRef = useRef(null);
+  // Debounce ref for re-estimating on live target changes
+  const estimateDebounceRef = useRef(null);
 
   const showToast = useCallback((msg, type = 'success') => {
     setNotification({ msg, type });
@@ -339,13 +341,15 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
     return () => { live = false; clearTimeout(t); };
   }, [routeFull, form.distanceKm, form.intensity, form.pace, paceTouched, units]);
 
-  const estimate = async (overrides = {}) => {
+  const estimate = async (overrides = {}, targetsOverride = null) => {
     setBusy('estimate');
     try {
       const distKm = routeFull ? routeFull.distanceKm : toKm(form.distanceKm, units);
       const isTweak = overrides?.isTweak === true;
       const targetPace = overrides?.paceMinPerKm ?? (form.pace ? paceToMinPerKm(form.pace, units) : null);
       const targetCarbs = overrides?.customCarbs;
+      // Use live (possibly unsaved) targets so the chart reacts instantly to Tab 3 adjustments
+      const liveTargets = targetsOverride ?? targets;
 
       const body = {
         distanceKm: distKm,
@@ -361,7 +365,12 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
         routeName: routeFull?.name || (routeId ? routes.find((r) => String(r.id) === routeId)?.name : null),
         routeId: routeId || null,
         goalId: goalId || null,
-        customCarbs: targetCarbs
+        customCarbs: targetCarbs,
+        // Live target overrides — backend uses these instead of persisted DB values
+        ...(liveTargets?.startTarget !== undefined ? { startTarget: Number(liveTargets.startTarget) } : {}),
+        ...(liveTargets?.floor !== undefined ? { floor: Number(liveTargets.floor) } : {}),
+        ...(liveTargets?.sensMult !== undefined ? { sensMult: Number(liveTargets.sensMult) } : {}),
+        ...(liveTargets?.weightKg !== undefined && liveTargets.weightKg !== null && liveTargets.weightKg !== '' ? { weightKg: Number(liveTargets.weightKg) } : {}),
       };
 
       const d = await send('/api/planner/estimate', 'POST', body);
@@ -380,6 +389,16 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
       setBusy('');
     }
   };
+
+  // Debounced re-estimation triggered by live target changes in Tab 3.
+  // Only fires if a plan already exists (i.e. the user has already generated one).
+  const estimateWithTargets = useCallback((newTargets) => {
+    if (!plan) return; // no plan to update yet
+    if (estimateDebounceRef.current) clearTimeout(estimateDebounceRef.current);
+    estimateDebounceRef.current = setTimeout(() => {
+      estimate({ isTweak: true }, newTargets);
+    }, 600);
+  }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stepTime = (deltaMin) => {
     if (!plan || !plan.run) return;
@@ -947,6 +966,8 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
               targets={targets}
               setTargets={setTargets}
               saveTargets={saveTargets}
+              hasPlan={Boolean(plan)}
+              onTargetChange={estimateWithTargets}
               busy={busy}
               isDark={isDark}
               panelClass={panel}

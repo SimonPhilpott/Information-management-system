@@ -6,19 +6,23 @@ import { dist, toKm, paceText, paceToMinPerKm } from '../../../utils/units';
 
 const fmtMin = (m) => `${Math.floor(m / 60)}h ${String(Math.round(m % 60)).padStart(2, '0')}m`;
 
-const renderDeltaBadge = (current, baseline, type = 'time') => {
+const renderDeltaBadge = (current, baseline, type = 'time', isDark = true) => {
   if (baseline == null || baseline <= 0 || current == null) return null;
   const pct = Math.round(((current - baseline) / baseline) * 100);
-  if (pct === 0) return <span className="text-[9px] font-bold text-slate-500 tabular-nums">0%</span>;
+  if (pct === 0) return <span className={`text-[10px] font-black tabular-nums px-2 py-0.5 rounded-full ${isDark ? 'bg-white/10 text-slate-300' : 'bg-[#2E2B27]/10 text-[#2E2B27]'}`}>0%</span>;
   const isPos = pct > 0;
-  let tone = 'text-slate-400 bg-slate-500/10 border-slate-500/20';
+  let tone = isDark ? 'text-slate-300 bg-slate-500/10 border-slate-500/20' : 'text-[#2E2B27] bg-[#2E2B27]/10 border-[#2E2B27]/20';
   if (type === 'time' || type === 'pace') {
-    tone = isPos ? 'text-amber-400 bg-amber-500/15 border-amber-500/30' : 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30';
+    tone = isPos 
+      ? (isDark ? 'text-amber-400 bg-amber-500/15 border-amber-500/30' : 'text-amber-950 bg-amber-100 border-amber-300 font-bold')
+      : (isDark ? 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30' : 'text-emerald-950 bg-emerald-100 border-emerald-300 font-bold');
   } else if (type === 'carbs') {
-    tone = isPos ? 'text-yellow-400 bg-yellow-500/15 border-yellow-500/30' : 'text-amber-400 bg-amber-500/15 border-amber-500/30';
+    tone = isPos 
+      ? (isDark ? 'text-yellow-400 bg-yellow-500/15 border-yellow-500/30' : 'text-amber-950 bg-amber-100 border-amber-300 font-bold')
+      : (isDark ? 'text-amber-400 bg-amber-500/15 border-amber-500/30' : 'text-orange-950 bg-orange-100 border-orange-300 font-bold');
   }
   return (
-    <span className={`px-1.5 py-0.5 rounded text-[9px] font-black tabular-nums border ${tone}`} title={`${isPos ? '+' : ''}${pct}% vs original plan`}>
+    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black tabular-nums border ${tone}`} title={`${isPos ? '+' : ''}${pct}% vs original plan`}>
       {isPos ? '+' : ''}{pct}%
     </span>
   );
@@ -435,7 +439,7 @@ export default function RunMissionControlTab({
               <div className={`rounded-lg px-3 py-2 border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/10'}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>Estimated time</div>
-                  {originalBaseline && renderDeltaBadge(plan.run?.durationMin, originalBaseline.durationMin, 'time')}
+                  {originalBaseline && renderDeltaBadge(plan.run?.durationMin, originalBaseline.durationMin, 'time', isDark)}
                 </div>
                 <div className="flex items-center gap-1.5">
                   <div className="flex flex-col gap-0.5 shrink-0">
@@ -508,7 +512,7 @@ export default function RunMissionControlTab({
               <div className={`rounded-lg px-3 py-2 border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/10'}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>Average pace</div>
-                  {originalBaseline && renderDeltaBadge(plan.inputs?.averagePaceMinPerKm, originalBaseline.averagePaceMinPerKm, 'pace')}
+                  {originalBaseline && renderDeltaBadge(plan.inputs?.averagePaceMinPerKm, originalBaseline.averagePaceMinPerKm, 'pace', isDark)}
                 </div>
                 <div className="flex items-center gap-1.5">
                   <div className="flex flex-col gap-0.5 shrink-0">
@@ -574,8 +578,8 @@ export default function RunMissionControlTab({
               {/* Editable: Carbs in Total chip */}
               <div className={`rounded-lg px-3 py-2 border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/10'}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
-                  <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-yellow-500/90' : 'text-amber-800'}`}>Carbs in total</div>
-                  {originalBaseline && renderDeltaBadge(plan.plan?.totalCarbs, originalBaseline.totalCarbs, 'carbs')}
+                  <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-yellow-500/90' : 'text-amber-900 font-bold'}`}>Carbs in total</div>
+                  {originalBaseline && renderDeltaBadge(plan.plan?.totalCarbs, originalBaseline.totalCarbs, 'carbs', isDark)}
                 </div>
                 <div className="flex items-center gap-1.5">
                   <div className="flex flex-col gap-0.5 shrink-0">
