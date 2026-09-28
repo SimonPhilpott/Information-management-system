@@ -721,7 +721,7 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
   return (
     <PortalShell
       title="Plan My Run"
-      subtitle="/ims/runplanner • Mission Control, T1D Rulebook & Interactive Flythrough Replay"
+      subtitle="/ims/runplanner • Run Planner, T1D Rulebook & Interactive Flythrough Replay"
       icon={RouteIcon}
       gradient={gradient}
       glow="rgba(16,185,129,0.3)"
@@ -757,7 +757,7 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
               }`}
             >
               <Mountain size={14} />
-              <span>1. Mission Control</span>
+              <span>1. Run Planner</span>
             </button>
 
             <button
@@ -805,7 +805,7 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
             </button>
           </div>
 
-          {/* TAB 1: MISSION CONTROL (THE MAIN RUN PLANNING COCKPIT) */}
+          {/* TAB 1: RUN PLANNER (THE MAIN RUN PLANNING COCKPIT) */}
           {activeMainTab === 'mission' && (
             <RunMissionControlTab
               routeFull={routeFull}

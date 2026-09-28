@@ -283,7 +283,7 @@
       ]
     },
     "src/components/Dashboard/RunPlannerPortal.jsx": {
-      "description": "Interactive Run Planner portal with 4-tab workspace (Mission Control, T1D Rulebook & Intelligence, Targets & Assumptions, and Run Flythrough & Retrospective), radial target-zone gauges, and integrated post-run scrutiny.",
+      "description": "Interactive Run Planner portal with 4-tab workspace (Run Planner, T1D Rulebook & Intelligence, Targets & Assumptions, and Run Flythrough & Retrospective), radial target-zone gauges, and integrated post-run scrutiny.",
       "dependencies": [
         "src/components/Dashboard/PortalShell.jsx",
         "src/components/Dashboard/RunPlanner/RunMissionControlTab.jsx",

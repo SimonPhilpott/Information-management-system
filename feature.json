@@ -606,11 +606,11 @@
         "Real-time Wake Daemon Monitor card in PhrasesPortal (/ims/phrases) with live state pill, silence countdown, and force standby control"
       ]
     },
-    "Plan My Run Mission Control & Interactive Flythrough Replay": {
+    "Plan My Run Dashboard & Interactive Flythrough Replay": {
       "status": "enabled",
       "description": "Modular 4-tab run planning and retrospective analysis workspace featuring telemetry radial target-zone gauges (Pace, Elevation, Blood Glucose), infographic carb fueling timeline, dedicated T1D Rulebook & Intelligence tab, Targets & Assumptions tab, and interactive Run Flythrough course re-run player.",
       "subFeatures": [
-        "Modular 4-tab navigation workspace (1. Mission Control, 2. T1D Rulebook & Intelligence, 3. Targets & Assumptions, 4. Run Flythrough & Retrospective)",
+        "Modular 4-tab navigation workspace (1. Run Planner, 2. T1D Rulebook & Intelligence, 3. Targets & Assumptions, 4. Run Flythrough & Retrospective)",
         "SVG Radial Gauge components (RadialGauge.jsx & RunGaugesBar.jsx) displaying Pace, Elevation, and Blood Glucose with color-coded target safe zones (7.0-10.0 mmol/L safe band, red hypo floor, amber ceiling)",
         "Infographic Carb Fueling Timeline (CarbFuelingTimeline.jsx) charting carb stop milestones, gram dosages, intake timing, and simulated glucose curve over terrain",
         "Dedicated T1D Rulebook & Intelligence tab (RunRulebookTab.jsx) encapsulating active markdown rules, PDF/TXT book library, direct research paste, and AI conflict arbitration",
