@@ -13,12 +13,52 @@ import { getRulebookPromptContext } from './t1dRulebookService.js';
 // the planner model; the AI only explains them.
 const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
 db.exec('CREATE TABLE IF NOT EXISTS activity_insight (activity_id INTEGER PRIMARY KEY, at INTEGER NOT NULL, text TEXT NOT NULL, inputs TEXT)');
+db.exec(`
+  CREATE TABLE IF NOT EXISTS activity_debrief (
+    activity_id INTEGER PRIMARY KEY,
+    at INTEGER NOT NULL,
+    notes TEXT,
+    perceived_exertion TEXT,
+    incident_notes TEXT,
+    carb_timing_notes TEXT,
+    scrutiny_text TEXT,
+    suggestions TEXT
+  )
+`);
 
 try { db.exec('ALTER TABLE activity_insight ADD COLUMN units TEXT'); } catch (_) { /* already there */ }
 
 export async function getSavedInsight(id, units = 'km') {
   const r = db.prepare('SELECT at, text, units FROM activity_insight WHERE activity_id = ?').get(id);
-  return r ? { at: r.at, text: await textInUnits('insight', id, r.text, r.units || 'km', units), sources: SOURCES } : null;
+  const debrief = db.prepare('SELECT at, notes, perceived_exertion, incident_notes, carb_timing_notes, scrutiny_text, suggestions FROM activity_debrief WHERE activity_id = ?').get(id) || null;
+  return r ? { at: r.at, text: await textInUnits('insight', id, r.text, r.units || 'km', units), sources: SOURCES, debrief } : null;
+}
+
+export function getSavedDebrief(id) {
+  const r = db.prepare('SELECT at, notes, perceived_exertion, incident_notes, carb_timing_notes, scrutiny_text, suggestions FROM activity_debrief WHERE activity_id = ?').get(id);
+  return r || null;
+}
+
+export function saveDebriefNotes(id, data = {}) {
+  const now = Date.now();
+  const existing = getSavedDebrief(id);
+  const notes = data.notes != null ? String(data.notes) : (existing?.notes || '');
+  const perceived_exertion = data.perceived_exertion != null ? String(data.perceived_exertion) : (existing?.perceived_exertion || '');
+  const incident_notes = data.incident_notes != null ? String(data.incident_notes) : (existing?.incident_notes || '');
+  const carb_timing_notes = data.carb_timing_notes != null ? String(data.carb_timing_notes) : (existing?.carb_timing_notes || '');
+  if (existing) {
+    db.prepare(`
+      UPDATE activity_debrief
+      SET at = ?, notes = ?, perceived_exertion = ?, incident_notes = ?, carb_timing_notes = ?
+      WHERE activity_id = ?
+    `).run(now, notes, perceived_exertion, incident_notes, carb_timing_notes, id);
+  } else {
+    db.prepare(`
+      INSERT INTO activity_debrief (activity_id, at, notes, perceived_exertion, incident_notes, carb_timing_notes, scrutiny_text, suggestions)
+      VALUES (?, ?, ?, ?, ?, ?, '', '')
+    `).run(id, now, notes, perceived_exertion, incident_notes, carb_timing_notes);
+  }
+  return getSavedDebrief(id);
 }
 
 const brief = (plan) => plan && ({
@@ -32,13 +72,18 @@ const brief = (plan) => plan && ({
 });
 
 const unitNote = (units) => (units === 'mi' ? 'Write distances in MILES and pace in min per mile (the data below is in kilometres and min per km - convert: 1 mile = 1.609 km); elevation stays in metres.' : 'Write distances in kilometres and pace in min per km; elevation in metres.');
-export async function analyseActivity(id, units = 'km') {
+export async function analyseActivity(id, units = 'km', debrief = null) {
   const m = await matchActivity(id);
   if (m.status !== 'ok') throw new Error(m.note || 'This activity has no glucose data to review.');
   const a = db.prepare('SELECT id, name, sport, day, distance, moving_time, elevation, avg_speed, avg_hr FROM strava_activities WHERE id = ?').get(id);
   const targets = getTargets();
   const st = m.stats;
   const dur = m.window.durationMin;
+
+  if (debrief && typeof debrief === 'object') {
+    saveDebriefNotes(id, debrief);
+  }
+  const currentDebrief = getSavedDebrief(id);
 
   // What happened, against the user's own targets.
   const inRun = m.series.filter((p) => p.m >= 0 && p.m <= dur && p.bg != null);
@@ -70,6 +115,12 @@ export async function analyseActivity(id, units = 'km') {
       ? { name: route.name, km: route.distanceKm, gainM: route.gainM, steepestSplit: route.splits.reduce((b, s) => (s.maxGrade > (b?.maxGrade ?? -99) ? s : b), null) }
       : 'no saved route linked (distance and climb are from Strava)',
     verdict,
+    runnerDebriefNotes: currentDebrief ? {
+      notes: currentDebrief.notes || null,
+      perceived_exertion: currentDebrief.perceived_exertion || null,
+      incident_notes: currentDebrief.incident_notes || null,
+      carb_timing_notes: currentDebrief.carb_timing_notes || null,
+    } : null,
     conditions: {
       iobAtStart: st.iobStart, iobEnd: st.iobEnd, cobAtStart: st.cobStart, lastBolusUnits: st.lastBolusUnits,
       lastBolusHoursBefore: st.lastBolusMinutesBefore != null ? Math.round(st.lastBolusMinutesBefore / 6) / 10 : null,
@@ -80,7 +131,6 @@ export async function analyseActivity(id, units = 'km') {
     events: m.events,
     rightNow: {
       ...now,
-      // how long until insulin on board falls below 1 U by the model's insulin curve (3 h action), and the 2-hour bolus rule
       hoursUntilIobBelow1U: now.iob != null && now.iob > 1 ? Math.round(3 * (1 - (1 / now.iob) ** (1 / 1.5)) * 10) / 10 : 0,
       lastBolusWithin2Hours: now.lastBolusMinutesAgo != null && now.lastBolusMinutesAgo < 120,
     },
@@ -100,19 +150,29 @@ export async function analyseActivity(id, units = 'km') {
     `You are reviewing one run for a person with type 1 diabetes (Omnipod pump, AAPS closed loop, Libre 2 sensor; mmol/L). Their own targets: start each run at about ${targets.startTarget} mmol/L and never go below ${targets.floor} mmol/L. Use British English and plain, kind, specific language. ${unitNote(units)} ` +
     `The runner adheres to their personal 'Running with T1D: Comprehensive Glucose Rulebook':\n` +
     `--- T1D RULEBOOK REFERENCE ---\n${rulebookGuidance}\n--- END RULEBOOK REFERENCE ---\n\n` +
+    (currentDebrief?.notes || currentDebrief?.incident_notes || currentDebrief?.carb_timing_notes ?
+      `The runner recorded these specific field notes and observations:\n` +
+      `- Runner Notes: ${currentDebrief.notes || 'None'}\n` +
+      `- Fatigue / Perceived Exertion: ${currentDebrief.perceived_exertion || 'None'}\n` +
+      `- Stoppage / Low Incident: ${currentDebrief.incident_notes || 'None'}\n` +
+      `- Carb Timing Notes: ${currentDebrief.carb_timing_notes || 'None'}\n` +
+      `Pay very close attention to these notes: correlate any stoppage (e.g. having to walk due to blood sugars becoming dangerously low), fatigue, or unexpected carb timing with the actual minute-by-minute glucose trace and insulin on board.\n\n` : '') +
     `Everything you say must come from the DATA below and align with the T1D Rulebook principles above; quote numbers; separate what was observed from what the planner MODEL estimates; do not invent measurements. Where the data is thin, say so.\n\n` +
     `Write these sections with these headings:\n` +
     `1. "What went right" - compared with their targets (start near ${targets.startTarget}, stay above ${targets.floor}) and Rulebook gates. Always find one to three genuine positives even in a hard run (for example: low insulin on board, never above 10, no low after finishing, a steady middle section); if there truly are none, say "Not much this time" and then name the least bad thing. Do not start this section with an apology.\n` +
-    `2. "What went wrong" - lows or highs, when they happened, and the likely contributors visible in the data evaluated against the Rulebook (insulin on board at the start vs the <1.0 U gate, recent bolus vs the 2h window, carb timing vs steep hills, pump suspension, gradient and effort, trend into the start, post-run dip). Say plainly if nothing went wrong.\n` +
-    `3. "Next time on this route" - based on where glucose and insulin on board are RIGHT NOW (use planIfYouStartHowYouAreNow if present; if it is null, say the current data is stale and use planIfYouStartAtTarget). If rightNow shows insulin on board of about 2 U or more, or lastBolusWithin2Hours is true, say clearly that right now is NOT a good time to start this run per the Rulebook, and that waiting about hoursUntilIobBelow1U hours (or setting the exercise target early, as the team's guidance describes) makes the run much easier; only then describe what the plan would need if they went now, as an "if you had to go now" fallback. Give: "Before you go" (what start glucose to aim for, whether carbs are needed to reach it, how long IOB should be allowed to fall), "During the run" (concrete carbs: how many grams at what minute and km, ideally on flat or downhill stretches, matching the plan's stops) and "After" (carbs at the finish if the plan shows a post-run dip, and the delayed-low window).\n` +
-    `4. "Insulin - things to discuss with your diabetes team" - only options the published guidance supports (reducing a bolus given within 2 hours of the run: about 20% per Riddell 2017 up to about 50% per ISPAD 2022; raising the exercise/activity target ahead of the run so IOB falls; an overnight basal reduction of about 20% for about 6 hours for pump users after evening runs). NEVER give a specific insulin dose, a specific target value, or a change to pump settings, and quote no numbers for these options other than the percentages and hours named in this paragraph; say these decisions are theirs and their team's.` +
-    `Also explain briefly and accurately that exercise raises insulin-independent glucose uptake (roughly 1.5 to 10 times with intensity) and also increases insulin sensitivity during and for hours afterwards, so insulin on board that is harmless at rest can act harder during a run - which is why IOB at the start matters most. Do not claim a precise multiplier; the planner uses an adjustable assumption.\n` +
-    `5. "How much to trust this" - sample size (personal fit: ${fromTarget?.basis?.personalRuns ?? 0} matched runs), the assumptions used (read modelAssumptions.note honestly: never call the model "fitted" unless it says so), and that this is pattern-spotting from their own data, not medical advice.\n` +
-    `Keep it under about 450 words. Start with one sentence summing up the run. Use short paragraphs or short bullet lists.\n\nDATA (JSON):\n${JSON.stringify(facts)}`;
+    `2. "What went wrong & incident scrutiny" - lows or highs, when they happened, and the likely contributors visible in the data evaluated against the Rulebook (insulin on board at the start vs the <1.0 U gate, recent bolus vs the 2h window, carb timing vs steep hills, pump suspension, gradient and effort, trend into the start, post-run dip). Directly address the runner's notes if they mentioned having to walk, feeling tired, or unexpected glucose dips.\n` +
+    `3. "Carb timing retrospective" - evaluate when carbs were taken versus when they were actually needed. (For example, if glucose was elevated early on, clarify whether carbs at the start were redundant and only needed 30 minutes in; or if glucose dropped sharply early, explain why early carbs or waiting for lower IOB was critical).\n` +
+    `4. "Next time on this route: adaptive suggestions" - based on where glucose and insulin on board are RIGHT NOW (use planIfYouStartHowYouAreNow if present; if it is null, say the current data is stale and use planIfYouStartAtTarget). Give concrete, adaptive advice: "Before you go" (start glucose, IOB gate, waiting time), "During the run" (precise carb timing, e.g. delay to 30m if starting with low IOB, or carb stops placed before climbs), and "After the finish".\n` +
+    `5. "Insulin - things to discuss with your diabetes team" - only options the published guidance supports (reducing a bolus given within 2 hours of the run: about 20% per Riddell 2017 up to about 50% per ISPAD 2022; raising the exercise/activity target ahead of the run so IOB falls; an overnight basal reduction of about 20% for about 6 hours for pump users after evening runs). NEVER give a specific insulin dose, a specific target value, or a change to pump settings.\n` +
+    `6. "How much to trust this" - sample size (personal fit: ${fromTarget?.basis?.personalRuns ?? 0} matched runs), the assumptions used, and that this is pattern-spotting from their own data, not medical advice.\n` +
+    `Keep it under about 550 words. Start with one sentence summing up the run. Use short paragraphs or bullet lists.\n\nDATA (JSON):\n${JSON.stringify(facts)}`;
 
   const text = (await genAI.getGenerativeModel({ model: 'gemini-2.5-flash' }).generateContent(prompt)).response.text().trim();
-  const saved = { at: Date.now(), text, sources: SOURCES };
-  db.prepare('INSERT OR REPLACE INTO activity_insight (activity_id, at, text, inputs, units) VALUES (?, ?, ?, ?, ?)').run(id, saved.at, text, JSON.stringify({ verdict, now }), normaliseUnits(units));
+  const saved = { at: Date.now(), text, sources: SOURCES, debrief: currentDebrief };
+  db.prepare('INSERT OR REPLACE INTO activity_insight (activity_id, at, text, inputs, units) VALUES (?, ?, ?, ?, ?)').run(id, saved.at, text, JSON.stringify({ verdict, now, debrief: currentDebrief }), normaliseUnits(units));
+  if (currentDebrief) {
+    db.prepare('UPDATE activity_debrief SET scrutiny_text = ? WHERE activity_id = ?').run(text, id);
+  }
   clearUnitCache('insight', id);
   return saved;
 }

@@ -561,6 +561,21 @@
         "Escape key cancels edit with no re-estimate; Enter commits",
         "Pencil (✎) indicator on each editable chip surface-discoverability without permanent UI chrome"
       ]
+    },
+    "Run Planner Steppers, Effort Scaling & Post-Run Scrutiny Debrief": {
+      "status": "enabled",
+      "description": "Interactive up/down stepper icons and dynamic percentage delta badges for Estimated Time, Average Pace, and Carbs in Total. Includes manual carbs-in-total adjustment recalculating the full plan and glucose curve, nonlinear pace-effort scaling (speedRatio^1.35) increasing carb requirements for faster paces, expected current pace calculation factoring recent multi-run performance, and a post-run debrief & scrutiny workbench in Activities with runner field notes and Gemini adaptive coaching suggestions.",
+      "subFeatures": [
+        "Interactive up/down stepper chevrons (+/- 2m, +/- 5s, +/- 5g) for Estimated Time, Average Pace, and Carbs in Total",
+        "Dynamic percentage delta badges (+X% / -Y%) tracking changes against the baseline original plan",
+        "Manual Carbs in Total adjustments triggering complete simulation re-estimate with customCarbs stop scaling and generation",
+        "Pace-effort glucose uptake scaling applying speedRatio^1.35 so faster finishes demand higher carbohydrate intake",
+        "Expected Current Pace calculation combining runner 12-week general fitness and 90-day route history with 'Expected Now' badge",
+        "Post-run debrief notes workbench in ActivitiesPortal recording walking incidents, fatigue, and carb timing differences",
+        "Quick preset chips for immediate incident entry (Walked 2 mi due to low BG, Fatigued, Delayed carbs to 30m)",
+        "Dedicated SQLite activity_debrief persistence preserving runner notes independently of Strava sync",
+        "Gemini Flash adaptive run scrutiny correlating runner field notes with CGM curves to provide actionable suggestions for future runs"
+      ]
     }
   }
 }

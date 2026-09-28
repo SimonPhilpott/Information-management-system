@@ -283,11 +283,24 @@
       ]
     },
     "src/components/Dashboard/RunPlannerPortal.jsx": {
-      "description": "Interactive Run Planner portal featuring route selection, elevation and terrain gradient mapping, personalized carb and fueling timeline forecasting, and the comprehensive Running with T1D Rulebook management section with book literature uploads, direct research text pasting workbench, AI enhancement scanning, and side-by-side clinical conflict arbitration.",
+      "description": "Interactive Run Planner portal featuring route selection, elevation mapping, stepper controls with percentage delta badges for estimated time, average pace, and carbs, expected current pace display from recent running history, and the comprehensive Running with T1D Rulebook management section.",
       "dependencies": [
         "src/components/Dashboard/PortalShell.jsx",
         "src/components/Dashboard/Prose.jsx",
         "src/utils/units.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/runPlanService.js": {
+      "description": "Run planning and glucose simulation service calculating route elevation profiles, energy expenditures, insulin and exercise glucose uptake rates with nonlinear pace effort scaling (speedRatio^1.35), custom carbs recalculations, and athlete recent performance history.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/runInsightService.js": {
+      "description": "Run debrief, scrutiny, and insight service managing runner field notes (walking incidents, fatigue, carb timing mismatch) in SQLite activity_debrief and executing Gemini Flash adaptive retrospectives for next-run improvements.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js",
+        "pdf-knowledge-base/server/services/geminiService.js"
       ]
     }
   }

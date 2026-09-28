@@ -10,7 +10,7 @@ import {
 import {
   matchActivity, getStoredMatch, getGlucoseBadges, matchPending, getMatchProgress, getLoggerStatus, getInsights, analyseGlucose, getSavedGlucoseAnalysis, backfillNightscout, importLibreCsv,
 } from '../services/runGlucoseService.js';
-import { analyseActivity, getSavedInsight } from '../services/runInsightService.js';
+import { analyseActivity, getSavedInsight, getSavedDebrief, saveDebriefNotes } from '../services/runInsightService.js';
 import { listRoutes, linkedRouteId, linkActivityRoute, suggestRoutes } from '../services/routeService.js';
 
 const router = Router();
@@ -76,7 +76,14 @@ router.get('/activities/:id/glucose', async (req, res) => {
 // AI review of one run against the user's targets, plus advice for next time on the same route.
 router.get('/activities/:id/insight', async (req, res) => { try { res.json({ success: true, insight: await getSavedInsight(Number(req.params.id), req.query.units === 'mi' ? 'mi' : 'km') }); } catch (err) { fail(res, err); } });
 router.post('/activities/:id/insight', async (req, res) => {
-  try { res.json({ success: true, insight: await analyseActivity(Number(req.params.id), req.body?.units === 'mi' ? 'mi' : 'km') }); } catch (err) { fail(res, err); }
+  try { res.json({ success: true, insight: await analyseActivity(Number(req.params.id), req.body?.units === 'mi' ? 'mi' : 'km', req.body?.debrief) }); } catch (err) { fail(res, err); }
+});
+// Runner post-run debrief notes & scrutiny
+router.get('/activities/:id/debrief', (req, res) => {
+  try { res.json({ success: true, debrief: getSavedDebrief(Number(req.params.id)) }); } catch (err) { fail(res, err); }
+});
+router.post('/activities/:id/debrief', (req, res) => {
+  try { res.json({ success: true, debrief: saveDebriefNotes(Number(req.params.id), req.body || {}) }); } catch (err) { fail(res, err); }
 });
 // Which saved route an activity followed (so its elevation is used for the advice).
 router.get('/activities/:id/route', (req, res) => {

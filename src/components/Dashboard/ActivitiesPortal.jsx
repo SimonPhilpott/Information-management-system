@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, Fragment } from 'react';
-import { Activity, RotateCw, LogIn, Lock, Link2, Unlink, Sparkles, Save, ExternalLink, ChevronLeft, ChevronRight, AlertTriangle, TrendingUp, TrendingDown, Minus, Trophy, Droplets, ChevronDown, BookOpen } from 'lucide-react';
+import { Activity, RotateCw, LogIn, Lock, Link2, Unlink, Sparkles, Save, ExternalLink, ChevronLeft, ChevronRight, AlertTriangle, TrendingUp, TrendingDown, Minus, Trophy, Droplets, ChevronDown, BookOpen, Edit3, Check, FileText, HeartPulse } from 'lucide-react';
 import PortalShell from './PortalShell';
 import Prose from './Prose';
 import { useUnits, UnitToggle, dist, toKm, paceText, speedText, KM_PER_MI } from '../../utils/units';
@@ -289,13 +289,36 @@ function RunInsight({ id, km, isDark }) {
   const [insight, setInsight] = useState(null);
   const [routes, setRoutes] = useState({ routes: [], routeId: null, suggestions: [] });
   const [busy, setBusy] = useState(false);
+  const [savingNotes, setSavingNotes] = useState(false);
   const [error, setError] = useState('');
+  const [notes, setNotes] = useState('');
+  const [perceivedExertion, setPerceivedExertion] = useState('');
+  const [incidentNotes, setIncidentNotes] = useState('');
+  const [carbTimingNotes, setCarbTimingNotes] = useState('');
+  const [notesSaved, setNotesSaved] = useState(false);
+  const [showNotesForm, setShowNotesForm] = useState(false);
+
   useEffect(() => {
     let live = true;
     Promise.all([
       fetch(`/api/strava/activities/${id}/insight?units=${units}`, { credentials: 'same-origin' }).then((r) => r.json()),
       fetch(`/api/strava/activities/${id}/route?km=${km}`, { credentials: 'same-origin' }).then((r) => r.json()),
-    ]).then(([i, r]) => { if (live) { setInsight(i.insight || null); setRoutes({ routes: r.routes || [], routeId: r.routeId, suggestions: r.suggestions || [] }); } }).catch(() => {});
+      fetch(`/api/strava/activities/${id}/debrief`, { credentials: 'same-origin' }).then((r) => r.json()),
+    ]).then(([i, r, d]) => {
+      if (live) {
+        setInsight(i.insight || null);
+        setRoutes({ routes: r.routes || [], routeId: r.routeId, suggestions: r.suggestions || [] });
+        if (d?.debrief) {
+          setNotes(d.debrief.notes || '');
+          setPerceivedExertion(d.debrief.perceived_exertion || '');
+          setIncidentNotes(d.debrief.incident_notes || '');
+          setCarbTimingNotes(d.debrief.carb_timing_notes || '');
+          if (d.debrief.notes || d.debrief.incident_notes || d.debrief.carb_timing_notes) {
+            setShowNotesForm(true);
+          }
+        }
+      }
+    }).catch(() => {});
     return () => { live = false; };
   }, [id, km, units]);
 
@@ -307,15 +330,69 @@ function RunInsight({ id, km, isDark }) {
       setRoutes((r) => ({ ...r, routeId: d.routeId }));
     } catch (e) { setError(e.message); }
   };
+
+  const saveNotesOnly = async () => {
+    setSavingNotes(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/strava/activities/${id}/debrief`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          notes,
+          perceived_exertion: perceivedExertion,
+          incident_notes: incidentNotes,
+          carb_timing_notes: carbTimingNotes,
+        })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Could not save notes.');
+      setNotesSaved(true);
+      setTimeout(() => setNotesSaved(false), 3000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSavingNotes(false);
+    }
+  };
+
   const review = async () => {
     setBusy(true); setError('');
     try {
-      const res = await fetch(`/api/strava/activities/${id}/insight`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ units }) });
+      const res = await fetch(`/api/strava/activities/${id}/insight`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          units,
+          debrief: {
+            notes,
+            perceived_exertion: perceivedExertion,
+            incident_notes: incidentNotes,
+            carb_timing_notes: carbTimingNotes,
+          }
+        })
+      });
       const d = await res.json();
-      if (!res.ok) throw new Error(d.error || 'The review failed.');
+      if (!res.ok) throw new Error(d.error || 'The scrutiny review failed.');
       setInsight(d.insight);
+      setNotesSaved(true);
+      setTimeout(() => setNotesSaved(false), 3000);
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
+
+  const applyPreset = (text, type = 'incident') => {
+    setShowNotesForm(true);
+    if (type === 'incident') {
+      setIncidentNotes((prev) => (prev ? `${prev}; ${text}` : text));
+    } else if (type === 'carb') {
+      setCarbTimingNotes((prev) => (prev ? `${prev}; ${text}` : text));
+    } else {
+      setNotes((prev) => (prev ? `${prev}\n${text}` : text));
+    }
+  };
+
   const suggested = routes.suggestions.filter((sid) => sid !== routes.routeId);
   return (
     <div className={`rounded-xl border p-4 ${isDark ? 'border-white/10 bg-slate-950/30' : 'border-[#2E2B27]/10 bg-white/60'}`}>
@@ -325,11 +402,111 @@ function RunInsight({ id, km, isDark }) {
           <option value="">No saved route linked</option>
           {routes.routes.map((r) => <option key={r.id} value={r.id}>{r.name} ({dist(r.distanceKm, units)} {units}){suggested.includes(r.id) ? ' - similar length' : ''}</option>)}
         </select>
-        <button onClick={review} disabled={busy} className="ml-auto px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white active:scale-95 disabled:opacity-40">
-          {busy ? <RotateCw size={13} className="animate-spin" /> : <Sparkles size={13} />}{insight ? 'Review again' : 'Review this run'}
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setShowNotesForm((v) => !v)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition-all ${showNotesForm ? 'bg-white/10 text-white border-white/20' : isDark ? 'text-slate-400 hover:text-white border-white/10' : 'text-slate-600 hover:text-black border-black/10'}`}
+          >
+            <Edit3 size={12} />
+            <span>{showNotesForm ? 'Hide Debrief Notes' : (notes || incidentNotes || carbTimingNotes ? 'Edit Debrief Notes' : 'Add Debrief Notes')}</span>
+          </button>
+          <button onClick={review} disabled={busy} className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white active:scale-95 disabled:opacity-40">
+            {busy ? <RotateCw size={13} className="animate-spin" /> : <Sparkles size={13} />}{insight ? 'Scrutinise again' : 'Scrutinise this run'}
+          </button>
+        </div>
       </div>
       {routes.routes.length === 0 && <p className="text-[10px] text-slate-500 mb-2">Add your Komoot or GPX routes on the <a className="text-sky-500 hover:underline" href="/ims/runplanner">Run Planner</a> to include the route's climbing in the advice.</p>}
+      
+      {/* ── Runner Debrief & Scrutiny Notes Form ── */}
+      {showNotesForm && (
+        <div className={`p-3.5 rounded-xl border mb-3 flex flex-col gap-2.5 ${isDark ? 'bg-slate-900/60 border-white/10' : 'bg-slate-50 border-slate-200'}`}>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+              <FileText size={12} />Post-Run Debrief Notes & Observations
+            </span>
+            {notesSaved && (
+              <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                <Check size={11} /> Saved & linked to AI coach
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-slate-400 leading-relaxed">
+            Record what happened during this run. Scrutinise whether blood sugars forced you to walk, if fatigue hit early, or if your carb timing worked well so future plans adapt:
+          </p>
+
+          <div className="flex flex-wrap gap-1.5 mb-1">
+            <span className="text-[9px] uppercase tracking-wider font-bold text-slate-500 mr-1 self-center">Quick presets:</span>
+            {[
+              { label: '🚶 Walked 2 mi (low BG)', text: 'Had to walk for 2 miles because blood sugars became dangerously low', type: 'incident' },
+              { label: '😫 Sluggish / heavy legs', text: 'Felt tired and fatigued, unable to sustain expected running pace', type: 'incident' },
+              { label: '🍬 Carbs at start gave spike', text: 'Did not need carbs at start; caused early glucose spike', type: 'carb' },
+              { label: '⏱️ Delayed carbs to 30m', text: 'Delayed carbs to 30 mins in; kept glucose in stable band', type: 'carb' },
+              { label: '🎯 Ran in range throughout', text: 'Felt strong, pace on target, stayed within 5.0-9.0 mmol/L', type: 'general' },
+            ].map((p, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => applyPreset(p.text, p.type)}
+                className={`text-[10px] px-2 py-0.5 rounded-full border transition-all ${isDark ? 'border-white/10 hover:border-emerald-500/40 hover:bg-emerald-500/10 text-slate-300' : 'border-slate-300 hover:border-emerald-600 hover:bg-emerald-50 text-slate-700'}`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+            <div>
+              <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Stoppages / Low Incidents / Pacing Issues</label>
+              <input
+                className={`w-full px-2.5 py-1.5 rounded-lg text-xs outline-none border ${isDark ? 'bg-slate-950/80 border-white/10 text-slate-200' : 'bg-white border-slate-300 text-slate-800'}`}
+                placeholder="e.g. Had to walk for 2 miles because blood sugars dropped dangerously low"
+                value={incidentNotes}
+                onChange={(e) => setIncidentNotes(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Carb Timing Observations</label>
+              <input
+                className={`w-full px-2.5 py-1.5 rounded-lg text-xs outline-none border ${isDark ? 'bg-slate-950/80 border-white/10 text-slate-200' : 'bg-white border-slate-300 text-slate-800'}`}
+                placeholder="e.g. Did not need carbs at start, only added them after 30 mins"
+                value={carbTimingNotes}
+                onChange={(e) => setCarbTimingNotes(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block mb-1">General Field Notes & Feelings</label>
+            <textarea
+              rows={2}
+              className={`w-full px-2.5 py-1.5 rounded-lg text-xs outline-none border ${isDark ? 'bg-slate-950/80 border-white/10 text-slate-200' : 'bg-white border-slate-300 text-slate-800'}`}
+              placeholder="e.g. Felt tired at km 5; temperature was warm; loop temp target was active..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              onClick={saveNotesOnly}
+              disabled={savingNotes}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border ${isDark ? 'border-white/15 bg-white/5 hover:bg-white/10 text-slate-200' : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-700'}`}
+            >
+              {savingNotes ? <RotateCw size={11} className="animate-spin" /> : <Save size={11} />}
+              <span>Save Notes</span>
+            </button>
+            <button
+              onClick={review}
+              disabled={busy}
+              className="px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white active:scale-95 disabled:opacity-40"
+            >
+              {busy ? <RotateCw size={11} className="animate-spin" /> : <Sparkles size={11} />}
+              <span>Scrutinise Run & Get Adaptive Suggestions</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {error && <p className="text-xs text-amber-500 mb-2">{error}</p>}
       {insight ? (
         <>

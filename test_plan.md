@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 43
-- Verified Features: 43
+- Total Registered Features: 44
+- Verified Features: 44
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -51,6 +51,7 @@
 | FEAT-041 | Running with T1D Glucose Rulebook & Adaptive Coach Integration | [RunPlannerPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlannerPortal.jsx) | SQLite persistence, REST endpoints, LLM prompt augmentation, and interactive rulebook editor in RunPlannerPortal & ActivitiesPortal | PASS |
 | FEAT-042 | T1D Rulebook Book Upload, Indexing & AI Improvement Scanner | [RunPlannerPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlannerPortal.jsx) | Multi-format book upload, research text pasting workbench, text indexing, AI comparative scan, and interactive conflict resolution | PASS |
 | FEAT-043 | Bidirectional Pace & Estimated Time Editing in Run Plan | [RunPlannerPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlannerPortal.jsx) | Click Estimated Time chip, enter new time, verify pace chip updates and carb stops recalculate; click Average Pace chip, enter mm:ss, verify time chip updates and plan refreshes | PASS |
+| FEAT-044 | Run Planner Steppers, Effort Scaling & Post-Run Scrutiny Debrief | [RunPlannerPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlannerPortal.jsx) | Stepper chevrons, % delta badges, custom carbs recalculation, speedRatio^1.35 effort scaling, expected now card, and post-run debrief scrutiny | PASS |
 
 
 
@@ -317,6 +318,20 @@
 9. **Direct Research Text Pasting:** Navigate to the 'Paste & Review Research' tab or click `[Paste Research]` in the rulebook header; enter a research title (e.g. 'Riddell 10s Sprint Catecholamine Blunting Study'), publication citation, and paste study abstract/text (or click sample preset `[Sample 1 (Sprint Blunting)]`); confirm live character and word counters update dynamically.
 10. **Real-Time Research Cross-Examination & Arbitration Routing:** Toggle 'Also save and index this note in my Uploaded Books & Literature Library' (default checked); click `[Review Research Against Rulebook]`; verify endpoint `POST /api/planner/rulebook/research/review` executes Gemini Flash comparative audit, inserts structured findings into `t1d_rulebook_findings`, and transitions the portal directly to the 'AI Scan & Conflict Arbitration' board with pending findings ready for user Replace, Add, Dismiss, or Edit actions.
 
+### Suite 43: Bidirectional Pace & Estimated Time Editing in Run Plan (FEAT-043)
+1. **Pace-to-Time Recalculation:** Click on the Average Pace chip in the generated run plan; enter a faster pace (e.g. 5:00 /km); press Enter; verify Estimated Time decreases accordingly, carb stops recalculate, and the predicted glucose curve re-renders.
+2. **Time-to-Pace Recalculation:** Click on the Estimated Time chip; enter a new duration (e.g. 1h 10m); press Enter; verify Average Pace updates, `form.pace` is updated for subsequent runs, and scenario tables synchronize.
+3. **Pencil Indicator & Keyboard Shortcuts:** Verify pencil (✎) affordance indicates clickability; verify Escape reverts changes without network requests; verify invalid paces or times abort gracefully without crashing the UI.
+
+### Suite 44: Run Planner Steppers, Effort Scaling & Post-Run Scrutiny Debrief (FEAT-044)
+1. **Interactive Stepper Controls:** On the generated run plan, click the up and down chevron steppers on Estimated Time (+/- 2 min), Average Pace (+/- 5 sec), and Carbs in Total (+/- 5 g). Verify each click triggers a live plan re-estimate with a loading spinner.
+2. **Baseline Delta Badges (%):** Check that modifying any of the three chips displays a color-coded percentage badge (e.g. `+12%`, `-8%`) relative to the original run plan baseline, resetting only when a new route or fresh estimate is selected.
+3. **Total Carbs Overrides & Curve Recalculation:** Click or step Carbs in Total to an arbitrary value (e.g. 45g); verify `customCarbs` propagates to the simulator, existing carb stops scale or new stops are generated at ~35% duration, and `minDuring`, `endBg`, and `minWithoutCarbs` update.
+4. **Pace-Effort Glucose Uptake Scaling:** Increase running speed (decrease pace); verify `paceEffortFactor = (speedRatio)^1.35` increases total effective effort and exercise uptake (`kEx`), resulting in a steeper blood sugar drop and higher recommended carbohydrate requirement.
+5. **Expected Current Pace & Route History:** Select a saved route; inspect the Route Run History cards at the top; verify the 'Expected Now' card displays the runner's expected current pace and time based on their 12-week general fitness and 90-day route history, with a single-click button to apply it directly to the planner form.
+6. **Post-Run Scrutiny Debrief & Notes:** In the Activities portal, open an activity debrief; enter runner notes (e.g. "Walked 2 miles due to low BG", "Felt fatigued", "Delayed carbs until 30 mins"); click `[Save Debrief Notes]` and verify persistence in `activity_debrief`.
+7. **Gemini Adaptive Scrutiny & Retrospective:** Click `[Scrutinise Run & Get Adaptive Suggestions]`; verify Gemini Flash correlates athlete field notes with the actual CGM trace, assesses whether starting carbs were needed or should have been delayed to 30 minutes, and provides structured suggestions for the next run.
+
 ## Section 3: Defensive Engineering Invariants
 1. Hardware watchdog timer (WDT) and auto-reconnect logic on ESP32 WebSocket disconnects.
 2. Anti-stutter ring buffer and I2S DMA queue sizing on ESP32 PSRAM to prevent audio underflow/overflow.
@@ -368,6 +383,7 @@
 48. GitHub Account Identity Verification, Targeted Discovery & Unrelated Repo Exclusion Invariant: in `codeRepoService.js`, Personal Access Tokens are verified against `https://api.github.com/user` to check authenticated login identities against expected handles (`simonphilpott` and `simon-philpott-turntown`), surfacing `turntownMismatch` if a personal token is supplied for the TurnTown account. Discovery queries strictly target `simon-philpott-turntown` and canonical SPFx repositories, actively purging and filtering out unrelated enterprise-wide organization interview tasks (`turner-townsend/*`).
 49. T1D Book Literature Upload, Extraction & Arbitration Invariant: `t1dRulebookService.js` and `RunPlannerPortal.jsx` strictly preserve the user's sovereign authority over rulebook modifications; AI comparative scans flag clinical discrepancies and missing information as pending findings, and never mutate `t1d_running_rulebook` unless the user explicitly triggers an arbitration action (`replace` or `add`). In `index.js`, express body payload limits are raised to 50MB with urlencoded support to safely accommodate multi-chapter book PDFs, while `extractPdfText` parses pages defensively with fallback to text decoding on non-standard binary streams.
 50. Direct Research Text Sanitization, Prompt Window Bounding & User Arbitration Sovereignty Invariant: in `reviewResearchText` (`t1dRulebookService.js`), pasted research text is defensively validated for minimum character length (>=20 chars) and bounded to 100,000 characters before prompt composition, ensuring Gemini Flash context budgets are preserved alongside the active rulebook. AI audit responses are sanitized of markdown code fences and parsed into structured findings without silently altering active rulebook state; all conflicts and enhancements require explicit, audited user arbitration.
+51. Run Planner Custom Carbs & Effort-Scaled Exertion Invariant: in `runPlanService.js`, faster planned paces scale glucose uptake rate (`exRate`) exponentially via `(speedRatio)^1.35`, directly increasing carb demands for faster runs. When `customCarbs` is supplied, stops are proportionally scaled or injected mid-run, and the full simulation curve recalculates without desynchronising `inputs` and `plan.predicted` metrics. In `ActivitiesPortal.jsx`, post-run debrief notes (incident reports, walking miles, fatigue, delayed carbs) and Gemini adaptive recommendations are stored atomically in `activity_debrief` and merged into run insights without blocking standard Strava sync or throwing on unlogged runs.
 
 
 

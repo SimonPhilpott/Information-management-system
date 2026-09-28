@@ -2,9 +2,27 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Route as RouteIcon, RotateCw, LogIn, Lock, Upload, Link2, Trash2, Mountain, Calculator, AlertTriangle, Save, Cookie, Syringe, BookOpen, Unlink, Download, ExternalLink, Edit3, Check, Copy, ChevronDown, ChevronUp, Sparkles, Shield, HeartPulse, Zap, Clock, FileText, Plus, CheckCircle, XCircle, ArrowRight, HelpCircle, Layers, Sliders, AlertCircle } from 'lucide-react';
 import PortalShell from './PortalShell';
 import Prose from './Prose';
-import { useUnits, UnitToggle, dist, toKm, paceText, paceToMinPerKm } from '../../utils/units';
+import { useUnits, UnitToggle, dist, toKm, paceText, paceToMinPerKm, KM_PER_MI } from '../../utils/units';
 
 const fmtMin = (m) => `${Math.floor(m / 60)}h ${String(Math.round(m % 60)).padStart(2, '0')}m`;
+
+const renderDeltaBadge = (current, baseline, type = 'time') => {
+  if (baseline == null || baseline <= 0 || current == null) return null;
+  const pct = Math.round(((current - baseline) / baseline) * 100);
+  if (pct === 0) return <span className="text-[9px] font-bold text-slate-500 tabular-nums">0%</span>;
+  const isPos = pct > 0;
+  let tone = 'text-slate-400 bg-slate-500/10 border-slate-500/20';
+  if (type === 'time' || type === 'pace') {
+    tone = isPos ? 'text-amber-400 bg-amber-500/15 border-amber-500/30' : 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30';
+  } else if (type === 'carbs') {
+    tone = isPos ? 'text-yellow-400 bg-yellow-500/15 border-yellow-500/30' : 'text-amber-400 bg-amber-500/15 border-amber-500/30';
+  }
+  return (
+    <span className={`px-1.5 py-0.5 rounded text-[9px] font-black tabular-nums border ${tone}`} title={`${isPos ? '+' : ''}${pct}% vs original plan`}>
+      {isPos ? '+' : ''}{pct}%
+    </span>
+  );
+};
 
 // Predicted glucose (with and without the planned carbs) over the route's elevation profile.
 function PlanChart({ plan, isDark }) {
@@ -55,7 +73,6 @@ function PlanChart({ plan, isDark }) {
 
 // ---- route preview ----------------------------------------------------------------------------------
 const gradeColour = (g) => (g <= -3 ? '#38bdf8' : g < 3 ? '#22c55e' : g < 6 ? '#f59e0b' : '#ef4444');
-const KM_PER_MI = 1.609344;
 const hav = (a, b) => {
   const R = 6371000, rad = (d) => (d * Math.PI) / 180;
   const dLat = rad(b[0] - a[0]), dLng = rad(b[1] - a[1]);
@@ -249,11 +266,14 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
   const [rulebookExpanded, setRulebookExpanded] = useState(false);
   const [rulebookCopied, setRulebookCopied] = useState(false);
   
-  // Pace / time override for inline plan editing
+  // Pace / time / carbs override for inline plan editing
+  const [originalBaseline, setOriginalBaseline] = useState(null);
   const [paceEditDraft, setPaceEditDraft] = useState(null);   // null = not editing; string = draft mm:ss text
   const [timeEditDraft, setTimeEditDraft] = useState(null);   // null = not editing; string = draft "Xh YYm" text
+  const [carbsEditDraft, setCarbsEditDraft] = useState(null); // null = not editing; string = draft carbs number
   const [paceEditFocus, setPaceEditFocus] = useState(false);
   const [timeEditFocus, setTimeEditFocus] = useState(false);
+  const [carbsEditFocus, setCarbsEditFocus] = useState(false);
 
   // Rulebook Books & AI Comparative Scanning State
   const [rulebookTab, setRulebookTab] = useState('rulebook'); // 'rulebook' | 'library' | 'findings' | 'paste'
@@ -339,9 +359,14 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
     }
     return () => { live = false; };
   }, [routeId, call]);
-  // Fill the pace box with the pace you last ran this route at (until you type your own).
+  // Fill the pace box with the expected current pace or last pace
   useEffect(() => {
-    if (routeId && routeHistory?.last && !paceTouched) setForm((f) => ({ ...f, pace: paceText(routeHistory.last.paceMinPerKm, units) }));
+    if (routeId && routeHistory && !paceTouched) {
+      const paceToUse = routeHistory.expectedCurrentPaceMinPerKm || routeHistory.last?.paceMinPerKm;
+      if (paceToUse) {
+        setForm((f) => ({ ...f, pace: paceText(paceToUse, units) }));
+      }
+    }
   }, [routeHistory, units, routeId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (needsSignIn) return undefined;
@@ -381,20 +406,72 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
 
   const signIn = async () => { try { const d = await (await fetch(`/api/auth/url?returnTo=${encodeURIComponent(window.location.pathname)}`)).json(); if (d.url) window.location.href = d.url; } catch (err) { showToast(err.message, 'error'); } };
 
-  const estimate = async () => {
+  const estimate = async (overrides = {}) => {
     setBusy('estimate');
     try {
-      const body = { routeId: routeId || undefined, distanceKm: routeId ? undefined : toKm(form.distanceKm, units), startBg: Number(form.startBg), iob: Number(form.iob) || 0, cob: Number(form.cob) || 0, intensity: form.intensity };
-      if (form.pace) body.paceMinPerKm = paceToMinPerKm(form.pace, units);
-      if (goal?.goal.targetMin) {
-        // Fit the run to the goal time; if the route is a different length, keep the same target pace.
+      const body = {
+        routeId: routeId || undefined,
+        distanceKm: routeId ? undefined : toKm(form.distanceKm, units),
+        startBg: Number(form.startBg),
+        iob: Number(form.iob) || 0,
+        cob: Number(form.cob) || 0,
+        intensity: form.intensity,
+      };
+      if (overrides.customCarbs !== undefined) {
+        body.customCarbs = overrides.customCarbs;
+      } else if (plan?.inputs?.customCarbs !== undefined) {
+        body.customCarbs = plan.inputs.customCarbs;
+      }
+      if (overrides.paceMinPerKm) {
+        body.paceMinPerKm = overrides.paceMinPerKm;
+      } else if (form.pace) {
+        body.paceMinPerKm = paceToMinPerKm(form.pace, units);
+      }
+      if (goal?.goal.targetMin && !overrides.paceMinPerKm) {
         const km = routeId ? (routes.find((r) => String(r.id) === routeId)?.distanceKm ?? goal.goal.distanceKm) : goal.goal.distanceKm;
         body.targetMinutes = goal.goal.targetMin * (km / goal.goal.distanceKm);
         delete body.paceMinPerKm;
       }
       if (form.minutesSinceBolus !== '') body.minutesSinceBolus = Number(form.minutesSinceBolus);
-      setPlan(await send('/api/planner/estimate', 'POST', body));
+      const res = await send('/api/planner/estimate', 'POST', body);
+      setPlan(res);
+      if (!overrides.isTweak || !originalBaseline) {
+        setOriginalBaseline({
+          durationMin: res.run.durationMin,
+          averagePaceMinPerKm: res.inputs.averagePaceMinPerKm,
+          totalCarbs: res.plan.totalCarbs,
+        });
+      }
     } catch (err) { showToast(err.message, 'error'); } finally { setBusy(''); }
+  };
+
+  const stepTime = (deltaMin) => {
+    if (!plan) return;
+    const newMin = Math.max(1, Math.round(plan.run.durationMin + deltaMin));
+    const distKm = plan.run.distanceKm;
+    const newPaceMinPerKm = newMin / distKm;
+    const newPaceStr = paceText(newPaceMinPerKm, units);
+    setForm((f) => ({ ...f, pace: newPaceStr }));
+    setPaceTouched(true);
+    estimate({ isTweak: true, paceMinPerKm: newPaceMinPerKm });
+  };
+
+  const stepPace = (deltaSec) => {
+    if (!plan) return;
+    const currentPacePerUnit = units === 'mi' ? plan.inputs.averagePaceMinPerKm * KM_PER_MI : plan.inputs.averagePaceMinPerKm;
+    const newPacePerUnit = Math.max(2, currentPacePerUnit + deltaSec / 60);
+    const newPaceMinPerKm = units === 'mi' ? newPacePerUnit / KM_PER_MI : newPacePerUnit;
+    const newPaceStr = paceText(newPaceMinPerKm, units);
+    setForm((f) => ({ ...f, pace: newPaceStr }));
+    setPaceTouched(true);
+    estimate({ isTweak: true, paceMinPerKm: newPaceMinPerKm });
+  };
+
+  const stepCarbs = (deltaGrams) => {
+    if (!plan) return;
+    const currentG = plan.plan.totalCarbs || 0;
+    const newG = Math.max(0, currentG + deltaGrams);
+    estimate({ isTweak: true, customCarbs: newG });
   };
 
   const saveTargets = async () => {
@@ -737,23 +814,34 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
                     <>
                       <div className="text-[10px] font-bold uppercase tracking-wider opacity-70 mb-2">Your runs of this route ({routeHistory.count})</div>
                       <div className="flex flex-wrap gap-2">
+                        {routeHistory.expectedCurrentPaceMinPerKm && (
+                          <button onClick={() => { setPaceTouched(true); setForm((f) => ({ ...f, pace: paceText(routeHistory.expectedCurrentPaceMinPerKm, units) })); }}
+                            title={`Use your current expected fitness pace (${paceText(routeHistory.expectedCurrentPaceMinPerKm, units)} /${units}, ~${fmtMin(routeHistory.expectedCurrentTimeMin)})`}
+                            className={`text-left rounded-lg px-3 py-2 border bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20 active:scale-95 transition-all`}>
+                            <div className="text-[9px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                              <Sparkles size={10} />Expected Now
+                            </div>
+                            <div className="text-sm font-black tabular-nums text-emerald-300">{paceText(routeHistory.expectedCurrentPaceMinPerKm, units)} <span className="text-[10px] font-bold text-slate-400">/{units}</span></div>
+                            <div className="text-[10px] text-emerald-400/80">~{fmtMin(routeHistory.expectedCurrentTimeMin)} • current fitness</div>
+                          </button>
+                        )}
                         {[['Last', routeHistory.last, 'sky'], ['Fastest', routeHistory.fastest, 'emerald'], ['Slowest', routeHistory.slowest, 'amber']].map(([name, run]) => (
                           <button key={name} onClick={() => { setPaceTouched(true); setForm((f) => ({ ...f, pace: paceText(run.paceMinPerKm, units) })); }}
                             title={`Use this pace for the plan (${dist(run.km, units, 1)} ${units} in ${Math.round(run.minutes)} min)`}
-                            className={`text-left rounded-lg px-3 py-2 border ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-[#2E2B27]/10 hover:bg-black/5'}`}>
+                            className={`text-left rounded-lg px-3 py-2 border ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-[#2E2B27]/10 hover:bg-black/5'} active:scale-95 transition-all`}>
                             <div className="text-[9px] font-bold uppercase tracking-wider opacity-60">{name}</div>
                             <div className="text-sm font-black tabular-nums">{paceText(run.paceMinPerKm, units)} <span className="text-[10px] font-bold text-slate-500">/{units}</span></div>
                             <div className="text-[10px] text-slate-500">{new Date(`${run.day}T12:00:00Z`).toLocaleDateString('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' })}</div>
                           </button>
                         ))}
                         <button onClick={() => { setPaceTouched(true); setForm((f) => ({ ...f, pace: paceText(routeHistory.averagePaceMinPerKm, units) })); }} title="Use your average pace on this route"
-                          className={`text-left rounded-lg px-3 py-2 border ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-[#2E2B27]/10 hover:bg-black/5'}`}>
+                          className={`text-left rounded-lg px-3 py-2 border ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-[#2E2B27]/10 hover:bg-black/5'} active:scale-95 transition-all`}>
                           <div className="text-[9px] font-bold uppercase tracking-wider opacity-60">Average</div>
                           <div className="text-sm font-black tabular-nums">{paceText(routeHistory.averagePaceMinPerKm, units)} <span className="text-[10px] font-bold text-slate-500">/{units}</span></div>
                           <div className="text-[10px] text-slate-500">all {routeHistory.count} runs</div>
                         </button>
                       </div>
-                      <p className="text-[10px] text-slate-500 mt-2">The pace box is filled with your last pace on this route. Press any of these to use that pace instead. Runs are matched to the route by their start point and shape.</p>
+                      <p className="text-[10px] text-slate-500 mt-2">The options above show your last run, fastest, slowest, all-time average, and your <strong>Expected Now</strong> pace factoring in your recent overall fitness and the hills. Click any card to apply that pace.</p>
                     </>
                   ) : <p className="text-[11px] text-slate-500">None of your Strava runs follow this route yet, so the pace box uses your usual pace. Type your own to change it.</p>}
                 </div>
@@ -814,117 +902,217 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
                 <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 mb-4">
                   {chip('Distance', `${dist(plan.run.distanceKm, units, 2)} ${units}`)}
 
-                  {/* ── Editable: Estimated Time chip ─────────────────────── */}
+                  {/* ── Editable: Estimated Time chip with steppers & % badge ── */}
                   <div className={`rounded-lg px-3 py-2 border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
-                    <div className="text-[9px] font-bold uppercase tracking-wider opacity-60">Estimated time</div>
-                    {timeEditFocus ? (
-                      <input
-                        autoFocus
-                        className={`text-sm font-black tabular-nums w-full bg-transparent outline-none border-b ${isDark ? 'border-emerald-400 text-emerald-300' : 'border-emerald-600 text-emerald-700'}`}
-                        value={timeEditDraft ?? fmtMin(plan.run.durationMin)}
-                        onChange={(e) => setTimeEditDraft(e.target.value)}
-                        onFocus={() => {
-                          if (!timeEditFocus) setTimeEditDraft(fmtMin(plan.run.durationMin));
-                          setTimeEditFocus(true);
-                        }}
-                        onBlur={() => {
-                          // Parse "Xh YYm" or raw minutes
-                          const raw = (timeEditDraft ?? '').trim();
-                          const hm = raw.match(/(\d+)h\s*(\d+)m/);
-                          const hOnly = raw.match(/^(\d+)h$/);
-                          const mOnly = raw.match(/^(\d+)m?$/);
-                          let newMin = null;
-                          if (hm) newMin = parseInt(hm[1]) * 60 + parseInt(hm[2]);
-                          else if (hOnly) newMin = parseInt(hOnly[1]) * 60;
-                          else if (mOnly) newMin = parseInt(mOnly[1]);
-                          if (newMin && newMin > 0) {
-                            // Derive new pace from the fixed distance
-                            const distKm = plan.run.distanceKm;
-                            const newPaceMinPerKm = newMin / distKm;
-                            const newPaceStr = paceText(newPaceMinPerKm, units);
-                            setForm((f) => ({ ...f, pace: newPaceStr }));
-                            setPaceTouched(true);
-                            // Re-estimate with the new pace
-                            setTimeout(() => {
-                              const body = { routeId: routeId || undefined, distanceKm: routeId ? undefined : toKm(form.distanceKm, units), startBg: Number(form.startBg), iob: Number(form.iob) || 0, cob: Number(form.cob) || 0, intensity: form.intensity, paceMinPerKm: newPaceMinPerKm };
-                              if (form.minutesSinceBolus !== '') body.minutesSinceBolus = Number(form.minutesSinceBolus);
-                              setBusy('estimate');
-                              send('/api/planner/estimate', 'POST', body).then(setPlan).catch((e) => showToast(e.message, 'error')).finally(() => setBusy(''));
-                            }, 0);
-                          }
-                          setTimeEditFocus(false);
-                          setTimeEditDraft(null);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') e.target.blur();
-                          if (e.key === 'Escape') { setTimeEditFocus(false); setTimeEditDraft(null); }
-                        }}
-                        placeholder="e.g. 1h 20m"
-                        style={{ width: '80px' }}
-                      />
-                    ) : (
-                      <button
-                        className={`text-sm font-black tabular-nums hover:underline cursor-text text-left w-full`}
-                        title="Click to edit estimated time"
-                        onClick={() => { setTimeEditFocus(true); setTimeEditDraft(fmtMin(plan.run.durationMin)); }}
-                      >
-                        {busy === 'estimate' ? <RotateCw size={12} className="animate-spin inline" /> : fmtMin(plan.run.durationMin)}
-                        <span className="ml-1 text-[9px] opacity-40 font-normal">✎</span>
-                      </button>
-                    )}
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <div className="text-[9px] font-bold uppercase tracking-wider opacity-60">Estimated time</div>
+                      {originalBaseline && renderDeltaBadge(plan.run.durationMin, originalBaseline.durationMin, 'time')}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex flex-col gap-0.5 shrink-0">
+                        <button
+                          onClick={() => stepTime(2)}
+                          disabled={busy === 'estimate'}
+                          className={`p-0.5 rounded hover:bg-white/10 active:scale-90 text-slate-400 hover:text-white transition-colors ${busy === 'estimate' ? 'opacity-30' : ''}`}
+                          title="Increase time (+2 min, slower pace)"
+                        >
+                          <ChevronUp size={11} />
+                        </button>
+                        <button
+                          onClick={() => stepTime(-2)}
+                          disabled={busy === 'estimate' || plan.run.durationMin <= 2}
+                          className={`p-0.5 rounded hover:bg-white/10 active:scale-90 text-slate-400 hover:text-white transition-colors ${busy === 'estimate' || plan.run.durationMin <= 2 ? 'opacity-30' : ''}`}
+                          title="Decrease time (-2 min, faster pace)"
+                        >
+                          <ChevronDown size={11} />
+                        </button>
+                      </div>
+                      {timeEditFocus ? (
+                        <input
+                          autoFocus
+                          className={`text-sm font-black tabular-nums w-full bg-transparent outline-none border-b ${isDark ? 'border-emerald-400 text-emerald-300' : 'border-emerald-600 text-emerald-700'}`}
+                          value={timeEditDraft ?? fmtMin(plan.run.durationMin)}
+                          onChange={(e) => setTimeEditDraft(e.target.value)}
+                          onFocus={() => {
+                            if (!timeEditFocus) setTimeEditDraft(fmtMin(plan.run.durationMin));
+                            setTimeEditFocus(true);
+                          }}
+                          onBlur={() => {
+                            const raw = (timeEditDraft ?? '').trim();
+                            const hm = raw.match(/(\d+)h\s*(\d+)m/);
+                            const hOnly = raw.match(/^(\d+)h$/);
+                            const mOnly = raw.match(/^(\d+)m?$/);
+                            let newMin = null;
+                            if (hm) newMin = parseInt(hm[1]) * 60 + parseInt(hm[2]);
+                            else if (hOnly) newMin = parseInt(hOnly[1]) * 60;
+                            else if (mOnly) newMin = parseInt(mOnly[1]);
+                            if (newMin && newMin > 0) {
+                              const distKm = plan.run.distanceKm;
+                              const newPaceMinPerKm = newMin / distKm;
+                              const newPaceStr = paceText(newPaceMinPerKm, units);
+                              setForm((f) => ({ ...f, pace: newPaceStr }));
+                              setPaceTouched(true);
+                              estimate({ isTweak: true, paceMinPerKm: newPaceMinPerKm });
+                            }
+                            setTimeEditFocus(false);
+                            setTimeEditDraft(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.target.blur();
+                            if (e.key === 'Escape') { setTimeEditFocus(false); setTimeEditDraft(null); }
+                          }}
+                          placeholder="e.g. 1h 20m"
+                          style={{ width: '80px' }}
+                        />
+                      ) : (
+                        <button
+                          className="text-sm font-black tabular-nums hover:underline cursor-text text-left w-full"
+                          title="Click to edit estimated time (or use up/down steppers)"
+                          onClick={() => { setTimeEditFocus(true); setTimeEditDraft(fmtMin(plan.run.durationMin)); }}
+                        >
+                          {busy === 'estimate' ? <RotateCw size={12} className="animate-spin inline" /> : fmtMin(plan.run.durationMin)}
+                          <span className="ml-1 text-[9px] opacity-40 font-normal">✎</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  {/* ── Editable: Average Pace chip ────────────────────────── */}
+                  {/* ── Editable: Average Pace chip with steppers & % badge ── */}
                   <div className={`rounded-lg px-3 py-2 border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
-                    <div className="text-[9px] font-bold uppercase tracking-wider opacity-60">Average pace</div>
-                    {paceEditFocus ? (
-                      <input
-                        autoFocus
-                        className={`text-sm font-black tabular-nums w-full bg-transparent outline-none border-b ${isDark ? 'border-emerald-400 text-emerald-300' : 'border-emerald-600 text-emerald-700'}`}
-                        value={paceEditDraft ?? `${paceText(plan.inputs.averagePaceMinPerKm, units)}`}
-                        onChange={(e) => setPaceEditDraft(e.target.value)}
-                        onFocus={() => {
-                          if (!paceEditFocus) setPaceEditDraft(paceText(plan.inputs.averagePaceMinPerKm, units));
-                          setPaceEditFocus(true);
-                        }}
-                        onBlur={() => {
-                          const raw = (paceEditDraft ?? '').trim();
-                          const parsed = paceToMinPerKm(raw, units);
-                          if (raw.includes(':') && parsed > 0 && parsed < 30) {
-                            setForm((f) => ({ ...f, pace: raw }));
-                            setPaceTouched(true);
-                            setTimeout(() => {
-                              const body = { routeId: routeId || undefined, distanceKm: routeId ? undefined : toKm(form.distanceKm, units), startBg: Number(form.startBg), iob: Number(form.iob) || 0, cob: Number(form.cob) || 0, intensity: form.intensity, paceMinPerKm: parsed };
-                              if (form.minutesSinceBolus !== '') body.minutesSinceBolus = Number(form.minutesSinceBolus);
-                              setBusy('estimate');
-                              send('/api/planner/estimate', 'POST', body).then(setPlan).catch((e) => showToast(e.message, 'error')).finally(() => setBusy(''));
-                            }, 0);
-                          }
-                          setPaceEditFocus(false);
-                          setPaceEditDraft(null);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') e.target.blur();
-                          if (e.key === 'Escape') { setPaceEditFocus(false); setPaceEditDraft(null); }
-                        }}
-                        placeholder="m:ss"
-                        style={{ width: '64px' }}
-                      />
-                    ) : (
-                      <button
-                        className="text-sm font-black tabular-nums hover:underline cursor-text text-left w-full"
-                        title="Click to edit average pace"
-                        onClick={() => { setPaceEditFocus(true); setPaceEditDraft(paceText(plan.inputs.averagePaceMinPerKm, units)); }}
-                      >
-                        {busy === 'estimate' ? <RotateCw size={12} className="animate-spin inline" /> : `${paceText(plan.inputs.averagePaceMinPerKm, units)} /${units}`}
-                        <span className="ml-1 text-[9px] opacity-40 font-normal">✎</span>
-                      </button>
-                    )}
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <div className="text-[9px] font-bold uppercase tracking-wider opacity-60">Average pace</div>
+                      {originalBaseline && renderDeltaBadge(plan.inputs.averagePaceMinPerKm, originalBaseline.averagePaceMinPerKm, 'pace')}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex flex-col gap-0.5 shrink-0">
+                        <button
+                          onClick={() => stepPace(5)}
+                          disabled={busy === 'estimate'}
+                          className={`p-0.5 rounded hover:bg-white/10 active:scale-90 text-slate-400 hover:text-white transition-colors ${busy === 'estimate' ? 'opacity-30' : ''}`}
+                          title="Slower pace (+5 sec, longer time)"
+                        >
+                          <ChevronUp size={11} />
+                        </button>
+                        <button
+                          onClick={() => stepPace(-5)}
+                          disabled={busy === 'estimate' || plan.inputs.averagePaceMinPerKm <= 2.5}
+                          className={`p-0.5 rounded hover:bg-white/10 active:scale-90 text-slate-400 hover:text-white transition-colors ${busy === 'estimate' || plan.inputs.averagePaceMinPerKm <= 2.5 ? 'opacity-30' : ''}`}
+                          title="Faster pace (-5 sec, shorter time, higher carb effort)"
+                        >
+                          <ChevronDown size={11} />
+                        </button>
+                      </div>
+                      {paceEditFocus ? (
+                        <input
+                          autoFocus
+                          className={`text-sm font-black tabular-nums w-full bg-transparent outline-none border-b ${isDark ? 'border-emerald-400 text-emerald-300' : 'border-emerald-600 text-emerald-700'}`}
+                          value={paceEditDraft ?? `${paceText(plan.inputs.averagePaceMinPerKm, units)}`}
+                          onChange={(e) => setPaceEditDraft(e.target.value)}
+                          onFocus={() => {
+                            if (!paceEditFocus) setPaceEditDraft(paceText(plan.inputs.averagePaceMinPerKm, units));
+                            setPaceEditFocus(true);
+                          }}
+                          onBlur={() => {
+                            const raw = (paceEditDraft ?? '').trim();
+                            const parsed = paceToMinPerKm(raw, units);
+                            if (raw.includes(':') && parsed > 0 && parsed < 30) {
+                              setForm((f) => ({ ...f, pace: raw }));
+                              setPaceTouched(true);
+                              estimate({ isTweak: true, paceMinPerKm: parsed });
+                            }
+                            setPaceEditFocus(false);
+                            setPaceEditDraft(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.target.blur();
+                            if (e.key === 'Escape') { setPaceEditFocus(false); setPaceEditDraft(null); }
+                          }}
+                          placeholder="m:ss"
+                          style={{ width: '64px' }}
+                        />
+                      ) : (
+                        <button
+                          className="text-sm font-black tabular-nums hover:underline cursor-text text-left w-full"
+                          title="Click to edit average pace (or use up/down steppers)"
+                          onClick={() => { setPaceEditFocus(true); setPaceEditDraft(paceText(plan.inputs.averagePaceMinPerKm, units)); }}
+                        >
+                          {busy === 'estimate' ? <RotateCw size={12} className="animate-spin inline" /> : `${paceText(plan.inputs.averagePaceMinPerKm, units)} /${units}`}
+                          <span className="ml-1 text-[9px] opacity-40 font-normal">✎</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {chip('Climbing', plan.run.hasElevation ? `${plan.run.gainM} m up` : 'flat / unknown')}
                   {chip('Effort vs flat', `${Math.round((plan.run.effortFactor - 1) * 100)}% more`)}
-                  {chip('Carbs in total', `${plan.plan.totalCarbs} g`, 'text-yellow-500')}
+
+                  {/* ── Editable: Carbs in Total chip with steppers & % badge ── */}
+                  <div className={`rounded-lg px-3 py-2 border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <div className="text-[9px] font-bold uppercase tracking-wider text-yellow-500/90">Carbs in total</div>
+                      {originalBaseline && renderDeltaBadge(plan.plan.totalCarbs, originalBaseline.totalCarbs, 'carbs')}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex flex-col gap-0.5 shrink-0">
+                        <button
+                          onClick={() => stepCarbs(5)}
+                          disabled={busy === 'estimate'}
+                          className={`p-0.5 rounded hover:bg-white/10 active:scale-90 text-yellow-400 transition-colors ${busy === 'estimate' ? 'opacity-30' : ''}`}
+                          title="Increase carbs (+5 g)"
+                        >
+                          <ChevronUp size={11} />
+                        </button>
+                        <button
+                          onClick={() => stepCarbs(-5)}
+                          disabled={busy === 'estimate' || plan.plan.totalCarbs <= 0}
+                          className={`p-0.5 rounded hover:bg-white/10 active:scale-90 text-yellow-400 transition-colors ${busy === 'estimate' || plan.plan.totalCarbs <= 0 ? 'opacity-30' : ''}`}
+                          title="Decrease carbs (-5 g)"
+                        >
+                          <ChevronDown size={11} />
+                        </button>
+                      </div>
+                      {carbsEditFocus ? (
+                        <input
+                          autoFocus
+                          type="number"
+                          min="0"
+                          max="300"
+                          step="5"
+                          className={`text-sm font-black tabular-nums w-full bg-transparent outline-none border-b ${isDark ? 'border-yellow-400 text-yellow-300' : 'border-yellow-600 text-yellow-700'}`}
+                          value={carbsEditDraft ?? String(plan.plan.totalCarbs)}
+                          onChange={(e) => setCarbsEditDraft(e.target.value)}
+                          onFocus={() => {
+                            if (!carbsEditFocus) setCarbsEditDraft(String(plan.plan.totalCarbs));
+                            setCarbsEditFocus(true);
+                          }}
+                          onBlur={() => {
+                            const raw = (carbsEditDraft ?? '').trim();
+                            const parsed = Number(raw);
+                            if (Number.isFinite(parsed) && parsed >= 0) {
+                              estimate({ isTweak: true, customCarbs: Math.round(parsed) });
+                            }
+                            setCarbsEditFocus(false);
+                            setCarbsEditDraft(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.target.blur();
+                            if (e.key === 'Escape') { setCarbsEditFocus(false); setCarbsEditDraft(null); }
+                          }}
+                          style={{ width: '56px' }}
+                        />
+                      ) : (
+                        <button
+                          className="text-sm font-black tabular-nums hover:underline cursor-text text-left text-yellow-500"
+                          title="Click to edit carbs in total (or use up/down steppers)"
+                          onClick={() => { setCarbsEditFocus(true); setCarbsEditDraft(String(plan.plan.totalCarbs)); }}
+                        >
+                          {busy === 'estimate' ? <RotateCw size={12} className="animate-spin inline" /> : `${plan.plan.totalCarbs} g`}
+                          <span className="ml-1 text-[9px] opacity-40 font-normal">✎</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                   {chip('Per hour', `${plan.plan.carbsPerHour} g/h`)}
                   {chip('Lowest (estimate)', plan.plan.predicted.minDuring, plan.plan.predicted.minDuring < plan.settings.floor ? 'text-red-500' : 'text-emerald-500')}
                   {chip('At the finish', plan.plan.predicted.endBg)}

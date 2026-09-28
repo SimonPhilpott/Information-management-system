@@ -275,12 +275,47 @@ export function routeRunHistory(routeId) {
     }
     if (ok) runs.push({ id: r.id, day: r.day, km: Math.round(km * 100) / 100, minutes: Math.round((r.moving_time / 60) * 100) / 100, paceMinPerKm: Math.round((r.moving_time / 60 / km) * 1000) / 1000, avgHr: r.avg_hr ? Math.round(r.avg_hr) : null, climbM: r.elevation != null ? Math.round(r.elevation) : null });
   }
-  if (!runs.length) return { routeId: route.id, count: 0, runs: [] };
+  if (!runs.length) {
+    const hist = recentHistory();
+    const generalPace = hist.typicalPace || typicalPace() || 6.0;
+    const gradePerKm = route.gainM && route.distanceKm ? route.gainM / route.distanceKm : 0;
+    const gradeMult = 1 + Math.max(0, gradePerKm * 0.0035);
+    const expectedCurrentPaceMinPerKm = Math.round(generalPace * gradeMult * 1000) / 1000;
+    const expectedCurrentTimeMin = Math.round(expectedCurrentPaceMinPerKm * route.distanceKm * 10) / 10;
+    return {
+      routeId: route.id, count: 0, runs: [],
+      expectedCurrentPaceMinPerKm, expectedCurrentTimeMin,
+      generalRecentPaceMinPerKm: generalPace, recentRunsCount: 0
+    };
+  }
   const byPace = runs.slice().sort((a, b) => a.paceMinPerKm - b.paceMinPerKm);
+  const hist = recentHistory();
+  const generalPace = hist.typicalPace || typicalPace() || 6.0;
+  const gradePerKm = route.gainM && route.distanceKm ? route.gainM / route.distanceKm : 0;
+  const gradeMult = 1 + Math.max(0, gradePerKm * 0.0035);
+  const generalPaceAdjustedForRoute = generalPace * gradeMult;
+
+  // Weight recent runs on this route (past 90 days) higher than older runs from months/years ago
+  const nowMs = Date.now();
+  const recentRuns = runs.filter((r) => r.day && (nowMs - new Date(`${r.day}T12:00:00Z`).getTime()) <= 90 * 86400000);
+  let expectedCurrentPaceMinPerKm;
+  if (recentRuns.length >= 2) {
+    const medRecent = recentRuns.map((r) => r.paceMinPerKm).sort((a, b) => a - b)[Math.floor(recentRuns.length / 2)];
+    expectedCurrentPaceMinPerKm = Math.round((0.7 * medRecent + 0.3 * generalPaceAdjustedForRoute) * 1000) / 1000;
+  } else if (recentRuns.length === 1) {
+    expectedCurrentPaceMinPerKm = Math.round((0.5 * recentRuns[0].paceMinPerKm + 0.5 * generalPaceAdjustedForRoute) * 1000) / 1000;
+  } else {
+    // Older runs on route may be when runner just started; use current overall fitness adjusted for route hills
+    expectedCurrentPaceMinPerKm = Math.round(generalPaceAdjustedForRoute * 1000) / 1000;
+  }
+  const expectedCurrentTimeMin = Math.round(expectedCurrentPaceMinPerKm * route.distanceKm * 10) / 10;
+
   return {
     routeId: route.id, count: runs.length, runs: runs.slice(0, 20),
     last: runs[0], fastest: byPace[0], slowest: byPace[byPace.length - 1],
     averagePaceMinPerKm: Math.round((runs.reduce((a, r) => a + r.minutes, 0) / runs.reduce((a, r) => a + r.km, 0)) * 1000) / 1000,
+    expectedCurrentPaceMinPerKm, expectedCurrentTimeMin,
+    generalRecentPaceMinPerKm: generalPace, recentRunsCount: recentRuns.length,
   };
 }
 
@@ -337,7 +372,15 @@ export function estimatePlan(input = {}) {
   const totalMin = dur + 120;
   const floor = targets.floor, margin = 1.0;
 
-  const params = { startBg, iob, cob, isf, cr, kEx, sensMult, intensity, effort: tl.effort, durationMin: dur, totalMin };
+  // Factor pace / speed into effort: running faster than the runner's recent typical pace exponentially increases glycogen & glucose oxidation
+  const hist = recentHistory(input.sport || 'Run');
+  const baseTypicalPace = hist.typicalPace || typicalPace(input.sport || 'Run') || 6.0;
+  const plannedPace = tl.minutes / distanceKm;
+  const speedRatio = plannedPace > 0 ? baseTypicalPace / plannedPace : 1.0;
+  const paceEffortFactor = Math.pow(Math.max(0.65, Math.min(2.5, speedRatio)), 1.35);
+  const combinedEffort = tl.effort * paceEffortFactor;
+
+  const params = { startBg, iob, cob, isf, cr, kEx, sensMult, intensity, effort: combinedEffort, durationMin: dur, totalMin };
   const runPlan = (start, iobStart) => {
     const p = { ...params, startBg: start, iob: iobStart };
     const intakes = [];
@@ -359,7 +402,35 @@ export function estimatePlan(input = {}) {
     return { intakes, bg: simulate({ ...p, intakes }) };
   };
 
-  const main = runPlan(startBg, iob);
+  const customCarbs = input.customCarbs !== undefined && input.customCarbs !== null && input.customCarbs !== '' ? Math.max(0, Math.round(Number(input.customCarbs))) : null;
+  let main = runPlan(startBg, iob);
+  if (customCarbs !== null) {
+    if (customCarbs === 0) {
+      main = { intakes: [], bg: simulate({ ...params, intakes: [] }) };
+    } else {
+      let customIntakes = [];
+      if (main.intakes.length > 0) {
+        const sum = main.intakes.reduce((a, i) => a + i.g, 0);
+        let rem = customCarbs;
+        customIntakes = main.intakes.map((it, idx) => {
+          if (idx === main.intakes.length - 1) {
+            return { ...it, g: Math.max(5, rem) };
+          }
+          const alloc = Math.max(5, round5((it.g / Math.max(1, sum)) * customCarbs));
+          rem -= alloc;
+          return { ...it, g: alloc };
+        });
+      } else {
+        if (dur >= 45) {
+          customIntakes = [{ t: Math.round(dur * 0.35), g: customCarbs, kind: 'run' }];
+        } else {
+          customIntakes = [{ t: 0, g: customCarbs, kind: 'start' }];
+        }
+      }
+      main = { intakes: customIntakes, bg: simulate({ ...params, intakes: customIntakes }) };
+    }
+  }
+
   const noCarb = simulate({ ...params, intakes: [] });
   const totalCarbs = main.intakes.reduce((a, i) => a + i.g, 0);
   const endBg = main.bg[dur];
@@ -411,7 +482,7 @@ export function estimatePlan(input = {}) {
 
   return {
     demand: demandFrom({ distanceKm, dur, tl, terrain, route, intensity, pace }),
-    inputs: { distanceKm, targetMinutes, paceMinPerKm: pace, averagePaceMinPerKm: tl.minutes / distanceKm, intensity, startBg, iob, cob, weightKg, sensMult, kEx, routeId: route?.id ?? null, routeName: route?.name ?? null },
+    inputs: { distanceKm, targetMinutes, paceMinPerKm: pace, averagePaceMinPerKm: tl.minutes / distanceKm, intensity, startBg, iob, cob, weightKg, sensMult, kEx, routeId: route?.id ?? null, routeName: route?.name ?? null, customCarbs, paceEffortFactor: Math.round(paceEffortFactor * 100) / 100 },
     settings: { isf, cr, gPerMmol: Math.round((1 / effect) * 10) / 10, mmolPerGram: Math.round(effect * 1000) / 1000, floor, startTarget: targets.startTarget },
     run: { durationMin: dur, distanceKm: Math.round(tl.distanceKm * 100) / 100, gainM: terrain.gainM, lossM: terrain.lossM, effortFactor: Math.round(tl.effort * 100) / 100, kcal: tl.kcal, hasElevation: route ? route.hasElevation : false },
     plan: {
