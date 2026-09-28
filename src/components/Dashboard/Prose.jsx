@@ -6,11 +6,12 @@ function inline(text) {
   return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) => (part.startsWith('**') && part.endsWith('**') ? <strong key={i}>{part.slice(2, -2)}</strong> : <React.Fragment key={i}>{part}</React.Fragment>));
 }
 
-export default function Prose({ text, className = '' }) {
+export default function Prose({ text, content, children, className = '' }) {
   const blocks = [];
   let list = null;
   const flush = () => { if (list) { blocks.push(<ul key={`u${blocks.length}`} className="list-disc pl-5 space-y-0.5 my-1">{list}</ul>); list = null; } };
-  String(text || '').split('\n').forEach((raw, idx) => {
+  const rawInput = text ?? content ?? (typeof children === 'string' ? children : '') ?? '';
+  String(rawInput || '').split('\n').forEach((raw, idx) => {
     const line = raw.trimEnd();
     const bullet = /^\s*[*-]\s+(.*)$/.exec(line);
     const heading = /^\s*#{1,4}\s+(.*)$/.exec(line);

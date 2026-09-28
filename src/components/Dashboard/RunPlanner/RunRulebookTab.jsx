@@ -1,5 +1,8 @@
-import React from 'react';
-import { BookOpen, FileText, Copy, Check, Edit3, Layers, Sparkles, RotateCw, Save, Upload, Trash2, CheckCircle, XCircle, ArrowRight, Plus, AlertCircle, HelpCircle } from 'lucide-react';
+import {
+  BookOpen, FileText, Copy, Check, Edit3, Layers, Sparkles, RotateCw, Save, Upload, Trash2,
+  CheckCircle, XCircle, ArrowRight, Plus, AlertCircle, HelpCircle,
+  HeartPulse, Clock, Cookie, Mountain, Shield, ChevronDown, ChevronUp, BookMarked
+} from 'lucide-react';
 import Prose from '../Prose';
 
 /**
@@ -202,30 +205,133 @@ export default function RunRulebookTab({
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
-            <div
-              className={`overflow-hidden transition-all rounded-xl p-4 border ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-[#2E2B27]/10'}`}
-              style={{ maxHeight: rulebookExpanded ? 'none' : '450px' }}
-            >
-              {rulebook?.rulebook ? (
-                <div className="prose-container max-w-none text-xs leading-relaxed">
-                  <Prose content={rulebook.rulebook} isDark={isDark} />
+          <div className="flex flex-col gap-4">
+            {/* 5 Core Dimension Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+              <div className={`rounded-xl p-3 border flex flex-col justify-between ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white/80 border-[#2E2B27]/10'}`}>
+                <div>
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-emerald-500 flex items-center gap-1.5 mb-1">
+                    <HeartPulse size={11} /> 1. Launch Gate
+                  </div>
+                  <div className="text-base font-black tabular-nums">7.0 - 10.0 <span className="text-[10px] text-slate-400 font-normal">mmol/L</span></div>
                 </div>
-              ) : (
-                <p className="text-xs text-slate-500 italic">No rulebook loaded. Click Edit Rulebook to write your rules or reset to default.</p>
+                <p className="text-[10px] text-slate-500 mt-2 leading-tight">
+                  Optimal start window. Delay with 0.3g/kg if 4.0-4.9; abort if &lt;4.0; ketone check if &gt;15.0.
+                </p>
+              </div>
+
+              <div className={`rounded-xl p-3 border flex flex-col justify-between ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white/80 border-[#2E2B27]/10'}`}>
+                <div>
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1.5 mb-1">
+                    <Clock size={11} /> 2. IOB & Loop
+                  </div>
+                  <div className="text-base font-black tabular-nums">&lt; 1.0 U <span className="text-[10px] text-slate-400 font-normal">start IOB</span></div>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-2 leading-tight">
+                  Set temp target (8.0-9.0) 60-90m prior. Reduce pre-run meal bolus by 30-50% within 2h.
+                </p>
+              </div>
+
+              <div className={`rounded-xl p-3 border flex flex-col justify-between ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white/80 border-[#2E2B27]/10'}`}>
+                <div>
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-yellow-500 flex items-center gap-1.5 mb-1">
+                    <Cookie size={11} /> 3. Fueling Rate
+                  </div>
+                  <div className="text-base font-black tabular-nums">30 - 60 g <span className="text-[10px] text-slate-400 font-normal">per hour</span></div>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-2 leading-tight">
+                  15-20g increments every 20-30 min. Up to 75g/h with higher IOB or hard pace.
+                </p>
+              </div>
+
+              <div className={`rounded-xl p-3 border flex flex-col justify-between ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white/80 border-[#2E2B27]/10'}`}>
+                <div>
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5 mb-1">
+                    <Mountain size={11} /> 4. Terrain & Hills
+                  </div>
+                  <div className="text-base font-black tabular-nums">Flats / Down <span className="text-[10px] text-slate-400 font-normal">stops</span></div>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-2 leading-tight">
+                  Fuel 3-5m before climbs or on descents. Avoid mid-climb fueling during anaerobic surges.
+                </p>
+              </div>
+
+              <div className={`rounded-xl p-3 border flex flex-col justify-between ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white/80 border-[#2E2B27]/10'}`}>
+                <div>
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5 mb-1">
+                    <Shield size={11} /> 5. Nocturnal Lows
+                  </div>
+                  <div className="text-base font-black tabular-nums">-20% Basal <span className="text-[10px] text-slate-400 font-normal">6h night</span></div>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-2 leading-tight">
+                  Refuel if finish &lt;6.0. Night-time hypo risk peaks 7-11h post-run; set overnight temp basal.
+                </p>
+              </div>
+            </div>
+
+            {/* Connected Books & Literature Highlight Banner */}
+            {books && books.length > 0 && (
+              <div className={`flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl border ${isDark ? 'bg-slate-950/50 border-emerald-500/20' : 'bg-emerald-50/60 border-emerald-500/20'}`}>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0">
+                    <BookMarked size={16} />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-200 flex items-center gap-2">
+                      <span>Connected Guide Books & Evidence Base</span>
+                      <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-emerald-500/20 text-emerald-400 font-black">
+                        {books.length} Books Active
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
+                      {books.map((b) => b.title).join(' • ')}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setRulebookTab('library')}
+                  className={`${ghostClass} text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5`}
+                >
+                  <span>View Book Details</span>
+                  <ArrowRight size={12} />
+                </button>
+              </div>
+            )}
+
+            {/* Collapsible Full Rulebook Document Card */}
+            <div className={`rounded-xl border transition-all ${isDark ? 'border-white/10 bg-slate-950/20' : 'border-[#2E2B27]/10 bg-white/50'}`}>
+              <button
+                onClick={() => setRulebookExpanded(!rulebookExpanded)}
+                className="w-full p-3.5 flex items-center justify-between text-left hover:opacity-80 transition-opacity"
+              >
+                <span className="text-xs font-bold flex items-center gap-2">
+                  <Sparkles size={13} className="text-emerald-400" />
+                  {rulebookExpanded ? 'Hide Full Rulebook Document & Clinical Protocols' : 'View Full Rulebook Document & Clinical Protocols'}
+                </span>
+                <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                  <span>{rulebook?.rulebook ? `${rulebook.rulebook.split('\n').length} lines` : '0 lines'}</span>
+                  {rulebookExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </div>
+              </button>
+
+              {rulebookExpanded && (
+                <div className={`p-4 pt-2 border-t text-xs ${isDark ? 'border-white/5' : 'border-[#2E2B27]/5'}`}>
+                  {rulebook?.rulebook ? (
+                    <div className="prose-container max-w-none text-xs leading-relaxed">
+                      <Prose text={rulebook.rulebook} isDark={isDark} />
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500 italic">No rulebook loaded. Click Edit Rulebook to write your rules or reset to default.</p>
+                  )}
+                </div>
               )}
             </div>
 
-            <div className="flex items-center justify-between pt-1">
-              <button
-                onClick={() => setRulebookExpanded(!rulebookExpanded)}
-                className={`${ghostClass} text-xs font-bold text-emerald-400`}
-              >
-                {rulebookExpanded ? 'Collapse Rulebook' : 'Expand Full Rulebook'}
-              </button>
-              <span className="text-[10px] text-slate-500">
-                Rulebook is automatically passed to Gemini AI to generate customized coaching directives.
+            <div className="flex items-center justify-between text-[10px] text-slate-500 px-1">
+              <span>
+                Running with T1D Rulebook is continuously referenced by the AI coach during activity scrutiny and run planning.
               </span>
+              <span>{rulebook?.rulebook ? `${rulebook.rulebook.length.toLocaleString()} characters` : ''}</span>
             </div>
           </div>
         )

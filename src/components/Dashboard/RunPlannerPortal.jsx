@@ -211,7 +211,7 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
   const [rulebook, setRulebook] = useState(null);
   const [rulebookDraft, setRulebookDraft] = useState('');
   const [rulebookEditing, setRulebookEditing] = useState(false);
-  const [rulebookExpanded, setRulebookExpanded] = useState(false);
+  const [rulebookExpanded, setRulebookExpanded] = useState(true);
   const [rulebookCopied, setRulebookCopied] = useState(false);
 
   // Pace / time / carbs override for inline plan editing
