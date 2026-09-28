@@ -202,12 +202,12 @@ export default function RunFlythroughTab({
       <div className={`${panelClass} flex flex-col md:flex-row items-start md:items-center justify-between gap-3`}>
         <div>
           <div className="flex items-center gap-2">
-            <Sparkles size={16} className="text-sky-400" />
-            <h2 className="text-xs font-black uppercase tracking-wider text-slate-200">
+            <Sparkles size={16} className="text-sky-500" />
+            <h2 className={`text-xs font-black uppercase tracking-wider ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>
               Interactive Run Flythrough & Retrospective Player
             </h2>
           </div>
-          <p className="text-[11px] text-slate-400 mt-0.5">
+          <p className={`text-[11px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>
             Simulate your course replay, audit post-run glucose kinetics (+2h recovery), and inspect milestone carb arrivals.
           </p>
         </div>
@@ -222,7 +222,7 @@ export default function RunFlythroughTab({
                 setCurrentSec(0);
                 setIsPlaying(false);
               }}
-              className="text-xs px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 font-medium"
+              className={`text-xs px-2.5 py-1 rounded-lg border font-medium ${isDark ? 'bg-slate-900 border-slate-700 text-slate-200' : 'bg-[#FAF7F2] border-[#2E2B27]/15 text-[#2E2B27]'}`}
             >
               {routeHistory.runs.map((r, i) => (
                 <option key={r.id} value={i}>
@@ -232,11 +232,17 @@ export default function RunFlythroughTab({
             </select>
           )}
 
-          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-950/60 border border-white/5">
+          <div className={`flex items-center gap-1.5 p-1 rounded-xl border ${isDark ? 'bg-slate-950/60 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/15'}`}>
             <button
               onClick={() => { setReplayMode('plan'); setIsPlaying(false); setCurrentSec(0); }}
               className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                replayMode === 'plan' ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30' : 'text-slate-400 hover:text-slate-200'
+                replayMode === 'plan'
+                  ? isDark
+                    ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                    : 'bg-sky-100 text-sky-900 border border-sky-300 font-bold'
+                  : isDark
+                  ? 'text-slate-400 hover:text-slate-200'
+                  : 'text-[#6A645D] hover:text-[#2E2B27]'
               }`}
             >
               Planned Course Simulation
@@ -244,7 +250,13 @@ export default function RunFlythroughTab({
             <button
               onClick={() => { setReplayMode('history'); setIsPlaying(false); setCurrentSec(0); }}
               className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                replayMode === 'history' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'text-slate-400 hover:text-slate-200'
+                replayMode === 'history'
+                  ? isDark
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    : 'bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold'
+                  : isDark
+                  ? 'text-slate-400 hover:text-slate-200'
+                  : 'text-[#6A645D] hover:text-[#2E2B27]'
               }`}
             >
               Completed Run Retrospective
@@ -256,8 +268,12 @@ export default function RunFlythroughTab({
             onClick={() => setIncludeRecovery(!includeRecovery)}
             className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${
               includeRecovery
-                ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
-                : 'bg-slate-900 text-slate-400 border-white/5 hover:text-slate-200'
+                ? isDark
+                  ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                  : 'bg-purple-100 text-purple-900 border-purple-300 font-bold'
+                : isDark
+                ? 'bg-slate-900 text-slate-400 border-white/5 hover:text-slate-200'
+                : 'bg-[#FAF7F2] text-[#6A645D] border-[#2E2B27]/15 hover:text-[#2E2B27]'
             }`}
             title="Toggle inclusion of 2-hour post-run recovery glucose replay"
           >
@@ -283,11 +299,11 @@ export default function RunFlythroughTab({
       />
 
       {/* FLYTHROUGH ANIMATED MAP / TOPOGRAPHY VIEWPORT */}
-      <div className={`p-4 rounded-2xl border transition-all ${isDark ? 'bg-slate-900/40 border-white/10' : 'bg-white border-slate-200'}`}>
+      <div className={`p-4 rounded-2xl border transition-all ${isDark ? 'bg-slate-900/40 border-white/10' : 'bg-white border-[#2E2B27]/10 shadow-sm'}`}>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <Mountain size={14} className="text-emerald-400" />
-            <span className="text-xs font-black uppercase tracking-wider text-slate-200">
+            <Mountain size={14} className="text-emerald-500" />
+            <span className={`text-xs font-black uppercase tracking-wider ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>
               {route?.name || 'Course Trail'} • Km {dist(currentSample.distKm, units, 1)} / {dist(route?.distanceKm || 10, units, 1)} {units}
             </span>
             {currentSample.isRecovery ? (
@@ -295,19 +311,19 @@ export default function RunFlythroughTab({
                 Post-Run Recovery (+{currentSample.recoveryMin} min)
               </span>
             ) : (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-white/5 font-mono">
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${isDark ? 'bg-slate-800 text-slate-400 border border-white/5' : 'bg-[#FAF7F2] text-[#6A645D] border border-[#2E2B27]/10'}`}>
                 Grade: {currentSample.grade > 0 ? `+${currentSample.grade}%` : `${currentSample.grade}%`}
               </span>
             )}
           </div>
 
-          <div className="text-xs font-black tabular-nums text-slate-300 font-mono">
+          <div className={`text-xs font-black tabular-nums font-mono ${isDark ? 'text-slate-300' : 'text-[#2E2B27]'}`}>
             {formatTime(currentSec)} / {formatTime(totalDurationSec)}
           </div>
         </div>
 
         {/* Simplified course track representation with glowing runner bead */}
-        <div className="relative w-full h-44 rounded-xl overflow-hidden bg-slate-950/80 border border-white/10 flex items-center justify-center">
+        <div className={`relative w-full h-44 rounded-xl overflow-hidden border flex items-center justify-center ${isDark ? 'bg-slate-950/80 border-white/10' : 'bg-[#FAF7F2] border-[#2E2B27]/15'}`}>
           {route?.path && route.path.length > 1 ? (
             <svg viewBox="0 0 600 160" className="w-full h-full p-4" preserveAspectRatio="none">
               <defs>
@@ -375,16 +391,16 @@ export default function RunFlythroughTab({
               })}
             </svg>
           ) : (
-            <div className="text-slate-500 text-xs">No route geometry loaded for flythrough.</div>
+            <div className={`text-xs ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>No route geometry loaded for flythrough.</div>
           )}
         </div>
 
         {/* INTERACTIVE VIDEO SCRUBBER & MEDIA CONTROLS */}
-        <div className="mt-4 pt-3 border-t border-white/5 flex flex-col gap-3">
+        <div className={`mt-4 pt-3 border-t flex flex-col gap-3 ${isDark ? 'border-white/5' : 'border-[#2E2B27]/10'}`}>
           {/* Dual Timeline Scrubber Bar */}
           <div
             onClick={handleScrubberClick}
-            className="group relative w-full h-8 bg-slate-950/70 rounded-lg cursor-pointer overflow-hidden border border-white/10 select-none"
+            className={`group relative w-full h-8 rounded-lg cursor-pointer overflow-hidden border select-none ${isDark ? 'bg-slate-950/70 border-white/10' : 'bg-[#FAF7F2] border-[#2E2B27]/15'}`}
             title="Click or drag anywhere to jump to that moment of the run or post-run recovery"
           >
             {/* Safe Target Zone Band Background (Green Tint for 7.0-10.0) */}
@@ -422,12 +438,12 @@ export default function RunFlythroughTab({
 
             {/* Scrubber Playhead Handle */}
             <div
-              className="absolute top-0 bottom-0 w-2 -ml-1 bg-white shadow-lg pointer-events-none rounded-full"
+              className={`absolute top-0 bottom-0 w-2 -ml-1 shadow-lg pointer-events-none rounded-full ${isDark ? 'bg-white' : 'bg-[#2E2B27]'}`}
               style={{ left: `${currentProgressFrac * 100}%` }}
             />
 
             {/* Hover Tooltip Overlay */}
-            <div className="absolute left-2 top-1.5 text-[10px] text-slate-400 font-mono pointer-events-none">
+            <div className={`absolute left-2 top-1.5 text-[10px] font-mono pointer-events-none ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>
               Scrubber: {formatTime(currentSec)} / {formatTime(totalDurationSec)} • Glucose: {currentSample.bg} mmol/L {currentSample.isRecovery ? `(Recovery +${currentSample.recoveryMin}m)` : ''}
             </div>
           </div>
@@ -438,7 +454,7 @@ export default function RunFlythroughTab({
             <div className="flex items-center flex-wrap gap-2">
               <button
                 onClick={() => setIsPlaying(!isPlaying)}
-                className={`${btnClass} px-4 py-2 bg-sky-600 hover:bg-sky-500 font-bold`}
+                className={`${btnClass} px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white font-bold`}
               >
                 {isPlaying ? <Pause size={14} /> : <Play size={14} className="fill-current" />}
                 <span>{isPlaying ? 'Pause' : 'Play'}</span>
@@ -485,7 +501,7 @@ export default function RunFlythroughTab({
 
             {/* Speed Multipliers */}
             <div className="flex items-center gap-1">
-              <span className="text-[10px] font-bold text-slate-500 uppercase mr-1">Speed:</span>
+              <span className={`text-[10px] font-bold uppercase mr-1 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>Speed:</span>
               {[1, 2, 4, 8, 16].map((spd) => (
                 <button
                   key={spd}
@@ -493,7 +509,9 @@ export default function RunFlythroughTab({
                   className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
                     playbackSpeed === spd
                       ? 'bg-sky-500 text-white'
-                      : 'bg-slate-800 text-slate-400 hover:text-white'
+                      : isDark
+                      ? 'bg-slate-800 text-slate-400 hover:text-white'
+                      : 'bg-[#FAF7F2] text-[#6A645D] hover:text-[#2E2B27] border border-[#2E2B27]/10'
                   }`}
                 >
                   {spd}x
@@ -507,42 +525,42 @@ export default function RunFlythroughTab({
       {/* RETROSPECTIVE AUDIT & AI INSIGHTS CARD */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* What Worked Panel */}
-        <div className={`p-4 rounded-xl border border-emerald-500/20 ${isDark ? 'bg-emerald-950/10' : 'bg-emerald-50/50'}`}>
-          <div className="flex items-center gap-2 mb-2 text-emerald-400 font-bold text-xs uppercase tracking-wider">
+        <div className={`p-4 rounded-xl border ${isDark ? 'border-emerald-500/20 bg-emerald-950/10' : 'border-emerald-600/30 bg-[#FAF7F2]'}`}>
+          <div className={`flex items-center gap-2 mb-2 font-bold text-xs uppercase tracking-wider ${isDark ? 'text-emerald-400' : 'text-emerald-800'}`}>
             <CheckCircle2 size={15} />
             <span>Retrospective: What Worked</span>
           </div>
-          <div className="flex flex-col gap-2 text-xs text-slate-300">
+          <div className={`flex flex-col gap-2 text-xs ${isDark ? 'text-slate-300' : 'text-[#2E2B27]'}`}>
             <div className="flex items-start gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
+              <span className={`w-1.5 h-1.5 rounded-full ${isDark ? 'bg-emerald-400' : 'bg-emerald-600'} mt-1.5 shrink-0`} />
               <span>Starting glucose at {targets?.startTarget || 8.0} mmol/L provided sufficient aerobic headroom without immediate drop.</span>
             </div>
             {stops.length > 0 && (
               <div className="flex items-start gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
+                <span className={`w-1.5 h-1.5 rounded-full ${isDark ? 'bg-emerald-400' : 'bg-emerald-600'} mt-1.5 shrink-0`} />
                 <span>Carb stop timed at minute {stops[0].minute} blunted muscle uptake before the first steep incline.</span>
               </div>
             )}
             <div className="flex items-start gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
+              <span className={`w-1.5 h-1.5 rounded-full ${isDark ? 'bg-emerald-400' : 'bg-emerald-600'} mt-1.5 shrink-0`} />
               <span>Downhill sections maintained stable glucose expenditure within aerobic base bounds.</span>
             </div>
           </div>
         </div>
 
         {/* What to Watch / Adjustments */}
-        <div className={`p-4 rounded-xl border border-amber-500/20 ${isDark ? 'bg-amber-950/10' : 'bg-amber-50/50'}`}>
-          <div className="flex items-center gap-2 mb-2 text-amber-400 font-bold text-xs uppercase tracking-wider">
+        <div className={`p-4 rounded-xl border ${isDark ? 'border-amber-500/20 bg-amber-950/10' : 'border-amber-600/30 bg-[#FAF7F2]'}`}>
+          <div className={`flex items-center gap-2 mb-2 font-bold text-xs uppercase tracking-wider ${isDark ? 'text-amber-400' : 'text-amber-800'}`}>
             <AlertTriangle size={15} />
             <span>Retrospective: What to Watch & Refine</span>
           </div>
-          <div className="flex flex-col gap-2 text-xs text-slate-300">
+          <div className={`flex flex-col gap-2 text-xs ${isDark ? 'text-slate-300' : 'text-[#2E2B27]'}`}>
             <div className="flex items-start gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1.5 shrink-0" />
+              <span className={`w-1.5 h-1.5 rounded-full ${isDark ? 'bg-amber-400' : 'bg-amber-600'} mt-1.5 shrink-0`} />
               <span>Steep gradient sections (&gt; 6%) demand 35% higher energy expenditure; ensure carbs are ingested 10 minutes prior.</span>
             </div>
             <div className="flex items-start gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1.5 shrink-0" />
+              <span className={`w-1.5 h-1.5 rounded-full ${isDark ? 'bg-amber-400' : 'bg-amber-600'} mt-1.5 shrink-0`} />
               <span>Watch post-run recovery: if insulin was reduced pre-run, monitor for mild late-evening hepatic rebound.</span>
             </div>
           </div>

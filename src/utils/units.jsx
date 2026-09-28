@@ -46,10 +46,10 @@ export const speedText = (ms, units) => (units === 'mi' ? `${(ms * 3.6 / KM_PER_
 
 export function UnitToggle({ units, setUnits, isDark }) {
   return (
-    <div className={`inline-flex rounded-lg overflow-hidden border text-[10px] font-bold uppercase tracking-wide ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`} role="group" aria-label="Distance units">
+    <div className={`inline-flex rounded-lg overflow-hidden border text-[10px] font-bold uppercase tracking-wide ${isDark ? 'border-white/10 bg-slate-900/50' : 'border-[#2E2B27]/15 bg-[#FAF7F2]'}`} role="group" aria-label="Distance units">
       {[['km', 'Kilometres'], ['mi', 'Miles']].map(([u, name]) => (
         <button key={u} type="button" onClick={() => setUnits(u)} title={name}
-          className={`px-3 py-1.5 ${units === u ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white' : isDark ? 'text-slate-400 hover:bg-white/5' : 'text-slate-600 hover:bg-black/5'}`}>
+          className={`px-3 py-1.5 transition-all ${units === u ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white shadow-sm' : isDark ? 'text-slate-400 hover:bg-white/5' : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'}`}>
           {u}
         </button>
       ))}

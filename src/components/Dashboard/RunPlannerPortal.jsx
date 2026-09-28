@@ -704,16 +704,16 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
 
   const signIn = () => { window.location.href = `/api/auth/google?returnTo=${encodeURIComponent(window.location.pathname)}`; };
 
-  const panel = `rounded-2xl border p-5 ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/70 border-[#2E2B27]/10 shadow-sm'}`;
-  const field = `w-full px-3 py-2 rounded-lg text-xs outline-none border ${isDark ? 'bg-slate-950/60 border-white/10 text-slate-100' : 'bg-white border-[#2E2B27]/10 text-slate-900'}`;
-  const label = 'text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70';
+  const panel = `rounded-2xl border p-5 ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/80 border-[#2E2B27]/10 shadow-sm'}`;
+  const field = `w-full px-3 py-2 rounded-lg text-xs outline-none border ${isDark ? 'bg-slate-950/60 border-white/10 text-slate-100 placeholder:text-slate-500' : 'bg-[#FAF7F2] border-[#2E2B27]/15 text-[#2E2B27] placeholder:text-[#6A645D]/60'}`;
+  const label = `text-[10px] font-bold uppercase tracking-wider mb-1 block ${isDark ? 'text-slate-300' : 'text-[#2E2B27]'}`;
   const gradient = 'from-emerald-500 to-teal-600';
-  const btn = `px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-gradient-to-r ${gradient} text-white active:scale-95 disabled:opacity-40`;
-  const ghost = `px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 ${isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`;
+  const btn = `px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-gradient-to-r ${gradient} text-white active:scale-95 disabled:opacity-40 shadow-sm`;
+  const ghost = `px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 ${isDark ? 'bg-white/5 hover:bg-white/10 text-slate-200' : 'bg-[#FAF7F2] hover:bg-[#F4EFE6] text-[#2E2B27] border border-[#2E2B27]/10'}`;
   const chip = (l, v, tone) => (
-    <div className={`rounded-lg px-3 py-2 border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
-      <div className="text-[9px] font-bold uppercase tracking-wider opacity-60">{l}</div>
-      <div className={`text-sm font-black tabular-nums ${tone || ''}`}>{v ?? '-'}</div>
+    <div className={`rounded-lg px-3 py-2 border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/10'}`}>
+      <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>{l}</div>
+      <div className={`text-sm font-black tabular-nums ${isDark ? '' : 'text-[#2E2B27]'} ${tone || ''}`}>{v ?? '-'}</div>
     </div>
   );
   const selected = routes.find((r) => String(r.id) === routeId);
@@ -734,7 +734,7 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
       {needsSignIn ? (
         <div className={`${panel} text-center py-10 flex flex-col items-center gap-4`}>
           <Lock size={28} className="opacity-60" />
-          <p className="text-xs text-slate-500 max-w-sm">Your glucose and insulin data is only available to your signed-in Google account.</p>
+          <p className={`text-xs max-w-sm ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>Your glucose and insulin data is only available to your signed-in Google account.</p>
           <button onClick={signIn} className={btn}><LogIn size={14} /> Sign in with Google</button>
         </div>
       ) : isLoading ? (
@@ -742,18 +742,20 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
       ) : (
         <>
           {/* Header Action Bar: Distances unit toggle */}
-          <div className="flex items-center justify-end gap-2 text-[10px] text-slate-500 mb-2">
+          <div className={`flex items-center justify-end gap-2 text-[10px] ${isDark ? 'text-slate-500' : 'text-[#6A645D] font-medium'} mb-2`}>
             Distances in <UnitToggle units={units} setUnits={setUnits} isDark={isDark} />
           </div>
 
           {/* TOP 4-TAB WORKSPACE NAVIGATOR */}
-          <div className="flex flex-wrap items-center gap-2 mb-5 p-1.5 rounded-2xl border border-white/10 bg-slate-950/60 shadow-lg shadow-black/20">
+          <div className={`flex flex-wrap items-center gap-2 mb-5 p-1.5 rounded-2xl border ${isDark ? 'border-white/10 bg-slate-950/60 shadow-lg shadow-black/20' : 'border-[#2E2B27]/15 bg-[#F4EFE6]/90 shadow-sm shadow-[#2E2B27]/5'}`}>
             <button
               onClick={() => setActiveMainTab('mission')}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                 activeMainTab === 'mission'
                   ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  : isDark
+                  ? 'text-slate-400 hover:text-white hover:bg-white/5'
+                  : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'
               }`}
             >
               <Mountain size={14} />
@@ -765,13 +767,15 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                 activeMainTab === 'rulebook'
                   ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  : isDark
+                  ? 'text-slate-400 hover:text-white hover:bg-white/5'
+                  : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'
               }`}
             >
               <BookOpen size={14} />
               <span>2. T1D Rulebook & Intelligence</span>
               {pendingFindingsCount > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-amber-500/20 text-amber-300 font-black animate-pulse">
+                <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-black ${isDark ? 'bg-amber-500/20 text-amber-300' : 'bg-amber-100 text-amber-900 border border-amber-300'} animate-pulse`}>
                   {pendingFindingsCount}
                 </span>
               )}
@@ -782,7 +786,9 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                 activeMainTab === 'targets'
                   ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  : isDark
+                  ? 'text-slate-400 hover:text-white hover:bg-white/5'
+                  : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'
               }`}
             >
               <Sliders size={14} />
@@ -794,12 +800,14 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                 activeMainTab === 'flythrough'
                   ? 'bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  : isDark
+                  ? 'text-slate-400 hover:text-white hover:bg-white/5'
+                  : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'
               }`}
             >
-              <Sparkles size={14} className="text-yellow-400" />
+              <Sparkles size={14} className={activeMainTab === 'flythrough' ? 'text-yellow-300' : (isDark ? 'text-yellow-400' : 'text-amber-600')} />
               <span>4. Run Flythrough & Retrospective</span>
-              <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-sky-500/20 text-sky-300 font-bold uppercase tracking-wider">
+              <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold uppercase tracking-wider ${isDark ? 'bg-sky-500/20 text-sky-300' : 'bg-sky-100 text-sky-900 border border-sky-300'}`}>
                 Replay
               </span>
             </button>

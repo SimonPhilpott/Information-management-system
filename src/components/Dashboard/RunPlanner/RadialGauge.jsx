@@ -61,12 +61,12 @@ export default function RadialGauge({
   const formattedDisplay = displayValue !== null ? displayValue : Number(numVal).toFixed(1);
 
   return (
-    <div className={`flex flex-col items-center justify-between p-3.5 rounded-2xl border transition-all ${isDark ? 'bg-slate-900/60 border-white/10 shadow-lg shadow-black/20' : 'bg-white border-slate-200 shadow-sm'} ${className}`}>
+    <div className={`flex flex-col items-center justify-between p-3.5 rounded-2xl border transition-all ${isDark ? 'bg-slate-900/60 border-white/10 shadow-lg shadow-black/20' : 'bg-white border-[#2E2B27]/10 shadow-sm'} ${className}`}>
       {/* Title & Target Zone Badge */}
       <div className="w-full flex items-center justify-between mb-1">
-        <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">{title}</span>
+        <span className={`text-[11px] font-black uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#2E2B27]'}`}>{title}</span>
         {targetLabel && (
-          <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400">
+          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${isDark ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400' : 'bg-emerald-50 border-emerald-300 text-emerald-800 font-semibold'}`}>
             {targetLabel}
           </span>
         )}
@@ -86,7 +86,7 @@ export default function RadialGauge({
           <path
             d={describeArc(startAngleDeg, endAngleDeg)}
             fill="none"
-            stroke={isDark ? '#1e293b' : '#e2e8f0'}
+            stroke={isDark ? '#1e293b' : '#EDE5D8'}
             strokeWidth={strokeWidth}
             strokeLinecap="round"
           />
@@ -134,7 +134,7 @@ export default function RadialGauge({
             y={cy - 22}
             textAnchor="middle"
             className="font-black tabular-nums"
-            fill={isDark ? '#f8fafc' : '#0f172a'}
+            fill={isDark ? '#f8fafc' : '#2E2B27'}
             fontSize="26"
             letterSpacing="-0.5px"
           >
@@ -145,7 +145,7 @@ export default function RadialGauge({
             y={cy - 6}
             textAnchor="middle"
             className="font-bold uppercase tracking-wider"
-            fill={isDark ? '#94a3b8' : '#64748b'}
+            fill={isDark ? '#94a3b8' : '#6A645D'}
             fontSize="10"
           >
             {unit}
@@ -155,9 +155,9 @@ export default function RadialGauge({
 
       {/* Zone Legend Indicator Strip */}
       {zones.length > 0 && (
-        <div className="w-full flex items-center justify-center gap-2 mt-1 pt-1.5 border-t border-white/5">
+        <div className={`w-full flex items-center justify-center gap-2 mt-1 pt-1.5 border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/10'}`}>
           {zones.map((z, idx) => (
-            <div key={idx} className="flex items-center gap-1 text-[9px] text-slate-400">
+            <div key={idx} className={`flex items-center gap-1 text-[9px] ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>
               <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: z.color }} />
               <span>{z.label}</span>
             </div>

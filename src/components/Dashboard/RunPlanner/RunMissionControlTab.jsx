@@ -106,7 +106,7 @@ export default function RunMissionControlTab({
       />
 
       {/* Safety Notice Banner */}
-      <div className={`p-3 rounded-xl border flex items-start gap-3 text-[11px] leading-relaxed ${isDark ? 'bg-amber-500/5 border-amber-500/30 text-slate-300' : 'bg-amber-50 border-amber-300 text-slate-700'}`}>
+      <div className={`p-3 rounded-xl border flex items-start gap-3 text-[11px] leading-relaxed ${isDark ? 'bg-amber-500/5 border-amber-500/30 text-slate-300' : 'bg-amber-50/70 border-amber-300 text-[#2E2B27]'}`}>
         <AlertTriangle size={15} className="shrink-0 mt-0.5 text-amber-500" />
         <span>
           This is an <strong>infographic planning estimate</strong> from a metabolic uptake model, your Nightscout data, and sports endocrinology guidelines. Always carry fast carbohydrates and follow your clinical hypo safety plan.
@@ -115,8 +115,8 @@ export default function RunMissionControlTab({
 
       {/* 2. ROUTE SELECTION & KOMOOT INTEGRATION */}
       <div className={panel}>
-        <h2 className="text-xs font-black uppercase tracking-wider mb-3 flex items-center gap-2">
-          <Mountain size={13} />
+        <h2 className={`text-xs font-black uppercase tracking-wider mb-3 flex items-center gap-2 ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>
+          <Mountain size={13} className="text-emerald-500" />
           Route Selection
         </h2>
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
@@ -142,7 +142,7 @@ export default function RunMissionControlTab({
         </div>
 
         {selected && (
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 mb-3">
+          <div className={`flex flex-wrap items-center gap-2 text-[11px] mb-3 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
             <span>
               {dist(selected.distanceKm, units)} {units} - {selected.gainM} m up / {selected.lossM} m down - {selected.minEle}-{selected.maxEle} m altitude - from {selected.source}
             </span>
@@ -161,7 +161,7 @@ export default function RunMissionControlTab({
             <button onClick={() => fileRef.current?.click()} disabled={busy === 'gpx'} className={ghost}>
               {busy === 'gpx' ? <RotateCw size={13} className="animate-spin" /> : <Upload size={13} />} Choose file
             </button>
-            <p className="text-[10px] text-slate-500 mt-1.5">In Komoot: open the tour, then Share / Export as GPX.</p>
+            <p className={`text-[10px] mt-1.5 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>In Komoot: open the tour, then Share / Export as GPX.</p>
           </div>
           <div>
             <label className={label}>Or paste a Komoot tour link</label>
@@ -171,7 +171,7 @@ export default function RunMissionControlTab({
                 <Link2 size={13} />
               </button>
             </div>
-            <p className="text-[10px] text-slate-500 mt-1.5">Any tour link works while your account is connected.</p>
+            <p className={`text-[10px] mt-1.5 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>Any tour link works while your account is connected.</p>
           </div>
           <div>
             <label className={label}>Or connect your Komoot account</label>
@@ -205,22 +205,22 @@ export default function RunMissionControlTab({
 
         {tours && (
           <div className="mt-4 max-h-72 overflow-y-auto flex flex-col gap-1.5">
-            <div className="flex items-center gap-3 mb-1 sticky top-0 py-1" style={{ background: isDark ? '#0f172a' : '#fff' }}>
-              <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">
+            <div className="flex items-center gap-3 mb-1 sticky top-0 py-1" style={{ background: isDark ? '#0f172a' : '#FAF7F2' }}>
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'opacity-70 text-slate-300' : 'text-[#2E2B27]'}`}>
                 {tourType === 'recorded' ? 'Completed routes' : 'Saved routes'} ({tours.length})
               </span>
               <input className={`${field} !w-56`} value={tourSearch} onChange={(e) => setTourSearch(e.target.value)} placeholder="Search by name..." />
             </div>
             {tours.length === 0 ? (
-              <p className="text-xs text-slate-500">Nothing found here - try the other list.</p>
+              <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>Nothing found here - try the other list.</p>
             ) : (
               tours
                 .filter((t) => !tourSearch.trim() || String(t.name).toLowerCase().includes(tourSearch.trim().toLowerCase()))
                 .map((t) => (
-                  <div key={t.id} className={`flex items-center gap-3 p-2 rounded-lg border text-xs ${isDark ? 'border-white/5' : 'border-[#2E2B27]/10'}`}>
+                  <div key={t.id} className={`flex items-center gap-3 p-2 rounded-lg border text-xs ${isDark ? 'border-white/5' : 'border-[#2E2B27]/10 bg-white/60'}`}>
                     <div className="min-w-0 flex-1">
-                      <div className="font-bold truncate">{t.name}</div>
-                      <div className="text-[10px] text-slate-500">
+                      <div className={`font-bold truncate ${isDark ? '' : 'text-[#2E2B27]'}`}>{t.name}</div>
+                      <div className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
                         {t.sport} - {t.distanceKm != null ? dist(t.distanceKm, units) : '?'} {units}
                         {t.gainM != null ? ` - ${t.gainM} m up` : ''}
                       </div>
@@ -241,8 +241,8 @@ export default function RunMissionControlTab({
       {/* 3. ROUTE PREVIEW & WHAT IT ASKS OF YOU */}
       {(routeFull || demand) && (
         <div className={panel}>
-          <h2 className="text-xs font-black uppercase tracking-wider mb-3 flex items-center gap-2">
-            <Mountain size={13} />
+          <h2 className={`text-xs font-black uppercase tracking-wider mb-3 flex items-center gap-2 ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>
+            <Mountain size={13} className="text-emerald-500" />
             {routeFull ? routeFull.name : `${dist(toKm(form.distanceKm, units), units, 1)} ${units} run`} - What it asks of you
           </h2>
           {routeFull && (
@@ -251,9 +251,9 @@ export default function RunMissionControlTab({
                 <RouteMap route={routeFull} units={units} />
               </div>
               <div className="lg:col-span-2 flex flex-col gap-3">
-                <div className="text-[10px] font-bold uppercase tracking-wider opacity-70">Elevation Profile</div>
+                <div className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'opacity-70 text-slate-300' : 'text-[#2E2B27]'}`}>Elevation Profile</div>
                 <ElevationProfile route={routeFull} units={units} />
-                <p className="text-[10px] text-slate-500 leading-relaxed">
+                <p className={`text-[10px] leading-relaxed ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
                   {dist(routeFull.distanceKm, units, 1)} {units}, {routeFull.gainM} m up and {routeFull.lossM} m down. Steepness: green flat, amber climbing, red steep, blue downhill.
                 </p>
               </div>
@@ -261,10 +261,10 @@ export default function RunMissionControlTab({
           )}
 
           {routeFull && routeHistory && (
-            <div className={`rounded-xl border p-3 mb-4 ${isDark ? 'border-white/10 bg-slate-950/30' : 'border-[#2E2B27]/10 bg-white/60'}`}>
+            <div className={`rounded-xl border p-3 mb-4 ${isDark ? 'border-white/10 bg-slate-950/30' : 'border-[#2E2B27]/10 bg-[#FAF7F2]'}`}>
               {routeHistory.count > 0 ? (
                 <>
-                  <div className="text-[10px] font-bold uppercase tracking-wider opacity-70 mb-2">
+                  <div className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${isDark ? 'opacity-70 text-slate-300' : 'text-[#2E2B27]'}`}>
                     Your previous runs of this route ({routeHistory.count})
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -275,16 +275,16 @@ export default function RunMissionControlTab({
                           setForm((f) => ({ ...f, pace: paceText(routeHistory.expectedCurrentPaceMinPerKm, units) }));
                         }}
                         title={`Use current fitness pace (${paceText(routeHistory.expectedCurrentPaceMinPerKm, units)} /${units})`}
-                        className="text-left rounded-lg px-3 py-2 border bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20 active:scale-95 transition-all"
+                        className={`text-left rounded-lg px-3 py-2 border active:scale-95 transition-all ${isDark ? 'bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20' : 'bg-emerald-50 border-emerald-300 hover:bg-emerald-100/70'}`}
                       >
-                        <div className="text-[9px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                        <div className={`text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 ${isDark ? 'text-emerald-400' : 'text-emerald-800'}`}>
                           <Sparkles size={10} />
                           Expected Now
                         </div>
-                        <div className="text-sm font-black tabular-nums text-emerald-300">
-                          {paceText(routeHistory.expectedCurrentPaceMinPerKm, units)} <span className="text-[10px] font-bold text-slate-400">/{units}</span>
+                        <div className={`text-sm font-black tabular-nums ${isDark ? 'text-emerald-300' : 'text-emerald-900'}`}>
+                          {paceText(routeHistory.expectedCurrentPaceMinPerKm, units)} <span className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>/{units}</span>
                         </div>
-                        <div className="text-[10px] text-emerald-400/80">~{fmtMin(routeHistory.expectedCurrentTimeMin)} • fitness</div>
+                        <div className={`text-[10px] ${isDark ? 'text-emerald-400/80' : 'text-emerald-700'}`}>~{fmtMin(routeHistory.expectedCurrentTimeMin)} • fitness</div>
                       </button>
                     )}
                     {[['Last', routeHistory.last, 'sky'], ['Fastest', routeHistory.fastest, 'emerald'], ['Slowest', routeHistory.slowest, 'amber']].map(([name, run]) => (
@@ -294,13 +294,13 @@ export default function RunMissionControlTab({
                           setPaceTouched(true);
                           setForm((f) => ({ ...f, pace: paceText(run.paceMinPerKm, units) }));
                         }}
-                        className={`text-left rounded-lg px-3 py-2 border ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-[#2E2B27]/10 hover:bg-black/5'} active:scale-95 transition-all`}
+                        className={`text-left rounded-lg px-3 py-2 border ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-[#2E2B27]/10 bg-white/70 hover:bg-white'} active:scale-95 transition-all`}
                       >
-                        <div className="text-[9px] font-bold uppercase tracking-wider opacity-60">{name}</div>
-                        <div className="text-sm font-black tabular-nums">
-                          {paceText(run.paceMinPerKm, units)} <span className="text-[10px] font-bold text-slate-500">/{units}</span>
+                        <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'opacity-60 text-slate-400' : 'text-[#6A645D]'}`}>{name}</div>
+                        <div className={`text-sm font-black tabular-nums ${isDark ? '' : 'text-[#2E2B27]'}`}>
+                          {paceText(run.paceMinPerKm, units)} <span className={`text-[10px] font-bold ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>/{units}</span>
                         </div>
-                        <div className="text-[10px] text-slate-500">
+                        <div className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
                           {new Date(`${run.day}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                         </div>
                       </button>
@@ -310,22 +310,22 @@ export default function RunMissionControlTab({
                         setPaceTouched(true);
                         setForm((f) => ({ ...f, pace: paceText(routeHistory.averagePaceMinPerKm, units) }));
                       }}
-                      className={`text-left rounded-lg px-3 py-2 border ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-[#2E2B27]/10 hover:bg-black/5'} active:scale-95 transition-all`}
+                      className={`text-left rounded-lg px-3 py-2 border ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-[#2E2B27]/10 bg-white/70 hover:bg-white'} active:scale-95 transition-all`}
                     >
-                      <div className="text-[9px] font-bold uppercase tracking-wider opacity-60">Average</div>
-                      <div className="text-sm font-black tabular-nums">
-                        {paceText(routeHistory.averagePaceMinPerKm, units)} <span className="text-[10px] font-bold text-slate-500">/{units}</span>
+                      <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'opacity-60 text-slate-400' : 'text-[#6A645D]'}`}>Average</div>
+                      <div className={`text-sm font-black tabular-nums ${isDark ? '' : 'text-[#2E2B27]'}`}>
+                        {paceText(routeHistory.averagePaceMinPerKm, units)} <span className={`text-[10px] font-bold ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>/{units}</span>
                       </div>
-                      <div className="text-[10px] text-slate-500">all {routeHistory.count} runs</div>
+                      <div className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>all {routeHistory.count} runs</div>
                     </button>
                   </div>
                 </>
               ) : (
-                <p className="text-[11px] text-slate-500">None of your Strava runs follow this route yet. Type your pace in below.</p>
+                <p className={`text-[11px] ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>None of your Strava runs follow this route yet. Type your pace in below.</p>
               )}
             </div>
           )}
-          {demand ? <DemandCard demand={demand} units={units} isDark={isDark} /> : <p className="text-xs text-slate-500">Calculating route demand...</p>}
+          {demand ? <DemandCard demand={demand} units={units} isDark={isDark} /> : <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>Calculating route demand...</p>}
         </div>
       )}
 
@@ -333,7 +333,7 @@ export default function RunMissionControlTab({
       {goals.length > 0 && (
         <div className={panel}>
           <div className="flex flex-wrap items-center gap-3">
-            <h2 className="text-xs font-black uppercase tracking-wider">Plan for a goal</h2>
+            <h2 className={`text-xs font-black uppercase tracking-wider ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>Plan for a goal</h2>
             <select className={`${field} sm:!w-72`} value={goalId} onChange={(e) => pickGoal(e.target.value)}>
               <option value="">No goal - just this run</option>
               {goals.map((a) => (
@@ -344,7 +344,7 @@ export default function RunMissionControlTab({
             </select>
           </div>
           {goal && (
-            <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+            <p className={`text-[11px] mt-2 leading-relaxed ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
               {goal.verdict}
             </p>
           )}
@@ -354,14 +354,14 @@ export default function RunMissionControlTab({
       {/* 5. WHERE YOU ARE NOW (METABOLIC STATUS HUD) */}
       <div className={panel}>
         <div className="flex flex-wrap items-center gap-3 mb-3">
-          <h2 className="text-xs font-black uppercase tracking-wider">Where you are now</h2>
+          <h2 className={`text-xs font-black uppercase tracking-wider ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>Where you are now</h2>
           <button onClick={() => useCurrent(false)} className={`${ghost} ml-auto text-xs`}>
             <RotateCw size={12} />
             Use my current readings
           </button>
         </div>
         {now?.now?.bgFresh && (
-          <p className="text-[11px] text-slate-500 mb-3">
+          <p className={`text-[11px] mb-3 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
             From your Nightscout log {now.now.bgMinutesAgo} min ago: glucose {now.now.bg} ({now.now.direction}), insulin on board {now.now.iob ?? 'unknown'} U
             {now.now.lastBolusMinutesAgo != null ? `, last bolus ${now.now.lastBolusUnits} U ${now.now.lastBolusMinutesAgo} min ago` : ''}.
           </p>
@@ -422,21 +422,19 @@ export default function RunMissionControlTab({
                 </p>
               ))}
             </div>
-          )}
-
-          {/* Quick Metrics Chips Row with Steppers */}
+          )}          {/* Quick Metrics Chips Row with Steppers */}
           <div className={panel}>
-            <h2 className="text-xs font-black uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Cookie size={13} />
+            <h2 className={`text-xs font-black uppercase tracking-wider mb-3 flex items-center gap-2 ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>
+              <Cookie size={13} className="text-amber-500" />
               The Plan{plan.inputs?.routeName ? ` - ${plan.inputs.routeName}` : ''}
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 mb-4">
               {chip('Distance', `${dist(plan.run?.distanceKm || 0, units, 2)} ${units}`)}
 
               {/* Editable: Estimated Time chip */}
-              <div className={`rounded-lg px-3 py-2 border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
+              <div className={`rounded-lg px-3 py-2 border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/10'}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
-                  <div className="text-[9px] font-bold uppercase tracking-wider opacity-60">Estimated time</div>
+                  <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>Estimated time</div>
                   {originalBaseline && renderDeltaBadge(plan.run?.durationMin, originalBaseline.durationMin, 'time')}
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -444,7 +442,7 @@ export default function RunMissionControlTab({
                     <button
                       onClick={() => stepTime(2)}
                       disabled={busy === 'estimate'}
-                      className="p-0.5 rounded hover:bg-white/10 active:scale-90 text-slate-400 hover:text-white transition-colors"
+                      className={`p-0.5 rounded active:scale-90 transition-colors ${isDark ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'}`}
                       title="Increase time (+2 min)"
                     >
                       <ChevronUp size={11} />
@@ -452,7 +450,7 @@ export default function RunMissionControlTab({
                     <button
                       onClick={() => stepTime(-2)}
                       disabled={busy === 'estimate' || (plan.run?.durationMin || 0) <= 2}
-                      className="p-0.5 rounded hover:bg-white/10 active:scale-90 text-slate-400 hover:text-white transition-colors"
+                      className={`p-0.5 rounded active:scale-90 transition-colors ${isDark ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'}`}
                       title="Decrease time (-2 min)"
                     >
                       <ChevronDown size={11} />
@@ -496,7 +494,7 @@ export default function RunMissionControlTab({
                     />
                   ) : (
                     <button
-                      className="text-sm font-black tabular-nums hover:underline cursor-text text-left w-full"
+                      className={`text-sm font-black tabular-nums hover:underline cursor-text text-left w-full ${isDark ? '' : 'text-[#2E2B27]'}`}
                       onClick={() => { setTimeEditFocus(true); setTimeEditDraft(fmtMin(plan.run?.durationMin || 0)); }}
                     >
                       {fmtMin(plan.run?.durationMin || 0)}
@@ -507,9 +505,9 @@ export default function RunMissionControlTab({
               </div>
 
               {/* Editable: Average Pace chip */}
-              <div className={`rounded-lg px-3 py-2 border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
+              <div className={`rounded-lg px-3 py-2 border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/10'}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
-                  <div className="text-[9px] font-bold uppercase tracking-wider opacity-60">Average pace</div>
+                  <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>Average pace</div>
                   {originalBaseline && renderDeltaBadge(plan.inputs?.averagePaceMinPerKm, originalBaseline.averagePaceMinPerKm, 'pace')}
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -517,7 +515,7 @@ export default function RunMissionControlTab({
                     <button
                       onClick={() => stepPace(5)}
                       disabled={busy === 'estimate'}
-                      className="p-0.5 rounded hover:bg-white/10 active:scale-90 text-slate-400 hover:text-white transition-colors"
+                      className={`p-0.5 rounded active:scale-90 transition-colors ${isDark ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'}`}
                       title="Slower pace (+5 sec)"
                     >
                       <ChevronUp size={11} />
@@ -525,7 +523,7 @@ export default function RunMissionControlTab({
                     <button
                       onClick={() => stepPace(-5)}
                       disabled={busy === 'estimate' || (plan.inputs?.averagePaceMinPerKm || 0) <= 2.5}
-                      className="p-0.5 rounded hover:bg-white/10 active:scale-90 text-slate-400 hover:text-white transition-colors"
+                      className={`p-0.5 rounded active:scale-90 transition-colors ${isDark ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'}`}
                       title="Faster pace (-5 sec)"
                     >
                       <ChevronDown size={11} />
@@ -556,11 +554,11 @@ export default function RunMissionControlTab({
                         if (e.key === 'Enter') e.target.blur();
                         if (e.key === 'Escape') { setPaceEditFocus(false); setPaceEditDraft(null); }
                       }}
-                      style={{ width: '64px' }}
+                      style={{ width: '80px' }}
                     />
                   ) : (
                     <button
-                      className="text-sm font-black tabular-nums hover:underline cursor-text text-left w-full"
+                      className={`text-sm font-black tabular-nums hover:underline cursor-text text-left w-full ${isDark ? '' : 'text-[#2E2B27]'}`}
                       onClick={() => { setPaceEditFocus(true); setPaceEditDraft(paceText(plan.inputs?.averagePaceMinPerKm || 5.0, units)); }}
                     >
                       {paceText(plan.inputs?.averagePaceMinPerKm || 5.0, units)} /{units}
@@ -570,14 +568,13 @@ export default function RunMissionControlTab({
                 </div>
               </div>
 
-
               {chip('Climbing', plan.run?.hasElevation ? `${plan.run.gainM} m up` : 'flat / unknown')}
               {chip('Effort vs flat', `${Math.round(((plan.run?.effortFactor || 1) - 1) * 100)}% more`)}
 
               {/* Editable: Carbs in Total chip */}
-              <div className={`rounded-lg px-3 py-2 border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
+              <div className={`rounded-lg px-3 py-2 border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/10'}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
-                  <div className="text-[9px] font-bold uppercase tracking-wider text-yellow-500/90">Carbs in total</div>
+                  <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-yellow-500/90' : 'text-amber-800'}`}>Carbs in total</div>
                   {originalBaseline && renderDeltaBadge(plan.plan?.totalCarbs, originalBaseline.totalCarbs, 'carbs')}
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -585,7 +582,7 @@ export default function RunMissionControlTab({
                     <button
                       onClick={() => stepCarbs(5)}
                       disabled={busy === 'estimate'}
-                      className="p-0.5 rounded hover:bg-white/10 active:scale-90 text-yellow-400 transition-colors"
+                      className={`p-0.5 rounded active:scale-90 transition-colors ${isDark ? 'text-yellow-400 hover:text-white hover:bg-white/10' : 'text-amber-700 hover:text-amber-900 hover:bg-amber-100'}`}
                       title="Increase carbs (+5 g)"
                     >
                       <ChevronUp size={11} />
@@ -593,7 +590,7 @@ export default function RunMissionControlTab({
                     <button
                       onClick={() => stepCarbs(-5)}
                       disabled={busy === 'estimate' || (plan.plan?.totalCarbs || 0) <= 0}
-                      className="p-0.5 rounded hover:bg-white/10 active:scale-90 text-yellow-400 transition-colors"
+                      className={`p-0.5 rounded active:scale-90 transition-colors ${isDark ? 'text-yellow-400 hover:text-white hover:bg-white/10' : 'text-amber-700 hover:text-amber-900 hover:bg-amber-100'}`}
                       title="Decrease carbs (-5 g)"
                     >
                       <ChevronDown size={11} />
@@ -630,7 +627,7 @@ export default function RunMissionControlTab({
                     />
                   ) : (
                     <button
-                      className="text-sm font-black tabular-nums hover:underline cursor-text text-left text-yellow-500"
+                      className={`text-sm font-black tabular-nums hover:underline cursor-text text-left ${isDark ? 'text-yellow-400' : 'text-amber-800'}`}
                       onClick={() => { setCarbsEditFocus(true); setCarbsEditDraft(String(plan.plan?.totalCarbs || 0)); }}
                     >
                       {plan.plan?.totalCarbs || 0} g
@@ -659,13 +656,13 @@ export default function RunMissionControlTab({
             />
 
             {/* When to Eat Table */}
-            <h3 className="text-[11px] font-black uppercase tracking-wider mt-4 mb-2">When to eat</h3>
+            <h3 className={`text-[11px] font-black uppercase tracking-wider mt-4 mb-2 ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>When to eat</h3>
             {(plan.plan?.stops || []).length === 0 ? (
-              <p className="text-xs text-slate-500">On these numbers no carbs are needed during the run - keep some with you anyway.</p>
+              <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>On these numbers no carbs are needed during the run - keep some with you anyway.</p>
             ) : (
               <table className="w-full text-xs mb-3">
                 <thead>
-                  <tr className="text-left text-[9px] uppercase tracking-wider text-slate-500">
+                  <tr className={`text-left text-[9px] uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
                     <th className="py-1 pr-3">When</th>
                     <th className="pr-3">Where</th>
                     <th className="pr-3 text-right">Carbs</th>
@@ -674,19 +671,19 @@ export default function RunMissionControlTab({
                 </thead>
                 <tbody>
                   {(plan.plan?.stops || []).map((s, i) => (
-                    <tr key={i} className={`border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/5'}`}>
-                      <td className="py-1.5 pr-3 tabular-nums font-bold">{s.minute === 0 ? 'At the start' : `${s.minute} min in`}</td>
-                      <td className="pr-3 tabular-nums">{s.minute === 0 ? '-' : `${units} ${dist(s.km, units)}`}</td>
+                    <tr key={i} className={`border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/10'}`}>
+                      <td className={`py-1.5 pr-3 tabular-nums font-bold ${isDark ? '' : 'text-[#2E2B27]'}`}>{s.minute === 0 ? 'At the start' : `${s.minute} min in`}</td>
+                      <td className={`pr-3 tabular-nums ${isDark ? '' : 'text-[#6A645D]'}`}>{s.minute === 0 ? '-' : `${units} ${dist(s.km, units)}`}</td>
                       <td className="pr-3 text-right tabular-nums font-black text-yellow-500">{s.grams} g</td>
-                      <td className="text-slate-500">{s.note}</td>
+                      <td className={isDark ? 'text-slate-500' : 'text-[#6A645D]'}>{s.note}</td>
                     </tr>
                   ))}
                   {(plan.plan?.postCarbs || 0) > 0 && (
-                    <tr className={`border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/5'}`}>
-                      <td className="py-1.5 pr-3 font-bold">At the finish</td>
+                    <tr className={`border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/10'}`}>
+                      <td className={`py-1.5 pr-3 font-bold ${isDark ? '' : 'text-[#2E2B27]'}`}>At the finish</td>
                       <td>-</td>
                       <td className="pr-3 text-right font-black text-yellow-500 tabular-nums">{plan.plan.postCarbs} g</td>
-                      <td className="text-slate-500">The estimate dips after you stop; insulin stays extra effective for hours.</td>
+                      <td className={isDark ? 'text-slate-500' : 'text-[#6A645D]'}>The estimate dips after you stop; insulin stays extra effective for hours.</td>
                     </tr>
                   )}
                 </tbody>
@@ -694,12 +691,12 @@ export default function RunMissionControlTab({
             )}
 
             {(plan.plan?.toReachStartTarget || 0) > 0 && (
-              <p className="text-[11px] text-slate-500 mt-2">
+              <p className={`text-[11px] mt-2 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
                 To be at your {plan.settings?.startTarget} start target from {plan.inputs?.startBg} you would need about {plan.plan?.toReachStartTarget} g of fast carbs 15-20 minutes before you go.
               </p>
             )}
             {plan.guideline && plan.guideline[plan.guideline.usedRange] && (
-              <p className="text-[11px] text-slate-500 mt-2">
+              <p className={`text-[11px] mt-2 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
                 For comparison, ISPAD guidance is {plan.guideline[plan.guideline.usedRange][0]}-{plan.guideline[plan.guideline.usedRange][1]} g an hour at your weight with {plan.guideline.usedRange === 'highIob' ? 'insulin still active' : 'little insulin active'}; this plan uses {plan.plan?.carbsPerHour} g/h because it is tailored to your glucose and insulin on board.
               </p>
             )}
@@ -708,10 +705,10 @@ export default function RunMissionControlTab({
           {/* Scenario Matrices */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className={panel}>
-              <h3 className="text-[11px] font-black uppercase tracking-wider mb-2">If you started at a different glucose</h3>
+              <h3 className={`text-[11px] font-black uppercase tracking-wider mb-2 ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>If you started at a different glucose</h3>
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-[9px] uppercase tracking-wider text-slate-500">
+                  <tr className={`text-left text-[9px] uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
                     <th className="py-1">Start</th>
                     <th className="text-right">Carbs</th>
                     <th className="text-right">At start</th>
@@ -720,11 +717,11 @@ export default function RunMissionControlTab({
                 </thead>
                 <tbody>
                   {(plan.startScenarios || []).map((s) => (
-                    <tr key={s.startBg} className={`border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/5'}`}>
-                      <td className="py-1 font-bold">{s.startBg}</td>
-                      <td className="text-right tabular-nums">{s.totalCarbs} g</td>
-                      <td className="text-right tabular-nums">{s.carbsAtStart} g</td>
-                      <td className={`text-right tabular-nums ${s.minBg < (plan.settings?.floor || 4.0) ? 'text-red-500' : ''}`}>{s.minBg}</td>
+                    <tr key={s.startBg} className={`border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/10'}`}>
+                      <td className={`py-1 font-bold ${isDark ? '' : 'text-[#2E2B27]'}`}>{s.startBg}</td>
+                      <td className={`text-right tabular-nums ${isDark ? '' : 'text-[#6A645D]'}`}>{s.totalCarbs} g</td>
+                      <td className={`text-right tabular-nums ${isDark ? '' : 'text-[#6A645D]'}`}>{s.carbsAtStart} g</td>
+                      <td className={`text-right tabular-nums font-bold ${s.minBg < (plan.settings?.floor || 4.0) ? 'text-red-500' : (isDark ? 'text-emerald-400' : 'text-emerald-700')}`}>{s.minBg}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -732,10 +729,10 @@ export default function RunMissionControlTab({
             </div>
 
             <div className={panel}>
-              <h3 className="text-[11px] font-black uppercase tracking-wider mb-2">If you had different insulin on board</h3>
+              <h3 className={`text-[11px] font-black uppercase tracking-wider mb-2 ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>If you had different insulin on board</h3>
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-[9px] uppercase tracking-wider text-slate-500">
+                  <tr className={`text-left text-[9px] uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
                     <th className="py-1">IOB</th>
                     <th className="text-right">Carbs</th>
                     <th className="text-right">At start</th>
@@ -744,11 +741,11 @@ export default function RunMissionControlTab({
                 </thead>
                 <tbody>
                   {(plan.iobScenarios || []).map((s) => (
-                    <tr key={s.iob} className={`border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/5'}`}>
-                      <td className="py-1 font-bold">{s.iob} U</td>
-                      <td className="text-right tabular-nums">{s.totalCarbs} g</td>
-                      <td className="text-right tabular-nums">{s.carbsAtStart} g</td>
-                      <td className={`text-right tabular-nums ${s.minBg < (plan.settings?.floor || 4.0) ? 'text-red-500' : ''}`}>{s.minBg}</td>
+                    <tr key={s.iob} className={`border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/10'}`}>
+                      <td className={`py-1 font-bold ${isDark ? '' : 'text-[#2E2B27]'}`}>{s.iob} U</td>
+                      <td className={`text-right tabular-nums ${isDark ? '' : 'text-[#6A645D]'}`}>{s.totalCarbs} g</td>
+                      <td className={`text-right tabular-nums ${isDark ? '' : 'text-[#6A645D]'}`}>{s.carbsAtStart} g</td>
+                      <td className={`text-right tabular-nums font-bold ${s.minBg < (plan.settings?.floor || 4.0) ? 'text-red-500' : (isDark ? 'text-emerald-400' : 'text-emerald-700')}`}>{s.minBg}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -759,15 +756,15 @@ export default function RunMissionControlTab({
           {/* Insulin - Things to discuss with your diabetes team */}
           {plan.insulin && plan.insulin.length > 0 && (
             <div className={panel}>
-              <h3 className="text-[11px] font-black uppercase tracking-wider mb-2 flex items-center gap-2">
-                <Syringe size={13} />
+              <h3 className={`text-[11px] font-black uppercase tracking-wider mb-2 flex items-center gap-2 ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>
+                <Syringe size={13} className="text-emerald-500" />
                 Insulin - things to discuss with your diabetes team
               </h3>
               <div className="flex flex-col gap-3">
                 {plan.insulin.map((n, i) => (
                   <div key={i}>
-                    <div className="text-xs font-bold">{n.title}</div>
-                    <p className="text-[11px] text-slate-500 leading-relaxed">{n.text}</p>
+                    <div className={`text-xs font-bold ${isDark ? '' : 'text-[#2E2B27]'}`}>{n.title}</div>
+                    <p className={`text-[11px] leading-relaxed ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>{n.text}</p>
                   </div>
                 ))}
               </div>
@@ -777,14 +774,14 @@ export default function RunMissionControlTab({
           {/* How this was worked out */}
           {plan.basis && (
             <div className={panel}>
-              <h3 className="text-[11px] font-black uppercase tracking-wider mb-2 flex items-center gap-2">
-                <BookOpen size={13} />
+              <h3 className={`text-[11px] font-black uppercase tracking-wider mb-2 flex items-center gap-2 ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>
+                <BookOpen size={13} className="text-emerald-500" />
                 How this was worked out
               </h3>
-              <p className="text-[11px] text-slate-500 leading-relaxed mb-2">
+              <p className={`text-[11px] leading-relaxed mb-2 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
                 Each minute: glucose falls with insulin action (your {plan.inputs?.iob} U on board over a 3-hour curve, times your ISF of {plan.settings?.isf} mmol/L per U, made {plan.inputs?.sensMult}x stronger during the run) and with exercise uptake ({plan.inputs?.kEx} mmol/L per hour, scaled by effort and the route's climbing), and rises with carbs ({plan.settings?.cr} g per U, so about {plan.settings?.mmolPerGram} mmol/L per gram, absorbed over about 20 minutes). Stops are placed so the estimate stays at least 1 mmol/L above your {plan.settings?.floor} floor, off steep climbs where possible. Your loop will also react (temp basals), which this ignores, so treat the estimate as cautious.
               </p>
-              <p className="text-[11px] text-slate-500 leading-relaxed mb-2">
+              <p className={`text-[11px] leading-relaxed mb-2 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
                 {plan.basis.personalFitted
                   ? `Exercise uptake was fitted from ${plan.basis.personalRuns} of your matched runs.`
                   : `Not personalised yet: ${plan.basis.personalRuns} of your runs are matched with glucose data and 4 are needed to fit your own exercise uptake.`}
