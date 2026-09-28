@@ -413,9 +413,9 @@ export default function RunMissionControlTab({
       {/* 6. THE PLAN & INFOGRAPHIC CARB FUELING TIMELINE */}
       {plan && (
         <>
-          {plan.warnings.length > 0 && (
+          {(plan.warnings || []).length > 0 && (
             <div className={`${panel} border-amber-500/40 flex flex-col gap-1.5`}>
-              {plan.warnings.map((w, i) => (
+              {(plan.warnings || []).map((w, i) => (
                 <p key={i} className="text-xs flex items-start gap-2">
                   <AlertTriangle size={13} className="text-amber-500 shrink-0 mt-0.5" />
                   {w}
@@ -428,16 +428,16 @@ export default function RunMissionControlTab({
           <div className={panel}>
             <h2 className="text-xs font-black uppercase tracking-wider mb-3 flex items-center gap-2">
               <Cookie size={13} />
-              The Plan{plan.inputs.routeName ? ` - ${plan.inputs.routeName}` : ''}
+              The Plan{plan.inputs?.routeName ? ` - ${plan.inputs.routeName}` : ''}
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 mb-4">
-              {chip('Distance', `${dist(plan.run.distanceKm, units, 2)} ${units}`)}
+              {chip('Distance', `${dist(plan.run?.distanceKm || 0, units, 2)} ${units}`)}
 
               {/* Editable: Estimated Time chip */}
               <div className={`rounded-lg px-3 py-2 border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <div className="text-[9px] font-bold uppercase tracking-wider opacity-60">Estimated time</div>
-                  {originalBaseline && renderDeltaBadge(plan.run.durationMin, originalBaseline.durationMin, 'time')}
+                  {originalBaseline && renderDeltaBadge(plan.run?.durationMin, originalBaseline.durationMin, 'time')}
                 </div>
                 <div className="flex items-center gap-1.5">
                   <div className="flex flex-col gap-0.5 shrink-0">
@@ -451,7 +451,7 @@ export default function RunMissionControlTab({
                     </button>
                     <button
                       onClick={() => stepTime(-2)}
-                      disabled={busy === 'estimate' || plan.run.durationMin <= 2}
+                      disabled={busy === 'estimate' || (plan.run?.durationMin || 0) <= 2}
                       className="p-0.5 rounded hover:bg-white/10 active:scale-90 text-slate-400 hover:text-white transition-colors"
                       title="Decrease time (-2 min)"
                     >
@@ -462,10 +462,10 @@ export default function RunMissionControlTab({
                     <input
                       autoFocus
                       className={`text-sm font-black tabular-nums w-full bg-transparent outline-none border-b ${isDark ? 'border-emerald-400 text-emerald-300' : 'border-emerald-600 text-emerald-700'}`}
-                      value={timeEditDraft ?? fmtMin(plan.run.durationMin)}
+                      value={timeEditDraft ?? fmtMin(plan.run?.durationMin || 0)}
                       onChange={(e) => setTimeEditDraft(e.target.value)}
                       onFocus={() => {
-                        if (!timeEditFocus) setTimeEditDraft(fmtMin(plan.run.durationMin));
+                        if (!timeEditFocus) setTimeEditDraft(fmtMin(plan.run?.durationMin || 0));
                         setTimeEditFocus(true);
                       }}
                       onBlur={() => {
@@ -478,7 +478,7 @@ export default function RunMissionControlTab({
                         else if (hOnly) newMin = parseInt(hOnly[1]) * 60;
                         else if (mOnly) newMin = parseInt(mOnly[1]);
                         if (newMin && newMin > 0) {
-                          const distKm = plan.run.distanceKm;
+                          const distKm = plan.run?.distanceKm || 1;
                           const newPaceMinPerKm = newMin / distKm;
                           const newPaceStr = paceText(newPaceMinPerKm, units);
                           setForm((f) => ({ ...f, pace: newPaceStr }));
@@ -497,9 +497,9 @@ export default function RunMissionControlTab({
                   ) : (
                     <button
                       className="text-sm font-black tabular-nums hover:underline cursor-text text-left w-full"
-                      onClick={() => { setTimeEditFocus(true); setTimeEditDraft(fmtMin(plan.run.durationMin)); }}
+                      onClick={() => { setTimeEditFocus(true); setTimeEditDraft(fmtMin(plan.run?.durationMin || 0)); }}
                     >
-                      {fmtMin(plan.run.durationMin)}
+                      {fmtMin(plan.run?.durationMin || 0)}
                       <span className="ml-1 text-[9px] opacity-40 font-normal">✎</span>
                     </button>
                   )}
@@ -510,7 +510,7 @@ export default function RunMissionControlTab({
               <div className={`rounded-lg px-3 py-2 border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <div className="text-[9px] font-bold uppercase tracking-wider opacity-60">Average pace</div>
-                  {originalBaseline && renderDeltaBadge(plan.inputs.averagePaceMinPerKm, originalBaseline.averagePaceMinPerKm, 'pace')}
+                  {originalBaseline && renderDeltaBadge(plan.inputs?.averagePaceMinPerKm, originalBaseline.averagePaceMinPerKm, 'pace')}
                 </div>
                 <div className="flex items-center gap-1.5">
                   <div className="flex flex-col gap-0.5 shrink-0">
@@ -524,7 +524,7 @@ export default function RunMissionControlTab({
                     </button>
                     <button
                       onClick={() => stepPace(-5)}
-                      disabled={busy === 'estimate' || plan.inputs.averagePaceMinPerKm <= 2.5}
+                      disabled={busy === 'estimate' || (plan.inputs?.averagePaceMinPerKm || 0) <= 2.5}
                       className="p-0.5 rounded hover:bg-white/10 active:scale-90 text-slate-400 hover:text-white transition-colors"
                       title="Faster pace (-5 sec)"
                     >
@@ -535,10 +535,10 @@ export default function RunMissionControlTab({
                     <input
                       autoFocus
                       className={`text-sm font-black tabular-nums w-full bg-transparent outline-none border-b ${isDark ? 'border-emerald-400 text-emerald-300' : 'border-emerald-600 text-emerald-700'}`}
-                      value={paceEditDraft ?? `${paceText(plan.inputs.averagePaceMinPerKm, units)}`}
+                      value={paceEditDraft ?? `${paceText(plan.inputs?.averagePaceMinPerKm || 5.0, units)}`}
                       onChange={(e) => setPaceEditDraft(e.target.value)}
                       onFocus={() => {
-                        if (!paceEditFocus) setPaceEditDraft(paceText(plan.inputs.averagePaceMinPerKm, units));
+                        if (!paceEditFocus) setPaceEditDraft(paceText(plan.inputs?.averagePaceMinPerKm || 5.0, units));
                         setPaceEditFocus(true);
                       }}
                       onBlur={() => {
@@ -561,23 +561,24 @@ export default function RunMissionControlTab({
                   ) : (
                     <button
                       className="text-sm font-black tabular-nums hover:underline cursor-text text-left w-full"
-                      onClick={() => { setPaceEditFocus(true); setPaceEditDraft(paceText(plan.inputs.averagePaceMinPerKm, units)); }}
+                      onClick={() => { setPaceEditFocus(true); setPaceEditDraft(paceText(plan.inputs?.averagePaceMinPerKm || 5.0, units)); }}
                     >
-                      {paceText(plan.inputs.averagePaceMinPerKm, units)} /{units}
+                      {paceText(plan.inputs?.averagePaceMinPerKm || 5.0, units)} /{units}
                       <span className="ml-1 text-[9px] opacity-40 font-normal">✎</span>
                     </button>
                   )}
                 </div>
               </div>
 
-              {chip('Climbing', plan.run.hasElevation ? `${plan.run.gainM} m up` : 'flat / unknown')}
-              {chip('Effort vs flat', `${Math.round((plan.run.effortFactor - 1) * 100)}% more`)}
+
+              {chip('Climbing', plan.run?.hasElevation ? `${plan.run.gainM} m up` : 'flat / unknown')}
+              {chip('Effort vs flat', `${Math.round(((plan.run?.effortFactor || 1) - 1) * 100)}% more`)}
 
               {/* Editable: Carbs in Total chip */}
               <div className={`rounded-lg px-3 py-2 border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <div className="text-[9px] font-bold uppercase tracking-wider text-yellow-500/90">Carbs in total</div>
-                  {originalBaseline && renderDeltaBadge(plan.plan.totalCarbs, originalBaseline.totalCarbs, 'carbs')}
+                  {originalBaseline && renderDeltaBadge(plan.plan?.totalCarbs, originalBaseline.totalCarbs, 'carbs')}
                 </div>
                 <div className="flex items-center gap-1.5">
                   <div className="flex flex-col gap-0.5 shrink-0">
@@ -591,7 +592,7 @@ export default function RunMissionControlTab({
                     </button>
                     <button
                       onClick={() => stepCarbs(-5)}
-                      disabled={busy === 'estimate' || plan.plan.totalCarbs <= 0}
+                      disabled={busy === 'estimate' || (plan.plan?.totalCarbs || 0) <= 0}
                       className="p-0.5 rounded hover:bg-white/10 active:scale-90 text-yellow-400 transition-colors"
                       title="Decrease carbs (-5 g)"
                     >
@@ -606,10 +607,10 @@ export default function RunMissionControlTab({
                       max="300"
                       step="5"
                       className={`text-sm font-black tabular-nums w-full bg-transparent outline-none border-b ${isDark ? 'border-yellow-400 text-yellow-300' : 'border-yellow-600 text-yellow-700'}`}
-                      value={carbsEditDraft ?? String(plan.plan.totalCarbs)}
+                      value={carbsEditDraft ?? String(plan.plan?.totalCarbs || 0)}
                       onChange={(e) => setCarbsEditDraft(e.target.value)}
                       onFocus={() => {
-                        if (!carbsEditFocus) setCarbsEditDraft(String(plan.plan.totalCarbs));
+                        if (!carbsEditFocus) setCarbsEditDraft(String(plan.plan?.totalCarbs || 0));
                         setCarbsEditFocus(true);
                       }}
                       onBlur={() => {
@@ -630,22 +631,22 @@ export default function RunMissionControlTab({
                   ) : (
                     <button
                       className="text-sm font-black tabular-nums hover:underline cursor-text text-left text-yellow-500"
-                      onClick={() => { setCarbsEditFocus(true); setCarbsEditDraft(String(plan.plan.totalCarbs)); }}
+                      onClick={() => { setCarbsEditFocus(true); setCarbsEditDraft(String(plan.plan?.totalCarbs || 0)); }}
                     >
-                      {plan.plan.totalCarbs} g
+                      {plan.plan?.totalCarbs || 0} g
                       <span className="ml-1 text-[9px] opacity-40 font-normal">✎</span>
                     </button>
                   )}
                 </div>
               </div>
 
-              {chip('Per hour', `${plan.plan.carbsPerHour} g/h`)}
-              {chip('Lowest (estimate)', plan.plan.predicted.minDuring, plan.plan.predicted.minDuring < plan.settings.floor ? 'text-red-500' : 'text-emerald-500')}
-              {chip('At the finish', plan.plan.predicted.endBg)}
-              {chip('Lowest after', plan.plan.predicted.minAfter, plan.plan.predicted.minAfter < plan.settings.floor ? 'text-red-500' : '')}
-              {chip('With no carbs', plan.plan.predicted.minWithoutCarbs, plan.plan.predicted.minWithoutCarbs < plan.settings.floor ? 'text-amber-500' : '')}
-              {chip('Energy', plan.run.kcal ? `${plan.run.kcal} kcal` : 'add weight')}
-              {chip('1 g of carb =', `${plan.settings.mmolPerGram} mmol/L`)}
+              {chip('Per hour', `${plan.plan?.carbsPerHour || 0} g/h`)}
+              {chip('Lowest (estimate)', plan.plan?.predicted?.minDuring, (plan.plan?.predicted?.minDuring || 0) < (plan.settings?.floor || 4.0) ? 'text-red-500' : 'text-emerald-500')}
+              {chip('At the finish', plan.plan?.predicted?.endBg)}
+              {chip('Lowest after', plan.plan?.predicted?.minAfter, (plan.plan?.predicted?.minAfter || 0) < (plan.settings?.floor || 4.0) ? 'text-red-500' : '')}
+              {chip('With no carbs', plan.plan?.predicted?.minWithoutCarbs, (plan.plan?.predicted?.minWithoutCarbs || 0) < (plan.settings?.floor || 4.0) ? 'text-amber-500' : '')}
+              {chip('Energy', plan.run?.kcal ? `${plan.run.kcal} kcal` : 'add weight')}
+              {chip('1 g of carb =', `${plan.settings?.mmolPerGram || '--'} mmol/L`)}
             </div>
 
             {/* Infographic Carb Timeline & Elevation Trajectory */}
@@ -659,7 +660,7 @@ export default function RunMissionControlTab({
 
             {/* When to Eat Table */}
             <h3 className="text-[11px] font-black uppercase tracking-wider mt-4 mb-2">When to eat</h3>
-            {plan.plan.stops.length === 0 ? (
+            {(plan.plan?.stops || []).length === 0 ? (
               <p className="text-xs text-slate-500">On these numbers no carbs are needed during the run - keep some with you anyway.</p>
             ) : (
               <table className="w-full text-xs mb-3">
@@ -672,7 +673,7 @@ export default function RunMissionControlTab({
                   </tr>
                 </thead>
                 <tbody>
-                  {plan.plan.stops.map((s, i) => (
+                  {(plan.plan?.stops || []).map((s, i) => (
                     <tr key={i} className={`border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/5'}`}>
                       <td className="py-1.5 pr-3 tabular-nums font-bold">{s.minute === 0 ? 'At the start' : `${s.minute} min in`}</td>
                       <td className="pr-3 tabular-nums">{s.minute === 0 ? '-' : `${units} ${dist(s.km, units)}`}</td>
@@ -680,7 +681,7 @@ export default function RunMissionControlTab({
                       <td className="text-slate-500">{s.note}</td>
                     </tr>
                   ))}
-                  {plan.plan.postCarbs > 0 && (
+                  {(plan.plan?.postCarbs || 0) > 0 && (
                     <tr className={`border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/5'}`}>
                       <td className="py-1.5 pr-3 font-bold">At the finish</td>
                       <td>-</td>
@@ -692,14 +693,14 @@ export default function RunMissionControlTab({
               </table>
             )}
 
-            {plan.plan.toReachStartTarget > 0 && (
+            {(plan.plan?.toReachStartTarget || 0) > 0 && (
               <p className="text-[11px] text-slate-500 mt-2">
-                To be at your {plan.settings.startTarget} start target from {plan.inputs.startBg} you would need about {plan.plan.toReachStartTarget} g of fast carbs 15-20 minutes before you go.
+                To be at your {plan.settings?.startTarget} start target from {plan.inputs?.startBg} you would need about {plan.plan?.toReachStartTarget} g of fast carbs 15-20 minutes before you go.
               </p>
             )}
-            {plan.guideline && (
+            {plan.guideline && plan.guideline[plan.guideline.usedRange] && (
               <p className="text-[11px] text-slate-500 mt-2">
-                For comparison, ISPAD guidance is {plan.guideline[plan.guideline.usedRange][0]}-{plan.guideline[plan.guideline.usedRange][1]} g an hour at your weight with {plan.guideline.usedRange === 'highIob' ? 'insulin still active' : 'little insulin active'}; this plan uses {plan.plan.carbsPerHour} g/h because it is tailored to your glucose and insulin on board.
+                For comparison, ISPAD guidance is {plan.guideline[plan.guideline.usedRange][0]}-{plan.guideline[plan.guideline.usedRange][1]} g an hour at your weight with {plan.guideline.usedRange === 'highIob' ? 'insulin still active' : 'little insulin active'}; this plan uses {plan.plan?.carbsPerHour} g/h because it is tailored to your glucose and insulin on board.
               </p>
             )}
           </div>
@@ -718,12 +719,12 @@ export default function RunMissionControlTab({
                   </tr>
                 </thead>
                 <tbody>
-                  {plan.startScenarios.map((s) => (
+                  {(plan.startScenarios || []).map((s) => (
                     <tr key={s.startBg} className={`border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/5'}`}>
                       <td className="py-1 font-bold">{s.startBg}</td>
                       <td className="text-right tabular-nums">{s.totalCarbs} g</td>
                       <td className="text-right tabular-nums">{s.carbsAtStart} g</td>
-                      <td className={`text-right tabular-nums ${s.minBg < plan.settings.floor ? 'text-red-500' : ''}`}>{s.minBg}</td>
+                      <td className={`text-right tabular-nums ${s.minBg < (plan.settings?.floor || 4.0) ? 'text-red-500' : ''}`}>{s.minBg}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -742,12 +743,12 @@ export default function RunMissionControlTab({
                   </tr>
                 </thead>
                 <tbody>
-                  {plan.iobScenarios.map((s) => (
+                  {(plan.iobScenarios || []).map((s) => (
                     <tr key={s.iob} className={`border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/5'}`}>
                       <td className="py-1 font-bold">{s.iob} U</td>
                       <td className="text-right tabular-nums">{s.totalCarbs} g</td>
                       <td className="text-right tabular-nums">{s.carbsAtStart} g</td>
-                      <td className={`text-right tabular-nums ${s.minBg < plan.settings.floor ? 'text-red-500' : ''}`}>{s.minBg}</td>
+                      <td className={`text-right tabular-nums ${s.minBg < (plan.settings?.floor || 4.0) ? 'text-red-500' : ''}`}>{s.minBg}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -781,7 +782,7 @@ export default function RunMissionControlTab({
                 How this was worked out
               </h3>
               <p className="text-[11px] text-slate-500 leading-relaxed mb-2">
-                Each minute: glucose falls with insulin action (your {plan.inputs.iob} U on board over a 3-hour curve, times your ISF of {plan.settings.isf} mmol/L per U, made {plan.inputs.sensMult}x stronger during the run) and with exercise uptake ({plan.inputs.kEx} mmol/L per hour, scaled by effort and the route's climbing), and rises with carbs ({plan.settings.cr} g per U, so about {plan.settings.mmolPerGram} mmol/L per gram, absorbed over about 20 minutes). Stops are placed so the estimate stays at least 1 mmol/L above your {plan.settings.floor} floor, off steep climbs where possible. Your loop will also react (temp basals), which this ignores, so treat the estimate as cautious.
+                Each minute: glucose falls with insulin action (your {plan.inputs?.iob} U on board over a 3-hour curve, times your ISF of {plan.settings?.isf} mmol/L per U, made {plan.inputs?.sensMult}x stronger during the run) and with exercise uptake ({plan.inputs?.kEx} mmol/L per hour, scaled by effort and the route's climbing), and rises with carbs ({plan.settings?.cr} g per U, so about {plan.settings?.mmolPerGram} mmol/L per gram, absorbed over about 20 minutes). Stops are placed so the estimate stays at least 1 mmol/L above your {plan.settings?.floor} floor, off steep climbs where possible. Your loop will also react (temp basals), which this ignores, so treat the estimate as cautious.
               </p>
               <p className="text-[11px] text-slate-500 leading-relaxed mb-2">
                 {plan.basis.personalFitted

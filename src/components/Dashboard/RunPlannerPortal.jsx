@@ -121,7 +121,12 @@ const LEVEL_STYLE = {
 };
 
 function DemandCard({ demand, units, isDark }) {
-  const r = demand.route, h = demand.fitness.history, rec = demand.fitness.recommended, ratios = demand.fitness.ratios;
+  if (!demand || !demand.inputs) return null;
+  const r = demand.route || {};
+  const fitness = demand.fitness || {};
+  const h = fitness.history || {};
+  const rec = fitness.recommended || {};
+  const ratios = fitness.ratios || {};
   const bar = (v, label, right, tone) => (
     <div>
       <div className="flex justify-between text-[10px] text-slate-500 mb-1"><span>{label}</span><span>{right}</span></div>
@@ -137,33 +142,33 @@ function DemandCard({ demand, units, isDark }) {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
         <span className={`px-3 py-1.5 rounded-full border text-xs font-black ${LEVEL_STYLE[demand.level] || LEVEL_STYLE.Unknown}`}>{demand.level}</span>
-        <span className="text-[11px] text-slate-500">for your current fitness, at {demand.inputs.intensity} effort and an average pace of {paceText(demand.inputs.averagePaceMinPerKm, units)} /{units}</span>
+        <span className="text-[11px] text-slate-500">for your current fitness, at {demand.inputs?.intensity || 'steady'} effort and an average pace of {demand.inputs?.averagePaceMinPerKm ? paceText(demand.inputs.averagePaceMinPerKm, units) : '--'} /{units}</span>
       </div>
-      <ul className="text-xs leading-relaxed list-disc pl-5 space-y-0.5">{demand.why.map((w, i) => <li key={i}>{w}</li>)}</ul>
+      <ul className="text-xs leading-relaxed list-disc pl-5 space-y-0.5">{(demand.why || []).map((w, i) => <li key={i}>{w}</li>)}</ul>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-        {chip('Distance', `${dist(r.distanceKm, units, 1)} ${units}`)}
+        {chip('Distance', `${dist(r.distanceKm || 0, units, 1)} ${units}`)}
         {chip('Climbing', r.gainM ? `${r.gainM} m up` : 'flat')}
-        {chip('Climb per ' + units, `${Math.round(units === 'mi' ? r.climbPerKm * KM_PER_MI : r.climbPerKm)} m`)}
-        {chip('Effort vs flat', `+${Math.round((r.effortFactor - 1) * 100)}%`)}
-        {chip('Like flat', `${dist(r.flatEquivalentKm, units, 1)} ${units}`)}
-        {chip('Time at this pace', `${Math.floor(r.durationMin / 60) ? `${Math.floor(r.durationMin / 60)}h ` : ''}${Math.round(r.durationMin % 60)}m`)}
+        {chip('Climb per ' + units, `${Math.round(units === 'mi' ? (r.climbPerKm || 0) * KM_PER_MI : (r.climbPerKm || 0))} m`)}
+        {chip('Effort vs flat', `+${Math.round(((r.effortFactor || 1) - 1) * 100)}%`)}
+        {chip('Like flat', `${dist(r.flatEquivalentKm || 0, units, 1)} ${units}`)}
+        {chip('Time at this pace', `${Math.floor((r.durationMin || 0) / 60) ? `${Math.floor((r.durationMin || 0) / 60)}h ` : ''}${Math.round((r.durationMin || 0) % 60)}m`)}
       </div>
-      {h.runs > 0 && (
+      {(h.runs || 0) > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {ratios.distance != null && bar(ratios.distance, 'Distance vs your longest run', `${dist(r.distanceKm, units, 1)} of ${dist(h.longestKm, units, 1)} ${units}`, 'bg-emerald-500')}
-          {ratios.duration != null && bar(ratios.duration, 'Time vs your longest run', `${Math.round(r.durationMin)} of ${Math.round(h.longestMin)} min`, 'bg-emerald-500')}
-          {ratios.climb != null && bar(ratios.climb, 'Hills vs your usual runs', `${Math.round(units === 'mi' ? r.climbPerKm * KM_PER_MI : r.climbPerKm)} vs ${Math.round(units === 'mi' ? h.climbPerKm * KM_PER_MI : h.climbPerKm)} m per ${units}`, 'bg-emerald-500')}
+          {ratios.distance != null && bar(ratios.distance, 'Distance vs your longest run', `${dist(r.distanceKm || 0, units, 1)} of ${dist(h.longestKm || 0, units, 1)} ${units}`, 'bg-emerald-500')}
+          {ratios.duration != null && bar(ratios.duration, 'Time vs your longest run', `${Math.round(r.durationMin || 0)} of ${Math.round(h.longestMin || 0)} min`, 'bg-emerald-500')}
+          {ratios.climb != null && bar(ratios.climb, 'Hills vs your usual runs', `${Math.round(units === 'mi' ? (r.climbPerKm || 0) * KM_PER_MI : (r.climbPerKm || 0))} vs ${Math.round(units === 'mi' ? (h.climbPerKm || 0) * KM_PER_MI : (h.climbPerKm || 0))} m per ${units}`, 'bg-emerald-500')}
         </div>
       )}
       <p className="text-[11px] text-slate-500 leading-relaxed">
-        To do this comfortably as a regular run, a long run of about {dist(rec.longRunKm, units, 1)} {units} and around {dist(rec.weeklyKm, units, 1)} {units} a week suits the distance. You are averaging {dist(h.weeklyKm, units, 1)} {units} a week over {h.runs} recent runs.
+        To do this comfortably as a regular run, a long run of about {dist(rec.longRunKm || 0, units, 1)} {units} and around {dist(rec.weeklyKm || 0, units, 1)} {units} a week suits the distance. You are averaging {dist(h.weeklyKm || 0, units, 1)} {units} a week over {h.runs || 0} recent runs.
       </p>
       <details className="text-xs">
         <summary className="cursor-pointer font-bold text-[11px] uppercase tracking-wider opacity-80">Kilometre by kilometre (your average pace, adjusted for the hills)</summary>
         <table className="w-full text-xs mt-2">
           <thead><tr className="text-left text-[9px] uppercase tracking-wider text-slate-500"><th className="py-1">{units === 'mi' ? 'Km' : 'Km'}</th><th className="text-right">Pace</th><th className="text-right">Up / down</th><th className="text-right">Steepest</th><th className="text-right">Time in</th></tr></thead>
           <tbody>
-            {demand.splits.map((s) => (
+            {(demand.splits || []).map((s) => (
               <tr key={s.km} className={`border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/5'}`}>
                 <td className="py-1 font-bold">{s.km}</td>
                 <td className="text-right tabular-nums">{paceText(s.paceMinPerKm, units)} /{units}</td>
@@ -319,13 +324,17 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
     const t = setTimeout(() => {
       send('/api/planner/demand', 'POST', body)
         .then((d) => {
-          if (!live) return;
-          setDemand(d.demand);
-          if (!paceTouched) {
-            setForm((f) => ({ ...f, pace: paceText(d.demand.inputs.averagePaceMinPerKm, units) }));
+          if (!live || !d) return;
+          const demandObj = d.demand || d;
+          setDemand(demandObj);
+          if (!paceTouched && demandObj?.inputs?.averagePaceMinPerKm) {
+            setForm((f) => ({ ...f, pace: paceText(demandObj.inputs.averagePaceMinPerKm, units) }));
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          if (live) setDemand(null);
+        });
+
     }, 250);
     return () => { live = false; clearTimeout(t); };
   }, [routeFull, form.distanceKm, form.intensity, form.pace, paceTouched, units]);
@@ -360,9 +369,9 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
 
       if (!isTweak) {
         setOriginalBaseline({
-          durationMin: d.run.durationMin,
-          averagePaceMinPerKm: d.inputs.averagePaceMinPerKm,
-          totalCarbs: d.plan.totalCarbs
+          durationMin: d?.run?.durationMin,
+          averagePaceMinPerKm: d?.inputs?.averagePaceMinPerKm,
+          totalCarbs: d?.plan?.totalCarbs
         });
       }
     } catch (err) {
@@ -373,10 +382,10 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
   };
 
   const stepTime = (deltaMin) => {
-    if (!plan) return;
-    const currentDur = plan.run.durationMin;
+    if (!plan || !plan.run) return;
+    const currentDur = plan.run.durationMin || 0;
     const newDur = Math.max(2, currentDur + deltaMin);
-    const distKm = plan.run.distanceKm;
+    const distKm = plan.run.distanceKm || 1;
     const newPaceMinPerKm = newDur / distKm;
     const newPaceStr = paceText(newPaceMinPerKm, units);
     setForm((f) => ({ ...f, pace: newPaceStr }));
@@ -386,7 +395,8 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
 
   const stepPace = (deltaSec) => {
     if (!plan) return;
-    const currentPacePerUnit = units === 'mi' ? plan.inputs.averagePaceMinPerKm * KM_PER_MI : plan.inputs.averagePaceMinPerKm;
+    const paceVal = plan.inputs?.averagePaceMinPerKm || 5.0;
+    const currentPacePerUnit = units === 'mi' ? paceVal * KM_PER_MI : paceVal;
     const newPacePerUnit = Math.max(2, currentPacePerUnit + deltaSec / 60);
     const newPaceMinPerKm = units === 'mi' ? newPacePerUnit / KM_PER_MI : newPacePerUnit;
     const newPaceStr = paceText(newPaceMinPerKm, units);
@@ -396,7 +406,7 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
   };
 
   const stepCarbs = (deltaGrams) => {
-    if (!plan) return;
+    if (!plan || !plan.plan) return;
     const currentG = plan.plan.totalCarbs || 0;
     const newG = Math.max(0, currentG + deltaGrams);
     estimate({ isTweak: true, customCarbs: newG });
