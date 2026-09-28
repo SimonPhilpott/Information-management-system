@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Route as RouteIcon, RotateCw, LogIn, Lock, Upload, Link2, Trash2, Mountain, Calculator, AlertTriangle, Save, Cookie, Syringe, BookOpen, Unlink, Download, ExternalLink } from 'lucide-react';
+import { Route as RouteIcon, RotateCw, LogIn, Lock, Upload, Link2, Trash2, Mountain, Calculator, AlertTriangle, Save, Cookie, Syringe, BookOpen, Unlink, Download, ExternalLink, Edit3, Check, Copy, ChevronDown, ChevronUp, Sparkles, Shield, HeartPulse, Zap, Clock, FileText, Plus, CheckCircle, XCircle, ArrowRight, HelpCircle, Layers, Sliders, AlertCircle } from 'lucide-react';
 import PortalShell from './PortalShell';
+import Prose from './Prose';
 import { useUnits, UnitToggle, dist, toKm, paceText, paceToMinPerKm } from '../../utils/units';
 
 const fmtMin = (m) => `${Math.floor(m / 60)}h ${String(Math.round(m % 60)).padStart(2, '0')}m`;
@@ -242,11 +243,35 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
   const [tourType, setTourType] = useState('recorded');
   const [tourSearch, setTourSearch] = useState('');
   const [kForm, setKForm] = useState({ email: '', password: '', link: '' });
+  const [rulebook, setRulebook] = useState(null);
+  const [rulebookDraft, setRulebookDraft] = useState('');
+  const [rulebookEditing, setRulebookEditing] = useState(false);
+  const [rulebookExpanded, setRulebookExpanded] = useState(false);
+  const [rulebookCopied, setRulebookCopied] = useState(false);
+  
+  // Rulebook Books & AI Comparative Scanning State
+  const [rulebookTab, setRulebookTab] = useState('rulebook'); // 'rulebook' | 'library' | 'findings' | 'paste'
+  const [books, setBooks] = useState([]);
+  const [bookUploadTitle, setBookUploadTitle] = useState('');
+  const [bookUploadFile, setBookUploadFile] = useState(null);
+  const [findings, setFindings] = useState([]);
+  const [findingsStatusFilter, setFindingsStatusFilter] = useState('pending'); // 'all' | 'pending' | 'accepted' | 'dismissed'
+  const [findingsTypeFilter, setFindingsTypeFilter] = useState('all'); // 'all' | 'conflict' | 'addition' | 'refinement'
+  const [editingFindingId, setEditingFindingId] = useState(null);
+  const [editingFindingText, setEditingFindingText] = useState('');
+
+  // Direct Research Text Review State
+  const [pasteTitle, setPasteTitle] = useState('');
+  const [pasteSource, setPasteSource] = useState('');
+  const [pasteText, setPasteText] = useState('');
+  const [pasteSaveAsBook, setPasteSaveAsBook] = useState(true);
+
   const [needsSignIn, setNeedsSignIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const [notification, setNotification] = useState(null);
   const fileRef = useRef(null);
+  const bookFileRef = useRef(null);
 
   const showToast = useCallback((msg, type = 'success') => {
     setNotification({ msg, type });
@@ -276,6 +301,19 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
       const [r, t, k] = await Promise.all([call('/api/planner/routes'), call('/api/planner/targets'), call('/api/planner/komoot/status')]);
       setNeedsSignIn(false); setRoutes(r.routes); setTargets(t.targets); setKomoot(k);
       try { setGoals((await call('/api/goals')).goals); } catch (_) { /* goals are optional */ }
+      try {
+        const rb = await call('/api/planner/rulebook');
+        setRulebook(rb);
+        setRulebookDraft(rb.rulebook || '');
+      } catch (_) { /* optional */ }
+      try {
+        const [bRes, fRes] = await Promise.all([
+          call('/api/planner/rulebook/books'),
+          call('/api/planner/rulebook/findings')
+        ]);
+        setBooks(bRes.books || []);
+        setFindings(fRes.findings || []);
+      } catch (_) { /* optional */ }
       await useCurrent(true);
     } catch (_) { /* needsSignIn set */ } finally { setIsLoading(false); }
   }, [call, useCurrent]);
@@ -385,6 +423,188 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
     if (!window.confirm(`Delete the route "${r.name}"?`)) return;
     try { await call(`/api/planner/routes/${r.id}`, { method: 'DELETE' }); if (String(r.id) === routeId) setRouteId(''); loadAll(); } catch (err) { showToast(err.message, 'error'); }
   };
+
+  const saveRulebookText = async () => {
+    setBusy('rulebook');
+    try {
+      const d = await send('/api/planner/rulebook', 'PUT', { rulebook: rulebookDraft });
+      setRulebook(d);
+      setRulebookEditing(false);
+      showToast('Running with T1D Rulebook updated and synchronized with AI coaching.');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const handleResetRulebook = async () => {
+    if (!window.confirm('Reset the T1D Running Rulebook to the clinical default?')) return;
+    setBusy('rulebook-reset');
+    try {
+      const d = await send('/api/planner/rulebook/reset', 'POST');
+      setRulebook(d);
+      setRulebookDraft(d.rulebook || '');
+      setRulebookEditing(false);
+      showToast('Rulebook reset to default.');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const copyRulebookText = () => {
+    if (!rulebook?.rulebook) return;
+    navigator.clipboard.writeText(rulebook.rulebook);
+    setRulebookCopied(true);
+    setTimeout(() => setRulebookCopied(false), 2000);
+    showToast('Rulebook copied to clipboard.');
+  };
+
+  // --- Book Upload, Management & Arbitration Actions ---
+  const handleUploadBook = async () => {
+    if (!bookUploadFile) {
+      showToast('Please select a book file (.pdf, .txt, .md) to upload.', 'error');
+      return;
+    }
+    setBusy('book-upload');
+    try {
+      const reader = new FileReader();
+      const base64Promise = new Promise((resolve, reject) => {
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+      });
+      reader.readAsDataURL(bookUploadFile);
+      const dataBase64 = await base64Promise;
+
+      const d = await send('/api/planner/rulebook/books/upload', 'POST', {
+        title: bookUploadTitle || bookUploadFile.name.replace(/\.[^/.]+$/, ''),
+        filename: bookUploadFile.name,
+        dataBase64
+      });
+
+      setBooks((prev) => [d.book, ...prev]);
+      setBookUploadFile(null);
+      setBookUploadTitle('');
+      if (bookFileRef.current) bookFileRef.current.value = '';
+      showToast(`Indexed "${d.book.title}" (${d.book.page_count} pages, ${d.book.word_count.toLocaleString()} words).`);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const handleDeleteBook = async (b) => {
+    if (!window.confirm(`Delete the indexed book "${b.title}" and its extracted text?`)) return;
+    setBusy(`del-book-${b.id}`);
+    try {
+      await call(`/api/planner/rulebook/books/${b.id}`, { method: 'DELETE' });
+      setBooks((prev) => prev.filter((x) => x.id !== b.id));
+      setFindings((prev) => prev.filter((x) => x.book_id !== b.id));
+      showToast(`Deleted "${b.title}".`);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const handleScanBooks = async (targetBookId = null) => {
+    setBusy('book-scan');
+    try {
+      const d = await send('/api/planner/rulebook/scan', 'POST', { bookId: targetBookId || undefined });
+      const fRes = await call('/api/planner/rulebook/findings');
+      setFindings(fRes.findings || []);
+      const bRes = await call('/api/planner/rulebook/books');
+      setBooks(bRes.books || []);
+      setRulebookTab('findings');
+      setFindingsStatusFilter('pending');
+      showToast(`Scan complete: ${d.new_findings_count} potential improvements and conflicts identified for your review.`);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const handleResolveFinding = async (finding, action, customText = null) => {
+    setBusy(`res-${finding.id}`);
+    try {
+      const d = await send(`/api/planner/rulebook/findings/${finding.id}/resolve`, 'POST', {
+        action,
+        customText: customText || undefined
+      });
+      // Update local findings state
+      setFindings((prev) =>
+        prev.map((f) => (f.id === finding.id ? { ...f, status: d.status, user_action_at: new Date().toISOString() } : f))
+      );
+      // If rulebook was modified, update rulebook state
+      if (d.rulebook) {
+        setRulebook((prev) => ({ ...prev, rulebook: d.rulebook, updatedAt: Date.now(), isDefault: false }));
+        setRulebookDraft(d.rulebook);
+      }
+      setEditingFindingId(null);
+      setEditingFindingText('');
+      showToast(d.message || 'Decision recorded.');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const handleReviewPastedResearch = async () => {
+    const text = pasteText.trim();
+    if (!text || text.length < 20) {
+      showToast('Please paste at least 20 characters of research text to analyze.', 'error');
+      return;
+    }
+    setBusy('research-review');
+    try {
+      const d = await send('/api/planner/rulebook/research/review', 'POST', {
+        title: pasteTitle.trim() || undefined,
+        source: pasteSource.trim() || undefined,
+        textContent: text,
+        saveAsBook: pasteSaveAsBook
+      });
+
+      // Refresh findings
+      const fRes = await call('/api/planner/rulebook/findings');
+      setFindings(fRes.findings || []);
+      if (pasteSaveAsBook) {
+        const bRes = await call('/api/planner/rulebook/books');
+        setBooks(bRes.books || []);
+      }
+
+      setRulebookTab('findings');
+      setFindingsStatusFilter('pending');
+      showToast(d.summary || `Research reviewed: ${d.new_findings_count} findings recorded for arbitration.`);
+      setPasteTitle('');
+      setPasteSource('');
+      setPasteText('');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  // Findings counts
+  const pendingFindingsCount = useMemo(() => findings.filter((f) => f.status === 'pending').length, [findings]);
+  const conflictCount = useMemo(() => findings.filter((f) => f.type === 'conflict').length, [findings]);
+  const additionCount = useMemo(() => findings.filter((f) => f.type === 'addition').length, [findings]);
+  const refinementCount = useMemo(() => findings.filter((f) => f.type === 'refinement').length, [findings]);
+
+  // Filtered findings list
+  const filteredFindings = useMemo(() => {
+    return findings.filter((f) => {
+      if (findingsStatusFilter !== 'all' && f.status !== findingsStatusFilter) return false;
+      if (findingsTypeFilter !== 'all' && f.type !== findingsTypeFilter) return false;
+      return true;
+    });
+  }, [findings, findingsStatusFilter, findingsTypeFilter]);
 
   const panel = `rounded-2xl border p-5 ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/70 border-[#2E2B27]/10 shadow-sm'}`;
   const field = `w-full px-3 py-2 rounded-lg text-xs outline-none border ${isDark ? 'bg-slate-950/60 border-white/10 text-slate-100' : 'bg-white border-[#2E2B27]/10 text-slate-900'}`;
@@ -660,6 +880,836 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
             </>
           )}
 
+          {/* Running with T1D: Comprehensive Glucose Rulebook & Book Intelligence */}
+          <div id="rulebook" className={`${panel} border-emerald-500/30`}>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div className="flex items-center flex-wrap gap-2">
+                <BookOpen size={16} className="text-emerald-500" />
+                <h2 className="text-xs font-black uppercase tracking-wider">Running with T1D: Comprehensive Glucose Rulebook</h2>
+                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${rulebook?.isDefault ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'}`}>
+                  {rulebook?.isDefault ? 'Standard Evidence Base' : 'Custom Tailored'}
+                </span>
+                {rulebook?.updatedAt && (
+                  <span className="text-[10px] text-slate-500">
+                    Updated {new Date(rulebook.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setRulebookTab('paste')}
+                  className={`${ghost} text-emerald-400 hover:text-emerald-300 font-semibold`}
+                  title="Paste clinical research notes or trial papers to review against rulebook"
+                >
+                  <FileText size={12} />
+                  <span>Paste Research</span>
+                </button>
+                <button
+                  onClick={copyRulebookText}
+                  className={ghost}
+                  title="Copy the entire rulebook markdown text"
+                >
+                  {rulebookCopied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                  <span>{rulebookCopied ? 'Copied' : 'Copy'}</span>
+                </button>
+                {rulebookEditing ? (
+                  <button
+                    onClick={() => { setRulebookDraft(rulebook?.rulebook || ''); setRulebookEditing(false); }}
+                    className={ghost}
+                  >
+                    Cancel
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => { setRulebookDraft(rulebook?.rulebook || ''); setRulebookEditing(true); setRulebookTab('rulebook'); }}
+                    className={ghost}
+                  >
+                    <Edit3 size={12} />
+                    <span>Edit Rulebook</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <p className="text-[11px] text-slate-500 leading-relaxed mb-4">
+              A comprehensive clinical and field-tested rulebook for running with Type 1 Diabetes (Omnipod, AAPS closed loop, and CGM). Upload and index your diabetes sports books and studies, paste raw research papers for real-time comparative audit, and arbitrate whether AI findings should replace existing rules, fill missing gaps, or be dismissed.
+            </p>
+
+            {/* Sub-Section Navigation Tabs */}
+            <div className={`flex flex-wrap items-center gap-2 border-b pb-3 mb-4 ${isDark ? 'border-white/5' : 'border-[#2E2B27]/5'}`}>
+              <button
+                onClick={() => setRulebookTab('rulebook')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${rulebookTab === 'rulebook' ? (isDark ? 'bg-white/10 text-white' : 'bg-black/10 text-slate-900') : 'text-slate-400 hover:text-slate-200'}`}
+              >
+                <Layers size={13} />
+                <span>Rulebook & Protocols</span>
+              </button>
+
+              <button
+                onClick={() => setRulebookTab('library')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${rulebookTab === 'library' ? (isDark ? 'bg-white/10 text-white' : 'bg-black/10 text-slate-900') : 'text-slate-400 hover:text-slate-200'}`}
+              >
+                <BookOpen size={13} />
+                <span>Uploaded Books & Literature</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-emerald-500/20 text-emerald-400 font-bold tabular-nums">
+                  {books.length}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setRulebookTab('paste')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${rulebookTab === 'paste' ? (isDark ? 'bg-white/10 text-white' : 'bg-black/10 text-slate-900') : 'text-slate-400 hover:text-slate-200'}`}
+              >
+                <FileText size={13} className="text-emerald-400" />
+                <span>Paste & Review Research</span>
+              </button>
+
+              <button
+                onClick={() => setRulebookTab('findings')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${rulebookTab === 'findings' ? (isDark ? 'bg-white/10 text-white' : 'bg-black/10 text-slate-900') : 'text-slate-400 hover:text-slate-200'}`}
+              >
+                <Sparkles size={13} className="text-yellow-400" />
+                <span>AI Scan & Conflict Arbitration</span>
+                {pendingFindingsCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-amber-500/20 text-amber-400 font-black tabular-nums animate-pulse">
+                    {pendingFindingsCount} pending
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* TAB 1: ACTIVE RULEBOOK & DIMENSIONS */}
+            {rulebookTab === 'rulebook' && (
+              rulebookEditing ? (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between text-[10px] text-slate-500">
+                    <span>Markdown format. Use headings (##), bullet points (*), and bold (**text**) to organise your rules.</span>
+                    <span className="tabular-nums">{rulebookDraft.length} characters</span>
+                  </div>
+                  <textarea
+                    className={`${field} font-mono text-xs leading-relaxed`}
+                    rows={20}
+                    value={rulebookDraft}
+                    onChange={(e) => setRulebookDraft(e.target.value)}
+                    placeholder="Paste or write your Running with T1D Rulebook..."
+                  />
+                  <div className="flex items-center gap-2 pt-2 border-t border-white/5">
+                    <button
+                      onClick={saveRulebookText}
+                      disabled={busy === 'rulebook' || !rulebookDraft.trim()}
+                      className={btn}
+                    >
+                      {busy === 'rulebook' ? <RotateCw size={13} className="animate-spin" /> : <Save size={13} />}
+                      <span>Save Rulebook</span>
+                    </button>
+                    <button
+                      onClick={() => { setRulebookDraft(rulebook?.rulebook || ''); setRulebookEditing(false); }}
+                      className={ghost}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleResetRulebook}
+                      disabled={busy === 'rulebook-reset'}
+                      className={`${ghost} ml-auto text-amber-400`}
+                      title="Reset to default clinical rulebook"
+                    >
+                      {busy === 'rulebook-reset' ? <RotateCw size={12} className="animate-spin" /> : <RotateCw size={12} />}
+                      <span>Reset to Default</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  {/* 5 Dimension Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 mb-4">
+                    <div className={`rounded-xl p-3 border flex flex-col justify-between ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white/80 border-[#2E2B27]/10'}`}>
+                      <div>
+                        <div className="text-[9px] font-bold uppercase tracking-wider text-emerald-500 flex items-center gap-1.5 mb-1">
+                          <HeartPulse size={11} /> 1. Launch Gate
+                        </div>
+                        <div className="text-base font-black tabular-nums">7.0 - 10.0 <span className="text-[10px] text-slate-400 font-normal">mmol/L</span></div>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-2 leading-tight">
+                        Optimal start window. Delay with 0.3g/kg if 4.0-4.9; abort if &lt;4.0; ketone check if &gt;15.0.
+                      </p>
+                    </div>
+
+                    <div className={`rounded-xl p-3 border flex flex-col justify-between ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white/80 border-[#2E2B27]/10'}`}>
+                      <div>
+                        <div className="text-[9px] font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1.5 mb-1">
+                          <Clock size={11} /> 2. IOB & Loop
+                        </div>
+                        <div className="text-base font-black tabular-nums">&lt; 1.0 U <span className="text-[10px] text-slate-400 font-normal">start IOB</span></div>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-2 leading-tight">
+                        Set temp target (8.0-9.0) 60-90m prior. Reduce pre-run meal bolus by 30-50% within 2h.
+                      </p>
+                    </div>
+
+                    <div className={`rounded-xl p-3 border flex flex-col justify-between ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white/80 border-[#2E2B27]/10'}`}>
+                      <div>
+                        <div className="text-[9px] font-bold uppercase tracking-wider text-yellow-500 flex items-center gap-1.5 mb-1">
+                          <Cookie size={11} /> 3. Fueling Rate
+                        </div>
+                        <div className="text-base font-black tabular-nums">30 - 60 g <span className="text-[10px] text-slate-400 font-normal">per hour</span></div>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-2 leading-tight">
+                        15-20g increments every 20-30 min. Up to 75g/h with higher IOB or hard pace.
+                      </p>
+                    </div>
+
+                    <div className={`rounded-xl p-3 border flex flex-col justify-between ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white/80 border-[#2E2B27]/10'}`}>
+                      <div>
+                        <div className="text-[9px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5 mb-1">
+                          <Mountain size={11} /> 4. Terrain & Hills
+                        </div>
+                        <div className="text-base font-black tabular-nums">Flats / Down <span className="text-[10px] text-slate-400 font-normal">stops</span></div>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-2 leading-tight">
+                        Fuel 3-5m before climbs or on descents. Avoid mid-climb fueling during anaerobic surges.
+                      </p>
+                    </div>
+
+                    <div className={`rounded-xl p-3 border flex flex-col justify-between ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white/80 border-[#2E2B27]/10'}`}>
+                      <div>
+                        <div className="text-[9px] font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5 mb-1">
+                          <Shield size={11} /> 5. Nocturnal Lows
+                        </div>
+                        <div className="text-base font-black tabular-nums">-20% Basal <span className="text-[10px] text-slate-400 font-normal">6h night</span></div>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-2 leading-tight">
+                        Refuel if finish &lt;6.0. Night-time hypo risk peaks 7-11h post-run; set overnight temp basal.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Collapsible Full Document */}
+                  <div className={`rounded-xl border transition-all ${isDark ? 'border-white/10 bg-slate-950/20' : 'border-[#2E2B27]/10 bg-white/50'}`}>
+                    <button
+                      onClick={() => setRulebookExpanded(!rulebookExpanded)}
+                      className="w-full p-3.5 flex items-center justify-between text-left hover:opacity-80"
+                    >
+                      <span className="text-xs font-bold flex items-center gap-2">
+                        <Sparkles size={13} className="text-emerald-400" />
+                        {rulebookExpanded ? 'Hide Full Rulebook Document' : 'View Full Rulebook Document & Clinical Protocols'}
+                      </span>
+                      <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                        <span>{rulebook?.rulebook ? `${rulebook.rulebook.split('\n').length} lines` : '0 lines'}</span>
+                        {rulebookExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      </div>
+                    </button>
+
+                    {rulebookExpanded && (
+                      <div className={`p-4 pt-2 border-t text-xs ${isDark ? 'border-white/5' : 'border-[#2E2B27]/5'}`}>
+                        <Prose text={rulebook?.rulebook} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            )}
+
+            {/* TAB 2: UPLOADED BOOKS & LITERATURE */}
+            {rulebookTab === 'library' && (
+              <div className="flex flex-col gap-4">
+                {/* Upload Section */}
+                <div className={`rounded-xl p-4 border ${isDark ? 'bg-slate-950/30 border-white/5' : 'bg-white/80 border-[#2E2B27]/10'}`}>
+                  <h3 className="text-xs font-black uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Upload size={13} className="text-emerald-500" />
+                    Upload & Index Book or Research Paper
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mb-3">
+                    Supported formats: PDF (.pdf), Plain Text (.txt), Markdown (.md). Text is extracted and indexed locally so Gemini can audit it against your current running rules.
+                  </p>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                    <div className="sm:col-span-1">
+                      <label className={label}>Book / Paper Title</label>
+                      <input
+                        className={field}
+                        type="text"
+                        value={bookUploadTitle}
+                        onChange={(e) => setBookUploadTitle(e.target.value)}
+                        placeholder="e.g. The Athlete's Guide to Diabetes"
+                      />
+                    </div>
+                    
+                    <div className="sm:col-span-1">
+                      <label className={label}>Select File (PDF / Text / MD)</label>
+                      <input
+                        ref={bookFileRef}
+                        type="file"
+                        accept=".pdf,.txt,.md,.markdown"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) {
+                            setBookUploadFile(f);
+                            if (!bookUploadTitle) setBookUploadTitle(f.name.replace(/\.[^/.]+$/, ''));
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={() => bookFileRef.current?.click()}
+                        className={`${ghost} w-full truncate text-left`}
+                      >
+                        <FileText size={13} className="shrink-0" />
+                        <span className="truncate">{bookUploadFile ? bookUploadFile.name : 'Choose book file...'}</span>
+                      </button>
+                    </div>
+
+                    <div className="sm:col-span-1">
+                      <button
+                        onClick={handleUploadBook}
+                        disabled={!bookUploadFile || busy === 'book-upload'}
+                        className={`${btn} w-full justify-center`}
+                      >
+                        {busy === 'book-upload' ? <RotateCw size={13} className="animate-spin" /> : <Plus size={13} />}
+                        <span>Index Book</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Books Listing */}
+                <div className="flex items-center justify-between mt-1">
+                  <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Indexed Literature Library ({books.length})
+                  </div>
+                  {books.length > 0 && (
+                    <button
+                      onClick={() => handleScanBooks(null)}
+                      disabled={busy === 'book-scan'}
+                      className={btn}
+                    >
+                      {busy === 'book-scan' ? <RotateCw size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                      <span>Scan All Books for Improvements</span>
+                    </button>
+                  )}
+                </div>
+
+                {books.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-500/30 p-8 text-center text-xs text-slate-500 flex flex-col items-center gap-2">
+                    <BookOpen size={24} className="opacity-40 text-emerald-500" />
+                    <span>No books uploaded yet. Upload a diabetes sports medicine book or training guide to start comparative scanning.</span>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {books.map((b) => (
+                      <div
+                        key={b.id}
+                        className={`rounded-xl p-3.5 border flex flex-col justify-between ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white/80 border-[#2E2B27]/10'}`}
+                      >
+                        <div>
+                          <div className="flex items-start justify-between gap-2 mb-1.5">
+                            <div className="min-w-0 flex-1">
+                              <h4 className="text-xs font-black truncate">{b.title}</h4>
+                              <p className="text-[10px] text-slate-500 truncate">{b.filename}</p>
+                            </div>
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                              {b.file_type}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500 mb-2">
+                            <span>{b.page_count} pages</span>
+                            <span>•</span>
+                            <span>{b.word_count.toLocaleString()} words</span>
+                            <span>•</span>
+                            <span>{(b.file_size / (1024 * 1024)).toFixed(1)} MB</span>
+                          </div>
+
+                          {b.last_scanned_at ? (
+                            <div className="text-[9px] text-emerald-500 font-semibold mb-3 flex items-center gap-1">
+                              <CheckCircle size={10} />
+                              <span>Last scanned: {new Date(b.last_scanned_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                          ) : (
+                            <div className="text-[9px] text-amber-500/80 mb-3 flex items-center gap-1">
+                              <Clock size={10} />
+                              <span>Not scanned yet</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-2 border-t border-white/5">
+                          <button
+                            onClick={() => handleScanBooks(b.id)}
+                            disabled={busy === 'book-scan'}
+                            className={`${ghost} flex-1 justify-center text-[11px]`}
+                            title="Run comparative AI audit on this book against the active rulebook"
+                          >
+                            {busy === 'book-scan' ? <RotateCw size={11} className="animate-spin" /> : <Sparkles size={11} className="text-yellow-400" />}
+                            <span>Scan Book</span>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteBook(b)}
+                            disabled={busy === `del-book-${b.id}`}
+                            className="p-2 rounded-lg text-red-400 hover:bg-red-500/10"
+                            title="Delete book and associated extracted text"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 3: AI SCAN & CONFLICT ARBITRATION */}
+            {rulebookTab === 'findings' && (
+              <div className="flex flex-col gap-4">
+                {/* Header & Controls */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+                      <Shield size={13} className="text-emerald-500" />
+                      Comparative Evidence & Conflict Arbitration
+                    </h3>
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      You maintain full control. Review conflicting thresholds and missing guidance extracted from uploaded literature and pasted research. Choose whether to replace active rules, add missing protocols, or dismiss.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => setRulebookTab('paste')}
+                      className={`${ghost} text-emerald-400 font-semibold`}
+                      title="Paste research text to review against rulebook"
+                    >
+                      <FileText size={12} />
+                      <span>Paste Research</span>
+                    </button>
+                    <button
+                      onClick={() => handleScanBooks(null)}
+                      disabled={busy === 'book-scan' || books.length === 0}
+                      className={btn}
+                    >
+                      {busy === 'book-scan' ? <RotateCw size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                      <span>{findings.length > 0 ? 'Re-scan Books' : 'Scan Books'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filters */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/5 text-[11px]">
+                  {/* Status Filter */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] uppercase tracking-wider text-slate-500 font-bold mr-1">Status:</span>
+                    {[
+                      { id: 'pending', label: 'Pending Review', count: pendingFindingsCount },
+                      { id: 'accepted', label: 'Applied', count: findings.filter((f) => f.status === 'accepted').length },
+                      { id: 'dismissed', label: 'Ignored', count: findings.filter((f) => f.status === 'dismissed').length },
+                      { id: 'all', label: 'All', count: findings.length }
+                    ].map((st) => (
+                      <button
+                        key={st.id}
+                        onClick={() => setFindingsStatusFilter(st.id)}
+                        className={`px-2.5 py-1 rounded-lg font-bold transition-all ${findingsStatusFilter === st.id ? (isDark ? 'bg-white/10 text-white' : 'bg-black/10 text-slate-900') : 'text-slate-500 hover:text-slate-300'}`}
+                      >
+                        {st.label} ({st.count})
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Type Filter */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] uppercase tracking-wider text-slate-500 font-bold mr-1">Type:</span>
+                    {[
+                      { id: 'all', label: 'All' },
+                      { id: 'conflict', label: 'Conflicts' },
+                      { id: 'addition', label: 'Additions' },
+                      { id: 'refinement', label: 'Refinements' }
+                    ].map((ty) => (
+                      <button
+                        key={ty.id}
+                        onClick={() => setFindingsTypeFilter(ty.id)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${findingsTypeFilter === ty.id ? (isDark ? 'bg-white/15 text-white' : 'bg-black/10 text-slate-900') : 'text-slate-500 hover:text-slate-300'}`}
+                      >
+                        {ty.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Findings Cards List */}
+                {filteredFindings.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-500/30 p-8 text-center text-xs text-slate-500 flex flex-col items-center gap-2">
+                    <CheckCircle size={22} className="opacity-40 text-emerald-500" />
+                    <span>No findings matching this filter. {books.length > 0 ? 'Click "Scan Books" or "Paste Research" to run a comparative audit.' : 'Upload a book or paste research to begin.'}</span>
+                    <button
+                      onClick={() => setRulebookTab('paste')}
+                      className={`${ghost} text-emerald-400 font-semibold mt-1`}
+                    >
+                      <FileText size={12} />
+                      <span>Paste Research to Review</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3.5">
+                    {filteredFindings.map((finding) => {
+                      const isConflict = finding.type === 'conflict';
+                      const isAddition = finding.type === 'addition';
+                      const isPending = finding.status === 'pending';
+                      const isEditing = editingFindingId === finding.id;
+
+                      const cardBorder = isConflict
+                        ? 'border-red-500/40 bg-red-500/5'
+                        : isAddition
+                        ? 'border-sky-500/40 bg-sky-500/5'
+                        : 'border-emerald-500/40 bg-emerald-500/5';
+
+                      return (
+                        <div
+                          key={finding.id}
+                          className={`rounded-xl p-4 border transition-all ${cardBorder} ${isDark ? '' : 'bg-white/90 shadow-sm'}`}
+                        >
+                          {/* Card Header */}
+                          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
+                                  isConflict
+                                    ? 'bg-red-500/20 text-red-400 border-red-500/40'
+                                    : isAddition
+                                    ? 'bg-sky-500/20 text-sky-400 border-sky-500/40'
+                                    : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                                }`}
+                              >
+                                {isConflict ? 'Clinical Conflict' : isAddition ? 'Missing Protocol' : 'Refinement'}
+                              </span>
+
+                              <span className="text-[10px] text-slate-400 font-semibold">
+                                Target: <strong>{finding.section_target}</strong>
+                              </span>
+
+                              <span className="text-[10px] text-slate-500">
+                                Source: <em>{finding.book_title}</em> ({finding.citation})
+                              </span>
+                            </div>
+
+                            <span
+                              className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                                finding.status === 'pending'
+                                  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                                  : finding.status === 'accepted'
+                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                  : 'bg-slate-500/15 text-slate-400 border border-slate-500/30'
+                              }`}
+                            >
+                              {finding.status === 'pending' ? 'Pending Arbitration' : finding.status === 'accepted' ? 'Applied to Rulebook' : 'Ignored'}
+                            </span>
+                          </div>
+
+                          {/* Title */}
+                          <h4 className="text-xs font-black text-slate-100 mb-2">
+                            {finding.title}
+                          </h4>
+
+                          {/* Comparison Box (For Conflicts) */}
+                          {isConflict && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                              {/* Current Rule */}
+                              <div className={`rounded-lg p-3 border text-xs ${isDark ? 'bg-slate-950/60 border-red-500/20' : 'bg-red-50/70 border-red-200'}`}>
+                                <div className="text-[9px] font-bold uppercase tracking-wider text-red-400 mb-1 flex items-center gap-1">
+                                  <XCircle size={10} /> Active Rulebook Guidance
+                                </div>
+                                <p className="text-[11px] leading-relaxed text-slate-300">
+                                  {finding.current_rule || 'Current standard baseline.'}
+                                </p>
+                              </div>
+
+                              {/* Book Recommendation */}
+                              <div className={`rounded-lg p-3 border text-xs ${isDark ? 'bg-slate-950/60 border-emerald-500/20' : 'bg-emerald-50/70 border-emerald-200'}`}>
+                                <div className="text-[9px] font-bold uppercase tracking-wider text-emerald-400 mb-1 flex items-center gap-1">
+                                  <CheckCircle size={10} /> Book Recommendation & Evidence
+                                </div>
+                                <p className="text-[11px] leading-relaxed text-slate-300">
+                                  {finding.book_recommendation}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* For Additions / Refinements */}
+                          {!isConflict && (
+                            <div className={`rounded-lg p-3 border text-xs mb-3 ${isDark ? 'bg-slate-950/60 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
+                              <div className="text-[9px] font-bold uppercase tracking-wider text-sky-400 mb-1 flex items-center gap-1">
+                                <Plus size={10} /> Proposed Protocol
+                              </div>
+                              <p className="text-[11px] leading-relaxed text-slate-300 font-mono">
+                                {finding.proposed_text}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Explanation */}
+                          {finding.explanation && (
+                            <p className="text-[11px] text-slate-400 leading-relaxed mb-3">
+                              <strong className="text-slate-300">Clinical Rationale:</strong> {finding.explanation}
+                            </p>
+                          )}
+
+                          {/* Inline Edit Box */}
+                          {isEditing && (
+                            <div className="flex flex-col gap-2 mb-3 p-3 rounded-lg border border-amber-500/30 bg-slate-950/80">
+                              <label className="text-[9px] font-bold uppercase tracking-wider text-amber-400">
+                                Customise Proposed Text Before Applying
+                              </label>
+                              <textarea
+                                className={`${field} font-mono text-xs`}
+                                rows={4}
+                                value={editingFindingText}
+                                onChange={(e) => setEditingFindingText(e.target.value)}
+                              />
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleResolveFinding(finding, isConflict ? 'replace' : 'add', editingFindingText)}
+                                  disabled={busy === `res-${finding.id}` || !editingFindingText.trim()}
+                                  className={btn}
+                                >
+                                  {busy === `res-${finding.id}` ? <RotateCw size={12} className="animate-spin" /> : <Save size={12} />}
+                                  <span>Apply Custom Text</span>
+                                </button>
+                                <button
+                                  onClick={() => { setEditingFindingId(null); setEditingFindingText(''); }}
+                                  className={ghost}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* User Decision Controls (Arbitration Buttons) */}
+                          {isPending && !isEditing && (
+                            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/5">
+                              {isConflict ? (
+                                <>
+                                  <button
+                                    onClick={() => handleResolveFinding(finding, 'replace')}
+                                    disabled={busy === `res-${finding.id}`}
+                                    className={btn}
+                                    title="Replace the conflicting rule in the rulebook with the book's recommendation"
+                                  >
+                                    {busy === `res-${finding.id}` ? <RotateCw size={12} className="animate-spin" /> : <ArrowRight size={12} />}
+                                    <span>Replace Rule</span>
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setEditingFindingId(finding.id);
+                                      setEditingFindingText(finding.proposed_text || finding.book_recommendation || '');
+                                    }}
+                                    className={ghost}
+                                    title="Fine-tune wording before applying"
+                                  >
+                                    <Edit3 size={12} />
+                                    <span>Edit & Apply</span>
+                                  </button>
+                                  <button
+                                    onClick={() => handleResolveFinding(finding, 'dismiss')}
+                                    disabled={busy === `res-${finding.id}`}
+                                    className={`${ghost} text-slate-400 hover:text-slate-200 ml-auto`}
+                                    title="Reject change and retain your existing rulebook guidance"
+                                  >
+                                    <XCircle size={12} />
+                                    <span>Ignore / Keep Current</span>
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => handleResolveFinding(finding, 'add')}
+                                    disabled={busy === `res-${finding.id}`}
+                                    className={btn}
+                                    title="Add this new protocol under the specified section of the rulebook"
+                                  >
+                                    {busy === `res-${finding.id}` ? <RotateCw size={12} className="animate-spin" /> : <Plus size={12} />}
+                                    <span>Add to Rulebook</span>
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setEditingFindingId(finding.id);
+                                      setEditingFindingText(finding.proposed_text || '');
+                                    }}
+                                    className={ghost}
+                                    title="Edit wording before adding"
+                                  >
+                                    <Edit3 size={12} />
+                                    <span>Edit & Add</span>
+                                  </button>
+                                  <button
+                                    onClick={() => handleResolveFinding(finding, 'dismiss')}
+                                    disabled={busy === `res-${finding.id}`}
+                                    className={`${ghost} text-slate-400 hover:text-slate-200 ml-auto`}
+                                    title="Dismiss this addition"
+                                  >
+                                    <XCircle size={12} />
+                                    <span>Ignore</span>
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Stamped Outcome If Resolved */}
+                          {!isPending && (
+                            <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[10px] text-slate-500">
+                              <span>
+                                {finding.status === 'accepted'
+                                  ? (isConflict ? 'Decision: Replaced existing rule with book guidance.' : 'Decision: Added protocol to rulebook.')
+                                  : 'Decision: Ignored (current rule retained).'}
+                              </span>
+                              {finding.user_action_at && (
+                                <span>{new Date(finding.user_action_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 4: PASTE & REVIEW RESEARCH DIRECTLY */}
+            {rulebookTab === 'paste' && (
+              <div className="flex flex-col gap-4">
+                <div className={`rounded-xl p-4 border ${isDark ? 'bg-slate-950/30 border-white/5' : 'bg-white/80 border-[#2E2B27]/10'}`}>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
+                    <h3 className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+                      <FileText size={13} className="text-emerald-500" />
+                      Paste Clinical Research or Running Notes
+                    </h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setPasteTitle('Dr Michael Riddell: 10s Sprint Catecholamine Blunting Study');
+                          setPasteSource('The Lancet Diabetes & Endocrinology (2024)');
+                          setPasteText(`Clinical trials in endurance runners with Type 1 Diabetes established that performing an all-out 10-second maximal sprint either immediately before initiating aerobic running or directly upon detecting an acute downward glucose slope triggers an intense sympathetic neuro-endocrine release of adrenaline and noradrenaline. 
+
+This catecholamine surge stimulates acute hepatic glucose production (glycogenolysis) exceeding muscular glucose disposal for 30–60 minutes, stabilizing blood glucose or raising it by 1.2–2.2 mmol/L without needing upfront carbohydrate consumption. 
+
+Key Clinical Finding: If starting glucose is between 5.0 and 6.5 mmol/L with a flat or dropping arrow, an immediate 10-second sprint provides a non-caloric glycemic buffer, allowing the runner to set out without digestive discomfort or delayed gastrointestinal distress.`);
+                        }}
+                        className={`${ghost} text-[10px] py-1 px-2`}
+                        title="Load clinical research sample on 10s sprints blunting hypos"
+                      >
+                        <Sparkles size={11} className="text-yellow-400" />
+                        <span>Sample 1 (Sprint Blunting)</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setPasteTitle('Exogenous Carbohydrate Oxidation: Dual-Source vs Glucose Alone');
+                          setPasteSource('Medicine & Science in Sports & Exercise / ISPAD');
+                          setPasteText(`Investigation into endurance athletes running with T1D for durations exceeding 90 minutes demonstrated that single-source glucose absorption saturates intestinal SGLT1 transporters at approximately 60 grams per hour (1.0 g/min). Ingesting more than 60 g/h of pure dextrose or maltodextrin leads to gastric distress and osmotic fluid shifts.
+
+Conversely, utilizing a multiple-transportable carbohydrate formulation (2:1 Glucose-to-Fructose or Maltodextrin-to-Fructose ratio) engages both SGLT1 and GLUT5 transporters in the gut, increasing total exogenous carbohydrate absorption ceiling to 80–90 grams per hour. 
+
+Furthermore, during ambient temperatures exceeding 24°C, supplementing each litre of hydration with 500–700 mg of sodium maintains microvascular perfusion and eliminates the 10–15 minute sensor lag typically observed in dehydrated runners.`);
+                        }}
+                        className={`${ghost} text-[10px] py-1 px-2`}
+                        title="Load clinical research sample on dual-source fueling in heat"
+                      >
+                        <Sparkles size={11} className="text-yellow-400" />
+                        <span>Sample 2 (Dual-Source Fueling)</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-slate-500 mb-4 leading-relaxed">
+                    Paste raw research papers, study abstracts, clinical trial observations, endocrinology guidance, or your own structured run experiments. Gemini AI cross-examines the text against your active <em>Running with T1D Rulebook</em> to identify contradictions, missing protocols, or precision refinements, and presents them in the Arbitration board for your decision.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className={label}>Research Title / Topic</label>
+                      <input
+                        className={field}
+                        type="text"
+                        value={pasteTitle}
+                        onChange={(e) => setPasteTitle(e.target.value)}
+                        placeholder="e.g. Ketone Kinetics & Aerobic Thresholds in T1D Runners"
+                      />
+                    </div>
+
+                    <div>
+                      <label className={label}>Source / Author / Publication (Optional)</label>
+                      <input
+                        className={field}
+                        type="text"
+                        value={pasteSource}
+                        onChange={(e) => setPasteSource(e.target.value)}
+                        placeholder="e.g. ISPAD Clinical Consensus / DOI: 10.1111/pedi.13421"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className={label}>Research Text / Clinical Notes</label>
+                      <div className="flex items-center gap-3 text-[10px] text-slate-500">
+                        <span>{pasteText.length.toLocaleString()} characters</span>
+                        <span>•</span>
+                        <span>{pasteText.split(/\s+/).filter(Boolean).length} words</span>
+                        {pasteText && (
+                          <button
+                            onClick={() => { setPasteText(''); setPasteTitle(''); setPasteSource(''); }}
+                            className="text-red-400 hover:underline ml-2"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <textarea
+                      rows={8}
+                      className={`${field} font-mono text-[11px] leading-relaxed`}
+                      value={pasteText}
+                      onChange={(e) => setPasteText(e.target.value)}
+                      placeholder="Paste research text, study findings, trial protocol, or personal training experiment log here..."
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/5">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={pasteSaveAsBook}
+                        onChange={(e) => setPasteSaveAsBook(e.target.checked)}
+                        className="rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500"
+                      />
+                      <span>Also save and index this note in my Uploaded Books & Literature Library</span>
+                    </label>
+
+                    <button
+                      onClick={handleReviewPastedResearch}
+                      disabled={!pasteText.trim() || pasteText.trim().length < 20 || busy === 'research-review'}
+                      className={`${btn} px-5`}
+                    >
+                      {busy === 'research-review' ? (
+                        <>
+                          <RotateCw size={13} className="animate-spin" />
+                          <span>Cross-examining against Rulebook...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles size={13} className="text-yellow-400" />
+                          <span>Review Research Against Rulebook</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Targets */}
           {targets && (
             <div className={panel}>
@@ -668,7 +1718,7 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
                 <div><label className={label}>Start target (mmol/L)</label><input className={field} type="number" step="0.1" value={targets.startTarget} onChange={(e) => setTargets({ ...targets, startTarget: e.target.value })} /></div>
                 <div><label className={label}>Never below (mmol/L)</label><input className={field} type="number" step="0.1" value={targets.floor} onChange={(e) => setTargets({ ...targets, floor: e.target.value })} /></div>
                 <div><label className={label}>Weight (kg, optional)</label><input className={field} type="number" value={targets.weightKg ?? ''} onChange={(e) => setTargets({ ...targets, weightKg: e.target.value })} /></div>
-                <div><label className={label}>Insulin stronger during exercise (x)</label><input className={field} type="number" step="0.1" min="1" max="3" value={targets.sensMult} onChange={(e) => setTargets({ ...targets, sensMult: e.target.value })} /></div>
+                <div><label className={label}>Insulin stronger during exercise (x)</label><input className={field} type="number" step="0.1" min="1" max="10" value={targets.sensMult} onChange={(e) => setTargets({ ...targets, sensMult: e.target.value })} /></div>
                 <button onClick={saveTargets} className={btn}><Save size={13} />Save</button>
               </div>
               <p className="text-[11px] text-slate-500 mt-3 leading-relaxed">Exercise raises glucose uptake by muscle (roughly 1.5 to 10 times with intensity, most of it without insulin) and also makes insulin work harder during and for hours after. There is no single published multiplier, so 1.5 is an adjustable starting assumption: raise it if you tend to fall faster with insulin on board, lower it if not.</p>

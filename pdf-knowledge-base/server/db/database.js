@@ -155,7 +155,94 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
   CREATE INDEX IF NOT EXISTS idx_memories_created ON ims_memories(created_at);
+
+  CREATE TABLE IF NOT EXISTS code_repositories (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    url TEXT,
+    type TEXT DEFAULT 'github',
+    local_path TEXT,
+    branch TEXT DEFAULT 'main',
+    description TEXT,
+    last_scanned_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS code_snippets (
+    id TEXT PRIMARY KEY,
+    repo_id TEXT REFERENCES code_repositories(id) ON DELETE CASCADE,
+    file_path TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    code_content TEXT NOT NULL,
+    language TEXT,
+    technology TEXT,
+    best_practice_rationale TEXT,
+    usage_example TEXT,
+    principles_json TEXT,
+    ai_observations TEXT,
+    user_observations TEXT,
+    suggested_improvements TEXT,
+    tags_json TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_snippets_repo ON code_snippets(repo_id);
+  CREATE INDEX IF NOT EXISTS idx_snippets_tech ON code_snippets(technology);
+  CREATE INDEX IF NOT EXISTS idx_snippets_lang ON code_snippets(language);
 `);
+
+// Seed default code repositories if not present
+try {
+  try { db.exec("ALTER TABLE code_repositories ADD COLUMN account TEXT DEFAULT 'personal'"); } catch (_) {}
+  try { db.exec("ALTER TABLE code_repositories ADD COLUMN is_private INTEGER DEFAULT 0"); } catch (_) {}
+  try { db.exec("ALTER TABLE code_repositories ADD COLUMN is_selected INTEGER DEFAULT 1"); } catch (_) {}
+
+  const seedRepo = db.prepare('INSERT OR IGNORE INTO code_repositories (id, name, url, type, local_path, branch, description, account, is_private, is_selected) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  seedRepo.run(
+    'repo_spfx_content_section',
+    'SPFX-Content-section',
+    'https://github.com/simon-philpott-turntown/SPFX-Content-section',
+    'github',
+    '',
+    'main',
+    'SPFx Full Width Content Section Web Part supporting Tabs, Accordion, and Toggle modes with Fluent UI 2',
+    'turntown',
+    0,
+    1
+  );
+  seedRepo.run(
+    'repo_ims',
+    'Information-management-system',
+    'https://github.com/SimonPhilpott/Information-management-system',
+    'local',
+    'd:\\Information management system',
+    'main',
+    'Information Management System with 3D Knowledge Mesh, Voice Telemetry, and ESP32-S3-BOX-3 Hardware Companion',
+    'personal',
+    0,
+    1
+  );
+  seedRepo.run(
+    'repo_spfx_fullwidth_dashboard',
+    'spfx-fullwidth-dashboard',
+    'https://github.com/SimonPhilpott/spfx-fullwidth-dashboard',
+    'github',
+    '',
+    'main',
+    'SPFx Fullwidth Modern Dashboard web parts and SharePoint components',
+    'personal',
+    0,
+    1
+  );
+
+  // Update existing seeds if they exist without account
+  db.prepare("UPDATE code_repositories SET account = 'turntown' WHERE id = 'repo_spfx_content_section' AND (account IS NULL OR account = 'personal')").run();
+  db.prepare("UPDATE code_repositories SET account = 'personal' WHERE id = 'repo_ims' AND account IS NULL").run();
+  db.prepare("UPDATE code_repositories SET account = 'personal' WHERE id = 'repo_spfx_fullwidth_dashboard' AND account IS NULL").run();
+} catch (e) {
+  console.warn('[DB] Code repository seed notice:', e.message);
+}
 
 // Memories are never destroyed: deleting one archives it (deleted_at) so it can
 // be reviewed or restored from the /ims/memories archive.

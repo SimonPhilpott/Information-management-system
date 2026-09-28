@@ -491,6 +491,62 @@
         "Desktop and non-Android platform detection with automatic carb copy-to-clipboard and manual intent link fallback",
         "Local SQLite carb_log persistence retaining meal breakdown and carbohydrate totals for IMS history and LLM context"
       ]
+    },
+    "Code Repository Best Practice Service": {
+      "status": "enabled",
+      "description": "Multi-repository code analysis and best practice extraction engine. Scans local and GitHub repositories (including SPFx web parts and IMS), extracts reusable components and architecture patterns, audits them using Gemini against 5 core software engineering principles, manages dual AI and user observation notes, and injects code best practices into hybrid RAG alongside indexed PDFs.",
+      "subFeatures": [
+        "Repository scanner with shallow git clone and local file system discovery for TypeScript, JavaScript, C++, and Python",
+        "Pattern extractor identifying components, custom hooks, services, models, and firmware tasks",
+        "Gemini AI evaluation against 5 Core Principles: Modularity/SoC, Foundational Axioms (3 Rs: Readability, Resilience, Reuse, DRY, KISS, YAGNI), SOLID, Clarity/Why comments, and Robustness/Resilience/QA",
+        "Dual observation panel supporting AI recommendations alongside persistent user observation notes and team conventions",
+        "Hybrid RAG vector indexing into code_snippets.json enabling multi-source answers across PDF rulebooks and repository code",
+        "Interactive web portal at /ims/code-repo with repository scan progress streaming, pattern filters, 5-principle radar scorecards, and copyable code snippets",
+        "ESP32-S3-BOX-3 hardware terminal RAG augmentation via executeHardwareRAGSearch",
+        "Dual GitHub account access token configuration (personal: simonphilpott, professional: simon-philpott-turntown) stored securely in SQLite settings",
+        "Automated repository discovery across personal and professional GitHub accounts with selective scanning toggles and batch scan streaming",
+        "Full-screen pattern catalog grouped by 5 functional roles (UI Components, Hooks & Audio, Services & APIs, Firmware, Testing & Utils)",
+        "Simplified circular radial gauge scorecards with numeric ratings and clear titles for the 5 engineering principles",
+        "Constrained code action layout eliminating Copy button column overflow and providing full-column architecture overview display",
+        "Dual collapsible account cards (Personal and Professional) with individual repository selection, PAT status indicators, and account-scoped batch scanning with inline progress bar",
+        "Redesigned GitHub Access Tokens modal adhering to System Architecture aesthetic with direct links to generate personal and professional PATs with pre-configured scopes",
+        "Visual Interaction & Architecture Infographics for all code patterns detailing 4-stage processing pipelines (Trigger -> Guard -> Core -> Sink) and connected downstream integrations, accompanied by mini flow badges on catalog cards",
+        "Private and organisation repository discovery with automated pagination across user/repos, user/orgs, and target enterprise namespaces, backed by visual private lock badges and SAML SSO configuration guidance",
+        "Refined top bar layout with generous padding and contained action controls for GitHub tokens and repository synchronisation"
+      ]
+    },
+    "Running with T1D Glucose Rulebook & Adaptive Coach Integration": {
+      "status": "enabled",
+      "description": "Integration of the Running with T1D Comprehensive Glucose Rulebook into Activities and Run Planner services. Features SQLite settings persistence for custom rulebook guidance, automated LLM prompt calibration in Gemini activity reviews and glucose pattern finding, and a dedicated interactive Rulebook management panel in the Run Planner portal with 5-dimension summary scorecards, Markdown editor, one-click clipboard copy, and clinical default reset.",
+      "subFeatures": [
+        "Dedicated T1D Rulebook service in t1dRulebookService.js with SQLite persistence (settings key 't1d_running_rulebook') and timestamp tracking",
+        "Authoritative clinical default rulebook synthesizing ISPAD 2022, Riddell 2017/2020 consensus, and AAPS closed-loop dynamics across 5 core dimensions",
+        "Express REST endpoints at GET, PUT /api/planner/rulebook and POST /api/planner/rulebook/reset with session authentication",
+        "Automated LLM prompt augmentation in runInsightService.js (analyseActivity) and runGlucoseService.js (analyseGlucose) evaluating athlete CGM runs against their personal rulebook standards",
+        "Interactive Rulebook section in RunPlannerPortal.jsx with 5 Quick Dimension Cards (Launch Gate 7-10 mmol/L, IOB & Loop <1.0 U, Fueling Rate 30-60 g/h, Terrain Adaptation, Nocturnal Hypo Defense -20% basal)",
+        "Collapsible full Markdown document viewer powered by Prose component with line and character metrics",
+        "Full-featured multiline Markdown editor mode allowing user updates, additions, and pasting from external research with instant SQLite synchronization",
+        "Active Rulebook status callout banner in ActivitiesPortal.jsx linking directly to the Run Planner rulebook anchor",
+        "Single-click clipboard copy with visual checkmark feedback and defensive reset-to-default confirmation workflow"
+      ]
+    },
+    "T1D Rulebook Book Upload, Indexing & AI Improvement Scanner": {
+      "status": "enabled",
+      "description": "Upload and index books (PDF, TXT, MD) as part of the Running with T1D Glucose Rulebook section, scan them with Gemini AI to improve the rulebook or add missing protocols, and provide interactive user arbitration for clinical conflicts with Replace Rule, Add to Rulebook, and Ignore decisions.",
+      "subFeatures": [
+        "Multi-format book upload pipeline (PDF via pdfjs-dist, UTF-8 text, and markdown) with filesystem storage in data/t1d_books/ and SQLite persistence in t1d_rulebook_books",
+        "SQLite schema for t1d_rulebook_findings tracking clinical conflicts, missing additions, and refinements with state transitions (pending, accepted, dismissed)",
+        "Gemini Flash comparative scan auditing extracted book literature against the 5 core rulebook dimensions",
+        "Tri-fold finding classification: clinical conflicts (with current rule vs book recommendation), missing protocols (with proposed markdown text), and wording refinements",
+        "Interactive Run Planner Rulebook tabbed interface with Active Protocols, Uploaded Books Library, and AI Conflict Arbitration board",
+        "Side-by-side comparative conflict cards contrasting Active Rulebook Guidance with Book Recommendation & Evidence, accompanied by citations and clinical rationale",
+        "User arbitration controls: Replace Rule (updates live rulebook in SQLite), Add to Rulebook (inserts into target section), Ignore / Keep Current (dismisses without changing rulebook), and Edit & Apply (custom inline markdown revisions)",
+        "Direct synchronization of accepted rulebook changes with live AI Coach prompt injection",
+        "Direct Research Text Pasting workbench with custom title, publication source citation, real-time character/word metrics, and optional persistence into the Literature Library",
+        "Real-time Gemini Flash comparative review auditing pasted study abstracts, trial data, and clinical notes against active Running with T1D Rulebook to detect contradictions and missing sports protocols",
+        "REST endpoint POST /api/planner/rulebook/research/review returning conflict and enhancement findings mapped directly into the user arbitration board",
+        "Pre-configured clinical research sample presets (Riddell 10s sprint catecholamine blunting and dual-source carbohydrate oxidation in heat) for instant evaluation"
+      ]
     }
   }
 }

@@ -40,7 +40,7 @@ export function saveTargets(t) {
   if (t.startTarget !== undefined) n.startTarget = num(t.startTarget, 5, 15, 'The start target');
   if (t.floor !== undefined) n.floor = num(t.floor, 3.5, 8, 'The floor');
   if (t.weightKg !== undefined) n.weightKg = t.weightKg === null || t.weightKg === '' ? null : num(t.weightKg, 30, 200, 'Weight');
-  if (t.sensMult !== undefined) n.sensMult = num(t.sensMult, 1, 3, 'The exercise insulin-sensitivity multiplier');
+  if (t.sensMult !== undefined) n.sensMult = num(t.sensMult, 1, 10, 'The exercise insulin-sensitivity multiplier');
   if (n.floor >= n.startTarget) throw new Error('The floor must be below the start target.');
   setSetting('run_targets', JSON.stringify(n));
   return n;

@@ -69,3 +69,6 @@ wake-word-voice-assistants-26.6.1/
 
 # Local face-recognition models (downloaded, ~39MB)
 pdf-knowledge-base/server/python/models
+.claude/
+Dunwich.jpg
+frodo.jpg

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, Fragment } from 'react';
-import { Activity, RotateCw, LogIn, Lock, Link2, Unlink, Sparkles, Save, ExternalLink, ChevronLeft, ChevronRight, AlertTriangle, TrendingUp, TrendingDown, Minus, Trophy, Droplets, ChevronDown } from 'lucide-react';
+import { Activity, RotateCw, LogIn, Lock, Link2, Unlink, Sparkles, Save, ExternalLink, ChevronLeft, ChevronRight, AlertTriangle, TrendingUp, TrendingDown, Minus, Trophy, Droplets, ChevronDown, BookOpen } from 'lucide-react';
 import PortalShell from './PortalShell';
 import Prose from './Prose';
 import { useUnits, UnitToggle, dist, toKm, paceText, speedText, KM_PER_MI } from '../../utils/units';
@@ -734,6 +734,21 @@ export default function ActivitiesPortal({ theme = 'dark', onThemeToggle, setCur
                 </div>
                 {analysis ? <Prose text={analysis.text} />
                   : <p className="text-xs text-slate-500">An AI coach reads your weekly load, consistency, sport mix and latest activities and writes up what is going well, what to watch, and what to do next. It only uses your logged numbers.</p>}
+              </div>
+
+              {/* T1D Rulebook Integration Banner */}
+              <div className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[11px] mb-4 ${isDark ? 'bg-emerald-500/5 border-emerald-500/20 text-slate-300' : 'bg-emerald-50 border-emerald-200 text-slate-700'}`}>
+                <div className="flex items-start sm:items-center gap-2.5">
+                  <BookOpen size={16} className="text-emerald-500 shrink-0 mt-0.5 sm:mt-0" />
+                  <div>
+                    <span className="font-bold text-emerald-400 mr-1.5">Running with T1D Rulebook Active:</span>
+                    <span>Activity reviews and coaching advice evaluate your CGM data against your personalized pre-run target windows, active IOB thresholds, and nocturnal hypo defense.</span>
+                  </div>
+                </div>
+                <a href="/ims/runplanner#rulebook" className="text-emerald-500 hover:underline font-bold text-xs shrink-0 flex items-center gap-1">
+                  <span>View / Edit Rulebook</span>
+                  <ExternalLink size={11} />
+                </a>
               </div>
 
               {/* Glucose during activities */}

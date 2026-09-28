@@ -99,6 +99,7 @@ import devIdeasRoutes from './routes/devIdeas.js';
 import decksRoutes from './routes/decks.js';
 import campaignsRoutes from './routes/campaigns.js';
 import dayReportRoutes from './routes/dayReport.js';
+import codeRepoRoutes from './routes/codeRepo.js';
 import { addIdea as addDevIdea, flagToolFailure } from './services/devIdeasService.js';
 import { describeCollectionForIms } from './services/boardgamesService.js';
 import { campaignsForIms } from './services/campaignsService.js';
@@ -140,7 +141,8 @@ app.use(cors({
   },
   credentials: true
 }));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 const sessionMiddleware = session({
   store: new SqliteSessionStore(), // logins survive backend restarts
   secret: config.sessionSecret,
@@ -211,6 +213,7 @@ app.use('/api/alarms', scheduledRouter('alarm'));
 app.use('/api/timers', scheduledRouter('timer'));
 app.use('/api/reminders', scheduledRouter('reminder'));
 app.use('/api/day-report', dayReportRoutes);
+app.use('/api/code-repo', codeRepoRoutes);
 
 // Live figures for the System Architecture page (/ims/architecture).
 app.get('/api/system/architecture', async (req, res) => {

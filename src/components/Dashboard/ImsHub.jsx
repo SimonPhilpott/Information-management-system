@@ -1,6 +1,6 @@
 import AccountChip from './AccountChip';
 import React from 'react';
-import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight , Droplets , Newspaper , ListChecks , MessageSquareQuote , Network , Lightbulb , Layers , DatabaseBackup, SunMedium } from 'lucide-react';
+import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight , Droplets , Newspaper , ListChecks , MessageSquareQuote , Network , Lightbulb , Layers , DatabaseBackup, SunMedium, Code2 } from 'lucide-react';
 
 // Each entry here is one card on the hub. Add a new one whenever a new
 // /ims/* page is built - this is the single place that needs to know about
@@ -210,12 +210,20 @@ const LINKS = [
     icon: SunMedium,
     gradient: 'from-amber-400 to-orange-500',
     glow: 'rgba(251,146,60,0.3)'
+  },
+  {
+    path: '/ims/code-repo',
+    title: 'Code Best Practices',
+    description: 'Catalogued patterns, 5-principle engineering audits, and observations from your repositories.',
+    icon: Code2,
+    gradient: 'from-cyan-500 to-blue-600',
+    glow: 'rgba(6,182,212,0.3)'
   }
 ];
 
 const SECTIONS = [
   ['Core functions', ['/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings', '/ims/tasks']],
-  ['Personal', ['/ims/dayreport', '/ims/musicscan', '/ims/boardgames', '/campaigns', '/ims/news']],
+  ['Personal', ['/ims/code-repo', '/ims/dayreport', '/ims/musicscan', '/ims/boardgames', '/campaigns', '/ims/news']],
   ['Health and fitness', ['/ims/glucose', '/ims/activities', '/ims/runplanner']],
   ['Customisation and system settings', ['/ims/facedesigner', '/ims/persona', '/ims/phrases', '/ims/wifi', '/ims/devideas', '/ims/backups', '/ims/architecture']],
   ['Disabled', ['/ims/look', '/ims/faces']],

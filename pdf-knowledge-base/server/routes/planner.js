@@ -6,10 +6,16 @@ import {
 } from '../services/routeService.js';
 import { estimatePlan, estimateDemand, routeRunHistory, getTargets, saveTargets, personalFit, SOURCES } from '../services/runPlanService.js';
 import { getCurrentState, getLoopSettings } from '../services/runGlucoseService.js';
+import {
+  getRulebook, saveRulebook, resetRulebook,
+  uploadBook, listBooks, getBook, deleteBook,
+  scanBooksForRulebookImprovements, listFindings, resolveFinding,
+  reviewResearchText
+} from '../services/t1dRulebookService.js';
 
 const router = Router();
-router.use(requireSession); // glucose, insulin and route data are personal
-const fail = (res, err, code = 400) => res.status(code).json({ error: err.message });
+router.use(requireSession); // glucose, insulin, routes and rulebook arbitration are personal
+const fail = (res, err, code = 400) => res.status(code).json({ success: false, error: err.message });
 
 router.get('/now', (req, res) => res.json({ success: true, now: getCurrentState(), loop: getLoopSettings(), personal: personalFit('Run') }));
 router.get('/targets', (req, res) => res.json({ success: true, targets: getTargets(), sources: SOURCES }));
@@ -55,6 +61,95 @@ router.post('/demand', (req, res) => {
 
 router.post('/estimate', (req, res) => {
   try { res.json({ success: true, ...estimatePlan(req.body || {}) }); } catch (err) { fail(res, err); }
+});
+
+// T1D Rulebook Core Endpoints
+router.get('/rulebook', (req, res) => {
+  try { res.json({ success: true, ...getRulebook() }); } catch (err) { fail(res, err); }
+});
+
+router.put('/rulebook', (req, res) => {
+  try {
+    const text = String(req.body?.rulebook || '').trim();
+    if (!text) throw new Error('Rulebook content cannot be empty.');
+    res.json({ success: true, ...saveRulebook(text) });
+  } catch (err) { fail(res, err); }
+});
+
+router.post('/rulebook/reset', (req, res) => {
+  try { res.json({ success: true, ...resetRulebook() }); } catch (err) { fail(res, err); }
+});
+
+// T1D Rulebook Books & Indexing Endpoints
+router.get('/rulebook/books', (req, res) => {
+  try {
+    res.json({ success: true, books: listBooks() });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+router.post('/rulebook/books/upload', async (req, res) => {
+  try {
+    const book = await uploadBook(req.body || {});
+    res.json({ success: true, book });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+router.delete('/rulebook/books/:id', (req, res) => {
+  try {
+    const ok = deleteBook(req.params.id);
+    if (!ok) return fail(res, new Error('Book not found.'), 404);
+    res.json({ success: true });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// T1D Rulebook AI Comparative Scanner
+router.post('/rulebook/scan', async (req, res) => {
+  try {
+    const result = await scanBooksForRulebookImprovements(req.body || {});
+    res.json({ success: true, ...result });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// T1D Rulebook Conflict & Enhancement Findings
+router.get('/rulebook/findings', (req, res) => {
+  try {
+    const findings = listFindings({
+      status: req.query.status || null,
+      bookId: req.query.bookId || null,
+      type: req.query.type || null
+    });
+    res.json({ success: true, findings });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// T1D Rulebook Finding Arbitration (User Decision: Replace, Add, or Dismiss)
+router.post('/rulebook/findings/:id/resolve', (req, res) => {
+  try {
+    const result = resolveFinding(req.params.id, req.body || {});
+    res.json(result);
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// T1D Rulebook Direct Pasted Research Comparative Review
+router.post('/rulebook/research/review', async (req, res) => {
+  try {
+    const result = await reviewResearchText(req.body || {});
+    res.json(result);
+  } catch (err) {
+    fail(res, err);
+  }
 });
 
 export default router;

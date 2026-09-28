@@ -51,7 +51,7 @@ const spokes = (live) => [
     key: 'ai', title: 'AI models', icon: Sparkles, accent: 'violet', count: 8, side: 'left',
     rows: [
       { icon: Waves, main: 'gemini-3.8-live', sub: 'Real-time voice: en-GB speech, live transcripts, session resumption' },
-      { icon: Bot, main: 'gemini-2.5-flash', sub: 'Tasks, deck insights, chronicles, rule checks, report and test prompts' },
+      { icon: Bot, main: 'gemini-2.5-flash', sub: 'Tasks, deck insights, chronicles, rulebook AI scanner & comparative research reviews, report and test prompts' },
       { icon: BookOpen, main: 'gemini-2.5-pro', sub: 'Library research answers; reading map place names' },
       { icon: Layers, main: 'gemini-embedding-001', sub: 'Embeds PDF passages (and rulebooks) for the vector index' },
       { icon: Radio, main: 'gemini-2.5-flash-preview-tts', sub: 'Read aloud, and the chronicle narrators' },
@@ -71,7 +71,7 @@ const spokes = (live) => [
     ],
   },
   {
-    key: 'connections', title: 'External connections', icon: Plug, accent: 'orange', count: 16, side: 'left',
+    key: 'connections', title: 'External connections', icon: Plug, accent: 'orange', count: 17, side: 'left',
     rows: [
       { icon: CalendarDays, main: 'Google Calendar', sub: 'Events and rules, synced every 5 minutes' },
       { icon: HardDrive, main: 'Google Drive', sub: 'Source of the PDF library' },
@@ -81,6 +81,7 @@ const spokes = (live) => [
       { icon: Route, main: 'Komoot', sub: 'Routes for the run planner' },
       { icon: CloudSun, main: 'Open-Meteo', sub: 'Weather for the desk footer and reports' },
       { icon: Apple, main: 'Open Food Facts', sub: 'Carb look-ups when you log food' },
+      { icon: GitBranch, main: 'GitHub (Personal & TurnTown)', sub: 'Personal (@SimonPhilpott) & Work (@simon-philpott-turntown) repos; selective scan and code pattern extraction' },
       { icon: Music, main: 'MusicBrainz', sub: 'Nightly scan of new releases from your artists' },
       { icon: Dices, main: 'BoardGameGeek', sub: 'Your collection (CSV export until API access) and want-to-sell list' },
       { icon: Layers, main: 'RingsDB', sub: 'LOTR LCG cards, scenarios and deck import' },
@@ -97,17 +98,17 @@ const spokes = (live) => [
       { icon: Database, main: 'SQLite - app.db', sub: `${live?.tables ?? 62} tables: memories, birthdays, carbs, tasks, campaigns, decks...` },
       { icon: Layers, main: 'Vector index (HNSW)', sub: 'hnswlib over the embedded PDF passages' },
       { icon: BookOpen, main: 'Library databases', sub: 'Documents, topics, contents and validated answers' },
-      { icon: FileText, main: 'Files', sub: 'PDFs, recordings, chronicle narration and art, maps, card data' },
+      { icon: FileText, main: 'Files', sub: 'PDFs, literature books, research notes, recordings, chronicle narration and art, maps, card data' },
       { icon: Lock, main: 'Sign-in sessions', sub: 'Stored in SQLite, so sign-in survives a restart' },
       { icon: Settings, main: 'Config files', sub: 'Wi-Fi networks (encrypted), board games, report state' },
     ],
   },
   {
-    key: 'services', title: 'Services', icon: Boxes, accent: 'indigo', count: 23, side: 'top',
+    key: 'services', title: 'Services', icon: Boxes, accent: 'indigo', count: 26, side: 'top',
     rows: [
       { icon: Bell, main: 'Core functions - 8', sub: 'Alarms, timers, reminders, birthdays, calendar, memories, recordings, tasks' },
-      { icon: Heart, main: 'Personal - 4', sub: 'Music scanner, board games, Campaign Manager (LOTR and Arkham), news' },
-      { icon: Droplets, main: 'Health and fitness - 3', sub: 'Blood sugar, activities, run planner' },
+      { icon: Heart, main: 'Personal - 6', sub: 'Day report, Code best practices, music scanner, board games, campaigns, news' },
+      { icon: Droplets, main: 'Health and fitness - 3', sub: 'Blood sugar, activities, run planner & T1D Rulebook' },
       { icon: Settings, main: 'Customisation and system - 7', sub: 'Face designer, persona, wake and stop phrases, Wi-Fi, dev ideas, backups, this page' },
       { icon: Eye, main: 'Disabled - 2', sub: 'Look and Faces, until the camera works' },
     ],

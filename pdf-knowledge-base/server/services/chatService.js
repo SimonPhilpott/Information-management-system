@@ -8,6 +8,7 @@ import { detectQuerySubjects } from './subjectMatcherService.js';
 import db from '../db/database.js';
 import { v4 as uuidv4 } from 'uuid';
 import { parseAttachment } from './attachmentParser.js';
+import { searchCodeSnippets } from './codeRepoService.js';
 
 const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
 
@@ -274,6 +275,28 @@ export async function processMessage(message, sessionId, subjects = [], modelCho
       const imgNote = chunk.hasImages ? " [PAGE HAS IMAGES/DIAGRAMS]" : "";
       return `[Source ${i + 1}: "${chunk.filename}", Page ${chunk.pageNum}]${imgNote}\n${chunk.text}`;
     });
+
+    // Check for matching code repository best-practice patterns
+    try {
+      const isCodeQuery = /\b(code|spfx|react|component|function|typescript|javascript|architecture|pattern|solid|hook|refactor|class|method|service|api)\b/i.test(expandedQuery);
+      if (isCodeQuery) {
+        const queryEmbedding = await generateQueryEmbedding(queryVariants[0]);
+        const codeSnippets = await searchCodeSnippets(queryEmbedding, 3);
+        if (codeSnippets.length > 0) {
+          contextParts.push(
+            `=== RELEVANT CODE ARCHITECTURE & BEST PRACTICES (FROM YOUR REPOSITORIES) ===\n` +
+            codeSnippets.map((cs, idx) => 
+              `[Code Pattern ${idx + 1}: "${cs.title}" in ${cs.repoName || 'Repo'}] (Technology: ${cs.technology}, Language: ${cs.language}, Path: ${cs.filePath})\n` +
+              `Summary: ${cs.text}\n` +
+              `Why Best Practice: ${cs.bestPracticeRationale}`
+            ).join('\n\n')
+          );
+        }
+      }
+    } catch (codeRagErr) {
+      console.warn('[Chat] Code snippet RAG query non-fatal error:', codeRagErr.message);
+    }
+
     context = contextParts.join('\n\n---\n\n');
   }
 

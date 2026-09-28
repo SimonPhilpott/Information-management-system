@@ -22,6 +22,7 @@ import { describeDecksForIms } from "./decksService.js";
 import { describeCampaignsForIms } from "./campaignsService.js";
 import { collectionSummary } from "./boardgamesService.js";
 import { getUpcomingReleases, getWants as getMusicWants } from "./musicScanService.js";
+import { searchCodeSnippets } from "./codeRepoService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -612,9 +613,26 @@ export async function executeHardwareRAGSearch(query, subjects = []) {
 
     console.log(`[HardwareRAG] Found ${relevantChunks.length} matching passages for: "${query}"`);
 
-    const contextText = subjectHeader + relevantChunks.map((chunk, i) =>
+    let contextText = subjectHeader + relevantChunks.map((chunk, i) =>
       `[Source ${i + 1}: "${chunk.filename || 'Document'}", Page ${chunk.pageNum || 1}]:\n${chunk.text}`
     ).join("\n\n---\n\n");
+
+    // Supplement with repository code best practices if relevant
+    try {
+      const isCodeQuery = /\b(code|spfx|react|component|function|typescript|javascript|architecture|pattern|solid|hook|refactor|class|method|service|api)\b/i.test(query);
+      if (isCodeQuery) {
+        const codeSnippets = await searchCodeSnippets(queryVector, 2);
+        if (codeSnippets.length > 0) {
+          contextText += "\n\n=== RELEVANT CODE ARCHITECTURE & PATTERNS (FROM USER'S REPOSITORIES) ===\n" +
+            codeSnippets.map((cs) => 
+              `[Pattern: ${cs.title} in ${cs.repoName || 'Repo'}] (Tech: ${cs.technology}, Lang: ${cs.language})\n` +
+              `Summary: ${cs.text.slice(0, 300)}...\nWhy Best Practice: ${cs.bestPracticeRationale}`
+            ).join('\n\n');
+        }
+      }
+    } catch (e) {
+      console.warn("[HardwareRAG] Code search notice:", e.message);
+    }
 
     return contextText;
   } catch (err) {

@@ -8,3 +8,4 @@
 # repeat of the plaintext-credential mistake from before the GitHub push
 # structurally impossible rather than relying on remembering to scrub it.
 include/secrets.h
+.dummy/
