@@ -161,7 +161,7 @@ app.use(sessionMiddleware);
 // Every API call needs this browser to be signed in with an approved Google account. Only the
 // sign-in routes themselves are open. The device talks over its own TCP link, not this API.
 const requireAdmin = (req, res, next) => {
-  if (!req.path.startsWith('/api') || req.path.startsWith('/api/auth')) return next();
+  if (!req.path.startsWith('/api') || req.path.startsWith('/api/auth') || req.path.startsWith('/api/wake-daemon')) return next();
   if (isApprovedSession(req)) return next();
   // Invited guests: the deck builder only, never invites or anything else in IMS.
   if (isGuestSession(req) && req.path.startsWith('/api/decks/') && !req.path.startsWith('/api/decks/invites')) return next();
