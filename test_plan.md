@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 42
-- Verified Features: 42
+- Total Registered Features: 43
+- Verified Features: 43
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -50,6 +50,7 @@
 | FEAT-040 | Code Repository Best Practice Service | [CodeRepoPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/CodeRepoPortal.jsx) | Multi-repo scan, 5-principles AI evaluation, user observation notes, and hybrid RAG vector search | PASS |
 | FEAT-041 | Running with T1D Glucose Rulebook & Adaptive Coach Integration | [RunPlannerPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlannerPortal.jsx) | SQLite persistence, REST endpoints, LLM prompt augmentation, and interactive rulebook editor in RunPlannerPortal & ActivitiesPortal | PASS |
 | FEAT-042 | T1D Rulebook Book Upload, Indexing & AI Improvement Scanner | [RunPlannerPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlannerPortal.jsx) | Multi-format book upload, research text pasting workbench, text indexing, AI comparative scan, and interactive conflict resolution | PASS |
+| FEAT-043 | Bidirectional Pace & Estimated Time Editing in Run Plan | [RunPlannerPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlannerPortal.jsx) | Click Estimated Time chip, enter new time, verify pace chip updates and carb stops recalculate; click Average Pace chip, enter mm:ss, verify time chip updates and plan refreshes | PASS |
 
 
 
@@ -58,6 +59,15 @@
 
 
 ## Section 2: Detailed Scenarios
+### Suite 17: Bidirectional Pace & Estimated Time Editing (FEAT-043)
+1. **Initial display:** Generate a run plan. Verify both **Estimated Time** and **Average Pace** chips show a pencil (✎) glyph indicating editability.
+2. **Edit estimated time:** Click the Estimated Time chip. Verify an inline text input appears pre-filled with the current time (e.g. `1h 16m`). Type `1h 00m`. Press Enter or click away. Verify: (a) Average Pace chip recalculates to show the faster pace, (b) carb stop table and glucose curve chart both update, (c) estimated time chip now shows `1h 00m`.
+3. **Edit average pace:** Click the Average Pace chip. Type `10:30`. Press Enter. Verify: (a) Estimated Time chip recalculates to show a slower time, (b) plan metrics (Carbs In Total, Per Hour, Lowest) update accordingly.
+4. **Escape cancels:** Click a chip, change the value, then press Escape. Verify original value is restored and no re-estimate is fired.
+5. **Invalid entry guarded:** Type `abc` or an out-of-range value (e.g. `0:05`) into the pace chip. Verify no re-estimate fires and original values remain.
+6. **Spinner state:** During recalculation, verify the chip shows a spinning `RotateCw` icon instead of the stale value, preventing double-submit.
+7. **Form state sync:** After editing pace via chip, verify that the "Average pace" field in the *Where you are now* panel reflects the new pace so a subsequent manual Plan My Carbs call uses the same value.
+
 ### Suite 12: ESP32-S3-BOX-3 Hardware Voice Terminal (FEAT-012)
 1. **Network Handshake:** Connect ESP32-S3-BOX-3 via Wi-Fi to IMS backend ws://<host>:3001/api/live (or ngrok). Verify WebSocket handshake and setup packet exchange.
 2. **Audio Input Streaming:** Stream 16kHz 16-bit PCM microphone frames from ES7210/ES8311 I2S codec on ESP32 into IMS backend; confirm audio packet ingestion and forwarding to Gemini Live.

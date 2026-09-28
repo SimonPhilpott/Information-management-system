@@ -547,6 +547,20 @@
         "REST endpoint POST /api/planner/rulebook/research/review returning conflict and enhancement findings mapped directly into the user arbitration board",
         "Pre-configured clinical research sample presets (Riddell 10s sprint catecholamine blunting and dual-source carbohydrate oxidation in heat) for instant evaluation"
       ]
+    },
+    "Bidirectional Pace & Estimated Time Editing in Run Plan": {
+      "status": "enabled",
+      "description": "Click-to-edit Estimated Time and Average Pace chips in the generated run plan. Editing time derives a new pace (total_time / distance_km) and triggers a full re-estimate; editing pace parses mm:ss, validates the range, and triggers a full re-estimate. Both updates propagate throughout the plan: carb stops, glucose curve, scenario tables, and form state.",
+      "subFeatures": [
+        "Inline contenteditable-style input activated on chip click with autoFocus for immediate keyboard entry",
+        "Estimated Time accepts 'Xh YYm', 'Xh', or raw minutes formats via regex parser",
+        "Average Pace accepts standard 'm:ss' format validated via paceToMinPerKm with out-of-range guard (< 30 min/km)",
+        "Time edit derives new paceMinPerKm and calls POST /api/planner/estimate directly with overridden pace",
+        "Pace edit parses, applies to form.pace state, and calls POST /api/planner/estimate so subsequent Plan My Carbs clicks also use the new pace",
+        "RotateCw spinner replaces chip value during recalculation to prevent double-submit and indicate loading",
+        "Escape key cancels edit with no re-estimate; Enter commits",
+        "Pencil (✎) indicator on each editable chip surface-discoverability without permanent UI chrome"
+      ]
     }
   }
 }
