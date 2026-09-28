@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Play, Pause, Square, RotateCcw, FastForward, Rewind, Sparkles, CheckCircle2, AlertTriangle, Clock, Mountain, Cookie, Shield, HeartPulse, ChevronRight } from 'lucide-react';
+import { Play, Pause, Square, RotateCcw, FastForward, Rewind, Sparkles, CheckCircle2, AlertTriangle, Clock, Mountain, Cookie, Shield, HeartPulse, ChevronRight, History, Flag } from 'lucide-react';
 import RunGaugesBar from './RunGaugesBar';
 import { dist, paceText, paceToMinPerKm } from '../../../utils/units';
 
 /**
  * Tab 4: Interactive Run Flythrough & Retrospective Player
  * Replays completed runs or simulated plans with an animated runner locator,
- * sweeping radial gauges, jump-to-time timeline scrubber, and AI retrospective scrutiny.
+ * sweeping radial gauges, jump-to-time timeline scrubber, post-run recovery replay, and AI retrospective scrutiny.
  */
 export default function RunFlythroughTab({
   route,
@@ -22,6 +22,7 @@ export default function RunFlythroughTab({
   // Mode: 'plan' (simulated plan) or 'history' (actual past completed run)
   const [replayMode, setReplayMode] = useState('plan');
   const [selectedRunIdx, setSelectedRunIdx] = useState(0);
+  const [includeRecovery, setIncludeRecovery] = useState(true);
 
   // Playback state
   const [isPlaying, setIsPlaying] = useState(false);
@@ -30,8 +31,8 @@ export default function RunFlythroughTab({
   const animFrameRef = useRef(null);
   const lastTickTimeRef = useRef(null);
 
-  // Total duration in seconds
-  const totalDurationSec = useMemo(() => {
+  // Run course duration in seconds (the run itself)
+  const runDurationSec = useMemo(() => {
     if (replayMode === 'history' && routeHistory?.runs?.[selectedRunIdx]) {
       return Math.round((routeHistory.runs[selectedRunIdx].minutes || 45) * 60);
     }
@@ -41,25 +42,38 @@ export default function RunFlythroughTab({
     return 3600; // default 60 min
   }, [replayMode, selectedRunIdx, routeHistory, plan]);
 
-  // Interpolated points along course: array of { sec, distKm, eleM, grade, bg }
+  // Total duration in seconds (including optional 2h post-run recovery window)
+  const totalDurationSec = useMemo(() => {
+    return includeRecovery ? runDurationSec + 7200 : runDurationSec;
+  }, [includeRecovery, runDurationSec]);
+
+  // Interpolated points along course: array of { sec, distKm, eleM, grade, bg, isRecovery, recoveryMin }
   const courseTimeline = useMemo(() => {
     const pts = [];
     const durSec = totalDurationSec || 3600;
-    const durMin = durSec / 60;
+    const runDurSec = runDurationSec || 3600;
     const totalDistKm = route?.distanceKm || 10;
     const profile = route?.profile || [];
     const prediction = plan?.prediction || [];
     const startBg = parseFloat(plan?.settings?.startBg) || 8.2;
 
+    // Finish elevation for resting recovery
+    let finishEleM = 50;
+    if (profile.length > 0) {
+      finishEleM = profile[profile.length - 1][1] || 50;
+    }
+
     for (let s = 0; s <= durSec; s += 5) {
       const m = s / 60;
-      const frac = durSec > 0 ? s / durSec : 0;
+      const isRecovery = s > runDurSec;
+      const recoveryMin = isRecovery ? Math.round((s - runDurSec) / 60) : 0;
+      const frac = runDurSec > 0 ? Math.min(1, s / runDurSec) : 1;
       const currentKm = frac * totalDistKm;
 
       // Find elevation and grade at currentKm
-      let eleM = 50;
+      let eleM = finishEleM;
       let grade = 0;
-      if (profile.length > 0) {
+      if (!isRecovery && profile.length > 0) {
         let best = profile[0];
         for (const p of profile) {
           if (p[0] <= currentKm) best = p;
@@ -69,7 +83,7 @@ export default function RunFlythroughTab({
         grade = best[2] || 0;
       }
 
-      // Interpolate glucose from prediction model or simulate smooth drift
+      // Interpolate glucose from prediction model or smooth drift
       let bg = startBg;
       if (prediction.length > 0) {
         let lower = prediction[0];
@@ -92,28 +106,39 @@ export default function RunFlythroughTab({
         distKm: currentKm,
         eleM,
         grade,
-        bg: parseFloat(bg.toFixed(2))
+        bg: parseFloat(bg.toFixed(2)),
+        isRecovery,
+        recoveryMin
       });
     }
     return pts;
-  }, [totalDurationSec, route, plan]);
+  }, [totalDurationSec, runDurationSec, route, plan]);
 
   // Current instantaneous sample at currentSec
   const currentSample = useMemo(() => {
     if (!courseTimeline || courseTimeline.length === 0) {
-      return { sec: 0, min: 0, distKm: 0, eleM: 50, grade: 0, bg: 8.0, paceSec: 315 };
+      return { sec: 0, min: 0, distKm: 0, eleM: 50, grade: 0, bg: 8.0, paceSec: 315, isRecovery: false, recoveryMin: 0 };
     }
     const idx = Math.min(courseTimeline.length - 1, Math.max(0, Math.floor(currentSec / 5)));
     const sample = courseTimeline[idx] || courseTimeline[0];
 
-    // Compute instantaneous pace: standard planned pace adjusted for gradient
+    // Compute instantaneous pace: 0 if in recovery phase, otherwise grade-adjusted pace
+    if (sample.isRecovery) {
+      return {
+        ...sample,
+        paceSec: 0,
+        paceTextOverride: 'Resting'
+      };
+    }
+
     const basePaceMin = plan?.run?.paceMinPerKm || (paceToMinPerKm(plan?.run?.paceText) || 5.25);
     const hillFactor = 1 + (sample.grade > 0 ? sample.grade * 0.04 : sample.grade * 0.015);
     const instantPaceSec = Math.max(180, Math.min(600, basePaceMin * hillFactor * 60));
 
     return {
       ...sample,
-      paceSec: instantPaceSec
+      paceSec: instantPaceSec,
+      paceTextOverride: null
     };
   }, [courseTimeline, currentSec, plan]);
 
@@ -157,18 +182,24 @@ export default function RunFlythroughTab({
 
   const stops = plan?.plan?.stops || [];
   const currentProgressFrac = totalDurationSec > 0 ? currentSec / totalDurationSec : 0;
+  const finishLineFrac = totalDurationSec > 0 ? runDurationSec / totalDurationSec : 1;
 
-  // Format mm:ss
+  // Format mm:ss or hh:mm:ss
   const formatTime = (s) => {
     const mins = Math.floor(s / 60);
     const secs = Math.floor(s % 60);
+    if (mins >= 60) {
+      const hrs = Math.floor(mins / 60);
+      const remMins = mins % 60;
+      return `${hrs}h ${String(remMins).padStart(2, '0')}m`;
+    }
     return `${mins}:${String(secs).padStart(2, '0')}`;
   };
 
   return (
     <div className="flex flex-col gap-4">
       {/* Mode Selector & Header */}
-      <div className={`${panelClass} flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3`}>
+      <div className={`${panelClass} flex flex-col md:flex-row items-start md:items-center justify-between gap-3`}>
         <div>
           <div className="flex items-center gap-2">
             <Sparkles size={16} className="text-sky-400" />
@@ -177,27 +208,60 @@ export default function RunFlythroughTab({
             </h2>
           </div>
           <p className="text-[11px] text-slate-400 mt-0.5">
-            Simulate your course replay or audit post-run glucose kinetics with sweeping telemetry gauges and milestone carb inspections.
+            Simulate your course replay, audit post-run glucose kinetics (+2h recovery), and inspect milestone carb arrivals.
           </p>
         </div>
 
-        {/* Source Toggle */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-950/60 border border-white/5">
+        {/* Source Toggle & Past Run Selector */}
+        <div className="flex flex-wrap items-center gap-2">
+          {replayMode === 'history' && routeHistory?.runs?.length > 0 && (
+            <select
+              value={selectedRunIdx}
+              onChange={(e) => {
+                setSelectedRunIdx(Number(e.target.value));
+                setCurrentSec(0);
+                setIsPlaying(false);
+              }}
+              className="text-xs px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 font-medium"
+            >
+              {routeHistory.runs.map((r, i) => (
+                <option key={r.id} value={i}>
+                  {r.day} — {dist(r.km, units, 1)} {units} in {Math.round(r.minutes)}m ({paceText(r.paceMinPerKm, units)}/{units})
+                </option>
+              ))}
+            </select>
+          )}
+
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-950/60 border border-white/5">
+            <button
+              onClick={() => { setReplayMode('plan'); setIsPlaying(false); setCurrentSec(0); }}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                replayMode === 'plan' ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Planned Course Simulation
+            </button>
+            <button
+              onClick={() => { setReplayMode('history'); setIsPlaying(false); setCurrentSec(0); }}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                replayMode === 'history' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Completed Run Retrospective
+            </button>
+          </div>
+
+          {/* Recovery Replay Toggle */}
           <button
-            onClick={() => { setReplayMode('plan'); setIsPlaying(false); setCurrentSec(0); }}
-            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-              replayMode === 'plan' ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30' : 'text-slate-400 hover:text-slate-200'
+            onClick={() => setIncludeRecovery(!includeRecovery)}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${
+              includeRecovery
+                ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                : 'bg-slate-900 text-slate-400 border-white/5 hover:text-slate-200'
             }`}
+            title="Toggle inclusion of 2-hour post-run recovery glucose replay"
           >
-            Planned Course Simulation
-          </button>
-          <button
-            onClick={() => { setReplayMode('history'); setIsPlaying(false); setCurrentSec(0); }}
-            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-              replayMode === 'history' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Completed Run Retrospective
+            {includeRecovery ? '✓ +2h Recovery' : '+2h Recovery'}
           </button>
         </div>
       </div>
@@ -212,6 +276,7 @@ export default function RunFlythroughTab({
         targetBg={targets?.startTarget || 8.0}
         isDark={isDark}
         livePaceSec={currentSample.paceSec}
+        paceTextVal={currentSample.paceTextOverride}
         liveElevationM={currentSample.eleM}
         liveBg={currentSample.bg}
         isLiveFlythrough={true}
@@ -225,9 +290,15 @@ export default function RunFlythroughTab({
             <span className="text-xs font-black uppercase tracking-wider text-slate-200">
               {route?.name || 'Course Trail'} • Km {dist(currentSample.distKm, units, 1)} / {dist(route?.distanceKm || 10, units, 1)} {units}
             </span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-white/5 font-mono">
-              Grade: {currentSample.grade > 0 ? `+${currentSample.grade}%` : `${currentSample.grade}%`}
-            </span>
+            {currentSample.isRecovery ? (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-bold font-mono">
+                Post-Run Recovery (+{currentSample.recoveryMin} min)
+              </span>
+            ) : (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-white/5 font-mono">
+                Grade: {currentSample.grade > 0 ? `+${currentSample.grade}%` : `${currentSample.grade}%`}
+              </span>
+            )}
           </div>
 
           <div className="text-xs font-black tabular-nums text-slate-300 font-mono">
@@ -239,7 +310,6 @@ export default function RunFlythroughTab({
         <div className="relative w-full h-44 rounded-xl overflow-hidden bg-slate-950/80 border border-white/10 flex items-center justify-center">
           {route?.path && route.path.length > 1 ? (
             <svg viewBox="0 0 600 160" className="w-full h-full p-4" preserveAspectRatio="none">
-              {/* Elevation gradient path backdrop */}
               <defs>
                 <linearGradient id="flythroughGradient" x1="0%" y1="0%" x2="0%" y2="100%">
                   <stop offset="0%" stopColor="#0284c7" stopOpacity="0.4" />
@@ -250,8 +320,8 @@ export default function RunFlythroughTab({
               {/* Course Track Line */}
               {courseTimeline.length > 1 && (
                 <path
-                  d={courseTimeline.map((pt, i) => {
-                    const x = (pt.sec / totalDurationSec) * 580 + 10;
+                  d={courseTimeline.filter((pt) => !pt.isRecovery).map((pt, i) => {
+                    const x = (pt.sec / runDurationSec) * (finishLineFrac * 580) + 10;
                     const y = 140 - (pt.eleM / 200) * 100;
                     return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
                   }).join(' ')}
@@ -262,10 +332,31 @@ export default function RunFlythroughTab({
                 />
               )}
 
+              {/* Finish Line Marker if Recovery Enabled */}
+              {includeRecovery && (
+                <g transform={`translate(${finishLineFrac * 580 + 10}, 20)`}>
+                  <line x1="0" y1="0" x2="0" y2="120" stroke="#a855f7" strokeWidth="1.5" strokeDasharray="4 2" />
+                  <rect x="-24" y="-12" width="48" height="14" rx="3" fill="#581c87" stroke="#a855f7" strokeWidth="1" />
+                  <text x="0" y="-2" textAnchor="middle" fontSize="8" fontWeight="bold" fill="#f3e8ff">
+                    FINISH
+                  </text>
+                </g>
+              )}
+
               {/* Active Runner Bead */}
-              <g transform={`translate(${(currentProgressFrac * 580) + 10}, ${140 - (currentSample.eleM / 200) * 100})`}>
-                <circle r="10" fill="#38bdf8" fillOpacity="0.3" className="animate-ping" />
-                <circle r="6" fill="#38bdf8" stroke="#ffffff" strokeWidth="2" />
+              <g transform={`translate(${Math.min(finishLineFrac * 580 + 10, (currentProgressFrac * 580) + 10)}, ${140 - (currentSample.eleM / 200) * 100})`}>
+                <circle
+                  r="10"
+                  fill={currentSample.isRecovery ? '#c084fc' : '#38bdf8'}
+                  fillOpacity="0.3"
+                  className="animate-ping"
+                />
+                <circle
+                  r="6"
+                  fill={currentSample.isRecovery ? '#a855f7' : '#38bdf8'}
+                  stroke="#ffffff"
+                  strokeWidth="2"
+                />
               </g>
 
               {/* Carb Stops Flag Markers */}
@@ -294,16 +385,27 @@ export default function RunFlythroughTab({
           <div
             onClick={handleScrubberClick}
             className="group relative w-full h-8 bg-slate-950/70 rounded-lg cursor-pointer overflow-hidden border border-white/10 select-none"
-            title="Click or drag anywhere to jump to that moment of the run"
+            title="Click or drag anywhere to jump to that moment of the run or post-run recovery"
           >
             {/* Safe Target Zone Band Background (Green Tint for 7.0-10.0) */}
             <div className="absolute inset-0 bg-emerald-500/5" />
 
             {/* Elapsed Progress Fill */}
             <div
-              className="absolute top-0 bottom-0 left-0 bg-sky-500/20 border-r-2 border-sky-400 transition-all duration-75 pointer-events-none"
+              className={`absolute top-0 bottom-0 left-0 transition-all duration-75 pointer-events-none ${
+                currentSample.isRecovery ? 'bg-purple-500/20 border-r-2 border-purple-400' : 'bg-sky-500/20 border-r-2 border-sky-400'
+              }`}
               style={{ width: `${currentProgressFrac * 100}%` }}
             />
+
+            {/* Finish Line Demarcation */}
+            {includeRecovery && (
+              <div
+                className="absolute top-0 bottom-0 w-0.5 bg-purple-500/60 z-10 pointer-events-none"
+                style={{ left: `${finishLineFrac * 100}%` }}
+                title="Finish Line: Run concludes, 2-hour recovery commences"
+              />
+            )}
 
             {/* Carb Stop Flags on Timeline */}
             {stops.map((s, idx) => {
@@ -326,14 +428,14 @@ export default function RunFlythroughTab({
 
             {/* Hover Tooltip Overlay */}
             <div className="absolute left-2 top-1.5 text-[10px] text-slate-400 font-mono pointer-events-none">
-              Scrubber: {formatTime(currentSec)} / {formatTime(totalDurationSec)} • Glucose: {currentSample.bg} mmol/L
+              Scrubber: {formatTime(currentSec)} / {formatTime(totalDurationSec)} • Glucose: {currentSample.bg} mmol/L {currentSample.isRecovery ? `(Recovery +${currentSample.recoveryMin}m)` : ''}
             </div>
           </div>
 
           {/* Action Button Row */}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            {/* Play, Pause, Rewind, Fast-Forward */}
-            <div className="flex items-center gap-2">
+            {/* Play, Pause, Rewind, Fast-Forward, Jump to Finish */}
+            <div className="flex items-center flex-wrap gap-2">
               <button
                 onClick={() => setIsPlaying(!isPlaying)}
                 className={`${btnClass} px-4 py-2 bg-sky-600 hover:bg-sky-500 font-bold`}
@@ -368,6 +470,17 @@ export default function RunFlythroughTab({
                 <FastForward size={13} />
                 <span>+30s</span>
               </button>
+
+              {includeRecovery && (
+                <button
+                  onClick={() => setCurrentSec(runDurationSec)}
+                  className={`${ghostClass} text-[11px] text-purple-400 hover:text-purple-300 font-bold`}
+                  title="Jump directly to the finish line to watch post-run recovery"
+                >
+                  <Flag size={12} />
+                  <span>Jump to Finish</span>
+                </button>
+              )}
             </div>
 
             {/* Speed Multipliers */}

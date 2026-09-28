@@ -618,10 +618,17 @@
         "Interactive Run Flythrough & Retrospective Player (RunFlythroughTab.jsx) supporting simulated plan replay and past completed run retrospective analysis",
         "Animated course trail with pulsing Runner Locator Bead moving along route topography synchronized with real-time sweeping gauge needles",
         "Interactive media-style playback controls (Play, Pause, Stop, -30s, +30s, 1x/2x/4x/8x/16x speed) with dual-track scrubber (elevation + CGM curve) and carb stop flag markers",
-        "Post-run AI retrospective audit panel detailing 'What Worked', 'What Didn't', and actionable coaching adjustments"
+        "Post-run AI retrospective audit panel detailing 'What Worked', 'What Didn't', and actionable coaching adjustments",
+        "Full clinical telemetry chips: Lowest during run, At finish, Lowest after, With no carbs, Energy kcal, and 1g carb mmol/L rise",
+        "ISPAD consensus guideline comparison and insulin team discussion points",
+        "How this was worked out algorithmic breakdown with personalized run matching and scientific citations",
+        "Clinical research sample presets (10s sprint catecholamine blunting and dual-source carbs in heat) in research review",
+        "Full arbitration decision controls (Replace Rule, Add to Rulebook, Ignore, Edit & Apply with custom text) with resolution stamps",
+        "Post-run 2-hour recovery period replay toggle in flythrough player with finish line demarcation and post-exercise glucose drift monitoring"
       ]
     }
   }
 }
+
 
 

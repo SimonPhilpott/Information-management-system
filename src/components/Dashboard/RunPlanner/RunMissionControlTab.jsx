@@ -643,6 +643,9 @@ export default function RunMissionControlTab({
               {chip('Lowest (estimate)', plan.plan.predicted.minDuring, plan.plan.predicted.minDuring < plan.settings.floor ? 'text-red-500' : 'text-emerald-500')}
               {chip('At the finish', plan.plan.predicted.endBg)}
               {chip('Lowest after', plan.plan.predicted.minAfter, plan.plan.predicted.minAfter < plan.settings.floor ? 'text-red-500' : '')}
+              {chip('With no carbs', plan.plan.predicted.minWithoutCarbs, plan.plan.predicted.minWithoutCarbs < plan.settings.floor ? 'text-amber-500' : '')}
+              {chip('Energy', plan.run.kcal ? `${plan.run.kcal} kcal` : 'add weight')}
+              {chip('1 g of carb =', `${plan.settings.mmolPerGram} mmol/L`)}
             </div>
 
             {/* Infographic Carb Timeline & Elevation Trajectory */}
@@ -692,6 +695,11 @@ export default function RunMissionControlTab({
             {plan.plan.toReachStartTarget > 0 && (
               <p className="text-[11px] text-slate-500 mt-2">
                 To be at your {plan.settings.startTarget} start target from {plan.inputs.startBg} you would need about {plan.plan.toReachStartTarget} g of fast carbs 15-20 minutes before you go.
+              </p>
+            )}
+            {plan.guideline && (
+              <p className="text-[11px] text-slate-500 mt-2">
+                For comparison, ISPAD guidance is {plan.guideline[plan.guideline.usedRange][0]}-{plan.guideline[plan.guideline.usedRange][1]} g an hour at your weight with {plan.guideline.usedRange === 'highIob' ? 'insulin still active' : 'little insulin active'}; this plan uses {plan.plan.carbsPerHour} g/h because it is tailored to your glucose and insulin on board.
               </p>
             )}
           </div>
@@ -746,8 +754,57 @@ export default function RunMissionControlTab({
               </table>
             </div>
           </div>
+
+          {/* Insulin - Things to discuss with your diabetes team */}
+          {plan.insulin && plan.insulin.length > 0 && (
+            <div className={panel}>
+              <h3 className="text-[11px] font-black uppercase tracking-wider mb-2 flex items-center gap-2">
+                <Syringe size={13} />
+                Insulin - things to discuss with your diabetes team
+              </h3>
+              <div className="flex flex-col gap-3">
+                {plan.insulin.map((n, i) => (
+                  <div key={i}>
+                    <div className="text-xs font-bold">{n.title}</div>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">{n.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* How this was worked out */}
+          {plan.basis && (
+            <div className={panel}>
+              <h3 className="text-[11px] font-black uppercase tracking-wider mb-2 flex items-center gap-2">
+                <BookOpen size={13} />
+                How this was worked out
+              </h3>
+              <p className="text-[11px] text-slate-500 leading-relaxed mb-2">
+                Each minute: glucose falls with insulin action (your {plan.inputs.iob} U on board over a 3-hour curve, times your ISF of {plan.settings.isf} mmol/L per U, made {plan.inputs.sensMult}x stronger during the run) and with exercise uptake ({plan.inputs.kEx} mmol/L per hour, scaled by effort and the route's climbing), and rises with carbs ({plan.settings.cr} g per U, so about {plan.settings.mmolPerGram} mmol/L per gram, absorbed over about 20 minutes). Stops are placed so the estimate stays at least 1 mmol/L above your {plan.settings.floor} floor, off steep climbs where possible. Your loop will also react (temp basals), which this ignores, so treat the estimate as cautious.
+              </p>
+              <p className="text-[11px] text-slate-500 leading-relaxed mb-2">
+                {plan.basis.personalFitted
+                  ? `Exercise uptake was fitted from ${plan.basis.personalRuns} of your matched runs.`
+                  : `Not personalised yet: ${plan.basis.personalRuns} of your runs are matched with glucose data and 4 are needed to fit your own exercise uptake.`}
+                {plan.basis.assumed?.length > 0 && <> Assumed: {plan.basis.assumed.join('; ')}.</>}
+              </p>
+              {plan.sources && plan.sources.length > 0 && (
+                <ul className="text-[11px] list-disc pl-5 space-y-0.5">
+                  {plan.sources.map((s) => (
+                    <li key={s.url}>
+                      <a className="text-sky-500 hover:underline" href={s.url} target="_blank" rel="noreferrer">
+                        {s.title}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
   );
 }
+

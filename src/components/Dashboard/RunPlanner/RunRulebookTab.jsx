@@ -40,6 +40,7 @@ export default function RunRulebookTab({
   handleAcceptFinding,
   handleDismissFinding,
   handleApplyFindingEdit,
+  handleResolveFinding,
   pendingFindingsCount,
   pasteTitle,
   setPasteTitle,
@@ -341,12 +342,53 @@ export default function RunRulebookTab({
       {rulebookTab === 'paste' && (
         <div className="flex flex-col gap-3">
           <div className="p-4 rounded-xl border border-emerald-500/20 bg-slate-950/40">
-            <h3 className="text-xs font-black uppercase tracking-wider mb-2 flex items-center gap-1.5 text-emerald-400">
-              <FileText size={13} />
-              Paste Raw Research or Study Notes for Instant Comparative Audit
-            </h3>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <h3 className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5 text-emerald-400">
+                <FileText size={13} />
+                Paste Raw Research or Study Notes for Instant Comparative Audit
+              </h3>
+
+              {/* Clinical Research Presets */}
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-500 font-medium">Load sample:</span>
+                <button
+                  onClick={() => {
+                    setPasteTitle('Sprint Blunting of Exercise-Induced Hypoglycemia (Michael Riddell)');
+                    setPasteSource('Medicine & Science in Sports & Exercise (2006) / Riddell et al.');
+                    setPasteText(`Performing a 10-second maximal sprint either immediately prior to or immediately following moderate-intensity aerobic exercise stimulates an immediate surge in circulating catecholamines (adrenaline and noradrenaline up to 10-14 fold above baseline). 
+
+This sympathoadrenal surge triggers transient hepatic glucose production via glycogenolysis that surpasses peripheral glucose uptake for 30–60 minutes post-sprint. 
+
+In T1D runners who experience persistent drops during the early miles, an initial 10-second maximal burst can stabilise glucose for 45 minutes without requiring immediate exogenous carbohydrates, blunting exercise-induced hypoglycemia.`);
+                  }}
+                  className={`${ghostClass} text-[10px] py-1 px-2`}
+                  title="Load clinical research sample on sprint-induced catecholamine blunting"
+                >
+                  <Sparkles size={11} className="text-yellow-400" />
+                  <span>Sample 1 (Sprint Blunting)</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setPasteTitle('Exogenous Carbohydrate Oxidation: Dual-Source vs Glucose Alone');
+                    setPasteSource('Medicine & Science in Sports & Exercise / ISPAD');
+                    setPasteText(`Investigation into endurance athletes running with T1D for durations exceeding 90 minutes demonstrated that single-source glucose absorption saturates intestinal SGLT1 transporters at approximately 60 grams per hour (1.0 g/min). Ingesting more than 60 g/h of pure dextrose or maltodextrin leads to gastric distress and osmotic fluid shifts.
+
+Conversely, utilizing a multiple-transportable carbohydrate formulation (2:1 Glucose-to-Fructose or Maltodextrin-to-Fructose ratio) engages both SGLT1 and GLUT5 transporters in the gut, increasing total exogenous carbohydrate absorption ceiling to 80–90 grams per hour. 
+
+Furthermore, during ambient temperatures exceeding 24°C, supplementing each litre of hydration with 500–700 mg of sodium maintains microvascular perfusion and eliminates the 10–15 minute sensor lag typically observed in dehydrated runners.`);
+                  }}
+                  className={`${ghostClass} text-[10px] py-1 px-2`}
+                  title="Load clinical research sample on dual-source fueling in heat"
+                >
+                  <Sparkles size={11} className="text-yellow-400" />
+                  <span>Sample 2 (Dual-Source Fueling)</span>
+                </button>
+              </div>
+            </div>
+
             <p className="text-[11px] text-slate-400 leading-relaxed mb-4">
-              Paste excerpts from sports endocrinology studies, clinical trials, or personal training retrospective debriefs. Gemini Flash will compare the literature against your active Running with T1D Rulebook and surface conflicts or additions in the arbitration panel.
+              Paste excerpts from sports endocrinology studies, clinical trials, or personal training retrospective debriefs. Gemini Flash will compare the literature against your active <em>Running with T1D Rulebook</em> and surface conflicts or additions in the arbitration panel for your decision.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
@@ -363,7 +405,7 @@ export default function RunRulebookTab({
                 <label className={labelClass}>Source / Journal (Optional)</label>
                 <input
                   className={fieldClass}
-                  placeholder="e.g. Lancet Diabetes & Endocrinology 2024"
+                  placeholder="e.g. Lancet Diabetes & Endocrinology 2024 / ISPAD"
                   value={pasteSource}
                   onChange={(e) => setPasteSource(e.target.value)}
                 />
@@ -468,107 +510,200 @@ export default function RunRulebookTab({
             findings
               .filter((f) => findingsStatusFilter === 'all' || f.status === findingsStatusFilter)
               .filter((f) => findingsTypeFilter === 'all' || f.finding_type === findingsTypeFilter)
-              .map((f) => (
-                <div
-                  key={f.id}
-                  className={`p-4 rounded-xl border transition-all ${
-                    f.status === 'accepted'
-                      ? 'border-emerald-500/20 bg-emerald-950/10'
-                      : f.status === 'dismissed'
-                      ? 'border-white/5 opacity-50 bg-slate-950/20'
-                      : 'border-amber-500/30 bg-slate-900/40'
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
-                        f.finding_type === 'conflict'
-                          ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                          : f.finding_type === 'addition'
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                          : 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
-                      }`}>
-                        {f.finding_type}
-                      </span>
-                      <span className="font-bold text-xs text-slate-200">{f.category}</span>
+              .map((f) => {
+                const isConflict = f.finding_type === 'conflict';
+                const isPending = f.status === 'pending';
+                const isEditing = editingFindingId === f.id;
+
+                return (
+                  <div
+                    key={f.id}
+                    className={`p-4 rounded-xl border transition-all ${
+                      f.status === 'accepted'
+                        ? 'border-emerald-500/20 bg-emerald-950/10'
+                        : f.status === 'dismissed'
+                        ? 'border-white/5 opacity-50 bg-slate-950/20'
+                        : 'border-amber-500/30 bg-slate-900/40'
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+                          isConflict
+                            ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                            : f.finding_type === 'addition'
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                        }`}>
+                          {f.finding_type}
+                        </span>
+                        <span className="font-bold text-xs text-slate-200">{f.category || f.title}</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500">Source: {f.book_title || 'Literature'}</span>
                     </div>
-                    <span className="text-[10px] text-slate-500">Source: {f.book_title || 'Literature'}</span>
-                  </div>
 
-                  <p className="text-xs text-slate-300 leading-relaxed mb-3">{f.finding_description}</p>
+                    <p className="text-xs text-slate-300 leading-relaxed mb-3">{f.finding_description || f.description}</p>
 
-                  {f.existing_rule_text && (
-                    <div className="mb-2 p-2.5 rounded-lg bg-red-500/5 border border-red-500/20 text-[11px]">
-                      <div className="text-[9px] font-bold uppercase tracking-wider text-red-400 mb-1">Active Rule in Rulebook:</div>
-                      <div className="text-slate-300 font-mono text-[10px]">{f.existing_rule_text}</div>
-                    </div>
-                  )}
+                    {f.existing_rule_text && (
+                      <div className="mb-2 p-2.5 rounded-lg bg-red-500/5 border border-red-500/20 text-[11px]">
+                        <div className="text-[9px] font-bold uppercase tracking-wider text-red-400 mb-1">Active Rule in Rulebook:</div>
+                        <div className="text-slate-300 font-mono text-[10px]">{f.existing_rule_text}</div>
+                      </div>
+                    )}
 
-                  {f.proposed_rule_text && (
-                    <div className="mb-3 p-2.5 rounded-lg bg-emerald-500/5 border border-emerald-500/20 text-[11px]">
-                      <div className="text-[9px] font-bold uppercase tracking-wider text-emerald-400 mb-1">Literature Recommendation:</div>
-                      {editingFindingId === f.id ? (
-                        <div className="flex flex-col gap-2 mt-1">
-                          <textarea
-                            className={`${fieldClass} font-mono text-[10px] leading-relaxed`}
-                            rows={3}
-                            value={editingFindingText}
-                            onChange={(e) => setEditingFindingText(e.target.value)}
-                          />
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => handleApplyFindingEdit(f.id)}
-                              className={`${btnClass} text-xs py-1 px-3`}
-                            >
-                              Apply & Add to Rulebook
-                            </button>
-                            <button
-                              onClick={() => setEditingFindingId(null)}
-                              className={ghostClass}
-                            >
-                              Cancel
-                            </button>
+                    {(f.proposed_rule_text || f.proposed_text || f.book_recommendation) && (
+                      <div className="mb-3 p-2.5 rounded-lg bg-emerald-500/5 border border-emerald-500/20 text-[11px]">
+                        <div className="text-[9px] font-bold uppercase tracking-wider text-emerald-400 mb-1">Literature Recommendation:</div>
+                        {isEditing ? (
+                          <div className="flex flex-col gap-2 mt-1">
+                            <textarea
+                              className={`${fieldClass} font-mono text-[10px] leading-relaxed`}
+                              rows={3}
+                              value={editingFindingText}
+                              onChange={(e) => setEditingFindingText(e.target.value)}
+                            />
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  if (handleResolveFinding) {
+                                    handleResolveFinding(f, isConflict ? 'replace' : 'add', editingFindingText);
+                                  } else {
+                                    handleApplyFindingEdit(f.id);
+                                  }
+                                }}
+                                disabled={busy === `res-${f.id}` || !editingFindingText.trim()}
+                                className={`${btnClass} text-xs py-1 px-3`}
+                              >
+                                {busy === `res-${f.id}` ? <RotateCw size={12} className="animate-spin" /> : <Save size={12} />}
+                                <span>Apply Custom Text</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setEditingFindingId(null);
+                                  setEditingFindingText('');
+                                }}
+                                className={ghostClass}
+                              >
+                                Cancel
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="text-emerald-200 font-mono text-[10px]">{f.proposed_rule_text}</div>
-                      )}
-                    </div>
-                  )}
+                        ) : (
+                          <div className="text-emerald-200 font-mono text-[10px]">
+                            {f.proposed_rule_text || f.proposed_text || f.book_recommendation}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
-                  {f.status === 'pending' && editingFindingId !== f.id && (
-                    <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/5">
-                      <button
-                        onClick={() => handleAcceptFinding(f.id)}
-                        className={`${btnClass} text-xs py-1 px-3 bg-emerald-600 hover:bg-emerald-500`}
-                      >
-                        <CheckCircle size={12} />
-                        <span>Accept & Incorporate into Rulebook</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setEditingFindingId(f.id);
-                          setEditingFindingText(f.proposed_rule_text || '');
-                        }}
-                        className={`${ghostClass} text-xs py-1 px-2.5`}
-                      >
-                        <Edit3 size={12} />
-                        <span>Edit & Apply</span>
-                      </button>
-                      <button
-                        onClick={() => handleDismissFinding(f.id)}
-                        className={`${ghostClass} text-xs py-1 px-2.5 text-slate-500 hover:text-slate-400 ml-auto`}
-                      >
-                        <XCircle size={12} />
-                        <span>Dismiss</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))
+                    {/* Arbitration Actions */}
+                    {isPending && !isEditing && (
+                      <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/5">
+                        {isConflict ? (
+                          <>
+                            <button
+                              onClick={() => {
+                                if (handleResolveFinding) handleResolveFinding(f, 'replace');
+                                else handleAcceptFinding(f.id);
+                              }}
+                              disabled={busy === `res-${f.id}` || busy === `resolve-${f.id}`}
+                              className={btnClass}
+                              title="Replace the conflicting rule in the rulebook with the book's recommendation"
+                            >
+                              {busy === `res-${f.id}` ? <RotateCw size={12} className="animate-spin" /> : <ArrowRight size={12} />}
+                              <span>Replace Rule</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingFindingId(f.id);
+                                setEditingFindingText(f.proposed_text || f.proposed_rule_text || f.book_recommendation || '');
+                              }}
+                              className={ghostClass}
+                              title="Fine-tune wording before applying"
+                            >
+                              <Edit3 size={12} />
+                              <span>Edit & Apply</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (handleResolveFinding) handleResolveFinding(f, 'dismiss');
+                                else handleDismissFinding(f.id);
+                              }}
+                              disabled={busy === `res-${f.id}` || busy === `resolve-${f.id}`}
+                              className={`${ghostClass} text-slate-400 hover:text-slate-200 ml-auto`}
+                              title="Reject change and retain your existing rulebook guidance"
+                            >
+                              <XCircle size={12} />
+                              <span>Ignore / Keep Current</span>
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => {
+                                if (handleResolveFinding) handleResolveFinding(f, 'add');
+                                else handleAcceptFinding(f.id);
+                              }}
+                              disabled={busy === `res-${f.id}` || busy === `resolve-${f.id}`}
+                              className={btnClass}
+                              title="Add this new protocol under the specified section of the rulebook"
+                            >
+                              {busy === `res-${f.id}` ? <RotateCw size={12} className="animate-spin" /> : <Plus size={12} />}
+                              <span>Add to Rulebook</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingFindingId(f.id);
+                                setEditingFindingText(f.proposed_text || f.proposed_rule_text || '');
+                              }}
+                              className={ghostClass}
+                              title="Edit wording before adding"
+                            >
+                              <Edit3 size={12} />
+                              <span>Edit & Add</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (handleResolveFinding) handleResolveFinding(f, 'dismiss');
+                                else handleDismissFinding(f.id);
+                              }}
+                              disabled={busy === `res-${f.id}` || busy === `resolve-${f.id}`}
+                              className={`${ghostClass} text-slate-400 hover:text-slate-200 ml-auto`}
+                              title="Dismiss this addition"
+                            >
+                              <XCircle size={12} />
+                              <span>Ignore</span>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Stamped Outcome If Resolved */}
+                    {!isPending && (
+                      <div className="flex items-center gap-2 pt-2 border-t border-white/5 text-[11px]">
+                        {f.status === 'accepted' ? (
+                          <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+                            <CheckCircle size={12} />
+                            <span>
+                              Applied to Rulebook {f.user_action === 'replace' || isConflict ? '(replaced conflicting rule)' : '(added new protocol)'}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1.5 text-slate-400 font-medium">
+                            <XCircle size={12} />
+                            <span>Ignored / dismissed</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
           )}
         </div>
       )}
     </div>
   );
 }
+

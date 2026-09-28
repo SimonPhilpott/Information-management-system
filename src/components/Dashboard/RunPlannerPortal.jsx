@@ -599,57 +599,54 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
     }
   };
 
-  const handleAcceptFinding = async (findingId) => {
-    setBusy(`res-${findingId}`);
+  const handleResolveFinding = async (finding, action, customText = null) => {
+    setBusy(`res-${finding.id}`);
     try {
-      const d = await send(`/api/planner/rulebook/findings/${findingId}/resolve`, 'POST', { action: 'accept' });
-      setFindings((prev) => prev.map((f) => (f.id === findingId ? { ...f, status: 'accepted' } : f)));
-      if (d.rulebook) {
-        setRulebook((prev) => ({ ...prev, rulebook: d.rulebook, updatedAt: Date.now(), isDefault: false }));
-        setRulebookDraft(d.rulebook);
-      }
-      showToast('Finding accepted and incorporated into rulebook.');
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      setBusy('');
-    }
-  };
-
-  const handleDismissFinding = async (findingId) => {
-    setBusy(`res-${findingId}`);
-    try {
-      await send(`/api/planner/rulebook/findings/${findingId}/resolve`, 'POST', { action: 'dismiss' });
-      setFindings((prev) => prev.map((f) => (f.id === findingId ? { ...f, status: 'dismissed' } : f)));
-      showToast('Finding dismissed.');
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      setBusy('');
-    }
-  };
-
-  const handleApplyFindingEdit = async (findingId) => {
-    setBusy(`res-${findingId}`);
-    try {
-      const d = await send(`/api/planner/rulebook/findings/${findingId}/resolve`, 'POST', {
-        action: 'edit_apply',
-        customText: editingFindingText
+      const d = await send(`/api/planner/rulebook/findings/${finding.id}/resolve`, 'POST', {
+        action,
+        customText
       });
-      setFindings((prev) => prev.map((f) => (f.id === findingId ? { ...f, status: 'accepted' } : f)));
+      setFindings((prev) =>
+        prev.map((f) =>
+          f.id === finding.id
+            ? { ...f, status: d.status || (action === 'dismiss' ? 'dismissed' : 'accepted'), user_action: action }
+            : f
+        )
+      );
       if (d.rulebook) {
         setRulebook((prev) => ({ ...prev, rulebook: d.rulebook, updatedAt: Date.now(), isDefault: false }));
         setRulebookDraft(d.rulebook);
       }
       setEditingFindingId(null);
       setEditingFindingText('');
-      showToast('Custom finding applied to rulebook.');
+      showToast(d.message || 'Finding updated.');
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
       setBusy('');
     }
   };
+
+  const handleAcceptFinding = (findingId) => {
+    const f = findings.find((x) => x.id === findingId);
+    if (!f) return;
+    const action = f.finding_type === 'conflict' ? 'replace' : 'add';
+    handleResolveFinding(f, action);
+  };
+
+  const handleDismissFinding = (findingId) => {
+    const f = findings.find((x) => x.id === findingId);
+    if (!f) return;
+    handleResolveFinding(f, 'dismiss');
+  };
+
+  const handleApplyFindingEdit = (findingId) => {
+    const f = findings.find((x) => x.id === findingId);
+    if (!f) return;
+    const action = f.finding_type === 'conflict' ? 'replace' : 'add';
+    handleResolveFinding(f, action, editingFindingText);
+  };
+
 
   const handleReviewPastedResearch = async () => {
     const text = pasteText.trim();
@@ -905,6 +902,7 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
               handleAcceptFinding={handleAcceptFinding}
               handleDismissFinding={handleDismissFinding}
               handleApplyFindingEdit={handleApplyFindingEdit}
+              handleResolveFinding={handleResolveFinding}
               pendingFindingsCount={pendingFindingsCount}
               pasteTitle={pasteTitle}
               setPasteTitle={setPasteTitle}
