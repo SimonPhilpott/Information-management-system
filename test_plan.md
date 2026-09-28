@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 46
-- Verified Features: 46
+- Total Registered Features: 47
+- Verified Features: 47
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -54,6 +54,7 @@
 | FEAT-044 | Run Planner Steppers, Effort Scaling & Post-Run Scrutiny Debrief | [RunPlannerPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlannerPortal.jsx) | Stepper chevrons, % delta badges, custom carbs recalculation, speedRatio^1.35 effort scaling, expected now card, and post-run debrief scrutiny | PASS |
 | FEAT-045 | Blood Glucose Profile Insights & Continuous Fine-Tuning Workbench | [glucoseInsightService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/glucoseInsightService.js) | Continuous evaluation of empirical glucose drift (12pm-4pm), meal IC ratio excursions, diurnal ISF variance, step-chart visualization, and Gemini clinical audit | PASS |
 | FEAT-046 | Background Wake Daemon & Conversation Lifecycle Service | [wakeDaemonService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/wakeDaemonService.js) | Local server daemon status endpoint /api/wake-daemon/status, 15-second silence inactivity auto-close verification, active bye phrase termination, and client mic streaming cut-off | PASS |
+| FEAT-047 | Plan My Run Mission Control & Interactive Flythrough Replay | [RunPlannerPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlannerPortal.jsx) | 4-tab workspace, radial gauges with target zones, infographic carb timeline, and flythrough replay player | PASS |
 
 
 
@@ -352,6 +353,16 @@
 7. **Manual Daemon Reset Endpoint:** Send `POST /api/wake-daemon/reset`; verify `wakeDaemonService.forceStandby('manual_user_reset')` executes, returning state to `STANDBY` and dispatching client cancellation frames.
 8. **Phrases Portal Live Telemetry & Control UI:** Open `/ims/phrases` in the web application; verify the Background Wake Daemon status card renders with live state pill ('Silent Standby', 'Conversation Active'), 15s silence countdown, active bye phrase indicators, and functional 'Force Standby' button.
 
+### Suite 47: Plan My Run Mission Control & Interactive Flythrough Replay (FEAT-047)
+1. **4-Tab Navigation & Layout Decoupling:** Navigate to `/ims/runplanner`; verify the top tab navigator renders the four tabs: `1. Mission Control`, `2. T1D Rulebook & Intelligence`, `3. Targets & Assumptions`, and `4. Run Flythrough & Retrospective`. Verify clicking between tabs transitions views smoothly without page reload or state loss.
+2. **Radial Target-Zone Gauges:** In `1. Mission Control`, verify the top bar displays three SVG radial gauges: Pace Gauge (with green target aerobic zone 4:50-5:35 /km), Elevation Ascent Gauge, and Blood Glucose Gauge (with red hypo floor < 4.5, amber sub-optimal 4.5-7.0, green target safe zone 7.0-10.0, and amber elevated > 10.0). Verify needle pointers smoothly interpolate to the current values.
+3. **Infographic Carb Fueling Timeline:** In `1. Mission Control` with a generated plan, verify `CarbFuelingTimeline` displays milestone stop cards along the timeline with minute, km, grams, and fast gel tags. Click `[-]` and `[+]` steppers; verify total carbs update and the predicted glucose curve re-renders over terrain.
+4. **Dedicated T1D Rulebook & Intelligence Tab:** Switch to `2. T1D Rulebook & Intelligence`; verify the full markdown protocol editor, uploaded book library, research text paste workbench, and AI conflict arbitration board are accessible without cluttering the run planning dashboard.
+5. **Dedicated Targets & Assumptions Tab:** Switch to `3. Targets & Assumptions`; verify start target, floor, ceiling, and `sensMult` (1.0 to 10.0) can be adjusted and persisted via `PUT /api/planner/targets`.
+6. **Interactive Run Flythrough & Course Replay:** Switch to `4. Run Flythrough & Retrospective`; verify the animated course track renders with the glowing, pulsing Runner Locator Bead. Click `[Play]`; verify the bead progresses along the route profile while the three top radial gauges (Pace, Elevation/Grade, and Simulated Glucose) sweep synchronously in real time.
+7. **Timeline Scrubber Jump & Speed Controls:** Click anywhere on the dual-track scrubber bar; verify playback jumps instantly to the selected minute and km. Test speed toggles (`1x`, `2x`, `4x`, `8x`, `16x`), `-30s` rewind, and `+30s` skip-ahead. Verify carb stop flags mark fueling milestones along the scrubber.
+8. **AI Retrospective & Scrutiny Panel:** In `4. Run Flythrough & Retrospective`, verify the post-run debrief panel renders "What Worked" (green check badges) and "What to Watch & Refine" (amber caution badges) providing actionable coaching takeaways for future runs.
+
 ## Section 3: Defensive Engineering Invariants
 1. Hardware watchdog timer (WDT) and auto-reconnect logic on ESP32 WebSocket disconnects.
 2. Anti-stutter ring buffer and I2S DMA queue sizing on ESP32 PSRAM to prevent audio underflow/overflow.
@@ -406,6 +417,7 @@
 51. Run Planner Custom Carbs & Effort-Scaled Exertion Invariant: in `runPlanService.js`, faster planned paces scale glucose uptake rate (`exRate`) exponentially via `(speedRatio)^1.35`, directly increasing carb demands for faster runs. When `customCarbs` is supplied, stops are proportionally scaled or injected mid-run, and the full simulation curve recalculates without desynchronising `inputs` and `plan.predicted` metrics. In `ActivitiesPortal.jsx`, post-run debrief notes (incident reports, walking miles, fatigue, delayed carbs) and Gemini adaptive recommendations are stored atomically in `activity_debrief` and merged into run insights without blocking standard Strava sync or throwing on unlogged runs.
 52. Blood Glucose Profile Insight Empirical Math & AID Safety Invariant: in `glucoseInsightService.js` and `GlucosePortal.jsx`, empirical basal drift analysis strictly isolates post-absorptive windows (no meal boluses or carb logs within 2.5h) across the 6 physiological blocks (specifically 12:00-16:00 and 00:00-06:00) to isolate pure basal drift from meal excursions. IC ratio analysis correlates +2h to +3h postprandial glucose to identify under/over-bolusing. Diurnal ISF analysis measures real glucose drops per unit from carb-free correction boluses across Morning, Afternoon, and Night against the flat 1.6 baseline. All clinical suggestions explicitly require conservative trial and consultation with the clinical care team, and profile resets preserve the runner's baseline "20u standard day" profile.
 53. Wake Daemon Standby Silence & Inactivity Termination Invariant: in `wakeDaemonService.js` and `index.js`, the local background wake daemon maintains sovereign authority over conversation lifecycle across hardware and web sessions. When the conversation is idle for 15,000ms with no genuine user speech or upon detecting active farewell phrases ('bye', 'thanks bye', 'that's all IMS'), the daemon unconditionally dispatches `{ cancelConversation: true }` to the client, closes/resets upstream Gemini sessions, transitions state to `STANDBY`, and guarantees microphone streaming is fully halted so ambient room sound cannot keep the device listening or trigger unsolicited speech.
+54. Plan My Run Tab Modularisation, Gauge Telemetry & Flythrough Playback Invariant: in `RunPlannerPortal.jsx` and `RunPlanner/` subcomponents, state transitions between the 4 workspace tabs (Mission Control, T1D Rulebook, Targets, Flythrough) preserve loaded route geometry, metabolic inputs (`form`), active plan calculations, and baseline deltas without re-fetching or resetting form state. In `RunFlythroughTab.jsx`, the animation loop driven by `requestAnimationFrame` bounds `currentTimeSec` strictly to `[0, totalDurationSec]` and halts upon unmount via `cancelAnimationFrame`; scrubber click calculations clamp fractions to `[0, 1]` to prevent out-of-bounds array lookups on route profile points or prediction curves. Radial gauges in `RunGaugesBar.jsx` clamp needle sweeps strictly within -120° to +120° and sanitize undefined inputs to default fallbacks, preventing NaN or SVG rendering errors.
 
 
 

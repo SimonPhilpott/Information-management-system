@@ -283,10 +283,55 @@
       ]
     },
     "src/components/Dashboard/RunPlannerPortal.jsx": {
-      "description": "Interactive Run Planner portal featuring route selection, elevation mapping, stepper controls with percentage delta badges for estimated time, average pace, and carbs, expected current pace display from recent running history, and the comprehensive Running with T1D Rulebook management section.",
+      "description": "Interactive Run Planner portal with 4-tab workspace (Mission Control, T1D Rulebook & Intelligence, Targets & Assumptions, and Run Flythrough & Retrospective), radial target-zone gauges, and integrated post-run scrutiny.",
       "dependencies": [
         "src/components/Dashboard/PortalShell.jsx",
-        "src/components/Dashboard/Prose.jsx",
+        "src/components/Dashboard/RunPlanner/RunMissionControlTab.jsx",
+        "src/components/Dashboard/RunPlanner/RunRulebookTab.jsx",
+        "src/components/Dashboard/RunPlanner/RunTargetsTab.jsx",
+        "src/components/Dashboard/RunPlanner/RunFlythroughTab.jsx",
+        "src/utils/units.js"
+      ]
+    },
+    "src/components/Dashboard/RunPlanner/RadialGauge.jsx": {
+      "description": "Reusable SVG radial gauge with target zone arc, smooth needle animation, center numerical readout, and unit labels.",
+      "dependencies": []
+    },
+    "src/components/Dashboard/RunPlanner/RunGaugesBar.jsx": {
+      "description": "Telemetry bar rendering three radial gauges (Pace, Elevation Ascent, Blood Glucose) with colour-coded target safety zones.",
+      "dependencies": [
+        "src/components/Dashboard/RunPlanner/RadialGauge.jsx",
+        "src/utils/units.js"
+      ]
+    },
+    "src/components/Dashboard/RunPlanner/CarbFuelingTimeline.jsx": {
+      "description": "Infographic carb strategy timeline visualizing fueling milestone cards with inline steppers, dosage pills, and terrain-projected glucose trajectory.",
+      "dependencies": [
+        "src/utils/units.js"
+      ]
+    },
+    "src/components/Dashboard/RunPlanner/RunMissionControlTab.jsx": {
+      "description": "Main run planning cockpit containing top radial gauges, route map, elevation demand, Nightscout metabolic status HUD, and carb timeline.",
+      "dependencies": [
+        "src/components/Dashboard/RunPlanner/RunGaugesBar.jsx",
+        "src/components/Dashboard/RunPlanner/CarbFuelingTimeline.jsx",
+        "src/utils/units.js"
+      ]
+    },
+    "src/components/Dashboard/RunPlanner/RunRulebookTab.jsx": {
+      "description": "Dedicated T1D rulebook and intelligence tab managing active markdown protocols, PDF/TXT book library, research paste, and AI conflict arbitration.",
+      "dependencies": [
+        "src/components/Dashboard/Prose.jsx"
+      ]
+    },
+    "src/components/Dashboard/RunPlanner/RunTargetsTab.jsx": {
+      "description": "Dedicated targets and physiological assumptions tab managing start target, hypo floor, ceiling, sensMult multiplier (1.0-10.0), and basal advice.",
+      "dependencies": []
+    },
+    "src/components/Dashboard/RunPlanner/RunFlythroughTab.jsx": {
+      "description": "Interactive course flythrough and retrospective replay player with animated runner locator bead, dynamic sweeping gauges, dual-track timeline scrubber, and AI debrief insights.",
+      "dependencies": [
+        "src/components/Dashboard/RunPlanner/RunGaugesBar.jsx",
         "src/utils/units.js"
       ]
     },

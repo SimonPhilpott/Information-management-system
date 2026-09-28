@@ -605,6 +605,21 @@
         "Comprehensive operational health and telemetry REST endpoints (GET /api/wake-daemon/status and POST /api/wake-daemon/reset)",
         "Real-time Wake Daemon Monitor card in PhrasesPortal (/ims/phrases) with live state pill, silence countdown, and force standby control"
       ]
+    },
+    "Plan My Run Mission Control & Interactive Flythrough Replay": {
+      "status": "enabled",
+      "description": "Modular 4-tab run planning and retrospective analysis workspace featuring telemetry radial target-zone gauges (Pace, Elevation, Blood Glucose), infographic carb fueling timeline, dedicated T1D Rulebook & Intelligence tab, Targets & Assumptions tab, and interactive Run Flythrough course re-run player.",
+      "subFeatures": [
+        "Modular 4-tab navigation workspace (1. Mission Control, 2. T1D Rulebook & Intelligence, 3. Targets & Assumptions, 4. Run Flythrough & Retrospective)",
+        "SVG Radial Gauge components (RadialGauge.jsx & RunGaugesBar.jsx) displaying Pace, Elevation, and Blood Glucose with color-coded target safe zones (7.0-10.0 mmol/L safe band, red hypo floor, amber ceiling)",
+        "Infographic Carb Fueling Timeline (CarbFuelingTimeline.jsx) charting carb stop milestones, gram dosages, intake timing, and simulated glucose curve over terrain",
+        "Dedicated T1D Rulebook & Intelligence tab (RunRulebookTab.jsx) encapsulating active markdown rules, PDF/TXT book library, direct research paste, and AI conflict arbitration",
+        "Dedicated Targets & Assumptions tab (RunTargetsTab.jsx) managing start target, floor, ceiling, exercise sensitivity multiplier (sensMult up to 10.0), and basal reduction advice",
+        "Interactive Run Flythrough & Retrospective Player (RunFlythroughTab.jsx) supporting simulated plan replay and past completed run retrospective analysis",
+        "Animated course trail with pulsing Runner Locator Bead moving along route topography synchronized with real-time sweeping gauge needles",
+        "Interactive media-style playback controls (Play, Pause, Stop, -30s, +30s, 1x/2x/4x/8x/16x speed) with dual-track scrubber (elevation + CGM curve) and carb stop flag markers",
+        "Post-run AI retrospective audit panel detailing 'What Worked', 'What Didn't', and actionable coaching adjustments"
+      ]
     }
   }
 }
