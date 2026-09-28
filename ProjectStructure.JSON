@@ -309,6 +309,18 @@
         "pdf-knowledge-base/server/db/database.js",
         "pdf-knowledge-base/server/config.js"
       ]
+    },
+    "pdf-knowledge-base/server/services/wakeDaemonService.js": {
+      "description": "Lightweight local server background wake daemon and conversational lifecycle service managing accurate wake phrase recognition ('Hey IMS', 'Hi IMS', 'Eh up IMS'), active 'Bye' phrase termination, 15-second silence inactivity watchdog, client mic streaming cut-off, and operational telemetry.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/phrasesService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/routes/wakeDaemon.js": {
+      "description": "Express router exposing GET /api/wake-daemon/status and POST /api/wake-daemon/reset endpoints for wake daemon operational health monitoring and manual state resets.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/wakeDaemonService.js"
+      ]
     }
   }
 }

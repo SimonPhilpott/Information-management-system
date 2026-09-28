@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 45
-- Verified Features: 45
+- Total Registered Features: 46
+- Verified Features: 46
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -53,6 +53,7 @@
 | FEAT-043 | Bidirectional Pace & Estimated Time Editing in Run Plan | [RunPlannerPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlannerPortal.jsx) | Click Estimated Time chip, enter new time, verify pace chip updates and carb stops recalculate; click Average Pace chip, enter mm:ss, verify time chip updates and plan refreshes | PASS |
 | FEAT-044 | Run Planner Steppers, Effort Scaling & Post-Run Scrutiny Debrief | [RunPlannerPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlannerPortal.jsx) | Stepper chevrons, % delta badges, custom carbs recalculation, speedRatio^1.35 effort scaling, expected now card, and post-run debrief scrutiny | PASS |
 | FEAT-045 | Blood Glucose Profile Insights & Continuous Fine-Tuning Workbench | [glucoseInsightService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/glucoseInsightService.js) | Continuous evaluation of empirical glucose drift (12pm-4pm), meal IC ratio excursions, diurnal ISF variance, step-chart visualization, and Gemini clinical audit | PASS |
+| FEAT-046 | Background Wake Daemon & Conversation Lifecycle Service | [wakeDaemonService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/wakeDaemonService.js) | Local server daemon status endpoint /api/wake-daemon/status, 15-second silence inactivity auto-close verification, active bye phrase termination, and client mic streaming cut-off | PASS |
 
 
 
@@ -341,6 +342,16 @@
 5. **Diurnal ISF Sensitivity Variance:** Inspect the ISF Calibration card; verify that carb-free correction boluses are evaluated across Morning, Afternoon, and Night windows to answer whether the runner is more sensitive or resistant relative to the flat 1.6 baseline.
 6. **Clinical Synthesis Action Plan:** Verify Gemini Flash generates a comprehensive clinical report formatted with bold headers and a 2-3 step safe fine-tuning plan.
 
+### Suite 46: Background Wake Daemon & Conversation Lifecycle Service (FEAT-046)
+1. **Daemon Initialization & Telemetry Verification:** Query `GET /api/wake-daemon/status`; verify the daemon reports `running: true`, `state: 'STANDBY'`, `silenceTimeoutMs: 15000`, `authorizedWakePhrases` list ('Hey IMS', 'Hi IMS', 'Eh up IMS'), and uptime seconds.
+2. **Accurate Wake Phrase Verification & State Transition:** Transmit wake candidate text ('Hey IMS', 'Hi IMS', 'Eh up IMS, what is the weather?'); verify `wakeDaemonService.processUserSpeech()` verifies the phrase, updates `lastWakePhrase` and `lastWakeAt`, transitions daemon state from `STANDBY` to `CONVERSATION_ACTIVE`, and resets the silence watchdog.
+3. **Ambient Room Chatter & Non-Wake Candidate Rejection:** Transmit non-wake speech ('Pass the salt', 'Turn the TV down', 'What is that'); verify candidate is rejected without opening dialogue or triggering false model turns, silently maintaining `STANDBY`.
+4. **Active 'Bye' / Farewell Phrase Interception:** In an active conversation, transmit a farewell phrase ('bye', 'goodbye', 'thanks bye', 'that is all IMS', 'see you later'); verify `wakeDaemonService.processUserSpeech()` flags `farewell_detected`, transitions state to `CLOSING`, dispatches cancellation/end frames, and cleanly returns the device and session to `STANDBY`.
+5. **Strict 15-Second Silence Inactivity Auto-Close Watchdog:** While in `CONVERSATION_ACTIVE`, maintain silence for 15 seconds; verify the background watchdog ticks, detects `idleMs >= 15000`, actively fires `forceStandby('silence_timeout')`, sends `{ cancelConversation: true }` to the client, terminates the conversation, and stops microphone streaming.
+6. **Hardware Desk Terminal Standby Silence & Mic Streaming Cut-off:** Verify that upon receiving `{ cancelConversation: true }`, the ESP32-S3-BOX-3 hardware client resets its state to `STATE_STANDBY`, sets `micStreamingActive = false`, mutes speaker output, sets `conversationOpen = false`, and restores screen text to "Say 'Hey Ims' or tap screen".
+7. **Manual Daemon Reset Endpoint:** Send `POST /api/wake-daemon/reset`; verify `wakeDaemonService.forceStandby('manual_user_reset')` executes, returning state to `STANDBY` and dispatching client cancellation frames.
+8. **Phrases Portal Live Telemetry & Control UI:** Open `/ims/phrases` in the web application; verify the Background Wake Daemon status card renders with live state pill ('Silent Standby', 'Conversation Active'), 15s silence countdown, active bye phrase indicators, and functional 'Force Standby' button.
+
 ## Section 3: Defensive Engineering Invariants
 1. Hardware watchdog timer (WDT) and auto-reconnect logic on ESP32 WebSocket disconnects.
 2. Anti-stutter ring buffer and I2S DMA queue sizing on ESP32 PSRAM to prevent audio underflow/overflow.
@@ -394,6 +405,7 @@
 50. Direct Research Text Sanitization, Prompt Window Bounding & User Arbitration Sovereignty Invariant: in `reviewResearchText` (`t1dRulebookService.js`), pasted research text is defensively validated for minimum character length (>=20 chars) and bounded to 100,000 characters before prompt composition, ensuring Gemini Flash context budgets are preserved alongside the active rulebook. AI audit responses are sanitized of markdown code fences and parsed into structured findings without silently altering active rulebook state; all conflicts and enhancements require explicit, audited user arbitration.
 51. Run Planner Custom Carbs & Effort-Scaled Exertion Invariant: in `runPlanService.js`, faster planned paces scale glucose uptake rate (`exRate`) exponentially via `(speedRatio)^1.35`, directly increasing carb demands for faster runs. When `customCarbs` is supplied, stops are proportionally scaled or injected mid-run, and the full simulation curve recalculates without desynchronising `inputs` and `plan.predicted` metrics. In `ActivitiesPortal.jsx`, post-run debrief notes (incident reports, walking miles, fatigue, delayed carbs) and Gemini adaptive recommendations are stored atomically in `activity_debrief` and merged into run insights without blocking standard Strava sync or throwing on unlogged runs.
 52. Blood Glucose Profile Insight Empirical Math & AID Safety Invariant: in `glucoseInsightService.js` and `GlucosePortal.jsx`, empirical basal drift analysis strictly isolates post-absorptive windows (no meal boluses or carb logs within 2.5h) across the 6 physiological blocks (specifically 12:00-16:00 and 00:00-06:00) to isolate pure basal drift from meal excursions. IC ratio analysis correlates +2h to +3h postprandial glucose to identify under/over-bolusing. Diurnal ISF analysis measures real glucose drops per unit from carb-free correction boluses across Morning, Afternoon, and Night against the flat 1.6 baseline. All clinical suggestions explicitly require conservative trial and consultation with the clinical care team, and profile resets preserve the runner's baseline "20u standard day" profile.
+53. Wake Daemon Standby Silence & Inactivity Termination Invariant: in `wakeDaemonService.js` and `index.js`, the local background wake daemon maintains sovereign authority over conversation lifecycle across hardware and web sessions. When the conversation is idle for 15,000ms with no genuine user speech or upon detecting active farewell phrases ('bye', 'thanks bye', 'that's all IMS'), the daemon unconditionally dispatches `{ cancelConversation: true }` to the client, closes/resets upstream Gemini sessions, transitions state to `STANDBY`, and guarantees microphone streaming is fully halted so ambient room sound cannot keep the device listening or trigger unsolicited speech.
 
 
 

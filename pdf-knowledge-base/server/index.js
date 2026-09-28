@@ -105,6 +105,8 @@ import { describeCollectionForIms } from './services/boardgamesService.js';
 import { campaignsForIms } from './services/campaignsService.js';
 import phrasesRoutes from './routes/phrases.js';
 import { matchesWake, matchesStop } from './services/phrasesService.js';
+import wakeDaemonRoutes from './routes/wakeDaemon.js';
+import { wakeDaemonService, DAEMON_STATES } from './services/wakeDaemonService.js';
 import { createTask, describeTasksForIms } from './services/tasksService.js';
 import appDb, { addMemory, getMemories, searchMemories, deleteMemory } from './db/database.js';
 import { getWeather } from './services/weatherService.js';
@@ -214,6 +216,7 @@ app.use('/api/timers', scheduledRouter('timer'));
 app.use('/api/reminders', scheduledRouter('reminder'));
 app.use('/api/day-report', dayReportRoutes);
 app.use('/api/code-repo', codeRepoRoutes);
+app.use('/api/wake-daemon', wakeDaemonRoutes);
 
 // Live figures for the System Architecture page (/ims/architecture).
 app.get('/api/system/architecture', async (req, res) => {
@@ -514,18 +517,15 @@ const looksAddressed = (t) => {
   const text = String(t || '').trim();
   const opening = text.split(/\s+/).slice(0, 5).join(' ');
   if (WAKE_RX.test(text) || NAME_TOKEN.test(opening) || GREETING_ONLY.test(text) || matchesWake(text)) return true; // + spellings recorded on /ims/phrases
-  // A wake phrase is only a few words, and speech-to-text garbles it differently every time
-  // ("Eh up IMS" -> "I am I am", "Ayo Pimsup him's"). For short utterances Gemini's own judgement
-  // from the audio decides; only longer sentences with nothing name-like are blocked - that's
-  // people talking in the room.
-  return text.split(/\s+/).filter(Boolean).length <= 4;
+  if (wakeDaemonService.isWakePhrase(text).matches) return true;
+  return false;
 };
 // Strict enough to overrule Gemini's own "no wake phrase" verdict: a recorded spelling, the full
 // wake phrase, or a short utterance ending in something like the name ("Neyo Pims", "radio Pims").
 const heardLikeWake = (t) => {
   const text = String(t || '').trim();
   if (!text) return false;
-  if (matchesWake(text) || WAKE_RX.test(text)) return true;
+  if (matchesWake(text) || WAKE_RX.test(text) || wakeDaemonService.isWakePhrase(text).matches) return true;
   const words = text.split(/\s+/).filter(Boolean);
   return words.length <= 4 && /\b(\w*pims|\w*pms|ims|ems|eems|him's|hims|hymns?|m's)\W*$/i.test(text);
 };
@@ -689,6 +689,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     try { logCapture(`[${new Date().toISOString()}] ${tag} SILENCE CLOSE (15s)\n`); } catch (_) { }
     isConversationActive = false;
     touchToTalkActive = false;
+    wakeDaemonService.forceStandby('silence_timeout');
     try { currentGeminiWs.close(1000, 'Silence timeout'); } catch (_) { }
     currentGeminiWs = null;
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(isHardware ? { cancelConversation: true } : { sessionIdle: true }));
@@ -772,9 +773,9 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // "IMS stop" / "stop IMS" at any point - including while Ims is "thinking" - cancels
   // the whole conversation: nothing more is said, Gemini's work is abandoned (its
   // connection is closed) and the device goes back to plain standby. Silent.
-  const cancelConversation = () => {
-    console.log(`${tag} ✋ Stop command heard - cancelling the conversation, back to standby`);
-    try { logCapture(`[${new Date().toISOString()}] ${tag} STOP COMMAND - CONVERSATION CANCELLED\n`); } catch (_) { }
+  const cancelConversation = (reason = 'user_cancel') => {
+    console.log(`${tag} ✋ Stop command / farewell heard - cancelling conversation, back to standby (${reason})`);
+    try { logCapture(`[${new Date().toISOString()}] ${tag} STOP/FAREWELL - CONVERSATION CANCELLED (${reason})\n`); } catch (_) { }
     isConversationActive = false;
     touchToTalkActive = false;
     currentTurnComplete = true;
@@ -786,6 +787,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ cancelConversation: true }));
     if (stopAllRinging() > 0) pushScheduleStatus(); // it also silences a ringing alarm/timer/reminder
     unsolicitedTurn = true; // anything Gemini still sends for the cancelled request is dropped
+    wakeDaemonService.forceStandby(reason);
     restartUpstream();
   };
   let turnCompleteAt = 0; // when currentTurnComplete last flipped true - see isModelSpeakingNow's POST_TURN_ECHO_GRACE_MS
@@ -1048,13 +1050,35 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         if (isHardware) {
           const heardForStop = parsed.serverContent?.inputTranscription?.text;
           if (heardForStop) {
-            stopWindow = (stopWindow + heardForStop).slice(-70);
-            if (isCancelCommand(stopWindow) || matchesStop(stopWindow)) { cancelConversation(); return; }
+            stopWindow = (stopWindow + ' ' + heardForStop).slice(-70);
+            if (isCancelCommand(stopWindow) || matchesStop(stopWindow) || wakeDaemonService.isFarewellPhrase(stopWindow).matches) {
+              cancelConversation('bye_phrase');
+              return;
+            }
           }
           if (parsed.serverContent?.inputTranscription?.text) {
             userTranscriptSeen = true; unsolicitedTurn = false;
             if (!heardStartAt) heardStartAt = Date.now();
-            heardThisTurn = (heardThisTurn + parsed.serverContent.inputTranscription.text).slice(-400);
+            const incomingTranscript = parsed.serverContent.inputTranscription.text;
+            heardThisTurn = (heardThisTurn + incomingTranscript).slice(-400);
+
+            // Wake Daemon user speech assessment
+            const speechEval = wakeDaemonService.processUserSpeech(incomingTranscript, 'hardware');
+            if (speechEval.action === 'farewell_detected') {
+              console.log(`${tag} 👋 Farewell phrase detected by Wake Daemon ("${speechEval.phrase}")`);
+              if (speechEval.isSoleFarewell) {
+                cancelConversation('bye_phrase');
+                return;
+              }
+            } else if (speechEval.action === 'wake_accepted') {
+              isConversationActive = true;
+            } else if (speechEval.action === 'wake_rejected') {
+              unsolicitedTurn = true;
+              paceFlush();
+              if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ noWakeDetected: true }));
+              return;
+            }
+
             if (judgePendingUntil) {
               judgePendingUntil = 0;
               if (!looksAddressed(heardThisTurn)) {
@@ -1119,6 +1143,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
         // Check for incoming audio parts
         if (parsed.serverContent?.modelTurn?.parts) {
+          wakeDaemonService.notifyModelSpeechStart();
           for (const part of parsed.serverContent.modelTurn.parts) {
             if (part.inlineData?.mimeType?.startsWith('audio/') && part.inlineData.data) {
               lastModelAudioTime = Date.now();
@@ -1225,6 +1250,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         }
 
         if (parsed.serverContent?.turnComplete) {
+          wakeDaemonService.notifyModelSpeechEnd();
           if (!parsed.toolCall) {
             currentTurnComplete = true; // Gemini confirmed the turn ended cleanly
             turnCompleteAt = Date.now();
@@ -1782,6 +1808,22 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
   currentGeminiWs = createGeminiSocket();
 
+  const clientType = isHardware ? 'hardware' : imsWeb ? 'web' : 'browser';
+  wakeDaemonService.registerClient(clientType, {
+    sendControl: (payload) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(payload));
+      }
+    },
+    closeUpstream: (reason) => {
+      if (currentGeminiWs && (currentGeminiWs.readyState === WebSocket.OPEN || currentGeminiWs.readyState === WebSocket.CONNECTING)) {
+        try { currentGeminiWs.close(1000, `WakeDaemon: ${reason}`); } catch (_) {}
+        currentGeminiWs = null;
+      }
+    },
+    logCapture
+  });
+
   const ensureGeminiSocket = () => {
     if (!currentGeminiWs || currentGeminiWs.readyState === WebSocket.CLOSED || currentGeminiWs.readyState === WebSocket.CLOSING) {
       console.log(`${tag} Re-establishing upstream Gemini Live connection on demand...`);
@@ -1831,6 +1873,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           console.log(`${tag} 🔒 Hardware session closed by device. Resetting conversation state.`);
           isConversationActive = false;
           touchToTalkActive = false;
+          wakeDaemonService.forceStandby('device_session_closed');
           try {
             logCapture(`[${new Date().toISOString()}] ${tag} SESSION CLOSED BY DEVICE\n`);
           } catch (_) { }
@@ -1844,6 +1887,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           console.log(`${tag} 👆 Touch-to-talk initiated by device.`);
           isConversationActive = true;
           touchToTalkActive = true;
+          wakeDaemonService.notifyTouchToTalk(clientType);
           try {
             logCapture(`[${new Date().toISOString()}] ${tag} TOUCH TO TALK INITIATED\n`);
           } catch (_) { }
@@ -1858,6 +1902,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     if (isBinary) {
       ws.isHardwareClient = true;
       if (isHardware && !isRecordingActive()) micAudioChunks.push(Buffer.from(message)); // never keep call audio on disk
+      wakeDaemonService.notifyCandidateStart(clientType);
 
       // Acoustic echo barge-in protection:
       // While Gemini is actively generating speech chunks, suppress forwarding mic audio so
@@ -2042,6 +2087,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
   ws.on('close', (code, reason) => {
     isClientClosed = true;
+    wakeDaemonService.unregisterClient(clientType);
     paceFlush();
     if (silenceTimer) clearInterval(silenceTimer);
     if (offRecordingChange) offRecordingChange();

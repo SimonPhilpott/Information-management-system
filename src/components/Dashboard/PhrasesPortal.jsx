@@ -1,8 +1,189 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { MessageSquareQuote, Mic, Square, Plus, Trash2, X, Play, RotateCw } from 'lucide-react';
+import { MessageSquareQuote, Mic, Square, Plus, Trash2, X, Play, RotateCw, Activity, ShieldCheck, Clock, Power, VolumeX, CheckCircle2, RotateCcw, Sparkles } from 'lucide-react';
 import PortalShell from './PortalShell';
 
 const DEVICE_SECONDS = 3;
+
+function WakeDaemonMonitorCard({ isDark, notify }) {
+  const [status, setStatus] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [resetting, setResetting] = useState(false);
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/wake-daemon/status');
+      const d = await res.json();
+      if (d.success && d.status) {
+        setStatus(d.status);
+      }
+    } catch (_) {
+      // Background poll failure silently handled
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStatus();
+    const timer = setInterval(fetchStatus, 2500);
+    return () => clearInterval(timer);
+  }, [fetchStatus]);
+
+  const handleReset = async () => {
+    setResetting(true);
+    try {
+      const res = await fetch('/api/wake-daemon/reset', { method: 'POST' });
+      const d = await res.json();
+      if (d.success) {
+        setStatus(d.status);
+        notify('Wake daemon and device forced to Silent Standby', 'success');
+      } else {
+        notify(d.error || 'Failed to reset daemon', 'error');
+      }
+    } catch (err) {
+      notify(err.message, 'error');
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const border = isDark ? 'border-white/10' : 'border-[#2E2B27]/10';
+  const cardBg = isDark ? 'bg-slate-900/60' : 'bg-white/80';
+
+  const stateColors = {
+    STANDBY: {
+      badge: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+      dot: 'bg-emerald-500',
+      label: 'Silent Standby',
+      desc: 'Microphone audio streaming is inactive. IMS only wakes when authorised wake phrases are invoked or the screen is tapped.'
+    },
+    VERIFYING: {
+      badge: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+      dot: 'bg-amber-500 animate-ping',
+      label: 'Verifying Candidate',
+      desc: 'Candidate audio detected. Daemon is actively verifying whether authorised wake phrases were spoken.'
+    },
+    CONVERSATION_ACTIVE: {
+      badge: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+      dot: 'bg-purple-400 animate-pulse',
+      label: 'Conversation Active',
+      desc: 'Dialogue open. Follow-ups accepted without repeating wake words. Inactivity watchdog active.'
+    },
+    CLOSING: {
+      badge: 'bg-rose-500/15 text-rose-400 border-rose-500/30',
+      dot: 'bg-rose-500',
+      label: 'Closing Conversation',
+      desc: 'Farewell or silence watchdog triggered. Returning device to silent standby.'
+    }
+  };
+
+  const curr = (status && stateColors[status.state]) ? stateColors[status.state] : stateColors.STANDBY;
+  const silenceSecRemaining = status ? Math.ceil((status.silenceRemainingMs || 0) / 1000) : 15;
+
+  return (
+    <div className={`rounded-2xl border ${border} p-5 ${cardBg} shadow-sm backdrop-blur-md flex flex-col gap-4`}>
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-inherit">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-fuchsia-500 to-purple-600 flex items-center justify-center text-white shadow-md shadow-purple-500/20">
+            <Activity size={17} />
+          </div>
+          <div>
+            <h2 className="text-sm font-black tracking-tight flex items-center gap-2">
+              Background Wake Daemon
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Service Running
+              </span>
+            </h2>
+            <p className="text-[11px] text-slate-500">
+              Local background service managing wake recognition, 15-second silence auto-close, and active bye phrase termination
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={handleReset}
+          disabled={resetting}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border ${
+            isDark ? 'border-white/10 hover:bg-white/5 text-slate-300' : 'border-slate-200 hover:bg-slate-100 text-slate-700'
+          }`}
+          title="Force immediate return to Standby and cut off mic streaming"
+        >
+          <RotateCcw size={12} className={resetting ? 'animate-spin' : ''} />
+          Force Standby
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* State Tile */}
+        <div className={`p-3.5 rounded-xl border ${border} ${isDark ? 'bg-slate-950/40' : 'bg-slate-50'} flex flex-col justify-between gap-2`}>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Device State</span>
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${curr.badge}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${curr.dot}`} />
+              {curr.label}
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500 leading-snug">
+            {curr.desc}
+          </p>
+        </div>
+
+        {/* Silence Watchdog Tile */}
+        <div className={`p-3.5 rounded-xl border ${border} ${isDark ? 'bg-slate-950/40' : 'bg-slate-50'} flex flex-col justify-between gap-2`}>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Silence Watchdog</span>
+            <span className="text-xs font-black text-purple-400 flex items-center gap-1">
+              <Clock size={12} />
+              {status?.state === 'CONVERSATION_ACTIVE' ? `${silenceSecRemaining}s remaining` : '15s Watchdog Ready'}
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500 leading-snug">
+            {status?.state === 'CONVERSATION_ACTIVE'
+              ? `Conversation terminates automatically in ${silenceSecRemaining}s if silent, stopping mic streaming and returning to standby.`
+              : 'When talking, staying silent for 15s automatically terminates the dialogue and halts device mic streaming.'}
+          </p>
+        </div>
+
+        {/* Active Bye Phrases Tile */}
+        <div className={`p-3.5 rounded-xl border ${border} ${isDark ? 'bg-slate-950/40' : 'bg-slate-50'} flex flex-col justify-between gap-2`}>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Active 'Bye' Termination</span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">
+              <Sparkles size={10} /> Active Gating
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500 leading-snug">
+            Actively intercepts "bye", "goodbye", "thanks bye", and "that's all IMS" to close conversation immediately without waiting for tool calls.
+          </p>
+        </div>
+      </div>
+
+      {/* Telemetry Summary Bar */}
+      {status && (
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 text-[11px] text-slate-500 border-t border-inherit">
+          <div className="flex items-center gap-4">
+            <span>
+              Last Wake: <strong className="text-slate-300 font-semibold">{status.lastWakePhrase || 'None yet'}</strong>
+            </span>
+            <span>
+              Last Close Reason: <strong className="text-slate-300 font-semibold">{status.lastCloseReason || 'Boot'}</strong>
+            </span>
+            <span>
+              Conversations Handled: <strong className="text-slate-300 font-semibold">{status.conversationsCount || 0}</strong>
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-slate-500">Service Uptime:</span>
+            <span className="font-mono text-xs text-slate-400">
+              {Math.floor((status.uptimeSeconds || 0) / 60)}m {(status.uptimeSeconds || 0) % 60}s
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function PhraseCard({ p, isDark, onChanged, notify }) {
   const [state, setState] = useState('idle'); // idle | recording | working
@@ -119,6 +300,10 @@ export default function PhrasesPortal({ theme = 'dark', onThemeToggle, setCurren
     <PortalShell title="Wake and Stop Phrases" subtitle="/ims/phrases • what wakes Ims up and what stops him"
       icon={MessageSquareQuote} gradient="from-fuchsia-500 to-purple-600" glow="rgba(192,38,211,0.3)"
       isDark={isDark} onThemeToggle={onThemeToggle} setCurrentPath={setCurrentPath} notification={notification} maxWidth="max-w-4xl">
+      
+      {/* Live Background Wake Daemon Monitor */}
+      <WakeDaemonMonitorCard isDark={isDark} notify={notify} />
+
       <div className={`${panel} text-xs text-slate-500`}>
         Speech-to-text often writes these short phrases oddly ("Hey IMS" can come out as "HMs"). Press Record on Ims, then say the phrase to the desk unit within 3 seconds (its screen shows "Say the phrase now") - it records with its own microphone, the one it really listens with. Do each a few times. IMS runs the recording through the same speech-to-text Ims listens with, and adds any new spelling to the list. Ims then recognises those spellings too. You can edit the lists by hand. Speak from where you'd normally talk to Ims. He needs to be on standby (not mid-conversation).
       </div>

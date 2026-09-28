@@ -591,6 +591,20 @@
         "Diurnal ISF analysis measuring empirical mmol/L drops per unit from carb-free corrections across Morning, Afternoon, and Night vs flat 1.6",
         "Gemini Flash clinical audit addressing profile health, specific rate/ratio adjustments, diurnal variation, and safe 2-3 step action plan"
       ]
+    },
+    "Background Wake Daemon & Conversation Lifecycle Service": {
+      "status": "enabled",
+      "description": "Local server background daemon and conversational lifecycle service managing accurate wake phrase recognition ('Hey IMS', 'Hi IMS', 'Eh up IMS'), active 'Bye' phrase termination ('bye', 'goodbye', 'thanks bye', 'that's all IMS'), strict 15-second conversational inactivity silence watchdog, hardware mic streaming cut-off, and real-time operational telemetry.",
+      "subFeatures": [
+        "Lightweight server-side background wake daemon running continuously on local server (wakeDaemonService.js)",
+        "Accurate wake phrase recognition engine validating authorised phrases ('Hey IMS', 'Hi IMS', 'Eh up IMS' and Yorkshire variants)",
+        "Elimination of ambient room noise false triggers by removing loose unaddressed short-sentence wake overrides",
+        "Active 'Bye' phrase termination intercepting farewell phrases ('bye', 'goodbye', 'thanks bye', 'that's all IMS') to close session immediately",
+        "Strict 15-second conversational silence inactivity watchdog returning hardware client cleanly to Silent Standby",
+        "Hardware desk terminal mic streaming cut-off guarantee upon conversation termination, halting raw audio frames and muting speaker",
+        "Comprehensive operational health and telemetry REST endpoints (GET /api/wake-daemon/status and POST /api/wake-daemon/reset)",
+        "Real-time Wake Daemon Monitor card in PhrasesPortal (/ims/phrases) with live state pill, silence countdown, and force standby control"
+      ]
     }
   }
 }

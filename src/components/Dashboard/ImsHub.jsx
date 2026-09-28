@@ -134,7 +134,7 @@ const LINKS = [
   {
     path: '/ims/phrases',
     title: 'Wake and Stop Phrases',
-    description: 'Record yourself saying the wake and stop phrases so Ims always recognises them, and add new ones.',
+    description: 'Background Wake Daemon, 15-second silence auto-close watchdog, active bye phrases, and custom speech recordings.',
     icon: MessageSquareQuote,
     gradient: 'from-fuchsia-500 to-purple-600',
     glow: 'rgba(192,38,211,0.3)'
