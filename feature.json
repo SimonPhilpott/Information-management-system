@@ -576,6 +576,21 @@
         "Dedicated SQLite activity_debrief persistence preserving runner notes independently of Strava sync",
         "Gemini Flash adaptive run scrutiny correlating runner field notes with CGM curves to provide actionable suggestions for future runs"
       ]
+    },
+    "Blood Glucose Profile Insights & Continuous Fine-Tuning Workbench": {
+      "status": "enabled",
+      "description": "Continuously evaluative blood glucose and AID pump settings workbench in GlucosePortal. Evaluates real continuous glucose readings (ns_entries), temp basals, meal boluses (ns_treatments), and corrective doses to answer: Is basal too high or too low (specifically 12pm-4pm and overnight)? Is IC ratio wrong and for which meal windows? Is ISF too high or too low and does it vary diurnally? Includes interactive 24h step-chart visualization, hourly +/- fine-tuning steppers, and Gemini Flash clinical synthesis.",
+      "subFeatures": [
+        "Default baseline profile initialized accurately from runner AndroidAPS 20u standard day schedule (IC, ISF flat 1.6, and 20.75 U basal)",
+        "Interactive tabbed profile schedule editor with BAS (Basal sum calculation), IC (Carb Ratio), and ISF (Insulin Sensitivity Factor)",
+        "24-hour SVG step-line charts for basal and ratio profiles with special visual highlight on the 12:00-16:00 afternoon window",
+        "Hourly parameter fine-tuning steppers (+/- 0.05 U/h basal, +/- 0.5 g/U IC, +/- 0.1 mmol/L/U ISF) with persistence and baseline reset",
+        "Empirical basal rate drift analysis across 6 physiological time blocks, isolating post-absorptive drift rate and loop delivered offsets",
+        "Dedicated scrutiny of 12:00-16:00 afternoon window and 00:00-06:00 overnight window with TOO LOW, TOO HIGH, or BALANCED verdicts",
+        "Meal-specific IC ratio evaluation correlating carb logs with +2h to +3h postprandial excursions, excursion delta, and % post-meal highs (>10.0)",
+        "Diurnal ISF analysis measuring empirical mmol/L drops per unit from carb-free corrections across Morning, Afternoon, and Night vs flat 1.6",
+        "Gemini Flash clinical audit addressing profile health, specific rate/ratio adjustments, diurnal variation, and safe 2-3 step action plan"
+      ]
     }
   }
 }

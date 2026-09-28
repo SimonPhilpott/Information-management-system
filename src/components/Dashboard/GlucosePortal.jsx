@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Droplets, RotateCw, Sparkles, ChevronLeft, ChevronRight, Plus, Trash2, AlertTriangle, Moon, Database, ExternalLink, Eraser, Camera, Loader2, X, Check } from 'lucide-react';
+import {
+  Droplets, RotateCw, Sparkles, ChevronLeft, ChevronRight, Plus, Trash2, AlertTriangle,
+  Moon, Database, ExternalLink, Eraser, Camera, Loader2, X, Check, Sliders, Activity,
+  TrendingUp, TrendingDown, Clock, Save, RotateCcw, AlertCircle, CheckCircle2
+} from 'lucide-react';
 
 const MONGO_URL = 'https://cloud.mongodb.com/v2/5fabc4b4fcf8b709ce8ab13c#/explorer/6542751e47463e28ff4eeb80';
 const NIGHTSCOUT_URL = 'https://simon-philpott-nightscout.herokuapp.com';
@@ -112,6 +116,64 @@ function Profile({ profile, isDark }) {
   );
 }
 
+// Visual Step-Line SVG representing pump schedule across 24h
+function ProfileStepChart({ items = [], maxVal = 2.0, unit = 'U/h', isDark = true, highlightAfternoon = false }) {
+  const W = 680, H = 130, L = 36, R = 12, T = 12, B = 22;
+  const grid = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+
+  // Build 24 hour points array
+  const sorted = [...items].sort((a, b) => a.time.localeCompare(b.time));
+  const hourly = [];
+  for (let h = 0; h < 24; h++) {
+    let val = sorted[0]?.value || 0;
+    for (const item of sorted) {
+      const ih = parseInt(item.time.split(':')[0], 10);
+      if (ih <= h) val = Number(item.value) || 0;
+      else break;
+    }
+    hourly.push({ h, val });
+  }
+
+  const x = (h) => L + (h / 24) * (W - L - R);
+  const y = (v) => T + (1 - Math.min(maxVal, Math.max(0, v)) / maxVal) * (H - T - B);
+
+  // Build step path
+  let pathD = `M ${x(0)} ${y(hourly[0].val)}`;
+  for (let h = 0; h < 24; h++) {
+    const curVal = hourly[h].val;
+    const nextH = h + 1;
+    pathD += ` L ${x(nextH)} ${y(curVal)}`;
+    if (nextH < 24) {
+      pathD += ` L ${x(nextH)} ${y(hourly[nextH].val)}`;
+    }
+  }
+
+  const yTicks = [0, maxVal * 0.5, maxVal].map((v) => Math.round(v * 10) / 10);
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full select-none">
+      {/* 12pm - 4pm focus window shading */}
+      {highlightAfternoon && (
+        <rect x={x(12)} y={T} width={x(16) - x(12)} height={H - T - B} fill="rgba(56,189,248,0.12)" rx={2} />
+      )}
+      {/* Grid lines */}
+      {yTicks.map((v) => (
+        <g key={v}>
+          <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke={grid} strokeDasharray="2 2" />
+          <text x={L - 4} y={y(v) + 3} fontSize="9" textAnchor="end" fill="#94a3b8">{v}</text>
+        </g>
+      ))}
+      {[0, 6, 12, 18, 24].map((h) => (
+        <text key={h} x={x(h)} y={H - 6} fontSize="9" textAnchor="middle" fill="#94a3b8">{String(h % 24).padStart(2, '0')}:00</text>
+      ))}
+      {highlightAfternoon && (
+        <text x={x(14)} y={T + 12} fontSize="9" textAnchor="middle" fill="#38bdf8" fontWeight="bold">12:00 - 16:00 Focus</text>
+      )}
+      <path d={pathD} fill="none" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
   const isDark = theme === 'dark';
   const [days, setDays] = useState(14);
@@ -127,6 +189,15 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
   const [autoClear, setAutoClear] = useState(null);
   const [busy, setBusy] = useState('');
   const [notification, setNotification] = useState(null);
+
+  // Profile Insights & Fine-Tuning State
+  const [profile, setProfile] = useState(null);
+  const [profileDirty, setProfileDirty] = useState(false);
+  const [profileTab, setProfileTab] = useState('BAS'); // 'BAS' | 'IC' | 'ISF'
+  const [evalDays, setEvalDays] = useState(14);
+  const [evalData, setEvalData] = useState(null);
+  const [evalBusy, setEvalBusy] = useState(false);
+
   const notify = (msg, type = 'success') => { setNotification({ msg, type }); setTimeout(() => setNotification(null), 3500); };
   const panel = `rounded-2xl border p-5 ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/70 border-[#2E2B27]/10 shadow-sm'}`;
   const field = `px-3 py-2 rounded-lg text-xs outline-none border ${isDark ? 'bg-slate-950/60 border-white/10' : 'bg-white border-[#2E2B27]/10'}`;
@@ -145,9 +216,34 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
     if (d.success) setCarbs(d.carbs);
   }, []);
 
+  const loadProfile = useCallback(async () => {
+    try {
+      const res = await (await fetch('/api/glucose-hub/profile')).json();
+      if (res.success && res.profile) {
+        setProfile(res.profile);
+        setProfileDirty(false);
+      }
+    } catch (err) {
+      console.error('[GlucosePortal] Failed to load profile:', err);
+    }
+  }, []);
+
+  const loadEvaluation = useCallback(async () => {
+    try {
+      const res = await (await fetch('/api/glucose-hub/profile/evaluation')).json();
+      if (res.success && res.evaluation) {
+        setEvalData(res.evaluation);
+      }
+    } catch (err) {
+      console.error('[GlucosePortal] Failed to load evaluation:', err);
+    }
+  }, []);
+
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadDay(); }, [loadDay]);
   useEffect(() => { loadCarbs(); }, [loadCarbs]);
+  useEffect(() => { loadProfile(); }, [loadProfile]);
+  useEffect(() => { loadEvaluation(); }, [loadEvaluation]);
   useEffect(() => { fetch('/api/glucose-hub/nightscout').then((r) => r.json()).then((d) => { if (d.success) { setNsWrite(d.configured); setDbSize(d.dbSize); setAutoClear(d.autoClear); } }).catch(() => {}); }, []);
   useEffect(() => { const t = setInterval(() => { load(); if (day === todayStr()) loadDay(); }, 60000); return () => clearInterval(t); }, [load, loadDay, day]);
 
@@ -192,6 +288,102 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
       setSummary((s) => ({ ...s, insight: d.insight }));
     } catch (err) { notify(err.message, 'error'); } finally { setBusy(''); }
   };
+
+  // --- Profile Fine-Tuning Actions ---
+  const adjustBasal = (index, delta) => {
+    if (!profile?.basal) return;
+    const nextBasal = [...profile.basal];
+    const curVal = Number(nextBasal[index].value) || 0;
+    const newVal = Math.max(0.05, Math.round((curVal + delta) * 100) / 100);
+    nextBasal[index] = { ...nextBasal[index], value: newVal };
+    setProfile({ ...profile, basal: nextBasal });
+    setProfileDirty(true);
+  };
+
+  const adjustIC = (index, delta) => {
+    if (!profile?.ic) return;
+    const nextIC = [...profile.ic];
+    const curVal = Number(nextIC[index].value) || 0;
+    const newVal = Math.max(2.0, Math.round((curVal + delta) * 10) / 10);
+    nextIC[index] = { ...nextIC[index], value: newVal };
+    setProfile({ ...profile, ic: nextIC });
+    setProfileDirty(true);
+  };
+
+  const adjustISF = (index, delta) => {
+    if (!profile?.isf) return;
+    const nextISF = [...profile.isf];
+    const curVal = Number(nextISF[index].value) || 0;
+    const newVal = Math.max(0.5, Math.round((curVal + delta) * 10) / 10);
+    nextISF[index] = { ...nextISF[index], value: newVal };
+    setProfile({ ...profile, isf: nextISF });
+    setProfileDirty(true);
+  };
+
+  const saveActiveProfile = async () => {
+    if (!profile) return;
+    try {
+      const res = await (await fetch('/api/glucose-hub/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profile)
+      })).json();
+      if (!res.success) throw new Error(res.error);
+      setProfile(res.profile);
+      setProfileDirty(false);
+      notify('Profile saved.');
+    } catch (err) {
+      notify(err.message, 'error');
+    }
+  };
+
+  const resetActiveProfile = async () => {
+    if (!window.confirm('Reset fine-tuned profile back to baseline 20u Standard Day?')) return;
+    try {
+      const res = await (await fetch('/api/glucose-hub/profile/reset', { method: 'POST' })).json();
+      if (!res.success) throw new Error(res.error);
+      setProfile(res.profile);
+      setProfileDirty(false);
+      notify('Profile reset to 20u Standard Day baseline.');
+    } catch (err) {
+      notify(err.message, 'error');
+    }
+  };
+
+  const runProfileEvaluation = async () => {
+    setEvalBusy(true);
+    try {
+      const res = await (await fetch('/api/glucose-hub/profile/evaluate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days: evalDays, profile })
+      })).json();
+      if (!res.success) throw new Error(res.error);
+      setEvalData(res.evaluation);
+      notify(`Profile evaluated over ${evalDays} days of data.`);
+    } catch (err) {
+      notify(err.message, 'error');
+    } finally {
+      setEvalBusy(false);
+    }
+  };
+
+  // Compute daily basal sum
+  const totalBasal = useMemo(() => {
+    if (!profile?.basal) return 20.75;
+    const sorted = [...profile.basal].sort((a, b) => a.time.localeCompare(b.time));
+    let total = 0;
+    for (let h = 0; h < 24; h++) {
+      let val = sorted[0]?.value || 0.5;
+      for (const b of sorted) {
+        const bh = parseInt(b.time.split(':')[0], 10);
+        if (bh <= h) val = b.value;
+        else break;
+      }
+      total += val;
+    }
+    return Math.round(total * 100) / 100;
+  }, [profile?.basal]);
 
   const cur = summary?.current;
   const s = summary?.stats, p = summary?.previous;
@@ -344,6 +536,463 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
         </div>
       </div>
 
+      {/* ========================================================================= */}
+      {/* PROFILE INSIGHTS & CONTINUOUS FINE-TUNING WORKBENCH                       */}
+      {/* ========================================================================= */}
+      <div className={`${panel} border-sky-500/20`}>
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <Sliders size={16} className="text-sky-400" />
+              <h2 className="text-sm font-black uppercase tracking-wider">Pump Profile & Fine-Tuning Insights</h2>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Continuously evaluates AndroidAPS telemetry (basal rates, meal boluses, corrective sensitivity) against real glucose data.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {profileDirty && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                Unsaved tweaks
+              </span>
+            )}
+            <button
+              onClick={saveActiveProfile}
+              disabled={!profileDirty}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all ${
+                profileDirty
+                  ? 'bg-sky-500 text-white border-sky-400 shadow-lg shadow-sky-500/20'
+                  : 'border-slate-500/20 text-slate-500 opacity-50'
+              }`}
+            >
+              <Save size={13} /> Save Profile
+            </button>
+            <button
+              onClick={resetActiveProfile}
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 border border-slate-500/20 hover:bg-white/5 text-slate-400`}
+              title="Reset to 20u Standard Day baseline"
+            >
+              <RotateCcw size={12} /> Reset
+            </button>
+          </div>
+        </div>
+
+        {/* Profile Tabs: BAS, IC, ISF mirroring user's AndroidAPS */}
+        <div className={`flex items-center gap-2 border-b pb-3 mb-4 ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
+          <button
+            onClick={() => setProfileTab('BAS')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-black tracking-wider uppercase transition-all ${
+              profileTab === 'BAS'
+                ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            BAS (Basal Σ{totalBasal} U)
+          </button>
+          <button
+            onClick={() => setProfileTab('IC')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-black tracking-wider uppercase transition-all ${
+              profileTab === 'IC'
+                ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            IC (Carb Ratio)
+          </button>
+          <button
+            onClick={() => setProfileTab('ISF')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-black tracking-wider uppercase transition-all ${
+              profileTab === 'ISF'
+                ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            ISF (Sensitivity)
+          </button>
+        </div>
+
+        {/* Active Tab View */}
+        {profile && (
+          <div className="mb-6">
+            {profileTab === 'BAS' && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-400">Scheduled 24h Basal Curve (Total: <span className="text-sky-400 font-extrabold">{totalBasal} U/day</span>)</span>
+                  <span className="text-[11px] text-slate-500">12:00 - 16:00 is highlighted for focused drift scrutiny</span>
+                </div>
+                <div className={`p-3 rounded-xl border mb-4 ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-[#2E2B27]/5'}`}>
+                  <ProfileStepChart items={profile.basal} maxVal={2.0} unit="U/h" isDark={isDark} highlightAfternoon={true} />
+                </div>
+                {/* Hourly stepper rows */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                  {profile.basal.map((b, idx) => (
+                    <div
+                      key={b.time}
+                      className={`p-2 rounded-xl border flex flex-col items-center justify-between transition-all ${
+                        parseInt(b.time.split(':')[0], 10) >= 12 && parseInt(b.time.split(':')[0], 10) < 16
+                          ? 'border-sky-500/40 bg-sky-500/10'
+                          : isDark ? 'border-white/5 bg-slate-950/30' : 'border-[#2E2B27]/5 bg-white'
+                      }`}
+                    >
+                      <span className="text-[11px] font-mono text-slate-400 mb-1">{b.time}</span>
+                      <span className="text-sm font-black tabular-nums text-sky-400 mb-1.5">{b.value.toFixed(2)} <span className="text-[10px] font-normal text-slate-400">U/h</span></span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => adjustBasal(idx, -0.05)}
+                          className="w-6 h-6 rounded-md bg-slate-500/20 hover:bg-slate-500/40 flex items-center justify-center font-bold text-xs"
+                          title="Decrease 0.05 U/h"
+                        >
+                          -
+                        </button>
+                        <button
+                          onClick={() => adjustBasal(idx, 0.05)}
+                          className="w-6 h-6 rounded-md bg-slate-500/20 hover:bg-slate-500/40 flex items-center justify-center font-bold text-xs"
+                          title="Increase 0.05 U/h"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {profileTab === 'IC' && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-400">Scheduled Insulin-to-Carb Ratios (grams per Unit)</span>
+                  <span className="text-[11px] text-slate-500">Lower g/U = more insulin (stronger) · Higher g/U = less insulin (gentler)</span>
+                </div>
+                <div className={`p-3 rounded-xl border mb-4 ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-[#2E2B27]/5'}`}>
+                  <ProfileStepChart items={profile.ic} maxVal={12.0} unit="g/U" isDark={isDark} />
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {profile.ic.map((item, idx) => (
+                    <div key={item.time} className={`p-3 rounded-xl border flex flex-col items-center justify-between ${isDark ? 'border-white/5 bg-slate-950/30' : 'border-[#2E2B27]/5 bg-white'}`}>
+                      <span className="text-xs font-mono text-slate-400 mb-1">{item.time}</span>
+                      <span className="text-base font-black tabular-nums text-amber-400 mb-2">{item.value.toFixed(1)} <span className="text-[10px] font-normal text-slate-400">g/U</span></span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => adjustIC(idx, -0.5)}
+                          className="px-2 py-1 rounded bg-slate-500/20 hover:bg-slate-500/40 font-bold text-xs"
+                          title="Decrease 0.5 g/U (Stronger bolus)"
+                        >
+                          - 0.5
+                        </button>
+                        <button
+                          onClick={() => adjustIC(idx, 0.5)}
+                          className="px-2 py-1 rounded bg-slate-500/20 hover:bg-slate-500/40 font-bold text-xs"
+                          title="Increase 0.5 g/U (Gentler bolus)"
+                        >
+                          + 0.5
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {profileTab === 'ISF' && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-400">Scheduled Insulin Sensitivity Factor (mmol/L drop per Unit)</span>
+                  <span className="text-[11px] text-slate-500">Currently scheduled flat across 24 hours</span>
+                </div>
+                <div className={`p-3 rounded-xl border mb-4 ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-[#2E2B27]/5'}`}>
+                  <ProfileStepChart items={profile.isf} maxVal={3.0} unit="mmol/L/U" isDark={isDark} />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {profile.isf.map((item, idx) => (
+                    <div key={item.time} className={`p-3 rounded-xl border flex flex-col items-center justify-between ${isDark ? 'border-white/5 bg-slate-950/30' : 'border-[#2E2B27]/5 bg-white'}`}>
+                      <span className="text-xs font-mono text-slate-400 mb-1">{item.time} (All Day)</span>
+                      <span className="text-base font-black tabular-nums text-emerald-400 mb-2">{item.value.toFixed(1)} <span className="text-[10px] font-normal text-slate-400">mmol/L per U</span></span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => adjustISF(idx, -0.1)}
+                          className="px-2.5 py-1 rounded bg-slate-500/20 hover:bg-slate-500/40 font-bold text-xs"
+                          title="Decrease 0.1 mmol/L/U"
+                        >
+                          - 0.1
+                        </button>
+                        <button
+                          onClick={() => adjustISF(idx, 0.1)}
+                          className="px-2.5 py-1 rounded bg-slate-500/20 hover:bg-slate-500/40 font-bold text-xs"
+                          title="Increase 0.1 mmol/L/U"
+                        >
+                          + 0.1
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Evaluation Control Bar */}
+        <div className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 mb-6 ${isDark ? 'bg-slate-950/50 border-white/10' : 'bg-slate-100 border-[#2E2B27]/10'}`}>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-400">Evaluation Window:</span>
+            {[7, 14, 30].map((d) => (
+              <button
+                key={d}
+                onClick={() => setEvalDays(d)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                  evalDays === d
+                    ? 'bg-sky-500 text-white shadow-sm'
+                    : isDark ? 'text-slate-400 hover:bg-white/5' : 'text-slate-600 hover:bg-black/5'
+                }`}
+              >
+                {d} Days
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={runProfileEvaluation}
+            disabled={evalBusy}
+            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-lg shadow-sky-500/20 disabled:opacity-50 transition-all`}
+          >
+            {evalBusy ? <RotateCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
+            {evalBusy ? 'Analysing Telemetry...' : 'Run Deep Profile Evaluation'}
+          </button>
+        </div>
+
+        {/* Evaluation Results & Telemetry Scorecards */}
+        {evalData?.metrics ? (
+          <div className="space-y-6">
+            {/* Telemetry Overview Badges */}
+            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+              <span className="flex items-center gap-1.5"><Activity size={13} className="text-sky-400" /> <b className="text-slate-200">{evalData.metrics.readingsEvaluated?.toLocaleString()}</b> CGM readings</span>
+              <span>•</span>
+              <span className="flex items-center gap-1.5"><Clock size={13} className="text-indigo-400" /> <b className="text-slate-200">{evalData.metrics.treatmentsEvaluated?.toLocaleString()}</b> treatments & temp basals</span>
+              <span>•</span>
+              <span className="text-[11px] text-slate-500">Evaluated on {new Date(evalData.at).toLocaleString('en-GB')}</span>
+            </div>
+
+            {/* Question 1: Basal Scrutiny (12pm - 4pm focus & Overnight) */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                  <Clock size={13} className="text-sky-400" />
+                  1. Basal Drift & Loop Delivered Offsets (12:00 - 16:00 & Overnight Focus)
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {evalData.metrics.basalBlocks?.map((bb) => (
+                  <div
+                    key={bb.id}
+                    className={`p-3.5 rounded-xl border flex flex-col justify-between transition-all ${
+                      bb.id === 'afternoon'
+                        ? 'border-sky-500/50 bg-sky-500/10 shadow-md shadow-sky-500/10'
+                        : bb.id === 'overnight'
+                        ? 'border-indigo-500/40 bg-indigo-500/10'
+                        : isDark ? 'border-white/5 bg-slate-950/30' : 'border-[#2E2B27]/5 bg-white'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-bold">{bb.name}</span>
+                        <span
+                          className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                            bb.verdict === 'TOO_LOW'
+                              ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                              : bb.verdict === 'TOO_HIGH'
+                              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                              : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          }`}
+                        >
+                          {bb.verdict === 'TOO_LOW' ? 'Rate Too Low' : bb.verdict === 'TOO_HIGH' ? 'Rate Too High' : 'Well Calibrated'}
+                        </span>
+                      </div>
+                      <div className="text-[11px] font-mono text-slate-400 mb-2">{bb.label}</div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+                        <div>
+                          <div className="text-[10px] text-slate-500">Scheduled Rate</div>
+                          <div className="font-bold tabular-nums">{bb.avgScheduled} U/h</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-500">Delivered Rate</div>
+                          <div className="font-bold tabular-nums text-sky-400">{bb.avgDelivered} U/h</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-500">Loop Offset</div>
+                          <div className={`font-bold tabular-nums ${bb.netOffset > 0 ? 'text-rose-400' : bb.netOffset < 0 ? 'text-amber-400' : 'text-slate-300'}`}>
+                            {bb.netOffset > 0 ? `+${bb.netOffset}` : bb.netOffset} U/h
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-500">Fasting Drift</div>
+                          <div className={`font-bold tabular-nums ${bb.meanDrift > 0.4 ? 'text-rose-400' : bb.meanDrift < -0.4 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                            {bb.meanDrift > 0 ? `+${bb.meanDrift}` : bb.meanDrift} mmol/h
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-[11px] text-slate-400 mt-1 pt-2 border-t border-white/5">
+                      <span className="font-medium">{bb.suggestion}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Question 2: IC Ratio Postprandial Excursions */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                  <TrendingUp size={13} className="text-amber-400" />
+                  2. Insulin-to-Carb (IC) Ratio Accuracy by Meal Window
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {evalData.metrics.mealBlocks?.map((mb) => (
+                  <div
+                    key={mb.id}
+                    className={`p-3.5 rounded-xl border flex flex-col justify-between ${
+                      isDark ? 'border-white/5 bg-slate-950/30' : 'border-[#2E2B27]/5 bg-white'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold">{mb.name}</span>
+                        <span
+                          className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                            mb.verdict === 'UNDER_BOLUSED'
+                              ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                              : mb.verdict === 'OVER_BOLUSED'
+                              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                              : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          }`}
+                        >
+                          {mb.verdict === 'UNDER_BOLUSED' ? 'Under-Bolused' : mb.verdict === 'OVER_BOLUSED' ? 'Over-Bolused' : 'Calibrated'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+                        <div>
+                          <div className="text-[10px] text-slate-500">Scheduled IC</div>
+                          <div className="font-bold tabular-nums">{mb.scheduledIC} g/U</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-500">Measured IC</div>
+                          <div className="font-bold tabular-nums text-amber-400">{mb.measuredIC} g/U</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-500">Avg Excursion</div>
+                          <div className={`font-bold tabular-nums ${mb.avgExcursion > 2.0 ? 'text-rose-400' : 'text-slate-300'}`}>
+                            {mb.avgExcursion > 0 ? `+${mb.avgExcursion}` : mb.avgExcursion} mmol/L
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-500">Post-Meal Highs</div>
+                          <div className={`font-bold tabular-nums ${mb.highPct > 40 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                            {mb.highPct}% ({mb.mealsObserved} meals)
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-[11px] text-slate-400 mt-1 pt-2 border-t border-white/5">
+                      <span>{mb.suggestion}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Question 3: Diurnal ISF Sensitivity Variance */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                  <Activity size={13} className="text-emerald-400" />
+                  3. ISF Calibration & Diurnal Sensitivity Variance (Flat 1.6 vs Real Drops)
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {evalData.metrics.isfBlocks?.map((ib) => (
+                  <div
+                    key={ib.id}
+                    className={`p-3.5 rounded-xl border flex flex-col justify-between ${
+                      isDark ? 'border-white/5 bg-slate-950/30' : 'border-[#2E2B27]/5 bg-white'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-bold">{ib.name}</span>
+                        <span
+                          className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                            ib.verdict === 'MORE_SENSITIVE'
+                              ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                              : ib.verdict === 'MORE_RESISTANT'
+                              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                              : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          }`}
+                        >
+                          {ib.verdict === 'MORE_SENSITIVE' ? 'More Sensitive' : ib.verdict === 'MORE_RESISTANT' ? 'More Resistant' : 'Matched'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+                        <div>
+                          <div className="text-[10px] text-slate-500">Profile ISF</div>
+                          <div className="font-bold tabular-nums">{ib.scheduledISF} mmol/L/U</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-500">Measured Drop</div>
+                          <div className="font-bold tabular-nums text-emerald-400">{ib.measuredISF} mmol/L/U</div>
+                        </div>
+                        <div className="col-span-2">
+                          <div className="text-[10px] text-slate-500">Variance from Flat 1.6</div>
+                          <div className="font-semibold text-xs text-slate-300">
+                            {ib.diff > 0 ? `+${ib.diff}` : ib.diff} mmol/L drop per Unit
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-[11px] text-slate-400 mt-1 pt-2 border-t border-white/5">
+                      <span>{ib.suggestion}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Question 4 & 5: AI Clinical Synthesis & Action Plan */}
+            {evalData.report && (
+              <div className={`p-4 rounded-xl border ${isDark ? 'bg-slate-950/60 border-sky-500/20' : 'bg-slate-50 border-[#2E2B27]/10'}`}>
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles size={15} className="text-sky-400" />
+                  <h3 className="text-xs font-black uppercase tracking-wider text-sky-400">
+                    Clinical Synthesis & Fine-Tuning Action Plan
+                  </h3>
+                </div>
+                <Prose text={evalData.report} className="text-sm leading-relaxed" />
+                <p className="text-[10px] text-slate-500 mt-3 pt-2 border-t border-white/5">
+                  Generated continuously from empirical AndroidAPS and CGM telemetry. Parameter adjustments should always be tested conservatively and aligned with your clinical diabetes care team.
+                </p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <p className="text-xs text-slate-400 mb-2">
+              Press <b>Run Deep Profile Evaluation</b> above to evaluate continuous glucose readings, temp basals, and carb boluses against your "20u standard day" profile.
+            </p>
+            <p className="text-[11px] text-slate-500">
+              This service performs automated drift analysis across 12pm-4pm and overnight, calculates meal excursion IC ratios, and checks diurnal ISF sensitivity.
+            </p>
+          </div>
+        )}
+      </div>
+
       {/* carbs */}
       <div className={panel}>
         <h2 className="text-xs font-black uppercase tracking-wider mb-1">Carb log</h2>
@@ -402,3 +1051,4 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
     </PortalShell>
   );
 }
+

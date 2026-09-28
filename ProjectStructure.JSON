@@ -302,6 +302,13 @@
         "pdf-knowledge-base/server/db/database.js",
         "pdf-knowledge-base/server/services/geminiService.js"
       ]
+    },
+    "pdf-knowledge-base/server/services/glucoseInsightService.js": {
+      "description": "Continuously evaluative blood glucose and AID pump settings service. Analyzes historical CGM entries, temp basals, meal boluses, and correction events to evaluate 12:00-16:00 and overnight basal drift, meal-specific IC ratio postprandial excursions, and diurnal ISF sensitivity variance against active AndroidAPS profiles, generating empirical metrics and Gemini clinical recommendations.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js",
+        "pdf-knowledge-base/server/config.js"
+      ]
     }
   }
 }

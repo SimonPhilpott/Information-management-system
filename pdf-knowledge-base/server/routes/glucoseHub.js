@@ -2,6 +2,7 @@ import express from 'express';
 import { Router } from 'express';
 import { estimateCarbsFromPhoto, getSummary, getDay, logCarbs, listCarbs, deleteCarbs, analyse, getSavedInsight, getNightscoutWriteStatus, setNightscoutSecret, testNightscoutWrite, getNightscoutDbSize, clearOldNightscout, getAutoClear, setAutoClear } from '../services/glucoseHubService.js';
 import { lookUpFood } from '../services/foodService.js';
+import { getProfile, saveProfile, resetProfile, getSavedEvaluation, evaluateProfile } from '../services/glucoseInsightService.js';
 
 const router = Router();
 const fail = (res, err, code = 500) => res.status(code).json({ success: false, error: err.message });
@@ -43,6 +44,24 @@ router.put('/nightscout', async (req, res) => {
     if (st.configured) await testNightscoutWrite();
     res.json({ success: true, ...st });
   } catch (err) { if (req.body?.secret) setNightscoutSecret(''); fail(res, err, 400); }
+});
+
+// Continuously evaluative profile and pump settings insight endpoints
+router.get('/profile', (req, res) => {
+  try { res.json({ success: true, profile: getProfile() }); } catch (err) { fail(res, err); }
+});
+router.put('/profile', (req, res) => {
+  try { res.json({ success: true, profile: saveProfile(req.body) }); } catch (err) { fail(res, err, 400); }
+});
+router.post('/profile/reset', (req, res) => {
+  try { res.json({ success: true, profile: resetProfile() }); } catch (err) { fail(res, err); }
+});
+router.get('/profile/evaluation', (req, res) => {
+  try { res.json({ success: true, evaluation: getSavedEvaluation() }); } catch (err) { fail(res, err); }
+});
+router.post('/profile/evaluate', async (req, res) => {
+  try { res.json({ success: true, evaluation: await evaluateProfile(req.body?.days, req.body?.profile) }); }
+  catch (err) { fail(res, err, 400); }
 });
 
 export default router;

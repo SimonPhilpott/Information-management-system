@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 44
-- Verified Features: 44
+- Total Registered Features: 45
+- Verified Features: 45
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -52,6 +52,7 @@
 | FEAT-042 | T1D Rulebook Book Upload, Indexing & AI Improvement Scanner | [RunPlannerPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlannerPortal.jsx) | Multi-format book upload, research text pasting workbench, text indexing, AI comparative scan, and interactive conflict resolution | PASS |
 | FEAT-043 | Bidirectional Pace & Estimated Time Editing in Run Plan | [RunPlannerPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlannerPortal.jsx) | Click Estimated Time chip, enter new time, verify pace chip updates and carb stops recalculate; click Average Pace chip, enter mm:ss, verify time chip updates and plan refreshes | PASS |
 | FEAT-044 | Run Planner Steppers, Effort Scaling & Post-Run Scrutiny Debrief | [RunPlannerPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlannerPortal.jsx) | Stepper chevrons, % delta badges, custom carbs recalculation, speedRatio^1.35 effort scaling, expected now card, and post-run debrief scrutiny | PASS |
+| FEAT-045 | Blood Glucose Profile Insights & Continuous Fine-Tuning Workbench | [glucoseInsightService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/glucoseInsightService.js) | Continuous evaluation of empirical glucose drift (12pm-4pm), meal IC ratio excursions, diurnal ISF variance, step-chart visualization, and Gemini clinical audit | PASS |
 
 
 
@@ -332,6 +333,14 @@
 6. **Post-Run Scrutiny Debrief & Notes:** In the Activities portal, open an activity debrief; enter runner notes (e.g. "Walked 2 miles due to low BG", "Felt fatigued", "Delayed carbs until 30 mins"); click `[Save Debrief Notes]` and verify persistence in `activity_debrief`.
 7. **Gemini Adaptive Scrutiny & Retrospective:** Click `[Scrutinise Run & Get Adaptive Suggestions]`; verify Gemini Flash correlates athlete field notes with the actual CGM trace, assesses whether starting carbs were needed or should have been delayed to 30 minutes, and provides structured suggestions for the next run.
 
+### Suite 45: Blood Glucose Profile Insights & Continuous Fine-Tuning Workbench (FEAT-045)
+1. **Profile Initialization & Tab Navigation:** Open Blood Glucose Portal (`/ims/glucose`); scroll to the Pump Profile & Fine-Tuning section; verify profile loads with "20u standard day" baseline and tabs for BAS (Basal Σ20.75 U), IC (Carb Ratio), and ISF (Sensitivity).
+2. **Interactive Schedule Fine-Tuning & Steppers:** In the BAS tab, verify the 24h step-chart renders with a highlighted 12:00-16:00 focus band. Click `[-]` and `[+]` on hourly basal rates; verify total basal dynamically updates and an "Unsaved tweaks" badge appears. Click `[Save Profile]`; verify persistence via `PUT /api/glucose-hub/profile`. Click `[Reset]` and verify restoration to 20u baseline.
+3. **Empirical Basal Drift & Offset Evaluation:** Select a 14-day evaluation window and click `[Run Deep Profile Evaluation]`. Verify the Basal Scrutiny card displays empirical metrics across the 6 physiological blocks, specifically isolating the 12:00-16:00 afternoon window and 00:00-06:00 overnight window with delivered rate vs scheduled rate, net loop offset, fasting drift rate, and verdict badge (`TOO LOW`, `TOO HIGH`, or `BALANCED`).
+4. **Meal-Specific IC Postprandial Excursions:** Inspect the IC Ratio Accuracy card; verify metrics for Breakfast, Late Morning, Lunch, Dinner, and Late Night show empirical IC, average 2-3h postprandial excursion ($\Delta$ mmol/L), % post-meal highs (>10.0), % hypos (<3.9), and specific adjustment suggestions.
+5. **Diurnal ISF Sensitivity Variance:** Inspect the ISF Calibration card; verify that carb-free correction boluses are evaluated across Morning, Afternoon, and Night windows to answer whether the runner is more sensitive or resistant relative to the flat 1.6 baseline.
+6. **Clinical Synthesis Action Plan:** Verify Gemini Flash generates a comprehensive clinical report formatted with bold headers and a 2-3 step safe fine-tuning plan.
+
 ## Section 3: Defensive Engineering Invariants
 1. Hardware watchdog timer (WDT) and auto-reconnect logic on ESP32 WebSocket disconnects.
 2. Anti-stutter ring buffer and I2S DMA queue sizing on ESP32 PSRAM to prevent audio underflow/overflow.
@@ -384,6 +393,8 @@
 49. T1D Book Literature Upload, Extraction & Arbitration Invariant: `t1dRulebookService.js` and `RunPlannerPortal.jsx` strictly preserve the user's sovereign authority over rulebook modifications; AI comparative scans flag clinical discrepancies and missing information as pending findings, and never mutate `t1d_running_rulebook` unless the user explicitly triggers an arbitration action (`replace` or `add`). In `index.js`, express body payload limits are raised to 50MB with urlencoded support to safely accommodate multi-chapter book PDFs, while `extractPdfText` parses pages defensively with fallback to text decoding on non-standard binary streams.
 50. Direct Research Text Sanitization, Prompt Window Bounding & User Arbitration Sovereignty Invariant: in `reviewResearchText` (`t1dRulebookService.js`), pasted research text is defensively validated for minimum character length (>=20 chars) and bounded to 100,000 characters before prompt composition, ensuring Gemini Flash context budgets are preserved alongside the active rulebook. AI audit responses are sanitized of markdown code fences and parsed into structured findings without silently altering active rulebook state; all conflicts and enhancements require explicit, audited user arbitration.
 51. Run Planner Custom Carbs & Effort-Scaled Exertion Invariant: in `runPlanService.js`, faster planned paces scale glucose uptake rate (`exRate`) exponentially via `(speedRatio)^1.35`, directly increasing carb demands for faster runs. When `customCarbs` is supplied, stops are proportionally scaled or injected mid-run, and the full simulation curve recalculates without desynchronising `inputs` and `plan.predicted` metrics. In `ActivitiesPortal.jsx`, post-run debrief notes (incident reports, walking miles, fatigue, delayed carbs) and Gemini adaptive recommendations are stored atomically in `activity_debrief` and merged into run insights without blocking standard Strava sync or throwing on unlogged runs.
+52. Blood Glucose Profile Insight Empirical Math & AID Safety Invariant: in `glucoseInsightService.js` and `GlucosePortal.jsx`, empirical basal drift analysis strictly isolates post-absorptive windows (no meal boluses or carb logs within 2.5h) across the 6 physiological blocks (specifically 12:00-16:00 and 00:00-06:00) to isolate pure basal drift from meal excursions. IC ratio analysis correlates +2h to +3h postprandial glucose to identify under/over-bolusing. Diurnal ISF analysis measures real glucose drops per unit from carb-free correction boluses across Morning, Afternoon, and Night against the flat 1.6 baseline. All clinical suggestions explicitly require conservative trial and consultation with the clinical care team, and profile resets preserve the runner's baseline "20u standard day" profile.
+
 
 
 
