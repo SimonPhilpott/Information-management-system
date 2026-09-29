@@ -348,6 +348,7 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
       const isTweak = overrides?.isTweak === true;
       const targetPace = overrides?.paceMinPerKm ?? (form.pace ? paceToMinPerKm(form.pace, units) : null);
       const targetCarbs = overrides?.customCarbs;
+      const targetCustomIntakes = overrides?.customIntakes ?? null;
       // Use live (possibly unsaved) targets so the chart reacts instantly to Tab 3 adjustments
       const liveTargets = targetsOverride ?? targets;
 
@@ -366,6 +367,7 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
         routeId: routeId || null,
         goalId: goalId || null,
         customCarbs: targetCarbs,
+        customIntakes: targetCustomIntakes,
         // Live target overrides — backend uses these instead of persisted DB values
         ...(liveTargets?.startTarget !== undefined ? { startTarget: Number(liveTargets.startTarget) } : {}),
         ...(liveTargets?.floor !== undefined ? { floor: Number(liveTargets.floor) } : {}),
@@ -429,6 +431,22 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
     const currentG = plan.plan.totalCarbs || 0;
     const newG = Math.max(0, currentG + deltaGrams);
     estimate({ isTweak: true, customCarbs: newG });
+  };
+
+  // Per-stop independent stepper: adjust only one milestone's grams.
+  // Sends the full modified intakes array so the backend re-simulates with exact values.
+  // Min per stop = 0 (zero = stop removed from simulation).
+  const stepStopCarbs = (stopIdx, deltaGrams) => {
+    if (!plan?.plan?.stops) return;
+    const stops = plan.plan.stops;
+    if (stopIdx < 0 || stopIdx >= stops.length) return;
+    // Build modified intakes from current stops — map back to intake format {t, g, kind}
+    const newIntakes = stops.map((s, i) => ({
+      t: s.minute,
+      g: i === stopIdx ? Math.max(0, (s.grams || 0) + deltaGrams) : (s.grams || 0),
+      kind: s.minute === 0 ? 'start' : 'run',
+    }));
+    estimate({ isTweak: true, customIntakes: newIntakes });
   };
 
   const saveTargets = async () => {
@@ -874,6 +892,7 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
               stepTime={stepTime}
               stepPace={stepPace}
               stepCarbs={stepCarbs}
+              stepStopCarbs={stepStopCarbs}
               timeEditFocus={timeEditFocus}
               setTimeEditFocus={setTimeEditFocus}
               timeEditDraft={timeEditDraft}

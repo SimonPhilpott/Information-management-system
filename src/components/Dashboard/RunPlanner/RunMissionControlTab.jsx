@@ -68,6 +68,7 @@ export default function RunMissionControlTab({
   stepTime,
   stepPace,
   stepCarbs,
+  stepStopCarbs,
   timeEditFocus,
   setTimeEditFocus,
   timeEditDraft,
@@ -657,6 +658,7 @@ export default function RunMissionControlTab({
               isDark={isDark}
               originalBaseline={originalBaseline}
               onStepCarbs={stepCarbs}
+              onStepStopCarbs={stepStopCarbs}
             />
 
             {/* When to Eat Table */}

@@ -411,9 +411,19 @@ export function estimatePlan(input = {}) {
     return { intakes, bg: simulate({ ...p, intakes }) };
   };
 
-  const customCarbs = input.customCarbs !== undefined && input.customCarbs !== null && input.customCarbs !== '' ? Math.max(0, Math.round(Number(input.customCarbs))) : null;
+  // customIntakes: per-stop explicit intake array from the frontend's per-stop steppers.
+  // Bypasses proportional redistribution so each milestone is independent.
+  // Shape: [{ t: minuteIntoRun, g: grams, kind: 'start'|'run' }, ...]
+  const rawCustomIntakes = Array.isArray(input.customIntakes) ? input.customIntakes : null;
+  const customCarbs = !rawCustomIntakes && input.customCarbs !== undefined && input.customCarbs !== null && input.customCarbs !== '' ? Math.max(0, Math.round(Number(input.customCarbs))) : null;
   let main = runPlan(startBg, iob);
-  if (customCarbs !== null) {
+  if (rawCustomIntakes !== null) {
+    // Use exact per-stop values; filter out zero-gram stops (user zeroed them)
+    const exactIntakes = rawCustomIntakes
+      .map((it) => ({ ...it, g: Math.max(0, Math.round(Number(it.g) || 0)) }))
+      .filter((it) => it.g > 0);
+    main = { intakes: exactIntakes, bg: simulate({ ...params, intakes: exactIntakes }) };
+  } else if (customCarbs !== null) {
     if (customCarbs === 0) {
       main = { intakes: [], bg: simulate({ ...params, intakes: [] }) };
     } else {

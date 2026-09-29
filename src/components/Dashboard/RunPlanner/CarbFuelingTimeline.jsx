@@ -1,5 +1,5 @@
 import React from 'react';
-import { Cookie, Clock, Sparkles, ChevronDown, ChevronUp, AlertCircle, Droplets, Zap } from 'lucide-react';
+import { Cookie, Clock, Sparkles, AlertCircle, Droplets, Zap, ChevronUp, ChevronDown } from 'lucide-react';
 import { dist } from '../../../utils/units';
 
 // Helper for delta badge
@@ -8,7 +8,7 @@ const renderDeltaBadge = (current, baseline, type = 'carbs', isDark = true) => {
   const pct = Math.round(((current - baseline) / baseline) * 100);
   if (pct === 0) return <span className={`text-[10px] font-black tabular-nums px-2 py-0.5 rounded-full ${isDark ? 'bg-white/10 text-slate-300' : 'bg-[#2E2B27]/10 text-[#2E2B27]'}`}>0%</span>;
   const isPos = pct > 0;
-  const tone = isPos 
+  const tone = isPos
     ? (isDark ? 'text-yellow-400 bg-yellow-500/15 border-yellow-500/30' : 'text-amber-950 bg-amber-100 border-amber-300 font-bold')
     : (isDark ? 'text-amber-400 bg-amber-500/15 border-amber-500/30' : 'text-orange-950 bg-orange-100 border-orange-300 font-bold');
   return (
@@ -68,15 +68,24 @@ export function PlanChart({ plan, isDark }) {
 }
 
 /**
- * Infographic Carb Fueling Timeline component:
- * Visualises carb intake milestones, grams, absorption timing, and glucose trajectory.
+ * Infographic Carb Fueling Timeline component.
+ *
+ * Props:
+ *   onStepCarbs(delta)         – global Total Fuel ± stepper (proportional rebalance via customCarbs)
+ *   onStepStopCarbs(idx, delta) – per-stop independent stepper (sends exact intakes via customIntakes)
+ *
+ * Per-stop rules:
+ *   - Each milestone's +/- is fully independent; changing one does NOT affect others.
+ *   - Minimum per stop = 0 g (zeroing a stop removes it from the simulation).
+ *   - Total Fuel and Fuel Rate chips react instantly after any per-stop change.
  */
 export default function CarbFuelingTimeline({
   plan = null,
   units = 'km',
   isDark = true,
   originalBaseline = null,
-  onStepCarbs = null
+  onStepCarbs = null,
+  onStepStopCarbs = null,
 }) {
   if (!plan) return null;
 
@@ -85,6 +94,14 @@ export default function CarbFuelingTimeline({
   const baselineCarbs = originalBaseline?.totalCarbs || totalCarbs;
   const durationMin = plan.run.durationMin || 60;
   const carbRatePerHour = durationMin > 0 ? Math.round((totalCarbs / (durationMin / 60))) : 0;
+
+  // Shared stepper button style
+  const stepBtn = (extraClass = '') =>
+    `w-7 h-7 rounded-lg flex items-center justify-center border active:scale-95 text-sm font-black transition-all select-none ${
+      isDark
+        ? 'border-white/10 bg-white/5 hover:bg-white/10 text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed'
+        : 'border-[#2E2B27]/20 bg-white hover:bg-amber-100 text-[#2E2B27] shadow-xs disabled:opacity-30 disabled:cursor-not-allowed'
+    } ${extraClass}`;
 
   return (
     <div className={`p-4 rounded-2xl border transition-all ${isDark ? 'bg-slate-900/40 border-white/10' : 'bg-white border-[#2E2B27]/10 shadow-sm'} mb-4`}>
@@ -96,7 +113,7 @@ export default function CarbFuelingTimeline({
           </div>
           <div>
             <h3 className={`text-xs font-black uppercase tracking-wider flex items-center gap-2 ${isDark ? 'text-slate-100' : 'text-[#2E2B27]'}`}>
-              Carb Strategy & Fueling Timeline
+              Carb Strategy &amp; Fueling Timeline
               {originalBaseline && renderDeltaBadge(totalCarbs, baselineCarbs, 'carbs', isDark)}
             </h3>
             <p className={`text-[11px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/80 font-medium'}`}>
@@ -105,30 +122,62 @@ export default function CarbFuelingTimeline({
           </div>
         </div>
 
-        {/* Aggregate KPI chips */}
+        {/* Aggregate KPI chips — Total Fuel and Fuel Rate react to per-stop changes */}
         <div className="flex items-center gap-2">
+          {/* Total Fuel — ± adjusts global total (proportional rebalance) */}
           <div className={`px-3 py-1.5 rounded-xl border text-right ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/15'}`}>
             <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/70'}`}>Total Fuel</div>
-            <div className={`text-sm font-black tabular-nums ${isDark ? 'text-yellow-400' : 'text-amber-950'}`}>{totalCarbs} <span className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-[#2E2B27]'}`}>g</span></div>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              {onStepCarbs && (
+                <button
+                  onClick={() => onStepCarbs(-5)}
+                  disabled={totalCarbs <= 0}
+                  className={stepBtn()}
+                  title="Reduce total carbs by 5g (rebalances all stops proportionally)"
+                >-</button>
+              )}
+              <span className={`text-sm font-black tabular-nums ${isDark ? 'text-yellow-400' : 'text-amber-950'}`}>
+                {totalCarbs} <span className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-[#2E2B27]'}`}>g</span>
+              </span>
+              {onStepCarbs && (
+                <button
+                  onClick={() => onStepCarbs(5)}
+                  className={stepBtn()}
+                  title="Increase total carbs by 5g (rebalances all stops proportionally)"
+                >+</button>
+              )}
+            </div>
+            {onStepCarbs && (
+              <div className={`text-[9px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>rebalances all stops</div>
+            )}
           </div>
+
+          {/* Fuel Rate — display only, derived from total */}
           <div className={`px-3 py-1.5 rounded-xl border text-right ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/15'}`}>
             <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/70'}`}>Fuel Rate</div>
-            <div className={`text-sm font-black tabular-nums ${isDark ? 'text-sky-400' : 'text-sky-900'}`}>{carbRatePerHour} <span className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-[#2E2B27]'}`}>g/h</span></div>
+            <div className={`text-sm font-black tabular-nums mt-0.5 ${isDark ? 'text-sky-400' : 'text-sky-900'}`}>
+              {carbRatePerHour} <span className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-[#2E2B27]'}`}>g/h</span>
+            </div>
           </div>
+
           <div className={`px-3 py-1.5 rounded-xl border text-right ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/15'}`}>
             <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/70'}`}>Stops</div>
-            <div className={`text-sm font-black tabular-nums ${isDark ? 'text-emerald-400' : 'text-emerald-900'}`}>{stops.length}</div>
+            <div className={`text-sm font-black tabular-nums mt-0.5 ${isDark ? 'text-emerald-400' : 'text-emerald-900'}`}>{stops.length}</div>
           </div>
         </div>
       </div>
 
-      {/* Visual Timeline Milestones Bar */}
+      {/* Visual Timeline Milestones */}
       {stops.length > 0 ? (
         <div className="mb-5">
-          <div className={`text-xs font-black uppercase tracking-wider mb-3 flex items-center gap-1.5 ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>
+          <div className={`text-xs font-black uppercase tracking-wider mb-1 flex items-center gap-1.5 ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>
             <Clock size={13} className={isDark ? 'text-amber-400' : 'text-amber-700'} />
             Milestone Fueling Schedule
           </div>
+          <p className={`text-[11px] mb-3 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
+            Each stop is independent — adjust one without affecting others. Set to 0 g to remove a stop.{' '}
+            {onStepCarbs && 'Use Total Fuel ± above to rebalance all stops proportionally.'}
+          </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {stops.map((s, idx) => (
@@ -140,7 +189,7 @@ export default function CarbFuelingTimeline({
                     : 'bg-[#FAF7F2] border-amber-500/30 hover:border-amber-600/50 shadow-sm'
                 }`}
               >
-                {/* Step Index & Time Badge */}
+                {/* Stop header */}
                 <div className="flex items-center justify-between mb-2.5">
                   <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
                     isDark ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-amber-600 text-white font-black shadow-xs'
@@ -152,7 +201,7 @@ export default function CarbFuelingTimeline({
                   </span>
                 </div>
 
-                {/* Grams & Quick Steppers */}
+                {/* Grams value + per-stop independent ± steppers */}
                 <div className="flex items-center justify-between my-2">
                   <div className="flex items-center gap-2">
                     <span className={`text-lg font-black tabular-nums ${isDark ? 'text-yellow-400' : 'text-amber-950'}`}>
@@ -163,40 +212,33 @@ export default function CarbFuelingTimeline({
                     </span>
                   </div>
 
-                  {onStepCarbs && (
-                    <div className="flex items-center gap-1.5">
+                  {onStepStopCarbs && (
+                    <div className="flex flex-col items-center gap-1">
                       <button
-                        onClick={() => onStepCarbs(-5)}
-                        className={`w-7 h-7 rounded-lg flex items-center justify-center border active:scale-95 text-sm font-black transition-all ${
-                          isDark
-                            ? 'border-white/10 bg-white/5 hover:bg-white/10 text-slate-200'
-                            : 'border-[#2E2B27]/20 bg-white hover:bg-amber-100 text-[#2E2B27] shadow-xs'
-                        }`}
-                        title="Reduce plan carbs by 5g"
+                        onClick={() => onStepStopCarbs(idx, 5)}
+                        className={stepBtn()}
+                        title={`Increase stop ${idx + 1} by 5g (independent)`}
                       >
-                        -
+                        <ChevronUp size={14} />
                       </button>
                       <button
-                        onClick={() => onStepCarbs(5)}
-                        className={`w-7 h-7 rounded-lg flex items-center justify-center border active:scale-95 text-sm font-black transition-all ${
-                          isDark
-                            ? 'border-white/10 bg-white/5 hover:bg-white/10 text-slate-200'
-                            : 'border-[#2E2B27]/20 bg-white hover:bg-amber-100 text-[#2E2B27] shadow-xs'
-                        }`}
-                        title="Increase plan carbs by 5g"
+                        onClick={() => onStepStopCarbs(idx, -5)}
+                        disabled={s.grams <= 0}
+                        className={stepBtn()}
+                        title={`Decrease stop ${idx + 1} by 5g — set to 0 to remove`}
                       >
-                        +
+                        <ChevronDown size={14} />
                       </button>
                     </div>
                   )}
                 </div>
 
-                {/* Guidance Pill */}
+                {/* Guidance pill */}
                 <div className={`text-[11px] leading-snug mt-2 p-1.5 rounded-lg flex items-center gap-1.5 ${
                   isDark ? 'bg-amber-500/10 text-amber-200 border border-amber-500/20' : 'bg-amber-100/70 text-amber-950 border border-amber-300 font-medium'
                 }`}>
                   <Zap size={13} className="text-amber-600 shrink-0" />
-                  <span>Take before fatigue sets in. Chase with 2-3 sips water.</span>
+                  <span>{s.note || 'Take before fatigue sets in. Chase with 2-3 sips water.'}</span>
                 </div>
               </div>
             ))}
