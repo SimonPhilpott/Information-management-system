@@ -5,6 +5,7 @@ import {
   CloudSun, Apple, Music, Dices, Rss, Database, Layers, FileText, Lock, Settings, Boxes, Server, Code,
   Terminal, GitBranch, Clock, Timer, RefreshCw, Scale, ChevronRight, AlertTriangle, Info, Smile, Drama,
   MessageSquareQuote, Wifi, Newspaper, Heart, Radio, Speaker, Cake, Bell, ListChecks, Eye, Maximize2, Minimize2, Eraser,
+  UserPlus, Mail, ClipboardCopy, X, Check,
 } from 'lucide-react';
 import PortalShell from './PortalShell';
 import ImsFace from '../Ims/ImsFace';
@@ -33,7 +34,7 @@ const spokes = (live) => [
     key: 'owner', title: 'Owner and access', icon: Users, accent: 'purple', count: 2, side: 'right',
     rows: [
       { icon: User, main: 'Simon Philpott', sub: 'Owner - full access to everything', tag: 'Owner' },
-      { icon: Users, main: 'Invited guests', sub: 'Daniel - the Campaign Manager only, with a basic Google sign-in' },
+      { icon: Users, main: 'Invited guests', sub: 'Daniel - the Campaign Manager only, with a basic Google sign-in', action: 'invite' },
       { icon: KeyRound, main: 'Google sign-in (OAuth)', sub: 'Basic sign-in for all; Drive and Calendar scopes for the owner only' },
       { icon: ShieldCheck, main: 'Session check on everything', sub: 'Every /api route except sign-in, plus the live voice sockets' },
     ],
@@ -205,7 +206,8 @@ const rowHot = (hot, card, main) => hot?.[`${card}|${main}`];
 // The badge counts the card's own rows, so it can't drift from the list; Services counts its hub pages
 // (the number at the end of each group) instead.
 const countOf = (card) => (card.key === 'services' ? card.rows.reduce((n, r) => n + (Number((r.main.match(/(\d+)$/) || [])[1]) || 0), 0) : card.key === 'environment' ? null : card.rows.length);
-function Card({ card, isDark, cardRef, onOpen, hot, now = 0 }) {
+
+function Card({ card, isDark, cardRef, onOpen, onRowAction, hot, now = 0 }) {
   const a = ACCENTS[card.accent];
   const Icon = card.icon;
   const anyLit = card.rows.some((r) => Boolean(rowHot(hot, card.key, r.main)));
@@ -221,17 +223,22 @@ function Card({ card, isDark, cardRef, onOpen, hot, now = 0 }) {
       <div className="flex flex-col">
         {card.rows.map((r) => {
           const RowIcon = r.icon;
+          const isActionable = Boolean(r.action && onRowAction);
           return (
-            <div key={r.main} className={`flex items-start gap-2.5 rounded-md -mx-1.5 px-1.5 py-[1px] ${(() => { const h = rowHot(hot, card.key, r.main); return h?.pulse ? 'arch-pulse' : ''; })()}`}
+            <div key={r.main}
+              onClick={isActionable ? () => onRowAction(r.action) : undefined}
+              title={isActionable ? 'Click to open Invite & Access management' : undefined}
+              className={`flex items-start gap-2.5 rounded-md -mx-1.5 px-1.5 py-[2px] ${isActionable ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''} ${(() => { const h = rowHot(hot, card.key, r.main); return h?.pulse ? 'arch-pulse' : ''; })()}`}
               style={(() => {
                 const h = rowHot(hot, card.key, r.main);
-                return { backgroundColor: h ? `${a.line}40` : 'transparent', transition: 'background-color .3s ease-out', '--pulse': `${a.line}66` };
+                return { backgroundColor: h ? `${a.line}40` : undefined, transition: 'background-color .3s ease-out', '--pulse': `${a.line}66` };
               })()}>
               <RowIcon size={16} className={`${a.text} mt-0.5 shrink-0`} />
               <div className="min-w-0 flex-1">
                 <div className="text-[12.5px] font-semibold leading-tight flex items-center gap-2 flex-wrap">
                   {r.main}
                   {r.tag && <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${a.badge} ${a.text}`}>{r.tag}</span>}
+                  {isActionable && <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-purple-500/20 text-purple-400 hover:text-purple-300 flex items-center gap-1"><UserPlus size={10} /> Invite</span>}
                 </div>
                 <div className={`text-[11px] leading-tight ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{r.sub}</div>
               </div>
@@ -327,6 +334,199 @@ function formatUptime(s) {
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
 }
 
+// Invite modal for sharing with Daniel Philpott or other guests
+function ArchitectureInviteModal({ isOpen, onClose, isDark, toast }) {
+  const [list, setList] = useState([]);
+  const [signIns, setSignIns] = useState([]);
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/decks/invites');
+      const d = await res.json();
+      if (d.success) {
+        setList(d.invites || []);
+        setSignIns(d.signIns || []);
+      }
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) load();
+  }, [isOpen, load]);
+
+  if (!isOpen) return null;
+
+  const link = `${window.location.origin}/campaigns?invite=1`;
+
+  const addInvite = async (targetEmail) => {
+    const e = (targetEmail || email).trim();
+    if (!e) return;
+    setBusy(true);
+    try {
+      const res = await fetch('/api/decks/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: e }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        setEmail('');
+        load();
+        if (toast) toast(`${d.invite.email} can now sign in.`);
+      } else {
+        if (toast) toast(d.error || 'Failed to send invite', 'error');
+      }
+    } catch (err) {
+      if (toast) toast(err.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revoke = async (e) => {
+    if (!window.confirm(`Stop ${e} accessing IMS?`)) return;
+    try {
+      const res = await fetch(`/api/decks/invites/${encodeURIComponent(e)}`, { method: 'DELETE' });
+      const d = await res.json();
+      if (d.success) {
+        load();
+        if (toast) toast(`Access withdrawn for ${e}`);
+      }
+    } catch (err) {
+      if (toast) toast(err.message, 'error');
+    }
+  };
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(link).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      if (toast) toast('Invite link copied to clipboard.');
+    });
+  };
+
+  const mailtoDaniel = (e = 'daniel.philpott@gmail.com') => `mailto:${e}?subject=${encodeURIComponent('Join my IMS (Information Management System)')}&body=${encodeURIComponent(`Hi Daniel,\n\nI've added you to IMS. Open this link and sign in with your Google account (${e}):\n\n${link}\n\nYou'll get instant access to the Campaign Manager (Lord of the Rings and Arkham Horror LCGs) to build decks, see mine, test cards, and run AI insights.\n\nCheers,\nSimon`)}`;
+
+  const isDanielInvited = list.some((x) => x.email?.toLowerCase().includes('daniel') && !x.revokedAt);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className={`relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-3xl border p-6 shadow-2xl ${isDark ? 'bg-slate-900 border-white/10 text-slate-100' : 'bg-white border-slate-200 text-slate-900'}`}>
+        <button onClick={onClose} className={`absolute top-5 right-5 p-2 rounded-xl transition-colors ${isDark ? 'bg-white/5 hover:bg-white/10 text-slate-400' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>
+          <X size={18} />
+        </button>
+
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-2xl bg-purple-500/15 flex items-center justify-center text-purple-400">
+            <UserPlus size={20} />
+          </div>
+          <div>
+            <h2 className="text-lg font-black tracking-tight">Invite & Access Management</h2>
+            <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Share IMS Campaign Manager with family and guests via basic Google sign-in</p>
+          </div>
+        </div>
+
+        {/* Quick invite preset for Daniel Philpott */}
+        <div className={`p-4 rounded-2xl border mb-5 ${isDark ? 'bg-purple-950/20 border-purple-500/20' : 'bg-purple-50 border-purple-200'}`}>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-sm font-bold flex items-center gap-1.5 text-purple-400">
+                <User size={15} /> Daniel Philpott
+              </div>
+              <div className={`text-xs mt-0.5 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                {isDanielInvited ? 'Active guest access granted' : 'Quick one-click invite for your brother'}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <a href={mailtoDaniel()} className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 ${isDark ? 'bg-purple-500/20 hover:bg-purple-500/30 text-purple-300' : 'bg-purple-100 hover:bg-purple-200 text-purple-800'}`}>
+                <Mail size={13} /> Email Daniel
+              </a>
+              {!isDanielInvited && (
+                <button onClick={() => addInvite('daniel.philpott@gmail.com')} disabled={busy} className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white flex items-center gap-1">
+                  <UserPlus size={13} /> Grant Access
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Add standard email invite */}
+        <div className="mb-5">
+          <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Invite by Email</label>
+          <div className="flex gap-2">
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addInvite()} placeholder="guest.email@gmail.com"
+              className={`flex-1 min-w-0 px-3.5 py-2.5 rounded-xl text-sm outline-none border transition-colors ${isDark ? 'bg-slate-950/60 border-white/10 focus:border-purple-500' : 'bg-slate-50 border-slate-200 focus:border-purple-500'}`} />
+            <button onClick={() => addInvite()} disabled={busy || !email.trim()} className="px-4 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white flex items-center gap-1.5 disabled:opacity-40 shrink-0">
+              <UserPlus size={15} /> Invite
+            </button>
+          </div>
+          <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t border-white/5">
+            <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Invite link: <code className="text-[11px] opacity-80">{link}</code></span>
+            <button onClick={copyLink} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 ${isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-slate-100 hover:bg-slate-200'}`}>
+              {copied ? <Check size={13} className="text-emerald-400" /> : <ClipboardCopy size={13} />} {copied ? 'Copied' : 'Copy link'}
+            </button>
+          </div>
+        </div>
+
+        {/* Invited guests list */}
+        {list.length > 0 && (
+          <div className="mb-5">
+            <h3 className={`text-xs font-bold uppercase tracking-wider mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Active & Past Guests ({list.length})</h3>
+            <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
+              {list.map((x) => (
+                <div key={x.email} className={`rounded-xl border p-3 flex flex-wrap items-center justify-between gap-2 ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-slate-200'} ${x.revokedAt ? 'opacity-50' : ''}`}>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold flex items-center gap-2">
+                      <span className="truncate">{x.name || x.email}</span>
+                      {x.name && <span className={`text-xs font-normal ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>({x.email})</span>}
+                    </div>
+                    <div className={`text-[11px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      {x.revokedAt ? 'Access revoked' : x.lastSignInAt ? `Last active: ${new Date(x.lastSignInAt).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}` : 'Invited (pending sign-in)'} · {x.decks || 0} decks
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {!x.revokedAt ? (
+                      <>
+                        <a href={`mailto:${x.email}?subject=${encodeURIComponent('IMS Access')}&body=${encodeURIComponent(`Here is your invite link: ${link}`)}`} className={`p-1.5 rounded-lg ${isDark ? 'bg-white/5 hover:bg-white/10 text-slate-300' : 'bg-slate-200 hover:bg-slate-300 text-slate-700'}`} title="Email invite">
+                          <Mail size={13} />
+                        </a>
+                        <button onClick={() => revoke(x.email)} className="px-2.5 py-1 rounded-lg text-xs font-bold text-rose-500 hover:bg-rose-500/10">Withdraw</button>
+                      </>
+                    ) : (
+                      <button onClick={() => addInvite(x.email)} className={`px-2.5 py-1 rounded-lg text-xs font-bold ${isDark ? 'bg-white/10 hover:bg-white/20' : 'bg-slate-200 hover:bg-slate-300'}`}>Re-invite</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Recent sign-in attempts */}
+        {signIns.length > 0 && (
+          <div className="pt-3 border-t border-white/5">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className={`text-[11px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Recent Sign-In Telemetry</span>
+              <button onClick={load} className={`p-1 rounded text-xs ${isDark ? 'hover:bg-white/10' : 'hover:bg-slate-100'}`} title="Refresh"><RefreshCw size={11} /></button>
+            </div>
+            <div className="flex flex-col gap-1 max-h-28 overflow-y-auto">
+              {signIns.slice(0, 5).map((s, i) => (
+                <div key={i} className="text-xs flex items-center justify-between gap-2 py-0.5">
+                  <span className={`truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{s.email || '(unknown)'}</span>
+                  <span className={`font-bold ${s.outcome === 'signed-in' ? 'text-emerald-500' : 'text-rose-500'}`}>{s.outcome}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
   const isDark = theme === 'dark';
   const [live, setLive] = useState(null);
@@ -339,6 +539,14 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
   const togglePanel = () => setPanelOpen((v) => { keep('archPanel', !v); return !v; });
   const toggleSupport = () => setSupportOpen((v) => { keep('archSupport', !v); return !v; });
 
+  // Remember panel state across full screen toggling
+  const preFullscreenPanelRef = useRef(panelOpen);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
+  const toast = useCallback((msg, type = 'success') => {
+    setToastMessage({ msg, type });
+    setTimeout(() => setToastMessage(null), 3500);
+  }, []);
 
   // ---- test prompt: runs through Ims, lighting up each part of the map as it's used
   const [prompt, setPrompt] = useState('');
@@ -416,10 +624,22 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
     setZoom(z);
   }, []);
   useEffect(() => {
-    const onChange = () => { const on = document.fullscreenElement === fitRef.current; setFitted(on); if (!on) setZoom(1); };
+    const onChange = () => {
+      const on = document.fullscreenElement === fitRef.current;
+      setFitted(on);
+      if (on) {
+        // Entering fullscreen: remember right panel state and auto-collapse it
+        preFullscreenPanelRef.current = panelOpen;
+        setPanelOpen(false);
+      } else {
+        // Leaving fullscreen: restore zoom and restore previous panel state
+        setZoom(1);
+        setPanelOpen(preFullscreenPanelRef.current);
+      }
+    };
     document.addEventListener('fullscreenchange', onChange);
     return () => document.removeEventListener('fullscreenchange', onChange);
-  }, []);
+  }, [panelOpen]);
   useEffect(() => {
     if (!fitted) return undefined;
     const t = setTimeout(fit, 120);
@@ -450,24 +670,34 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
   const panelCls = `rounded-2xl border ${isDark ? 'bg-slate-900/80 border-white/10' : 'bg-white border-slate-200/80 shadow-[0_6px_24px_rgba(15,23,42,0.06)]'}`;
   const online = live?.deviceOnline;
 
+  const handleRowAction = (action) => {
+    if (action === 'invite') setInviteModalOpen(true);
+  };
+
   const place = (key, cls) => (
     <div className={cls}>
       <Card card={byKey[key]} isDark={isDark} hot={hot} now={now} cardRef={(el) => { cardRefs.current[key] = el; }}
-        onOpen={() => openTab(key === 'data' ? 'data' : key === 'pipeline' ? 'turn' : 'overview')} />
+        onOpen={() => openTab(key === 'data' ? 'data' : key === 'pipeline' ? 'turn' : 'overview')}
+        onRowAction={handleRowAction} />
     </div>
   );
 
   return (
     <PortalShell title="System Architecture" subtitle="/ims/architecture • how Ims is built and how it all connects"
       icon={Network} gradient="from-fuchsia-500 to-violet-600" glow="rgba(168,85,247,0.3)"
-      isDark={isDark} onThemeToggle={onThemeToggle} setCurrentPath={setCurrentPath} maxWidth="max-w-[2200px]">
+      isDark={isDark} onThemeToggle={onThemeToggle} setCurrentPath={setCurrentPath} maxWidth="max-w-[2200px]"
+      notification={toastMessage}>
       <style>{`
         @keyframes archPulse { 0%, 100% { box-shadow: 0 0 0 0 var(--pulse); } 50% { box-shadow: 0 0 0 5px transparent; filter: brightness(1.15); } }
         .arch-pulse { animation: archPulse 1s ease-in-out infinite; }
       `}</style>
-      <div className="flex justify-end -mt-2 mb-2">
-        <button onClick={toggleFit} className={`px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 border ${isDark ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}`}>
-          <Maximize2 size={14} /> Fit to screen</button>
+      <div className="flex justify-end items-center gap-2 -mt-2 mb-2">
+        <button onClick={() => setInviteModalOpen(true)} className={`px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 border ${isDark ? 'border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20' : 'border-purple-200 bg-purple-50 text-purple-800 hover:bg-purple-100'}`}>
+          <UserPlus size={14} /> Invite & Guests
+        </button>
+        <button onClick={toggleFit} className={`px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 border ${isDark ? 'border-white/10 bg-white/5 hover:bg-white/10' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
+          <Maximize2 size={14} /> Fit to screen
+        </button>
       </div>
       <div ref={fitRef} className={`flex flex-col xl:flex-row gap-6 items-start ${fitted ? `overflow-hidden p-2 ${isDark ? 'bg-[#030712] text-slate-100' : 'bg-[#F4F1EC] text-slate-900'}` : ''}`}
         style={fitted ? { zoom } : undefined}>
@@ -545,7 +775,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
             <span className={`text-[11px] font-bold flex items-center gap-1 ${muted}`}>{supportOpen ? 'Hide' : 'Show'} <ChevronRight size={14} className={`transition-transform ${supportOpen ? '-rotate-90' : 'rotate-90'}`} /></span>
           </button>
           {supportOpen && supporting.map((c) => (
-            <div key={c.key}><Card card={c} isDark={isDark} hot={hot} now={now} /></div>
+            <div key={c.key}><Card card={c} isDark={isDark} hot={hot} now={now} onRowAction={handleRowAction} /></div>
           ))}
           </div>
         </div>
@@ -583,7 +813,12 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
             {tab === 'overview' && (
               <>
                 <section>
-                  <h3 className="font-bold mb-2">Key information</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-bold">Key information</h3>
+                    <button onClick={() => setInviteModalOpen(true)} className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 border ${isDark ? 'border-purple-500/30 bg-purple-500/10 text-purple-300' : 'border-purple-200 bg-purple-50 text-purple-700'}`}>
+                      <UserPlus size={13} /> Invite Guests
+                    </button>
+                  </div>
                   <dl className="grid grid-cols-[120px_1fr] gap-y-1.5 text-[12.5px]">
                     {[
                       ['Owner', 'Simon Philpott'],
@@ -687,6 +922,8 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
           </div>
         </aside>}
       </div>
+
+      <ArchitectureInviteModal isOpen={inviteModalOpen} onClose={() => setInviteModalOpen(false)} isDark={isDark} toast={toast} />
     </PortalShell>
   );
 }

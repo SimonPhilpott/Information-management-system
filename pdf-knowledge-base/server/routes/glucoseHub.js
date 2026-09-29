@@ -1,8 +1,16 @@
 import express from 'express';
 import { Router } from 'express';
-import { estimateCarbsFromPhoto, getSummary, getDay, logCarbs, listCarbs, deleteCarbs, analyse, getSavedInsight, getNightscoutWriteStatus, setNightscoutSecret, testNightscoutWrite, getNightscoutDbSize, clearOldNightscout, getAutoClear, setAutoClear } from '../services/glucoseHubService.js';
+import {
+  estimateCarbsFromPhoto, getSummary, getDay, logCarbs, listCarbs, deleteCarbs,
+  analyse, getSavedInsight, getNightscoutWriteStatus, setNightscoutSecret,
+  testNightscoutWrite, getNightscoutDbSize, clearOldNightscout, getAutoClear, setAutoClear,
+  getGlucoseThresholds, setGlucoseThresholds, resetGlucoseThresholds
+} from '../services/glucoseHubService.js';
 import { lookUpFood } from '../services/foodService.js';
 import { getProfile, saveProfile, resetProfile, getSavedEvaluation, evaluateProfile } from '../services/glucoseInsightService.js';
+import { invalidateDayReportCache } from '../services/morningReportService.js';
+import { generateGlucosePdf, sendGlucosePdfEmail, getEmailStatus } from '../services/glucosePdfService.js';
+
 
 const router = Router();
 const fail = (res, err, code = 500) => res.status(code).json({ success: false, error: err.message });
@@ -13,6 +21,26 @@ router.get('/summary', (req, res) => {
 router.get('/day', (req, res) => {
   try { res.json({ success: true, ...getDay(req.query.date) }); } catch (err) { fail(res, err); }
 });
+
+// Configurable blood glucose threshold bands
+router.get('/thresholds', (req, res) => {
+  try { res.json({ success: true, thresholds: getGlucoseThresholds() }); } catch (err) { fail(res, err); }
+});
+router.put('/thresholds', (req, res) => {
+  try {
+    const updated = setGlucoseThresholds(req.body);
+    invalidateDayReportCache();
+    res.json({ success: true, thresholds: updated });
+  } catch (err) { fail(res, err, 400); }
+});
+router.post('/thresholds/reset', (req, res) => {
+  try {
+    const reset = resetGlucoseThresholds();
+    invalidateDayReportCache();
+    res.json({ success: true, thresholds: reset });
+  } catch (err) { fail(res, err); }
+});
+
 router.post('/insight', async (req, res) => {
   try { res.json({ success: true, insight: await analyse(req.body?.days) }); } catch (err) { fail(res, err, 400); }
 });
@@ -64,4 +92,32 @@ router.post('/profile/evaluate', async (req, res) => {
   catch (err) { fail(res, err, 400); }
 });
 
+// PDF Generation & Email Dispatch Endpoints
+router.get('/report/email-status', (req, res) => {
+  try { res.json({ success: true, ...getEmailStatus() }); } catch (err) { fail(res, err); }
+});
+
+router.get('/report/pdf', async (req, res) => {
+  try {
+    const days = Number(req.query.days) || 14;
+    const { pdf, filename } = await generateGlucosePdf({ days });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(pdf);
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+router.post('/report/email', async (req, res) => {
+  try {
+    const { days = 14, recipientEmail, subject, note } = req.body || {};
+    const result = await sendGlucosePdfEmail({ days, recipientEmail, subject, note });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    fail(res, err, 400);
+  }
+});
+
 export default router;
+

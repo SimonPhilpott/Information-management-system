@@ -18,6 +18,7 @@ import { getSetting, setSetting } from '../db/database.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STATE_PATH = path.join(__dirname, '..', 'data', 'morning_report_state.json');
+const REPORT_CACHE_PATH = path.join(__dirname, '..', 'data', 'day_report_cache.json');
 
 const londonPartsFormatter = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23'
@@ -37,6 +38,117 @@ function readState() {
 function writeState(state) {
   fs.mkdirSync(path.dirname(STATE_PATH), { recursive: true });
   fs.writeFileSync(STATE_PATH, JSON.stringify(state, null, 2), 'utf8');
+}
+
+// ---------------------------------------------------------------------------
+// Pre-Assembled Day Report Cache
+// Assembles and caches the full report string in memory & disk in the background.
+// This allows getDayReport() and buildMorningReportDirective() to return within
+// <5ms, preventing ESP32 verify_timeout drops during voice interaction.
+// ---------------------------------------------------------------------------
+let memoryReportCache = null;
+let isPrewarming = false;
+let prewarmIntervalTimer = null;
+
+function readReportCacheDisk() {
+  try {
+    if (fs.existsSync(REPORT_CACHE_PATH)) {
+      return JSON.parse(fs.readFileSync(REPORT_CACHE_PATH, 'utf8'));
+    }
+  } catch (_) { /* ignore */ }
+  return null;
+}
+
+function writeReportCacheDisk(cacheData) {
+  try {
+    fs.mkdirSync(path.dirname(REPORT_CACHE_PATH), { recursive: true });
+    fs.writeFileSync(REPORT_CACHE_PATH, JSON.stringify(cacheData, null, 2), 'utf8');
+  } catch (err) {
+    console.warn('[MorningReport] Failed to write disk cache:', err.message);
+  }
+}
+
+/**
+ * Pre-warms the day report cache asynchronously in the background.
+ * Safe to call frequently; debounces duplicate concurrent runs.
+ */
+export async function prewarmDayReportCache({ markNews = false } = {}) {
+  if (isPrewarming) return memoryReportCache;
+  isPrewarming = true;
+  try {
+    const { whoLine, parts, hour } = await buildReportParts({ markNews });
+    const reportText = parts.join('  ');
+    const sectionCount = parts.length;
+    const cacheData = {
+      cachedAt: Date.now(),
+      hour,
+      whoLine,
+      parts,
+      reportText,
+      sectionCount
+    };
+    memoryReportCache = cacheData;
+    writeReportCacheDisk(cacheData);
+    return cacheData;
+  } catch (err) {
+    console.warn('[MorningReport] Background pre-warm failed:', err.message);
+    return memoryReportCache;
+  } finally {
+    isPrewarming = false;
+  }
+}
+
+/**
+ * Invalidates the in-memory and disk cache and triggers an immediate background refresh.
+ */
+export function invalidateDayReportCache() {
+  memoryReportCache = null;
+  // Trigger non-blocking async prewarm immediately
+  prewarmDayReportCache().catch((err) => {
+    console.warn('[MorningReport] Reactive refresh failed:', err.message);
+  });
+}
+
+/**
+ * Retrieves the pre-assembled report cache.
+ * Returns in <5ms if cache is available. If stale or missing, returns existing cache
+ * and triggers a background refresh, or builds immediately if cold.
+ */
+export async function getOrBuildReportCache({ forceRefresh = false, markNews = true } = {}) {
+  const now = Date.now();
+  // 1. Check memory cache (fresh within 15 minutes)
+  if (!forceRefresh && memoryReportCache && (now - memoryReportCache.cachedAt < 15 * 60 * 1000)) {
+    // If older than 3 minutes, schedule background refresh
+    if (now - memoryReportCache.cachedAt > 3 * 60 * 1000 && !isPrewarming) {
+      prewarmDayReportCache({ markNews: false }).catch(() => {});
+    }
+    return memoryReportCache;
+  }
+
+  // 2. Check disk cache
+  if (!forceRefresh) {
+    const disk = readReportCacheDisk();
+    if (disk && (now - disk.cachedAt < 15 * 60 * 1000)) {
+      memoryReportCache = disk;
+      if (now - disk.cachedAt > 3 * 60 * 1000 && !isPrewarming) {
+        prewarmDayReportCache({ markNews: false }).catch(() => {});
+      }
+      return disk;
+    }
+  }
+
+  // 3. Cold start or force refresh: build immediately
+  return await prewarmDayReportCache({ markNews });
+}
+
+// Automatically start periodic background pre-warming every 5 minutes
+if (!prewarmIntervalTimer) {
+  prewarmIntervalTimer = setInterval(() => {
+    prewarmDayReportCache({ markNews: false }).catch(() => {});
+  }, 5 * 60 * 1000);
+  if (typeof prewarmIntervalTimer.unref === 'function') {
+    prewarmIntervalTimer.unref();
+  }
 }
 
 // True only for the FIRST hardware session that starts on a given London
@@ -288,11 +400,13 @@ export function saveReportConfig(sections) {
   });
 
   setSetting('morning_report_config', JSON.stringify(cleaned));
+  invalidateDayReportCache();
   return getReportConfig();
 }
 
 export function resetReportConfig() {
   setSetting('morning_report_config', JSON.stringify(DEFAULT_REPORT_SECTIONS));
+  invalidateDayReportCache();
   return DEFAULT_REPORT_SECTIONS.map((s) => ({ ...s }));
 }
 
@@ -399,13 +513,28 @@ async function buildGlucoseNowSection(section, context) {
   try {
     const cur = getCurrentState();
     if (cur.bg != null && cur.bgFresh) {
+      const th = (await import('./glucoseHubService.js')).getGlucoseThresholds();
       const trend = cur.direction ? `, trend ${cur.direction}` : '';
       const iob = cur.iob != null ? `, ${cur.iob} units insulin on board` : '';
       let note = '';
-      if (cur.bg < 4) note = ' - that is low; suggest treating it before anything else';
-      else if (cur.bg < 5.5) note = ' - on the low side; worth having something before any run';
-      else if (cur.bg > 13) note = ' - running high';
-      let line = `Glucose right now: ${cur.bg} mmol/L${trend}${iob}${note}. If they mention running today, their usual aim is to start around 9 and never drop below 5.`;
+      const pLow = th.personalLow || 4.5;
+      const pHigh = th.personalHigh || th.tightHigh || 7.8;
+      if (cur.bg < th.veryLow) {
+        note = ` - that is very low (<${th.veryLow}); treat it urgently`;
+      } else if (cur.bg < th.low) {
+        note = ` - that is low (${th.veryLow}-${th.low}); treat before other activities`;
+      } else if (cur.bg < pLow) {
+        note = ` - on the low side of in range (${th.low}-${pLow})`;
+      } else if (cur.bg <= pHigh) {
+        note = ` - spot on, perfectly in range in your personal target (${pLow}-${pHigh})`;
+      } else if (cur.bg <= th.high) {
+        note = ` - on the high side of in range (${pHigh}-${th.high})`;
+      } else if (cur.bg <= th.veryHigh) {
+        note = ` - running high (${th.high}-${th.veryHigh})`;
+      } else {
+        note = ` - very high (>${th.veryHigh})`;
+      }
+      let line = `Glucose right now: ${cur.bg} mmol/L${trend}${iob}${note}. (For runs, target start is ~9 and never dropping below 5).`;
       if (section.customNote?.trim()) line += ` Note: ${section.customNote.trim()}.`;
       return line;
     }
@@ -417,7 +546,7 @@ async function buildGlucoseOvernightSection(section, context) {
   try {
     const n = getOvernight();
     if (n) {
-      let line = `Overnight: ${n.inRangePct}% in range, lowest ${n.min}${n.lows ? `, ${n.lows} low spell${n.lows > 1 ? 's' : ''}` : ''}, woke at ${n.endValue} mmol/L.`;
+      let line = `Overnight glucose summary: ${n.inRangePct}% in range, lowest ${n.min}${n.lows ? `, ${n.lows} low spell${n.lows > 1 ? 's' : ''}` : ''}, woke at ${n.endValue} mmol/L.`;
       if (section.customNote?.trim()) line += ` Note: ${section.customNote.trim()}.`;
       return line;
     }
@@ -668,28 +797,31 @@ export async function buildReportParts({ markNews = true } = {}) {
   return { whoLine, parts, hour };
 }
 
-const DELIVERY = "HOW TO DELIVER IT - IN YOUR YORKSHIRE ACCENT FROM THE FIRST WORD TO THE LAST (long reports are where it slips; hold the flat northern vowels and never sound an r after a vowel): this report is the one exception to your usual length limit - they ALWAYS want it IN FULL, however long that makes it. Cover EVERY section below and EVERY item within it, in the exact order presented below. Never drop, merge away or summarise out an item to keep it short; there is no sentence limit. Deliver it as a flowing spoken briefing rather than a bare list, linking items where they connect (rain and a run, a low overnight and a planned run, a busy afternoon and a pod change). Tell each news story once, in your own words, saying which source it's from; never repeat a story. Never give insulin doses. ";
+const DELIVERY = "HOW TO DELIVER IT - IN YOUR YORKSHIRE ACCENT FROM THE FIRST WORD TO THE LAST (long reports are where it slips; hold the flat northern vowels and never sound an r after a vowel): this report is the one exception to your usual length limit - they ALWAYS want it IN FULL, however long that makes it. Cover EVERY section below and EVERY item within it, in the exact sequential order presented below. STRICT NON-REPETITION RULE: deliver each section and each topic ONCE only in its designated slot. For example, once Omnipod & Sensor Device Status has been stated, NEVER repeat device status or pod/sensor dates later in the briefing or in other sections. Link items where they connect naturally (rain and a run, an overnight low and a planned run, a busy afternoon and a pod change). Understand the metrics: 3.9-10.0 mmol/L is IN RANGE and 5.0 mmol/L is perfectly spot-on, not low. Under 3.0 is very low, 3.0-3.9 is low, 10.0-13.9 is high, and over 13.9 is very high. Tell each news story once in your own words, saying which source it's from; never repeat a story. Never give insulin doses. ";
 
 // The first conversation of the day: offer the report, with its contents ready.
 export async function buildMorningReportDirective() {
-  const { whoLine, parts, hour } = await buildReportParts({ markNews: false });
+  const cached = await getOrBuildReportCache({ markNews: false });
+  const hour = cached.hour || londonNow().hour;
   const name = hour < 12 ? 'morning report' : 'day report';
-  return whoLine + `This is the user's first conversation with you today. As part of your greeting, briefly offer their ${name} in one short sentence. Only deliver it if they say yes; otherwise carry on normally. ` + DELIVERY + 'CONTENTS: ' + parts.join(' ');
+  return (cached.whoLine || '') + `This is the user's first conversation with you today. If the user asked for their ${name} or daily briefing directly in their opening turn, DELIVER IT IMMEDIATELY using the contents below without asking first. If they only greeted you, briefly offer their ${name} in one short sentence as part of your greeting, and deliver it when they say yes. ` + DELIVERY + 'CONTENTS: ' + cached.parts.join(' ');
 }
 
 // For the getDayReport tool, any time of day.
 export async function getDayReport() {
-  const { whoLine, parts, hour } = await buildReportParts();
+  const cached = await getOrBuildReportCache({ markNews: true });
+  const hour = cached.hour || londonNow().hour;
   // IMPORTANT: report is a single concatenated string, NOT an array.
   // Sending it as an array caused Gemini to treat each element as a
   // separate turn item and stop after the first batch (items 0-7) then
   // fire a turnComplete, so training/goals/news/tasks were never spoken.
-  const reportText = parts.join('  ');
-  const sectionCount = parts.length;
-  const countReminder = `CRITICAL: this report has ${sectionCount} sections. You MUST speak ALL ${sectionCount} sections without stopping, pausing between turns, or deciding you have covered enough. Do not stop after health or device status - continue straight into training, goals, tours, news, and tasks without any break. `;
+  const reportText = cached.reportText || cached.parts.join('  ');
+  const sectionCount = cached.sectionCount || cached.parts.length;
+  const countReminder = `CRITICAL: this report has ${sectionCount} sections. You MUST speak ALL ${sectionCount} sections in exact sequential order without stopping, pausing between turns, or deciding you have covered enough. STRICT NON-REPETITION: each topic (e.g. Omnipod & Sensor Device Status) must only be read once in its place and never repeated later. Do not stop after health or device status - continue straight into training, goals, tours, news, and tasks without any break. `;
   return {
     report: reportText,
     sectionCount,
-    instructions: whoLine + countReminder + DELIVERY + (hour >= 16 ? 'It is later in the day, so frame it as a day report / evening round-up and include tomorrow where given.' : '')
+    instructions: (cached.whoLine || '') + countReminder + DELIVERY + (hour >= 16 ? 'It is later in the day, so frame it as a day report / evening round-up and include tomorrow where given.' : '')
   };
 }
+

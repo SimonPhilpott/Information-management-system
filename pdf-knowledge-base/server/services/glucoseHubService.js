@@ -12,7 +12,64 @@ import { encryptSecret, decryptSecret } from './wifiService.js';
 // your diabetes team".
 
 const MGDL = 18.0182;
-const LOW = 3.9, VERY_LOW = 3.0, HIGH = 10.0, VERY_HIGH = 13.9, TIGHT_HIGH = 7.8;
+export const DEFAULT_GLUCOSE_THRESHOLDS = {
+  veryLow: 3.0,
+  low: 3.9,
+  personalLow: 4.5,
+  personalHigh: 7.8,
+  tightHigh: 7.8, // alias for backward compatibility
+  high: 10.0,
+  veryHigh: 13.9
+};
+const THRESHOLDS_KEY = 'glucose_target_thresholds';
+
+export function getGlucoseThresholds() {
+  try {
+    const raw = getSetting(THRESHOLDS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const personalHigh = Number(parsed.personalHigh || parsed.tightHigh) || DEFAULT_GLUCOSE_THRESHOLDS.personalHigh;
+      return {
+        veryLow: Number(parsed.veryLow) || DEFAULT_GLUCOSE_THRESHOLDS.veryLow,
+        low: Number(parsed.low) || DEFAULT_GLUCOSE_THRESHOLDS.low,
+        personalLow: Number(parsed.personalLow) || DEFAULT_GLUCOSE_THRESHOLDS.personalLow,
+        personalHigh: personalHigh,
+        tightHigh: personalHigh, // backwards compatibility alias
+        high: Number(parsed.high) || DEFAULT_GLUCOSE_THRESHOLDS.high,
+        veryHigh: Number(parsed.veryHigh) || DEFAULT_GLUCOSE_THRESHOLDS.veryHigh
+      };
+    }
+  } catch (_) { /* fallback */ }
+  return { ...DEFAULT_GLUCOSE_THRESHOLDS };
+}
+
+export function setGlucoseThresholds(thresholds) {
+  if (!thresholds || typeof thresholds !== 'object') throw new Error('Invalid thresholds payload');
+  const veryLow = Math.max(2.0, Math.min(6.0, r1(Number(thresholds.veryLow) || DEFAULT_GLUCOSE_THRESHOLDS.veryLow)));
+  const low = Math.max(veryLow + 0.1, Math.min(8.0, r1(Number(thresholds.low) || DEFAULT_GLUCOSE_THRESHOLDS.low)));
+  const personalLow = Math.max(low, Math.min(9.5, r1(Number(thresholds.personalLow) || DEFAULT_GLUCOSE_THRESHOLDS.personalLow)));
+  const personalHigh = Math.max(personalLow + 0.1, Math.min(15.0, r1(Number(thresholds.personalHigh || thresholds.tightHigh) || DEFAULT_GLUCOSE_THRESHOLDS.personalHigh)));
+  const high = Math.max(personalHigh, Math.min(18.0, r1(Number(thresholds.high) || DEFAULT_GLUCOSE_THRESHOLDS.high)));
+  const veryHigh = Math.max(high + 0.5, Math.min(25.0, r1(Number(thresholds.veryHigh) || DEFAULT_GLUCOSE_THRESHOLDS.veryHigh)));
+
+  const updated = {
+    veryLow,
+    low,
+    personalLow,
+    personalHigh,
+    tightHigh: personalHigh,
+    high,
+    veryHigh
+  };
+  setSetting(THRESHOLDS_KEY, JSON.stringify(updated));
+  return updated;
+}
+
+export function resetGlucoseThresholds() {
+  setSetting(THRESHOLDS_KEY, JSON.stringify(DEFAULT_GLUCOSE_THRESHOLDS));
+  return { ...DEFAULT_GLUCOSE_THRESHOLDS };
+}
+
 const RUN_SPORTS = ['Run', 'TrailRun', 'VirtualRun', 'Walk', 'Hike', 'Ride', 'Swim', 'Workout'];
 const r1 = (x) => Math.round(x * 10) / 10;
 const mmol = (sgv) => sgv / MGDL;
@@ -40,12 +97,15 @@ function readings(from, to) {
 // Time-in-range and the other consensus numbers for a set of readings.
 function statsOf(rs, spanMs) {
   if (!rs.length) return null;
+  const th = getGlucoseThresholds();
   const vals = rs.map((r) => r.v);
   const n = vals.length;
   const mean = vals.reduce((a, v) => a + v, 0) / n;
   const sd = Math.sqrt(vals.reduce((a, v) => a + (v - mean) ** 2, 0) / n);
   const pct = (f) => Math.round((vals.filter(f).length / n) * 1000) / 10;
   const expected = spanMs / (5 * 60000);
+  const pLow = th.personalLow || 4.5;
+  const pHigh = th.personalHigh || th.tightHigh || 7.8;
   return {
     readings: n,
     coveragePct: Math.min(100, Math.round((n / Math.max(1, expected)) * 100)),
@@ -53,21 +113,26 @@ function statsOf(rs, spanMs) {
     mean: r1(mean), sd: r1(sd), cvPct: Math.round((sd / mean) * 100),
     gmiPct: r1(3.31 + 0.02392 * mean * MGDL), // estimated HbA1c
     min: Math.min(...vals), max: Math.max(...vals),
-    veryLowPct: pct((v) => v < VERY_LOW),
-    lowPct: pct((v) => v >= VERY_LOW && v < LOW),
-    inRangePct: pct((v) => v >= LOW && v <= HIGH),
-    tightPct: pct((v) => v >= LOW && v <= TIGHT_HIGH),
-    highPct: pct((v) => v > HIGH && v <= VERY_HIGH),
-    veryHighPct: pct((v) => v > VERY_HIGH),
+    veryLowPct: pct((v) => v < th.veryLow),
+    lowPct: pct((v) => v >= th.veryLow && v < th.low),
+    inRangePct: pct((v) => v >= th.low && v <= th.high),
+    personalTargetPct: pct((v) => v >= pLow && v <= pHigh),
+    tightPct: pct((v) => v >= pLow && v <= pHigh), // backward compatibility
+    lowSidePct: pct((v) => v >= th.low && v < pLow),
+    highSidePct: pct((v) => v > pHigh && v <= th.high),
+    highPct: pct((v) => v > th.high && v <= th.veryHigh),
+    veryHighPct: pct((v) => v > th.veryHigh),
+    thresholds: th,
   };
 }
 
-// Stretches below 3.9 lasting 15 minutes or more (the consensus definition of a hypo event).
+// Stretches below the low threshold lasting 15 minutes or more (the consensus definition of a hypo event).
 function lowEvents(rs) {
   const out = [];
+  const th = getGlucoseThresholds();
   let cur = null;
   for (const r of rs) {
-    if (r.v < LOW) {
+    if (r.v < th.low) {
       if (!cur || r.t - cur.last > 20 * 60000) { if (cur) out.push(cur); cur = { start: r.t, last: r.t, lowest: r.v }; }
       cur.last = r.t; cur.lowest = Math.min(cur.lowest, r.v);
     } else if (cur && r.t - cur.last > 0) { out.push(cur); cur = null; }
@@ -107,12 +172,26 @@ export function getCurrent() {
   const d = db.prepare('SELECT at, iob, cob FROM ns_devicestatus ORDER BY at DESC LIMIT 1').get();
   const mins = Math.round((Date.now() - e.date) / 60000);
   const v = r1(mmol(e.sgv));
+  const th = getGlucoseThresholds();
+  const pLow = th.personalLow || 4.5;
+  const pHigh = th.personalHigh || th.tightHigh || 7.8;
+
+  let range = 'in range';
+  if (v < th.veryLow) range = 'very low';
+  else if (v < th.low) range = 'low';
+  else if (v < pLow) range = 'on the low side of in range';
+  else if (v <= pHigh) range = 'in range';
+  else if (v <= th.high) range = 'on the high side of in range';
+  else if (v <= th.veryHigh) range = 'high';
+  else range = 'very high';
+
   return {
     value: v, direction: e.direction || null, minutesAgo: mins, fresh: mins <= 15,
     delta: prev ? r1(v - mmol(prev.sgv)) : null,
-    range: v < VERY_LOW ? 'very low' : v < LOW ? 'low' : v <= HIGH ? 'in range' : v <= VERY_HIGH ? 'high' : 'very high',
+    range,
     iob: d && Date.now() - d.at < 20 * 60000 ? r1(Math.max(0, d.iob)) : null,
     cob: d && Date.now() - d.at < 20 * 60000 && d.cob != null ? Math.round(d.cob) : null,
+    thresholds: th,
   };
 }
 
@@ -138,6 +217,7 @@ export function getSummary(days = 14) {
     lows: lowEvents(rs).reverse(),
     totals: insulinAndCarbs(from, to),
     overnight: getOvernight(),
+    thresholds: getGlucoseThresholds(),
   };
 }
 
@@ -149,7 +229,7 @@ export function getOvernight() {
   const rs = readings(from, Math.min(to, Date.now()));
   const s = statsOf(rs, Math.min(to, Date.now()) - from);
   if (!s || s.coveragePct < 40) return null;
-  return { inRangePct: s.inRangePct, mean: s.mean, min: s.min, max: s.max, lows: lowEvents(rs).length, endValue: rs[rs.length - 1].v };
+  return { inRangePct: s.inRangePct, mean: s.mean, min: s.min, max: s.max, lows: lowEvents(rs).length, endValue: rs[rs.length - 1].v, thresholds: s.thresholds };
 }
 
 export function getDay(day) {
@@ -163,7 +243,7 @@ export function getDay(day) {
     .filter((a) => a.end >= from && a.start < to)
     .map((a) => ({ id: a.id, name: a.name, sport: a.sport, start: a.start, end: a.end, km: r1((a.distance || 0) / 1000) }));
   const iob = db.prepare('SELECT at, iob FROM ns_devicestatus WHERE at >= ? AND at < ? ORDER BY at').all(from, to).map((d) => ({ t: d.at, iob: r1(Math.max(0, d.iob)) }));
-  return { day, from, to, readings: rs, stats: statsOf(rs, Math.min(to, Date.now()) - from), treatments, carbs, activities, iob, lows: lowEvents(rs) };
+  return { day, from, to, readings: rs, stats: statsOf(rs, Math.min(to, Date.now()) - from), treatments, carbs, activities, iob, lows: lowEvents(rs), thresholds: getGlucoseThresholds() };
 }
 
 // ---- carb log (by voice or on the page), sent to Nightscout as an informational Note (AAPS handles bolus & treatments) ---------------
@@ -281,17 +361,19 @@ export async function deleteCarbs(id) {
 // ---- what Ims gets ------------------------------------------------------------------------------------
 export function describeForIms(period = 'today') {
   const cur = getCurrent();
+  const th = getGlucoseThresholds();
   const days = period === 'week' ? 7 : period === 'fortnight' ? 14 : period === 'month' ? 30 : 1;
   const s = getSummary(days);
   const out = {
     now: cur ? { mmol: cur.value, trend: cur.direction, changeLast5Min: cur.delta, range: cur.range, minutesOld: cur.minutesAgo, insulinOnBoardUnits: cur.iob, carbsOnBoardG: cur.cob } : 'no recent reading',
     period: days === 1 ? 'last 24 hours' : `last ${days} days`,
     note: s.dataSince && Date.now() - s.dataSince < days * 86400000 ? `Only ${r1((Date.now() - s.dataSince) / 86400000)} days of history so far (the log was recently restarted), so treat patterns as early.` : undefined,
-    timeInRange: s.stats ? { inRange3_9to10: `${s.stats.inRangePct}%`, below3_9: `${r1(s.stats.lowPct + s.stats.veryLowPct)}%`, above10: `${r1(s.stats.highPct + s.stats.veryHighPct)}%`, average: s.stats.mean, variabilityCV: `${s.stats.cvPct}%`, estimatedHbA1c: `${s.stats.gmiPct}%` } : 'no readings',
+    timeInRange: s.stats ? { inRange: `${s.stats.inRangePct}% (${th.low}-${th.high} mmol/L)`, belowLow: `${r1(s.stats.lowPct + s.stats.veryLowPct)}% (<${th.low})`, aboveHigh: `${r1(s.stats.highPct + s.stats.veryHighPct)}% (>${th.high})`, average: s.stats.mean, variabilityCV: `${s.stats.cvPct}%`, estimatedHbA1c: `${s.stats.gmiPct}%` } : 'no readings',
     lows: s.lows.slice(0, 5).map((l) => `${l.when}, lowest ${l.lowest}, ${l.minutes} min${l.afterExercise ? `, after ${l.afterExercise}` : ''}`),
     overnight: s.overnight ? `last night ${s.overnight.inRangePct}% in range, lowest ${s.overnight.min}, woke at ${s.overnight.endValue}` : undefined,
-    targets: 'In range is 3.9-10 mmol/L; the usual goals are over 70% in range, under 4% below 3.9, under 1% below 3.0. For runs the user likes to start near 9 and never drop below 5.',
-    safety: 'Never suggest insulin doses or changes to insulin settings - say it is worth discussing with the diabetes team. Carbs and timing ideas are fine. If the reading is under 3.9, the first thing to say is to treat the low.',
+    targets: `In range is ${th.low}-${th.high} mmol/L; the usual goals are over 70% in range, under 4% below ${th.low}, under 1% below ${th.veryLow}. For runs the user likes to start near 9 and never drop below 5.`,
+    safety: `Never suggest insulin doses or changes to insulin settings - say it is worth discussing with the diabetes team. Carbs and timing ideas are fine. If the reading is under ${th.low}, the first thing to say is to treat the low.`,
+    thresholds: th,
   };
   return out;
 }
@@ -302,19 +384,29 @@ export function getSavedInsight() { try { return JSON.parse(getSetting(INSIGHT_K
 export async function analyse(days = 14) {
   const s = getSummary(days);
   if (!s.stats || s.stats.readings < 36) throw new Error('Not enough glucose readings yet - give it a few more hours of logging.');
+  const th = s.thresholds || getGlucoseThresholds();
+  const pLow = th.personalLow || 4.5;
+  const pHigh = th.personalHigh || th.tightHigh || 7.8;
   const facts = {
     period: `${s.days} days (data since ${s.dataSince ? london(s.dataSince, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '?'})`,
+    thresholds: th,
     stats: s.stats, previousPeriod: s.previous, hourlyMedian: s.profile.filter((p) => p.median).map((p) => `${p.hour}:00 ${p.median} (${p.p10}-${p.p90})`),
     lows: s.lows, totals: s.totals, overnight: s.overnight,
     exercise: db.prepare("SELECT day, sport, name, distance/1000.0 AS km FROM strava_activities WHERE start_utc >= ? ORDER BY start_utc").all(new Date(s.from).toISOString()),
   };
   const prompt = `You are reviewing continuous glucose data for someone with type 1 diabetes on an AAPS closed loop who runs regularly. Write in British English, plain words, short paragraphs, no headings bigger than bold text.
-Give: 1) the headline (time in range vs the 70% goal, lows vs the under-4% goal) 2) the clearest pattern by time of day 3) anything linked to exercise or overnight 4) two or three practical things to try (timing, carbs, pre-run routine, when to check).
+Target Bands:
+- Medical in-range: ${th.low}-${th.high} mmol/L (consensus goal >70%, currently ${s.stats?.inRangePct ?? '--'}%)
+- Personal target: ${pLow}-${pHigh} mmol/L (currently ${s.stats?.personalTargetPct ?? s.stats?.tightPct ?? '--'}%)
+- Low cutoffs: Low <${th.low} (goal <4%, currently ${s.stats?.lowPct ?? '--'}%), Very low <${th.veryLow} (goal <1%, currently ${s.stats?.veryLowPct ?? '--'}%)
+- High cutoffs: High >${th.high} (${s.stats?.highPct ?? '--'}%), Very high >${th.veryHigh} (${s.stats?.veryHighPct ?? '--'}%)
+
+Give: 1) the headline (time in medical range [${th.low}-${th.high}] vs 70% goal, time in personal target [${pLow}-${pHigh}], and lows vs under-4% goal) 2) the clearest pattern by time of day 3) anything linked to exercise or overnight 4) two or three practical things to try (timing, carbs, pre-run routine, when to check).
 Hard rules: never suggest insulin doses, ratios, basal rates or loop setting changes - if they look relevant, say it would be worth raising with the diabetes team. If there is little data, say the patterns are early. Under 220 words.
 DATA: ${JSON.stringify(facts)}`;
   const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({ model: 'gemini-2.5-flash' });
   const text = (await model.generateContent(prompt)).response.text().trim();
-  const saved = { text, at: Date.now(), days: s.days };
+  const saved = { text, at: Date.now(), days: s.days, thresholds: th };
   setSetting(INSIGHT_KEY, JSON.stringify(saved));
   return saved;
 }

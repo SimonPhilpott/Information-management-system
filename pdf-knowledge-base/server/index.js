@@ -91,7 +91,7 @@ import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, r
 import { scheduleItem, listScheduledItems, cancelScheduledItem, addToList, readList, removeFromList, clearList, checkDueScheduledItems, stopAllRinging, getActiveScheduledStatus, getItemsDueToday, getHistorySummary } from './services/remindersService.js';
 import { getBirthdayFooterStatus, getUpcomingBirthdays, listBirthdays } from './services/birthdayService.js';
 import { getTodayReleases, getWindowResults, getUpcomingReleases , getWants as getMusicWants } from './services/musicScanService.js';
-import { isFirstInteractionToday, markMorningReportOffered, buildMorningReportDirective, getDayReport } from './services/morningReportService.js';
+import { isFirstInteractionToday, markMorningReportOffered, buildMorningReportDirective, getDayReport, prewarmDayReportCache, invalidateDayReportCache } from './services/morningReportService.js';
 import { getNews } from './services/newsService.js';
 import newsRoutes from './routes/news.js';
 import tasksRoutes from './routes/tasks.js';
@@ -1051,8 +1051,8 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           const heardForStop = parsed.serverContent?.inputTranscription?.text;
           if (heardForStop) {
             stopWindow = (stopWindow + ' ' + heardForStop).slice(-70);
-            if (isCancelCommand(stopWindow) || matchesStop(stopWindow) || wakeDaemonService.isFarewellPhrase(stopWindow).matches) {
-              cancelConversation('bye_phrase');
+            if (matchesStop(stopWindow) || wakeDaemonService.isFarewellPhrase(stopWindow).matches) {
+              cancelConversation('stop_phrase');
               return;
             }
           }
@@ -2325,6 +2325,13 @@ startGlucosePoller((glucose) => {
       console.error('[Glucose] Failed to push update to hardware client:', err.message);
     }
   }
+});
+
+// Pre-warm day report cache on server startup in the background
+prewarmDayReportCache({ markNews: false }).then(() => {
+  console.log('[MorningReport] Initial background day report cache pre-warmed successfully');
+}).catch((err) => {
+  console.warn('[MorningReport] Initial background day report cache pre-warm skipped:', err.message);
 });
 
 // Temporary debug endpoint: accepts a raw PCM POST body from the

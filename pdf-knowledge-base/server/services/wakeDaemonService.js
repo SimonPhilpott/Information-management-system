@@ -35,9 +35,6 @@ const norm = (t) => String(t || '')
 const CORE_WAKE_REGEX = /\b(hey|hi|hiya|heya|hello|eh\s*up|ey\s*up|ay\s*up|aye\s*up|ayup|eyup|yo|oi)\b[\s,.!?'-]*(ims|imz|ems|eems|emms|hims|aims|hms|pims|mims)\b/i;
 const BARE_WAKE_REGEX = /^\W*(hey\s*ims|hi\s*ims|eh\s*up\s*ims|ey\s*up\s*ims|ay\s*up\s*ims|hello\s*ims|hiya\s*ims|heya\s*ims|yo\s*ims)\b/i;
 
-// Comprehensive farewell / 'bye' phrase detector
-const FAREWELL_REGEX = /\b(bye\s*bye|goodbye|bye|cheerio|see\s*ya|see\s*you\s*later|see\s*you|thanks\s*bye|thank\s*you\s*bye|that'?s\s*(?:all|everything)|that\s*(?:is\s*all|will\s*(?:be\s*all|do))|i'?m\s*done|i\s*am\s*done|good\s*night|goodnight|night\s*ims|ta[\s-]*ra|tara|catch\s*you\s*later|stop\s*ims|ims\s*stop|cancel\s*ims|shut\s*up|be\s*quiet)\b/i;
-
 class WakeDaemonService extends EventEmitter {
   constructor() {
     super();
@@ -85,22 +82,16 @@ class WakeDaemonService extends EventEmitter {
   }
 
   /**
-   * Evaluates if text contains an active farewell / 'bye' phrase
+   * Evaluates if text contains an active stop phrase.
+   * Strictly matched against the authorised stop phrases registered in /ims/phrases.
    */
   isFarewellPhrase(text) {
     const raw = String(text || '').trim();
     if (!raw) return { matches: false, phrase: null };
-    const n = norm(raw);
 
     // Check stop phrases from database
     if (matchesStop(raw)) {
       return { matches: true, phrase: 'Stop Phrase' };
-    }
-
-    // Check farewell regex
-    if (FAREWELL_REGEX.test(n) || FAREWELL_REGEX.test(raw)) {
-      const match = raw.match(FAREWELL_REGEX) || n.match(FAREWELL_REGEX);
-      return { matches: true, phrase: match ? match[0] : 'Farewell Phrase' };
     }
 
     return { matches: false, phrase: null };

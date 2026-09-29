@@ -1,9 +1,9 @@
 import db, { getSetting, setSetting } from '../db/database.js';
 import config from '../config.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getGlucoseThresholds } from './glucoseHubService.js';
 
 const MGDL = 18.0182;
-const LOW = 3.9, HIGH = 10.0;
 const r1 = (x) => Math.round(x * 10) / 10;
 const r2 = (x) => Math.round(x * 100) / 100;
 const mmol = (sgv) => sgv / MGDL;
@@ -142,6 +142,9 @@ function getScheduledISF(profile, hour) {
  */
 export function computeEmpiricalMetrics(days = 14, profile = null) {
   const prof = profile || getProfile();
+  const th = getGlucoseThresholds();
+  const pLow = th.personalLow || 4.5;
+  const pHigh = th.personalHigh || th.tightHigh || 7.8;
   const since = Date.now() - Math.max(1, Math.min(90, Number(days) || 14)) * 86400000;
 
   // 1. Fetch entries, treatments, and device status
@@ -298,8 +301,8 @@ export function computeEmpiricalMetrics(days = 14, profile = null) {
         const excursion = r1(endV - startEntry.v);
         excursions.push(excursion);
 
-        if (peak > HIGH || endV > HIGH) highCount++;
-        if (postEntries.some((p) => p.v < LOW)) lowCount++;
+        if (peak > th.high || endV > th.high) highCount++;
+        if (postEntries.some((p) => p.v < th.low)) lowCount++;
 
         // If meal had both carbs and insulin, calculate ratio
         if (meal.carbs > 15 && meal.insulin > 1.0) {
@@ -319,11 +322,11 @@ export function computeEmpiricalMetrics(days = 14, profile = null) {
     if (highPct >= 45 || avgExcursion > 2.5) {
       verdict = 'UNDER_BOLUSED';
       const proposed = r1(Math.max(4.0, scheduledIC - 1.0));
-      suggestion = `Ratio is too weak / under-bolusing (${highPct}% of meals remain >10.0 mmol/L at 2-3h; avg excursion +${avgExcursion} mmol/L). Consider testing a stronger ratio of ${proposed} g/U (giving more insulin per carb).`;
+      suggestion = `Ratio is too weak / under-bolusing (${highPct}% of meals remain >${th.high} mmol/L at 2-3h; avg excursion +${avgExcursion} mmol/L). Consider testing a stronger ratio of ${proposed} g/U (giving more insulin per carb).`;
     } else if (lowPct >= 25 || avgExcursion < -2.0) {
       verdict = 'OVER_BOLUSED';
       const proposed = r1(scheduledIC + 1.0);
-      suggestion = `Ratio is too aggressive / over-bolusing (${lowPct}% post-meal hypos < 3.9 mmol/L; avg excursion ${avgExcursion} mmol/L). Consider testing a gentler ratio of ${proposed} g/U (giving less insulin per carb).`;
+      suggestion = `Ratio is too aggressive / over-bolusing (${lowPct}% post-meal hypos < ${th.low} mmol/L; avg excursion ${avgExcursion} mmol/L). Consider testing a gentler ratio of ${proposed} g/U (giving less insulin per carb).`;
     }
 
     return {
@@ -365,7 +368,7 @@ export function computeEmpiricalMetrics(days = 14, profile = null) {
       const start = entries.filter((e) => e.t >= cor.at - 15 * 60000 && e.t <= cor.at + 5 * 60000).pop();
       // Find nadir within 2h - 3.5h
       const post = entries.filter((e) => e.t >= cor.at + 90 * 60000 && e.t <= cor.at + 210 * 60000);
-      if (start && start.v >= 7.0 && post.length > 0) {
+      if (start && start.v >= (pLow || 4.5) && post.length > 0) {
         const nadir = Math.min(...post.map((p) => p.v));
         const drop = start.v - nadir;
         if (drop > 0.5) {
@@ -380,13 +383,13 @@ export function computeEmpiricalMetrics(days = 14, profile = null) {
     const diff = r1(measuredISF - scheduledISF);
 
     let verdict = 'MATCHED';
-    let suggestion = `Sensitivity is well calibrated with profile ISF 1.6 (measured ~${measuredISF} mmol/L drop per Unit).`;
+    let suggestion = `Sensitivity is well calibrated with profile ISF ${scheduledISF} (measured ~${measuredISF} mmol/L drop per Unit).`;
     if (diff > 0.4) {
       verdict = 'MORE_SENSITIVE';
-      suggestion = `You are more sensitive in this period than profile 1.6 assumes (1 Unit drops you by ${measuredISF} mmol/L instead of 1.6). Consider raising ISF to ${measuredISF} to prevent over-correction dips.`;
+      suggestion = `You are more sensitive in this period than profile ${scheduledISF} assumes (1 Unit drops you by ${measuredISF} mmol/L instead of ${scheduledISF}). Consider raising ISF to ${measuredISF} to prevent over-correction dips.`;
     } else if (diff < -0.3) {
       verdict = 'MORE_RESISTANT';
-      suggestion = `You are more resistant in this period than profile 1.6 assumes (1 Unit only drops you by ${measuredISF} mmol/L). Consider lowering ISF to ${measuredISF} so corrections are sufficient.`;
+      suggestion = `You are more resistant in this period than profile ${scheduledISF} assumes (1 Unit only drops you by ${measuredISF} mmol/L). Consider lowering ISF to ${measuredISF} so corrections are sufficient.`;
     }
 
     return {
@@ -404,6 +407,7 @@ export function computeEmpiricalMetrics(days = 14, profile = null) {
   return {
     days,
     profile: prof,
+    thresholds: th,
     readingsEvaluated: entries.length,
     treatmentsEvaluated: treatments.length,
     basalBlocks: basalBlockStats,
@@ -418,6 +422,9 @@ export function computeEmpiricalMetrics(days = 14, profile = null) {
 export async function evaluateProfile(days = 14, customProfile = null) {
   const profile = customProfile || getProfile();
   const metrics = computeEmpiricalMetrics(days, profile);
+  const th = metrics.thresholds || getGlucoseThresholds();
+  const pLow = th.personalLow || 4.5;
+  const pHigh = th.personalHigh || th.tightHigh || 7.8;
 
   if (metrics.readingsEvaluated < 40) {
     throw new Error('Not enough glucose readings logged to perform profile evaluation - requires at least 48 hours of CGM data.');
@@ -425,6 +432,12 @@ export async function evaluateProfile(days = 14, customProfile = null) {
 
   const prompt = `You are an expert specialist clinical endocrinology and sports diabetes advisor reviewing real continuous glucose monitoring (CGM) and automated insulin delivery (AID/AndroidAPS) closed-loop data for an athlete with type 1 diabetes.
 The runner's active pump profile is "${profile.profileName}" (units: mmol/l).
+
+TARGET GLYCEMIC BANDS & ATHLETE THRESHOLDS:
+- Medical In-Range Target: ${th.low} - ${th.high} mmol/L (Standard consensus range, goal >70%)
+- Personal Target Band: ${pLow} - ${pHigh} mmol/L (Athlete's tighter personal target)
+- Hypo Cutoffs: Low < ${th.low} mmol/L (goal <4%), Very Low < ${th.veryLow} mmol/L (goal <1%)
+- Hyper Cutoffs: High > ${th.high} mmol/L, Very High > ${th.veryHigh} mmol/L
 
 DATA ANALYSIS FROM THE LAST ${days} DAYS:
 Active Profile:
@@ -444,11 +457,11 @@ ${JSON.stringify(metrics.isfBlocks, null, 2)}
 
 TASK:
 Produce a rigorous, plain-English, supportive clinical audit addressing the runner's exact questions:
-1. **Executive Profile Verdict**: Overall health of the "20u standard day" profile.
+1. **Executive Profile Verdict**: Overall health of the "${profile.profileName}" profile, evaluating performance against both the standard medical range (${th.low}-${th.high} mmol/L) and the runner's personal target band (${pLow}-${pHigh} mmol/L).
 2. **Basal Scrutiny (Specific focus on 12:00 - 16:00 and Overnight)**: Is basal too high or too low over 12pm to 4pm? Is it too high or low overnight? Cite the net delivered basal offset (what AAPS was forced to do) and the fasting glucose drift rate. Propose exact rate modifications (e.g. adjust from 0.50 to 0.60 U/h).
-3. **Insulin-to-Carb (IC) Scrutiny**: Is the IC ratio wrong, and for which meal times of the day (Breakfast vs Lunch vs Dinner)? Cite postprandial excursion numbers and recommend specific g/U adjustments.
+3. **Insulin-to-Carb (IC) Scrutiny**: Is the IC ratio wrong, and for which meal times of the day (Breakfast vs Lunch vs Dinner)? Cite postprandial excursion numbers, % remaining >${th.high} mmol/L or dropping <${th.low} mmol/L, and recommend specific g/U adjustments.
 4. **Insulin Sensitivity Factor (ISF) & Diurnal Variance**: Is the current flat 1.6 mmol/l/U ISF appropriate across the entire day, or does the runner show significant diurnal variation (e.g. morning resistance vs afternoon/post-exercise sensitivity)? Propose whether to split ISF into diurnal time blocks.
-5. **Concrete Action Plan for Fine-Tuning**: A bulleted list of 2-3 safe, conservative parameter tweaks to trial together with their diabetes team.
+5. **Concrete Action Plan for Fine-Tuning**: A bulleted list of 2-3 safe, conservative parameter tweaks to trial together with their diabetes team to maximize time in their Personal Target (${pLow}-${pHigh} mmol/L).
 
 FORMATTING RULES:
 - Use British English (en-GB) and clinical units (mmol/L, U, g).
@@ -463,6 +476,7 @@ FORMATTING RULES:
     at: Date.now(),
     days,
     profileName: profile.profileName,
+    thresholds: th,
     metrics,
     report: text
   };
@@ -470,3 +484,4 @@ FORMATTING RULES:
   setSetting(LAST_EVAL_KEY, JSON.stringify(result));
   return result;
 }
+

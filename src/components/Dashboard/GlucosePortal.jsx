@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Droplets, RotateCw, Sparkles, ChevronLeft, ChevronRight, Plus, Trash2, AlertTriangle,
   Moon, Database, ExternalLink, Eraser, Camera, Loader2, X, Check, Sliders, Activity,
-  TrendingUp, TrendingDown, Clock, Save, RotateCcw, AlertCircle, CheckCircle2
+  TrendingUp, TrendingDown, Clock, Save, RotateCcw, AlertCircle, CheckCircle2,
+  Download, Mail, FileText, Send
 } from 'lucide-react';
 
 const MONGO_URL = 'https://cloud.mongodb.com/v2/5fabc4b4fcf8b709ce8ab13c#/explorer/6542751e47463e28ff4eeb80';
@@ -14,36 +15,87 @@ import Prose from './Prose';
 
 const PERIODS = [{ key: 1, label: '24 h' }, { key: 7, label: '7 days' }, { key: 14, label: '14 days' }, { key: 30, label: '30 days' }];
 const ARROWS = { DoubleUp: '⇈', SingleUp: '↑', FortyFiveUp: '↗', Flat: '→', FortyFiveDown: '↘', SingleDown: '↓', DoubleDown: '⇊' };
-const LOW = 3.9, HIGH = 10;
-const colourOf = (v) => (v == null ? 'text-slate-400' : v < 3 ? 'text-red-500' : v < LOW ? 'text-red-400' : v <= HIGH ? 'text-emerald-400' : v <= 13.9 ? 'text-amber-400' : 'text-orange-500');
-const fillOf = (v) => (v < 3 ? '#ef4444' : v < LOW ? '#f87171' : v <= HIGH ? '#34d399' : v <= 13.9 ? '#fbbf24' : '#f97316');
+const DEFAULT_THRESHOLDS = { veryLow: 3.0, low: 3.9, personalLow: 4.5, personalHigh: 7.8, tightHigh: 7.8, high: 10.0, veryHigh: 13.9 };
+
+const colourOf = (v, th = DEFAULT_THRESHOLDS) => {
+  if (v == null) return 'text-slate-400';
+  if (v < th.veryLow) return 'text-red-500';
+  if (v < th.low) return 'text-red-400';
+  if (v <= th.high) return 'text-emerald-400';
+  if (v <= th.veryHigh) return 'text-amber-400';
+  return 'text-orange-500';
+};
+const fillOf = (v, th = DEFAULT_THRESHOLDS) => {
+  if (v < th.veryLow) return '#ef4444';
+  if (v < th.low) return '#f87171';
+  if (v <= th.high) return '#34d399';
+  if (v <= th.veryHigh) return '#fbbf24';
+  return '#f97316';
+};
 const hhmm = (t) => new Date(t).toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' });
 const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
 const shiftDay = (d, n) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 const dayLabel = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 
-function TirBar({ s }) {
+function TirBar({ s, th = DEFAULT_THRESHOLDS }) {
+  const pLow = th.personalLow || 4.5;
+  const pHigh = th.personalHigh || th.tightHigh || 7.8;
+  const personalTargetPct = s.personalTargetPct ?? s.tightPct ?? (s.inRangePct || 0);
+  const lowSidePct = s.lowSidePct != null ? s.lowSidePct : 0;
+  const highSidePct = s.highSidePct != null ? s.highSidePct : Math.max(0, Math.round(((s.inRangePct || 0) - personalTargetPct - lowSidePct) * 10) / 10);
+
   const parts = [
-    ['Very low <3.0', s.veryLowPct, '#ef4444'], ['Low 3.0-3.9', s.lowPct, '#f87171'], ['In range 3.9-10', s.inRangePct, '#34d399'],
-    ['High 10-13.9', s.highPct, '#fbbf24'], ['Very high >13.9', s.veryHighPct, '#f97316'],
+    { key: 'vl', label: `Very low <${th.veryLow}`, title: `Very low (<${th.veryLow}): ${s.veryLowPct}%`, pct: s.veryLowPct, color: '#ef4444', isPersonal: false },
+    { key: 'l', label: `Low ${th.veryLow}-${th.low}`, title: `Low (${th.veryLow}-${th.low}): ${s.lowPct}%`, pct: s.lowPct, color: '#f87171', isPersonal: false },
+    { key: 'ls', label: `Low in-range ${th.low}-${pLow}`, title: `Low side of in-range (${th.low}-${pLow}): ${lowSidePct}%`, pct: lowSidePct, color: 'rgba(56,189,248,0.5)', isPersonal: false },
+    { key: 'pt', label: `Personal target ${pLow}-${pHigh}`, title: `Personal Target (${pLow}-${pHigh}): ${personalTargetPct}%`, pct: personalTargetPct, color: '#0ea5e9', isPersonal: true },
+    { key: 'hs', label: `High in-range ${pHigh}-${th.high}`, title: `High side of in-range (${pHigh}-${th.high}): ${highSidePct}%`, pct: highSidePct, color: 'rgba(52,211,153,0.55)', isPersonal: false },
+    { key: 'h', label: `High ${th.high}-${th.veryHigh}`, title: `High (${th.high}-${th.veryHigh}): ${s.highPct}%`, pct: s.highPct, color: '#fbbf24', isPersonal: false },
+    { key: 'vh', label: `Very high >${th.veryHigh}`, title: `Very high (>${th.veryHigh}): ${s.veryHighPct}%`, pct: s.veryHighPct, color: '#f97316', isPersonal: false },
   ];
+
   return (
     <div>
-      <div className="flex h-5 rounded-lg overflow-hidden">
-        {parts.map(([k, v, c]) => v > 0 && <div key={k} style={{ width: `${v}%`, background: c }} title={`${k}: ${v}%`} />)}
-      </div>
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
-        {parts.map(([k, v, c]) => (
-          <span key={k} className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ background: c }} />{k}: <b className="tabular-nums">{v}%</b></span>
+      <div className="flex h-5 rounded-lg overflow-hidden border border-white/10 shadow-inner">
+        {parts.map((p) => p.pct > 0 && (
+          <div
+            key={p.key}
+            style={{ width: `${p.pct}%`, background: p.color }}
+            className={`transition-all ${p.isPersonal ? 'ring-1 ring-inset ring-sky-300/40' : ''}`}
+            title={p.title}
+          />
         ))}
       </div>
-      <p className="mt-2 text-[11px] text-slate-500">Goals: over 70% in range, under 4% below 3.9, under 1% below 3.0.</p>
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-3.5 gap-y-1.5 text-[11px]">
+        {parts.map((p) => (
+          <span
+            key={p.key}
+            className={`flex items-center gap-1.5 ${
+              p.isPersonal
+                ? 'font-bold text-sky-400 px-1.5 py-0.5 rounded-md bg-sky-500/10 border border-sky-500/20'
+                : 'text-slate-400'
+            }`}
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${p.isPersonal ? 'ring-2 ring-sky-400/40' : ''}`}
+              style={{ background: p.color }}
+            />
+            {p.label}: <b className={`tabular-nums ${p.isPersonal ? 'text-sky-300 font-extrabold' : 'text-slate-200'}`}>{p.pct}%</b>
+          </span>
+        ))}
+        <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-semibold sm:ml-auto">
+          Total In-Range ({th.low}-{th.high}): <b className="tabular-nums">{s.inRangePct}%</b>
+        </span>
+      </div>
+      <p className="mt-2 text-[11px] text-slate-500">
+        Goals: over 70% in medical range ({th.low}-{th.high}), personal target ({pLow}-{pHigh}), under 4% below {th.low}, under 1% below {th.veryLow}.
+      </p>
     </div>
   );
 }
 
-// One day: readings against the 3.9-10 band, with activities, insulin and carbs marked. Tap for a reading.
-function DayChart({ data, isDark }) {
+// One day: readings against the custom in-range band and personal target band, with activities, insulin and carbs marked. Tap for a reading.
+function DayChart({ data, isDark, th = DEFAULT_THRESHOLDS }) {
   const [pick, setPick] = useState(null);
   const W = 720, H = 220, L = 30, R = 8, T = 10, B = 24;
   const maxV = Math.max(15, ...data.readings.map((r) => r.v + 1));
@@ -51,6 +103,9 @@ function DayChart({ data, isDark }) {
   const y = (v) => T + (1 - v / maxV) * (H - T - B);
   const pts = data.readings;
   const grid = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+  const pLow = th.personalLow || 4.5;
+  const pHigh = th.personalHigh || th.tightHigh || 7.8;
+
   const onPoint = (e) => {
     const box = e.currentTarget.getBoundingClientRect();
     const px = ((e.clientX - box.left) / box.width) * W;
@@ -62,9 +117,16 @@ function DayChart({ data, isDark }) {
   return (
     <div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full touch-none select-none" onPointerDown={onPoint} onPointerMove={(e) => e.buttons && onPoint(e)}>
-        <rect x={L} y={y(HIGH)} width={W - L - R} height={y(LOW) - y(HIGH)} fill="rgba(52,211,153,0.10)" />
-        {[3.9, 10, 15].filter((v) => v <= maxV).map((v) => (
-          <g key={v}><line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke={grid} strokeDasharray="3 3" /><text x={L - 4} y={y(v) + 3} fontSize="9" textAnchor="end" fill="#94a3b8">{v}</text></g>
+        {/* Medical in-range outer band (th.low to th.high) */}
+        <rect x={L} y={y(th.high)} width={W - L - R} height={Math.max(0, y(th.low) - y(th.high))} fill="rgba(52,211,153,0.06)" />
+        {/* Personal target inner band (pLow to pHigh) */}
+        <rect x={L} y={y(pHigh)} width={W - L - R} height={Math.max(0, y(pLow) - y(pHigh))} fill="rgba(56,189,248,0.14)" />
+
+        {[th.low, pLow, pHigh, th.high, 15].filter((v) => v <= maxV).map((v) => (
+          <g key={v}>
+            <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke={grid} strokeDasharray="3 3" />
+            <text x={L - 4} y={y(v) + 3} fontSize="9" textAnchor="end" fill={v === pLow || v === pHigh ? '#38bdf8' : '#94a3b8'}>{v}</text>
+          </g>
         ))}
         {[0, 6, 12, 18, 24].map((h) => (
           <text key={h} x={L + (h / 24) * (W - L - R)} y={H - 6} fontSize="9" textAnchor="middle" fill="#94a3b8">{String(h % 24).padStart(2, '0')}:00</text>
@@ -74,7 +136,7 @@ function DayChart({ data, isDark }) {
             <text x={x(Math.max(a.start, data.from)) + 2} y={T + 10} fontSize="9" fill="#f97316">{a.sport}</text></g>
         ))}
         {pts.map((r, i) => i > 0 && r.t - pts[i - 1].t < 15 * 60000 && (
-          <line key={r.t} x1={x(pts[i - 1].t)} y1={y(pts[i - 1].v)} x2={x(r.t)} y2={y(r.v)} stroke={fillOf(r.v)} strokeWidth="2" strokeLinecap="round" />
+          <line key={r.t} x1={x(pts[i - 1].t)} y1={y(pts[i - 1].v)} x2={x(r.t)} y2={y(r.v)} stroke={fillOf(r.v, th)} strokeWidth="2" strokeLinecap="round" />
         ))}
         {data.treatments.filter((t) => t.insulin > 0).map((t) => (
           <g key={`i${t.at}`}><path d={`M${x(t.at) - 4},${H - B - 2} L${x(t.at) + 4},${H - B - 2} L${x(t.at)},${H - B - 10} Z`} fill="#60a5fa" /><title>{`${t.insulin} u at ${hhmm(t.at)}`}</title></g>
@@ -83,11 +145,13 @@ function DayChart({ data, isDark }) {
           <g key={`c${c.at}`}><circle cx={x(c.at)} cy={T + 22} r="4" fill="#facc15" /><text x={x(c.at)} y={T + 36} fontSize="9" textAnchor="middle" fill="#facc15">{Math.round(c.g)}g</text></g>
         ))}
         {pick && (
-          <g><line x1={x(pick.t)} x2={x(pick.t)} y1={T} y2={H - B} stroke="#94a3b8" strokeDasharray="2 2" /><circle cx={x(pick.t)} cy={y(pick.v)} r="4" fill={fillOf(pick.v)} /></g>
+          <g><line x1={x(pick.t)} x2={x(pick.t)} y1={T} y2={H - B} stroke="#94a3b8" strokeDasharray="2 2" /><circle cx={x(pick.t)} cy={y(pick.v)} r="4" fill={fillOf(pick.v, th)} /></g>
         )}
       </svg>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 mt-1">
-        {pick ? <span className="font-bold text-sm text-inherit"><span className={colourOf(pick.v)}>{pick.v} mmol/L</span> at {hhmm(pick.t)} {ARROWS[pick.direction] || ''}</span> : <span>Tap the chart to see a reading.</span>}
+        {pick ? <span className="font-bold text-sm text-inherit"><span className={colourOf(pick.v, th)}>{pick.v} mmol/L</span> at {hhmm(pick.t)} {ARROWS[pick.direction] || ''}</span> : <span>Tap the chart to see a reading.</span>}
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-sky-400/40" />personal target ({pLow}-{pHigh})</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-400/20" />in range ({th.low}-{th.high})</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#facc15]" />carbs</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 bg-[#60a5fa]" />bolus</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 bg-orange-500/40" />activity</span>
@@ -97,21 +161,33 @@ function DayChart({ data, isDark }) {
 }
 
 // Median and spread for each hour of the day across the period.
-function Profile({ profile, isDark }) {
+function Profile({ profile, isDark, th = DEFAULT_THRESHOLDS }) {
   const W = 720, H = 180, L = 30, R = 8, T = 8, B = 22, maxV = 15;
   const pts = profile.filter((p) => p.median != null);
   if (pts.length < 4) return <p className="text-xs text-slate-500">Needs a few more days of readings to draw your typical day.</p>;
   const x = (h) => L + ((h + 0.5) / 24) * (W - L - R);
   const y = (v) => T + (1 - Math.min(v, maxV) / maxV) * (H - T - B);
   const band = (lo, hi) => pts.map((p) => `${x(p.hour)},${y(p[hi])}`).join(' ') + ' ' + [...pts].reverse().map((p) => `${x(p.hour)},${y(p[lo])}`).join(' ');
+  const pLow = th.personalLow || 4.5;
+  const pHigh = th.personalHigh || th.tightHigh || 7.8;
+
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
-      <rect x={L} y={y(HIGH)} width={W - L - R} height={y(LOW) - y(HIGH)} fill="rgba(52,211,153,0.10)" />
-      {[3.9, 10].map((v) => <g key={v}><line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke={isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'} strokeDasharray="3 3" /><text x={L - 4} y={y(v) + 3} fontSize="9" textAnchor="end" fill="#94a3b8">{v}</text></g>)}
+      {/* Medical in-range outer band */}
+      <rect x={L} y={y(th.high)} width={W - L - R} height={Math.max(0, y(th.low) - y(th.high))} fill="rgba(52,211,153,0.06)" />
+      {/* Personal target inner band */}
+      <rect x={L} y={y(pHigh)} width={W - L - R} height={Math.max(0, y(pLow) - y(pHigh))} fill="rgba(56,189,248,0.14)" />
+
+      {[th.low, pLow, pHigh, th.high].map((v) => (
+        <g key={v}>
+          <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke={isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'} strokeDasharray="3 3" />
+          <text x={L - 4} y={y(v) + 3} fontSize="9" textAnchor="end" fill={v === pLow || v === pHigh ? '#38bdf8' : '#94a3b8'}>{v}</text>
+        </g>
+      ))}
       <polygon points={band('p10', 'p90')} fill="rgba(96,165,250,0.15)" />
       <polygon points={band('p25', 'p75')} fill="rgba(96,165,250,0.30)" />
-      <polyline points={pts.map((p) => `${x(p.hour)},${y(p.median)}`).join(' ')} fill="none" stroke="#60a5fa" strokeWidth="2" />
-      {[0, 6, 12, 18].map((h) => <text key={h} x={L + (h / 24) * (W - L - R)} y={H - 6} fontSize="9" fill="#94a3b8">{String(h).padStart(2, '0')}:00</text>)}
+      <polyline points={pts.map((p) => `${x(p.hour)},${y(p.median)}`).join(' ')} fill="none" stroke="#60a5fa" strokeWidth="2.5" />
+      {[0, 6, 12, 18, 24].map((h) => <text key={h} x={L + (h / 24) * (W - L - R)} y={H - 6} fontSize="9" textAnchor="middle" fill="#94a3b8">{String(h % 24).padStart(2, '0')}:00</text>)}
     </svg>
   );
 }
@@ -190,6 +266,19 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
   const [busy, setBusy] = useState('');
   const [notification, setNotification] = useState(null);
 
+  // PDF Download & Email Reporting State
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailRecipient, setEmailRecipient] = useState('');
+  const [emailNote, setEmailNote] = useState('');
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [downloadBusy, setDownloadBusy] = useState(false);
+  const [emailStatus, setEmailStatus] = useState(null);
+
+  // Thresholds State
+  const [thresholds, setThresholds] = useState(DEFAULT_THRESHOLDS);
+  const [thresholdsDraft, setThresholdsDraft] = useState(DEFAULT_THRESHOLDS);
+  const [thresholdsDirty, setThresholdsDirty] = useState(false);
+
   // Profile Insights & Fine-Tuning State
   const [profile, setProfile] = useState(null);
   const [profileDirty, setProfileDirty] = useState(false);
@@ -215,6 +304,94 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
     const d = await (await fetch('/api/glucose-hub/carbs?days=7')).json();
     if (d.success) setCarbs(d.carbs);
   }, []);
+
+  const loadThresholds = useCallback(async () => {
+    try {
+      const res = await (await fetch('/api/glucose-hub/thresholds')).json();
+      if (res.success && res.thresholds) {
+        setThresholds(res.thresholds);
+        setThresholdsDraft(res.thresholds);
+        setThresholdsDirty(false);
+      }
+    } catch (err) {
+      console.error('[GlucosePortal] Failed to load thresholds:', err);
+    }
+  }, []);
+
+  const loadEmailStatus = useCallback(async () => {
+    try {
+      const res = await (await fetch('/api/glucose-hub/report/email-status')).json();
+      if (res.success) {
+        setEmailStatus(res);
+        if (res.userEmail && !emailRecipient) {
+          setEmailRecipient(res.userEmail);
+        }
+      }
+    } catch (err) {
+      console.error('[GlucosePortal] Failed to load email status:', err);
+    }
+  }, [emailRecipient]);
+
+  const adjustThreshold = (key, delta) => {
+    setThresholdsDraft((prev) => {
+      const cur = Number(prev[key]) || 0;
+      const nextVal = Math.max(1.0, Math.min(25.0, Math.round((cur + delta) * 10) / 10));
+      return { ...prev, [key]: nextVal };
+    });
+    setThresholdsDirty(true);
+  };
+
+  const saveThresholds = async () => {
+    const { veryLow, low, personalLow = 4.5, personalHigh = 7.8, high, veryHigh } = thresholdsDraft;
+    const pHigh = personalHigh || thresholdsDraft.tightHigh || 7.8;
+    if (veryLow >= low) {
+      return notify('Very Low must be strictly less than Low cutoff.', 'error');
+    }
+    if (low > personalLow) {
+      return notify('Low cutoff must be less than or equal to Personal Low cutoff.', 'error');
+    }
+    if (personalLow >= pHigh) {
+      return notify('Personal Low cutoff must be strictly less than Personal High cutoff.', 'error');
+    }
+    if (pHigh > high) {
+      return notify('Personal High cutoff must be less than or equal to High cutoff.', 'error');
+    }
+    if (high >= veryHigh) {
+      return notify('High cutoff must be strictly less than Very High cutoff.', 'error');
+    }
+
+    try {
+      const res = await (await fetch('/api/glucose-hub/thresholds', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...thresholdsDraft, personalHigh: pHigh, tightHigh: pHigh })
+      })).json();
+      if (!res.success) throw new Error(res.error);
+      setThresholds(res.thresholds);
+      setThresholdsDraft(res.thresholds);
+      setThresholdsDirty(false);
+      load();
+      loadDay();
+      notify('Target bands and thresholds saved.');
+    } catch (err) {
+      notify(err.message, 'error');
+    }
+  };
+
+  const resetThresholds = async () => {
+    try {
+      const res = await (await fetch('/api/glucose-hub/thresholds/reset', { method: 'POST' })).json();
+      if (!res.success) throw new Error(res.error);
+      setThresholds(res.thresholds);
+      setThresholdsDraft(res.thresholds);
+      setThresholdsDirty(false);
+      load();
+      loadDay();
+      notify('Reset to standard consensus thresholds.');
+    } catch (err) {
+      notify(err.message, 'error');
+    }
+  };
 
   const loadProfile = useCallback(async () => {
     try {
@@ -242,8 +419,10 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadDay(); }, [loadDay]);
   useEffect(() => { loadCarbs(); }, [loadCarbs]);
+  useEffect(() => { loadThresholds(); }, [loadThresholds]);
   useEffect(() => { loadProfile(); }, [loadProfile]);
   useEffect(() => { loadEvaluation(); }, [loadEvaluation]);
+  useEffect(() => { loadEmailStatus(); }, [loadEmailStatus]);
   useEffect(() => { fetch('/api/glucose-hub/nightscout').then((r) => r.json()).then((d) => { if (d.success) { setNsWrite(d.configured); setDbSize(d.dbSize); setAutoClear(d.autoClear); } }).catch(() => {}); }, []);
   useEffect(() => { const t = setInterval(() => { load(); if (day === todayStr()) loadDay(); }, 60000); return () => clearInterval(t); }, [load, loadDay, day]);
 
@@ -287,6 +466,63 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
       if (!d.success) throw new Error(d.error);
       setSummary((s) => ({ ...s, insight: d.insight }));
     } catch (err) { notify(err.message, 'error'); } finally { setBusy(''); }
+  };
+
+  // --- PDF Download Action ---
+  const downloadPdfReport = async () => {
+    setDownloadBusy(true);
+    try {
+      notify('Generating Clinical Glucose PDF Report...');
+      const response = await fetch(`/api/glucose-hub/report/pdf?days=${days}&date=${day}`);
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.error || `Failed to generate PDF (${response.status})`);
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Clinical_Glucose_Report_${days}d_${day}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      notify('Glucose PDF report downloaded.');
+    } catch (err) {
+      console.error('[GlucosePortal] PDF Download Error:', err);
+      notify(err.message || 'PDF Generation failed', 'error');
+    } finally {
+      setDownloadBusy(false);
+    }
+  };
+
+  // --- Send PDF via Gmail Action ---
+  const sendEmailReport = async () => {
+    if (!emailRecipient || !emailRecipient.includes('@')) {
+      return notify('Please provide a valid recipient email address.', 'error');
+    }
+    setEmailBusy(true);
+    try {
+      const res = await (await fetch('/api/glucose-hub/report/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipient: emailRecipient,
+          days,
+          date: day,
+          customNote: emailNote
+        })
+      })).json();
+      if (!res.success) throw new Error(res.error);
+      notify(`PDF Report emailed successfully to ${emailRecipient}.`);
+      setEmailModalOpen(false);
+      setEmailNote('');
+    } catch (err) {
+      console.error('[GlucosePortal] Email Report Error:', err);
+      notify(err.message || 'Failed to send email report', 'error');
+    } finally {
+      setEmailBusy(false);
+    }
   };
 
   // --- Profile Fine-Tuning Actions ---
@@ -389,48 +625,177 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
   const s = summary?.stats, p = summary?.previous;
   const earlyDays = summary?.dataSince ? (Date.now() - summary.dataSince) / 86400000 : null;
   const cmp = (a, b, better) => (a == null || b == null || a === b ? null : (better === 'up' ? a > b : a < b) ? 'better' : 'worse');
+  const pLow = thresholds.personalLow || 4.5;
+  const pHigh = thresholds.personalHigh || thresholds.tightHigh || 7.8;
+  const draftPLow = thresholdsDraft.personalLow || 4.5;
+  const draftPHigh = thresholdsDraft.personalHigh || thresholdsDraft.tightHigh || 7.8;
+
   const chips = useMemo(() => (s ? [
     ['Average', `${s.mean} mmol/L`, cmp(Math.abs(s.mean - 7), p && Math.abs(p.mean - 7), 'down')],
     ['Estimated HbA1c (GMI)', `${s.gmiPct}%`, null],
     ['Variability (CV)', `${s.cvPct}%`, s.cvPct <= 36 ? 'better' : 'worse'],
-    ['Tight range 3.9-7.8', `${s.tightPct}%`, cmp(s.tightPct, p?.tightPct, 'up')],
+    [`Personal Target ${pLow}-${pHigh}`, `${s.personalTargetPct ?? s.tightPct}%`, cmp(s.personalTargetPct ?? s.tightPct, p?.personalTargetPct ?? p?.tightPct, 'up')],
     ['Lowest / highest', `${s.min} / ${s.max}`, null],
     ['Sensor coverage', `${s.coveragePct}%`, null],
-  ] : []), [s, p]);
+  ] : []), [s, p, thresholds, pLow, pHigh]);
 
   return (
     <PortalShell title="Blood Sugar" subtitle="/ims/glucose • your glucose, from IMS's own log"
       icon={Droplets} gradient={gradient} glow="rgba(244,63,94,0.3)"
       isDark={isDark} onThemeToggle={onThemeToggle} setCurrentPath={setCurrentPath} notification={notification} maxWidth="max-w-5xl">
 
-      {/* Nightscout database */}
-      <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
-        <span className={`flex items-center gap-1.5 font-bold ${dbColour(dbSize?.pct)}`} title={dbSize ? `${dbSize.usedMb} MB of ${dbSize.maxMb} MB used` : 'Nightscout database size'}>
-          <Database size={13} /> Nightscout DB {dbSize ? `${Number(dbSize.pct).toFixed(1)}%` : '--'}
-          {dbSize && <span className="font-normal text-slate-500">({dbSize.usedMb} of {dbSize.maxMb} MB)</span>}
-        </span>
-        <a href={MONGO_URL} target="_blank" rel="noreferrer" className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1.5 border text-emerald-600 ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-[#2E2B27]/10 hover:bg-black/5'}`}>
-          <ExternalLink size={12} /> MongoDB
-        </a>
-        <a href={NIGHTSCOUT_URL} target="_blank" rel="noreferrer" className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1.5 border text-sky-600 ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-[#2E2B27]/10 hover:bg-black/5'}`}>
-          <ExternalLink size={12} /> Nightscout
-        </a>
-        {nsWrite ? (
-          <>
-          <label className="flex items-center gap-1.5 cursor-pointer font-semibold" title={autoClear?.last ? `Last auto-clear: ${new Date(autoClear.last.at).toLocaleString('en-GB')} (${autoClear.last.before}% before${autoClear.last.after != null ? `, ${autoClear.last.after}% after` : ''}${autoClear.last.ok === false ? ', had problems' : ''})` : 'Checked hourly'}>
-            <input type="checkbox" checked={Boolean(autoClear?.enabled)} onChange={(e) => toggleAutoClear(e.target.checked)} /> Auto-clear at 95%
-          </label>
-          <button onClick={clearOld} disabled={busy === 'cleanup'} title="Delete Nightscout records older than 3 months"
-            className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1.5 border disabled:opacity-40 ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-[#2E2B27]/10 hover:bg-black/5'}`}>
-            {busy === 'cleanup' ? <RotateCw size={12} className="animate-spin" /> : <Eraser size={12} />} Clear over 3 months
+      {/* Top Action Row: PDF Report Actions & Nightscout database */}
+      <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+        {/* PDF & Email Actions */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={downloadPdfReport}
+            disabled={downloadBusy}
+            title={`Download complete ${days}-day Clinical Glucose Report as PDF`}
+            className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 border transition-all ${
+              isDark ? 'bg-white/10 hover:bg-white/15 border-white/15 text-white' : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
+            } shadow-sm disabled:opacity-40`}
+          >
+            {downloadBusy ? <RotateCw size={13} className="animate-spin" /> : <Download size={13} className="text-rose-400" />}
+            {downloadBusy ? 'Building PDF...' : 'Download PDF Report'}
           </button>
-          </>
-        ) : (
-          <button onClick={() => setShowConnect((v) => !v)} className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1.5 bg-gradient-to-r ${gradient} text-white`}>
-            <Database size={12} /> Connect Nightscout
+
+          <button
+            onClick={() => {
+              loadEmailStatus();
+              setEmailModalOpen(true);
+            }}
+            title="Email PDF report directly using your connected Gmail account"
+            className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 border transition-all ${
+              isDark ? 'bg-rose-500/20 hover:bg-rose-500/30 border-rose-500/30 text-rose-300' : 'bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-800'
+            } shadow-sm`}
+          >
+            <Mail size={13} className="text-rose-400" />
+            Email PDF Report
           </button>
-        )}
+        </div>
+
+        {/* Nightscout & Mongo shortcuts */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`flex items-center gap-1.5 font-bold ${dbColour(dbSize?.pct)}`} title={dbSize ? `${dbSize.usedMb} MB of ${dbSize.maxMb} MB used` : 'Nightscout database size'}>
+            <Database size={13} /> Nightscout DB {dbSize ? `${Number(dbSize.pct).toFixed(1)}%` : '--'}
+            {dbSize && <span className="font-normal text-slate-500">({dbSize.usedMb} of {dbSize.maxMb} MB)</span>}
+          </span>
+          <a href={MONGO_URL} target="_blank" rel="noreferrer" className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1.5 border text-emerald-600 ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-[#2E2B27]/10 hover:bg-black/5'}`}>
+            <ExternalLink size={12} /> MongoDB
+          </a>
+          <a href={NIGHTSCOUT_URL} target="_blank" rel="noreferrer" className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1.5 border text-sky-600 ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-[#2E2B27]/10 hover:bg-black/5'}`}>
+            <ExternalLink size={12} /> Nightscout
+          </a>
+          {nsWrite ? (
+            <>
+            <label className="flex items-center gap-1.5 cursor-pointer font-semibold" title={autoClear?.last ? `Last auto-clear: ${new Date(autoClear.last.at).toLocaleString('en-GB')} (${autoClear.last.before}% before${autoClear.last.after != null ? `, ${autoClear.last.after}% after` : ''}${autoClear.last.ok === false ? ', had problems' : ''})` : 'Checked hourly'}>
+              <input type="checkbox" checked={Boolean(autoClear?.enabled)} onChange={(e) => toggleAutoClear(e.target.checked)} /> Auto-clear at 95%
+            </label>
+            <button onClick={clearOld} disabled={busy === 'cleanup'} title="Delete Nightscout records older than 3 months"
+              className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1.5 border disabled:opacity-40 ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-[#2E2B27]/10 hover:bg-black/5'}`}>
+              {busy === 'cleanup' ? <RotateCw size={12} className="animate-spin" /> : <Eraser size={12} />} Clear over 3 months
+            </button>
+            </>
+          ) : (
+            <button onClick={() => setShowConnect((v) => !v)} className={`px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1.5 bg-gradient-to-r ${gradient} text-white`}>
+              <Database size={12} /> Connect Nightscout
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Email PDF Modal Dialog */}
+      {emailModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className={`w-full max-w-lg rounded-2xl border p-6 shadow-2xl relative ${isDark ? 'bg-slate-900 border-white/15 text-slate-100' : 'bg-white border-[#2E2B27]/15 text-slate-900'}`}>
+            <button
+              onClick={() => setEmailModalOpen(false)}
+              className="absolute top-4 right-4 p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400">
+                <Mail size={20} />
+              </div>
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-wider">Email Clinical Glucose PDF Report</h3>
+                <p className="text-xs text-slate-500">
+                  {emailStatus?.connected
+                    ? `Sending via connected Google account (${emailStatus.userEmail || emailStatus.userName})`
+                    : 'Dispatches clinical summary via Gmail API OAuth'}
+                </p>
+              </div>
+            </div>
+
+            {!emailStatus?.connected && (
+              <div className="mb-4 p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 text-xs flex items-start gap-2">
+                <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+                <span>Google Drive / Gmail OAuth is not fully connected. Authenticate Google Drive in Settings or IMS configuration if sending fails.</span>
+              </div>
+            )}
+
+            <div className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                  Recipient Email Address
+                </label>
+                <input
+                  type="email"
+                  value={emailRecipient}
+                  onChange={(e) => setEmailRecipient(e.target.value)}
+                  placeholder="e.g. your_email@gmail.com or diabetes_clinic@nhs.net"
+                  className={`w-full ${field}`}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
+                  <div className="text-[10px] text-slate-500 font-bold uppercase">Time Window</div>
+                  <div className="font-bold text-slate-200 mt-0.5">{days} Days AGP Aggregate</div>
+                </div>
+                <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
+                  <div className="text-[10px] text-slate-500 font-bold uppercase">Selected Daily Log</div>
+                  <div className="font-bold text-slate-200 mt-0.5">{dayLabel(day)}</div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                  Custom Clinical Note / Cover Message (Optional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={emailNote}
+                  onChange={(e) => setEmailNote(e.target.value)}
+                  placeholder="Add any specific context for your diabetes clinic or personal review..."
+                  className={`w-full ${field} resize-none`}
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2.5">
+                <button
+                  onClick={() => setEmailModalOpen(false)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold border ${isDark ? 'border-white/10 hover:bg-white/5 text-slate-300' : 'border-slate-300 hover:bg-slate-100 text-slate-700'}`}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={sendEmailReport}
+                  disabled={emailBusy || !emailRecipient}
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 bg-gradient-to-r ${gradient} text-white shadow-lg shadow-rose-500/20 disabled:opacity-50`}
+                >
+                  {emailBusy ? <RotateCw size={14} className="animate-spin" /> : <Send size={14} />}
+                  {emailBusy ? 'Sending via Gmail...' : 'Send PDF Report'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!nsWrite && showConnect && (
         <div className={`${panel} text-xs flex flex-col gap-2`}>
           <h2 className="text-xs font-black uppercase tracking-wider">Connect Nightscout</h2>
@@ -454,7 +819,7 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
       <div className={`${panel} flex flex-wrap items-center gap-6`}>
         <div>
           <div className="text-[10px] font-black uppercase tracking-wider text-slate-500">Right now</div>
-          <div className={`text-5xl font-black tabular-nums ${colourOf(cur?.value)} ${cur && !cur.fresh ? 'opacity-50' : ''}`}>
+          <div className={`text-5xl font-black tabular-nums ${colourOf(cur?.value, thresholds)} ${cur && !cur.fresh ? 'opacity-50' : ''}`}>
             {cur ? cur.value : '--'} <span className="text-3xl">{ARROWS[cur?.direction] || ''}</span>
           </div>
           <div className="text-xs text-slate-500">{cur ? `${cur.delta != null ? `${cur.delta > 0 ? '+' : ''}${cur.delta} · ` : ''}${cur.minutesAgo} min ago · ${cur.range}` : 'No readings yet'}</div>
@@ -487,7 +852,7 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
         </div>
         {s ? (
           <>
-            <TirBar s={s} />
+            <TirBar s={s} th={thresholds} />
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-4">
               {chips.map(([k, v, tone]) => (
                 <div key={k} className={`rounded-xl border px-3 py-2 ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
@@ -501,6 +866,300 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
         ) : <p className="text-xs text-slate-500">No readings in this period yet.</p>}
       </div>
 
+      {/* ========================================================================= */}
+      {/* TARGET BANDS & GLUCOSE THRESHOLDS WORKBENCH                               */}
+      {/* ========================================================================= */}
+      <div className={`${panel} border-emerald-500/20`}>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <Sliders size={16} className="text-emerald-400" />
+              <h2 className="text-xs font-black uppercase tracking-wider">Target Bands & Custom Thresholds</h2>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Customise the numerical cutoffs for Very Low, Low, Personal Target, High Cutoff (medical top), and Very High. These values dynamically govern all TIR calculations, day charts, and day report summaries.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {thresholdsDirty && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                Unsaved band changes
+              </span>
+            )}
+            <button
+              onClick={saveThresholds}
+              disabled={!thresholdsDirty}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all ${
+                thresholdsDirty
+                  ? 'bg-emerald-500 text-white border-emerald-400 shadow-lg shadow-emerald-500/20'
+                  : 'border-slate-500/20 text-slate-500 opacity-50'
+              }`}
+            >
+              <Save size={13} /> Save Bands
+            </button>
+            <button
+              onClick={resetThresholds}
+              className="px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 border border-slate-500/20 hover:bg-white/5 text-slate-400"
+              title="Reset to consensus defaults (3.0, 3.9, 4.5, 7.8, 10.0, 13.9 mmol/L)"
+            >
+              <RotateCcw size={12} /> Reset Defaults
+            </button>
+          </div>
+        </div>
+
+        {/* Live Band Range Visualisation */}
+        <div className="mb-4">
+          <div className="flex h-3 rounded-lg overflow-hidden mb-2">
+            <div style={{ width: '12%', background: '#ef4444' }} title={`Very Low: < ${thresholdsDraft.veryLow} mmol/L`} />
+            <div style={{ width: '12%', background: '#f87171' }} title={`Low: ${thresholdsDraft.veryLow} - ${thresholdsDraft.low} mmol/L`} />
+            <div style={{ width: '14%', background: 'rgba(56,189,248,0.45)' }} title={`Low side of in-range: ${thresholdsDraft.low} - ${draftPLow} mmol/L`} />
+            <div style={{ width: '32%', background: '#34d399' }} title={`Personal Target: ${draftPLow} - ${draftPHigh} mmol/L`} />
+            <div style={{ width: '14%', background: 'rgba(251,191,36,0.5)' }} title={`High side of in-range: ${draftPHigh} - ${thresholdsDraft.high} mmol/L`} />
+            <div style={{ width: '16%', background: '#fbbf24' }} title={`High: ${thresholdsDraft.high} - ${thresholdsDraft.veryHigh} mmol/L`} />
+            <div style={{ width: '10%', background: '#f97316' }} title={`Very High: > ${thresholdsDraft.veryHigh} mmol/L`} />
+          </div>
+          <div className="flex flex-wrap justify-between gap-1 text-[10px] text-slate-400 font-mono">
+            <span>&lt; {thresholdsDraft.veryLow} (Very Low)</span>
+            <span>{thresholdsDraft.veryLow} - {thresholdsDraft.low} (Low)</span>
+            <span className="text-sky-400 font-bold">{draftPLow} - {draftPHigh} (Personal Target)</span>
+            <span className="text-emerald-400 font-bold">{thresholdsDraft.low} - {thresholdsDraft.high} (In Range)</span>
+            <span>{thresholdsDraft.high} - {thresholdsDraft.veryHigh} (High)</span>
+            <span>&gt; {thresholdsDraft.veryHigh} (Very High)</span>
+          </div>
+        </div>
+
+        {/* 6 Configurable Stepper Inputs */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
+          {/* 1. Very Low Cutoff */}
+          <div className={`p-2.5 rounded-xl border flex flex-col justify-between ${isDark ? 'border-red-500/20 bg-red-950/10' : 'border-red-200 bg-red-50/70'}`}>
+            <div className="flex items-center justify-between mb-1">
+              <span className={`text-[10px] font-black uppercase tracking-wider ${isDark ? 'text-red-400' : 'text-red-700'}`}>Very Low (&lt;)</span>
+              <span className="w-2 h-2 rounded-full bg-red-500" />
+            </div>
+            <div className="flex items-center justify-center my-1">
+              <span className={`text-lg font-black tabular-nums ${isDark ? 'text-red-500' : 'text-red-600'}`}>
+                {Number(thresholdsDraft.veryLow).toFixed(1)}
+              </span>
+              <span className={`text-[10px] ml-1 font-medium ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>mmol/L</span>
+            </div>
+            <div className="flex items-center justify-between gap-1 mt-1">
+              <button
+                onClick={() => adjustThreshold('veryLow', -0.1)}
+                className={`flex-1 py-1 rounded-lg text-xs font-black transition-all ${
+                  isDark
+                    ? 'bg-red-500/20 hover:bg-red-500/30 text-red-200 border border-red-500/30'
+                    : 'bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 shadow-sm'
+                }`}
+                title="Decrease 0.1 mmol/L"
+              >
+                -0.1
+              </button>
+              <button
+                onClick={() => adjustThreshold('veryLow', 0.1)}
+                className={`flex-1 py-1 rounded-lg text-xs font-black transition-all ${
+                  isDark
+                    ? 'bg-red-500/20 hover:bg-red-500/30 text-red-200 border border-red-500/30'
+                    : 'bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 shadow-sm'
+                }`}
+                title="Increase 0.1 mmol/L"
+              >
+                +0.1
+              </button>
+            </div>
+          </div>
+
+          {/* 2. Low Cutoff */}
+          <div className={`p-2.5 rounded-xl border flex flex-col justify-between ${isDark ? 'border-rose-400/20 bg-rose-950/5' : 'border-rose-200 bg-rose-50/70'}`}>
+            <div className="flex items-center justify-between mb-1">
+              <span className={`text-[10px] font-black uppercase tracking-wider ${isDark ? 'text-rose-400' : 'text-rose-700'}`}>Low Cutoff (&lt;)</span>
+              <span className="w-2 h-2 rounded-full bg-rose-400" />
+            </div>
+            <div className="flex items-center justify-center my-1">
+              <span className={`text-lg font-black tabular-nums ${isDark ? 'text-rose-400' : 'text-rose-600'}`}>
+                {Number(thresholdsDraft.low).toFixed(1)}
+              </span>
+              <span className={`text-[10px] ml-1 font-medium ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>mmol/L</span>
+            </div>
+            <div className="flex items-center justify-between gap-1 mt-1">
+              <button
+                onClick={() => adjustThreshold('low', -0.1)}
+                className={`flex-1 py-1 rounded-lg text-xs font-black transition-all ${
+                  isDark
+                    ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/30'
+                    : 'bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 shadow-sm'
+                }`}
+                title="Decrease 0.1 mmol/L"
+              >
+                -0.1
+              </button>
+              <button
+                onClick={() => adjustThreshold('low', 0.1)}
+                className={`flex-1 py-1 rounded-lg text-xs font-black transition-all ${
+                  isDark
+                    ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/30'
+                    : 'bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 shadow-sm'
+                }`}
+                title="Increase 0.1 mmol/L"
+              >
+                +0.1
+              </button>
+            </div>
+          </div>
+
+          {/* 3. Personal Low Cutoff (≥) */}
+          <div className={`p-2.5 rounded-xl border flex flex-col justify-between ${isDark ? 'border-sky-500/20 bg-sky-950/10' : 'border-sky-200 bg-sky-50/70'}`}>
+            <div className="flex items-center justify-between mb-1">
+              <span className={`text-[10px] font-black uppercase tracking-wider ${isDark ? 'text-sky-400' : 'text-sky-700'}`}>Personal Low (≥)</span>
+              <span className="w-2 h-2 rounded-full bg-sky-400" />
+            </div>
+            <div className="flex items-center justify-center my-1">
+              <span className={`text-lg font-black tabular-nums ${isDark ? 'text-sky-400' : 'text-sky-600'}`}>
+                {Number(draftPLow).toFixed(1)}
+              </span>
+              <span className={`text-[10px] ml-1 font-medium ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>mmol/L</span>
+            </div>
+            <div className="flex items-center justify-between gap-1 mt-1">
+              <button
+                onClick={() => adjustThreshold('personalLow', -0.1)}
+                className={`flex-1 py-1 rounded-lg text-xs font-black transition-all ${
+                  isDark
+                    ? 'bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-500/30'
+                    : 'bg-sky-100 hover:bg-sky-200 text-sky-800 border border-sky-300 shadow-sm'
+                }`}
+                title="Decrease 0.1 mmol/L"
+              >
+                -0.1
+              </button>
+              <button
+                onClick={() => adjustThreshold('personalLow', 0.1)}
+                className={`flex-1 py-1 rounded-lg text-xs font-black transition-all ${
+                  isDark
+                    ? 'bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-500/30'
+                    : 'bg-sky-100 hover:bg-sky-200 text-sky-800 border border-sky-300 shadow-sm'
+                }`}
+                title="Increase 0.1 mmol/L"
+              >
+                +0.1
+              </button>
+            </div>
+          </div>
+
+          {/* 4. Personal High Cutoff (≤) */}
+          <div className={`p-2.5 rounded-xl border flex flex-col justify-between ${isDark ? 'border-sky-500/20 bg-sky-950/10' : 'border-sky-200 bg-sky-50/70'}`}>
+            <div className="flex items-center justify-between mb-1">
+              <span className={`text-[10px] font-black uppercase tracking-wider ${isDark ? 'text-sky-400' : 'text-sky-700'}`}>Personal High (≤)</span>
+              <span className="w-2 h-2 rounded-full bg-sky-400" />
+            </div>
+            <div className="flex items-center justify-center my-1">
+              <span className={`text-lg font-black tabular-nums ${isDark ? 'text-sky-400' : 'text-sky-600'}`}>
+                {Number(draftPHigh).toFixed(1)}
+              </span>
+              <span className={`text-[10px] ml-1 font-medium ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>mmol/L</span>
+            </div>
+            <div className="flex items-center justify-between gap-1 mt-1">
+              <button
+                onClick={() => { adjustThreshold('personalHigh', -0.1); adjustThreshold('tightHigh', -0.1); }}
+                className={`flex-1 py-1 rounded-lg text-xs font-black transition-all ${
+                  isDark
+                    ? 'bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-500/30'
+                    : 'bg-sky-100 hover:bg-sky-200 text-sky-800 border border-sky-300 shadow-sm'
+                }`}
+                title="Decrease 0.1 mmol/L"
+              >
+                -0.1
+              </button>
+              <button
+                onClick={() => { adjustThreshold('personalHigh', 0.1); adjustThreshold('tightHigh', 0.1); }}
+                className={`flex-1 py-1 rounded-lg text-xs font-black transition-all ${
+                  isDark
+                    ? 'bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-500/30'
+                    : 'bg-sky-100 hover:bg-sky-200 text-sky-800 border border-sky-300 shadow-sm'
+                }`}
+                title="Increase 0.1 mmol/L"
+              >
+                +0.1
+              </button>
+            </div>
+          </div>
+
+          {/* 5. High Cutoff (Medical Top ≤) */}
+          <div className={`p-2.5 rounded-xl border flex flex-col justify-between ${isDark ? 'border-emerald-500/30 bg-emerald-950/10' : 'border-emerald-200 bg-emerald-50/70'}`}>
+            <div className="flex items-center justify-between mb-1">
+              <span className={`text-[10px] font-black uppercase tracking-wider ${isDark ? 'text-emerald-400' : 'text-emerald-700'}`}>High Cutoff (≤)</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            </div>
+            <div className="flex items-center justify-center my-1">
+              <span className={`text-lg font-black tabular-nums ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                {Number(thresholdsDraft.high).toFixed(1)}
+              </span>
+              <span className={`text-[10px] ml-1 font-medium ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>mmol/L</span>
+            </div>
+            <div className="flex items-center justify-between gap-1 mt-1">
+              <button
+                onClick={() => adjustThreshold('high', -0.1)}
+                className={`flex-1 py-1 rounded-lg text-xs font-black transition-all ${
+                  isDark
+                    ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-500/30'
+                    : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 shadow-sm'
+                }`}
+                title="Decrease 0.1 mmol/L"
+              >
+                -0.1
+              </button>
+              <button
+                onClick={() => adjustThreshold('high', 0.1)}
+                className={`flex-1 py-1 rounded-lg text-xs font-black transition-all ${
+                  isDark
+                    ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-500/30'
+                    : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 shadow-sm'
+                }`}
+                title="Increase 0.1 mmol/L"
+              >
+                +0.1
+              </button>
+            </div>
+          </div>
+
+          {/* 6. Very High Cutoff (>) */}
+          <div className={`p-2.5 rounded-xl border flex flex-col justify-between ${isDark ? 'border-amber-500/20 bg-amber-950/10' : 'border-amber-200 bg-amber-50/70'}`}>
+            <div className="flex items-center justify-between mb-1">
+              <span className={`text-[10px] font-black uppercase tracking-wider ${isDark ? 'text-amber-400' : 'text-amber-800'}`}>Very High (&gt;)</span>
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+            </div>
+            <div className="flex items-center justify-center my-1">
+              <span className={`text-lg font-black tabular-nums ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>
+                {Number(thresholdsDraft.veryHigh).toFixed(1)}
+              </span>
+              <span className={`text-[10px] ml-1 font-medium ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>mmol/L</span>
+            </div>
+            <div className="flex items-center justify-between gap-1 mt-1">
+              <button
+                onClick={() => adjustThreshold('veryHigh', -0.1)}
+                className={`flex-1 py-1 rounded-lg text-xs font-black transition-all ${
+                  isDark
+                    ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/30'
+                    : 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 shadow-sm'
+                }`}
+                title="Decrease 0.1 mmol/L"
+              >
+                -0.1
+              </button>
+              <button
+                onClick={() => adjustThreshold('veryHigh', 0.1)}
+                className={`flex-1 py-1 rounded-lg text-xs font-black transition-all ${
+                  isDark
+                    ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/30'
+                    : 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 shadow-sm'
+                }`}
+                title="Increase 0.1 mmol/L"
+              >
+                +0.1
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* one day */}
       <div className={panel}>
         <div className="flex items-center gap-2 mb-3">
@@ -508,32 +1167,48 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
           <h2 className="text-xs font-black uppercase tracking-wider flex-1 text-center">{day === todayStr() ? 'Today' : dayLabel(day)}</h2>
           <button onClick={() => setDay(shiftDay(day, 1))} disabled={day >= todayStr()} className="p-1.5 rounded-lg hover:bg-slate-500/10 disabled:opacity-30"><ChevronRight size={16} /></button>
         </div>
-        {dayData && dayData.readings.length ? <DayChart data={dayData} isDark={isDark} /> : <p className="text-xs text-slate-500 text-center py-8">No readings for this day.</p>}
+        {dayData && dayData.readings.length ? <DayChart data={dayData} isDark={isDark} th={thresholds} /> : <p className="text-xs text-slate-500 text-center py-8">No readings for this day.</p>}
         {dayData?.stats && <p className="mt-2 text-[11px] text-slate-500 text-center">{dayData.stats.inRangePct}% in range · average {dayData.stats.mean} · lowest {dayData.stats.min} · highest {dayData.stats.max}</p>}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className={panel}>
-          <h2 className="text-xs font-black uppercase tracking-wider mb-3">Your typical day ({PERIODS.find((o) => o.key === days)?.label})</h2>
-          {summary && <Profile profile={summary.profile} isDark={isDark} />}
-          <p className="text-[11px] text-slate-500 mt-1">Line: median. Dark band: middle half of readings. Light band: 10th to 90th percentile.</p>
+      {/* Full-width "Your typical day" AGP Profile */}
+      <div className={panel}>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <h2 className="text-xs font-black uppercase tracking-wider">Your typical day ({PERIODS.find((o) => o.key === days)?.label}) • Ambulatory Glucose Profile (AGP)</h2>
+            <p className="text-[11px] text-slate-500 mt-0.5">Median glucose curve across 24 hours with interquartile and 10th-90th percentile spread bands against your target thresholds.</p>
+          </div>
+          <div className="flex items-center gap-3 text-[11px] text-slate-400">
+            <span className="flex items-center gap-1"><span className="w-3 h-1 bg-[#60a5fa] rounded" /> Median</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-2 bg-blue-400/30 rounded" /> Middle 50%</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-2 bg-blue-400/15 rounded" /> 10th-90th %ile</span>
+          </div>
         </div>
-        <div className={panel}>
-          <h2 className="text-xs font-black uppercase tracking-wider mb-3">Lows (below 3.9 for 15 minutes or more)</h2>
-          {summary?.lows?.length ? (
-            <div className="flex flex-col gap-1.5 text-xs">
-              {summary.lows.map((l) => (
-                <div key={l.start} className="flex flex-wrap items-baseline gap-x-3">
-                  <span className="w-32 text-slate-500">{l.when}</span>
-                  <span className={`font-bold ${colourOf(l.lowest)}`}>{l.lowest}</span>
-                  <span className="text-slate-500">{l.minutes} min</span>
-                  {l.overnight && <span className="text-indigo-400">overnight</span>}
-                  {l.afterExercise && <span className="text-orange-500">after {l.afterExercise}</span>}
+        {summary && <Profile profile={summary.profile} isDark={isDark} th={thresholds} />}
+      </div>
+
+      {/* Lows card */}
+      <div className={panel}>
+        <h2 className="text-xs font-black uppercase tracking-wider mb-3">Lows (below {thresholds.low} for 15 minutes or more)</h2>
+        {summary?.lows?.length ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 text-xs">
+            {summary.lows.map((l) => (
+              <div key={l.start} className={`p-2.5 rounded-xl border flex items-center justify-between ${isDark ? 'bg-slate-950/30 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
+                <div>
+                  <div className="font-bold text-slate-300">{l.when}</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1.5">
+                    <span>{l.minutes} min</span>
+                    {l.overnight && <span className="text-indigo-400 font-semibold">• overnight</span>}
+                    {l.afterExercise && <span className="text-orange-500 font-semibold">• after {l.afterExercise}</span>}
+                  </div>
                 </div>
-              ))}
-            </div>
-          ) : <p className="text-xs text-slate-500">None in this period.</p>}
-        </div>
+                <div className={`text-base font-black tabular-nums ${colourOf(l.lowest, thresholds)}`}>
+                  {l.lowest} <span className="text-[10px] font-normal text-slate-500">mmol/L</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : <p className="text-xs text-slate-500">None in this period.</p>}
       </div>
 
       {/* ========================================================================= */}
@@ -1051,4 +1726,5 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
     </PortalShell>
   );
 }
+
 

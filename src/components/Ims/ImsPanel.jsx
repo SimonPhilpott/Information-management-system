@@ -17,6 +17,7 @@ export default function ImsPanel({ theme = 'dark' }) {
   const ims = useImsLive();
   const [text, setText] = useState('');
   const listRef = useRef(null);
+  const textareaRef = useRef(null);
   // carbs from a photo: the food button opens the camera; the plate's estimate shows above the input
   const [plate, setPlate] = useState(null);
   const [carbNote, setCarbNote] = useState(null);
@@ -25,15 +26,39 @@ export default function ImsPanel({ theme = 'dark' }) {
 
   useEffect(() => { listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' }); }, [ims.messages]);
 
-  const submit = () => { if (text.trim()) { ims.sendText(text); setText(''); } };
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      if (text) {
+        textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 260) + 'px';
+      }
+    }
+  }, [text]);
+
+  const submit = () => {
+    if (text.trim()) {
+      ims.sendText(text);
+      setText('');
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
+    }
+  };
+
+  const handleInput = (e) => {
+    setText(e.target.value);
+    e.target.style.height = 'auto';
+    e.target.style.height = Math.min(e.target.scrollHeight, 260) + 'px';
+  };
+
   const border = isDark ? 'border-white/10' : 'border-[#2E2B27]/10';
   const muted = isDark ? 'text-slate-400' : 'text-slate-500';
 
   return (
     <div className={`flex flex-col h-full min-h-0 ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
       {/* face, then voice replies and his status */}
-      <div className={`px-4 pt-3 pb-2 border-b ${border}`}>
-        <ImsFace face={ims.face} status={ims.status} levelRef={ims.levelRef} width="100%" className="max-w-xl mx-auto" />
+      <div className={`px-4 pt-2 pb-2 border-b ${border}`}>
+        <ImsFace face={ims.face} status={ims.status} levelRef={ims.levelRef} width="100%" className="max-w-[280px] mx-auto" />
         <div className="flex flex-wrap items-center gap-2 mt-2 max-w-xl mx-auto">
           <button onClick={() => ims.setVoiceReplies(!ims.voiceReplies)} title={ims.voiceReplies ? 'Voice replies on - tap for text only' : 'Text-only replies - tap to hear him'}
             className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border ${border} ${ims.voiceReplies ? '' : 'opacity-70'}`}>
@@ -87,9 +112,15 @@ export default function ImsPanel({ theme = 'dark' }) {
 
       {/* input */}
       <div className={`px-4 py-3 border-t ${border} flex items-end gap-2`}>
-        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={1}
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={handleInput}
+          rows={1}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
-          placeholder="Type to Ims..." className={`flex-1 resize-none px-3.5 py-2.5 rounded-xl text-sm outline-none border max-h-32 ${isDark ? 'bg-slate-900/60 border-white/10' : 'bg-white border-[#2E2B27]/10'}`} />
+          placeholder="Type to Ims..."
+          className={`flex-1 resize-none px-3.5 py-2.5 rounded-xl text-sm outline-none border min-h-[42px] max-h-[260px] overflow-y-auto leading-relaxed ${isDark ? 'bg-slate-900/60 border-white/10' : 'bg-white border-[#2E2B27]/10'}`}
+        />
         <button onClick={submit} disabled={!text.trim()} title="Send" className="p-3 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white disabled:opacity-40"><Send size={16} /></button>
         <button onClick={() => setCamera(true)} title="Carbs from a photo of your food" aria-label="Carbs from a photo of your food" className={`p-3 rounded-xl border ${border} ${isDark ? 'bg-slate-800/70' : 'bg-white'}`}>
           <Utensils size={16} />

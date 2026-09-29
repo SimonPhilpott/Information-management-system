@@ -626,9 +626,86 @@
         "Full arbitration decision controls (Replace Rule, Add to Rulebook, Ignore, Edit & Apply with custom text) with resolution stamps",
         "Post-run 2-hour recovery period replay toggle in flythrough player with finish line demarcation and post-exercise glucose drift monitoring"
       ]
+    },
+    "Pre-Assembled Day Report Background Cache": {
+      "status": "enabled",
+      "description": "Background caching and reactive invalidation engine for the morning and day report. Pre-assembles report sections into memory and disk cache every 5 minutes and upon data mutations (glucose updates, reminders, config changes), ensuring sub-5ms spoken retrieval and eliminating ESP32-S3-BOX-3 verify_timeout drops.",
+      "subFeatures": [
+        "In-memory and disk persistence for pre-assembled report string (data/day_report_cache.json)",
+        "Sub-millisecond retrieval (<5ms) for getDayReport() tool execution and buildMorningReportDirective()",
+        "Periodic 5-minute background pre-warming daemon (prewarmDayReportCache)",
+        "Reactive cache invalidation upon report config updates (PUT /config, POST /reset) and system events",
+        "Startup pre-warm guarantee on server initialization in server/index.js",
+        "Direct turn delivery directive optimization for immediate vocal response on hardware client"
+      ]
+    },
+    "Day Report Strict Non-Repetition & Blood Sugar Calibration": {
+      "status": "enabled",
+      "description": "Strict sequential non-repetition delivery engine and 5-tier blood glucose range recalibration (<3.0 Very Low, 3.0-3.9 Low, 3.9-10.0 In Range, 10.0-13.9 High, >13.9 Very High) with deep cross-service contextual awareness and recognition that 5.0 mmol/L is perfectly in range.",
+      "subFeatures": [
+        "Strict non-repetition delivery prompt directives eliminating redundant device status or date recitations later in the briefing",
+        "5-tier calibrated glucose bands: Very Low (<3.0), Low (3.0-3.9), In Range (3.9-10.0), High (10.0-13.9), Very High (>13.9)",
+        "Explicit recognition in prompt directives and descriptors that 5.0 mmol/L is spot-on and perfectly in range",
+        "Deep cross-service intelligence linking context without duplicate recitation"
+      ]
+    },
+    "Configurable Blood Glucose Target Bands & Thresholds": {
+      "status": "enabled",
+      "description": "Configurable blood glucose classification thresholds allowing manual tuning of Very Low, Low Cutoff, Personal Low Cutoff, Personal High Cutoff, High Cutoff (medical limit), and Very High cutoffs across IMS. Persisted in SQLite settings with REST endpoints and live interactive calibration workbench in GlucosePortal.",
+      "subFeatures": [
+        "Configurable threshold cutoffs: veryLow (default 3.0), low (default 3.9), personalLow (default 4.5), personalHigh (default 7.8), high (default 10.0), and veryHigh (default 13.9)",
+        "Granular range classifications: 'on the low side of in range' (3.9 to 4.5), 'in range / personal target' (4.5 to 7.8), and 'on the high side of in range' (7.8 to 10.0)",
+        "REST API endpoints: GET /api/glucose-hub/thresholds, PUT /api/glucose-hub/thresholds, and POST /api/glucose-hub/thresholds/reset",
+        "Dynamic integration across glucoseHubService.js (statsOf, getCurrent, describeForIms, lowEvents) and morningReportService.js",
+        "Automatic day report cache invalidation upon threshold changes to keep spoken summaries and web stats fully synchronized",
+        "Interactive 6-card Target Bands workbench in GlucosePortal.jsx with real-time +/- 0.1 mmol/L steppers, live band visualizer, reset to consensus defaults, and validation guards",
+        "Dynamic dual-band overlay (medical in-range + personal target) and reference line markers on 24h DayChart and Typical Day Profile",
+        "Dynamic chart and TIR bar reactive updating across all period views (24h, 7d, 14d, 30d)"
+      ]
+    },
+    "Clinical Glucose PDF Report Generation & Gmail Email Dispatch": {
+      "status": "enabled",
+      "description": "Ambulatory Glucose Profile (AGP) full-width expansive chart layout, automated headless Playwright Chromium PDF clinical report generation, direct browser PDF download, and RFC 2822 multipart email dispatch using the user's connected Google OAuth Gmail account.",
+      "subFeatures": [
+        "Full-width Ambulatory Glucose Profile (AGP) card with 24h median curve, 50% interquartile band, 10th-90th percentile spread, and legend markers",
+        "Automated multi-page clinical PDF report generation via Playwright Chromium in glucosePdfService.js",
+        "Express REST endpoints at GET /api/glucose-hub/report/pdf, POST /api/glucose-hub/report/email, and GET /api/glucose-hub/report/email-status",
+        "Direct one-click 'Download PDF Report' button with progress feedback in top action bar of GlucosePortal.jsx",
+        "Interactive 'Email PDF Report' modal with recipient input pre-filled from connected Google OAuth account, time window metrics, and optional clinical note textarea",
+        "RFC 2822 MIME multipart email construction and automated dispatch via Google Gmail API (gmail.users.messages.send)",
+        "Strict try/finally browser lifecycle hygiene and OAuth token refresh safety"
+      ]
+    },
+    "Adaptive Chat Input Box & Safe Max Height": {
+      "status": "enabled",
+      "description": "Adaptive auto-expanding chat textarea in ChatInterface supporting multiline typing and pasting with a safe 180px max-height cap and smooth scroll containment to prevent overlapping the IMS face or layout header.",
+      "subFeatures": [
+        "Dynamic textarea auto-expansion up to 180px max-height on typing and pasting",
+        "Shift+Enter creates newlines while Enter dispatches messages",
+        "Reactive height synchronization via useEffect on input state change",
+        "Proper scroll containment with custom scrollbar styling preventing avatar and face overlap",
+        "Responsive flex layout on desktop and mobile viewports"
+      ]
+    },
+    "System Architecture Guest Invites & Fullscreen Adaptive Viewport": {
+      "status": "enabled",
+      "description": "Guest invitation and access management modal integrated directly into the System Architecture portal (/ims/architecture) for sharing Campaign Manager access with Daniel Philpott, along with adaptive fullscreen panel state memory that auto-collapses the right column during fullscreen fit and restores it upon exit.",
+      "subFeatures": [
+        "Interactive ArchitectureInviteModal accessible from top action bar and 'Owner and access' spoke card",
+        "Quick-action invite preset and pre-composed email dispatch for Daniel Philpott",
+        "Full guest access lifecycle management (GET/POST/DELETE /api/decks/invites), invite link copying, and sign-in telemetry inspection",
+        "Automatic right-hand summary column collapse upon entering fullscreen mode ('Fit to screen')",
+        "Automatic restoration of previous summary column state when exiting fullscreen mode"
+      ]
+    },
+    "Compact Half-Height IMS Face in Main App": {
+      "status": "enabled",
+      "description": "Adjusted IMS interactive face canvas dimensions and container padding in ImsPanel to reduce face height by 50% (max-w-[280px]), expanding visible vertical real estate for conversational chat messages.",
+      "subFeatures": [
+        "Reduced ImsFace container max width from max-w-xl to max-w-[280px] in ImsPanel.jsx",
+        "Preserves exact 12x8 dot grid pixel aspect ratio and dynamic breathing/expressions",
+        "Compacted vertical padding to expand the scrollable chat message viewport by ~200px"
+      ]
     }
   }
 }
-
-
-

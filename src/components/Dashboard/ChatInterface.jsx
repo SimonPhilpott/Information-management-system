@@ -72,6 +72,15 @@ export default function ChatInterface({
     }
   }, [messages.length, isTyping]);
 
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      if (input) {
+        textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 180) + 'px';
+      }
+    }
+  }, [input]);
+
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -133,7 +142,7 @@ export default function ChatInterface({
   const handleInput = (e) => {
     setInput(e.target.value);
     e.target.style.height = 'auto';
-    e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+    e.target.style.height = Math.min(e.target.scrollHeight, 180) + 'px';
   };
 
   const handlePaste = (e) => {

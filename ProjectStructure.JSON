@@ -217,10 +217,18 @@
       "dependencies": []
     },
     "pdf-knowledge-base/server/services/glucoseHubService.js": {
-      "description": "Nightscout glucose hub and analytics service supporting API v3 informational Note treatment synchronization for food logging (avoiding duplicate active carbs or insulin during AAPS closed-loop execution), plus local SQLite carb_log persistence.",
+      "description": "Nightscout glucose hub and analytics service supporting API v3 informational Note treatment synchronization for food logging, configurable 5-tier blood glucose thresholds (veryLow, low, tightHigh, high, veryHigh) with SQLite settings persistence, dynamic TIR distributions, and local SQLite carb_log persistence.",
       "dependencies": [
         "pdf-knowledge-base/server/db/database.js",
         "pdf-knowledge-base/server/services/wifiService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/routes/glucoseHub.js": {
+      "description": "Express router for glucose hub statistics, profile fine-tuning evaluation, Nightscout database maintenance, and configurable glucose threshold management (GET/PUT/POST /api/glucose-hub/thresholds).",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/glucoseHubService.js",
+        "pdf-knowledge-base/server/services/glucoseInsightService.js",
+        "pdf-knowledge-base/server/services/morningReportService.js"
       ]
     },
     "pdf-knowledge-base/server/services/morningReportService.js": {
@@ -365,6 +373,42 @@
       "description": "Express router exposing GET /api/wake-daemon/status and POST /api/wake-daemon/reset endpoints for wake daemon operational health monitoring and manual state resets.",
       "dependencies": [
         "pdf-knowledge-base/server/services/wakeDaemonService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/glucosePdfService.js": {
+      "description": "Headless Playwright Chromium PDF generator rendering clinical glucose reports (AGP profile curves, Time-in-Range distributions, low event tallies, and daily sensor graphs) and automated RFC 2822 multipart email dispatch via Google OAuth Gmail API (gmail.users.messages.send).",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/glucoseHubService.js",
+        "pdf-knowledge-base/server/services/driveService.js",
+        "pdf-knowledge-base/server/config.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/morningReportService.js": {
+      "description": "Comprehensive briefing service aggregating weather, calendar, reminders, birthdays, music wants, campaigns, glucose, device status, Strava training, news RSS feeds, and tasks with background pre-assembled memory/disk caching (data/day_report_cache.json) for sub-5ms spoken delivery on ESP32-S3-BOX-3.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/weatherService.js",
+        "pdf-knowledge-base/server/services/remindersService.js",
+        "pdf-knowledge-base/server/services/calendarService.js",
+        "pdf-knowledge-base/server/services/birthdayService.js",
+        "pdf-knowledge-base/server/services/glucoseHubService.js",
+        "pdf-knowledge-base/server/services/stravaService.js",
+        "pdf-knowledge-base/server/services/newsService.js",
+        "pdf-knowledge-base/server/services/tasksService.js"
+      ]
+    },
+    "src/components/Dashboard/SystemArchitecturePortal.jsx": {
+      "description": "System Architecture portal (/ims/architecture) visualising complete application dependency mesh, live external connections, hardware metrics, test prompt execution tracer, integrated guest invite management modal (ArchitectureInviteModal), and fullscreen right-column adaptive collapse.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx",
+        "src/components/Ims/ImsFace.jsx"
+      ]
+    },
+    "src/components/Ims/ImsPanel.jsx": {
+      "description": "Main home screen conversational chat panel housing the compact 50%-height IMS animated face canvas, voice reply toggles, live conversation history, photo carb analysis, and adaptive multiline input box.",
+      "dependencies": [
+        "src/components/Ims/ImsFace.jsx",
+        "src/components/Dashboard/PhotoCarbs.jsx",
+        "src/hooks/useImsLive.js"
       ]
     }
   }

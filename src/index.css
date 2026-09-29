@@ -1675,9 +1675,11 @@ a:hover {
   font-size: 14px;
   line-height: 1.6;
   resize: none;
-  min-height: 24px;
-  max-height: 120px;
-  padding: var(--space-sm) var(--space-md);
+  min-height: 38px;
+  max-height: 180px;
+  padding: 8px 12px;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .chat-input::placeholder {
