@@ -761,6 +761,76 @@
         "Updated scheduleItem tool description and parameter contracts in hardwareClientService.js",
         "Markdown persona rule sync in ims_persona_rules.md Section 5 for live session persistence"
       ]
+    },
+    "Unified Cross-Service Rolling Ticker": {
+      "status": "enabled",
+      "description": "Unified rolling status ticker on the bottom-right of the ESP32 LCD screen, aggregating active Alarms, Timers, Reminders, Birthdays, New Album Releases, and Calendar Events with dynamic date badges, collision protection against the left clock, and graceful ellipsis truncation.",
+      "subFeatures": [
+        "Aggregates active notifications into a sorted upcoming array in deviceInfo() (server/index.js)",
+        "Formats same-day notifications with (Today HH:MM) or (Today) and future dates with (DD Mon HH:MM) or (DD Mon)",
+        "Expands ESP32 firmware ticker buffer up to 24 rotating items (main.cpp)",
+        "Dynamic leftClockRightEdge calculation in drawFooterClock() preventing text overlapping",
+        "Ellipsis (...) truncation when titles exceed available footer width"
+      ]
+    },
+    "Wake Phrase Reliability Optimization": {
+      "status": "enabled",
+      "description": "Acoustic and session architecture optimization for wake phrase reliability: expands PSRAM pre-roll circular buffer to ~1216ms, recalibrates onset VAD energy thresholds to 520 RMS, and implements auto-recovery session recycling on candidate timeouts or rejections to prevent zombie locks.",
+      "subFeatures": [
+        "Expanded PSRAM PREROLL_CHUNKS from 16 to 38 (~1216ms audio history at 16kHz) preserving soft leading syllables",
+        "Tuned VOICE_WAKE_THRESHOLD to 520 RMS for responsive capture of soft vowel openings ('Eh up', 'Hi')",
+        "Auto-recovery upstream socket recycling in wakeDaemonService.js on verify_timeout and no_wake_phrase rejections",
+        "Clean pre-roll and audio queue reset on cancelConversation and readyForWake control frames in main.cpp"
+      ]
+    },
+    "ESP32 LCD Header Single-Row Status Alignment & Centred Title": {
+      "status": "enabled",
+      "description": "Optimized ESP32 LCD header layout aligning VOICE, WAKE, WIFI, and USB status indicators into a single unified horizontal row at y=31, horizontally centering (I)nformation (M)anagement (S)ystem across 320px with bold initials, vertically centering in the upper title space at y=14, and resolving backend undefined calendar references in the footer rolling ticker.",
+      "subFeatures": [
+        "Unified horizontal status indicator row positioning VOICE (x=48), WAKE (x=102), WIFI (x=156), and USB (x=210) at HEADER_STATUS_Y (y=31)",
+        "Horizontally centred (I)nformation (M)anagement (S)ystem title text across 320px screen width with bold bracketed initials",
+        "Vertical alignment of header title to y=14 directly above the single-row status indicators",
+        "Fixed undefined calendar cache reference in server deviceInfo() ensuring active notifications and birthdays stream to the rolling ticker",
+        "Reactive WiFi connection state tracking in loop() for instant delta-redraw via drawWifiIndicator()"
+      ]
+    },
+    "Music Scanner Album Linking, Audit Screen & Dev Ideas Category Filtering": {
+      "status": "enabled",
+      "description": "Comprehensive accuracy and audit enhancements for the Music Scanner (/ims/musicscan) and category filtering for Dev Ideas (/ims/devideas). Includes per-album and per-artist network folder browsing, linking, and direct renaming, MusicBrainz fuzzy Lucene alignment, an interactive multi-category Audit view for unmatched artists and missing releases, hide-from-scanner toggle, and service tag categorization with filter bars.",
+      "subFeatures": [
+        "Audit view in MusicScanPortal (/ims/musicscan) listing unmatched artists in high-contrast red with expandable detail panels",
+        "Interactive MusicBrainz fuzzy search and alignment modal querying Lucene indices to find closest artist matches with scores and disambiguation",
+        "Network folder browser modal inspecting subfolders, loose audio files, and folder paths on \\\\Sideburnt\\NorthField\\MUZAK",
+        "Direct album and artist folder renaming on disk with automatic scan cache updates and metadata migration",
+        "Manual album release linking to specific subfolders or artist root (loose tracks) marking releases as owned",
+        "Hide / Unhide artist toggle excluding non-music or sound effect folders from future music scans and morning reports",
+        "Dev Ideas category/service tag dropdown during creation and editing with 'Other' option and active filter bar in DevIdeasPortal"
+      ]
+    },
+    "Best Practice Code Inputs/Outputs Specifications & Outdated Repository Re-Scanner": {
+      "status": "enabled",
+      "description": "Comprehensive structured contract analysis and repository synchronization for the Best Practice Code Service (/ims/code-repo). Includes explicit inputs and outputs specifications (variables, triggers, event listeners, return values, state mutations, data types, and concrete examples) for every code snippet item, automatic detection of outdated repositories with newer commits, and incremental re-scanning to update existing snippets and extract new patterns.",
+      "subFeatures": [
+        "Structured inputs array with name, type (string, array, object, number, Function, Event, Promise), kind (Variable, Trigger, Listener, Config, State), description, and realistic concrete example payload",
+        "Structured outputs array with name, type, kind (Return Value, Event, Mutation, Render, Sink), description, and concrete return value/mutation example",
+        "Dedicated dual-column 'Inputs & Outputs Contract Specifications' view in CodeRepoPortal overview with type pills, kind badges, and syntax-highlighted example code blocks",
+        "Outdated repository detection comparing git commit SHAs and pushed_at timestamps for both GitHub remote repositories and local git working directories",
+        "Visual 'Needs Re-scan' indicator badges on outdated repository cards and mini 'X in / Y out' summary badges on catalogued snippet cards",
+        "'Check for Updates' manual verification action querying commit APIs and local git logs across connected codebases",
+        "'Re-scan Outdated' batch SSE pipeline performing incremental snippet updates and extracting newly expanded files while preserving existing user notes and evaluation records"
+      ]
+    },
+    "System Architecture Live Trace Tooltips, Show-Only-Used Filter & PDF Snapshot": {
+      "status": "enabled",
+      "description": "Interactive enhancements for the System Architecture portal (/ims/architecture). Illuminates all participating components and tools during test prompts with rich hover tooltips detailing why each item was accessed, adds a 'Show only used items' filter toggle to display active components exclusively, implements requestAnimationFrame stabilized connectors to eliminate line redraw flickering, and provides a one-click 'Save as PDF' vector snapshot export.",
+      "subFeatures": [
+        "Updated system architecture card and row catalog reflecting all 26 services, 35 voice tools, 17 external connections, and 6 data stores",
+        "Trace step reason extraction providing rich descriptors for why components, databases, tools, and external services were accessed",
+        "Interactive hover tooltips on lit components displaying human-readable access rationale and execution counts",
+        "'Show only used items' checkbox filter toggle in the test prompt header collapsing unused cards and displaying active items exclusively",
+        "RAF-throttled and ResizeObserver-synchronized connector calculations preventing line flickering during streaming test logs",
+        "One-click 'Save as PDF' vector export button with custom print media stylesheet and UI chrome isolation"
+      ]
     }
   }
 }

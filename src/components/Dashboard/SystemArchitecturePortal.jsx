@@ -5,7 +5,7 @@ import {
   CloudSun, Apple, Music, Dices, Rss, Database, Layers, FileText, Lock, Settings, Boxes, Server, Code,
   Terminal, GitBranch, Clock, Timer, RefreshCw, Scale, ChevronRight, AlertTriangle, Info, Smile, Drama,
   MessageSquareQuote, Wifi, Newspaper, Heart, Radio, Speaker, Cake, Bell, ListChecks, Eye, Maximize2, Minimize2, Eraser,
-  UserPlus, Mail, ClipboardCopy, X, Check,
+  UserPlus, Mail, ClipboardCopy, X, Check, Filter, Download, Printer,
 } from 'lucide-react';
 import PortalShell from './PortalShell';
 import ImsFace from '../Ims/ImsFace';
@@ -40,7 +40,7 @@ const spokes = (live) => [
     ],
   },
   {
-    key: 'clients', title: 'Clients', icon: Monitor, accent: 'blue', count: 3, side: 'bottom',
+    key: 'clients', title: 'Clients', icon: Monitor, accent: 'blue', count: 4, side: 'bottom',
     rows: [
       { icon: Speaker, main: 'Desk terminal', sub: 'ESP32-S3-BOX-3 - raw TCP :3002, 16 kHz mic up, 24 kHz voice down' },
       { icon: Smile, main: 'Web app - Ims panel', sub: 'Same brain as the desk, over the /api/ims-live WebSocket' },
@@ -49,7 +49,7 @@ const spokes = (live) => [
     ],
   },
   {
-    key: 'ai', title: 'AI models', icon: Sparkles, accent: 'violet', count: 8, side: 'left',
+    key: 'ai', title: 'AI models', icon: Sparkles, accent: 'violet', count: 7, side: 'left',
     rows: [
       { icon: Waves, main: 'gemini-3.8-live', sub: 'Real-time voice: en-GB speech, live transcripts, session resumption' },
       { icon: Bot, main: 'gemini-2.5-flash', sub: 'Tasks, deck insights, chronicles, rulebook AI scanner & comparative research reviews, report and test prompts' },
@@ -129,7 +129,7 @@ const spokes = (live) => [
 
 const supporting = [
   {
-    key: 'jobs', title: 'Background jobs', icon: RefreshCw, accent: 'teal', count: 8,
+    key: 'jobs', title: 'Background jobs', icon: RefreshCw, accent: 'teal', count: 6,
     rows: [
       { icon: Timer, main: 'Every 15 seconds', sub: 'Fires due alarms, timers and reminders; updates the desk icons' },
       { icon: Droplets, main: 'Every minute', sub: 'Glucose from Nightscout' },
@@ -200,48 +200,78 @@ const ACTIONS = [
   { icon: Wifi, title: 'Wi-Fi', sub: 'Desk terminal networks', path: '/ims/wifi', accent: 'blue' },
 ];
 
-// hot: rows used by a test prompt - { 'card|row': { at, uses, pulse } }. A row lights up in its card's colour
+// hot: rows used by a test prompt - { 'card|row': { at, uses, pulse, reason } }. A row lights up in its card's colour
 // when used and stays lit; one used again pulses while the prompt runs. They clear when the prompt is emptied.
 const rowHot = (hot, card, main) => hot?.[`${card}|${main}`];
 // The badge counts the card's own rows, so it can't drift from the list; Services counts its hub pages
 // (the number at the end of each group) instead.
 const countOf = (card) => (card.key === 'services' ? card.rows.reduce((n, r) => n + (Number((r.main.match(/(\d+)$/) || [])[1]) || 0), 0) : card.key === 'environment' ? null : card.rows.length);
 
-function Card({ card, isDark, cardRef, onOpen, onRowAction, hot, now = 0 }) {
+function Card({ card, isDark, cardRef, onOpen, onRowAction, hot, showUsedOnly }) {
   const a = ACCENTS[card.accent];
   const Icon = card.icon;
   const anyLit = card.rows.some((r) => Boolean(rowHot(hot, card.key, r.main)));
+  const visibleRows = showUsedOnly ? card.rows.filter((r) => Boolean(rowHot(hot, card.key, r.main))) : card.rows;
+
+  if (showUsedOnly && !anyLit) {
+    return (
+      <div ref={cardRef} className={`rounded-2xl border p-3 opacity-30 border-dashed transition-all ${isDark ? 'bg-slate-900/30 border-white/5' : 'bg-slate-50/50 border-slate-200'}`}>
+        <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
+          <Icon size={14} /> {card.title} (Not used)
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div ref={cardRef} className={`relative z-10 rounded-2xl border p-3.5 transition-shadow duration-700 ${isDark ? 'bg-slate-900/80 border-white/10' : 'bg-white border-slate-200/80 shadow-[0_6px_24px_rgba(15,23,42,0.06)]'}`}
+    <div ref={cardRef} className={`relative z-10 rounded-2xl border p-3.5 transition-all duration-300 ${isDark ? 'bg-slate-900/80 border-white/10' : 'bg-white border-slate-200/80 shadow-[0_6px_24px_rgba(15,23,42,0.06)]'}`}
       style={anyLit ? { boxShadow: `0 0 0 2px ${a.line}, 0 0 26px ${a.line}66` } : undefined}>
       <button onClick={onOpen} disabled={!onOpen} title={onOpen ? 'More detail in the Ims panel' : undefined} className="w-full flex items-center gap-2.5 mb-2 text-left">
         <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${a.badge}`}><Icon size={16} className={a.text} /></span>
         <span className="font-bold text-[15px] flex-1 min-w-0 truncate">{card.title}</span>
-        {countOf(card) != null && <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}>{countOf(card)}</span>}
+        {countOf(card) != null && <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}>{visibleRows.length}/{countOf(card)}</span>}
         {onOpen && <ChevronRight size={16} className="text-slate-400 shrink-0" />}
       </button>
-      <div className="flex flex-col">
-        {card.rows.map((r) => {
+      <div className="flex flex-col gap-1">
+        {visibleRows.map((r) => {
           const RowIcon = r.icon;
           const isActionable = Boolean(r.action && onRowAction);
+          const h = rowHot(hot, card.key, r.main);
+          const reason = h?.reason;
           return (
             <div key={r.main}
               onClick={isActionable ? () => onRowAction(r.action) : undefined}
-              title={isActionable ? 'Click to open Invite & Access management' : undefined}
-              className={`flex items-start gap-2.5 rounded-md -mx-1.5 px-1.5 py-[2px] ${isActionable ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''} ${(() => { const h = rowHot(hot, card.key, r.main); return h?.pulse ? 'arch-pulse' : ''; })()}`}
-              style={(() => {
-                const h = rowHot(hot, card.key, r.main);
-                return { backgroundColor: h ? `${a.line}40` : undefined, transition: 'background-color .3s ease-out', '--pulse': `${a.line}66` };
-              })()}>
+              className={`group/row relative flex items-start gap-2.5 rounded-md -mx-1.5 px-1.5 py-[3px] ${isActionable ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''} ${h?.pulse ? 'arch-pulse' : ''}`}
+              style={{
+                backgroundColor: h ? `${a.line}35` : undefined,
+                transition: 'background-color .3s ease-out',
+                '--pulse': `${a.line}66`,
+              }}>
               <RowIcon size={16} className={`${a.text} mt-0.5 shrink-0`} />
               <div className="min-w-0 flex-1">
                 <div className="text-[12.5px] font-semibold leading-tight flex items-center gap-2 flex-wrap">
-                  {r.main}
+                  <span>{r.main}</span>
                   {r.tag && <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${a.badge} ${a.text}`}>{r.tag}</span>}
                   {isActionable && <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-purple-500/20 text-purple-400 hover:text-purple-300 flex items-center gap-1"><UserPlus size={10} /> Invite</span>}
+                  {h && (
+                    <span className="px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Active
+                    </span>
+                  )}
                 </div>
                 <div className={`text-[11px] leading-tight ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{r.sub}</div>
               </div>
+
+              {/* Rich hover tooltip explaining why this item was accessed */}
+              {h && (
+                <div className="pointer-events-none opacity-0 group-hover/row:opacity-100 transition-opacity duration-150 absolute bottom-full left-2 z-50 mb-1.5 w-64 p-2.5 rounded-xl text-[11px] leading-snug shadow-xl backdrop-blur-md border border-white/10 bg-slate-950/95 text-slate-100">
+                  <div className="flex items-center gap-1.5 font-bold text-emerald-400 mb-1">
+                    <Sparkles size={12} /> Reason for Access
+                  </div>
+                  <div className="text-slate-200">{reason || `Utilised during test prompt execution for ${r.main}.`}</div>
+                  {h.uses > 1 && <div className="text-[9.5px] text-slate-400 mt-1">Called {h.uses} times</div>}
+                </div>
+              )}
             </div>
           );
         })}
@@ -251,65 +281,77 @@ function Card({ card, isDark, cardRef, onOpen, onRowAction, hot, now = 0 }) {
 }
 
 // Rounded elbow connectors from each card's facing edge to the centre card, drawn over the grid.
+// Utilises requestAnimationFrame throttling to prevent layout redraw flickering.
 function Connectors({ wrapRef, centreRef, refs, cards }) {
   const [paths, setPaths] = useState([]);
+  const rafId = useRef(null);
+
   const measure = useCallback(() => {
-    const wrap = wrapRef.current, centre = centreRef.current;
-    if (!wrap || !centre || getComputedStyle(wrap).display === 'none') return;
-    // screen positions come back zoomed (Fit to screen); the svg draws in unzoomed units
-    const scale = wrap.offsetWidth ? wrap.getBoundingClientRect().width / wrap.offsetWidth : 1;
-    const box = (el) => { const r = el.getBoundingClientRect(); return { left: r.left / scale, top: r.top / scale, right: r.right / scale, bottom: r.bottom / scale, width: r.width / scale, height: r.height / scale }; };
-    const W = box(wrap), C = box(centre);
-    const cx = C.left + C.width / 2 - W.left, cy = C.top + C.height / 2 - W.top;
-    const out = [];
-    // where each card's line leaves it (its facing edge, level with its middle), to order the ends on Ims
-    const starts = {};
-    for (const card of cards) {
-      const el = refs.current[card.key];
-      if (!el) continue;
-      const R = box(el);
-      starts[card.key] = { side: card.side, y: (R.top + R.bottom) / 2 - W.top };
-    }
-    const slotOf = (card) => {
-      const same = Object.entries(starts).filter(([, v]) => v.side === card.side).sort((a, b) => a[1].y - b[1].y).map(([k]) => k);
-      return { i: same.indexOf(card.key), n: same.length };
-    };
-    cards.forEach((card, i) => {
-      const el = refs.current[card.key];
-      if (!el) return;
-      const R = box(el);
-      const r = { l: R.left - W.left, t: R.top - W.top, rr: R.right - W.left, b: R.bottom - W.top };
-      const c = { l: C.left - W.left, t: C.top - W.top, rr: C.right - W.left, b: C.bottom - W.top };
-      let x1, y1, x2, y2, d;
-      if (card.side === 'right' || card.side === 'left') {
-        x1 = card.side === 'right' ? r.rr : r.l;
-        y1 = Math.min(r.b - 24, Math.max(r.t + 24, (r.t + r.b) / 2));
-        x2 = card.side === 'right' ? c.l : c.rr;
-        // spread the ends down the centre card's side
-        const slot = slotOf(card);
-        y2 = c.t + (c.b - c.t) * ((slot.i + 1) / (slot.n + 1));
-        const mx = (x1 + x2) / 2;
-        d = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
-      } else {
-        y1 = card.side === 'bottom' ? r.b : r.t;
-        x1 = (r.l + r.rr) / 2;
-        y2 = card.side === 'bottom' ? c.t : c.b;
-        x2 = cx;
-        const my = (y1 + y2) / 2;
-        d = `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`;
+    if (rafId.current) cancelAnimationFrame(rafId.current);
+    rafId.current = requestAnimationFrame(() => {
+      const wrap = wrapRef.current, centre = centreRef.current;
+      if (!wrap || !centre || getComputedStyle(wrap).display === 'none') return;
+      // screen positions come back zoomed (Fit to screen); the svg draws in unzoomed units
+      const scale = wrap.offsetWidth ? wrap.getBoundingClientRect().width / wrap.offsetWidth : 1;
+      const box = (el) => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left / scale, top: r.top / scale, right: r.right / scale, bottom: r.bottom / scale, width: r.width / scale, height: r.height / scale };
+      };
+      const W = box(wrap), C = box(centre);
+      const cx = C.left + C.width / 2 - W.left, cy = C.top + C.height / 2 - W.top;
+      const out = [];
+      const starts = {};
+      for (const card of cards) {
+        const el = refs.current[card.key];
+        if (!el) continue;
+        const R = box(el);
+        starts[card.key] = { side: card.side, y: (R.top + R.bottom) / 2 - W.top };
       }
-      out.push({ key: card.key, d, x1, y1, x2, y2, color: ACCENTS[card.accent].line, i });
+      const slotOf = (card) => {
+        const same = Object.entries(starts).filter(([, v]) => v.side === card.side).sort((a, b) => a[1].y - b[1].y).map(([k]) => k);
+        return { i: same.indexOf(card.key), n: same.length };
+      };
+      cards.forEach((card, i) => {
+        const el = refs.current[card.key];
+        if (!el) return;
+        const R = box(el);
+        const r = { l: R.left - W.left, t: R.top - W.top, rr: R.right - W.left, b: R.bottom - W.top };
+        const c = { l: C.left - W.left, t: C.top - W.top, rr: C.right - W.left, b: C.bottom - W.top };
+        let x1, y1, x2, y2, d;
+        if (card.side === 'right' || card.side === 'left') {
+          x1 = card.side === 'right' ? r.rr : r.l;
+          y1 = Math.min(r.b - 24, Math.max(r.t + 24, (r.t + r.b) / 2));
+          x2 = card.side === 'right' ? c.l : c.rr;
+          const slot = slotOf(card);
+          y2 = c.t + (c.b - c.t) * ((slot.i + 1) / (slot.n + 1));
+          const mx = (x1 + x2) / 2;
+          d = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
+        } else {
+          y1 = card.side === 'bottom' ? r.b : r.t;
+          x1 = (r.l + r.rr) / 2;
+          y2 = card.side === 'bottom' ? c.t : c.b;
+          x2 = cx;
+          const my = (y1 + y2) / 2;
+          d = `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`;
+        }
+        out.push({ key: card.key, d, x1, y1, x2, y2, color: ACCENTS[card.accent].line, i });
+      });
+      setPaths(out);
     });
-    setPaths(out);
   }, [wrapRef, centreRef, refs, cards]);
+
   useLayoutEffect(() => {
     measure();
     const ro = new ResizeObserver(measure);
-    // every card and Ims itself, so a card growing (the test trace) moves the lines with it
     for (const el of [wrapRef.current, centreRef.current, ...Object.values(refs.current)]) if (el) ro.observe(el);
     window.addEventListener('resize', measure);
-    return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
+    return () => {
+      if (rafId.current) cancelAnimationFrame(rafId.current);
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
   }, [measure, wrapRef]);
+
   return (
     <>
       <svg className="absolute inset-0 w-full h-full pointer-events-none hidden lg:block" style={{ zIndex: 20 }}>
@@ -531,7 +573,6 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
   const isDark = theme === 'dark';
   const [live, setLive] = useState(null);
   const [tab, setTab] = useState('overview');
-  // the side panel and the "across the whole system" row fold away, to see the whole map at once
   const saved = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v === '1'; } catch { return d; } };
   const [panelOpen, setPanelOpen] = useState(() => saved('archPanel', true));
   const [supportOpen, setSupportOpen] = useState(() => saved('archSupport', true));
@@ -539,7 +580,6 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
   const togglePanel = () => setPanelOpen((v) => { keep('archPanel', !v); return !v; });
   const toggleSupport = () => setSupportOpen((v) => { keep('archSupport', !v); return !v; });
 
-  // Remember panel state across full screen toggling
   const preFullscreenPanelRef = useRef(panelOpen);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
@@ -548,6 +588,9 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
     setTimeout(() => setToastMessage(null), 3500);
   }, []);
 
+  // Filter option: show only components and services used by the test prompt
+  const [showUsedOnly, setShowUsedOnly] = useState(false);
+
   // ---- test prompt: runs through Ims, lighting up each part of the map as it's used
   const [prompt, setPrompt] = useState('');
   const [running, setRunning] = useState(false);
@@ -555,20 +598,28 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
   const [answer, setAnswer] = useState(null);
   const [hot, setHot] = useState({});
   const [now, setNow] = useState(Date.now());
+
   useEffect(() => {
     if (!running && !Object.keys(hot).length) return undefined;
     const t = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(t);
   }, [running, hot]);
+
   const matchRows = (rows) => {
     const out = [];
-    for (const [cardKey, name] of rows || []) {
+    for (const item of rows || []) {
+      const cardKey = Array.isArray(item) ? item[0] : item?.cardKey;
+      const name = Array.isArray(item) ? item[1] : item?.name;
+      const reason = Array.isArray(item) ? item[2] : item?.reason;
       const card = [...spokes(null), ...supporting].find((c) => c.key === cardKey);
-      const row = card?.rows.find((r) => r.main === name) || card?.rows.find((r) => r.main.includes(name));
-      if (row) out.push(`${cardKey}|${row.main}`);
+      const row = card?.rows.find((r) => r.main === name) || card?.rows.find((r) => r.main.toLowerCase().includes(String(name).toLowerCase()));
+      if (row) {
+        out.push({ key: `${cardKey}|${row.main}`, reason });
+      }
     }
     return out;
   };
+
   const runTest = async () => {
     const text = prompt.trim();
     if (!text || running) return;
@@ -587,10 +638,17 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
           const ev = JSON.parse(line);
           if (ev.type === 'step') {
             setTrace((t) => [...t, ev]);
-            const keys = matchRows(ev.rows);
+            const matched = matchRows(ev.rows);
             setHot((h) => {
               const n = { ...h };
-              for (const k of keys) n[k] = { at: Date.now(), uses: (n[k]?.uses || 0) + 1, pulse: (n[k]?.uses || 0) >= 1 };
+              for (const { key, reason } of matched) {
+                n[key] = {
+                  at: Date.now(),
+                  uses: (n[key]?.uses || 0) + 1,
+                  pulse: (n[key]?.uses || 0) >= 1,
+                  reason: reason || ev.reason || n[key]?.reason,
+                };
+              }
               return n;
             });
           } else if (ev.type === 'done') setAnswer(ev.answer);
@@ -603,8 +661,12 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
     setRunning(false);
   };
 
-  // Fit to screen: the view goes full screen and is zoomed down until all of it fits (CSS zoom, so the
-  // connector lines still measure correctly). Leaving full screen puts it back.
+  // Save as PDF / Print snapshot action
+  const handleSaveAsPdf = () => {
+    window.print();
+  };
+
+  // Fit to screen: the view goes full screen and is zoomed down until all of it fits
   const fitRef = useRef(null);
   const [fitted, setFitted] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -612,7 +674,6 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
     const el = fitRef.current;
     if (!el) return;
     let z = 1;
-    // zooming out widens the layout (so it gets shorter) - settle over a few passes
     for (let i = 0; i < 4; i++) {
       el.style.zoom = z;
       const h = el.scrollHeight * z, w = el.scrollWidth * z;
@@ -623,16 +684,15 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
     el.style.zoom = '';
     setZoom(z);
   }, []);
+
   useEffect(() => {
     const onChange = () => {
       const on = document.fullscreenElement === fitRef.current;
       setFitted(on);
       if (on) {
-        // Entering fullscreen: remember right panel state and auto-collapse it
         preFullscreenPanelRef.current = panelOpen;
         setPanelOpen(false);
       } else {
-        // Leaving fullscreen: restore zoom and restore previous panel state
         setZoom(1);
         setPanelOpen(preFullscreenPanelRef.current);
       }
@@ -640,18 +700,21 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
     document.addEventListener('fullscreenchange', onChange);
     return () => document.removeEventListener('fullscreenchange', onChange);
   }, [panelOpen]);
+
   useEffect(() => {
     if (!fitted) return undefined;
     const t = setTimeout(fit, 120);
     window.addEventListener('resize', fit);
     return () => { clearTimeout(t); window.removeEventListener('resize', fit); };
-  }, [fitted, fit, panelOpen, supportOpen, trace.length, answer]);
+  }, [fitted, fit, panelOpen, supportOpen, trace.length, answer, showUsedOnly]);
+
   const toggleFit = async () => {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
       else await fitRef.current?.requestFullscreen();
-    } catch (_) { /* full screen not allowed here */ }
+    } catch (_) {}
   };
+
   const wrapRef = useRef(null), centreRef = useRef(null), cardRefs = useRef({}), panelRef = useRef(null);
 
   useEffect(() => {
@@ -676,11 +739,14 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
 
   const place = (key, cls) => (
     <div className={cls}>
-      <Card card={byKey[key]} isDark={isDark} hot={hot} now={now} cardRef={(el) => { cardRefs.current[key] = el; }}
+      <Card card={byKey[key]} isDark={isDark} hot={hot} cardRef={(el) => { cardRefs.current[key] = el; }}
+        showUsedOnly={showUsedOnly}
         onOpen={() => openTab(key === 'data' ? 'data' : key === 'pipeline' ? 'turn' : 'overview')}
         onRowAction={handleRowAction} />
     </div>
   );
+
+  const litCount = Object.keys(hot).length;
 
   return (
     <PortalShell title="System Architecture" subtitle="/ims/architecture • how Ims is built and how it all connects"
@@ -690,24 +756,53 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
       <style>{`
         @keyframes archPulse { 0%, 100% { box-shadow: 0 0 0 0 var(--pulse); } 50% { box-shadow: 0 0 0 5px transparent; filter: brightness(1.15); } }
         .arch-pulse { animation: archPulse 1s ease-in-out infinite; }
+        @media print {
+          body { background: white !important; color: black !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .no-print, header, aside, .portal-nav, button { display: none !important; }
+          .print-full { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; }
+        }
       `}</style>
-      <div className="flex justify-end items-center gap-2 -mt-2 mb-2">
-        <button onClick={() => setInviteModalOpen(true)} className={`px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 border ${isDark ? 'border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20' : 'border-purple-200 bg-purple-50 text-purple-800 hover:bg-purple-100'}`}>
-          <UserPlus size={14} /> Invite & Guests
-        </button>
-        <button onClick={toggleFit} className={`px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 border ${isDark ? 'border-white/10 bg-white/5 hover:bg-white/10' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
-          <Maximize2 size={14} /> Fit to screen
-        </button>
+      <div className="no-print flex flex-wrap justify-between items-center gap-2 -mt-2 mb-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Show only used filter checkbox */}
+          <label className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${showUsedOnly ? 'bg-violet-600 border-violet-500 text-white shadow-sm' : isDark ? 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
+            <input
+              type="checkbox"
+              checked={showUsedOnly}
+              onChange={(e) => setShowUsedOnly(e.target.checked)}
+              className="rounded accent-violet-600 text-white w-3.5 h-3.5"
+            />
+            <span className="flex items-center gap-1.5">
+              <Filter size={13} /> Show only used items
+              {litCount > 0 && <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-white/20">{litCount}</span>}
+            </span>
+          </label>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Save as PDF / Snapshot button */}
+          <button onClick={handleSaveAsPdf} title="Save current system architecture as PDF snapshot"
+            className={`px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 border transition-colors ${isDark ? 'border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20' : 'border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100'}`}>
+            <Download size={14} /> Save as PDF
+          </button>
+          <button onClick={() => setInviteModalOpen(true)} className={`px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 border ${isDark ? 'border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20' : 'border-purple-200 bg-purple-50 text-purple-800 hover:bg-purple-100'}`}>
+            <UserPlus size={14} /> Invite & Guests
+          </button>
+          <button onClick={toggleFit} className={`px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 border ${isDark ? 'border-white/10 bg-white/5 hover:bg-white/10' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
+            <Maximize2 size={14} /> Fit to screen
+          </button>
+        </div>
       </div>
-      <div ref={fitRef} className={`flex flex-col xl:flex-row gap-6 items-start ${fitted ? `overflow-hidden p-2 ${isDark ? 'bg-[#030712] text-slate-100' : 'bg-[#F4F1EC] text-slate-900'}` : ''}`}
+
+      <div ref={fitRef} className={`print-full flex flex-col xl:flex-row gap-6 items-start ${fitted ? `overflow-hidden p-2 ${isDark ? 'bg-[#030712] text-slate-100' : 'bg-[#F4F1EC] text-slate-900'}` : ''}`}
         style={fitted ? { zoom } : undefined}>
         {fitted && (
-          <button onClick={toggleFit} title="Leave full screen (Esc)" className={`fixed top-3 right-3 z-50 px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 border ${isDark ? 'border-white/10 bg-slate-800' : 'border-slate-200 bg-white'}`}
+          <button onClick={toggleFit} title="Leave full screen (Esc)" className={`no-print fixed top-3 right-3 z-50 px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 border ${isDark ? 'border-white/10 bg-slate-800' : 'border-slate-200 bg-white'}`}
             style={{ zoom: 1 / zoom }}><Minimize2 size={14} /> Exit full screen</button>
         )}
         {/* the map */}
         <div ref={wrapRef} className="relative flex-1 min-w-0 w-full">
-          <Connectors wrapRef={wrapRef} centreRef={centreRef} refs={cardRefs} cards={cards} />
+          {!showUsedOnly && <Connectors wrapRef={wrapRef} centreRef={centreRef} refs={cardRefs} cards={cards} />}
           {/* three columns, every card beside Ims so no line crosses a card: left and right columns join Ims's
               sides, Clients sits above it and Services below */}
           <div className="flex flex-col lg:flex-row gap-4 lg:gap-12 items-stretch">
@@ -719,7 +814,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
             </div>
             <div className="order-1 lg:order-none flex-1 min-w-0 lg:max-w-[440px] flex flex-col gap-10 justify-between">
               {place('clients', '')}
-            <div className="flex items-center justify-center">
+              <div className="flex items-center justify-center">
                 <div ref={centreRef} className={`relative z-10 w-full rounded-3xl border-2 p-5 text-center ${isDark ? 'bg-slate-900 border-violet-500/60 shadow-[0_0_40px_rgba(139,92,246,0.25)]' : 'bg-white border-violet-400 shadow-[0_0_40px_rgba(139,92,246,0.22)]'}`}>
                   <span className={`absolute top-3 right-3 px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}>
                     <GitBranch size={11} /> main
@@ -736,7 +831,14 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
                   </div>
                   {/* test prompt: watch it run through the system */}
                   <div className="mt-4 text-left">
-                    <div className={`text-[11px] font-black uppercase tracking-wider mb-1 ${muted}`}>Test a prompt</div>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className={`text-[11px] font-black uppercase tracking-wider ${muted}`}>Test a prompt</div>
+                      {litCount > 0 && (
+                        <span className="text-[10.5px] font-bold text-violet-400 flex items-center gap-1">
+                          <Sparkles size={11} /> {litCount} active {litCount === 1 ? 'item' : 'items'}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex gap-1.5">
                       <input value={prompt} onChange={(e) => { setPrompt(e.target.value); if (!e.target.value.trim()) { setHot({}); setTrace([]); setAnswer(null); } }} onKeyDown={(e) => e.key === 'Enter' && runTest()} disabled={running}
                         placeholder="Ims, any birthdays coming up?" className={`flex-1 min-w-0 px-2.5 py-1.5 rounded-lg text-[12.5px] outline-none border ${isDark ? 'bg-slate-950/70 border-white/10' : 'bg-white border-slate-200'}`} />
@@ -744,10 +846,10 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
                     </div>
                     {(trace.length > 0 || answer) && (
                       <div className={`relative mt-2 max-h-56 overflow-y-auto rounded-lg p-2 pr-8 text-[11px] leading-snug ${isDark ? 'bg-slate-950/60' : 'bg-slate-50'}`}>
-                    {!running && (
-                      <button onClick={() => { setTrace([]); setAnswer(null); setHot({}); }} title="Clear the log and the highlights"
-                        className={`sticky top-0 float-right -mr-6 p-1 rounded-md ${isDark ? 'bg-slate-800 hover:bg-slate-700' : 'bg-white hover:bg-slate-100 border border-slate-200'}`}><Eraser size={13} /></button>
-                    )}
+                        {!running && (
+                          <button onClick={() => { setTrace([]); setAnswer(null); setHot({}); }} title="Clear the log and the highlights"
+                            className={`sticky top-0 float-right -mr-6 p-1 rounded-md ${isDark ? 'bg-slate-800 hover:bg-slate-700' : 'bg-white hover:bg-slate-100 border border-slate-200'}`}><Eraser size={13} /></button>
+                        )}
                         {trace.map((t, i) => (
                           <div key={i} className="flex gap-1.5"><span className={`tabular-nums shrink-0 ${muted}`}>{(t.at / 1000).toFixed(1)}s</span><span>{t.label}</span></div>
                         ))}
@@ -755,7 +857,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
                         {answer && <div className={`mt-1.5 pt-1.5 border-t ${isDark ? 'border-white/10' : 'border-slate-200'}`}><b>Ims:</b> {answer}</div>}
                       </div>
                     )}
-                    <div className={`text-[10px] mt-1 ${muted}`}>Tools that only read run for real; anything that would change something is shown, not done.</div>
+                    <div className={`text-[10px] mt-1 ${muted}`}>Hover over highlighted items to inspect why they were accessed.</div>
                   </div>
                 </div>
               </div>
@@ -768,25 +870,25 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
             </div>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-5">
-          {/* supporting row - belongs to the whole system, so no connectors */}
-          <button onClick={toggleSupport} className="lg:col-span-3 flex items-center gap-3 text-left">
-            <span className={`text-[11px] font-black uppercase tracking-widest ${muted}`}>Across the whole system</span>
-            <span className={`flex-1 h-px ${isDark ? 'bg-white/10' : 'bg-slate-200'}`} />
-            <span className={`text-[11px] font-bold flex items-center gap-1 ${muted}`}>{supportOpen ? 'Hide' : 'Show'} <ChevronRight size={14} className={`transition-transform ${supportOpen ? '-rotate-90' : 'rotate-90'}`} /></span>
-          </button>
-          {supportOpen && supporting.map((c) => (
-            <div key={c.key}><Card card={c} isDark={isDark} hot={hot} now={now} onRowAction={handleRowAction} /></div>
-          ))}
+            {/* supporting row - belongs to the whole system, so no connectors */}
+            <button onClick={toggleSupport} className="no-print lg:col-span-3 flex items-center gap-3 text-left">
+              <span className={`text-[11px] font-black uppercase tracking-widest ${muted}`}>Across the whole system</span>
+              <span className={`flex-1 h-px ${isDark ? 'bg-white/10' : 'bg-slate-200'}`} />
+              <span className={`text-[11px] font-bold flex items-center gap-1 ${muted}`}>{supportOpen ? 'Hide' : 'Show'} <ChevronRight size={14} className={`transition-transform ${supportOpen ? '-rotate-90' : 'rotate-90'}`} /></span>
+            </button>
+            {supportOpen && supporting.map((c) => (
+              <div key={c.key}><Card card={c} isDark={isDark} hot={hot} showUsedOnly={showUsedOnly} onRowAction={handleRowAction} /></div>
+            ))}
           </div>
         </div>
 
         {/* summary panel */}
         {!panelOpen && (
-          <button onClick={togglePanel} title="Show the Ims panel" className={`${panelCls} shrink-0 w-full xl:w-11 xl:sticky xl:top-24 py-3 flex xl:flex-col items-center justify-center gap-2 font-bold text-[12px]`}>
+          <button onClick={togglePanel} title="Show the Ims panel" className={`no-print ${panelCls} shrink-0 w-full xl:w-11 xl:sticky xl:top-24 py-3 flex xl:flex-col items-center justify-center gap-2 font-bold text-[12px]`}>
             <ChevronRight size={16} className="rotate-180" /><span className="xl:[writing-mode:vertical-rl]">Ims - overview, conversation, data, findings</span>
           </button>
         )}
-        {panelOpen && <aside ref={panelRef} className={`${panelCls} w-full xl:w-[440px] shrink-0 xl:sticky xl:top-24 relative`}>
+        {panelOpen && <aside ref={panelRef} className={`no-print ${panelCls} w-full xl:w-[440px] shrink-0 xl:sticky xl:top-24 relative`}>
           <button onClick={togglePanel} title="Hide the panel" className={`absolute top-3 right-3 p-1.5 rounded-lg ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}><ChevronRight size={15} /></button>
           <div className="p-5 flex gap-4 items-start">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-fuchsia-500 to-violet-600 flex items-center justify-center shadow-[0_8px_24px_rgba(168,85,247,0.35)] shrink-0">
@@ -839,8 +941,8 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
                 <section className="grid grid-cols-4 gap-2">
                   {[
                     [Wrench, 35, 'Voice tools', 'violet'],
-                    [Boxes, 23, 'Hub pages', 'indigo'],
-                    [Plug, 16, 'Connections', 'orange'],
+                    [Boxes, 26, 'Hub pages', 'indigo'],
+                    [Plug, 17, 'Connections', 'orange'],
                     [Database, live?.tables ?? '...', 'Tables', 'red'],
                   ].map(([Icon, n, label, acc]) => (
                     <div key={label} className={`rounded-xl p-2.5 ${ACCENTS[acc].badge}`}>

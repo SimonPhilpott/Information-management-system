@@ -4,13 +4,13 @@ IMS is a personal knowledge and home-assistant system built around **Ims**, a Yo
 
 - a **voice terminal** (custom firmware) that talks to Gemini Live through a local proxy,
 - a **web app** for chatting with your PDF library (RAG over Google Drive + Gemini),
-- a set of **`/ims` services** for the things Ims knows about and can do: memories, persona, music releases, code repository best practices (Personal & TurnTown), alarms/timers/reminders, birthdays, calendar, blood sugar (Nightscout), Strava activities and a T1D run planner with a comprehensive glucose rulebook and book/research review engine, morning and day reports, news, background tasks, board games, dev ideas, and a camera ("Look" and "Faces"),
+- a set of **`/ims` services** for the things Ims knows about and can do: memories, persona, music releases, code repository best practices (Personal & TurnTown), alarms/timers/reminders, birthdays, calendar, blood sugar (Nightscout), Strava activities and a T1D run planner with a comprehensive glucose rulebook and book/research review engine, morning and day reports, news, background tasks, board games, and dev ideas,
 - the **Campaign Manager** (`/campaigns`) for card-game campaigns - a tab per game: **Lord of the Rings LCG** and **Arkham Horror LCG** - with decks, maps, rule checks, and an illustrated, narrated chronicle,
 - a **System Architecture** page (`/ims/architecture`) with a live test box that lights up every part of the system a prompt uses.
 
-Everything runs on your own machine. Cloud services used: Google (Drive, Calendar, Gemini) plus data sources such as GitHub (Personal & TurnTown repos), Nightscout, Strava, Komoot, BoardGameGeek, MusicBrainz, Open-Meteo, Open Food Facts, RingsDB, Hall of Beorn, ArkhamDB and the news feeds. Face recognition is fully local.
+Everything runs on your own machine. Cloud services used: Google (Drive, Calendar, Gemini) plus data sources such as GitHub (Personal & TurnTown repos), Nightscout, Strava, Komoot, BoardGameGeek, MusicBrainz, Open-Meteo, Open Food Facts, RingsDB, Hall of Beorn, ArkhamDB and the news feeds.
 
-> **Status:** the voice terminal, web app, and all `/ims` services are working. The dock **webcam driver is experimental** (see [Camera](#camera-status-and-hardware-notes)).
+> **Status:** the voice terminal, web app, and all active `/ims` services are operational.
 
 ---
 
@@ -24,10 +24,9 @@ Everything runs on your own machine. Cloud services used: Google (Drive, Calenda
 6. [The `/ims` services](#the-ims-services)
 7. [The voice terminal (ESP32-S3-BOX-3)](#the-voice-terminal-esp32-s3-box-3)
 8. [Voice, persona and conversation behaviour](#voice-persona-and-conversation-behaviour)
-9. [Camera: status and hardware notes](#camera-status-and-hardware-notes)
-10. [Data, privacy and what is stored where](#data-privacy-and-what-is-stored-where)
-11. [Configuration reference](#configuration-reference)
-12. [Troubleshooting](#troubleshooting)
+9. [Data, privacy and what is stored where](#data-privacy-and-what-is-stored-where)
+10. [Configuration reference](#configuration-reference)
+11. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -47,7 +46,7 @@ Everything runs on your own machine. Cloud services used: Google (Drive, Calenda
  |   - RAG search over your PDF library (HNSW + Gemini embeddings)   |
  |   - /api/* for every /ims service (SQLite + JSON files)           |
  |   - schedulers: alarms/timers, nightly music scan, morning report |
- |   - python helpers: face recognition, music scanner               |
+ |   - python helpers: music scanner                                 |
  +---------+---------------------------+-----------------+-----------+
            |                           |                 |
            v                           v                 v
@@ -60,7 +59,7 @@ Everything runs on your own machine. Cloud services used: Google (Drive, Calenda
  +-------------------------------+
 ```
 
-The web app talks to the backend through the Vite dev proxy. The device never touches the web app: it speaks a small framed TCP protocol to the backend and posts a few plain HTTP endpoints (personality, camera) that intentionally bypass the web login.
+The web app talks to the backend through the Vite dev proxy. The device never touches the web app: it speaks a small framed TCP protocol to the backend and posts a few plain HTTP endpoints (personality) that intentionally bypass the web login.
 
 ## Repository layout
 
@@ -68,9 +67,9 @@ The web app talks to the backend through the Vite dev proxy. The device never to
 |---|---|
 | `src/` | The main React app: dashboard, chat, and all `/ims/*` pages (`src/components/Dashboard/`) |
 | `pdf-knowledge-base/server/` | The backend: `index.js` (Gemini Live proxy + device servers), `routes/`, `services/`, `db/` |
-| `pdf-knowledge-base/server/python/` | Local Python helpers: `face_tool.py` (face detection/recognition), `ims_scan_service.py` (music scanner engine) |
+| `pdf-knowledge-base/server/python/` | Local Python helpers: `ims_scan_service.py` (music scanner engine) |
 | `pdf-knowledge-base/client/` | The original standalone PDF Knowledge Base UI (`:5173`) |
-| `firmware/esp32-s3-box-3/` | ESP32-S3-BOX-3 firmware (PlatformIO, Arduino): `src/main.cpp`, `src/camera.cpp`, `include/config.h` |
+| `firmware/esp32-s3-box-3/` | ESP32-S3-BOX-3 firmware (PlatformIO, Arduino): `src/main.cpp`, `include/config.h` |
 | `ims_persona_rules.md` | Ims's fixed dialect, identity and tool-usage rules (editable at `/ims/persona`) |
 | `imspersonality.md` | Design notes for the personality-slider system |
 | `homeassistant/` | ESPHome / Home Assistant experiments for the same hardware |
@@ -85,7 +84,7 @@ The web app talks to the backend through the Vite dev proxy. The device never to
 | `6001` | Main IMS web app (Vite) - the one you open |
 | `3001` | Backend HTTP API and the browser Gemini Live WebSocket |
 | `3002` | Raw TCP endpoint the ESP32 connects to (Gemini Live proxy) |
-| `3003` | Plain HTTP for the device: `/device/personality`, `/device/camera/*` |
+| `3003` | Plain HTTP for the device: `/device/personality` |
 | `5173` | Original PDF Knowledge Base client (optional) |
 
 ## Prerequisites
@@ -98,7 +97,7 @@ The web app talks to the backend through the Vite dev proxy. The device never to
 Python packages used by the backend helpers:
 
 ```
-pip install musicbrainzngs opencv-python-headless numpy
+pip install musicbrainzngs
 ```
 
 ## Setup and running
@@ -120,16 +119,7 @@ cd pdf-knowledge-base
 npm install                      # backend
 ```
 
-### 3. Face-recognition models (one-off)
-
-Face recognition uses OpenCV's YuNet (detection) and SFace (recognition) models. They are ~39 MB, so they are **not committed**. Download them into `pdf-knowledge-base/server/python/models/`:
-
-```
-curl -L -o pdf-knowledge-base/server/python/models/yunet.onnx  https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
-curl -L -o pdf-knowledge-base/server/python/models/sface.onnx  https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx
-```
-
-### 4. Run everything
+### 3. Run everything
 
 The easiest way on Windows is the launcher, which installs missing dependencies, frees the ports, and opens each service in its own terminal tab:
 
@@ -147,7 +137,7 @@ npm run dev:server                   # backend on :3001 (hot-reloads on file cha
 
 Open `http://localhost:6001`. The IMS hub is at `/ims`.
 
-### 5. Music scanner engine (optional)
+### 4. Music scanner engine (optional)
 
 The nightly music scan runs a Python engine that lives **outside** this repository by default, at `D:\Music scanner`. A copy of the engine is in `pdf-knowledge-base/server/python/ims_scan_service.py`:
 
@@ -182,8 +172,6 @@ The **IMS Hub** (`/ims`) links to every service below. Each page has a back butt
 | `/ims/phrases` | **Wake and stop phrases.** Record how you say them; your recorded spellings feed the wake gate |
 | `/ims/architecture` | **System Architecture.** How IMS is built: every client, model, connection, data store and service around Ims. The **Test a prompt** box under Ims runs a prompt through Ims's own persona and tools (read-only tools for real; anything that would change something is only shown), and each part of the map lights up in its card's colour as it's used, pulsing while it's used repeatedly, then fading back. The side panel and the "Across the whole system" row fold away to fit the map on one screen |
 | `/campaigns` | **Campaign Manager** - see below |
-| `/ims/look` | See what Ims sees: live view, snapshots, and questions about the live view or any saved photo (answered by Gemini, with recognised people named) |
-| `/ims/faces` | Teach Ims who people are: capture a face, name it, add notes, add more samples. Recognition is **local** |
 
 ### Campaign Manager (`/campaigns`)
 
@@ -210,11 +198,11 @@ BGG's XML API returns HTTP 401 without an application token (registration became
 
 ### Morning report
 
-The first time you talk to Ims each day (London date), it offers your morning report along with its greeting (a day report after noon; ask for it any time). It is always given **in full**, with no length limit: weather, alarms/timers/reminders today and the week ahead, calendar (today, and tomorrow from 4pm), birthdays in the next 14 days, new music out today, a card game played today or last night, glucose now and overnight, training and the last run, running goals, UK tour news, news from your weighted sources, finished background tasks, and a Nightscout storage warning when it is over 90% full. News stories are only marked as told once the report is actually given. If the camera has a fresh view of someone enrolled on `/ims/faces`, Ims greets them by name; it never guesses at unknown faces.
+The first time you talk to Ims each day (London date), it offers your morning report along with its greeting (a day report after noon; ask for it any time). It is always given **in full**, with no length limit: weather, alarms/timers/reminders today and the week ahead, calendar (today, and tomorrow from 4pm), birthdays in the next 14 days, new music out today, a card game played today or last night, glucose now and overnight, training and the last run, running goals, UK tour news, news from your weighted sources, finished background tasks, and a Nightscout storage warning when it is over 90% full. News stories are only marked as told once the report is actually given.
 
 ### Ims tools during a conversation
 
-Ims has 35 tools: library search, weather, calendar (read and add), blood glucose and carbs (Nightscout), food carb look-ups, training (Strava), timers/alarms/reminders and their history, lists, memories, birthdays, new music, news, the day report, background tasks, dev ideas, board games, card-game campaigns, jokes, recording, and the camera. Every conversation also starts with a **snapshot of everything saved** - next birthday and reminder, every birthday, alarms and reminders, lists, the next 14 days of calendar, tasks, dev ideas, carbs today, music want list and upcoming releases, memories, board games, campaigns and decks - and Ims treats that snapshot as authoritative when a tool looks less far ahead.
+Ims has 35 tools: library search, weather, calendar (read and add), blood glucose and carbs (Nightscout), food carb look-ups, training (Strava), timers/alarms/reminders and their history, lists, memories, birthdays, new music, news, the day report, background tasks, dev ideas, board games, card-game campaigns, jokes, and recording. Every conversation also starts with a **snapshot of everything saved** - next birthday and reminder, every birthday, alarms and reminders, lists, the next 14 days of calendar, tasks, dev ideas, carbs today, music want list and upcoming releases, memories, board games, campaigns and decks - and Ims treats that snapshot as authoritative when a tool looks less far ahead.
 
 **Jokes.** Ask for a joke and Ims calls `tellJoke`, which picks from about 80,000 jokes from the [r/Jokes dataset](https://github.com/orionw/rJokesData) (Reddit terms apply; kept in the git-ignored `server/data/jokes`). The Humor slider on IMS Personality is a style axis (Cheerful - Dry - Dark), so the jokes scale with it: clean and wholesome at the low end, short dry one-liners in the middle, dark and twisted towards the top, always preferring better-scored jokes and not repeating one until they are used up. **Core rule: never a racist or sexist joke.** Anything about race, nationality, religion, gender or wives/girlfriends, plus hate, sexual, self-harm and real-tragedy material, is filtered out at import and never stored. Set it up with `node scripts/importJokes.js` (about 90 seconds; downloads the data if it is missing).
 
@@ -240,11 +228,11 @@ platformio run --target upload       # flash over USB
 
 ### What the device shows
 
-- **Header:** *(I)nformation (M)anagement (S)ystem* title, gear icon (settings: personality sliders, voice, preferences), and **WIFI / USB** status dots (USB green = a PC is on the USB link).
+- **Header:** *(I)nformation (M)anagement (S)ystem* title, gear icon (settings: personality sliders, voice, preferences), and **VOICE / WAKE / WIFI / USB** status dots (USB green = a PC is on the USB link).
 - **Face:** an expressive 12x8 dot-matrix face that breathes when idle and reacts to what Ims says (emotions set by Gemini), with the status text below it.
-- **Icon stack (left of the face):** alarms, timers, reminders (orange, with counts), birthdays (yellow within a week, green on the day), new music released today (record icon, with count), and camera (yellow = attached and asleep, green = awake).
+- **Icon stack (left of the face):** alarms, timers, reminders (orange, with counts), birthdays (yellow within a week, green on the day), and new music released today (record icon, with count).
 - **Right:** live blood-glucose reading with trend arrows (if Nightscout is configured).
-- **Footer:** date/time (Europe/London, DST-aware) and current emotion.
+- **Footer:** date/time (Europe/London, DST-aware) and rotating active notification ticker.
 
 ### Wake phrases
 
@@ -260,33 +248,16 @@ Ims's behaviour comes from three layers that apply **everywhere Ims speaks** (de
 
 Long conversations survive Gemini cycling its upstream session (it does after ~30-40 s of quiet) through **session resumption**: the backend keeps the resumption handle and resumes with full context instead of starting cold and re-greeting.
 
-## Camera: status and hardware notes
-
-The dock webcam lets Ims see (`lookAtCamera`), recognise you for the morning greeting, and feeds `/ims/look` and `/ims/faces`. State machine (backend, implemented): the camera is **awake for ~10 minutes** after boot or any use (Look/Faces open, a question, a snapshot), then **asleep**; the device icon is green when awake, yellow when attached but asleep.
-
-The frame source is pluggable: the device's camera, **this computer's webcam** (from the browser), or an **uploaded photo** - so Look and Faces are fully usable today regardless of the device driver.
-
-**Device driver (`firmware/esp32-s3-box-3/src/camera.cpp`) is experimental.** What is known:
-
-- The **BOX-3 dock's USB-A port** shares the ESP32-S3's single USB data pair and PHY with the USB port used for flashing/serial (COM3). They cannot both work at once. The firmware only starts USB-host mode if **no PC is on the USB link** at boot (so flashing/debugging keep working), and it releases the serial driver before starting host mode. **Do not connect the camera while flashing.** To use the camera, power the dock from its own USB-C (a charge-only cable/charger works best) with the camera in the USB-A port.
-- The ESP32-S3 has **USB 1.1 full-speed only**, so expect MJPEG at up to ~640x480 @ 15 fps (320x240 @ 30), not 720p.
-- The prebuilt framework caps the USB host descriptor buffer at 256 bytes, which is too small for a **Logitech C270** (>1 KB descriptor), so it does not enumerate. The `esp32s3box_cam` PlatformIO environment rebuilds the framework with a larger buffer (`CONFIG_USB_HOST_CONTROL_TRANSFER_MAX_SIZE=2048`); it is still being validated. A phone in tethering/MIDI mode enumerates fine, which confirms host mode itself works.
-- With no serial port in camera mode, the box posts its camera diagnostics to the backend: read them at `GET /api/camera/device-log`.
-
 ## Data, privacy and what is stored where
 
 | Data | Location | Notes |
 |---|---|---|
-| Memories, reminders/alarms/timers, birthdays, people, snapshots (metadata), board-game flags | SQLite in `pdf-knowledge-base/server/data/` | git-ignored |
-| Face crops and snapshot photos | `pdf-knowledge-base/server/data/faces/`, `.../snapshots/` | git-ignored; local only |
-| Face embeddings | SQLite (`face_samples`) | numbers derived locally by OpenCV; never sent to a cloud service |
-| Snapshot questions | Photo + question go to **Gemini** (`generateContent`) to be answered | only when you ask a question; recognised names are supplied by the local engine |
+| Memories, reminders/alarms/timers, birthdays, people, board-game flags | SQLite in `pdf-knowledge-base/server/data/` | git-ignored |
 | Board-game collection cache, BGG token | `server/data/boardgames_*.json` | token never returned to the browser |
 | Music scan state | `D:\Music scanner\ims_scan_*.json` | config, artist overrides, status, results |
-| Camera frames | RAM only | nothing written unless you take a snapshot |
 | Audio captures / debug logs | `pdf-knowledge-base/server/audio_captures/` | toggle "capture logging" on the device's Preferences screen |
 
-**Access control - read this before exposing the app.** `/api/*` is protected by a single admin check that passes once the server itself is authorised against your Google account (and `ADMIN_EMAIL` matches); it is not a per-visitor login, and `/api/memories` is deliberately not gated. The device-only endpoints on `:3003` are unauthenticated plain HTTP for the LAN. So: keep the backend on your LAN, and if you tunnel the web app with ngrok, treat the tunnel URL as a secret - anyone who can reach it can reach the API, including snapshots and face data. A proper per-user login is a sensible next hardening step.
+**Access control - read this before exposing the app.** `/api/*` is protected by a single admin check that passes once the server itself is authorised against your Google account (and `ADMIN_EMAIL` matches); it is not a per-visitor login, and `/api/memories` is deliberately not gated. The device-only endpoints on `:3003` are unauthenticated plain HTTP for the LAN. So: keep the backend on your LAN, and if you tunnel the web app with ngrok, treat the tunnel URL as a secret.
 
 ## Configuration reference
 
@@ -312,11 +283,11 @@ The frame source is pluggable: the device's camera, **this computer's webcam** (
 | Symptom | Cause / fix |
 |---|---|
 | Flashing hangs or crashes with `UnicodeEncodeError` | Set `PYTHONIOENCODING=utf-8`; if the device now boot-loops with `invalid header: 0xffffffff`, just reflash |
-| `COM3` missing / USB dot red | Box is in USB-host (camera) mode or has no PC link. Unplug the camera, reboot with the PC cable attached; if needed hold **BOOT**, tap **RESET**, release **BOOT** |
+| `COM3` missing / USB dot red | Check USB-C cable connection to PC; if needed hold **BOOT**, tap **RESET**, release **BOOT** |
 | Ims greets again mid-conversation | Gemini cycled its session and resumption wasn't available; check the backend log for `Resuming previous Gemini session` |
 | A different voice is heard | Check the backend log line `Gemini setup voice = <name>` on each connection; the saved voice is pinned on every reconnect |
 | `/ims/boardgames` says a token is needed | BGG requires an application token - see [BoardGameGeek token](#boardgamegeek-token) |
 | Music scan can't reach the library | The share isn't reachable from the backend host; set the correct path on `/ims/musicscan` |
-| Face recognition errors | Models missing in `pdf-knowledge-base/server/python/models/` (see setup step 3), or Python packages not installed |
 | Clock shows the wrong hour | Time syncs via NTP with a Europe/London POSIX rule; the boot log prints raw UTC and the adjusted time - compare them |
 | Web page won't scroll / missing changes | Hard-refresh; the backend hot-reloads but the Vite app caches aggressively behind a tunnel |
+

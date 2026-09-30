@@ -397,10 +397,17 @@
       ]
     },
     "src/components/Dashboard/SystemArchitecturePortal.jsx": {
-      "description": "System Architecture portal (/ims/architecture) visualising complete application dependency mesh, live external connections, hardware metrics, test prompt execution tracer, integrated guest invite management modal (ArchitectureInviteModal), and fullscreen right-column adaptive collapse.",
+      "description": "System Architecture portal (/ims/architecture) visualising complete application dependency mesh, live external connections, hardware metrics, test prompt execution tracer with access reason hover tooltips, show-only-used filter, PDF snapshot export, RAF-stabilized connector lines, and integrated guest invite management modal.",
       "dependencies": [
         "src/components/Dashboard/PortalShell.jsx",
-        "src/components/Ims/ImsFace.jsx"
+        "src/components/Ims/ImsFace.jsx",
+        "pdf-knowledge-base/server/services/traceService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/traceService.js": {
+      "description": "System architecture test prompt tracer executing safe read-only queries across all 35 voice tools, 6 data stores, 17 external services, and AI models while emitting rich step reasons and visual illumination mapping.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js"
       ]
     },
     "src/components/Ims/ImsPanel.jsx": {
@@ -428,6 +435,44 @@
       "description": "Core scheduling, alarm, timer, and recurring reminder management service supporting once, daily, weekdays, and weekly wall-clock interval calculations across UK daylight savings.",
       "dependencies": [
         "pdf-knowledge-base/server/database.js"
+      ]
+    },
+    "src/components/Dashboard/MusicScanPortal.jsx": {
+      "description": "Music library scanning and audit portal (/ims/musicscan) comparing \\\\Sideburnt\\NorthField\\MUZAK library against MusicBrainz with multi-category audit screens, network folder browser, release linking, direct folder renaming, and fuzzy Lucene search alignment.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/musicScanService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/musicScanService.js": {
+      "description": "Music scanner bridge service managing scan configuration, Python scan process execution, network folder reading/renaming, album/artist release linking, hidden artist toggles, and MusicBrainz fuzzy Lucene searching.",
+      "dependencies": [
+        "pdf-knowledge-base/server/routes/musicScan.js"
+      ]
+    },
+    "src/components/Dashboard/DevIdeasPortal.jsx": {
+      "description": "Developer ideas management portal (/ims/devideas) with service tag dropdowns, category filter bars, inline status progression, and SQLite persistence.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/devIdeasService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/devIdeasService.js": {
+      "description": "Developer ideas management service with SQLite persistence in dev_ideas table, supporting service tags (category column), title, notes, and status lifecycle.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js"
+      ]
+    },
+    "src/components/Dashboard/CodeRepoPortal.jsx": {
+      "description": "Best practice code architecture portal (/ims/code-repo) rendering engineering principle radial meters, dual-column input/output contract specifications with examples, outdated repository alerts, and live SSE re-scan monitors.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx",
+        "pdf-knowledge-base/server/services/codeRepoService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/codeRepoService.js": {
+      "description": "Best practice code service tracking GitHub/local repositories, evaluating code patterns against 5 software principles, extracting structured inputs/outputs with examples, detecting outdated commits, and performing incremental re-scans.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js",
+        "pdf-knowledge-base/server/services/vectorService.js"
       ]
     }
   }

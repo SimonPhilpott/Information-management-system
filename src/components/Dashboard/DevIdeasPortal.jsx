@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Lightbulb, Pencil, Plus, AlertTriangle, Trash2, Mic, Monitor, Terminal, Check, X, RotateCcw, Save } from 'lucide-react';
+import { Lightbulb, Pencil, Plus, AlertTriangle, Trash2, Mic, Monitor, Terminal, Check, X, RotateCcw, Save, Tag, Filter } from 'lucide-react';
 import PortalShell from './PortalShell';
 
 // Dev ideas (/ims/devideas): ideas for improving IMS, said to Ims ("Ims, dev idea: ...") or typed
@@ -12,18 +12,51 @@ const STATUS = {
 };
 const SOURCE = { desk: [Mic, 'Said to Ims on the desk'], web: [Mic, 'Said to Ims in the app'], page: [Monitor, 'Typed here'], claude: [Terminal, 'Added from Claude Code'], auto: [AlertTriangle, 'Flagged automatically when something failed'] };
 
+const DEFAULT_CATEGORIES = [
+  'Music Scanner',
+  'Blood Glucose / Diabetes',
+  'Run Planner',
+  'Activities & Training',
+  'Morning Report',
+  'Hardware & Firmware',
+  'Voice & Persona',
+  'Calendar & Schedule',
+  'Lists & Memory',
+  'Campaign Manager',
+  'Board Games',
+  'Code Repo Best Practices',
+  'System Architecture',
+  'Other'
+];
+
 export default function DevIdeasPortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
   const isDark = theme === 'dark';
   const [ideas, setIdeas] = useState([]);
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [newCategory, setNewCategory] = useState('Other');
   const [text, setText] = useState('');
-  const [editing, setEditing] = useState(null); // { id, text }
+  const [editing, setEditing] = useState(null); // { id, text, category }
   const [showClosed, setShowClosed] = useState(false);
   const [notification, setNotification] = useState(null);
 
   const toast = (msg, type = 'success') => { setNotification({ msg, type }); setTimeout(() => setNotification(null), 3000); };
+  
   const load = useCallback(async () => {
-    try { const d = await (await fetch('/api/dev-ideas')).json(); if (d.success) setIdeas(d.ideas); } catch (err) { toast(err.message, 'error'); }
-  }, []);
+    try {
+      const url = selectedCategory && selectedCategory !== 'all'
+        ? `/api/dev-ideas?category=${encodeURIComponent(selectedCategory)}`
+        : '/api/dev-ideas';
+      const d = await (await fetch(url)).json();
+      if (d.success) {
+        setIdeas(d.ideas);
+        if (d.categories && Array.isArray(d.categories)) {
+          setCategories(d.categories);
+        }
+      }
+    } catch (err) { toast(err.message, 'error'); }
+  }, [selectedCategory]);
+
   useEffect(() => { load(); }, [load]);
 
   const call = async (url, method, body, done) => {
@@ -35,15 +68,26 @@ export default function DevIdeasPortal({ theme = 'dark', onThemeToggle, setCurre
       load();
     } catch (err) { toast(err.message, 'error'); }
   };
-  const add = () => { if (text.trim()) { call('/api/dev-ideas', 'POST', { text }, 'Idea saved.'); setText(''); } };
+  
+  const add = () => {
+    if (text.trim()) {
+      call('/api/dev-ideas', 'POST', { text, category: newCategory }, 'Idea saved.');
+      setText('');
+    }
+  };
+  
   const setStatus = (id, status) => call(`/api/dev-ideas/${id}`, 'PATCH', { status });
-  const saveEdit = () => { call(`/api/dev-ideas/${editing.id}`, 'PATCH', { text: editing.text }, 'Idea updated.'); setEditing(null); };
+  const saveEdit = () => {
+    call(`/api/dev-ideas/${editing.id}`, 'PATCH', { text: editing.text, category: editing.category }, 'Idea updated.');
+    setEditing(null);
+  };
   const remove = (id) => { if (window.confirm('Delete this idea?')) call(`/api/dev-ideas/${id}`, 'DELETE', null, 'Idea deleted.'); };
 
   const open = ideas.filter((i) => i.status === 'new' || i.status === 'picked_up');
   const closed = ideas.filter((i) => i.status === 'done' || i.status === 'dismissed');
   const panel = `rounded-2xl border p-5 ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/70 border-[#2E2B27]/10 shadow-sm'}`;
   const field = `w-full px-3 py-2.5 rounded-xl text-sm outline-none border ${isDark ? 'bg-slate-950/60 border-white/10' : 'bg-white border-[#2E2B27]/10'}`;
+  const selectField = `px-3 py-2 rounded-xl text-xs font-semibold outline-none border cursor-pointer ${isDark ? 'bg-slate-950/80 border-white/10 text-slate-200' : 'bg-white border-[#2E2B27]/10 text-slate-800'}`;
   const muted = isDark ? 'text-slate-400' : 'text-slate-500';
   const btn = `p-2 rounded-lg ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`;
 
@@ -54,13 +98,25 @@ export default function DevIdeasPortal({ theme = 'dark', onThemeToggle, setCurre
       <div key={i.id} className={`p-3.5 rounded-xl border flex gap-3 ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
         <div className="flex-1 min-w-0">
           {editing?.id === i.id ? (
-            <textarea className={field} rows={3} value={editing.text} onChange={(e) => setEditing({ ...editing, text: e.target.value })} autoFocus />
+            <div className="flex flex-col gap-2">
+              <textarea className={field} rows={3} value={editing.text} onChange={(e) => setEditing({ ...editing, text: e.target.value })} autoFocus />
+              <div className="flex items-center gap-2">
+                <Tag size={13} className="opacity-60" />
+                <span className="text-[11px] font-bold uppercase tracking-wider opacity-70">Category:</span>
+                <select className={selectField} value={editing.category || 'Other'} onChange={(e) => setEditing({ ...editing, category: e.target.value })}>
+                  {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
           ) : (
             <p className="text-sm whitespace-pre-wrap break-words">{i.text}</p>
           )}
           {i.notes && <p className={`text-xs mt-1.5 ${muted}`}>Claude: {i.notes}</p>}
           <div className={`flex flex-wrap items-center gap-2 mt-2 text-[11px] ${muted}`}>
             <span className={`px-2 py-0.5 rounded-full font-bold ${STATUS[i.status].cls}`}>{STATUS[i.status].label}</span>
+            <span className={`px-2 py-0.5 rounded-full font-semibold border ${isDark ? 'border-amber-500/30 text-amber-400 bg-amber-500/10' : 'border-amber-400/40 text-amber-700 bg-amber-50'}`}>
+              {i.category || 'Other'}
+            </span>
             <span className="flex items-center gap-1" title={srcLabel}><SrcIcon size={12} /> #{i.id}</span>
             <span>{new Date(i.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</span>
           </div>
@@ -73,7 +129,7 @@ export default function DevIdeasPortal({ theme = 'dark', onThemeToggle, setCurre
             </>
           ) : (i.status === 'new' || i.status === 'picked_up') ? (
             <>
-              <button onClick={() => setEditing({ id: i.id, text: i.text })} className={btn} title="Edit"><Pencil size={15} /></button>
+              <button onClick={() => setEditing({ id: i.id, text: i.text, category: i.category || 'Other' })} className={btn} title="Edit"><Pencil size={15} /></button>
               <button onClick={() => setStatus(i.id, 'done')} className={`${btn} text-emerald-500`} title="Mark done"><Check size={15} /></button>
               <button onClick={() => setStatus(i.id, 'dismissed')} className={btn} title="Dismiss"><X size={15} /></button>
             </>
@@ -94,19 +150,46 @@ export default function DevIdeasPortal({ theme = 'dark', onThemeToggle, setCurre
         <p className={`text-xs mb-3 ${muted}`}>
           Say <b>"Ims, dev idea: …"</b> to the desk or the app, or type one here. In Claude Code, type <b>/ideas</b> to pull in everything waiting; ideas move to Picked up, then Done.
         </p>
-        <div className="flex gap-2 items-end">
+        <div className="flex flex-col gap-2.5">
           <textarea className={field} rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. Show tomorrow's first event in the desk footer after 9pm"
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) add(); }} />
-          <button onClick={add} disabled={!text.trim()} className="px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 bg-gradient-to-r from-amber-400 to-orange-600 text-white disabled:opacity-40 shrink-0">
-            <Plus size={15} /> Add
-          </button>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider opacity-70">Tag Service:</span>
+              <select className={selectField} value={newCategory} onChange={(e) => setNewCategory(e.target.value)}>
+                {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <button onClick={add} disabled={!text.trim()} className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-gradient-to-r from-amber-400 to-orange-600 text-white disabled:opacity-40 shrink-0">
+              <Plus size={14} /> Add Dev Idea
+            </button>
+          </div>
         </div>
       </div>
 
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+        <div className="flex items-center gap-2 text-xs font-semibold">
+          <Filter size={14} className="text-amber-500" />
+          <span>Filter by Service Tag:</span>
+          <select className={selectField} value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)}>
+            <option value="all">All Services ({ideas.length})</option>
+            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        {selectedCategory !== 'all' && (
+          <button onClick={() => setSelectedCategory('all')} className={`text-xs px-2.5 py-1 rounded-lg border font-semibold ${isDark ? 'border-white/10 bg-white/5 hover:bg-white/10' : 'border-black/10 bg-black/5 hover:bg-black/10'}`}>
+            Clear Filter
+          </button>
+        )}
+      </div>
+
       <div className={panel}>
-        <h2 className="text-xs font-black uppercase tracking-wider mb-3">Waiting ({open.length})</h2>
+        <h2 className="text-xs font-black uppercase tracking-wider mb-3">
+          Waiting ({open.length}) {selectedCategory !== 'all' && <span className="text-amber-500 font-normal">in {selectedCategory}</span>}
+        </h2>
         {open.length ? <div className="flex flex-col gap-2">{open.map(renderRow)}</div>
-          : <p className={`text-sm text-center py-6 ${muted}`}>No ideas waiting.</p>}
+          : <p className={`text-sm text-center py-6 ${muted}`}>No ideas waiting{selectedCategory !== 'all' ? ` for "${selectedCategory}"` : ''}.</p>}
       </div>
 
       {closed.length > 0 && (

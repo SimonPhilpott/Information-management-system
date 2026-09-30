@@ -5,7 +5,8 @@ import {
   ChevronRight, ChevronDown, ChevronUp, FileCode, Check, Copy, Edit3, Save, Compass,
   KeyRound, GitBranch, Lock, Eye, EyeOff, X, CheckSquare, Square,
   Boxes, Server, Wrench, Shield, ArrowRight, User, Building, HardDrive,
-  Activity, Play, CheckCircle, Database, Mic, Speaker, ArrowUpRight
+  Activity, Play, CheckCircle, Database, Mic, Speaker, ArrowUpRight,
+  ArrowRightLeft, LogIn, LogOut, GitCommit, HelpCircle
 } from 'lucide-react';
 import PortalShell from './PortalShell';
 
@@ -340,11 +341,12 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
   const [isSavingTokens, setIsSavingTokens] = useState(false);
   const [isDiscoveringRepos, setIsDiscoveringRepos] = useState(false);
 
-  // Scan state (SSE)
+  // Scan state (SSE) & Outdated checking
   const [isScanning, setIsScanning] = useState(false);
-  const [scanTarget, setScanTarget] = useState(null); // 'all', 'personal', 'turntown', or repoId
+  const [scanTarget, setScanTarget] = useState(null); // 'all', 'personal', 'turntown', 'outdated', or repoId
   const [scanLogs, setScanLogs] = useState([]);
   const [scanProgress, setScanProgress] = useState(0);
+  const [isCheckingOutdated, setIsCheckingOutdated] = useState(false);
 
   // Observation state & UI feedback
   const [editingObservations, setEditingObservations] = useState('');
@@ -671,6 +673,80 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
     };
   };
 
+  // Check all repositories for outdated commits
+  const handleCheckOutdated = async () => {
+    setIsCheckingOutdated(true);
+    try {
+      const res = await fetch('/api/code-repo/check-outdated', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setRepositories(data.repositories || []);
+        if (data.outdatedCount > 0) {
+          showToast(`Found ${data.outdatedCount} repository with new commits requiring re-scan`, 'error');
+        } else {
+          showToast('All repositories are fully up to date with latest commits');
+        }
+      } else {
+        throw new Error(data.error || 'Failed checking repository updates');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsCheckingOutdated(false);
+    }
+  };
+
+  // Re-scan only outdated repositories
+  const handleStartScanOutdated = () => {
+    const outdatedRepos = repositories.filter(r => r.is_outdated);
+    if (outdatedRepos.length === 0) {
+      showToast('No outdated repositories detected. Everything is up to date.');
+      return;
+    }
+
+    setScanTarget('outdated');
+    setIsScanning(true);
+    setScanLogs([]);
+    setScanProgress(0);
+
+    const eventSource = new EventSource('/api/code-repo/scan-outdated-stream');
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.message) {
+          setScanLogs(prev => [...prev, data.message]);
+        }
+        if (typeof data.progress === 'number') {
+          setScanProgress(data.progress);
+        }
+        if (data.phase === 'finished') {
+          eventSource.close();
+          setIsScanning(false);
+          setScanTarget(null);
+          loadRepositories();
+          loadSnippets();
+          showToast(data.message || 'Outdated repositories re-scanned successfully!');
+        } else if (data.phase === 'error') {
+          eventSource.close();
+          setIsScanning(false);
+          setScanTarget(null);
+          showToast(data.message || 'Scan encountered an error', 'error');
+        }
+      } catch (err) {
+        console.error('SSE parse error:', err);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error('SSE connection error:', err);
+      eventSource.close();
+      setIsScanning(false);
+      setScanTarget(null);
+      showToast('Scan connection interrupted', 'error');
+    };
+  };
+
   // Copy code handler with immediate clipboard feedback
   const handleCopyCode = () => {
     if (!activeSnippet?.code_content) return;
@@ -766,6 +842,33 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
           </div>
 
           <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+            {/* Outdated Repos Alert & Action */}
+            {repositories.some(r => r.is_outdated) && (
+              <button
+                onClick={handleStartScanOutdated}
+                disabled={isScanning}
+                className="px-3.5 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-black transition-all shadow-md shadow-amber-500/20 animate-pulse"
+                title="Re-scan and incrementally update modified or newly expanded code snippets"
+              >
+                <RefreshCw size={13} className={isScanning && scanTarget === 'outdated' ? 'animate-spin' : ''} />
+                <span>Re-scan Outdated ({repositories.filter(r => r.is_outdated).length})</span>
+              </button>
+            )}
+
+            <button
+              onClick={handleCheckOutdated}
+              disabled={isCheckingOutdated || isScanning}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                isDark
+                  ? 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border border-amber-500/30'
+                  : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300'
+              }`}
+              title="Check GitHub for newer commits since last scan"
+            >
+              <GitCommit size={13} className={isCheckingOutdated ? 'animate-spin' : ''} />
+              <span>{isCheckingOutdated ? 'Checking Commits...' : 'Check for Updates'}</span>
+            </button>
+
             <button
               onClick={() => setIsTokenModalOpen(true)}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
@@ -928,12 +1031,18 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
-                          {repo.last_scanned_at ? (
-                            <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500 font-medium">
-                              Scanned
+                          {repo.is_outdated ? (
+                            <span className="text-[9.5px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-bold flex items-center gap-1 animate-pulse" title={`Newer commits found since last scan (${repo.last_scanned_commit_sha ? repo.last_scanned_commit_sha.slice(0, 7) : 'none'} -> ${repo.last_commit_sha ? repo.last_commit_sha.slice(0, 7) : 'latest'})`}>
+                              <AlertTriangle size={10} />
+                              Needs Re-scan
+                            </span>
+                          ) : repo.last_scanned_at ? (
+                            <span className="text-[9.5px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                              <CheckCircle2 size={10} />
+                              Up to date
                             </span>
                           ) : (
-                            <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-slate-500/10 text-slate-400">
+                            <span className="text-[9.5px] px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-400 font-medium">
                               Unscanned
                             </span>
                           )}
@@ -1128,12 +1237,18 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
-                          {repo.last_scanned_at ? (
-                            <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500 font-medium">
-                              Scanned
+                          {repo.is_outdated ? (
+                            <span className="text-[9.5px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-bold flex items-center gap-1 animate-pulse" title={`Newer commits found since last scan (${repo.last_scanned_commit_sha ? repo.last_scanned_commit_sha.slice(0, 7) : 'none'} -> ${repo.last_commit_sha ? repo.last_commit_sha.slice(0, 7) : 'latest'})`}>
+                              <AlertTriangle size={10} />
+                              Needs Re-scan
+                            </span>
+                          ) : repo.last_scanned_at ? (
+                            <span className="text-[9.5px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                              <CheckCircle2 size={10} />
+                              Up to date
                             </span>
                           ) : (
-                            <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-slate-500/10 text-slate-400">
+                            <span className="text-[9.5px] px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-400 font-medium">
                               Unscanned
                             </span>
                           )}
@@ -1566,6 +1681,14 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
                               <span className={`truncate max-w-[120px] font-mono text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`} title={snip.file_path}>
                                 {snip.file_path?.split('/').pop()}
                               </span>
+                              {((snip.inputs?.length || 0) > 0 || (snip.outputs?.length || 0) > 0) && (
+                                <span className={`ml-auto px-1.5 py-0.5 rounded text-[9px] font-bold flex items-center gap-1 ${
+                                  isDark ? 'bg-blue-950/60 text-blue-300 border border-blue-500/20' : 'bg-blue-50 text-blue-700 border border-blue-200'
+                                }`} title={`${snip.inputs?.length || 0} Inputs, ${snip.outputs?.length || 0} Outputs`}>
+                                  <ArrowRightLeft size={9} />
+                                  <span>{snip.inputs?.length || 0} in / {snip.outputs?.length || 0} out</span>
+                                </span>
+                              )}
                             </div>
                           </div>
                         );
@@ -1717,6 +1840,160 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
               <p className={`text-xs leading-relaxed ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
                 {activeSnippet.best_practice_rationale || 'Adheres to high-cohesion, low-coupling design principles.'}
               </p>
+            </div>
+
+            {/* INPUTS & OUTPUTS CONTRACT SPECIFICATION (Variables, Triggers, Listeners, Return Values, Mutations) */}
+            <div className={`rounded-2xl border p-5 sm:p-6 transition-all ${
+              isDark ? 'bg-slate-950/70 border-white/10' : 'bg-slate-50/90 border-slate-200'
+            }`}>
+              <div className="flex items-center justify-between pb-3.5 mb-5 border-b border-slate-200/80 dark:border-white/10">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-8 h-8 rounded-full flex items-center justify-center bg-blue-500/10 text-blue-500">
+                    <ArrowRightLeft size={16} />
+                  </span>
+                  <div>
+                    <h4 className={`text-xs font-extrabold uppercase tracking-wider ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      Inputs & Outputs Contract Specifications
+                    </h4>
+                    <p className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Explicit data contracts, trigger events, listeners, state mutations, and concrete example payloads
+                    </p>
+                  </div>
+                </div>
+                <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${isDark ? 'bg-white/10 text-slate-300' : 'bg-white text-slate-700 border border-slate-200'}`}>
+                  {((activeSnippet.inputs?.length || 0) + (activeSnippet.outputs?.length || 0))} Contract Points
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {/* Column 1: Inputs (Captured on the way in) */}
+                <div className={`p-4 rounded-xl border flex flex-col justify-between ${
+                  isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200/90 shadow-sm'
+                }`}>
+                  <div>
+                    <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-200/60 dark:border-white/5">
+                      <div className="flex items-center gap-1.5">
+                        <LogIn size={14} className="text-blue-500" />
+                        <span className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-blue-400' : 'text-blue-700'}`}>
+                          Inputs (Captured on Entry)
+                        </span>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isDark ? 'bg-blue-500/15 text-blue-300' : 'bg-blue-50 text-blue-700'}`}>
+                        {activeSnippet.inputs?.length || 0} items
+                      </span>
+                    </div>
+
+                    {(activeSnippet.inputs?.length || 0) === 0 ? (
+                      <p className="text-xs text-slate-500 italic py-3">No parameter or trigger inputs defined.</p>
+                    ) : (
+                      <div className="flex flex-col gap-3.5">
+                        {activeSnippet.inputs.map((inp, idx) => (
+                          <div key={idx} className={`p-3 rounded-lg border ${
+                            isDark ? 'bg-slate-950/70 border-slate-800/80' : 'bg-slate-50/80 border-slate-200/80'
+                          }`}>
+                            <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                              <span className={`text-xs font-mono font-bold ${isDark ? 'text-blue-300' : 'text-blue-800'}`}>
+                                {inp.name}
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-[9.5px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                  inp.kind === 'Trigger' ? 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border border-orange-500/30' :
+                                  inp.kind === 'Listener' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30' :
+                                  inp.kind === 'Config' ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30' :
+                                  inp.kind === 'State' ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30' :
+                                  'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30'
+                                }`}>
+                                  {inp.kind || 'Variable'}
+                                </span>
+                                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                                  {inp.type || 'any'}
+                                </span>
+                              </div>
+                            </div>
+                            <p className={`text-[11.5px] mb-2 leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                              {inp.description}
+                            </p>
+                            {inp.example && (
+                              <div className="mt-1.5">
+                                <span className={`text-[9.5px] font-bold uppercase tracking-wider block mb-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                                  Example Payload / Value:
+                                </span>
+                                <pre className="p-2 rounded font-mono text-[11px] overflow-x-auto leading-tight bg-slate-950 text-emerald-400 border border-slate-800/80">
+                                  <code>{inp.example}</code>
+                                </pre>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Column 2: Outputs (Produced on the way out) */}
+                <div className={`p-4 rounded-xl border flex flex-col justify-between ${
+                  isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200/90 shadow-sm'
+                }`}>
+                  <div>
+                    <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-200/60 dark:border-white/5">
+                      <div className="flex items-center gap-1.5">
+                        <LogOut size={14} className="text-emerald-500" />
+                        <span className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-emerald-400' : 'text-emerald-700'}`}>
+                          Outputs (Produced on Exit)
+                        </span>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-50 text-emerald-700'}`}>
+                        {activeSnippet.outputs?.length || 0} items
+                      </span>
+                    </div>
+
+                    {(activeSnippet.outputs?.length || 0) === 0 ? (
+                      <p className="text-xs text-slate-500 italic py-3">No return value or sink outputs defined.</p>
+                    ) : (
+                      <div className="flex flex-col gap-3.5">
+                        {activeSnippet.outputs.map((out, idx) => (
+                          <div key={idx} className={`p-3 rounded-lg border ${
+                            isDark ? 'bg-slate-950/70 border-slate-800/80' : 'bg-slate-50/80 border-slate-200/80'
+                          }`}>
+                            <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                              <span className={`text-xs font-mono font-bold ${isDark ? 'text-emerald-300' : 'text-emerald-800'}`}>
+                                {out.name}
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-[9.5px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                  out.kind === 'Event' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30' :
+                                  out.kind === 'Mutation' ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30' :
+                                  out.kind === 'Render' ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30' :
+                                  out.kind === 'Sink' ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30' :
+                                  'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                                }`}>
+                                  {out.kind || 'Return Value'}
+                                </span>
+                                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                                  {out.type || 'any'}
+                                </span>
+                              </div>
+                            </div>
+                            <p className={`text-[11.5px] mb-2 leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                              {out.description}
+                            </p>
+                            {out.example && (
+                              <div className="mt-1.5">
+                                <span className={`text-[9.5px] font-bold uppercase tracking-wider block mb-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                                  Example Output / Return Value:
+                                </span>
+                                <pre className="p-2 rounded font-mono text-[11px] overflow-x-auto leading-tight bg-slate-950 text-cyan-300 border border-slate-800/80">
+                                  <code>{out.example}</code>
+                                </pre>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Source Code Implementation Box */}

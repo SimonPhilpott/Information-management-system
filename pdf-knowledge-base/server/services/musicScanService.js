@@ -56,7 +56,7 @@ export function getStatus() {
 // Results file shape (written by ims_scan_service.py):
 //   { lastScanCompleted, artistsScanned, artistsWithMissingReleases,
 //     artists: { [folderName]: { genre, mbName, mbId, releases: [{title, type,
-//       date, precision, owned}], unlisted: [folderName], error } } }
+//       date, precision, owned, linkedFolder}], unlisted: [folderName], error, hidden, linkedFolder } } }
 // It's ~MBs, so it's cached by mtime rather than re-parsed on every request.
 let resultsCache = { mtimeMs: 0, data: null };
 export function getResults() {
@@ -74,10 +74,12 @@ export function getResults() {
 
 export function getResultsMeta() {
   const r = getResults();
+  const overrides = getArtistOverrides();
+  const visible = Object.entries(r.artists || {}).filter(([name]) => !overrides[name]?.hidden);
   return {
     lastScanCompleted: r.lastScanCompleted || null,
-    artistsScanned: r.artistsScanned || 0,
-    artistsWithMissingReleases: r.artistsWithMissingReleases || 0
+    artistsScanned: visible.length,
+    artistsWithMissingReleases: visible.filter(([, a]) => a.releases?.some((rel) => !rel.owned)).length
   };
 }
 
@@ -86,14 +88,63 @@ export function getArtistOverrides() {
   return readJson(ARTISTS_PATH, {});
 }
 
-export function saveArtistSettings(name, { searchName, aliases }) {
+export function saveArtistSettings(name, { searchName, aliases, hidden, linkedFolder, linkedReleases }) {
   const all = getArtistOverrides();
-  const cleanAliases = (Array.isArray(aliases) ? aliases : []).map((a) => String(a).trim()).filter(Boolean);
-  const cleanSearch = String(searchName || '').trim();
-  if (!cleanSearch && cleanAliases.length === 0) delete all[name];
-  else all[name] = { searchName: cleanSearch, aliases: cleanAliases };
+  const current = all[name] || {};
+  
+  const cleanAliases = (Array.isArray(aliases) ? aliases : (current.aliases || [])).map((a) => String(a).trim()).filter(Boolean);
+  const cleanSearch = searchName !== undefined ? String(searchName || '').trim() : (current.searchName || '');
+  const isHidden = hidden !== undefined ? Boolean(hidden) : Boolean(current.hidden);
+  const folderLink = linkedFolder !== undefined ? (String(linkedFolder || '').trim() || null) : (current.linkedFolder || null);
+  const relLinks = linkedReleases !== undefined ? linkedReleases : (current.linkedReleases || {});
+
+  const hasContent = cleanSearch || cleanAliases.length > 0 || isHidden || folderLink || (relLinks && Object.keys(relLinks).length > 0);
+  
+  if (!hasContent) {
+    delete all[name];
+  } else {
+    all[name] = {
+      ...(cleanSearch ? { searchName: cleanSearch } : {}),
+      ...(cleanAliases.length ? { aliases: cleanAliases } : {}),
+      ...(isHidden ? { hidden: true } : {}),
+      ...(folderLink ? { linkedFolder: folderLink } : {}),
+      ...(relLinks && Object.keys(relLinks).length ? { linkedReleases: relLinks } : {})
+    };
+  }
+  
   fs.writeFileSync(ARTISTS_PATH, JSON.stringify(all, null, 2), 'utf8');
-  return all[name] || { searchName: '', aliases: [] };
+  return all[name] || { searchName: '', aliases: [], hidden: false, linkedFolder: null, linkedReleases: {} };
+}
+
+export function hideArtist(name, hidden = true) {
+  return saveArtistSettings(name, { hidden });
+}
+
+export function linkArtistRelease(artistName, releaseTitle, folderName) {
+  const all = getArtistOverrides();
+  const current = all[artistName] || {};
+  const linkedReleases = { ...(current.linkedReleases || {}) };
+  if (folderName) {
+    linkedReleases[releaseTitle] = folderName;
+  } else {
+    delete linkedReleases[releaseTitle];
+  }
+  saveArtistSettings(artistName, { linkedReleases });
+
+  // Update in results cache immediately
+  const results = getResults();
+  if (results.artists && results.artists[artistName]) {
+    const entry = results.artists[artistName];
+    for (const r of entry.releases) {
+      if (r.title === releaseTitle || r.title.toLowerCase() === releaseTitle.toLowerCase()) {
+        r.owned = Boolean(folderName);
+        r.linkedFolder = folderName || null;
+      }
+    }
+    // Recompute unlisted if needed
+    fs.writeFileSync(RESULTS_PATH, JSON.stringify(results, null, 1), 'utf8');
+  }
+  return getArtistDetail(artistName);
 }
 
 function summarise(name, entry, overrides) {
@@ -102,17 +153,22 @@ function summarise(name, entry, overrides) {
     name,
     genre: entry.genre,
     mbName: entry.mbName,
+    mbId: entry.mbId || null,
     owned: entry.releases.filter((r) => r.owned).length,
     notOwned: entry.releases.filter((r) => !r.owned).length,
     unlisted: entry.unlisted.length,
     searchName: ov.searchName || '',
-    aliases: ov.aliases || []
+    aliases: ov.aliases || [],
+    hidden: Boolean(ov.hidden),
+    linkedFolder: ov.linkedFolder || null,
+    linkedReleases: ov.linkedReleases || {}
   };
 }
 
-export function getArtistList() {
+export function getArtistList({ includeHidden = false } = {}) {
   const overrides = getArtistOverrides();
   return Object.entries(getResults().artists)
+    .filter(([name]) => includeHidden || !overrides[name]?.hidden)
     .map(([name, entry]) => summarise(name, entry, overrides))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 }
@@ -120,7 +176,239 @@ export function getArtistList() {
 export function getArtistDetail(name) {
   const entry = getResults().artists[name];
   if (!entry) return null;
-  return { ...summarise(name, entry, getArtistOverrides()), releases: entry.releases, unlistedAlbums: entry.unlisted, error: entry.error || null };
+  return {
+    ...summarise(name, entry, getArtistOverrides()),
+    releases: entry.releases,
+    unlistedAlbums: entry.unlisted,
+    error: entry.error || null
+  };
+}
+
+// Audit: list all unmatched artists (no mbId or 0 releases) and artists with unowned releases
+export function getMusicAudit() {
+  const overrides = getArtistOverrides();
+  const results = getResults().artists;
+  const unmatched = [];
+  const withMissing = [];
+
+  for (const [name, entry] of Object.entries(results)) {
+    const isHidden = Boolean(overrides[name]?.hidden);
+    const sum = summarise(name, entry, overrides);
+    const detail = {
+      ...sum,
+      releases: entry.releases || [],
+      unlistedAlbums: entry.unlisted || [],
+      error: entry.error || null
+    };
+
+    const isUnmatched = !entry.mbId || entry.error || (entry.releases || []).length === 0;
+    if (isUnmatched) {
+      unmatched.push(detail);
+    } else if (sum.notOwned > 0) {
+      withMissing.push(detail);
+    }
+  }
+
+  unmatched.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  withMissing.sort((a, b) => b.notOwned - a.notOwned || a.name.localeCompare(b.name));
+
+  return {
+    unmatchedCount: unmatched.length,
+    withMissingCount: withMissing.length,
+    unmatched,
+    withMissing
+  };
+}
+
+// List all genre folders and artist subfolders on MUZAK share
+export function getMuzakFolders() {
+  const cfg = getConfig();
+  const root = cfg.muzak_path;
+  const genres = [];
+  try {
+    if (fs.existsSync(root)) {
+      for (const g of fs.readdirSync(root)) {
+        const gp = path.join(root, g);
+        try {
+          if (fs.statSync(gp).isDirectory() && !g.startsWith('.')) {
+            const artists = [];
+            for (const a of fs.readdirSync(gp)) {
+              const ap = path.join(gp, a);
+              try {
+                if (fs.statSync(ap).isDirectory() && !a.startsWith('.')) {
+                  artists.push(a);
+                }
+              } catch (_) {}
+            }
+            genres.push({ genre: g, artists: artists.sort((a, b) => a.localeCompare(b)) });
+          }
+        } catch (_) {}
+      }
+    }
+  } catch (err) {
+    console.error('[MusicScan] getMuzakFolders error:', err.message);
+  }
+  return { root, genres };
+}
+
+// List album folders and audio files inside a specific artist folder
+export function getArtistFolderContents(genre, artistName) {
+  const cfg = getConfig();
+  const artistPath = path.join(cfg.muzak_path, genre, artistName);
+  if (!fs.existsSync(artistPath)) {
+    // Try searching all genres if given genre not found
+    for (const g of fs.readdirSync(cfg.muzak_path)) {
+      const gp = path.join(cfg.muzak_path, g);
+      try {
+        if (fs.statSync(gp).isDirectory()) {
+          const candidate = path.join(gp, artistName);
+          if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+            return listFolderContents(candidate, g, artistName);
+          }
+        }
+      } catch (_) {}
+    }
+    throw new Error(`Artist folder not found: ${artistName}`);
+  }
+  return listFolderContents(artistPath, genre, artistName);
+}
+
+function listFolderContents(dirPath, genre, artistName) {
+  const items = fs.readdirSync(dirPath);
+  const subfolders = [];
+  const audioFiles = [];
+  
+  for (const item of items) {
+    const full = path.join(dirPath, item);
+    try {
+      const stat = fs.statSync(full);
+      if (stat.isDirectory()) {
+        subfolders.push(item);
+      } else if (/\.(mp3|flac|m4a|wav|wma|ogg|aac|alac)$/i.test(item)) {
+        audioFiles.push(item);
+      }
+    } catch (_) {}
+  }
+  
+  return {
+    genre,
+    artist: artistName,
+    path: dirPath,
+    subfolders: subfolders.sort((a, b) => a.localeCompare(b)),
+    audioFiles: audioFiles.sort((a, b) => a.localeCompare(b))
+  };
+}
+
+// Rename an album subfolder inside an artist folder
+export function renameAlbumFolder(genre, artistName, oldFolderName, newFolderName) {
+  const cfg = getConfig();
+  const cleanOld = String(oldFolderName || '').trim();
+  const cleanNew = String(newFolderName || '').trim().replace(/[\\/:*?"<>|]/g, '-');
+  if (!cleanOld || !cleanNew) throw new Error('Both old and new folder names are required.');
+  
+  let artistPath = path.join(cfg.muzak_path, genre, artistName);
+  if (!fs.existsSync(artistPath)) {
+    for (const g of fs.readdirSync(cfg.muzak_path)) {
+      const candidate = path.join(cfg.muzak_path, g, artistName);
+      if (fs.existsSync(candidate)) {
+        artistPath = candidate;
+        genre = g;
+        break;
+      }
+    }
+  }
+  
+  const oldPath = path.join(artistPath, cleanOld);
+  const newPath = path.join(artistPath, cleanNew);
+  
+  if (!fs.existsSync(oldPath)) throw new Error(`Original folder does not exist: ${cleanOld}`);
+  if (fs.existsSync(newPath) && cleanOld.toLowerCase() !== cleanNew.toLowerCase()) {
+    throw new Error(`Target folder already exists: ${cleanNew}`);
+  }
+  
+  fs.renameSync(oldPath, newPath);
+  
+  // Re-scan single artist
+  return rescanArtist(artistName);
+}
+
+// Rename an artist folder on disk
+export function renameArtistFolder(genre, oldArtistName, newArtistName) {
+  const cfg = getConfig();
+  const cleanOld = String(oldArtistName || '').trim();
+  const cleanNew = String(newArtistName || '').trim().replace(/[\\/:*?"<>|]/g, '-');
+  if (!cleanOld || !cleanNew) throw new Error('Both old and new artist names are required.');
+
+  let genrePath = path.join(cfg.muzak_path, genre);
+  let oldPath = path.join(genrePath, cleanOld);
+  if (!fs.existsSync(oldPath)) {
+    for (const g of fs.readdirSync(cfg.muzak_path)) {
+      const candidate = path.join(cfg.muzak_path, g, cleanOld);
+      if (fs.existsSync(candidate)) {
+        oldPath = candidate;
+        genrePath = path.join(cfg.muzak_path, g);
+        genre = g;
+        break;
+      }
+    }
+  }
+
+  const newPath = path.join(genrePath, cleanNew);
+  if (!fs.existsSync(oldPath)) throw new Error(`Original artist folder does not exist: ${cleanOld}`);
+  if (fs.existsSync(newPath) && cleanOld.toLowerCase() !== cleanNew.toLowerCase()) {
+    throw new Error(`Target artist folder already exists: ${cleanNew}`);
+  }
+
+  fs.renameSync(oldPath, newPath);
+
+  // Migrate artist overrides if any
+  const overrides = getArtistOverrides();
+  if (overrides[cleanOld]) {
+    overrides[cleanNew] = overrides[cleanOld];
+    delete overrides[cleanOld];
+    fs.writeFileSync(ARTISTS_PATH, JSON.stringify(overrides, null, 2), 'utf8');
+  }
+
+  // Update results JSON
+  const results = getResults();
+  if (results.artists && results.artists[cleanOld]) {
+    results.artists[cleanNew] = results.artists[cleanOld];
+    delete results.artists[cleanOld];
+    fs.writeFileSync(RESULTS_PATH, JSON.stringify(results, null, 1), 'utf8');
+  }
+
+  return rescanArtist(cleanNew);
+}
+
+// Search MusicBrainz for closest artist matches via Python helper
+export function searchMusicBrainzArtist(query) {
+  return new Promise((resolve, reject) => {
+    const q = String(query || '').trim();
+    if (!q) return resolve([]);
+    
+    const pyScript = `import sys, json, musicbrainzngs
+musicbrainzngs.set_useragent('IMSMusicScanService', '1.0.0', 'https://github.com/yourusername/ims')
+try:
+    hits = musicbrainzngs.search_artists(query=sys.argv[1], limit=10).get('artist-list', [])
+    res = [{'name': h.get('name'), 'disambiguation': h.get('disambiguation'), 'score': h.get('ext:score'), 'id': h.get('id'), 'country': h.get('country'), 'type': h.get('type')} for h in hits]
+    print(json.dumps(res))
+except Exception as e:
+    print(json.dumps({'error': str(e)}))
+`;
+    execFile(PYTHON_EXE, ['-c', pyScript, q], {
+      timeout: 15000,
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+    }, (err, stdout, stderr) => {
+      if (err) return reject(new Error(stderr || stdout || err.message));
+      try {
+        const data = JSON.parse(stdout.trim());
+        if (data.error) return reject(new Error(data.error));
+        resolve(data);
+      } catch (e) {
+        reject(new Error('Failed to parse MusicBrainz search output: ' + e.message));
+      }
+    });
+  });
 }
 
 const londonDateFormatter = new Intl.DateTimeFormat('en-GB', {
@@ -139,10 +427,6 @@ function addDays(dateStr, n) {
 // the footer vinyl-icon count comes from.
 const WINDOW_DAYS = { day: 0, week: 7, month: 30, '6months': 182, year: 365 };
 
-// Day-precision dates are compared exactly. Month-precision dates (MusicBrainz
-// often only knows the month) only count for the 6-month/year views, where a
-// month overlapping the window is a fair "yes"; year-only dates are never
-// placed in a window, since which day they fall on is unknown.
 function inWindow(rel, cutoff, today, windowKey) {
   if (rel.precision === 'day') return rel.date >= cutoff && rel.date <= today;
   if (rel.precision === 'month' && (windowKey === '6months' || windowKey === 'year')) {
@@ -162,6 +446,7 @@ export function getWindowResults(windowKey) {
   const overrides = getArtistOverrides();
   const out = [];
   for (const [name, entry] of Object.entries(getResults().artists)) {
+    if (overrides[name]?.hidden) continue;
     const releases = entry.releases.map((r) => ({ ...r, isNew: inWindow(r, cutoff, today, windowKey) }));
     const newest = releases.filter((r) => r.isNew).map((r) => r.date).sort().pop();
     if (!newest) continue;
@@ -171,13 +456,12 @@ export function getWindowResults(windowKey) {
   return { window: windowKey, cutoff, today, artists: out };
 }
 
-// Every release dated exactly today for an artist in the library, owned or
-// not - the "released today" list on the Day view, and the count shown next
-// to the vinyl icon on the device and in the morning report.
 export function getTodayReleases() {
   const today = todayLondonDateStr();
+  const overrides = getArtistOverrides();
   const list = [];
   for (const [name, entry] of Object.entries(getResults().artists)) {
+    if (overrides[name]?.hidden) continue;
     for (const r of entry.releases) {
       if (r.precision === 'day' && r.date === today) {
         list.push({ artist: name, title: r.title, type: r.type, date: r.date, owned: r.owned });
@@ -187,16 +471,14 @@ export function getTodayReleases() {
   return list.sort((a, b) => a.artist.localeCompare(b.artist));
 }
 
-// Announced releases still to come, soonest first, for every artist in the
-// library. MusicBrainz often only knows the month (or year) of a release, so
-// those are kept with their real precision: a month counts as upcoming from its
-// own month onward, a year only once it is a later year than this one.
 export function getUpcomingReleases() {
   const today = todayLondonDateStr();
   const thisMonth = today.slice(0, 7);
   const thisYear = Number(today.slice(0, 4));
+  const overrides = getArtistOverrides();
   const list = [];
   for (const [name, entry] of Object.entries(getResults().artists)) {
+    if (overrides[name]?.hidden) continue;
     for (const r of entry.releases) {
       const d = r.date || '';
       const upcoming = (r.precision === 'day' && d > today)
@@ -213,8 +495,7 @@ export function getUpcomingReleases() {
 }
 
 // Re-scans one artist (a couple of MusicBrainz calls) after their search
-// name/aliases were edited. Refused while a full scan is running, since both
-// would write the same results file.
+// name/aliases were edited. Refused while a full scan is running.
 export function rescanArtist(name) {
   return new Promise((resolve, reject) => {
     if (isScanRunning()) return reject(new Error('A full scan is running - try again once it finishes.'));
@@ -227,11 +508,6 @@ export function rescanArtist(name) {
   });
 }
 
-// Ground truth is the status file's own state, not just this process's
-// in-memory child-process handle: this backend restarts on every file save
-// (node --watch), which would orphan a still-running python subprocess and
-// leave a stale, wrong "not running" in this process's own bookkeeping while
-// the scan (and its progress file) keep going regardless.
 export function isScanRunning() {
   if (scanProcess !== null) return true;
   return getStatus().state === 'running';
@@ -246,12 +522,6 @@ export function runScanNow() {
   }
 
   fs.appendFileSync(LOG_PATH, `\n\n=== Scan started ${new Date().toISOString()} ===\n`);
-  // stdio is opened as raw file descriptors (not piped through this Node
-  // process) and the child is spawned detached + unref'd, so a scan that can
-  // legitimately run for 20-30+ minutes survives this backend restarting
-  // (node --watch reloads on every file save in dev) instead of dying with
-  // it - a piped stdout/stderr would otherwise tie the child's lifetime, and
-  // a non-detached child is killed outright when Node's process group exits.
   const logFd = fs.openSync(LOG_PATH, 'a');
 
   scanProcess = spawn(PYTHON_EXE, [SCRIPT_PATH], {
@@ -285,13 +555,6 @@ function londonNowParts() {
   return { dateStr: `${parts.year}-${parts.month}-${parts.day}`, hhmm: `${parts.hour}:${parts.minute}` };
 }
 
-// Has a scan already been started today (London date), per the status file?
-// Checked in addition to the in-memory lastTriggeredLondonDate flag, since
-// that flag alone doesn't survive a process restart - this backend runs
-// under `node --watch` in dev and reloads on every file save, and without
-// this file-backed check a restart occurring any time after schedule_time
-// would see a fresh, unset in-memory flag and immediately re-fire a full
-// scan, even though one had already run (or was running) earlier that day.
 function scanAlreadyStartedToday(londonDateStr) {
   const s = getStatus();
   if (!s.startedAt) return false;
@@ -300,10 +563,6 @@ function scanAlreadyStartedToday(londonDateStr) {
   return `${startedLondonDate.year}-${startedLondonDate.month}-${startedLondonDate.day}` === londonDateStr;
 }
 
-// Called every minute from index.js, mirroring how reminders/alarms are
-// polled - fires once when the London wall-clock time first reaches (or
-// passes) the configured schedule_time on a given day, then won't fire again
-// until the date rolls over.
 export function checkAndTriggerNightlyScan() {
   const cfg = getConfig();
   if (!cfg.schedule_enabled) return;
@@ -324,12 +583,6 @@ export function checkAndTriggerNightlyScan() {
   }
 }
 
-// Self-correcting UTC guess for a London wall-clock time, same technique
-// remindersService uses: construct as if the wanted numbers were UTC, see
-// how that instant actually reads in London, adjust by the difference. This
-// keeps the BST/GMT changeover correct without relying on the server
-// process's own OS timezone (which happens to be Europe/London here, but
-// explicit is what keeps that from silently going wrong for half the year).
 function londonWallTimeToUtcMs(year, month, day, hour, minute) {
   const guessMs = Date.UTC(year, month - 1, day, hour, minute, 0);
   const asLondonParts = Object.fromEntries(
@@ -365,7 +618,6 @@ export function getWants() {
   try { wants = JSON.parse(getSetting(WANTS_KEY) || '[]'); } catch { wants = []; }
   const today = todayLondonDateStr();
   const results = getResults().artists;
-  // Refresh each wanted release from the latest scan: its date may have firmed up, or it may now be owned.
   return wants.map((w) => {
     const r = results[w.artist]?.releases.find((x) => x.title.toLowerCase() === w.title.toLowerCase());
     const cur = r ? { ...w, date: r.date, precision: r.precision, type: r.type, owned: Boolean(r.owned) } : w;
@@ -392,8 +644,6 @@ export function removeWant({ artist, title }) {
 
 export function getSavedRecommendations() { try { return JSON.parse(getSetting(RECS_KEY) || 'null'); } catch { return null; } }
 
-// Artists you don't have yet, suggested from the ones you own most of. Anything already in the
-// library (by folder name or MusicBrainz name) is filtered out afterwards, whatever the AI says.
 export async function recommendArtists() {
   const artists = Object.entries(getResults().artists);
   if (!artists.length) throw new Error('Run a scan first so IMS knows your library.');

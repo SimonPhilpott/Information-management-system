@@ -2,8 +2,11 @@ import { Router } from 'express';
 import {
   getConfig, saveConfig, getStatus, getResultsMeta, getWindowResults, getTodayReleases, getUpcomingReleases,
   getArtistList, getArtistDetail, saveArtistSettings, rescanArtist,
-  isScanRunning, runScanNow, getNextScheduledRun
-, getWants, addWant, removeWant, getSavedRecommendations, recommendArtists } from '../services/musicScanService.js';
+  isScanRunning, runScanNow, getNextScheduledRun,
+  getWants, addWant, removeWant, getSavedRecommendations, recommendArtists,
+  getMusicAudit, getMuzakFolders, getArtistFolderContents, renameAlbumFolder, renameArtistFolder,
+  searchMusicBrainzArtist, linkArtistRelease, hideArtist
+} from '../services/musicScanService.js';
 
 const router = Router();
 
@@ -18,9 +21,101 @@ router.get('/', (req, res) => {
   });
 });
 
-// Artists with a release inside the window (day|week|month|6months|year),
-// each with their FULL album list (owned / not owned / unlisted) and the
-// in-window releases flagged isNew.
+// Audit endpoint: unmatched artists + artists with unowned releases
+router.get('/audit', (req, res) => {
+  try {
+    res.json({ success: true, ...getMusicAudit() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Muzak share genre/artist hierarchy
+router.get('/folders', (req, res) => {
+  try {
+    res.json({ success: true, ...getMuzakFolders() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get contents of a specific artist folder
+router.get('/artist/folder', (req, res) => {
+  const { genre, name } = req.query;
+  if (!name) return res.status(400).json({ success: false, error: 'Artist name is required.' });
+  try {
+    res.json({ success: true, ...getArtistFolderContents(genre || '', String(name)) });
+  } catch (err) {
+    res.status(404).json({ success: false, error: err.message });
+  }
+});
+
+// Rename album folder inside artist directory
+router.post('/album/rename', (req, res) => {
+  const { genre, artist, oldFolder, newFolder } = req.body || {};
+  if (!artist || !oldFolder || !newFolder) {
+    return res.status(400).json({ success: false, error: 'artist, oldFolder, and newFolder are required.' });
+  }
+  try {
+    const updatedArtist = renameAlbumFolder(genre || '', artist, oldFolder, newFolder);
+    res.json({ success: true, artist: updatedArtist, message: `Renamed "${oldFolder}" to "${newFolder}".` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Rename artist folder on disk
+router.post('/artist/rename', (req, res) => {
+  const { genre, oldArtist, newArtist } = req.body || {};
+  if (!oldArtist || !newArtist) {
+    return res.status(400).json({ success: false, error: 'oldArtist and newArtist are required.' });
+  }
+  try {
+    const updatedArtist = renameArtistFolder(genre || '', oldArtist, newArtist);
+    res.json({ success: true, artist: updatedArtist, message: `Renamed artist folder "${oldArtist}" to "${newArtist}".` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Link an album to a local folder or manual owned state
+router.post('/album/link', (req, res) => {
+  const { artist, title, folder } = req.body || {};
+  if (!artist || !title) {
+    return res.status(400).json({ success: false, error: 'artist and title are required.' });
+  }
+  try {
+    const detail = linkArtistRelease(artist, title, folder || artist);
+    res.json({ success: true, artist: detail });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Hide or unhide artist from music scanner
+router.post('/artist/hide', (req, res) => {
+  const { name, hidden } = req.body || {};
+  if (!name) return res.status(400).json({ success: false, error: 'Artist name is required.' });
+  try {
+    res.json({ success: true, settings: hideArtist(name, hidden !== false) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Search MusicBrainz for closest artist matches
+router.get('/musicbrainz/search', async (req, res) => {
+  const { query } = req.query;
+  if (!query) return res.json({ success: true, results: [] });
+  try {
+    const results = await searchMusicBrainzArtist(String(query));
+    res.json({ success: true, results });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Artists with a release inside the window (day|week|month|6months|year)
 router.get('/results', (req, res) => {
   try {
     res.json({ success: true, ...getResultsMeta(), ...getWindowResults(req.query.window || 'week') });
@@ -44,14 +139,12 @@ router.get('/today', (req, res) => {
   res.json({ success: true, releases: getTodayReleases() });
 });
 
-// Compact list of every scanned artist (counts only) - details are fetched
-// per artist on expand so this stays small for ~1000 artists.
+// Compact list of every scanned artist
 router.get('/artists', (req, res) => {
-  res.json({ success: true, artists: getArtistList() });
+  const includeHidden = req.query.includeHidden === 'true';
+  res.json({ success: true, artists: getArtistList({ includeHidden }) });
 });
 
-// Artist names are folder names and may contain odd characters, so they
-// travel as query/body values rather than URL path segments.
 router.get('/artist', (req, res) => {
   const detail = getArtistDetail(String(req.query.name || ''));
   if (!detail) return res.status(404).json({ error: 'Artist not found in the last scan.' });
@@ -59,10 +152,10 @@ router.get('/artist', (req, res) => {
 });
 
 router.put('/artist/settings', (req, res) => {
-  const { name, searchName, aliases } = req.body || {};
+  const { name, searchName, aliases, hidden, linkedFolder, linkedReleases } = req.body || {};
   if (!name || typeof name !== 'string') return res.status(400).json({ error: 'name is required.' });
   try {
-    res.json({ success: true, settings: saveArtistSettings(name, { searchName, aliases }) });
+    res.json({ success: true, settings: saveArtistSettings(name, { searchName, aliases, hidden, linkedFolder, linkedReleases }) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

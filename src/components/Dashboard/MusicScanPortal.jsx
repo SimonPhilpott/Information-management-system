@@ -2,7 +2,9 @@ import AccountChip from './AccountChip';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Music, ArrowLeft, Save, RotateCw, Check, AlertCircle, Sun, Moon,
-  PlayCircle, Clock, ChevronRight, ChevronDown, Pencil, X, Search, Disc3, Star, Headphones, Sparkles
+  PlayCircle, Clock, ChevronRight, ChevronDown, Pencil, X, Search, Disc3, Star,
+  Headphones, Sparkles, Folder, FolderOpen, Link2, EyeOff, Eye, CheckCircle2,
+  ExternalLink, Edit3, AlertTriangle, HelpCircle, FileText
 } from 'lucide-react';
 
 const VIEWS = [
@@ -14,14 +16,20 @@ const VIEWS = [
   { key: 'upcoming', label: 'Upcoming' },
   { key: 'wants', label: 'Want list' },
   { key: 'discover', label: 'Discover' },
+  { key: 'audit', label: 'Audit' },
   { key: 'all', label: 'All Artists' }
 ];
-const UP_RANGES = [{ key: 'week', label: 'Next 7 days' }, { key: 'month', label: 'Next month' }, { key: 'all', label: 'All announced' }];
+
+const UP_RANGES = [
+  { key: 'week', label: 'Next 7 days' },
+  { key: 'month', label: 'Next month' },
+  { key: 'all', label: 'All announced' }
+];
 
 // Search links to hear a release: MusicBrainz has no audio, so these open the services' own search.
 function ListenLinks({ artist, title }) {
   const q = encodeURIComponent(`${artist} ${title || ''}`.trim());
-  const cls = 'px-1.5 py-0.5 rounded text-[9px] font-black uppercase border border-current opacity-70 hover:opacity-100';
+  const cls = 'px-1.5 py-0.5 rounded text-[9px] font-black uppercase border border-current opacity-70 hover:opacity-100 transition-opacity';
   return (
     <span className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
       <a className={`${cls} text-emerald-500`} href={`https://open.spotify.com/search/${q}`} target="_blank" rel="noreferrer" title="Search on Spotify">Spotify</a>
@@ -31,10 +39,14 @@ function ListenLinks({ artist, title }) {
 }
 
 const wantId = (artist, title) => `${String(artist).toLowerCase()}|${String(title).toLowerCase()}`;
+
 function StarButton({ on, onClick }) {
   return (
-    <button onClick={(e) => { e.stopPropagation(); onClick(); }} title={on ? 'Remove from want list' : 'Add to want list'}
-      className={`p-1 rounded shrink-0 ${on ? 'text-amber-400' : 'text-slate-500 hover:text-amber-400'}`}>
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      title={on ? 'Remove from want list' : 'Add to want list'}
+      className={`p-1 rounded shrink-0 transition-colors ${on ? 'text-amber-400' : 'text-slate-500 hover:text-amber-400'}`}
+    >
       <Star size={13} fill={on ? 'currentColor' : 'none'} />
     </button>
   );
@@ -43,16 +55,16 @@ function StarButton({ on, onClick }) {
 function inUpcomingRange(r, range, today) {
   if (range === 'all') return true;
   const days = range === 'week' ? 7 : 31;
-  const end = new Date(`${today}T12:00:00Z`); end.setUTCDate(end.getUTCDate() + days);
+  const end = new Date(`${today}T12:00:00Z`);
+  end.setUTCDate(end.getUTCDate() + days);
   const endStr = end.toISOString().slice(0, 10);
   if (r.precision === 'day') return r.date > today && r.date <= endStr;
   if (r.precision === 'month') return range === 'month' && r.date <= endStr.slice(0, 7);
   return false;
 }
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-// MusicBrainz often only knows a month or a year for a release, so show
-// exactly the precision that's actually known rather than inventing a day.
 function fmtDate(date, precision) {
   if (!date) return 'Date unknown';
   const [y, m, d] = date.split('-');
@@ -61,7 +73,576 @@ function fmtDate(date, precision) {
   return y;
 }
 
-function ArtistCard({ artist, isDark, onChanged, showToast, wantSet = new Set(), onToggleWant = () => {} }) {
+/* -------------------------------------------------------------------------- */
+/* Modal: MusicBrainz Fuzzy Search & Align                                     */
+/* -------------------------------------------------------------------------- */
+function MusicBrainzSearchModal({ artistName, genre, isDark, onClose, onAligned, showToast }) {
+  const [query, setQuery] = useState(artistName || '');
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState([]);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [busyAction, setBusyAction] = useState(null);
+
+  const runSearch = useCallback(async (searchQ) => {
+    if (!searchQ || !searchQ.trim()) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/music-scan/musicbrainz/search?q=${encodeURIComponent(searchQ.trim())}`);
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'MusicBrainz search failed.');
+      setResults(data.artists || []);
+      setHasSearched(true);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    if (artistName) {
+      runSearch(artistName);
+    }
+  }, [artistName, runSearch]);
+
+  const handleApplyOverride = async (targetMbName) => {
+    setBusyAction(targetMbName);
+    try {
+      const res = await fetch('/api/music-scan/artist/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: artistName, searchName: targetMbName, aliases: [] })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to update search name.');
+      
+      await fetch('/api/music-scan/artist/rescan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: artistName })
+      });
+
+      showToast(`Set MusicBrainz search name to "${targetMbName}" and rescanned.`);
+      onAligned(targetMbName);
+      onClose();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleRenameFolder = async (targetMbName) => {
+    if (!window.confirm(`Rename folder "${artistName}" on disk to "${targetMbName}"?`)) return;
+    setBusyAction(`rename-${targetMbName}`);
+    try {
+      const res = await fetch('/api/music-scan/artist/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ genre, oldArtist: artistName, newArtist: targetMbName })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to rename artist folder.');
+      showToast(`Renamed folder to "${targetMbName}" and rescanned.`);
+      onAligned(targetMbName);
+      onClose();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
+      <div className={`w-full max-w-2xl max-h-[85vh] flex flex-col rounded-2xl border shadow-2xl overflow-hidden ${
+        isDark ? 'bg-slate-900 border-white/10 text-slate-100' : 'bg-white border-[#2E2B27]/15 text-slate-900'
+      }`}>
+        <div className={`px-5 py-4 border-b flex items-center justify-between ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-500">
+              <Search size={16} />
+            </div>
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-wider">MusicBrainz Search &amp; Alignment</h3>
+              <p className="text-[11px] text-slate-500">Find the closest canonical match for folder: <strong className={isDark ? 'text-slate-300' : 'text-slate-700'}>{artistName}</strong></p>
+            </div>
+          </div>
+          <button onClick={onClose} className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}>
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="p-5 flex-1 overflow-y-auto flex flex-col gap-4">
+          <form onSubmit={(e) => { e.preventDefault(); runSearch(query); }} className="flex gap-2">
+            <div className="relative flex-1">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 opacity-50" />
+              <input
+                className={`w-full pl-9 pr-3 py-2 rounded-xl text-xs outline-none border ${
+                  isDark ? 'bg-slate-950/70 border-white/10 text-slate-100' : 'bg-white border-[#2E2B27]/15 text-slate-900'
+                }`}
+                placeholder="Search MusicBrainz by name..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-orange-600 text-white active:scale-95 disabled:opacity-50"
+            >
+              {loading ? <RotateCw size={13} className="animate-spin" /> : <Search size={13} />}
+              <span>Search</span>
+            </button>
+          </form>
+
+          {loading ? (
+            <div className="py-12 flex flex-col items-center justify-center gap-2">
+              <RotateCw size={20} className="animate-spin text-amber-500" />
+              <span className="text-xs text-slate-500">Querying MusicBrainz Lucene database...</span>
+            </div>
+          ) : results.length === 0 ? (
+            <div className="py-10 text-center text-xs text-slate-500">
+              {hasSearched ? 'No close artist matches found on MusicBrainz.' : 'Enter a query and press Search.'}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                Top Matches ({results.length})
+              </div>
+              {results.map((r) => (
+                <div
+                  key={r.id || r.name}
+                  className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                    isDark ? 'bg-slate-950/50 border-white/5 hover:border-amber-500/30' : 'bg-slate-50/80 border-[#2E2B27]/10 hover:border-amber-500/40'
+                  }`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-xs">{r.name}</span>
+                      {r.type && <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-500/20 text-slate-400">{r.type}</span>}
+                      {r.country && <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-500/20 text-amber-400">{r.country}</span>}
+                      {r.score && <span className="text-[10px] text-slate-500">Score: {r.score}%</span>}
+                    </div>
+                    {r.disambiguation && (
+                      <p className="text-[11px] text-slate-500 mt-0.5 italic">{r.disambiguation}</p>
+                    )}
+                    {r.lifeSpan && (
+                      <p className="text-[10px] text-slate-500 mt-0.5">Active: {r.lifeSpan}</p>
+                    )}
+                    {r.aliases?.length > 0 && (
+                      <p className="text-[10px] text-slate-500 mt-0.5 truncate">Aliases: {r.aliases.slice(0, 4).join(', ')}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => handleApplyOverride(r.name)}
+                      disabled={busyAction !== null}
+                      title="Keep folder name as-is, but search MusicBrainz as this artist"
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                        isDark ? 'border-white/10 hover:bg-white/10 text-slate-200' : 'border-[#2E2B27]/15 hover:bg-black/5 text-slate-800'
+                      }`}
+                    >
+                      {busyAction === r.name ? <RotateCw size={12} className="animate-spin" /> : 'Set Search Name'}
+                    </button>
+                    <button
+                      onClick={() => handleRenameFolder(r.name)}
+                      disabled={busyAction !== null}
+                      title="Rename the local folder on disk to match this canonical name"
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-all"
+                    >
+                      {busyAction === `rename-${r.name}` ? <RotateCw size={12} className="animate-spin" /> : 'Rename Folder'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Modal: Artist Folder Browser & Linking / Renaming                          */
+/* -------------------------------------------------------------------------- */
+function FolderBrowserModal({
+  artistName,
+  genre,
+  targetRelease = null, // if opened for a specific release linking/renaming
+  isDark,
+  onClose,
+  onUpdated,
+  showToast
+}) {
+  const [loading, setLoading] = useState(true);
+  const [folderData, setFolderData] = useState(null);
+  const [activeTab, setActiveTab] = useState('browse'); // 'browse' | 'rename-folder' | 'rename-artist'
+  const [selectedFolder, setSelectedFolder] = useState('');
+  const [newAlbumFolderName, setNewAlbumFolderName] = useState('');
+  const [newArtistFolderName, setNewArtistFolderName] = useState(artistName || '');
+  const [busy, setBusy] = useState(false);
+
+  const fetchContents = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/music-scan/artist/folder?artist=${encodeURIComponent(artistName)}&genre=${encodeURIComponent(genre || '')}`);
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to inspect artist folder.');
+      setFolderData(data);
+      if (targetRelease?.title) {
+        setNewAlbumFolderName(targetRelease.title);
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [artistName, genre, targetRelease, showToast]);
+
+  useEffect(() => {
+    fetchContents();
+  }, [fetchContents]);
+
+  const handleLinkFolder = async (folderNameToLink) => {
+    if (!targetRelease?.title) {
+      showToast('Select an album to link to this folder.', 'error');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch('/api/music-scan/album/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          artistName,
+          releaseTitle: targetRelease.title,
+          folderName: folderNameToLink
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to link album.');
+      showToast(`Linked "${targetRelease.title}" to folder "${folderNameToLink}". Marked as owned.`);
+      onUpdated();
+      onClose();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRenameAlbumFolder = async () => {
+    if (!selectedFolder || !newAlbumFolderName.trim()) {
+      showToast('Please select a folder and enter the new folder name.', 'error');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch('/api/music-scan/album/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          genre: folderData.genre,
+          artist: artistName,
+          oldFolder: selectedFolder,
+          newFolder: newAlbumFolderName.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to rename album folder.');
+      showToast(`Renamed album folder to "${newAlbumFolderName.trim()}" and rescanned.`);
+      onUpdated();
+      onClose();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRenameArtistFolder = async () => {
+    if (!newArtistFolderName.trim() || newArtistFolderName.trim() === artistName) {
+      showToast('Please specify a different new artist folder name.', 'error');
+      return;
+    }
+    if (!window.confirm(`Rename artist folder "${artistName}" to "${newArtistFolderName.trim()}" on network drive?`)) return;
+    setBusy(true);
+    try {
+      const res = await fetch('/api/music-scan/artist/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          genre: folderData.genre,
+          oldArtist: artistName,
+          newArtist: newArtistFolderName.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to rename artist folder.');
+      showToast(`Renamed artist folder to "${newArtistFolderName.trim()}".`);
+      onUpdated();
+      onClose();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const fieldClass = `w-full px-3 py-2 rounded-xl text-xs outline-none border ${
+    isDark ? 'bg-slate-950/70 border-white/10 text-slate-100' : 'bg-white border-[#2E2B27]/15 text-slate-900'
+  }`;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
+      <div className={`w-full max-w-2xl max-h-[85vh] flex flex-col rounded-2xl border shadow-2xl overflow-hidden ${
+        isDark ? 'bg-slate-900 border-white/10 text-slate-100' : 'bg-white border-[#2E2B27]/15 text-slate-900'
+      }`}>
+        <div className={`px-5 py-4 border-b flex items-center justify-between ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-500">
+              <FolderOpen size={16} />
+            </div>
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-wider">
+                Artist Folder: {artistName}
+              </h3>
+              <p className="text-[11px] text-slate-500 truncate max-w-md">
+                {folderData?.folderPath || `Scanning \\Sideburnt\\NorthField\\MUZAK\\${genre || '...'}\\${artistName}`}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}>
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Tab Selector */}
+        <div className={`px-5 pt-3 flex items-center gap-2 border-b text-xs font-bold ${isDark ? 'border-white/5' : 'border-[#2E2B27]/5'}`}>
+          <button
+            onClick={() => setActiveTab('browse')}
+            className={`pb-2 px-1 border-b-2 transition-all ${
+              activeTab === 'browse' ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            Folder Contents ({folderData?.subfolders?.length || 0} subfolders)
+          </button>
+          <button
+            onClick={() => setActiveTab('rename-folder')}
+            className={`pb-2 px-1 border-b-2 transition-all ${
+              activeTab === 'rename-folder' ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            Rename Album Folder
+          </button>
+          <button
+            onClick={() => setActiveTab('rename-artist')}
+            className={`pb-2 px-1 border-b-2 transition-all ${
+              activeTab === 'rename-artist' ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            Rename Artist Directory
+          </button>
+        </div>
+
+        <div className="p-5 flex-1 overflow-y-auto flex flex-col gap-4">
+          {loading ? (
+            <div className="py-12 flex flex-col items-center justify-center gap-2">
+              <RotateCw size={20} className="animate-spin text-amber-500" />
+              <span className="text-xs text-slate-500">Reading directory contents from network drive...</span>
+            </div>
+          ) : !folderData?.exists ? (
+            <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+              Folder does not exist on disk at path: <code className="block mt-1 font-mono">{folderData?.folderPath}</code>
+            </div>
+          ) : (
+            <>
+              {targetRelease && (
+                <div className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
+                  isDark ? 'bg-amber-500/10 border-amber-500/20 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-900'
+                }`}>
+                  <div className="text-xs">
+                    <span className="text-[10px] uppercase font-black block tracking-wider opacity-70">Target Release To Link</span>
+                    <strong>{targetRelease.title}</strong> ({targetRelease.type || 'Album'}, {targetRelease.date || 'unknown date'})
+                  </div>
+                  <button
+                    onClick={() => handleLinkFolder(artistName)}
+                    disabled={busy}
+                    className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm flex items-center gap-1.5 shrink-0"
+                    title="Mark owned by linking directly to artist folder / loose tracks"
+                  >
+                    <CheckCircle2 size={13} />
+                    <span>Link to Artist Root</span>
+                  </button>
+                </div>
+              )}
+
+              {activeTab === 'browse' && (
+                <div className="flex flex-col gap-3">
+                  {folderData.subfolders.length === 0 ? (
+                    <div className="p-4 rounded-xl border text-center text-xs text-slate-500">
+                      No subfolders found inside artist folder. Songs may be loose audio files in root.
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-1.5">
+                      <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        Album Subfolders
+                      </div>
+                      {folderData.subfolders.map((f) => (
+                        <div
+                          key={f.name}
+                          className={`px-3.5 py-2.5 rounded-xl border flex items-center justify-between gap-2 text-xs transition-colors ${
+                            selectedFolder === f.name
+                              ? 'border-amber-500 bg-amber-500/10'
+                              : isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-[#2E2B27]/10'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <Folder size={14} className="text-amber-500 shrink-0" />
+                            <span className="font-semibold truncate">{f.name}</span>
+                            <span className="text-[10px] text-slate-500 shrink-0">({f.audioFilesCount} tracks)</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {targetRelease && (
+                              <button
+                                onClick={() => handleLinkFolder(f.name)}
+                                disabled={busy}
+                                className="px-2 py-1 rounded-lg text-[11px] font-bold bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1"
+                              >
+                                <Link2 size={12} />
+                                <span>Link This</span>
+                              </button>
+                            )}
+                            <button
+                              onClick={() => {
+                                setSelectedFolder(f.name);
+                                setNewAlbumFolderName(targetRelease?.title || f.name);
+                                setActiveTab('rename-folder');
+                              }}
+                              className={`p-1.5 rounded-lg border text-[11px] font-medium transition-colors ${
+                                isDark ? 'border-white/10 hover:bg-white/10' : 'border-[#2E2B27]/10 hover:bg-black/5'
+                              }`}
+                              title="Rename this folder"
+                            >
+                              <Edit3 size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {folderData.looseAudioFiles.length > 0 && (
+                    <div className="flex flex-col gap-1.5 mt-2">
+                      <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        Loose Audio Tracks In Root ({folderData.looseAudioFiles.length})
+                      </div>
+                      <div className={`p-2.5 rounded-xl border max-h-36 overflow-y-auto font-mono text-[11px] space-y-0.5 ${
+                        isDark ? 'bg-slate-950/60 border-white/5 text-slate-400' : 'bg-slate-100 border-[#2E2B27]/10 text-slate-700'
+                      }`}>
+                        {folderData.looseAudioFiles.map((file, idx) => (
+                          <div key={idx} className="truncate flex items-center gap-1.5">
+                            <Music size={11} className="shrink-0 opacity-50" />
+                            <span>{file}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'rename-folder' && (
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70">
+                      Select Folder to Rename
+                    </label>
+                    <select
+                      className={fieldClass}
+                      value={selectedFolder}
+                      onChange={(e) => {
+                        setSelectedFolder(e.target.value);
+                        if (!newAlbumFolderName) setNewAlbumFolderName(e.target.value);
+                      }}
+                    >
+                      <option value="">-- Choose a subfolder --</option>
+                      {folderData.subfolders.map((f) => (
+                        <option key={f.name} value={f.name}>{f.name} ({f.audioFilesCount} tracks)</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70">
+                      New Folder Name on Network Drive
+                    </label>
+                    <input
+                      className={fieldClass}
+                      value={newAlbumFolderName}
+                      placeholder="e.g. The Union of Souls"
+                      onChange={(e) => setNewAlbumFolderName(e.target.value)}
+                    />
+                  </div>
+                  <button
+                    onClick={handleRenameAlbumFolder}
+                    disabled={busy || !selectedFolder || !newAlbumFolderName.trim()}
+                    className="px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white active:scale-95 disabled:opacity-50"
+                  >
+                    {busy ? <RotateCw size={14} className="animate-spin" /> : <Edit3 size={14} />}
+                    <span>Rename Folder &amp; Rescan</span>
+                  </button>
+                </div>
+              )}
+
+              {activeTab === 'rename-artist' && (
+                <div className="flex flex-col gap-3">
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
+                    This will rename the folder <code>{artistName}</code> under <code>{folderData.genre}</code> on the network drive and migrate any custom search overrides.
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70">
+                      New Artist Folder Name
+                    </label>
+                    <input
+                      className={fieldClass}
+                      value={newArtistFolderName}
+                      placeholder={artistName}
+                      onChange={(e) => setNewArtistFolderName(e.target.value)}
+                    />
+                  </div>
+                  <button
+                    onClick={handleRenameArtistFolder}
+                    disabled={busy || !newArtistFolderName.trim() || newArtistFolderName.trim() === artistName}
+                    className="px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white active:scale-95 disabled:opacity-50"
+                  >
+                    {busy ? <RotateCw size={14} className="animate-spin" /> : <FolderOpen size={14} />}
+                    <span>Rename Artist Directory &amp; Rescan</span>
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Component: ArtistCard with Linking & Actions                               */
+/* -------------------------------------------------------------------------- */
+function ArtistCard({
+  artist,
+  isDark,
+  onChanged,
+  showToast,
+  wantSet = new Set(),
+  onToggleWant = () => {},
+  onOpenFolderBrowser = () => {},
+  onOpenMbSearch = () => {}
+}) {
   const [open, setOpen] = useState(false);
   const [fetched, setFetched] = useState(null);
   const [editing, setEditing] = useState(false);
@@ -88,6 +669,24 @@ function ArtistCard({ artist, isDark, onChanged, showToast, wantSet = new Set(),
     setForm({ searchName: artist.searchName || '', aliases: (artist.aliases || []).join(', ') });
     setEditing(true);
     setOpen(true);
+  };
+
+  const handleHideArtist = async (e) => {
+    e.stopPropagation();
+    if (!window.confirm(`Hide artist "${artist.name}" from future music scans?`)) return;
+    try {
+      const res = await fetch('/api/music-scan/artist/hide', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: artist.name, hidden: true })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to hide artist.');
+      showToast(`Hidden "${artist.name}" from music scanner.`);
+      onChanged();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
   };
 
   const saveAndRescan = async () => {
@@ -129,7 +728,7 @@ function ArtistCard({ artist, isDark, onChanged, showToast, wantSet = new Set(),
   }`;
 
   return (
-    <div className={`rounded-xl border text-xs ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
+    <div className={`rounded-xl border text-xs transition-colors ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
       <div
         role="button" tabIndex={0}
         onClick={() => setOpen(!open)}
@@ -139,13 +738,41 @@ function ArtistCard({ artist, isDark, onChanged, showToast, wantSet = new Set(),
         {open ? <ChevronDown size={14} className="shrink-0 opacity-60" /> : <ChevronRight size={14} className="shrink-0 opacity-60" />}
         <span className="font-bold min-w-0 flex-1 basis-40 break-words">{artist.name}</span>
         <span className={`hidden sm:inline text-[10px] uppercase tracking-wider ${GREY}`}>{artist.genre}</span>
-        <span className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-0.5 text-[11px] font-semibold">
+        <span className="ml-auto flex flex-wrap items-center justify-end gap-x-2.5 gap-y-0.5 text-[11px] font-semibold">
           <span className={GREEN}>{owned} owned</span>
           <span className={RED}>{notOwned} not owned</span>
           {unlistedCount > 0 && <span className={GREY}>{unlistedCount} unlisted</span>}
-          <button onClick={startEdit} title="Edit name / pseudonyms" className={`p-1 rounded ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}>
-            <Pencil size={12} />
-          </button>
+          
+          <div className="flex items-center gap-1 border-l pl-2 border-slate-500/20" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => onOpenFolderBrowser(artist, null)}
+              title="Open artist folder / rename folders"
+              className={`p-1 rounded ${isDark ? 'hover:bg-white/10 text-slate-300' : 'hover:bg-black/5 text-slate-600'}`}
+            >
+              <FolderOpen size={12} />
+            </button>
+            <button
+              onClick={() => onOpenMbSearch(artist)}
+              title="Check MusicBrainz for closest match"
+              className={`p-1 rounded ${isDark ? 'hover:bg-white/10 text-amber-400' : 'hover:bg-black/5 text-amber-600'}`}
+            >
+              <Search size={12} />
+            </button>
+            <button
+              onClick={startEdit}
+              title="Edit name / pseudonyms"
+              className={`p-1 rounded ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
+            >
+              <Pencil size={12} />
+            </button>
+            <button
+              onClick={handleHideArtist}
+              title="Hide artist from music scanner"
+              className={`p-1 rounded ${isDark ? 'hover:bg-red-500/20 text-red-400' : 'hover:bg-red-500/10 text-red-600'}`}
+            >
+              <EyeOff size={12} />
+            </button>
+          </div>
         </span>
       </div>
 
@@ -165,7 +792,8 @@ function ArtistCard({ artist, isDark, onChanged, showToast, wantSet = new Set(),
               </div>
               <div className="sm:col-span-2 flex items-center gap-2">
                 <button onClick={saveAndRescan} disabled={busy}
-                  className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white active:scale-95 disabled:opacity-50">
+                  className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white active:scale-95 disabled:opacity-50"
+                >
                   {busy ? <RotateCw size={13} className="animate-spin" /> : <Save size={13} />} Save &amp; rescan
                 </button>
                 <button onClick={() => setEditing(false)} disabled={busy} className={`px-3 py-2 rounded-xl text-xs font-bold ${isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}>
@@ -179,24 +807,54 @@ function ArtistCard({ artist, isDark, onChanged, showToast, wantSet = new Set(),
           {!detail ? (
             <div className="py-3 flex justify-center"><RotateCw size={14} className="animate-spin opacity-50" /></div>
           ) : (
-            <div className="flex flex-col">
+            <div className="flex flex-col gap-1">
               {detail.releases.map((r, i) => (
-                <div key={`${r.title}-${r.date}-${i}`} className={`flex items-center gap-2 py-1 ${r.isNew ? (isDark ? 'bg-amber-500/10' : 'bg-amber-100/60') + ' -mx-2 px-2 rounded' : ''}`}>
+                <div key={`${r.title}-${r.date}-${i}`} className={`flex flex-wrap items-center gap-x-2 gap-y-1 py-1.5 px-2 rounded-lg transition-colors ${
+                  r.isNew ? (isDark ? 'bg-amber-500/10' : 'bg-amber-100/60') : (isDark ? 'hover:bg-white/5' : 'hover:bg-black/5')
+                }`}>
                   <span className={`w-2 h-2 rounded-full shrink-0 ${r.owned ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                  <span className={`font-semibold ${r.owned ? GREEN : RED}`}>{r.title}</span>
-                  <span className="opacity-50 text-[10px]">{r.type}</span>
-                  {r.isNew && <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-500 text-white">New</span>}
-                  <span className={`ml-auto shrink-0 tabular-nums ${r.owned ? GREEN : RED} opacity-80`}>{fmtDate(r.date, r.precision)}</span>
-                  {!r.owned && <StarButton on={wantSet.has(wantId(artist.name, r.title))} onClick={() => onToggleWant({ artist: artist.name, ...r })} />}
+                  <span className={`font-semibold min-w-0 flex-1 basis-48 break-words ${r.owned ? GREEN : RED}`}>{r.title}</span>
+                  <span className="opacity-50 text-[10px] shrink-0">{r.type}</span>
+                  {r.isNew && <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-500 text-white shrink-0">New</span>}
+                  
+                  <span className={`shrink-0 tabular-nums ${r.owned ? GREEN : RED} opacity-80 text-[11px]`}>
+                    {fmtDate(r.date, r.precision)}
+                  </span>
+                  
+                  <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                    {!r.owned && (
+                      <button
+                        onClick={() => onOpenFolderBrowser(artist, r)}
+                        title="Link to existing folder or rename folder to match this album"
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 border transition-colors ${
+                          isDark ? 'border-amber-500/40 text-amber-400 hover:bg-amber-500/10' : 'border-amber-600/40 text-amber-700 hover:bg-amber-50'
+                        }`}
+                      >
+                        <Link2 size={11} />
+                        <span>Link / Rename</span>
+                      </button>
+                    )}
+                    <ListenLinks artist={detail.mbName || artist.name} title={r.title} />
+                    {!r.owned && <StarButton on={wantSet.has(wantId(artist.name, r.title))} onClick={() => onToggleWant({ artist: artist.name, ...r })} />}
+                  </div>
                 </div>
               ))}
+              
               {detail.unlistedAlbums.map((title) => (
-                <div key={`u-${title}`} className="flex items-center gap-2 py-1">
+                <div key={`u-${title}`} className="flex items-center gap-2 py-1.5 px-2 rounded-lg opacity-80">
                   <span className="w-2 h-2 rounded-full shrink-0 bg-slate-500" />
-                  <span className={`font-semibold ${GREY}`}>{title}</span>
-                  <span className="opacity-50 text-[10px]">not on MusicBrainz</span>
+                  <span className={`font-semibold min-w-0 flex-1 truncate ${GREY}`}>{title}</span>
+                  <span className="opacity-50 text-[10px] shrink-0">Local folder not matched on MusicBrainz</span>
+                  <button
+                    onClick={() => onOpenFolderBrowser(artist, { title })}
+                    title="Rename this folder or inspect contents"
+                    className={`p-1 rounded ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
+                  >
+                    <Edit3 size={11} />
+                  </button>
                 </div>
               ))}
+
               {detail.releases.length === 0 && detail.unlistedAlbums.length === 0 && (
                 <p className={`py-2 ${GREY}`}>Nothing found for this artist.</p>
               )}
@@ -209,6 +867,289 @@ function ArtistCard({ artist, isDark, onChanged, showToast, wantSet = new Set(),
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* Component: Audit View                                                      */
+/* -------------------------------------------------------------------------- */
+function AuditView({
+  isDark,
+  showToast,
+  onRefresh,
+  onOpenFolderBrowser,
+  onOpenMbSearch
+}) {
+  const [auditData, setAuditData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [auditSubTab, setAuditSubTab] = useState('unmatched'); // 'unmatched' | 'missing' | 'hidden'
+  const [searchFilter, setSearchFilter] = useState('');
+
+  const fetchAudit = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/music-scan/audit');
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load audit data.');
+      setAuditData(data);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    fetchAudit();
+  }, [fetchAudit]);
+
+  const handleUnhideArtist = async (name) => {
+    try {
+      const res = await fetch('/api/music-scan/artist/hide', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, hidden: false })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to unhide artist.');
+      showToast(`Restored "${name}" to music scanner.`);
+      fetchAudit();
+      onRefresh();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const handleHideArtist = async (name) => {
+    try {
+      const res = await fetch('/api/music-scan/artist/hide', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, hidden: true })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to hide artist.');
+      showToast(`Hidden "${name}" from music scanner.`);
+      fetchAudit();
+      onRefresh();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const unmatchedFiltered = (auditData?.unmatchedArtists || []).filter((a) => {
+    const q = searchFilter.trim().toLowerCase();
+    return !q || a.name.toLowerCase().includes(q) || a.genre?.toLowerCase().includes(q);
+  });
+
+  const missingFiltered = (auditData?.missingReleases || []).filter((a) => {
+    const q = searchFilter.trim().toLowerCase();
+    return !q || a.name.toLowerCase().includes(q) || a.genre?.toLowerCase().includes(q);
+  });
+
+  const hiddenFiltered = (auditData?.hiddenArtists || []).filter((a) => {
+    const q = searchFilter.trim().toLowerCase();
+    return !q || a.name.toLowerCase().includes(q) || a.genre?.toLowerCase().includes(q);
+  });
+
+  const fieldClass = `w-full px-3 py-2 rounded-xl text-xs outline-none border ${
+    isDark ? 'bg-slate-950/60 border-white/10 text-slate-100' : 'bg-white border-[#2E2B27]/10 text-slate-900'
+  }`;
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Sub tabs & Search */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className={`flex rounded-xl border p-1 ${isDark ? 'border-white/10 bg-slate-950/40' : 'border-[#2E2B27]/10 bg-slate-100'}`}>
+          <button
+            onClick={() => setAuditSubTab('unmatched')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              auditSubTab === 'unmatched'
+                ? 'bg-red-500 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Unmatched Artists ({auditData?.summary?.unmatchedCount || 0})
+          </button>
+          <button
+            onClick={() => setAuditSubTab('missing')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              auditSubTab === 'missing'
+                ? 'bg-amber-500 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Missing Releases ({auditData?.summary?.missingReleasesArtistCount || 0})
+          </button>
+          <button
+            onClick={() => setAuditSubTab('hidden')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              auditSubTab === 'hidden'
+                ? 'bg-slate-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Hidden Folders ({auditData?.summary?.hiddenCount || 0})
+          </button>
+        </div>
+
+        <button
+          onClick={fetchAudit}
+          disabled={loading}
+          className={`p-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-colors ${
+            isDark ? 'border-white/10 hover:bg-white/10 text-slate-300' : 'border-[#2E2B27]/10 hover:bg-black/5 text-slate-700'
+          }`}
+          title="Refresh audit findings"
+        >
+          <RotateCw size={13} className={loading ? 'animate-spin' : ''} />
+          <span>Refresh Audit</span>
+        </button>
+      </div>
+
+      <div className="relative">
+        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 opacity-50" />
+        <input
+          className={`${fieldClass} pl-8 font-sans`}
+          placeholder={`Filter audit list...`}
+          value={searchFilter}
+          onChange={(e) => setSearchFilter(e.target.value)}
+        />
+      </div>
+
+      {loading ? (
+        <div className="py-12 flex flex-col items-center justify-center gap-2">
+          <RotateCw size={20} className="animate-spin text-amber-500" />
+          <span className="text-xs text-slate-500">Auditing MUZAK library against MusicBrainz scan cache...</span>
+        </div>
+      ) : auditSubTab === 'unmatched' ? (
+        unmatchedFiltered.length === 0 ? (
+          <div className="p-8 rounded-xl border text-center text-xs text-slate-500">
+            {searchFilter ? 'No unmatched artists match filter.' : 'All library artists matched successfully on MusicBrainz.'}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            <div className="text-[11px] text-slate-500">
+              Listed in <strong className="text-red-500">red</strong>: These local folders failed exact MusicBrainz search. Click <strong>Search MusicBrainz</strong> to find spelling variants or <strong>Browse Folder</strong> to rename.
+            </div>
+            {unmatchedFiltered.map((a) => (
+              <div
+                key={a.name}
+                className={`p-3.5 rounded-xl border flex flex-col gap-2 transition-colors ${
+                  isDark ? 'bg-red-950/20 border-red-500/20 text-slate-200' : 'bg-red-50/80 border-red-300/40 text-slate-900'
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
+                    <span className="font-black text-sm text-red-500">{a.name}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-500/20 text-slate-400">{a.genre}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => onOpenMbSearch(a)}
+                      className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1.5 shadow-sm"
+                    >
+                      <Search size={12} />
+                      <span>Search MusicBrainz</span>
+                    </button>
+                    <button
+                      onClick={() => onOpenFolderBrowser(a, null)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors flex items-center gap-1.5 ${
+                        isDark ? 'border-white/10 hover:bg-white/10 text-slate-200' : 'border-[#2E2B27]/15 hover:bg-black/5 text-slate-800'
+                      }`}
+                    >
+                      <FolderOpen size={12} />
+                      <span>Browse / Rename Folder</span>
+                    </button>
+                    <button
+                      onClick={() => handleHideArtist(a.name)}
+                      className={`p-1.5 rounded-lg border transition-colors text-slate-400 hover:text-red-400 ${
+                        isDark ? 'border-white/10 hover:bg-white/10' : 'border-[#2E2B27]/10 hover:bg-black/5'
+                      }`}
+                      title="Hide from scanner"
+                    >
+                      <EyeOff size={13} />
+                    </button>
+                  </div>
+                </div>
+
+                {a.error && (
+                  <p className="text-[11px] text-red-400 font-mono">Error: {a.error}</p>
+                )}
+
+                {a.unlistedAlbums?.length > 0 && (
+                  <div className="text-[11px] opacity-80 flex flex-wrap gap-1.5 items-center">
+                    <span className="text-slate-500">Local folders found:</span>
+                    {a.unlistedAlbums.map((u) => (
+                      <span key={u} className="px-2 py-0.5 rounded bg-black/20 font-medium text-[10px]">{u}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )
+      ) : auditSubTab === 'missing' ? (
+        missingFiltered.length === 0 ? (
+          <div className="p-8 rounded-xl border text-center text-xs text-slate-500">
+            {searchFilter ? 'No artists match filter.' : 'All releases for your matched artists are owned.'}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            <div className="text-[11px] text-slate-500">
+              Artists with unowned releases on MusicBrainz. Use <strong>Link / Rename</strong> to match unrecognised local folders.
+            </div>
+            {missingFiltered.map((a) => (
+              <ArtistCard
+                key={`audit-missing-${a.name}`}
+                artist={a}
+                isDark={isDark}
+                showToast={showToast}
+                onChanged={() => { fetchAudit(); onRefresh(); }}
+                onOpenFolderBrowser={onOpenFolderBrowser}
+                onOpenMbSearch={onOpenMbSearch}
+              />
+            ))}
+          </div>
+        )
+      ) : (
+        hiddenFiltered.length === 0 ? (
+          <div className="p-8 rounded-xl border text-center text-xs text-slate-500">
+            No artists or folders are currently hidden from the music scanner.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <div className="text-[11px] text-slate-500">
+              These folders are excluded from music scans and daily release reports. Click <strong>Restore</strong> to include them again.
+            </div>
+            {hiddenFiltered.map((a) => (
+              <div
+                key={a.name}
+                className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
+                  isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-[#2E2B27]/10'
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <EyeOff size={14} className="text-slate-500 shrink-0" />
+                  <span className="font-bold text-xs truncate">{a.name}</span>
+                  <span className="text-[10px] uppercase font-bold text-slate-500 px-2 py-0.5 rounded bg-slate-500/10">{a.genre}</span>
+                </div>
+                <button
+                  onClick={() => handleUnhideArtist(a.name)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1.5 shadow-sm"
+                >
+                  <Eye size={12} />
+                  <span>Restore Artist</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Main MusicScanPortal Component                                             */
+/* -------------------------------------------------------------------------- */
 export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
   const isDark = theme === 'dark';
 
@@ -237,6 +1178,10 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
   const [notification, setNotification] = useState(null);
   const pollRef = useRef(null);
   const wasRunning = useRef(false);
+
+  // Modal states
+  const [browserModal, setBrowserModal] = useState({ open: false, artistName: '', genre: '', targetRelease: null });
+  const [mbSearchModal, setMbSearchModal] = useState({ open: false, artistName: '', genre: '' });
 
   const isDirty = draftConfig && config && JSON.stringify(draftConfig) !== JSON.stringify(config);
 
@@ -275,6 +1220,8 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
       } else if (view === 'upcoming') {
         const d = await (await fetch('/api/music-scan/upcoming')).json();
         if (d.success) setUpcoming(d.releases);
+      } else if (view === 'audit') {
+        // Handled inside AuditView
       } else {
         const d = await (await fetch(`/api/music-scan/results?window=${view}`)).json();
         if (d.success) setWindowData(d);
@@ -290,7 +1237,9 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
   const fetchWants = useCallback(async () => {
     try { const d = await (await fetch('/api/music-scan/wants')).json(); if (d.success) setWants(d.wants); } catch (_) { /* keep */ }
   }, []);
+
   useEffect(() => { fetchWants(); }, [fetchWants]);
+
   useEffect(() => {
     if (view !== 'discover' || recs) return;
     fetch('/api/music-scan/recommendations').then((r) => r.json()).then((d) => { if (d.success) setRecs(d.recommendations); }).catch(() => {});
@@ -298,26 +1247,36 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
 
   const toggleWant = async (r) => {
     const on = wantSet.has(wantId(r.artist, r.title));
-    const res = await fetch('/api/music-scan/wants', { method: on ? 'DELETE' : 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ artist: r.artist, title: r.title, date: r.date, precision: r.precision, type: r.type }) });
+    const res = await fetch('/api/music-scan/wants', {
+      method: on ? 'DELETE' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ artist: r.artist, title: r.title, date: r.date, precision: r.precision, type: r.type })
+    });
     const d = await res.json();
-    if (d.success) { setWants(d.wants); showToast(on ? `Removed ${r.title} from your want list.` : `Added ${r.title} to your want list.`); }
+    if (d.success) {
+      setWants(d.wants);
+      showToast(on ? `Removed ${r.title} from your want list.` : `Added ${r.title} to your want list.`);
+    }
   };
+
   const makeRecs = async () => {
     setRecsBusy(true);
     try {
       const d = await (await fetch('/api/music-scan/recommendations', { method: 'POST' })).json();
       if (!d.success) throw new Error(d.error);
       setRecs(d.recommendations);
-    } catch (err) { showToast(err.message, 'error'); } finally { setRecsBusy(false); }
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setRecsBusy(false);
+    }
   };
+
   const upcomingShown = upcoming.filter((r) => inUpcomingRange(r, upRange, todayStr));
 
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
   useEffect(() => { fetchView(); }, [fetchView]);
 
-  // While a scan runs, poll every 3s to animate the progress bar; when it
-  // stops, refresh the status and the visible results once.
   useEffect(() => {
     if (isRunning) {
       wasRunning.current = true;
@@ -369,6 +1328,23 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
     }
   };
 
+  const openFolderBrowser = (artist, targetRelease = null) => {
+    setBrowserModal({
+      open: true,
+      artistName: artist.name,
+      genre: artist.genre,
+      targetRelease
+    });
+  };
+
+  const openMbSearch = (artist) => {
+    setMbSearchModal({
+      open: true,
+      artistName: artist.name,
+      genre: artist.genre
+    });
+  };
+
   const progressPct = status.totalArtists > 0 ? Math.round((status.currentIndex / status.totalArtists) * 100) : 0;
   const hasData = meta.artistsScanned > 0;
 
@@ -390,8 +1366,6 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
   const windowLabel = VIEWS.find((v) => v.key === view)?.label;
 
   return (
-    // h-screen + overflow-y-auto (not min-h-screen): the app shell doesn't
-    // scroll the document, so this page has to be its own scroll container.
     <div className={`h-screen overflow-y-auto w-full flex flex-col font-sans transition-colors duration-300 ${
       isDark ? 'bg-[#030712] text-[#f3f4f6]' : 'bg-[#f4efed] text-[#1f2937]'
     }`}>
@@ -404,6 +1378,30 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
           {notification.type === 'error' ? <AlertCircle size={18} /> : <Check size={18} className="text-emerald-400" />}
           <span className="text-xs font-semibold">{notification.msg}</span>
         </div>
+      )}
+
+      {/* Modals */}
+      {browserModal.open && (
+        <FolderBrowserModal
+          artistName={browserModal.artistName}
+          genre={browserModal.genre}
+          targetRelease={browserModal.targetRelease}
+          isDark={isDark}
+          onClose={() => setBrowserModal({ open: false, artistName: '', genre: '', targetRelease: null })}
+          onUpdated={() => { fetchStatus(); fetchView(); }}
+          showToast={showToast}
+        />
+      )}
+
+      {mbSearchModal.open && (
+        <MusicBrainzSearchModal
+          artistName={mbSearchModal.artistName}
+          genre={mbSearchModal.genre}
+          isDark={isDark}
+          onClose={() => setMbSearchModal({ open: false, artistName: '', genre: '' })}
+          onAligned={() => { fetchStatus(); fetchView(); }}
+          showToast={showToast}
+        />
       )}
 
       <header className={`px-6 py-4 flex items-center justify-between border-b backdrop-blur-xl sticky top-0 z-40 transition-colors duration-300 shrink-0 ${
@@ -492,7 +1490,12 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
         <div className={panelClass}>
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <h2 className="text-xs font-black uppercase tracking-wider">
-              {view === 'all' ? 'All Artists' : view === 'upcoming' ? `Upcoming releases (${upcomingShown.length})` : view === 'wants' ? `Want list (${wants.filter((w) => !w.owned).length})` : view === 'discover' ? 'Artists you might like' : `Released in the last ${windowLabel === 'Day' ? 'day (today)' : windowLabel.toLowerCase()}`}
+              {view === 'all' ? 'All Artists'
+                : view === 'audit' ? 'Library & Metadata Audit'
+                : view === 'upcoming' ? `Upcoming releases (${upcomingShown.length})`
+                : view === 'wants' ? `Want list (${wants.filter((w) => !w.owned).length})`
+                : view === 'discover' ? 'Artists you might like'
+                : `Released in the last ${windowLabel === 'Day' ? 'day (today)' : windowLabel.toLowerCase()}`}
             </h2>
             <div className={`flex max-w-full overflow-x-auto rounded-lg border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
               {VIEWS.map((v) => (
@@ -507,19 +1510,31 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-4 mb-4 text-[11px] font-semibold">
-            <span className={`flex items-center gap-1.5 ${GREEN}`}><span className="w-2 h-2 rounded-full bg-emerald-500" />Owned</span>
-            <span className={`flex items-center gap-1.5 ${RED}`}><span className="w-2 h-2 rounded-full bg-red-500" />Not owned</span>
-            <span className="flex items-center gap-1.5 text-slate-500"><span className="w-2 h-2 rounded-full bg-slate-500" />Owned, not on MusicBrainz</span>
-            {!['all', 'upcoming', 'wants', 'discover'].includes(view) && <span className="text-slate-500 text-[10px]">Highlighted rows are the releases inside this window. Year-only dates can't be placed in a window.</span>}
-          </div>
+          {view !== 'audit' && (
+            <div className="flex flex-wrap items-center gap-4 mb-4 text-[11px] font-semibold">
+              <span className={`flex items-center gap-1.5 ${GREEN}`}><span className="w-2 h-2 rounded-full bg-emerald-500" />Owned</span>
+              <span className={`flex items-center gap-1.5 ${RED}`}><span className="w-2 h-2 rounded-full bg-red-500" />Not owned</span>
+              <span className="flex items-center gap-1.5 text-slate-500"><span className="w-2 h-2 rounded-full bg-slate-500" />Owned, not on MusicBrainz</span>
+              {!['all', 'upcoming', 'wants', 'discover'].includes(view) && <span className="text-slate-500 text-[10px]">Highlighted rows are the releases inside this window. Year-only dates can't be placed in a window.</span>}
+            </div>
+          )}
 
-          {!hasData ? (
+          {!hasData && view !== 'audit' ? (
             <p className="text-xs text-slate-500 py-6 text-center">
               {isRunning ? 'Waiting for the scan to finish...' : 'No scan data yet - run a scan to populate this.'}
             </p>
           ) : (
             <>
+              {view === 'audit' && (
+                <AuditView
+                  isDark={isDark}
+                  showToast={showToast}
+                  onRefresh={() => { fetchStatus(); fetchView(); }}
+                  onOpenFolderBrowser={openFolderBrowser}
+                  onOpenMbSearch={openMbSearch}
+                />
+              )}
+
               {view === 'upcoming' && (
                 <>
                   <div className={`mb-3 inline-flex max-w-full overflow-x-auto rounded-lg border [scrollbar-width:none] ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
@@ -629,7 +1644,7 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
                 </div>
               )}
 
-              {['upcoming', 'wants', 'discover'].includes(view) ? null : viewLoading && artistsToShow.length === 0 ? (
+              {['upcoming', 'wants', 'discover', 'audit'].includes(view) ? null : viewLoading && artistsToShow.length === 0 ? (
                 <div className="py-8 flex justify-center"><RotateCw size={18} className="animate-spin opacity-50" /></div>
               ) : artistsToShow.length === 0 ? (
                 <p className="text-xs text-slate-500 py-6 text-center">
@@ -639,7 +1654,17 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
                 <div className="flex flex-col gap-2">
                   {view !== 'all' && <p className="text-[11px] text-slate-500">{artistsToShow.length} artist{artistsToShow.length === 1 ? '' : 's'}</p>}
                   {artistsToShow.map((a) => (
-                    <ArtistCard key={`${view}-${a.name}`} artist={a} isDark={isDark} showToast={showToast} onChanged={fetchView} wantSet={wantSet} onToggleWant={toggleWant} />
+                    <ArtistCard
+                      key={`${view}-${a.name}`}
+                      artist={a}
+                      isDark={isDark}
+                      showToast={showToast}
+                      onChanged={fetchView}
+                      wantSet={wantSet}
+                      onToggleWant={toggleWant}
+                      onOpenFolderBrowser={openFolderBrowser}
+                      onOpenMbSearch={openMbSearch}
+                    />
                   ))}
                 </div>
               )}

@@ -9,6 +9,9 @@ import {
   updateUserObservations,
   scanRepository,
   scanMultipleRepositories,
+  scanOutdatedRepositories,
+  checkRepositoryOutdated,
+  checkAllRepositoriesOutdated,
   syncCodeVectors,
   evaluateCodeSnippet,
   saveCodeSnippet,
@@ -57,6 +60,33 @@ router.post('/discover-repos', async (req, res) => {
   try {
     const result = await discoverGitHubRepositories();
     res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/code-repo/check-outdated
+ * Check all repositories for new commits / outdated status.
+ */
+router.post('/check-outdated', async (req, res) => {
+  try {
+    const result = await checkAllRepositoriesOutdated();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/code-repo/repositories/:id/check-outdated
+ * Check a single repository for new commits.
+ */
+router.get('/repositories/:id/check-outdated', async (req, res) => {
+  try {
+    const repository = await checkRepositoryOutdated(req.params.id);
+    if (!repository) return res.status(404).json({ error: 'Repository not found' });
+    res.json({ success: true, repository });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -179,7 +209,7 @@ router.put('/snippets/:id/observations', (req, res) => {
 
 /**
  * POST /api/code-repo/snippets/:id/re-evaluate
- * Trigger fresh AI evaluation against the 5 principles.
+ * Trigger fresh AI evaluation against the 5 principles and inputs/outputs.
  */
 router.post('/snippets/:id/re-evaluate', async (req, res) => {
   try {
@@ -203,6 +233,8 @@ router.post('/snippets/:id/re-evaluate', async (req, res) => {
       technology: evalResult.technology || existing.technology,
       best_practice_rationale: evalResult.bestPracticeRationale,
       usage_example: evalResult.usageInstructions,
+      inputs_json: evalResult.inputs || [],
+      outputs_json: evalResult.outputs || [],
       principles_json: evalResult.principles,
       ai_observations: evalResult.observations,
       user_observations: existing.user_observations,
@@ -240,6 +272,36 @@ router.get('/scan-stream/:repoId', async (req, res) => {
     });
 
     sendEvent({ phase: 'finished', message: 'Scan complete!', result, progress: 100 });
+    res.end();
+  } catch (err) {
+    sendEvent({ phase: 'error', message: err.message, progress: 0 });
+    res.end();
+  }
+});
+
+/**
+ * GET /api/code-repo/scan-outdated-stream
+ * Scan all outdated repositories with real-time SSE.
+ */
+router.get('/scan-outdated-stream', async (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive'
+  });
+
+  const sendEvent = (data) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    sendEvent({ phase: 'starting', message: 'Checking repositories and initiating re-scan for outdated codebases...', progress: 2 });
+
+    const result = await scanOutdatedRepositories((progress) => {
+      sendEvent(progress);
+    });
+
+    sendEvent({ phase: 'finished', message: 'All outdated repositories have been re-scanned and updated!', result, progress: 100 });
     res.end();
   } catch (err) {
     sendEvent({ phase: 'error', message: err.message, progress: 0 });

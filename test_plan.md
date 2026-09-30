@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 59
-- Verified Features: 59
+- Total Registered Features: 65
+- Verified Features: 65
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -67,8 +67,50 @@
 | FEAT-057 | Deep Glucose Telemetry Q&A Engine & Profile Insights Workbench | [glucoseInsightService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/glucoseInsightService.js) | Real-time clinical telemetry synthesis (CGM curves, carbs, boluses, IOB/COB, loop temp basals) across web Q&A workbench and IMS voice brain (getBloodGlucose tool) | PASS |
 | FEAT-058 | Blood Sugar Portal Device Change Indicators | [GlucosePortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/GlucosePortal.jsx) | High-visibility Omnipod pod change and Libre sensor change status cards with pulse animations and prescription indicators | PASS |
 | FEAT-059 | Structured Item Creation & Voice Scope Enforcement | [hardwareClientService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/hardwareClientService.js) | Structured requirement scope enforcement across voice creation tools (scheduleItem, addCalendarEvent, rememberFact, addToList, saveDevIdea, startBackgroundTask, logCarbs) with anti-redundancy rules | PASS |
+| FEAT-060 | Unified Cross-Service Rolling Ticker | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | Unified rolling status ticker on bottom-right of ESP32 LCD combining Alarms, Timers, Reminders, Birthdays, New Album Releases, and Calendar Events with dynamic date badges, collision protection, and ellipsis truncation | PASS |
+| FEAT-061 | Wake Phrase Reliability Optimization | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | Expanded 1200ms PSRAM pre-roll buffer, recalibrated 520 RMS onset threshold, and auto-recovery session recycling on timeouts/rejections | PASS |
+| FEAT-062 | ESP32 LCD Header Single-Row Status Alignment & Centred Title | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | Aligned VOICE (x=48), WAKE (x=102), WIFI (x=156), USB (x=210) at y=31, centered title at y=14, and resolved footer ticker calendar lookup | PASS |
+| FEAT-063 | Music Scanner Album Linking, Audit Screen & Dev Ideas Category Filtering | [MusicScanPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/MusicScanPortal.jsx) | Network folder inspection & renaming, MusicBrainz fuzzy alignment, Audit view tabs, release linking, and Dev Ideas category tags/filters | PASS |
+| FEAT-064 | Best Practice Code Inputs/Outputs Specifications & Outdated Repository Re-Scanner | [CodeRepoPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/CodeRepoPortal.jsx) | Structured inputs/outputs contract schema with types and concrete example payloads, commit SHA/pushed_at outdated detection, and incremental snippet re-scanner | PASS |
+| FEAT-065 | System Architecture Live Trace Tooltips, Show-Only-Used Filter & PDF Snapshot | [SystemArchitecturePortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/SystemArchitecturePortal.jsx) | Safe test prompt tool execution, reason descriptors on lit components, hover tooltips, show-only-used filter, PDF snapshot export, and RAF connector stabilization | PASS |
 
+## Section 2: Detailed Scenarios
+### Suite 17: Bidirectional Pace & Estimated Time Editing (FEAT-043)
+1. **Initial display:** Generate a run plan. Verify both **Estimated Time** and **Average Pace** chips show a pencil (✎) glyph indicating editability.
+2. **Edit estimated time:** Click the Estimated Time chip. Verify an inline text input appears pre-filled with the current time (e.g. `1h 16m`). Type `1h 00m`. Press Enter or click away. Verify: (a) Average Pace chip recalculates to show the faster pace, (b) carb stop table and glucose curve chart both update, (c) estimated time chip now shows `1h 00m`.
+3. **Edit average pace:** Click the Average Pace chip. Type `10:30`. Press Enter. Verify: (a) Estimated Time chip recalculates to show a slower time, (b) plan metrics (Carbs In Total, Per Hour, Lowest) update accordingly.
+4. **Escape cancels:** Click a chip, change the value, then press Escape. Verify original value is restored and no re-estimate is fired.
+5. **Invalid entry guarded:** Type `abc` or an out-of-range value (e.g. `0:05`) into the pace chip. Verify no re-estimate fires and original values remain.
+6. **Spinner state:** During recalculation, verify the chip shows a spinning `RotateCw` icon instead of the stale value, preventing double-submit.
+7. **Form state sync:** After editing pace via chip, verify that the "Average pace" field in the *Where you are now* panel reflects the new pace so a subsequent manual Plan My Carbs call uses the same value.
 
+### Suite 12: ESP32-S3-BOX-3 Hardware Voice Terminal (FEAT-012)
+1. **Network Handshake:** Connect ESP32-S3-BOX-3 via Wi-Fi to IMS backend ws://<host>:3001/api/live (or ngrok). Verify WebSocket handshake and setup packet exchange.
+2. **Audio Input Streaming:** Stream 16kHz 16-bit PCM microphone frames from ES7210/ES8311 I2S codec on ESP32 into IMS backend; confirm audio packet ingestion and forwarding to Gemini Live.
+3. **Audio Output Streaming:** Receive Gemini Live 24kHz PCM downsampled/resampled to Box-3 speaker DAC; verify smooth speech output without buffer underruns via 256-chunk PSRAM-backed playback queue (~8.2s audio buffer).
+4. **Tool Calling & Screen Telemetry:** Verify tool calling (searchLibrary) queries IMS RAG vector store and renders state changes (Listening, Thinking, Speaking) on the Box-3 320x240 LCD, with calibrated VAD thresholds (speech RMS > 350, silence RMS < 250).
+
+### Suite 13: ESP32-S3-BOX-3B Clean Microphone Capture Subsystem (FEAT-013)
+1. **ES7210 Clock State Verification:** Confirm ES7210 register 0x08 retains 0x10 (`LRCK_RATE_MODE`) in slave mode, preventing 16:1 sample decimation dropouts.
+2. **Continuous Audio Ingestion:** Capture 48,000 samples over 3s; verify >95% non-zero sample ratio with uniform modulo-16 distribution across DMA slots.
+3. **Square-Wave Tone Elimination:** Execute hardware stereo I2S acquisition (`I2S_SLOT_MODE_STEREO`) and software extraction of pure Left channel (MIC1), eliminating 500Hz/1000Hz inter-channel square-wave modulation.
+4. **Class-D PA Noise Isolation:** Ensure PA enable pin and ES8311 DAC unmute are gated during recording turns, isolating the analogue microphone lines from amplifier switching ripple.
+
+### Suite 14: Hardware Dynamic RAG Tool Calling (FEAT-014)
+1. **Setup Augmentation:** Intercept incoming ESP32 setup packet in `server/index.js` and verify dynamic injection of the `tools` schema declaring `searchLibrary`.
+2. **Dynamic Prompt Enrichment:** Validate `systemInstruction` is augmented with voice-tailored directives instructing Gemini to query `searchLibrary` for document and topic inquiries.
+3. **Vector Database Retrieval:** Trigger voice queries like "What does the rulebook say about staging area threats?"; verify `hardwareClientService` invokes `hnswService` and SQLite, returning structured text paragraphs in the `toolResponse`.
+4. **Resilient Setup Caching:** Force an upstream WebSocket disconnection; verify cached setup handshake automatically restores tools on reconnect without client-side error.
+5. **Defensive Invariant 1 (Microphone Stream Integrity):** Any audio streaming interruptions or tool failures must fall back gracefully to voice synthesised errors rather than crashing the Express server.
+
+### Suite 65: System Architecture Live Trace Tooltips, Show-Only-Used Filter & PDF Snapshot (FEAT-065)
+1. **Architecture Model & Card Accuracy:** Navigate to `/ims/architecture`. Verify all card metrics match the active system: Services (26), Voice tools (35), External connections (17), Clients (4), and Data stores (6).
+2. **Test Prompt Tool Illumination & Access Reasons:** In the center card under *Test a prompt*, enter `Ims, what's the weather like and any birthdays coming up?` and click **Run**. Verify `Open-Meteo`, `Google Calendar`, `SQLite - app.db`, `gemini-2.5-flash`, `35 function tools`, and `gemini-3.8-live` light up with their respective accent borders and pulsing highlights.
+3. **Reason Hover Tooltips:** Hover over any lit row item (e.g. `Open-Meteo` or `Google Calendar`). Verify a glassmorphic floating tooltip opens displaying the exact reason why the component was accessed (e.g. *"Fetched real-time weather metrics and forecast from Open-Meteo for the current location"* and *"Queried scheduled events and reminders from Google Calendar"*).
+4. **Show Only Used Filter Checkbox:** Toggle the **Show only used items** checkbox at the top. Verify unused cards collapse to subtle dashed summaries and only the active participating rows are rendered.
+5. **Connector Anti-Flicker Stabilization:** During test prompt streaming execution as the log pane expands in height, verify the SVG connector curves animate smoothly via `requestAnimationFrame` without flashing or jumping.
+6. **Save as PDF Vector Snapshot:** Click the **Save as PDF** button in the top action bar. Confirm browser print dialog opens with `@media print` styling isolating the system architecture canvas, stripping navigation chrome, and producing a high-resolution vector PDF snapshot.
+7. **Defensive Invariant 75 (Trace Animation Frame Throttling & Reason Parsing Resilience):** In `SystemArchitecturePortal.jsx`, `Connectors` coalesces DOM measurements inside `requestAnimationFrame`, cancelling pending frames on component unmount or resize re-entry. `matchRows` handles both 2-tuple and 3-tuple reason signatures defensively with case-insensitive fallback matching.
 
 ## Section 2: Detailed Scenarios
 ### Suite 17: Bidirectional Pace & Estimated Time Editing (FEAT-043)
@@ -584,6 +626,46 @@
 3. **Timer Creation Scope:** Utter *"set a 10 minute timer"*; verify IMS immediately calls `scheduleItem` with `whenSeconds: 600` without demanding a label.
 4. **Calendar Event Creation Scope:** Utter *"add a calendar event for Friday at 2pm for Project Review"*; verify IMS creates the event with `title: "Project Review"`, `date: [resolved Friday]`, and `time: "14:00"` without asking for details already provided.
 5. **Defensive Invariant 69 (Voice Item Creation Scope Compliance):** In `hardwareClientService.js` and `ims_persona_rules.md`, system prompts enforce structured extraction: if all mandatory scopes are met in the user turn, tools are called unconditionally; if mandatory scopes are absent, IMS asks single-turn targeted questions in authentic Yorkshire dialect.
+
+### Suite 60: Unified Cross-Service Rolling Ticker (FEAT-060)
+1. **Cross-Service Item Aggregation:** Configure active items across Alarms, Timers, Reminders, Birthdays, New Music Releases, and Calendar Events; verify `deviceInfo()` in `server/index.js` aggregates and sorts up to 24 upcoming ticker items.
+2. **Dynamic Date & Time Badge Formatting:** Confirm items due today are badged with `(Today HH:MM)` (or `(Today)` for all-day/music items), and future items are badged with `(DD Mon HH:MM)` or `(DD Mon)`.
+3. **Collision Protection Against Left-Clock:** In `main.cpp`, verify `leftClockRightEdge` dynamically measures the width of the clock string `buf` plus a 6px safe margin, ensuring ticker text never overlaps the clock and date.
+4. **Graceful Ellipsis Truncation:** For long labels (e.g. long music album titles or detailed reminder notes), verify the string is trimmed cleanly with trailing `...` to fit within available width (`right - leftClockRightEdge`).
+5. **Defensive Invariant 70 (Footer Sprite Ticker Boundaries & Buffer Safety):** In `main.cpp`, `infoUpcoming` buffer size is expanded from 6 to 24 items with `infoUpcomingCount` clamping. `drawFooterClock()` performs sprite-contained rendering without triggering LCD tearing or overflowing memory.
+
+### Suite 61: Wake Phrase Reliability Optimization (FEAT-061)
+1. **Extended Pre-Roll Buffer Verification:** In `main.cpp`, verify `PREROLL_CHUNKS` is set to `38` (~1216ms of 16kHz audio); speak a phrase with a soft leading onset (e.g. *"Eh up IMS"*); confirm the entire opening phoneme is retained and forwarded upon energy gate trigger without acoustic clipping.
+2. **Low-Energy VAD Onset Gate:** Verify `VOICE_WAKE_THRESHOLD` is calibrated to `520` RMS, allowing relaxed, natural vocal volume to reliably cross the gate and initiate candidate evaluation.
+3. **Session Auto-Recovery on Rejected Candidates:** Simulate speech that does not match a wake phrase; verify `wakeDaemonService` logs `wake_rejected`, executes `forceStandby('no_wake_phrase')`, and resets upstream state so subsequent wake phrases immediately register without requiring an IMS hardware restart.
+4. **Defensive Invariant 71 (Pre-Roll Reset & Upstream Hygiene):** In `main.cpp`, `cancelConversation` and `readyForWake` frames reset `prerollHead = 0`, `prerollFilled = false`, and flush `audioOutQueue`, preventing stale audio accumulation from causing duplicate turn triggers or zombie socket locks.
+
+### Suite 62: ESP32 LCD Header Single-Row Status Alignment & Centred Title (FEAT-062)
+1. **Single-Row Status Indicator Verification:** On the ESP32-S3-BOX-3 LCD header, verify that all four status indicators (`VOICE`, `WAKE`, `WIFI`, and `USB`) sit in a single horizontal row at `HEADER_STATUS_Y = 31` with identical 4px radius indicator dots and 10px dot-to-text spacing.
+2. **Header Title Centring:** Confirm `(I)nformation (M)anagement (S)ystem` is horizontally centered across the 320px width (`(320 - totalWidth)/2`) and vertically aligned at `y = 14`, with bold bracketed initials rendered sharply.
+3. **Footer Rolling Ticker Streaming:** Create active reminders or birthdays; verify `deviceInfo()` in `server/index.js` uses safe calendar lookup (`getCalendarEventsOn`) without `ReferenceError: cache is not defined`, and verify active notifications (e.g. 3 reminders and 1 birthday) rotate continuously in the bottom-right rolling ticker.
+4. **Reactive Wi-Fi Status Updates:** Connect or disconnect Wi-Fi; confirm `drawWifiIndicator()` delta-redraws the status dot and `"WIFI"` / `"DISC"` label without tearing or full-screen flickering.
+5. **Defensive Invariant 72 (Header Sub-Row Delta-Redraw Alignment):** In `main.cpp`, `drawWifiIndicator()`, `drawUsbIndicator()`, and `drawVoiceDaemonIndicator()` all operate within bounded `y = 24..38` horizontal patches across `x = 44..262`, strictly non-overlapping with the gear icon (`0..44`), centered title text (`y = 14`), or the face canvas (`HEADER_H = 43`).
+
+### Suite 63: Music Scanner Album Linking, Audit Screen & Dev Ideas Category Filtering (FEAT-063)
+1. **Audit Screen Verification:** Navigate to `/ims/musicscan` and click the **Audit** tab. Verify three sub-sections: *Unmatched Artists*, *Missing Releases*, and *Hidden Folders*. Confirm unmatched artists are styled with high-contrast red indicator dots, title text, and error descriptions.
+2. **MusicBrainz Fuzzy Lucene Search:** Click **Search MusicBrainz** on an unmatched artist or from an artist card. Verify the modal opens and queries MusicBrainz via Python Lucene search, returning candidates with match score, country, type, disambiguation, and aliases.
+3. **Network Folder Inspection & Album Linking:** Click **Link / Rename** next to an unowned release (e.g. *The Union of Souls* under *3 Colours Red*). Verify the FolderBrowser modal loads subfolders and loose audio tracks from `\\Sideburnt\NorthField\MUZAK\<Genre>\<Artist>`. Click **Link to Artist Root** or select a subfolder and verify the album status switches to green **Owned**.
+4. **Direct Album & Artist Folder Renaming:** In the FolderBrowser modal, switch to *Rename Album Folder* or *Rename Artist Directory*, enter the new target name, and submit. Verify the folder is renamed on disk over the network path and the scanner cache is updated without restarting the service.
+5. **Hide / Unhide Artist Filtering:** Click the eye-off button on an artist card or unmatched audit item; verify the artist is flagged as hidden, excluded from scan totals and morning reports, and accessible under the *Hidden Folders* audit tab with a one-click **Restore Artist** action.
+6. **Dev Ideas Service Tag & Category Filtering:** Navigate to `/ims/devideas`. Click **New Dev Idea**, choose a service tag from the dropdown (e.g. `Music Scanner`, `Alarms & Reminders`, `ESP32 Firmware`, `Other`), and save. Verify the idea displays with a themed category badge and the filter bar filters the card list by selected tag.
+7. **Defensive Invariant 73 (Network Drive Safe Renaming & Scan Cache Integrity):** In `musicScanService.js`, network directory renames validate source existence and target availability before calling `fs.renameSync`, migrate existing scan overrides in `ims_scan_artists.json`, and refresh cached results in memory without file descriptor leaks or blocking SQLite queries.
+
+### Suite 64: Best Practice Code Inputs/Outputs Specifications & Outdated Repository Re-Scanner (FEAT-064)
+1. **Inputs & Outputs Contract Specification Display:** Navigate to `/ims/code-repo`. Select any code pattern snippet. Verify the **Inputs & Outputs Contract Specifications** card renders dual columns: *Inputs (Captured on Entry)* and *Outputs (Produced on Exit)*.
+2. **Type & Kind Annotations:** Confirm every input and output displays an explicit type pill (e.g. `string`, `array`, `object`, `number`, `Function`, `Event`, `Promise`), a kind badge (e.g. `Trigger`, `Listener`, `Variable`, `Config`, `State`, `Return Value`, `Mutation`, `Render`, `Sink`), and an English architectural description.
+3. **Concrete Example Payloads:** Verify syntax-highlighted code blocks present realistic, concrete example payloads for both inputs (e.g. `{ action: 'scan', targetRepo: 'spfx-toolkit' }`) and outputs (e.g. `{ success: true, count: 42 }`).
+4. **Outdated Repository Detection:** Click **Check for Updates** in the top action bar (or trigger `POST /api/code-repo/check-outdated`). Verify git commits are compared against `last_scanned_commit_sha` on both remote GitHub repos and local working trees. Confirm outdated repositories receive an amber pulsing **Needs Re-scan** badge.
+5. **Incremental Re-scanning Pipeline:** Click **Re-scan Outdated** (or trigger `GET /api/code-repo/scan-outdated-stream`). Verify an SSE progress bar opens, existing code snippets modified on disk are updated in place (preserving user observation notes), and newly added source files are catalogued as new patterns. Confirm the repository resets to green **Up to date**.
+6. **Defensive Invariant 74 (Incremental Snippet Keying & Git Commit Traceability):** In `codeRepoService.js`, `scanRepository()` matches existing snippets by `repo_id + file_path` to update existing records in SQLite without creating duplicate entries or erasing `user_observations`. Git commit comparisons handle missing branch heads gracefully with fallback heuristics.
+
+
+
 
 
 

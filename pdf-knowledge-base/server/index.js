@@ -375,25 +375,103 @@ const refreshDeviceWeather = () => getWeather({}).then((w) => {
 setTimeout(refreshDeviceWeather, 20000);
 setInterval(refreshDeviceWeather, 30 * 60 * 1000);
 
-// The footer line: the soonest timer (the device counts it down), otherwise the next thing today.
+// The footer line: the soonest timer (the device counts it down), and unified rolling ticker of all upcoming items.
 function deviceInfo() {
   const info = { ...(deviceWeather || {}) };
   try {
     const items = listScheduledItems();
-    const timer = items.filter((i) => i.type === 'timer').sort((a, b) => a.secondsFromNow - b.secondsFromNow)[0];
-    if (timer) { info.timerSec = timer.secondsFromNow; info.timerLabel = timer.label || ''; }
+    const activeTimers = items.filter((i) => i.type === 'timer').sort((a, b) => a.secondsFromNow - b.secondsFromNow);
+    const primaryTimer = activeTimers[0];
+    if (primaryTimer) { info.timerSec = primaryTimer.secondsFromNow; info.timerLabel = primaryTimer.label || ''; }
+    
     const now = new Date();
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
     const hm = now.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' });
-    const today = now.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
-    const next = [];
-    for (const e of getCalendarEventsOn(today)) if (e.time && e.time > hm) next.push({ time: e.time, what: e.title || e.summary || 'Event' });
-    for (const i of items.filter((x) => x.type !== 'timer')) {
-      const d = new Date(i.fireAt);
-      if (d.toLocaleDateString('en-CA', { timeZone: 'Europe/London' }) === today) next.push({ time: d.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' }), what: i.label || (i.type === 'alarm' ? 'Alarm' : 'Reminder') });
+    
+    // Helper to format item date/time badge
+    const formatBadge = (dStr, tStr) => {
+      if (!dStr) return tStr ? `(Today ${tStr})` : `(Today)`;
+      if (dStr === todayStr) {
+        return tStr ? `(Today ${tStr})` : `(Today)`;
+      }
+      try {
+        const parts = dStr.split('-');
+        if (parts.length === 3) {
+          const dt = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])));
+          const dateFmt = dt.toLocaleDateString('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short' });
+          return tStr ? `(${dateFmt} ${tStr})` : `(${dateFmt})`;
+        }
+      } catch (_) {}
+      return tStr ? `(${dStr} ${tStr})` : `(${dStr})`;
+    };
+
+    const tickerItems = [];
+
+    // 1. Running Timers (if any active timers on left icon stack)
+    for (const tm of activeTimers) {
+      const leftSec = tm.secondsFromNow;
+      const mm = Math.floor(leftSec / 60);
+      const ss = leftSec % 60;
+      const timeStr = `${mm}:${ss < 10 ? '0' : ''}${ss}`;
+      const label = tm.label || 'Countdown';
+      tickerItems.push({
+        sortKey: `0_${leftSec}`,
+        text: `${label} (${timeStr} left)`
+      });
     }
-    next.sort((a, b) => a.time.localeCompare(b.time));
-    if (next[0]) info.next = `${next[0].time} ${next[0].what}`.slice(0, 40);
-    info.upcoming = next.slice(0, 6).map((n) => `${n.time} ${n.what}`.slice(0, 40));
+
+    // 2. Alarms & Reminders (upcoming active scheduled items on left icon stack)
+    for (const item of items.filter((x) => x.type !== 'timer')) {
+      const d = new Date(item.fireAt);
+      const itemDateStr = d.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+      const itemTimeStr = d.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' });
+      const badge = formatBadge(itemDateStr, itemTimeStr);
+      const label = item.label || (item.type === 'alarm' ? 'Alarm' : 'Reminder');
+      tickerItems.push({
+        sortKey: `1_${d.getTime()}`,
+        text: `${label} ${badge}`
+      });
+    }
+
+    // 3. Birthdays (Today & upcoming in next 14 days, matching left cake icon status)
+    try {
+      const bdays = listBirthdays().filter((b) => b.daysUntil <= 14);
+      for (const b of bdays) {
+        let bDateStr = null;
+        if (b.isToday) {
+          bDateStr = todayStr;
+        } else {
+          const bYear = Number(todayStr.slice(0, 4));
+          const mStr = String(b.month).padStart(2, '0');
+          const dStr = String(b.day).padStart(2, '0');
+          bDateStr = `${bYear}-${mStr}-${dStr}`;
+        }
+        const badge = formatBadge(bDateStr, null);
+        const agePart = b.birthYear ? ` (${new Date().getFullYear() - b.birthYear}th)` : '';
+        tickerItems.push({
+          sortKey: `2_${String(b.daysUntil).padStart(3, '0')}`,
+          text: `${b.name}${agePart} ${badge}`
+        });
+      }
+    } catch (_) {}
+
+    // 4. New Music Album Releases (Only if released today, matching the left music icon count)
+    try {
+      const todayReleases = getTodayReleases();
+      for (const r of todayReleases) {
+        const badge = formatBadge(todayStr, null);
+        tickerItems.push({
+          sortKey: `3_0_${r.artist}`,
+          text: `${r.artist} - "${r.title}" ${badge}`
+        });
+      }
+    } catch (_) {}
+
+    // Sort combined ticker items
+    tickerItems.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+    if (tickerItems[0]) info.next = tickerItems[0].text;
+    info.upcoming = tickerItems.slice(0, 24).map((n) => n.text);
   } catch (err) { console.error('[Schedule] Footer info failed:', err.message); }
   return info;
 }

@@ -197,6 +197,14 @@ try {
   try { db.exec("ALTER TABLE code_repositories ADD COLUMN account TEXT DEFAULT 'personal'"); } catch (_) {}
   try { db.exec("ALTER TABLE code_repositories ADD COLUMN is_private INTEGER DEFAULT 0"); } catch (_) {}
   try { db.exec("ALTER TABLE code_repositories ADD COLUMN is_selected INTEGER DEFAULT 1"); } catch (_) {}
+  try { db.exec("ALTER TABLE code_repositories ADD COLUMN last_commit_sha TEXT"); } catch (_) {}
+  try { db.exec("ALTER TABLE code_repositories ADD COLUMN last_scanned_commit_sha TEXT"); } catch (_) {}
+  try { db.exec("ALTER TABLE code_repositories ADD COLUMN latest_pushed_at DATETIME"); } catch (_) {}
+  try { db.exec("ALTER TABLE code_repositories ADD COLUMN is_outdated INTEGER DEFAULT 0"); } catch (_) {}
+  try { db.exec("ALTER TABLE code_repositories ADD COLUMN commit_message TEXT"); } catch (_) {}
+
+  try { db.exec("ALTER TABLE code_snippets ADD COLUMN inputs_json TEXT DEFAULT '[]'"); } catch (_) {}
+  try { db.exec("ALTER TABLE code_snippets ADD COLUMN outputs_json TEXT DEFAULT '[]'"); } catch (_) {}
 
   const seedRepo = db.prepare('INSERT OR IGNORE INTO code_repositories (id, name, url, type, local_path, branch, description, account, is_private, is_selected) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
   seedRepo.run(

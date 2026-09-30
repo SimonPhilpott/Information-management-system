@@ -26,28 +26,116 @@ import config from '../config.js';
 const MODEL = 'gemini-2.5-flash';
 const WAKE = /^\s*(hey|hi|eh up|ey up|oi)?\s*,?\s*(ims|imms|ems)\b/i;
 
-// Which rows each tool uses: connections, data stores and services beyond the tool itself.
+// Which rows each tool uses and WHY it was accessed during this execution step:
+// [cardKey, rowTitle, reason]
 const TOOL_ROWS = {
-  getCalendarEvents: [['connections', 'Google Calendar'], ['services', 'Core functions - 8']],
-  addCalendarEvent: [['connections', 'Google Calendar'], ['services', 'Core functions - 8']],
-  getWeather: [['connections', 'Open-Meteo']],
-  getBloodGlucose: [['connections', 'Nightscout (Heroku + MongoDB)'], ['data', 'SQLite - app.db'], ['services', 'Health and fitness - 3']],
-  logCarbs: [['connections', 'Nightscout (Heroku + MongoDB)'], ['connections', 'AndroidAPS'], ['data', 'SQLite - app.db'], ['services', 'Health and fitness - 3']],
-  lookUpFood: [['connections', 'Open Food Facts']],
-  clearOldNightscoutData: [['connections', 'Nightscout (Heroku + MongoDB)']],
-  getTrainingSummary: [['connections', 'Strava'], ['data', 'SQLite - app.db'], ['services', 'Health and fitness - 3']],
-  getNews: [['connections', 'News feeds'], ['services', 'Personal - 4']],
-  getNewMusicReleases: [['connections', 'MusicBrainz'], ['services', 'Personal - 4']],
-  getBoardGames: [['connections', 'BoardGameGeek'], ['services', 'Personal - 4']],
-  getCampaigns: [['connections', 'RingsDB'], ['data', 'SQLite - app.db'], ['services', 'Personal - 4']],
-  searchLibrary: [['connections', 'Google Drive'], ['data', 'Vector index (HNSW)'], ['data', 'Library databases'], ['ai', 'gemini-embedding-001']],
-  getDayReport: [['connections', 'Open-Meteo'], ['connections', 'Google Calendar'], ['connections', 'News feeds'], ['data', 'SQLite - app.db']],
-  startBackgroundTask: [['ai', 'gemini-2.5-flash'], ['data', 'SQLite - app.db'], ['services', 'Core functions - 8']],
-  getBackgroundTasks: [['data', 'SQLite - app.db'], ['services', 'Core functions - 8']],
-  saveDevIdea: [['data', 'SQLite - app.db'], ['services', 'Customisation and system - 6']],
+  getCalendarEvents: [
+    ['connections', 'Google Calendar', 'Queried upcoming calendar events and meeting schedules'],
+    ['services', 'Core functions - 8', 'Executed Calendar service query via calendarService']
+  ],
+  addCalendarEvent: [
+    ['connections', 'Google Calendar', 'Prepared new calendar event insertion to Google Calendar'],
+    ['services', 'Core functions - 8', 'Invoked Calendar management service']
+  ],
+  getWeather: [
+    ['connections', 'Open-Meteo', 'Retrieved live temperature, precipitation and forecasts from Open-Meteo REST API']
+  ],
+  getBloodGlucose: [
+    ['connections', 'Nightscout (Heroku + MongoDB)', 'Fetched live CGM blood glucose telemetry, trend arrows & device status'],
+    ['data', 'SQLite - app.db', 'Read local cached glucose metrics and time-in-range calculations'],
+    ['services', 'Health and fitness - 3', 'Processed blood sugar insights via glucoseHubService']
+  ],
+  logCarbs: [
+    ['connections', 'Nightscout (Heroku + MongoDB)', 'Prepared Meal Bolus carb treatment upload to Nightscout'],
+    ['connections', 'AndroidAPS', 'Prepared food entry broadcast for AndroidAPS closed-loop pickup'],
+    ['data', 'SQLite - app.db', 'Recorded carb entry in local carb_log table'],
+    ['services', 'Health and fitness - 3', 'Invoked food bolus wizard & carb management service']
+  ],
+  lookUpFood: [
+    ['connections', 'Open Food Facts', 'Queried open food nutritional database for carbohydrate density and serving sizes']
+  ],
+  clearOldNightscoutData: [
+    ['connections', 'Nightscout (Heroku + MongoDB)', 'Initiated storage cleanup check on MongoDB Nightscout instance']
+  ],
+  getTrainingSummary: [
+    ['connections', 'Strava', 'Synchronised recent runs, rides and training loads from Strava API'],
+    ['data', 'SQLite - app.db', 'Read cached Strava activity logs from strava_activities table'],
+    ['services', 'Health and fitness - 3', 'Synthesised training analysis and aerobic fitness summary']
+  ],
+  getNews: [
+    ['connections', 'News feeds', 'Fetched latest headlines from RSS news sources (BBC, Nature, NASA, music feeds)'],
+    ['services', 'Personal - 6', 'Synthesised curated news briefings via newsService']
+  ],
+  getNewMusicReleases: [
+    ['connections', 'MusicBrainz', 'Scanned release catalogues on MusicBrainz for tracked artists'],
+    ['services', 'Personal - 6', 'Checked MUZAK audio library & album scanner releases']
+  ],
+  getBoardGames: [
+    ['connections', 'BoardGameGeek', 'Read board game collection metadata, player counts and duration constraints'],
+    ['services', 'Personal - 6', 'Filtered board games catalogue via boardgamesService']
+  ],
+  getCampaigns: [
+    ['connections', 'RingsDB', 'Loaded LotR / Arkham card decks, hero pairings and campaign log state'],
+    ['data', 'SQLite - app.db', 'Queried campaign scenario lore, map pins and chronicle records from app.db'],
+    ['services', 'Personal - 6', 'Accessed Campaign Manager workspace and deck building engine']
+  ],
+  searchLibrary: [
+    ['connections', 'Google Drive', 'Scanned PDF research repository and book source library'],
+    ['data', 'Vector index (HNSW)', 'Queried high-speed HNSW vector index for nearest semantic passage chunks'],
+    ['data', 'Library databases', 'Retrieved document hierarchy, chapter contents and validated Q&As'],
+    ['ai', 'gemini-embedding-001', 'Generated text embeddings to match semantic query vectors']
+  ],
+  getDayReport: [
+    ['connections', 'Open-Meteo', 'Retrieved current weather and forecast for the morning briefing'],
+    ['connections', 'Google Calendar', 'Queried today’s scheduled appointments, deadlines and events'],
+    ['connections', 'News feeds', 'Aggregated top morning news headlines across categories'],
+    ['connections', 'Nightscout (Heroku + MongoDB)', 'Analysed overnight glucose stability and time-in-range metrics'],
+    ['data', 'SQLite - app.db', 'Pre-assembled day report from SQLite cache and personal notes'],
+    ['services', 'Personal - 6', 'Built unified morning briefing via morningReportService']
+  ],
+  startBackgroundTask: [
+    ['ai', 'gemini-2.5-flash', 'Spun up autonomous research background worker on Gemini Flash'],
+    ['data', 'SQLite - app.db', 'Persisted background task record and execution lifecycle in tasks table'],
+    ['services', 'Core functions - 8', 'Scheduled async task supervisor in taskManagerService']
+  ],
+  getBackgroundTasks: [
+    ['data', 'SQLite - app.db', 'Queried active and completed background research jobs from tasks table'],
+    ['services', 'Core functions - 8', 'Retrieved background task status via tasksService']
+  ],
+  saveDevIdea: [
+    ['data', 'SQLite - app.db', 'Saved developer improvement idea with category tags to dev_ideas table'],
+    ['services', 'Customisation and system - 7', 'Recorded backlog item in Dev Ideas portal']
+  ],
 };
-const DB_TOOLS = new Set(['scheduleItem', 'listScheduledItems', 'cancelScheduledItem', 'getScheduleHistory', 'addToList', 'readList', 'removeFromList', 'clearList', 'rememberFact', 'recallMemory', 'forgetMemory', 'getUpcomingBirthdays', 'tellJoke']);
-const rowsFor = (name) => [['pipeline', 'function tools'], ...(TOOL_ROWS[name] || []), ...(DB_TOOLS.has(name) ? [['data', 'SQLite - app.db'], ['services', 'Core functions - 8']] : [])];
+
+const DB_TOOLS_MAP = {
+  scheduleItem: { row: 'Core functions - 8', desc: 'Saved new alarm/timer/reminder with recurrence rules to scheduled_items table' },
+  listScheduledItems: { row: 'Core functions - 8', desc: 'Read active alarms, timers and reminders from scheduled_items table' },
+  cancelScheduledItem: { row: 'Core functions - 8', desc: 'Marked scheduled item as cancelled in SQLite database' },
+  getScheduleHistory: { row: 'Core functions - 8', desc: 'Read historical alarm and reminder firings from schedule_events table' },
+  addToList: { row: 'Core functions - 8', desc: 'Appended item to shopping/todo list in list_items table' },
+  readList: { row: 'Core functions - 8', desc: 'Read current list contents from list_items table' },
+  removeFromList: { row: 'Core functions - 8', desc: 'Removed item from list in list_items table' },
+  clearList: { row: 'Core functions - 8', desc: 'Cleared list entries from list_items table' },
+  rememberFact: { row: 'Core functions - 8', desc: 'Persisted explicit user memory or fact to ims_memories table' },
+  recallMemory: { row: 'Core functions - 8', desc: 'Queried persistent memories and facts from ims_memories table' },
+  forgetMemory: { row: 'Core functions - 8', desc: 'Deleted memory record from ims_memories table' },
+  getUpcomingBirthdays: { row: 'Core functions - 8', desc: 'Queried upcoming birthdays, dates and turning ages from birthdays table' },
+  tellJoke: { row: 'Core functions - 8', desc: 'Selected joke matching humor settings from jokes database' },
+};
+
+const rowsFor = (name) => {
+  const base = [['pipeline', '35 function tools', `Executed server function tool "${name}"`]];
+  const toolRows = (TOOL_ROWS[name] || []).map(([k, r, reason]) => [k, r, reason || `Accessed by tool ${name}`]);
+  const dbInfo = DB_TOOLS_MAP[name];
+  const dbRows = dbInfo
+    ? [
+        ['data', 'SQLite - app.db', dbInfo.desc],
+        ['services', dbInfo.row, `Executed ${name} in core services`]
+      ]
+    : [];
+  return [...base, ...toolRows, ...dbRows];
+};
 
 // Tools that only read, run for real.
 const READ_TOOLS = {

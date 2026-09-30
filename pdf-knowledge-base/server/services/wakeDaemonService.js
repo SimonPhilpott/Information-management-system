@@ -288,7 +288,7 @@ class WakeDaemonService extends EventEmitter {
     if (this.activeClientSession?.sendControl) {
       try {
         if (this.activeClientType === 'hardware') {
-          this.activeClientSession.sendControl({ cancelConversation: true });
+          this.activeClientSession.sendControl({ cancelConversation: true, readyForWake: true });
         } else if (this.activeClientType === 'web') {
           this.activeClientSession.sendControl({ sessionIdle: true });
         }
@@ -297,8 +297,8 @@ class WakeDaemonService extends EventEmitter {
       }
     }
 
-    // Reset upstream session if callback provided
-    if (this.activeClientSession?.closeUpstream && (reason === 'silence_timeout' || reason === 'manual')) {
+    // Reset upstream session if callback provided (on timeouts or no wake phrase rejection)
+    if (this.activeClientSession?.closeUpstream && (reason === 'silence_timeout' || reason === 'manual' || reason === 'verify_timeout' || reason === 'no_wake_phrase')) {
       try {
         this.activeClientSession.closeUpstream(reason);
       } catch (err) {

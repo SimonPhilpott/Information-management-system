@@ -765,7 +765,7 @@ inline bool isSpeakerCoolingDown() {
 }
 
 // Circular pre-roll buffer in PSRAM to preserve wake words ("Hey Ims", "Eh up Ims")
-#define PREROLL_CHUNKS 16 // 16 * 512 samples = 512ms at 16kHz
+#define PREROLL_CHUNKS 38 // 38 * 512 samples = ~1216ms at 16kHz
 static AudioChunkMsg *prerollBuffer = nullptr;
 static int prerollHead = 0;
 static bool prerollFilled = false;
@@ -2325,7 +2325,7 @@ static char infoWeather[10] = "";
 static String infoNext = "";
 static String infoTimerLabel = "";
 static unsigned long infoTimerEndMs = 0;
-static String infoUpcoming[6];
+static String infoUpcoming[24];
 static int infoUpcomingCount = 0;
 
 static void drawWeatherIcon(LovyanGFX &g, int x, int y, const char *kind) {
@@ -2368,15 +2368,17 @@ void drawFooterClock() {
   g.setTextSize(1);
   g.setTextDatum(top_left);
   g.setTextColor(g.color565(100, 110, 130));
+  int leftClockRightEdge = 115; // default fallback boundary
   {
     struct tm t;
-    char buf[24] = "--:--:--";
+    char buf[28] = "--:--:--";
     if (getLocalTime(&t, 20)) strftime(buf, sizeof(buf), "%H:%M:%S %a %d %b", &t);
-    g.drawString(buf, 12, oy + 10);
+    g.drawString(buf, 10, oy + 10);
+    leftClockRightEdge = 10 + g.textWidth(buf) + 6; // safe gap past date string
   }
 
-  // Right side: the soonest timer counting down, else today's upcoming items (rotating every
-  // 3 s when there's more than one); weather at the far right.
+  // Right side: the soonest timer counting down, else unified rolling ticker items (rotating every
+  // 3.5 s when there's more than one); weather at the far right.
   int right = 308;
   if (infoTempC > -100) {
     char tbuf[8];
@@ -2390,87 +2392,102 @@ void drawFooterClock() {
     right = right - 4 - tw - 25;
   }
   String mid = "";
-  uint16_t midCol = g.color565(140, 150, 175);
-  if (infoTimerEndMs && (long)(infoTimerEndMs - millis()) > 0) {
+  uint16_t midCol = g.color565(255, 200, 100); // Warm gold/amber for notifications
+  if (infoUpcomingCount > 0) {
+    mid = infoUpcoming[(millis() / 3500) % infoUpcomingCount];
+  } else if (infoTimerEndMs && (long)(infoTimerEndMs - millis()) > 0) {
     unsigned long left = (infoTimerEndMs - millis()) / 1000;
     char tb[12];
     if (left >= 3600) snprintf(tb, sizeof(tb), "%lu:%02lu:%02lu", left / 3600, (left / 60) % 60, left % 60);
     else snprintf(tb, sizeof(tb), "%lu:%02lu", left / 60, left % 60);
     mid = String("Timer ") + tb;
     midCol = g.color565(255, 140, 0);
-  } else if (infoUpcomingCount > 0) {
-    mid = infoUpcoming[(millis() / 3000) % infoUpcomingCount];
   } else if (infoNext.length()) {
     mid = infoNext;
   }
   if (mid.length()) {
     g.setTextDatum(top_right);
     g.setTextColor(midCol);
-    while (mid.length() > 3 && g.textWidth(mid) > right - 150) mid = mid.substring(0, mid.length() - 2);
+    const int maxAllowedWidth = right - leftClockRightEdge;
+    if (g.textWidth(mid) > maxAllowedWidth) {
+      while (mid.length() > 3 && (g.textWidth(mid + "...") > maxAllowedWidth)) {
+        mid = mid.substring(0, mid.length() - 1);
+      }
+      mid += "...";
+    }
     g.drawString(mid, right, oy + 10);
   }
   g.setTextDatum(top_left);
   if (footerSpriteReady) footerSprite.pushSprite(0, 204);
 }
 
-// USB link indicator, directly under the WIFI one in the header's top-right
-// (the two rows are stacked symmetrically about the bar's vertical centre):
-// green while the USB port has a live connection to a host (the PC), red
-// when it doesn't. Drawn on its own small patch so it can update the moment
-// the cable is plugged/unplugged without a full-screen redraw.
-#define WIFI_ROW_Y (HEADER_CY - 7)
-#define USB_ROW_Y (HEADER_CY + 7)
+// Header status indicator row: VOICE, WAKE, WIFI, USB all positioned in a single horizontal row
+// at HEADER_STATUS_Y (y=31), centered below the vertically centered title (y=14).
+#define HEADER_TITLE_Y 14
+#define HEADER_STATUS_Y 31
+#define VOICE_INDICATOR_X 48
+#define WAKE_INDICATOR_X 102
+#define WIFI_INDICATOR_X 156
+#define USB_INDICATOR_X 210
+
 void drawUsbIndicator() {
   if (onSettingsScreen) return;
   tft.startWrite();
-  tft.fillRect(272, USB_ROW_Y - 7, 48, 14, tft.color565(20, 24, 34));
+  tft.fillRect(USB_INDICATOR_X - 4, HEADER_STATUS_Y - 7, 52, 14, tft.color565(20, 24, 34));
   const bool up = Serial.isPlugged();
-  tft.fillCircle(280, USB_ROW_Y, 4, up ? tft.color565(46, 213, 115) : tft.color565(255, 71, 87));
+  tft.fillCircle(USB_INDICATOR_X + 4, HEADER_STATUS_Y, 4, up ? tft.color565(46, 213, 115) : tft.color565(255, 71, 87));
   tft.setTextDatum(middle_left);
   tft.setTextColor(tft.color565(140, 150, 175));
   tft.setTextSize(1);
-  tft.drawString("USB", 290, USB_ROW_Y);
+  tft.drawString("USB", USB_INDICATOR_X + 14, HEADER_STATUS_Y);
+  tft.setTextDatum(top_left);
+  tft.endWrite();
+}
+
+void drawWifiIndicator() {
+  if (onSettingsScreen) return;
+  tft.startWrite();
+  tft.fillRect(WIFI_INDICATOR_X - 4, HEADER_STATUS_Y - 7, 52, 14, tft.color565(20, 24, 34));
+  const bool connected = (WiFi.status() == WL_CONNECTED);
+  tft.fillCircle(WIFI_INDICATOR_X + 4, HEADER_STATUS_Y, 4,
+                 connected ? tft.color565(46, 213, 115) : tft.color565(255, 71, 87));
+  tft.setTextDatum(middle_left);
+  tft.setTextColor(tft.color565(140, 150, 175));
+  tft.setTextSize(1);
+  tft.drawString(connected ? "WIFI" : "DISC", WIFI_INDICATOR_X + 14, HEADER_STATUS_Y);
   tft.setTextDatum(top_left);
   tft.endWrite();
 }
 
 // Voice Detection Background Service & Wake Status Indicators
-// Placed in the header directly under the '(I)nformation (M)anagement (S)ystem' text,
-// aligned strictly to the left starting where the first bracket '(' is for (I)nformation (x=48)
-// and vertically positioned exactly in line with the USB indicator (USB_ROW_Y).
-// Status dot 1: Voice Detection Service (green = running/online, red = disconnected)
-// Status dot 2: Wake Status (red = standby/listening for wake, green = wake detected / active conversation)
-#define HEADER_TITLE_Y 14
-#define VOICE_INDICATOR_X 48
-#define VOICE_INDICATOR_Y USB_ROW_Y
+// Placed in the header indicator row: VOICE, WAKE, WIFI, USB in a single horizontal row at HEADER_STATUS_Y (y=31)
 void drawVoiceDaemonIndicator() {
   if (onSettingsScreen) return;
   tft.startWrite();
-  // Clear the sub-header indicator region (width 135px, height 14px) matching USB_ROW_Y height
-  tft.fillRect(VOICE_INDICATOR_X - 4, USB_ROW_Y - 7, 135, 14, tft.color565(20, 24, 34));
+  // Clear the sub-header indicator region for VOICE & WAKE (width 106px, height 14px)
+  tft.fillRect(VOICE_INDICATOR_X - 4, HEADER_STATUS_Y - 7, 106, 14, tft.color565(20, 24, 34));
 
   // Dot 1: Voice detection daemon running status (green / red) - radius 4 matching WIFI & USB dots
   const bool daemonOnline = voiceDaemonRunning && (WiFi.status() == WL_CONNECTED);
-  tft.fillCircle(VOICE_INDICATOR_X + 4, USB_ROW_Y, 4,
+  tft.fillCircle(VOICE_INDICATOR_X + 4, HEADER_STATUS_Y, 4,
                  daemonOnline ? tft.color565(46, 213, 115) : tft.color565(255, 71, 87));
 
   tft.setTextDatum(middle_left);
   tft.setTextColor(tft.color565(140, 150, 175));
   tft.setTextSize(1);
-  // 10px spacing from dot center (X+4) to text (X+14), exactly matching WIFI & USB indicator spacing (280 -> 290)
-  tft.drawString("VOICE", VOICE_INDICATOR_X + 14, USB_ROW_Y);
+  // 10px spacing from dot center (X+4) to text (X+14)
+  tft.drawString("VOICE", VOICE_INDICATOR_X + 14, HEADER_STATUS_Y);
 
   // Dot 2: Wake status indicator (red = standby/verifying, green = wake detected/conversation active)
   const bool isWakeActive = voiceWakeVerified || (currentState == STATE_LISTENING && conversationOpen) ||
                             (currentState == STATE_SPEAKING && conversationOpen) ||
                             (currentState == STATE_THINKING && conversationOpen);
-  const int wakeDotX = VOICE_INDICATOR_X + 54;
-  tft.fillCircle(wakeDotX + 4, USB_ROW_Y, 4,
+  tft.fillCircle(WAKE_INDICATOR_X + 4, HEADER_STATUS_Y, 4,
                  isWakeActive ? tft.color565(46, 213, 115) : tft.color565(255, 71, 87));
 
   tft.setTextColor(tft.color565(140, 150, 175));
-  // 10px spacing from dot center (wakeDotX+4) to text (wakeDotX+14)
-  tft.drawString("WAKE", wakeDotX + 14, USB_ROW_Y);
+  // 10px spacing from dot center (WAKE_INDICATOR_X+4) to text (WAKE_INDICATOR_X+14)
+  tft.drawString("WAKE", WAKE_INDICATOR_X + 14, HEADER_STATUS_Y);
   tft.setTextDatum(top_left);
   tft.endWrite();
 }
@@ -2510,14 +2527,17 @@ void renderScreen(bool forceRedraw = false) {
   tft.setTextColor(tft.color565(140, 150, 175));
   tft.setTextSize(1);
   // Title with the bracketed initials in (faux) bold - Font0 has no bold
-  // face, so a bold letter is drawn twice, 1px apart. Each bold letter is
-  // therefore 1px wider than normal, and the whole line starts at HEADER_TITLE_X (48)
-  // to cleanly clear the gear icon and align with the sub-header indicator row.
+  // face, so a bold letter is drawn twice, 1px apart.
+  // Horizontally centered across 320px screen width and vertically centered in title area (HEADER_TITLE_Y = 14).
   {
     struct Seg { const char *txt; bool bold; };
     static const Seg segs[] = {
       {"(", false}, {"I", true}, {")nformation (", false}, {"M", true}, {")anagement (", false}, {"S", true}, {")ystem", false}};
-    int x = HEADER_TITLE_X;
+    int totalWidth = 0;
+    for (const Seg &sg : segs) {
+      totalWidth += tft.textWidth(sg.txt) + (sg.bold ? 1 : 0);
+    }
+    int x = (320 - totalWidth) / 2;
     tft.setTextDatum(middle_left);
     for (const Seg &sg : segs) {
       tft.drawString(sg.txt, x, HEADER_TITLE_Y);
@@ -2528,18 +2548,7 @@ void renderScreen(bool forceRedraw = false) {
   tft.setTextDatum(top_left); // reset - everything after this relies on left-anchored text
   drawGearIcon(HEADER_ICON_CX, HEADER_ICON_CY); // Phase 4 settings entry point
 
-  tft.setTextDatum(middle_left);
-
-  if (WiFi.status() == WL_CONNECTED) {
-    tft.fillCircle(280, WIFI_ROW_Y, 4, tft.color565(46, 213, 115));
-    tft.setTextColor(tft.color565(140, 150, 175));
-    tft.drawString("WIFI", 290, WIFI_ROW_Y);
-  } else {
-    tft.fillCircle(280, WIFI_ROW_Y, 4, tft.color565(255, 71, 87));
-    tft.setTextColor(tft.color565(140, 150, 175));
-    tft.drawString("DISC", 290, WIFI_ROW_Y);
-  }
-  tft.setTextDatum(top_left);
+  drawWifiIndicator();
   drawUsbIndicator();
   drawVoiceDaemonIndicator();
 
@@ -3736,8 +3745,8 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
     }
     // The user said "IMS stop" / "stop IMS": abandon everything and go quiet. Sent by
     // the backend even while Gemini is still "thinking".
-    if (doc["cancelConversation"].as<bool>()) {
-      Serial.println("[IMS] cancelConversation - stop command heard, back to STANDBY");
+    if (doc["cancelConversation"].as<bool>() || doc["readyForWake"].as<bool>()) {
+      Serial.println("[IMS] cancelConversation / readyForWake - resetting to STANDBY");
       setSpeakerMute(true);
       if (audioPlaybackQueue) xQueueReset(audioPlaybackQueue);
       if (audioOutQueue) xQueueReset(audioOutQueue);
@@ -3748,6 +3757,8 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       conversationShouldClose = false;
       currentEmotion = EMOTION_NEUTRAL;
       currentState = STATE_STANDBY;
+      prerollHead = 0;
+      prerollFilled = false;
       lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
       renderScreen(true);
     }
@@ -3907,7 +3918,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         infoUpcomingCount = 0;
         if (inf["upcoming"].is<JsonArray>()) {
           for (JsonVariant v : inf["upcoming"].as<JsonArray>()) {
-            if (infoUpcomingCount >= 6) break;
+            if (infoUpcomingCount >= 24) break;
             const char *u = v | "";
             if (*u) infoUpcoming[infoUpcomingCount++] = u;
           }
@@ -4114,10 +4125,10 @@ void pollIncoming() {
 // Calibrated VAD thresholds: ES7210 noise floor with 2x gain is RMS 120-250;
 // Ambient room noise / keyboard clicks / breathing is RMS 250-450;
 // Deliberate human speech is RMS 1200-3500+.
-#define VOICE_WAKE_THRESHOLD 650         // Wake phrase onset ("Hey Ims", "Eh up Ims")
-#define VOICE_WAKE_CONSECUTIVE_FRAMES 2  // Must sustain >650 RMS for 2 consecutive chunks (~64ms)
-#define VOICE_SPEECH_THRESHOLD 500       // Speech continuation detection during active LISTENING
-#define VOICE_SILENCE_THRESHOLD 280      // Silence threshold for turn completion
+#define VOICE_WAKE_THRESHOLD 520         // Wake phrase onset ("Hey Ims", "Eh up Ims")
+#define VOICE_WAKE_CONSECUTIVE_FRAMES 2  // Must sustain >520 RMS for 2 consecutive chunks (~64ms)
+#define VOICE_SPEECH_THRESHOLD 450       // Speech continuation detection during active LISTENING
+#define VOICE_SILENCE_THRESHOLD 260      // Silence threshold for turn completion
 
 // Bit-alignment diagnostic (see audioMicTask()) - left-shifts every mic
 // sample by this many bits before sending/logging. Tested at 4: result was
@@ -4910,6 +4921,15 @@ void loop() {
     if (usbNow != lastUsbState) {
       lastUsbState = usbNow;
       drawUsbIndicator();
+    }
+  }
+
+  {
+    static int lastWifiState = -1;
+    const int wifiNow = (WiFi.status() == WL_CONNECTED) ? 1 : 0;
+    if (wifiNow != lastWifiState) {
+      lastWifiState = wifiNow;
+      drawWifiIndicator();
     }
   }
 
