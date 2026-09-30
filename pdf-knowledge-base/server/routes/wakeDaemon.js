@@ -16,6 +16,19 @@ router.get('/status', (req, res) => {
   }
 });
 
+// Detailed activity log stream endpoint
+router.get('/logs', (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(100, Number(req.query?.limit || 50)));
+    res.json({
+      success: true,
+      logs: wakeDaemonService.getRecentLogs(limit)
+    });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
 // Manual reset / force standby endpoint
 router.post('/reset', (req, res) => {
   try {

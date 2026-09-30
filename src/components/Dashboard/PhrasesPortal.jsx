@@ -145,19 +145,49 @@ function WakeDaemonMonitorCard({ isDark, notify }) {
           </p>
         </div>
 
-        {/* Active Bye Phrases Tile */}
+        {/* Active Phrase Gating Tile */}
         <div className={`p-3.5 rounded-xl border ${border} ${isDark ? 'bg-slate-950/40' : 'bg-slate-50'} flex flex-col justify-between gap-2`}>
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Active 'Bye' Termination</span>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">
-              <Sparkles size={10} /> Active Gating
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Phrase Verification</span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <Sparkles size={10} /> Active Wake Engine
             </span>
           </div>
           <p className="text-[11px] text-slate-500 leading-snug">
-            Actively intercepts "bye", "goodbye", "thanks bye", and "that's all IMS" to close conversation immediately without waiting for tool calls.
+            Precision wake phrase gating (including phonetic rhymes like Tims/Jims). Stop phrases are disabled to prevent audio cut-offs.
           </p>
         </div>
       </div>
+
+      {/* Live Activity & Diagnostic Logs */}
+      {status?.recentLogs && status.recentLogs.length > 0 && (
+        <div className={`p-3.5 rounded-xl border ${border} ${isDark ? 'bg-slate-950/60' : 'bg-slate-50'} flex flex-col gap-2`}>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+              Live Wake Daemon Event Activity ({status.recentLogs.length} events logged)
+            </span>
+            <span className="text-[10px] font-mono text-slate-500">Auto-refreshing</span>
+          </div>
+          <div className="max-h-48 overflow-y-auto space-y-1.5 font-mono text-[11px] pr-1">
+            {status.recentLogs.map((log) => {
+              const timeStr = new Date(log.timestamp).toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+              const isWake = log.type === 'wake_verified';
+              const isReject = log.type === 'wake_rejected';
+              const isCandidate = log.type === 'candidate';
+              const isTimeout = log.type === 'silence_timeout';
+              const color = isWake ? 'text-emerald-400' : isReject ? 'text-amber-400' : isCandidate ? 'text-sky-400' : isTimeout ? 'text-rose-400' : 'text-slate-400';
+              return (
+                <div key={log.id} className={`p-1.5 rounded bg-black/20 border border-white/5 flex items-start justify-between gap-2 ${color}`}>
+                  <span className="shrink-0 text-slate-500 text-[10px]">{timeStr}</span>
+                  <span className="grow break-all">{log.message}</span>
+                  <span className="shrink-0 text-[10px] uppercase font-bold px-1 py-0.2 rounded bg-white/5">{log.type}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Telemetry Summary Bar */}
       {status && (

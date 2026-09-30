@@ -757,6 +757,13 @@ export async function buildReportParts({ markNews = true } = {}) {
   const hour = londonNow().hour;
   const context = { hour, weatherRain: null, markNews };
 
+  // Refresh calendar events cache so deviceIcons and calendar sections have live data
+  try {
+    await getUpcomingEvents(2);
+  } catch (err) {
+    console.warn('[MorningReport] Calendar pre-fetch failed:', err.message);
+  }
+
   // Face recognition (local): if the camera has a fresh view of someone enrolled
   // on /ims/faces, greet them by name. No fresh frame, or no known face, simply
   // adds nothing - IMS never guesses who it's talking to.

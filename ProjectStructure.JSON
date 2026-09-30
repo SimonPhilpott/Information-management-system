@@ -410,7 +410,27 @@
         "src/components/Dashboard/PhotoCarbs.jsx",
         "src/hooks/useImsLive.js"
       ]
+    },
+    "firmware/esp32-s3-box-3/src/main.cpp": {
+      "description": "ESP32-S3-BOX-3 main firmware managing ES7210/ES8311 I2S codec, hardware mute switch, 12x8 dot matrix face animation, blood glucose display, status icon stack, WiFi/USB link telemetry, and LCD header Voice Detection daemon & reactive Wake Status indicators aligned under (I) bracket at x=48 horizontally in line with USB status.",
+      "dependencies": [
+        "pdf-knowledge-base/server/index.js",
+        "pdf-knowledge-base/server/services/wakeDaemonService.js"
+      ]
+    },
+    "src/components/Dashboard/ScheduledItemsPortal.jsx": {
+      "description": "Reminders, Alarms, and Timers management portal with full recurrence scheduling support (once, daily, weekdays, weekly), live ringing state modals, audio alarms, and SQLite persistence.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/remindersService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/remindersService.js": {
+      "description": "Core scheduling, alarm, timer, and recurring reminder management service supporting once, daily, weekdays, and weekly wall-clock interval calculations across UK daylight savings.",
+      "dependencies": [
+        "pdf-knowledge-base/server/database.js"
+      ]
     }
   }
 }
+
 

@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 54
-- Verified Features: 54
+- Total Registered Features: 59
+- Verified Features: 59
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -62,10 +62,11 @@
 | FEAT-052 | Adaptive Chat Input Box & Safe Max Height | [ChatInterface.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/ChatInterface.jsx) | Dynamic textarea expansion up to 180px, Shift+Enter multiline, scroll containment, and height reset | PASS |
 | FEAT-053 | System Architecture Guest Invites & Fullscreen Adaptive Viewport | [SystemArchitecturePortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/SystemArchitecturePortal.jsx) | Integrated ArchitectureInviteModal with Daniel Philpott preset, /api/decks/invites sync, fullscreen right-column auto-collapse and exit restoration | PASS |
 | FEAT-054 | Compact Half-Height IMS Face in Main App | [ImsPanel.jsx](file:///d:/Information%20management%20system/src/components/Ims/ImsPanel.jsx) | Max-width [280px] scaling in ImsPanel, 50% face height reduction, and chat scrollable viewport verification | PASS |
-
-
-
-
+| FEAT-055 | Voice Detection Service & Wake Status Indicators on ESP32-S3-BOX-3 LCD Header | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | Header sub-row status dot (VOICE) and reactive wake phrase indicator (WAKE red->green) at x=70, y=31 | PASS |
+| FEAT-056 | Weekly Recurring Reminders & Automatic Rescheduling Engine | [remindersService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/remindersService.js) | Weekly interval recurrence selection, next occurrence 7-day wall-clock calculation, and auto-reschedule | PASS |
+| FEAT-057 | Deep Glucose Telemetry Q&A Engine & Profile Insights Workbench | [glucoseInsightService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/glucoseInsightService.js) | Real-time clinical telemetry synthesis (CGM curves, carbs, boluses, IOB/COB, loop temp basals) across web Q&A workbench and IMS voice brain (getBloodGlucose tool) | PASS |
+| FEAT-058 | Blood Sugar Portal Device Change Indicators | [GlucosePortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/GlucosePortal.jsx) | High-visibility Omnipod pod change and Libre sensor change status cards with pulse animations and prescription indicators | PASS |
+| FEAT-059 | Structured Item Creation & Voice Scope Enforcement | [hardwareClientService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/hardwareClientService.js) | Structured requirement scope enforcement across voice creation tools (scheduleItem, addCalendarEvent, rememberFact, addToList, saveDevIdea, startBackgroundTask, logCarbs) with anti-redundancy rules | PASS |
 
 
 
@@ -546,4 +547,43 @@
 2. **Dynamic Animations & Expressions:** Verify all face behaviors (dot grid breathing, natural blinks, glances, speaking mouth animation, sleeping face, thinking spinner) render crisply and smoothly on the scaled canvas.
 3. **Vertical Chat Space Expansion:** Verify the conversation message history container (`listRef`) occupies the newly freed vertical screen area, providing an additional ~200px of visible chat room.
 4. **Defensive Invariant 64 (Canvas Dot Pitch & DPI Scaling):** In `ImsFace.jsx`, `pitch` and `dot` sizes calculate dynamically as `Math.min(w / COLS, h / ROWS)` and canvas coordinates adapt accurately to `window.devicePixelRatio`, ensuring zero distortion, pixel blur, or layout shifts on resized container bounds.
+
+### Suite 55: Voice Detection Service & Wake Status Indicators on ESP32-S3-BOX-3 LCD Header (FEAT-055)
+1. **Header Layout & Alignment Verification:** On the ESP32-S3-BOX-3 LCD, verify the sub-header row renders directly underneath `(I)nformation (M)anagement (S)ystem` text, left-aligned strictly at `x=48` starting under the opening `'('` bracket of `(I)nformation`, and vertically positioned horizontally in line with the `USB` status indicator (`USB_ROW_Y = 31`).
+2. **Indicator Spacing Parity:** Verify the spacing between the status dot center and label text (`VOICE` and `WAKE`) is exactly 10px with a 4px dot radius, matching the identical dot-to-text distance of the `WIFI` and `USB` status indicators (`x=280 -> 290`).
+3. **Phonetic Pronunciation Wake Recognition:** Utter phonetic variations rhyming with "Tims", "Jims", or "rims" (e.g. `"Hey IMS"`, `"Hey Imz"`, `"Hi imms"`, `"Eh up ihms"`, `"hymns"`); confirm `wakeDaemonService` verifies the wake phrase successfully and triggers the assistant session.
+4. **Voice Detection Service Online State:** When the backend `wakeDaemonService` is active and Wi-Fi is connected, verify the first indicator dot renders in solid green (`#2ED573`) accompanied by the `"VOICE"` subtext.
+5. **Standby Wake State (Red Indicator):** In default standby mode waiting for a wake phrase, verify the adjacent `"WAKE"` indicator dot renders in solid red (`#FF4757`).
+6. **Wake Phrase Verification (Green Transition):** Utter an authorized wake phrase; verify `wakeDaemonService` verifies the phrase and emits a real-time WebSocket push; confirm the Box-3 LCD `"WAKE"` dot immediately transitions from red to vibrant green (`#2ED573`) during the active conversation.
+7. **Silence Timeout & Conversation Close (Revert to Red):** After 15 seconds of conversational silence or upon uttering `"IMS stop"`, verify the conversation closes, state returns to standby, and the `"WAKE"` indicator dot returns to solid red while the `"VOICE"` indicator stays solid green.
+8. **Defensive Invariant 65 (Hardware Sub-Header Delta-Redraw Hygiene):** In `main.cpp`, `drawVoiceDaemonIndicator()` paints to a dedicated 135x14px sub-header bounding patch (`x=44..179, y=24..38`), completely isolated from the top-left settings gear hitbox (`0..44`), top title line (`y=14`), and the right-hand WiFi/USB indicators (`x=272..320`). Reactive updates inside `loop()` and `handleFrame()` invoke delta-rendering without blanking the face canvas or triggering full-screen flicker.
+### Suite 56: Weekly Recurring Reminders & Automatic Rescheduling Engine (FEAT-056)
+1. **Dropdown Option Verification:** In `ScheduledItemsPortal.jsx` (New Reminder modal), open the "Repeat" recurrence dropdown; verify the options include `Once (No repeat)`, `Daily (Every day)`, `Weekdays (Mon-Fri)`, and `Weekly (Same day every week)` with value `'weekly'`.
+2. **Reminder Creation:** Select `Weekly (Same day every week)`, set a reminder time and note (e.g. "Water the plants"), and save; verify `POST /api/reminders` persists the row with `recurrence = 'weekly'` in the `scheduled_items` SQLite table.
+3. **Next Occurrence Calculation:** Verify `nextOccurrence(prevFireAtMs, 'weekly')` in `remindersService.js` calculates `londonWallTimeToUtcMs(p.year, p.month, p.day + 7, p.hour, p.minute, p.second)`, preserving exact wall-clock time across UK daylight saving transitions (BST/GMT).
+4. **Ringing Retirement & Automatic Reschedule:** When the weekly reminder fires and is retired/dismissed (`retireRinging`), verify the item is not deleted or disabled; confirm `fire_at` is advanced exactly 7 days into the future, `ringing` is reset to `0`, and the reminder remains active in the schedule list.
+5. **Gemini Live Tool Alignment:** Verify the `scheduleItem` tool schema in `hardwareClientService.js` includes `'weekly'` in the `recurrence` enum parameter so voice prompts can schedule weekly reminders seamlessly.
+6. **Defensive Invariant 66 (Wall-Clock Recurrence & Ringing Reset):** In `remindersService.js`, `nextOccurrence` leverages JavaScript `Date.UTC` roll-over semantics (`p.day + 7`) within `londonWallTimeToUtcMs`, recalculating daylight saving offsets dynamically. `retireRinging` resets `ringing = 0`, `ring_count = 0`, and `first_fired_at = NULL` prior to updating `fire_at`, guaranteeing recurring items cannot re-trigger spurious ringing loops.
+
+### Suite 57: Deep Glucose Telemetry Q&A Engine & Profile Insights Workbench (FEAT-057)
+1. **Interactive Web Q&A Submission:** Navigate to `/ims/glucose` under *Pump Profile & Fine-Tuning Insights*; verify the *Ask a Glucose & Telemetry Question* workbench renders directly above the evaluation window with preset question chips ("Why is my blood sugar so high right now?", "Did I take enough bolus for lunch?", "Is my basal rate too low this afternoon?"); click a preset chip or type a custom question and click *Ask Telemetry*.
+2. **Telemetry Snapshot & Synthesis:** Verify the workbench displays an animated loading indicator, queries `POST /api/glucose-hub/profile/ask`, and renders a structured clinical answer via `Prose.jsx` displaying live CGM trajectory, active IOB/COB, delivered loop temp basals vs scheduled profile rates, and practical takeaways.
+3. **Voice Tool Schema & Execution:** In `hardwareClientService.js`, verify `getBloodGlucose` declares an optional `question` parameter; verbally ask IMS *"Why is my blood sugar 12 right now?"* on the ESP32-S3-BOX-3 or Web Voice interface; verify backend router invokes `askProfileInsightQuestion(question)` and returns grounded clinical telemetry insights in authentic Yorkshire dialect.
+4. **Defensive Invariant 67 (Telemetry Query Schema Resilience):** In `glucoseInsightService.js`, `askProfileInsightQuestion` performs defensive column mapping on SQLite `ns_treatments` (using `at, event, insulin, carbs` without non-existent `notes`) and `ns_devicestatus` (`at, iob, basal_iob, cob`), with fallbacks if historical records are sparse or null.
+
+### Suite 58: Blood Sugar Portal Device Change Indicators (FEAT-058)
+1. **High-Visibility Device Badge Rendering:** Navigate to `/ims/glucose`; inspect the *Right Now* overview panel; verify high-visibility device change status badges are displayed beneath the current CGM reading and trend arrow.
+2. **Omnipod Change Badge:** When a pod change is scheduled for today in the calendar (`pod` icon active), verify a pulsing rose badge (`bg-rose-50 border-rose-200 text-rose-800 animate-pulse`) displays `"Omnipod Change: DUE TODAY"`.
+3. **Libre Sensor Change Badge:** When a sensor change is scheduled for today (`sensor` icon white), verify a sky blue badge displays `"Libre Sensor: DUE TODAY"`; if warmup is scheduled for tomorrow (`sensor` icon orange), verify an amber badge displays `"Libre Sensor: DUE TOMORROW"`.
+4. **Prescription Reorder Badge:** When prescription reordering is due, verify a pill badge displays `"Prescription: REORDER DUE TODAY"`.
+5. **Defensive Invariant 68 (Device State Isolation & Polling Hygiene):** In `GlucosePortal.jsx` and `glucoseHubService.js`, `deviceStatus` and `deviceIcons` are extracted synchronously from cached calendar rules without blocking Nightscout CGM polling or causing layout shifts.
+
+### Suite 59: Structured Item Creation & Voice Scope Enforcement (FEAT-059)
+1. **Full Information Request (Zero Re-Asking):** Utter or type *"set a reminder today at 1pm for a meeting"*; verify IMS extracts `type = 'reminder'`, `time = '13:00'`, `date = today`, `label = 'meeting'`, immediately executes `scheduleItem`, and confirms the reminder without asking redundant follow-up questions.
+2. **Missing Information Request (Structured Clarification):** Utter *"set an alarm"*; verify IMS detects missing time and label scopes and prompts with a concise question (e.g. *"What time is the alarm for and what is it called?"*).
+3. **Timer Creation Scope:** Utter *"set a 10 minute timer"*; verify IMS immediately calls `scheduleItem` with `whenSeconds: 600` without demanding a label.
+4. **Calendar Event Creation Scope:** Utter *"add a calendar event for Friday at 2pm for Project Review"*; verify IMS creates the event with `title: "Project Review"`, `date: [resolved Friday]`, and `time: "14:00"` without asking for details already provided.
+5. **Defensive Invariant 69 (Voice Item Creation Scope Compliance):** In `hardwareClientService.js` and `ims_persona_rules.md`, system prompts enforce structured extraction: if all mandatory scopes are met in the user turn, tools are called unconditionally; if mandatory scopes are absent, IMS asks single-turn targeted questions in authentic Yorkshire dialect.
+
+
 

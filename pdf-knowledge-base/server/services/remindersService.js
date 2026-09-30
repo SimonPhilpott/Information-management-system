@@ -61,7 +61,7 @@ function logEvent(item, event, { at = Date.now(), scheduledFor = null, detail = 
 }
 
 const VALID_TYPES = ['timer', 'alarm', 'reminder'];
-const VALID_RECURRENCE = ['once', 'daily', 'weekdays'];
+const VALID_RECURRENCE = ['once', 'daily', 'weekdays', 'weekly'];
 const LONDON_TZ = 'Europe/London';
 
 // All wall-clock reasoning ("7:30", "already passed today", "next weekday")
@@ -228,6 +228,9 @@ export function updateScheduledItem(id, { label, whenSeconds, time, date, recurr
 
 function nextOccurrence(prevFireAtMs, recurrence) {
   const p = londonParts(new Date(prevFireAtMs));
+  if (recurrence === 'weekly') {
+    return londonWallTimeToUtcMs(p.year, p.month, p.day + 7, p.hour, p.minute, p.second);
+  }
   let day = p.day;
   let ms;
   do {
@@ -236,6 +239,7 @@ function nextOccurrence(prevFireAtMs, recurrence) {
   } while (recurrence === 'weekdays' && isLondonWeekend(ms));
   return ms;
 }
+
 
 // A fired item keeps re-alerting rather than firing once and going quiet -
 // real alarms/timers/reminders should be hard to sleep through and easy to

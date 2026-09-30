@@ -652,6 +652,8 @@ volatile bool incomingParserResetPending = false;
 volatile bool geminiSetupComplete =
     false; // Set true only after Gemini sends setupComplete ACK
 volatile bool isMicHardwareMuted = false; // Physical top latching mute button state (GPIO 1)
+volatile bool voiceDaemonRunning = true;  // Voice Detection background service state
+volatile bool voiceWakeVerified = false;  // Active wake phrase detected indicator
 String lastTranscript = "Tap screen to ask a question";
 // volatile: written by beginListening()/audioMicTask() on Core 1 and Core 0
 // respectively, read from both - a plain unsigned long here let a stale
@@ -2432,6 +2434,47 @@ void drawUsbIndicator() {
   tft.endWrite();
 }
 
+// Voice Detection Background Service & Wake Status Indicators
+// Placed in the header directly under the '(I)nformation (M)anagement (S)ystem' text,
+// aligned strictly to the left starting where the first bracket '(' is for (I)nformation (x=48)
+// and vertically positioned exactly in line with the USB indicator (USB_ROW_Y).
+// Status dot 1: Voice Detection Service (green = running/online, red = disconnected)
+// Status dot 2: Wake Status (red = standby/listening for wake, green = wake detected / active conversation)
+#define HEADER_TITLE_Y 14
+#define VOICE_INDICATOR_X 48
+#define VOICE_INDICATOR_Y USB_ROW_Y
+void drawVoiceDaemonIndicator() {
+  if (onSettingsScreen) return;
+  tft.startWrite();
+  // Clear the sub-header indicator region (width 135px, height 14px) matching USB_ROW_Y height
+  tft.fillRect(VOICE_INDICATOR_X - 4, USB_ROW_Y - 7, 135, 14, tft.color565(20, 24, 34));
+
+  // Dot 1: Voice detection daemon running status (green / red) - radius 4 matching WIFI & USB dots
+  const bool daemonOnline = voiceDaemonRunning && (WiFi.status() == WL_CONNECTED);
+  tft.fillCircle(VOICE_INDICATOR_X + 4, USB_ROW_Y, 4,
+                 daemonOnline ? tft.color565(46, 213, 115) : tft.color565(255, 71, 87));
+
+  tft.setTextDatum(middle_left);
+  tft.setTextColor(tft.color565(140, 150, 175));
+  tft.setTextSize(1);
+  // 10px spacing from dot center (X+4) to text (X+14), exactly matching WIFI & USB indicator spacing (280 -> 290)
+  tft.drawString("VOICE", VOICE_INDICATOR_X + 14, USB_ROW_Y);
+
+  // Dot 2: Wake status indicator (red = standby/verifying, green = wake detected/conversation active)
+  const bool isWakeActive = voiceWakeVerified || (currentState == STATE_LISTENING && conversationOpen) ||
+                            (currentState == STATE_SPEAKING && conversationOpen) ||
+                            (currentState == STATE_THINKING && conversationOpen);
+  const int wakeDotX = VOICE_INDICATOR_X + 54;
+  tft.fillCircle(wakeDotX + 4, USB_ROW_Y, 4,
+                 isWakeActive ? tft.color565(46, 213, 115) : tft.color565(255, 71, 87));
+
+  tft.setTextColor(tft.color565(140, 150, 175));
+  // 10px spacing from dot center (wakeDotX+4) to text (wakeDotX+14)
+  tft.drawString("WAKE", wakeDotX + 14, USB_ROW_Y);
+  tft.setTextDatum(top_left);
+  tft.endWrite();
+}
+
 void renderScreen(bool forceRedraw = false) {
   // Checked FIRST, before touching any of the lastRendered* tracking below -
   // this must be a total no-op while the settings screen is open, not just
@@ -2468,21 +2511,17 @@ void renderScreen(bool forceRedraw = false) {
   tft.setTextSize(1);
   // Title with the bracketed initials in (faux) bold - Font0 has no bold
   // face, so a bold letter is drawn twice, 1px apart. Each bold letter is
-  // therefore 1px wider than normal, and the whole line is shifted left of
-  // true centre by TITLE_SHIFT_LEFT so that extra width can't creep toward
-  // the WIFI/USB indicators at the right of the bar.
+  // therefore 1px wider than normal, and the whole line starts at HEADER_TITLE_X (48)
+  // to cleanly clear the gear icon and align with the sub-header indicator row.
   {
-    const int TITLE_SHIFT_LEFT = 6;
     struct Seg { const char *txt; bool bold; };
     static const Seg segs[] = {
       {"(", false}, {"I", true}, {")nformation (", false}, {"M", true}, {")anagement (", false}, {"S", true}, {")ystem", false}};
-    int totalW = 0;
-    for (const Seg &sg : segs) totalW += tft.textWidth(sg.txt) + (sg.bold ? 1 : 0);
-    int x = 160 - totalW / 2 - TITLE_SHIFT_LEFT;
+    int x = HEADER_TITLE_X;
     tft.setTextDatum(middle_left);
     for (const Seg &sg : segs) {
-      tft.drawString(sg.txt, x, HEADER_CY);
-      if (sg.bold) tft.drawString(sg.txt, x + 1, HEADER_CY);
+      tft.drawString(sg.txt, x, HEADER_TITLE_Y);
+      if (sg.bold) tft.drawString(sg.txt, x + 1, HEADER_TITLE_Y);
       x += tft.textWidth(sg.txt) + (sg.bold ? 1 : 0);
     }
   }
@@ -2502,6 +2541,8 @@ void renderScreen(bool forceRedraw = false) {
   }
   tft.setTextDatum(top_left);
   drawUsbIndicator();
+  drawVoiceDaemonIndicator();
+
 
   // Main Body Background - starts right at HEADER_H, not a leftover hardcoded
   // 34: that gap used to overpaint the bottom ~16px of the taller header with
@@ -3808,6 +3849,22 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         sendTextQuery(announceMsg);
       }
     }
+    // Backend pushed wakeDaemon telemetry (Voice Detection Service & Wake status)
+    if (doc["wakeDaemon"].is<JsonObject>()) {
+      JsonObject wd = doc["wakeDaemon"];
+      if (wd.containsKey("running")) {
+        voiceDaemonRunning = wd["running"].as<bool>();
+      }
+      if (wd.containsKey("wakeVerified")) {
+        voiceWakeVerified = wd["wakeVerified"].as<bool>();
+      } else if (wd.containsKey("state")) {
+        const char *st = wd["state"] | "";
+        voiceWakeVerified = (strcmp(st, "CONVERSATION_ACTIVE") == 0);
+      }
+      if (!onSettingsScreen) {
+        drawVoiceDaemonIndicator();
+      }
+    }
     // Backend pushed updated blood glucose reading from Nightscout
     if (doc["glucose"].is<JsonObject>()) {
       JsonObject g = doc["glucose"];
@@ -4855,6 +4912,21 @@ void loop() {
       drawUsbIndicator();
     }
   }
+
+  {
+    static bool lastVoiceDaemonOnline = false;
+    static bool lastWakeActive = false;
+    const bool daemonOnlineNow = voiceDaemonRunning && (WiFi.status() == WL_CONNECTED);
+    const bool wakeActiveNow = voiceWakeVerified || (currentState == STATE_LISTENING && conversationOpen) ||
+                               (currentState == STATE_SPEAKING && conversationOpen) ||
+                               (currentState == STATE_THINKING && conversationOpen);
+    if (!onSettingsScreen && (daemonOnlineNow != lastVoiceDaemonOnline || wakeActiveNow != lastWakeActive)) {
+      lastVoiceDaemonOnline = daemonOnlineNow;
+      lastWakeActive = wakeActiveNow;
+      drawVoiceDaemonIndicator();
+    }
+  }
+
 
   {
     static int lastRenderedSecond = -1;

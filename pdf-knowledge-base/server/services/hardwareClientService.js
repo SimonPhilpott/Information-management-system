@@ -17,7 +17,7 @@ import { getEmotionNames, getFacePromptGuide } from "./faceDesignService.js";
 import { describeSources } from "./newsService.js";
 import { wakePhraseNames, wakeSpellings } from "./phrasesService.js";
 import { listBirthdays } from "./birthdayService.js";
-import { getEventsOn } from "./calendarService.js";
+import { getEventsOn, getDeviceIcons } from "./calendarService.js";
 import { describeDecksForIms } from "./decksService.js";
 import { describeCampaignsForIms } from "./campaignsService.js";
 import { collectionSummary } from "./boardgamesService.js";
@@ -755,6 +755,15 @@ function buildRecordsParagraph() {
     const rows = db.prepare('SELECT grams, food, at FROM carb_log WHERE at >= ? ORDER BY at').all(start);
     return rows.length ? rows.map((r) => `${r.grams} g${r.food ? ` ${r.food}` : ''} at ${new Date(r.at).toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' })}`).join('; ') : 'none';
   });
+  safe('DIABETES DEVICE CHANGES (Omnipod pod & Libre sensor from calendar)', () => {
+    const icons = getDeviceIcons() || [];
+    const parts = [];
+    if (icons.some((i) => i.icon === 'pod')) parts.push('Omnipod change is DUE TODAY');
+    if (icons.some((i) => i.icon === 'sensor' && i.color === 'white')) parts.push('Sensor change/fit is DUE TODAY');
+    else if (icons.some((i) => i.icon === 'sensor' && i.color === 'orange')) parts.push('Sensor change/fit is DUE TOMORROW');
+    if (icons.some((i) => i.icon === 'prescription')) parts.push('Prescription / sensor reorder is DUE TODAY');
+    return parts.length ? parts.join('; ') : 'no pod or sensor changes due today';
+  });
   safe('BOARD GAMES', () => { const c = collectionSummary(); return `${c.baseGames} games and ${c.expansions} expansions in the collection (${c.gamesWithExpansions} games have expansions; ${c.wantToSell} marked to sell) - getBoardGames to look any up`; });
   safe('MUSIC - want list and upcoming releases from artists in their library', () => {
     const wants = getMusicWants().filter((w) => !w.owned).slice(0, 12).map((w) => `${w.artist} - "${w.title}"${w.date ? ` (${w.date})` : ''}`);
@@ -855,8 +864,19 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             "JOKES: for a joke, call tellJoke and tell what it returns in your own voice; never invent one. HARD RULE above everything else: never tell, make up or repeat a racist or sexist joke, however dark the Humor setting; decline in one line and offer another. " +
             "GREETINGS AND SMALL TALK: keep them conversational - never mention blood sugar, glucose, insulin, carbs, runs or training unless the user asks; that information is for the morning / day report. " +
             "FACE: call setEmotion at the start of every spoken reply, and again if your tone shifts partway through. Tools are only ever called, never written or spoken: never put a function name or call (like setEmotion(...)) into your words. " +
-            "LENGTH: one to six complete sentences - short for simple things, longer only when needed. No lists read aloud, no monologues, never trail off. The one exception is the morning/day report (getDayReport), which covers every item as a longer spoken briefing. " +
-            "TOOLS: use your tools for anything about the user's own data. Report what they return in your own Yorkshire voice, never flat, and never invent data. Never be cruel or abusive.\n\n" +
+            "ITEM CREATION & REQUIREMENT SCOPES (STRICT GUIDELINES FOR CREATING ITEMS):\n" +
+            "When the user asks to create or set up a new item in any service, follow these exact requirement scopes. " +
+            "Rule 1 - PARSE ALL GIVEN DETAILS: Extract everything the user already stated (e.g. 'set a reminder today at 1pm for a meeting' -> type: reminder, time: 13:00, date: today, label: 'meeting'). DO NOT re-ask for details they already gave you!\n" +
+            "Rule 2 - ASK ONLY FOR MISSING REQUIRED SCOPES: If a required detail is missing, ask for ONLY what is missing in one concise question:\n" +
+            "• ALARMS (scheduleItem): Required: [time (24h or AM/PM), label/purpose, recurrence ('once', 'daily', 'weekdays', 'weekly')]. If time is given without a purpose, ask what it's for. If time is given without AM/PM or morning/afternoon context (e.g. 'alarm for 7'), clarify morning or evening. If recurrence is not stated, you may ask or default to once while confirming.\n" +
+            "• TIMERS (scheduleItem): Required: [duration / whenSeconds]. A label is optional for countdown timers. If duration is given (e.g. '10 minute timer'), create it immediately without asking questions.\n" +
+            "• REMINDERS (scheduleItem): Required: [time/whenSeconds, label/note, date (defaults to today if time is future)]. If they say 'remind me to call mum at 4pm', you have everything needed -> call scheduleItem immediately.\n" +
+            "• CALENDAR EVENTS (addCalendarEvent): Required: [title/what, date, time (optional for all-day events)]. If title and date are provided, call addCalendarEvent immediately.\n" +
+            "• MEMORIES (rememberFact): Required: [fact, category]. If fact is stated, call rememberFact immediately.\n" +
+            "• LIST ITEMS (addToList): Required: [listName (e.g. 'shopping', 'todo'), item]. If list or item is missing, ask.\n" +
+            "• CARBS (lookUpFood & logCarbs): Required: [food, grams]. If food is stated without quantity, look up or ask portion size, then propose grams before confirming.\n" +
+            "• DEV IDEAS (saveDevIdea): Required: [idea text in full detail]. Capture what they said in full.\n" +
+            "• BACKGROUND TASKS (startBackgroundTask): Required: [task research topic in full detail].\n\n" +
             buildServicesParagraph() + "\n\n" +
             buildRecordsParagraph() + "\n\n" +
             "WHEN SOMETHING FAILS: if a tool returns an error it is logged automatically as a dev idea for Claude Code (the result says so) - tell them briefly it didn't work and that you've flagged it to be fixed. If they want something IMS can't do yet, or something goes wrong that no tool reported, offer to note it as a dev idea and call saveDevIdea if they agree, written as a clear request for a developer: what they wanted, what happened, and any detail they gave.\n\n" +
@@ -928,7 +948,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "scheduleItem",
-            description: "RELATIVE TIMES: for anything like 'in an hour', '1 hour from now', 'in 20 minutes', 'in half an hour', use whenSeconds (3600, 1200, 1800...) - never ask morning or afternoon for these, and confirm using goesOffAt from the result. Briefly confirm what you set (the duration, or the time and date). Before an alarm or reminder: if they didn't say what it's for, ask; resolve day references like 'this Saturday' yourself from today's date. NEVER guess am/pm: if an hour is given with no am/pm and no obvious context ('remind me at 3'), ask morning or afternoon first - a wrongly timed alarm is a real failure. Creates a timer, alarm, or reminder. Use 'timer' for a simple countdown ('set a timer for 10 minutes'), 'alarm' for a specific clock time that should go off (optionally repeating daily or on weekdays), and 'reminder' for a note to be told about at a specific time or after a delay. Provide EITHER whenSeconds (for relative phrasing like 'in 20 minutes') OR time (for absolute phrasing like 'at 7:30'), never both. For time, also resolve any date the user implied (today, 'this Saturday', 'the 25th', 'the 25th of September', '3 days from now') into the date parameter yourself using the current date given in this prompt - don't leave that resolution to the caller. Once fired, this keeps re-alerting roughly every 30 seconds (up to 10 times) until dismissed - see the STOP PHRASES instruction elsewhere in this prompt for how a user dismisses one.",
+            description: "Creates a timer, alarm, or reminder. Scope requirements: 1) For 'timer': requires duration (whenSeconds). Label is optional. 2) For 'alarm': requires exact time (HH:MM / am-pm resolved) and label/purpose (if missing, ask what it is for); recurrence defaults to 'once' (supports 'daily', 'weekdays', 'weekly'). 3) For 'reminder': requires when (time/date or whenSeconds) AND what to be reminded about (label). IMPORTANT: If the user already provided all required details in their request (e.g. 'set a reminder today at 1pm for a meeting'), DO NOT ask again - call the tool immediately. NEVER guess am/pm: if an hour is ambiguous (e.g. 'at 3') without context, clarify morning or afternoon first. Use whenSeconds for relative times ('in 20 mins') and time/date for absolute times. Briefly confirm what you set.",
             behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
@@ -938,9 +958,10 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
                 whenSeconds: { type: "NUMBER", description: "Seconds from now, for relative phrasing like 'in 10 minutes'. Omit if using time/date instead." },
                 time: { type: "STRING", description: "24-hour HH:MM clock time. Omit if using whenSeconds instead." },
                 date: { type: "STRING", description: "YYYY-MM-DD, the real calendar date the time above applies to - resolved by YOU from whatever the user said (see this tool's main description) using the current date given in this prompt. Omit only for a same-day alarm/reminder with no date mentioned (rolls to tomorrow automatically if that time has already passed today)." },
-                recurrence: { type: "STRING", enum: ["once", "daily", "weekdays"], description: "Only meaningful for alarms. Defaults to 'once' if omitted." }
+                recurrence: { type: "STRING", enum: ["once", "daily", "weekdays", "weekly"], description: "Supports repeating reminders/alarms: 'once', 'daily', 'weekdays', or 'weekly' (every week at the same time on the same day). Defaults to 'once' if omitted." }
               },
               required: ["type"]
+
             }
           },
           {
@@ -1171,12 +1192,13 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "getBloodGlucose",
-            description: "Gets the user's blood glucose from IMS's own glucose log (their Nightscout / Libre data): the current reading in mmol/L with trend, change and insulin/carbs on board, plus time in range, average, variability, estimated HbA1c, recent lows (and whether they followed exercise) and last night, for the chosen period. Use it for any question about blood sugar, glucose, levels, lows, highs, time in range, overnight, or how they are doing. Report in your own voice. Never suggest insulin doses or setting changes - say it's worth raising with the diabetes team. If the reading is below 3.9, say first that they should treat the low. Carbs and timing ideas are fine.",
+            description: "Gets the user's blood glucose from IMS's own glucose log (their Nightscout / Libre data): the current reading in mmol/L with trend, change and insulin/carbs on board, plus time in range, average, variability, estimated HbA1c, recent lows (and whether they followed exercise) and last night, for the chosen period. When the user asks a specific question or wants insight (e.g. 'Why is my blood sugar so high?', 'Did I bolus enough for lunch?', 'Why did I spike?', 'Is my basal drifting?'), pass their query into the 'question' parameter to run a deep clinical telemetry analysis comparing CGM curves, carbs, boluses, IOB/COB, and delivered loop temp basals against their active pump profile. Report in your own voice. Never suggest insulin doses or setting changes - say it's worth raising with the diabetes team. If the reading is below 3.9, say first that they should treat the low. Carbs and timing ideas are fine.",
             behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
               properties: {
-                period: { type: "STRING", enum: ["today", "week", "fortnight", "month"], description: "How far back the summary looks; 'today' (the default) is the last 24 hours." }
+                period: { type: "STRING", enum: ["today", "week", "fortnight", "month"], description: "How far back the summary looks; 'today' (the default) is the last 24 hours." },
+                question: { type: "STRING", description: "Optional specific question or insight requested by the user, e.g. 'Why is my blood sugar so high right now?', 'Did I take enough bolus for lunch?', 'Is my basal rate too low this afternoon?'" }
               }
             }
           },

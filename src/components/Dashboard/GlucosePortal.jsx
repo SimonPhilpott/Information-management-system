@@ -3,7 +3,8 @@ import {
   Droplets, RotateCw, Sparkles, ChevronLeft, ChevronRight, Plus, Trash2, AlertTriangle,
   Moon, Database, ExternalLink, Eraser, Camera, Loader2, X, Check, Sliders, Activity,
   TrendingUp, TrendingDown, Clock, Save, RotateCcw, AlertCircle, CheckCircle2,
-  Download, Mail, FileText, Send
+  Download, Mail, FileText, Send, Radio, CircleDot, Pill, CalendarClock,
+  MessageSquare, HelpCircle, Lightbulb, CornerDownRight
 } from 'lucide-react';
 
 const MONGO_URL = 'https://cloud.mongodb.com/v2/5fabc4b4fcf8b709ce8ab13c#/explorer/6542751e47463e28ff4eeb80';
@@ -286,6 +287,11 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
   const [evalDays, setEvalDays] = useState(14);
   const [evalData, setEvalData] = useState(null);
   const [evalBusy, setEvalBusy] = useState(false);
+
+  // Q&A / Ask Insight State
+  const [askQuestion, setAskQuestion] = useState('');
+  const [askBusy, setAskBusy] = useState(false);
+  const [askResult, setAskResult] = useState(null);
 
   const notify = (msg, type = 'success') => { setNotification({ msg, type }); setTimeout(() => setNotification(null), 3500); };
   const panel = `rounded-2xl border p-5 ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/70 border-[#2E2B27]/10 shadow-sm'}`;
@@ -604,6 +610,28 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
     }
   };
 
+  const handleAskQuestion = async (customQ) => {
+    const q = (typeof customQ === 'string' ? customQ : askQuestion).trim();
+    if (!q) {
+      return notify('Please enter a question to ask.', 'error');
+    }
+    setAskBusy(true);
+    try {
+      const res = await (await fetch('/api/glucose-hub/profile/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q, profile })
+      })).json();
+      if (!res.success) throw new Error(res.error);
+      setAskResult(res.insight);
+      notify('Glucose telemetry analysed.');
+    } catch (err) {
+      notify(err.message, 'error');
+    } finally {
+      setAskBusy(false);
+    }
+  };
+
   // Compute daily basal sum
   const totalBasal = useMemo(() => {
     if (!profile?.basal) return 20.75;
@@ -816,22 +844,113 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
       )}
 
       {/* right now */}
-      <div className={`${panel} flex flex-wrap items-center gap-6`}>
-        <div>
-          <div className="text-[10px] font-black uppercase tracking-wider text-slate-500">Right now</div>
-          <div className={`text-5xl font-black tabular-nums ${colourOf(cur?.value, thresholds)} ${cur && !cur.fresh ? 'opacity-50' : ''}`}>
-            {cur ? cur.value : '--'} <span className="text-3xl">{ARROWS[cur?.direction] || ''}</span>
+      <div className={`${panel} flex flex-wrap items-center justify-between gap-6`}>
+        <div className="flex flex-wrap items-center gap-6">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-wider text-slate-500">Right now</div>
+            <div className={`text-5xl font-black tabular-nums ${colourOf(cur?.value, thresholds)} ${cur && !cur.fresh ? 'opacity-50' : ''}`}>
+              {cur ? cur.value : '--'} <span className="text-3xl">{ARROWS[cur?.direction] || ''}</span>
+            </div>
+            <div className="text-xs text-slate-500">{cur ? `${cur.delta != null ? `${cur.delta > 0 ? '+' : ''}${cur.delta} · ` : ''}${cur.minutesAgo} min ago · ${cur.range}` : 'No readings yet'}</div>
           </div>
-          <div className="text-xs text-slate-500">{cur ? `${cur.delta != null ? `${cur.delta > 0 ? '+' : ''}${cur.delta} · ` : ''}${cur.minutesAgo} min ago · ${cur.range}` : 'No readings yet'}</div>
+          <div className="flex gap-6 text-sm">
+            <div><div className="text-[10px] font-black uppercase tracking-wider text-slate-500">Insulin on board</div><div className="font-bold tabular-nums">{cur?.iob != null ? `${cur.iob} u` : '-'}</div></div>
+            <div><div className="text-[10px] font-black uppercase tracking-wider text-slate-500">Carbs on board</div><div className="font-bold tabular-nums">{cur?.cob != null ? `${cur.cob} g` : '-'}</div></div>
+          </div>
+          {summary?.overnight && (
+            <div className="flex items-start gap-2 text-xs"><Moon size={14} className="mt-0.5 text-indigo-400" />
+              <div><div className="text-[10px] font-black uppercase tracking-wider text-slate-500">Last night</div>
+                {summary.overnight.inRangePct}% in range · lowest {summary.overnight.min} · woke at {summary.overnight.endValue}</div></div>
+          )}
         </div>
-        <div className="flex gap-6 text-sm">
-          <div><div className="text-[10px] font-black uppercase tracking-wider text-slate-500">Insulin on board</div><div className="font-bold tabular-nums">{cur?.iob != null ? `${cur.iob} u` : '-'}</div></div>
-          <div><div className="text-[10px] font-black uppercase tracking-wider text-slate-500">Carbs on board</div><div className="font-bold tabular-nums">{cur?.cob != null ? `${cur.cob} g` : '-'}</div></div>
-        </div>
-        {summary?.overnight && (
-          <div className="flex items-start gap-2 text-xs"><Moon size={14} className="mt-0.5 text-indigo-400" />
-            <div><div className="text-[10px] font-black uppercase tracking-wider text-slate-500">Last night</div>
-              {summary.overnight.inRangePct}% in range · lowest {summary.overnight.min} · woke at {summary.overnight.endValue}</div></div>
+
+        {/* Device Status (Omnipod & Sensor) from calendar */}
+        {summary?.deviceStatus && (
+          <div className={`flex flex-wrap items-center gap-2 p-2.5 rounded-xl border ${
+            isDark ? 'bg-slate-950/40 border-white/10' : 'bg-white/80 border-[#2E2B27]/10'
+          } shadow-sm`}>
+            {/* Omnipod status */}
+            <div
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+                summary.deviceStatus.omnipodChangeDueToday
+                  ? isDark
+                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                    : 'bg-rose-50 text-rose-900 border-rose-200 shadow-sm'
+                  : isDark
+                  ? 'bg-white/5 text-slate-400 border-white/5'
+                  : 'bg-slate-50 text-slate-600 border-slate-200'
+              }`}
+              title={summary.deviceStatus.omnipodChangeDueToday ? 'Omnipod pod change event scheduled in calendar for today' : 'No Omnipod pod change scheduled today'}
+            >
+              <CircleDot size={14} className={summary.deviceStatus.omnipodChangeDueToday ? 'text-rose-500 animate-pulse' : 'text-slate-400'} />
+              <div>
+                <div className="text-[9px] uppercase tracking-wider opacity-70">Omnipod Pod</div>
+                <div className="font-extrabold text-[11px] whitespace-nowrap">
+                  {summary.deviceStatus.omnipodChangeDueToday ? 'Change DUE TODAY' : 'Pod Active'}
+                </div>
+              </div>
+            </div>
+
+            {/* Sensor status */}
+            <div
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+                summary.deviceStatus.sensorChangeDueToday
+                  ? isDark
+                    ? 'bg-sky-500/20 text-sky-300 border-sky-500/30'
+                    : 'bg-sky-50 text-sky-900 border-sky-200 shadow-sm'
+                  : summary.deviceStatus.sensorChangeDueTomorrow
+                  ? isDark
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                    : 'bg-amber-50 text-amber-900 border-amber-200 shadow-sm'
+                  : isDark
+                  ? 'bg-white/5 text-slate-400 border-white/5'
+                  : 'bg-slate-50 text-slate-600 border-slate-200'
+              }`}
+              title={
+                summary.deviceStatus.sensorChangeDueToday
+                  ? 'CGM sensor change event scheduled in calendar for today'
+                  : summary.deviceStatus.sensorChangeDueTomorrow
+                  ? 'CGM sensor change event scheduled in calendar for tomorrow'
+                  : 'No sensor change scheduled today'
+              }
+            >
+              <Radio size={14} className={
+                summary.deviceStatus.sensorChangeDueToday
+                  ? 'text-sky-500 animate-pulse'
+                  : summary.deviceStatus.sensorChangeDueTomorrow
+                  ? 'text-amber-500'
+                  : 'text-slate-400'
+              } />
+              <div>
+                <div className="text-[9px] uppercase tracking-wider opacity-70">Libre Sensor</div>
+                <div className="font-extrabold text-[11px] whitespace-nowrap">
+                  {summary.deviceStatus.sensorChangeDueToday
+                    ? 'Change DUE TODAY'
+                    : summary.deviceStatus.sensorChangeDueTomorrow
+                    ? 'Change DUE TOMORROW'
+                    : 'Sensor Active'}
+                </div>
+              </div>
+            </div>
+
+            {/* Prescription / Reorder status */}
+            {summary.deviceStatus.prescriptionDueToday && (
+              <div
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+                  isDark
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                    : 'bg-amber-50 text-amber-900 border-amber-200 shadow-sm'
+                }`}
+                title="Prescription or Libre sensor order event scheduled in calendar for today"
+              >
+                <Pill size={14} className="text-amber-500" />
+                <div>
+                  <div className="text-[9px] uppercase tracking-wider opacity-70">Prescription</div>
+                  <div className="font-extrabold text-[11px] whitespace-nowrap">Order / Reorder TODAY</div>
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -1407,6 +1526,136 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
             )}
           </div>
         )}
+
+        {/* Ask a Question / Fast Telemetry Insight Section */}
+        <div className={`p-4 rounded-2xl border mb-6 ${isDark ? 'bg-slate-950/40 border-white/10' : 'bg-white border-[#2E2B27]/10 shadow-sm'}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-sky-500/20 text-sky-400">
+                <MessageSquare size={16} />
+              </div>
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-200">
+                  Ask a Glucose & Telemetry Question
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Ask focused questions about current glucose spikes, meal boluses, active carbs, or basal drift.
+                </p>
+              </div>
+            </div>
+            {askResult && (
+              <button
+                onClick={() => setAskResult(null)}
+                className="text-[11px] font-bold text-slate-400 hover:text-slate-200 px-2 py-1 rounded-lg hover:bg-white/5"
+              >
+                Clear Answer
+              </button>
+            )}
+          </div>
+
+          {/* Quick Preset Question Chips */}
+          <div className="flex flex-wrap items-center gap-1.5 mb-3">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mr-1 flex items-center gap-1">
+              <Lightbulb size={11} className="text-amber-400" /> Suggestions:
+            </span>
+            {[
+              'Why is my blood sugar so high right now?',
+              'Did I bolus enough for my last meal?',
+              'How is my basal behaving this afternoon?',
+              'Is my IOB sufficient to cover current carbs?',
+              'Why did I drop low after my recent run?'
+            ].map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => {
+                  setAskQuestion(preset);
+                  handleAskQuestion(preset);
+                }}
+                disabled={askBusy}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all ${
+                  isDark
+                    ? 'bg-white/5 hover:bg-white/10 border-white/5 text-slate-300 hover:text-white'
+                    : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700'
+                } disabled:opacity-50`}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+
+          {/* Question Input Box */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleAskQuestion();
+            }}
+            className="flex flex-wrap sm:flex-nowrap gap-2"
+          >
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={askQuestion}
+                onChange={(e) => setAskQuestion(e.target.value)}
+                placeholder="Ask e.g. 'Why is my blood sugar 12.4 right now?' or 'Is my 12pm-4pm basal too low?'..."
+                className={`w-full ${field} pl-9`}
+                disabled={askBusy}
+              />
+              <HelpCircle size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            </div>
+
+            <button
+              type="submit"
+              disabled={askBusy || !askQuestion.trim()}
+              className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-md shadow-sky-500/20 disabled:opacity-50 transition-all shrink-0`}
+            >
+              {askBusy ? <RotateCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              {askBusy ? 'Analysing Telemetry...' : 'Get Insight'}
+            </button>
+          </form>
+
+          {/* Question Answer Display Card */}
+          {askResult && (
+            <div className={`mt-4 p-4 rounded-xl border animate-fade-in ${
+              isDark ? 'bg-slate-900/80 border-sky-500/30' : 'bg-sky-50/50 border-sky-200'
+            }`}>
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-2 mb-3 border-b border-white/5">
+                <div className="flex items-center gap-2 text-xs font-bold text-sky-400">
+                  <CornerDownRight size={14} />
+                  <span className="text-slate-200">Question: "{askResult.question}"</span>
+                </div>
+                <span className="text-[10px] text-slate-500 tabular-nums">
+                  Analysed at {new Date(askResult.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+
+              {/* Mini Context Badge Strip */}
+              {askResult.telemetrySnapshot && (
+                <div className="flex flex-wrap items-center gap-3 text-[11px] mb-3 pb-2.5 border-b border-white/5 text-slate-400">
+                  {askResult.telemetrySnapshot.currentReading && (
+                    <span className="flex items-center gap-1 font-semibold text-slate-200">
+                      Reading: <b className="text-sky-300">{askResult.telemetrySnapshot.currentReading.mmol} mmol/L ({askResult.telemetrySnapshot.currentReading.direction})</b>
+                    </span>
+                  )}
+                  {askResult.telemetrySnapshot.iob != null && (
+                    <span>IOB: <b className="text-slate-200">{askResult.telemetrySnapshot.iob} U</b></span>
+                  )}
+                  {askResult.telemetrySnapshot.cob != null && (
+                    <span>COB: <b className="text-slate-200">{askResult.telemetrySnapshot.cob} g</b></span>
+                  )}
+                  {askResult.telemetrySnapshot.scheduledBasal != null && (
+                    <span>Scheduled Basal: <b className="text-slate-200">{askResult.telemetrySnapshot.scheduledBasal} U/h</b></span>
+                  )}
+                  {askResult.telemetrySnapshot.scheduledIC != null && (
+                    <span>IC Ratio: <b className="text-slate-200">{askResult.telemetrySnapshot.scheduledIC} g/U</b></span>
+                  )}
+                </div>
+              )}
+
+              <Prose text={askResult.answer} isDark={isDark} />
+            </div>
+          )}
+        </div>
 
         {/* Evaluation Control Bar */}
         <div className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 mb-6 ${isDark ? 'bg-slate-950/50 border-white/10' : 'bg-slate-100 border-[#2E2B27]/10'}`}>

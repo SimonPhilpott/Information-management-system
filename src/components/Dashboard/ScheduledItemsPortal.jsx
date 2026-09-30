@@ -14,7 +14,13 @@ const TYPE_META = {
   timer: { icon: Clock, gradient: 'from-sky-500 to-blue-600', glow: 'rgba(59,130,246,0.3)', apiPath: '/api/timers', plural: 'Timers' },
   reminder: { icon: PenLine, gradient: 'from-emerald-500 to-teal-600', glow: 'rgba(16,185,129,0.3)', apiPath: '/api/reminders', plural: 'Reminders' },
 };
-const RECURRENCE_OPTIONS = ['once', 'daily', 'weekdays'];
+const RECURRENCE_OPTIONS = [
+  { value: 'once', label: 'Once (No repeat)' },
+  { value: 'daily', label: 'Daily (Every day)' },
+  { value: 'weekdays', label: 'Weekdays (Mon-Fri)' },
+  { value: 'weekly', label: 'Weekly (Same day every week)' },
+];
+
 
 function toLocalInputValue(iso) {
   const d = new Date(iso);
@@ -258,9 +264,10 @@ export default function ScheduledItemsPortal({ type, theme = 'dark', onThemeTogg
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70">Repeats</label>
                 <select className={fieldClass} value={form.recurrence} onChange={(e) => setForm({ ...form, recurrence: e.target.value })}>
-                  {RECURRENCE_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                  {RECURRENCE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
               </div>
+
               <div className="flex items-end gap-2">
                 <button onClick={submitForm} className={`flex-1 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gradient-to-r ${meta.gradient} text-white active:scale-95`}>
                   <Save size={13} /> Save

@@ -65,11 +65,26 @@ export function matchesWake(text) {
   return lists().wake.some((v) => t === v || opening.startsWith(v) || opening.includes(` ${v}`) || (v.length >= 3 && opening === v));
 }
 // Does what was just heard end with one of the stop phrase's spellings?
+// Enforces strict multi-character word matching so phonetic fragments or single letters ('m stop', 're set') never trigger.
 export function matchesStop(text) {
   const t = norm(text);
   if (!t) return false;
-  const tail = t.split(' ').slice(-5).join(' ');
-  return lists().stop.some((v) => tail === v || tail.endsWith(` ${v}`) || tail.endsWith(v) && tail.length - v.length <= 12);
+  const words = t.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return false;
+  const tail5 = words.slice(-5).join(' ');
+  const tail2 = words.slice(-2).join(' ');
+  const lastWord = words[words.length - 1];
+
+  return lists().stop.some((v) => {
+    const vWords = v.split(/\s+/).filter(Boolean);
+    if (vWords.length === 0) return false;
+    // Multi-word stop phrase (e.g. 'ims stop', 'stop ims', 'eems stop')
+    if (vWords.length >= 2) {
+      return tail5 === v || tail5.endsWith(` ${v}`) || tail2 === v;
+    }
+    // Single-word stop phrase (must be exact word match, e.g. standalone 'stop')
+    return lastWord === v || words.includes(v);
+  });
 }
 export const wakePhraseNames = () => lists().wakePhrases;
 // How the wake phrases have actually been transcribed (from recordings and edits), for Ims's instructions.
@@ -159,7 +174,16 @@ export async function addRecording(id, pcmBase64, pcmBuffer = null) {
   db.prepare('INSERT INTO phrase_recordings (phrase_id, file, transcript, created_at) VALUES (?, ?, ?, ?)').run(row.id, file, transcript || '', Date.now());
   const variants = (() => { try { return JSON.parse(row.variants || '[]'); } catch { return []; } })();
   const n = norm(transcript);
-  const added = Boolean(n) && !variants.includes(n) && n !== norm(row.phrase);
+  // Guard against recording noisy single letters or partial subwords for stop phrases
+  const isValidVariant = () => {
+    if (!n) return false;
+    if (row.kind === 'stop') {
+      const words = n.split(/\s+/).filter(Boolean);
+      return words.length >= 2 && words.every((w) => w.length >= 2) && n.includes('stop');
+    }
+    return n.length >= 3;
+  };
+  const added = isValidVariant() && !variants.includes(n) && n !== norm(row.phrase);
   if (added) db.prepare('UPDATE voice_phrases SET variants = ? WHERE id = ?').run(JSON.stringify([...variants, n]), row.id);
   invalidate();
   return { transcript, added, phrase: present(db.prepare('SELECT * FROM voice_phrases WHERE id = ?').get(row.id)) };

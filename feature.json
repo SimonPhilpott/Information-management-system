@@ -706,6 +706,61 @@
         "Preserves exact 12x8 dot grid pixel aspect ratio and dynamic breathing/expressions",
         "Compacted vertical padding to expand the scrollable chat message viewport by ~200px"
       ]
+    },
+    "Voice Detection Background Service & Wake Status Indicators on ESP32-S3-BOX-3 LCD": {
+      "status": "enabled",
+      "description": "Voice detection daemon online status indicator and active reactive wake phrase status indicator (red to green) displayed in the top header directly under '(I)nformation (M)anagement (S)ystem' text on the ESP32-S3-BOX-3 LCD, aligned strictly to the left at x=48 under the opening bracket of (I)nformation and vertically positioned horizontally in line with the USB indicator (USB_ROW_Y = 31) with matching 10px dot-to-text spacing.",
+      "subFeatures": [
+        "Voice detection service indicator dot aligned strictly to the left at x=48 under the opening '(' bracket of (I)nformation and horizontally in line with USB status (USB_ROW_Y = 31)",
+        "Matching 10px spacing between indicator dot center and label text (VOICE and WAKE) identical to WIFI and USB status indicators",
+        "Color-coded daemon status (green #2ED573 when online and connected, red #FF4757 if disconnected)",
+        "Adjacent WAKE status indicator dot transitioning from red on standby to green upon verified wake phrase or active conversation",
+        "Full phonetic wake recognition supporting 'ims', 'imz', 'ihms', 'imms', 'ems', 'eems' rhyming with Tims/Jims/rims",
+        "Real-time event-driven telemetry broadcasting from wakeDaemonService to active hardware clients",
+        "Delta-redraw and loop state checks in main.cpp for instantaneous flicker-free updates"
+      ]
+    },
+    "Weekly Recurring Reminders & Automatic Rescheduling Engine": {
+      "status": "enabled",
+      "description": "Weekly interval recurrence support for reminders and scheduled items, automatically advancing 7 days (same day of week, same time) upon delivery or dismissal while preserving original wall-clock schedule across daylight savings.",
+      "subFeatures": [
+        "Added 'weekly' recurrence option to repeat dropdown in ScheduledItemsPortal.jsx with user-friendly label mapping",
+        "Automatic +7 days wall-clock next occurrence calculation in nextOccurrence() (remindersService.js)",
+        "Full support in REST API (POST/PUT /api/reminders, /api/alarms) and listScheduledItems",
+        "Gemini tool calling schema recurrence enum updated to include 'weekly' in scheduleItem",
+        "Database persistence in SQLite scheduled_items table with timeline logging"
+      ]
+    },
+    "Deep Glucose Telemetry Q&A Engine & Profile Insights Workbench": {
+      "status": "enabled",
+      "description": "Continuous telemetry synthesis engine (askProfileInsightQuestion) auditing real-time CGM curves, meal boluses, carbohydrate intakes, IOB/COB, and delivered loop temp basals against the runner's scheduled 20u pump profile, accessible both in an interactive web Q&A workbench and vocally via IMS's voice brain (getBloodGlucose tool).",
+      "subFeatures": [
+        "Clinical telemetry extraction in glucoseInsightService.js querying 6h/24h CGM readings, treatments, carb logs, and loop device status",
+        "Empirical evaluation of 12:00-16:00 and overnight basal drift, meal postprandial excursions, and diurnal ISF variation",
+        "Interactive Q&A section with preset question chips and real-time Prose report rendering in GlucosePortal.jsx above the evaluation window",
+        "Direct voice tool integration expanding getBloodGlucose schema with an optional question parameter in hardwareClientService.js and index.js",
+        "Dedicated REST endpoint mounted at POST /api/glucose-hub/profile/ask"
+      ]
+    },
+    "Blood Sugar Portal Device Change Indicators": {
+      "status": "enabled",
+      "description": "High-visibility Omnipod pod change and Libre sensor fitting status badges rendered directly on the Blood Sugar service portal (GlucosePortal.jsx) in the Right Now panel, synchronized from Google Calendar rules.",
+      "subFeatures": [
+        "Exposes deviceStatus and deviceIcons in getSummary() in glucoseHubService.js",
+        "Pulsing rose badge for Omnipod change DUE TODAY",
+        "Pulsing sky blue badge for Libre sensor change DUE TODAY and amber badge for DUE TOMORROW",
+        "Pill indicator badge for prescription reorder DUE TODAY"
+      ]
+    },
+    "Structured Item Creation & Voice Scope Enforcement": {
+      "status": "enabled",
+      "description": "Structured requirement scope enforcement across voice creation tools (alarms, timers, reminders, calendar events, list items, memories, dev ideas, background tasks, and carb entries). Enforces immediate execution when full scopes are provided without re-asking, and concise single-turn clarification for missing fields.",
+      "subFeatures": [
+        "System instruction creation rules defining precise required vs optional parameter bundles per service",
+        "Anti-redundancy invariant preventing IMS from re-asking details already supplied in the initial request",
+        "Updated scheduleItem tool description and parameter contracts in hardwareClientService.js",
+        "Markdown persona rule sync in ims_persona_rules.md Section 5 for live session persistence"
+      ]
     }
   }
 }

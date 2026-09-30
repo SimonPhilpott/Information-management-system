@@ -3,6 +3,7 @@ import config from '../config.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import crypto from 'crypto';
 import { encryptSecret, decryptSecret } from './wifiService.js';
+import { getDeviceIcons } from './calendarService.js';
 
 // The blood sugar service: everything is worked out from the local copy of Nightscout
 // (ns_entries / ns_treatments / ns_devicestatus, filled every minute by glucoseService and
@@ -200,6 +201,20 @@ function dataSince() {
   return r?.a || null;
 }
 
+export function getDeviceChangeStatus() {
+  const icons = getDeviceIcons() || [];
+  const podIcon = icons.find((i) => i.icon === 'pod');
+  const sensorIcon = icons.find((i) => i.icon === 'sensor');
+  const rxIcon = icons.find((i) => i.icon === 'prescription');
+  return {
+    icons,
+    omnipodChangeDueToday: Boolean(podIcon),
+    sensorChangeDueToday: Boolean(sensorIcon && sensorIcon.color === 'white'),
+    sensorChangeDueTomorrow: Boolean(sensorIcon && sensorIcon.color === 'orange'),
+    prescriptionDueToday: Boolean(rxIcon)
+  };
+}
+
 export function getSummary(days = 14) {
   days = Math.max(1, Math.min(90, Number(days) || 14));
   const to = Date.now();
@@ -209,6 +224,7 @@ export function getSummary(days = 14) {
   const stats = statsOf(rs, to - from);
   const prevFrom = from - (to - from);
   const prevStats = statsOf(readings(prevFrom, from), to - from);
+  const dev = getDeviceChangeStatus();
   return {
     days, from, to, dataSince: since,
     current: getCurrent(),
@@ -218,6 +234,8 @@ export function getSummary(days = 14) {
     totals: insulinAndCarbs(from, to),
     overnight: getOvernight(),
     thresholds: getGlucoseThresholds(),
+    deviceStatus: dev,
+    deviceIcons: dev.icons
   };
 }
 
@@ -364,8 +382,10 @@ export function describeForIms(period = 'today') {
   const th = getGlucoseThresholds();
   const days = period === 'week' ? 7 : period === 'fortnight' ? 14 : period === 'month' ? 30 : 1;
   const s = getSummary(days);
+
   const out = {
     now: cur ? { mmol: cur.value, trend: cur.direction, changeLast5Min: cur.delta, range: cur.range, minutesOld: cur.minutesAgo, insulinOnBoardUnits: cur.iob, carbsOnBoardG: cur.cob } : 'no recent reading',
+    deviceStatus: s.deviceStatus,
     period: days === 1 ? 'last 24 hours' : `last ${days} days`,
     note: s.dataSince && Date.now() - s.dataSince < days * 86400000 ? `Only ${r1((Date.now() - s.dataSince) / 86400000)} days of history so far (the log was recently restarted), so treat patterns as early.` : undefined,
     timeInRange: s.stats ? { inRange: `${s.stats.inRangePct}% (${th.low}-${th.high} mmol/L)`, belowLow: `${r1(s.stats.lowPct + s.stats.veryLowPct)}% (<${th.low})`, aboveHigh: `${r1(s.stats.highPct + s.stats.veryHighPct)}% (>${th.high})`, average: s.stats.mean, variabilityCV: `${s.stats.cvPct}%`, estimatedHbA1c: `${s.stats.gmiPct}%` } : 'no readings',

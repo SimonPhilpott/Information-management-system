@@ -55,6 +55,7 @@ import voiceRoutes from './routes/voice.js';
 import memoriesRoutes from './routes/memories.js';
 import glucoseHubRoutes from './routes/glucoseHub.js';
 import { describeForIms as describeGlucoseForIms, logCarbs, clearOldNightscout, recentCarbs } from './services/glucoseHubService.js';
+import { askProfileInsightQuestion } from './services/glucoseInsightService.js';
 import { lookUpFood } from './services/foodService.js';
 import { isApprovedSession, isGuestSession, setGuestCheck } from './middleware/requireSession.js';
 import { isInvited } from './services/decksService.js';
@@ -1048,14 +1049,6 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         }
 
         if (isHardware) {
-          const heardForStop = parsed.serverContent?.inputTranscription?.text;
-          if (heardForStop) {
-            stopWindow = (stopWindow + ' ' + heardForStop).slice(-70);
-            if (matchesStop(stopWindow) || wakeDaemonService.isFarewellPhrase(stopWindow).matches) {
-              cancelConversation('stop_phrase');
-              return;
-            }
-          }
           if (parsed.serverContent?.inputTranscription?.text) {
             userTranscriptSeen = true; unsolicitedTurn = false;
             if (!heardStartAt) heardStartAt = Date.now();
@@ -1064,13 +1057,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
             // Wake Daemon user speech assessment
             const speechEval = wakeDaemonService.processUserSpeech(incomingTranscript, 'hardware');
-            if (speechEval.action === 'farewell_detected') {
-              console.log(`${tag} 👋 Farewell phrase detected by Wake Daemon ("${speechEval.phrase}")`);
-              if (speechEval.isSoleFarewell) {
-                cancelConversation('bye_phrase');
-                return;
-              }
-            } else if (speechEval.action === 'wake_accepted') {
+            if (speechEval.action === 'wake_accepted') {
               isConversationActive = true;
             } else if (speechEval.action === 'wake_rejected') {
               unsolicitedTurn = true;
@@ -1233,7 +1220,15 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
         }
 
-        if (parsed.serverContent?.interrupted && isHardware) paceFlush(); // the user cut in - drop what hasn't been sent yet
+        if (parsed.serverContent?.interrupted && isHardware) {
+          const msSinceOwnAudio = lastModelAudioTime > 0 ? (Date.now() - lastModelAudioTime) : -1;
+          const dayReportGrace = dayReportSentAt && (Date.now() - dayReportSentAt) < 120000;
+          // Only flush audio queue if this was a genuine user barge-in (user transcript seen and model was not actively generating chunks within 500ms),
+          // and never flush during a day report unless explicit stop phrase was verified.
+          if (!dayReportGrace && (msSinceOwnAudio > 600 || userTranscriptSeen)) {
+            paceFlush();
+          }
+        }
         if (parsed.serverContent?.interrupted) {
           // msSinceOwnAudio small (a couple hundred ms or less) points at the
           // model interrupting ITS OWN in-flight generation (a self-revision,
@@ -1250,13 +1245,13 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         }
 
         if (parsed.serverContent?.turnComplete) {
-          wakeDaemonService.notifyModelSpeechEnd();
+          const playEnd = isHardware ? (paceSentMs ? paceStart + paceSentMs : Date.now()) : Math.max(Date.now(), webAudioEndAt);
+          wakeDaemonService.notifyModelSpeechEnd(playEnd);
           if (!parsed.toolCall) {
             currentTurnComplete = true; // Gemini confirmed the turn ended cleanly
             turnCompleteAt = Date.now();
             if (turnHadAudio) {
               resetTurnTriggers(); turnHadAudio = false;
-              const playEnd = isHardware ? (paceSentMs ? paceStart + paceSentMs : Date.now()) : Math.max(Date.now(), webAudioEndAt);
               followUpUntil = playEnd + FOLLOW_UP_MS;
             }
           }
@@ -1586,13 +1581,35 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               let wants = []; try { wants = getMusicWants().filter((w) => !w.owned).map((w) => ({ artist: w.artist, title: w.title, date: w.date, released: w.released })); } catch (_) { /* none */ }
               respondToToolCall(call, { period, count: releases.length, releases: releases.slice(0, 25), wantList: wants.slice(0, 15), note: 'wantList is what the user has starred as wanted - mention if any of these are in the releases.' });
             } else if (call.name === 'getBloodGlucose') {
-              try {
-                const g = describeGlucoseForIms(call.args?.period || 'today');
-                console.log(`${tag} 🩸 getBloodGlucose(${call.args?.period || 'today'}) -> ${JSON.stringify(g.now).slice(0, 120)}`);
-                respondToToolCall(call, g);
-              } catch (err) {
-                console.error(`${tag} getBloodGlucose error:`, err.message);
-                respondToToolCall(call, { error: err.message, fallback: 'Blood glucose data currently unavailable.' });
+              const question = call.args?.question ? String(call.args.question).trim() : '';
+              if (question) {
+                console.log(`${tag} 🩸 getBloodGlucose question requested: "${question}"`);
+                askProfileInsightQuestion(question).then((insight) => {
+                  console.log(`${tag} 🩸 getBloodGlucose deep insight answered: snapshot reading=${insight.telemetrySnapshot?.currentReading?.mmol} mmol/L`);
+                  respondToToolCall(call, {
+                    question: insight.question,
+                    insight: insight.answer,
+                    telemetrySnapshot: insight.telemetrySnapshot,
+                    instruction: 'Summarise the clinical telemetry insight in your authentic Yorkshire voice directly answering the user. Do not prescribe exact medical insulin doses; frame recommendations as things to trial safely or check with their diabetes care team.'
+                  });
+                }).catch((err) => {
+                  console.error(`${tag} getBloodGlucose insight error:`, err.message);
+                  try {
+                    const fallback = describeGlucoseForIms(call.args?.period || 'today');
+                    respondToToolCall(call, { ...fallback, insightError: err.message });
+                  } catch (e) {
+                    respondToToolCall(call, { error: err.message, fallback: 'Blood glucose telemetry analysis currently unavailable.' });
+                  }
+                });
+              } else {
+                try {
+                  const g = describeGlucoseForIms(call.args?.period || 'today');
+                  console.log(`${tag} 🩸 getBloodGlucose(${call.args?.period || 'today'}) -> ${JSON.stringify(g.now).slice(0, 120)}`);
+                  respondToToolCall(call, g);
+                } catch (err) {
+                  console.error(`${tag} getBloodGlucose error:`, err.message);
+                  respondToToolCall(call, { error: err.message, fallback: 'Blood glucose data currently unavailable.' });
+                }
               }
             } else if (call.name === 'getDayReport') {
               getDayReport().then((r) => {
@@ -1820,6 +1837,14 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         try { currentGeminiWs.close(1000, `WakeDaemon: ${reason}`); } catch (_) {}
         currentGeminiWs = null;
       }
+    },
+    isPlayingOrPacing: () => {
+      if (!currentTurnComplete) return true;
+      if (isHardware) {
+        const playingUntil = paceSentMs ? paceStart + paceSentMs : 0;
+        return (paceQueue.length > 0) || (Date.now() < playingUntil);
+      }
+      return Date.now() < webAudioEndAt;
     },
     logCapture
   });
@@ -2326,6 +2351,33 @@ startGlucosePoller((glucose) => {
     }
   }
 });
+
+// Voice Detection Background Service (Wake Daemon): push real-time telemetry to hardware client
+const pushWakeDaemonStatus = (extra = {}) => {
+  if (activeHardwareSession?.clientWs?.readyState === WebSocket.OPEN) {
+    try {
+      activeHardwareSession.clientWs.send(JSON.stringify({
+        wakeDaemon: {
+          running: true,
+          state: wakeDaemonService.state,
+          wakeVerified: wakeDaemonService.state === 'CONVERSATION_ACTIVE',
+          ...extra
+        }
+      }));
+    } catch (err) {
+      console.error('[WakeDaemon] Failed to push status to hardware client:', err.message);
+    }
+  }
+};
+
+wakeDaemonService.on('stateChange', ({ state, reason }) => {
+  pushWakeDaemonStatus({ state, reason });
+});
+
+wakeDaemonService.on('wakeVerified', ({ phrase }) => {
+  pushWakeDaemonStatus({ state: 'CONVERSATION_ACTIVE', wakeVerified: true, phrase });
+});
+
 
 // Pre-warm day report cache on server startup in the background
 prewarmDayReportCache({ markNews: false }).then(() => {

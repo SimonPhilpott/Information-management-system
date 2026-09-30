@@ -485,3 +485,148 @@ FORMATTING RULES:
   return result;
 }
 
+/**
+ * Answers focused telemetry & profile insight questions (e.g., "Why is my blood sugar so high?",
+ * "Did I take enough bolus for lunch?", "How is my basal behaving this afternoon?")
+ * by inspecting real-time CGM readings, recent carbs, boluses, temp basals, and the active profile.
+ */
+export async function askProfileInsightQuestion(question, customProfile = null) {
+  if (!question || !String(question).trim()) {
+    throw new Error('Please provide a question to analyse.');
+  }
+
+  const profile = customProfile || getProfile();
+  const th = getGlucoseThresholds();
+  const pLow = th.personalLow || 4.5;
+  const pHigh = th.personalHigh || th.tightHigh || 7.8;
+
+  // Gather last 24 hours of telemetry for immediate context
+  const now = Date.now();
+  const from24h = now - 24 * 3600000;
+  const from6h = now - 6 * 3600000;
+
+  // CGM readings
+  const rawEntries = db.prepare('SELECT date, sgv, direction FROM ns_entries WHERE date >= ? ORDER BY date ASC').all(from24h);
+  const entries24h = rawEntries.map(e => ({
+    time: new Date(e.date).toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' }),
+    mmol: r1(mmol(e.sgv)),
+    direction: e.direction || 'Flat'
+  }));
+
+  const currentReading = entries24h[entries24h.length - 1] || null;
+  const readings6h = entries24h.slice(-72); // last 6 hours (at 5 min intervals)
+
+  // Treatments (boluses, carbs) in last 24 hours
+  const treatments = db.prepare(
+    'SELECT at, event, insulin, carbs FROM ns_treatments WHERE at >= ? ORDER BY at ASC'
+  ).all(from24h).map(t => ({
+    time: new Date(t.at).toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' }),
+    hoursAgo: r1((now - t.at) / 3600000),
+    event: t.event,
+    insulin: t.insulin ? r1(t.insulin) : undefined,
+    carbs: t.carbs ? r1(t.carbs) : undefined
+  }));
+
+  // Local carb log entries
+  const localCarbs = db.prepare(
+    'SELECT at, grams, food, insulin FROM carb_log WHERE at >= ? ORDER BY at ASC'
+  ).all(from24h).map(c => ({
+    time: new Date(c.at).toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' }),
+    hoursAgo: r1((now - c.at) / 3600000),
+    grams: c.grams,
+    food: c.food || undefined,
+    insulin: c.insulin ? r1(c.insulin) : undefined
+  }));
+
+  // Device status / IOB / Temp basals in last 6 hours
+  const devStatus = db.prepare(
+    'SELECT at, iob, basal_iob, cob FROM ns_devicestatus WHERE at >= ? ORDER BY at ASC'
+  ).all(from6h).map(d => ({
+    time: new Date(d.at).toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' }),
+    iob: d.iob != null ? r1(d.iob) : undefined,
+    basalIob: d.basal_iob != null ? r1(d.basal_iob) : undefined,
+    cob: d.cob != null ? r1(d.cob) : undefined
+  }));
+
+  const latestDev = devStatus[devStatus.length - 1] || null;
+
+  // Recent Strava activities (today / yesterday)
+  const activities = db.prepare(
+    "SELECT name, sport, start_utc, moving_time, distance FROM strava_activities WHERE start_utc >= ? ORDER BY start_utc DESC LIMIT 3"
+  ).all(new Date(from24h).toISOString()).map(a => ({
+    name: a.name,
+    sport: a.sport,
+    time: new Date(a.start_utc).toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' }),
+    minutes: Math.round((a.moving_time || 0) / 60),
+    km: r1((a.distance || 0) / 1000)
+  }));
+
+  const currentHour = parseInt(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hourCycle: 'h23' }).format(now), 10);
+  const scheduledBasalNow = getScheduledBasal(profile, currentHour);
+  const scheduledICNow = getScheduledIC(profile, currentHour);
+  const scheduledISFNow = getScheduledISF(profile, currentHour);
+
+  const contextData = {
+    currentTime: new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', dateStyle: 'full', timeStyle: 'short' }).format(now),
+    currentReading,
+    latestTelemetry: {
+      iob: latestDev?.iob ?? 'Unknown',
+      cob: latestDev?.cob ?? 'Unknown',
+      basalIob: latestDev?.basalIob ?? 'Unknown'
+    },
+    scheduledProfileNow: {
+      profileName: profile.profileName,
+      basalRate: `${scheduledBasalNow} U/h`,
+      icRatio: `${scheduledICNow} g/U`,
+      isf: `${scheduledISFNow} mmol/L per U`
+    },
+    targetThresholds: {
+      medicalRange: `${th.low} - ${th.high} mmol/L`,
+      personalTarget: `${pLow} - ${pHigh} mmol/L`
+    },
+    recentReadings6h: readings6h.filter((_, idx) => idx % 3 === 0), // sampled every 15 min for conciseness
+    treatmentsLast24h: treatments,
+    carbsLoggedLast24h: localCarbs,
+    recentExercise: activities
+  };
+
+  const prompt = `You are an expert specialist clinical diabetes and automated insulin delivery (AID/AndroidAPS) advisor assisting an athlete with type 1 diabetes.
+The runner has asked the following specific insight question:
+"${question}"
+
+LIVE TELEMETRY & CONTEXT (Last 6-24 Hours):
+${JSON.stringify(contextData, null, 2)}
+
+TASK:
+Provide a clear, objective, and empathetic breakdown directly answering their question based on the actual telemetry:
+1. **Direct Answer & Headline**: Address their specific question immediately in 1-2 concise sentences (e.g. why the spike occurred, what IOB/COB is doing, or whether basal is drifting).
+2. **Telemetry Breakdown**:
+   - **Glucose Trajectory**: What the reading (${currentReading ? `${currentReading.mmol} mmol/L (${currentReading.direction})` : 'N/A'}) has done over the last few hours.
+   - **Carbs vs Boluses**: Review any recent food intakes, meal timing, and bolus amounts vs the scheduled IC ratio (${scheduledICNow} g/U).
+   - **Basal & Loop Action**: Contrast delivered basal against the scheduled profile (${scheduledBasalNow} U/h) and check active IOB (${latestDev?.iob ?? '--'} U).
+   - **Exercise / Activity Factors**: Note if recent running or exercise has altered sensitivity.
+3. **Actionable Takeaway**: 1-2 safe, practical considerations (e.g. waiting for IOB to finish, checking COB absorption, or discussing an IC/basal tweak with their clinical care team).
+
+CLINICAL RULES:
+- Use British English (en-GB) and units (mmol/L, U, g).
+- Do not prescribe exact medical insulin bolus doses. Frame parameter changes as observations to trial safely or raise with the diabetes team.
+- Keep the response structured, clear, and around 150-250 words.`;
+
+  const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const text = (await model.generateContent(prompt)).response.text().trim();
+
+  return {
+    question: question.trim(),
+    at: Date.now(),
+    answer: text,
+    telemetrySnapshot: {
+      currentReading,
+      iob: latestDev?.iob,
+      cob: latestDev?.cob,
+      scheduledBasal: scheduledBasalNow,
+      scheduledIC: scheduledICNow,
+      scheduledISF: scheduledISFNow
+    }
+  };
+}
+
