@@ -133,7 +133,7 @@ export function personalFit(sport = 'Run') {
 }
 
 function typicalPace(sport = 'Run') {
-  const rows = db.prepare(`SELECT avg_speed FROM strava_activities WHERE sport = ? AND avg_speed > 0 AND distance >= 3000 ORDER BY start_local DESC LIMIT 20`).all(sport);
+  const rows = db.prepare(`SELECT avg_speed FROM strava_activities WHERE sport = ? AND avg_speed > 0 AND distance >= 3000 AND (session_tag IS NULL OR session_tag NOT IN ('speed', 'hill')) ORDER BY start_local DESC LIMIT 20`).all(sport);
   if (!rows.length) return null;
   const sp = rows.map((r) => r.avg_speed).sort((a, b) => a - b)[Math.floor(rows.length / 2)];
   return Math.round((1000 / sp / 60) * 100) / 100;
@@ -144,17 +144,19 @@ function typicalPace(sport = 'Run') {
 // how hilly their usual runs are.
 function recentHistory(sport = 'Run') {
   const cutoff = new Date(Date.now() - 84 * 86400000).toISOString().slice(0, 10);
-  const rows = db.prepare(`SELECT day, distance, moving_time, elevation FROM strava_activities WHERE sport IN ('Run','TrailRun','VirtualRun') AND day >= ? AND distance >= 1500`).all(cutoff);
+  const rows = db.prepare(`SELECT day, distance, moving_time, elevation, session_tag FROM strava_activities WHERE sport IN ('Run','TrailRun','VirtualRun') AND day >= ? AND distance >= 1500`).all(cutoff);
   const med = (xs) => { const v = xs.filter((x) => Number.isFinite(x)).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : null; };
   const longest = rows.reduce((m, r) => (r.distance > (m?.distance ?? 0) ? r : m), null);
   const cut28 = new Date(Date.now() - 27 * 86400000).toISOString().slice(0, 10);
+  const paceEligible = rows.filter((r) => r.distance >= 3000 && (!r.session_tag || (r.session_tag !== 'speed' && r.session_tag !== 'hill')));
   return {
     runs: rows.length, longestKm: longest ? longest.distance / 1000 : null, longestMin: longest ? longest.moving_time / 60 : null,
-    typicalPace: med(rows.filter((r) => r.distance >= 3000).map((r) => r.moving_time / 60 / (r.distance / 1000))),
+    typicalPace: med(paceEligible.map((r) => r.moving_time / 60 / (r.distance / 1000))),
     climbPerKm: med(rows.filter((r) => r.distance >= 3000 && r.elevation != null).map((r) => r.elevation / (r.distance / 1000))),
     weeklyKm: rows.filter((r) => r.day >= cut28).reduce((a, r) => a + r.distance, 0) / 1000 / 4,
   };
 }
+
 const recommendFor = (d) => ({
   longRunKm: Math.round((d <= 10 ? 0.75 * d : d <= 25 ? Math.min(0.7 * d, 18) : Math.min(0.6 * d, 32)) * 10) / 10,
   weeklyKm: Math.round((d <= 10 ? Math.max(20, 2.5 * d) : d <= 25 ? 3 * d : Math.min(2 * d, 70)) * 10) / 10,

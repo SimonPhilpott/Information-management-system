@@ -23,6 +23,7 @@ import { describeCampaignsForIms } from "./campaignsService.js";
 import { collectionSummary } from "./boardgamesService.js";
 import { getUpcomingReleases, getWants as getMusicWants } from "./musicScanService.js";
 import { searchCodeSnippets } from "./codeRepoService.js";
+import { describeTraining, getSummary as getStravaSummary } from "./stravaService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -764,6 +765,19 @@ function buildRecordsParagraph() {
     if (icons.some((i) => i.icon === 'prescription')) parts.push('Prescription / sensor reorder is DUE TODAY');
     return parts.length ? parts.join('; ') : 'no pod or sensor changes due today';
   });
+  safe('TRAINING & RUNNING (All-time milestones & records from Strava)', () => {
+    const s = getStravaSummary();
+    if (!s || !s.records || !s.records.allTimeRuns) return 'no training data';
+    const rec = s.records;
+    const items = [];
+    items.push(`Total runs: ${rec.allTimeRuns.count} (${rec.allTimeRuns.totalMiles} mi / ${rec.allTimeRuns.totalKm} km)`);
+    if (rec.firstClubRun) items.push(`First official/club run: ${rec.firstClubRun.day} ("${rec.firstClubRun.name}", ${(rec.firstClubRun.distance / 1609.344).toFixed(1)} mi / ${(rec.firstClubRun.distance / 1000).toFixed(1)} km)`);
+    else if (rec.firstEverRun) items.push(`First ever run: ${rec.firstEverRun.day} ("${rec.firstEverRun.name}", ${(rec.firstEverRun.distance / 1609.344).toFixed(1)} mi / ${(rec.firstEverRun.distance / 1000).toFixed(1)} km)`);
+    if (rec.longestRun) items.push(`Longest run: ${(rec.longestRun.distance / 1609.344).toFixed(1)} mi (${(rec.longestRun.distance / 1000).toFixed(1)} km) on ${rec.longestRun.day} ("${rec.longestRun.name}")`);
+    if (rec.fastestRun) items.push(`Fastest 5k+ run: ${rec.fastestRun.day} ("${rec.fastestRun.name}", ${(rec.fastestRun.distance / 1000).toFixed(1)} km at ${(1000 / rec.fastestRun.avg_speed / 60).toFixed(2)} min/km)`);
+    if (rec.longest) items.push(`Longest overall activity: ${rec.longest.sport} "${rec.longest.name}" (${(rec.longest.distance / 1000).toFixed(1)} km) on ${rec.longest.day}`);
+    return items.join('; ') + ' - getTrainingSummary for details or other periods';
+  });
   safe('BOARD GAMES', () => { const c = collectionSummary(); return `${c.baseGames} games and ${c.expansions} expansions in the collection (${c.gamesWithExpansions} games have expansions; ${c.wantToSell} marked to sell) - getBoardGames to look any up`; });
   safe('MUSIC - want list and upcoming releases from artists in their library', () => {
     const wants = getMusicWants().filter((w) => !w.owned).slice(0, 12).map((w) => `${w.artist} - "${w.title}"${w.date ? ` (${w.date})` : ''}`);
@@ -856,7 +870,8 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             // Hard rules first; character, memory, personality and speech style last, closest to
             // where the model starts speaking, so they carry the most weight.
             "LANGUAGE: always speak English - never German or any other language, even if the audio is unclear or sounds foreign; if you cannot make out what was said, ask them in English to say it again. " + ACCENT_RULE + " " +
-            "WAKE PHRASES: when a reply would start from microphone audio (realtimeInput), only respond if the speech begins with 'Hey IMS', 'Hi IMS' or 'Eh up IMS' (or 'Ey up IMS')" + extraWakePhrases() + ". The name alone, other greetings ('Now then', 'Morning', 'Alright') and ambient room talk do not count - for anything else, call noWakeDetected and say nothing at all, even if it is a question. Text messages from the device system (clientContent) are exempt and answered at once. " +
+            "CLARIFICATION & NEVER SILENT WHEN ADDRESSED: When the user addresses you with a wake phrase, or when a conversation is open, if you do not understand the whole prompt or only understand small parts of it (e.g. muffled speech, quiet audio, clipped words), you must NEVER stay silent, NEVER call noWakeDetected, and NEVER revert to standby without speaking. Always ask for clarification in your natural Yorkshire voice (e.g. 'Sorry, didn't catch all of that - what was that last bit?', 'Didn't quite get that, what did you want me to do?'). If you are confused by what they mean or making an educated guess at their intent, speak up and ask for clarification or confirmation (e.g. 'I reckon you mean [guess], is that right, or did you mean something else?'). " +
+            "WAKE PHRASES: when a reply would start from microphone audio (realtimeInput), only respond if the speech begins with 'Hey IMS', 'Hi IMS' or 'Eh up IMS' (or 'Ey up IMS')" + extraWakePhrases() + ". The name alone, other greetings ('Now then', 'Morning', 'Alright') and ambient room talk do not count - for anything else (background TV, room chatter clearly NOT addressed to you), call noWakeDetected and say nothing at all. But if ANY wake phrase was said or the user is trying to speak to you, you MUST speak back (either answer or ask for clarification) and NEVER call noWakeDetected. Text messages from the device system (clientContent) are exempt and answered at once. " +
             "If the user only said the wake phrase, greet them freshly in your own voice. If ANYTHING followed the wake phrase (a question, request or statement), do NOT greet at all - no 'Ey up', no 'Now then', no pleasantry or acknowledgement - your first words are the answer itself. " +
             "Once you have replied, the conversation is open: keep answering follow-ups without the wake phrase until they close it ('bye', 'goodbye', 'thanks, bye', 'that's all, IMS', 'I'm done', 'see you later') - then say a brief farewell and call endConversation. " +
             "STOP: if they say 'stop IMS', 'shut up IMS', 'be quiet IMS', 'enough IMS', 'stop talking' or similar, call endConversation and say nothing (at most two or three words). Never explain or take offence. " +
@@ -958,7 +973,9 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
                 whenSeconds: { type: "NUMBER", description: "Seconds from now, for relative phrasing like 'in 10 minutes'. Omit if using time/date instead." },
                 time: { type: "STRING", description: "24-hour HH:MM clock time. Omit if using whenSeconds instead." },
                 date: { type: "STRING", description: "YYYY-MM-DD, the real calendar date the time above applies to - resolved by YOU from whatever the user said (see this tool's main description) using the current date given in this prompt. Omit only for a same-day alarm/reminder with no date mentioned (rolls to tomorrow automatically if that time has already passed today)." },
-                recurrence: { type: "STRING", enum: ["once", "daily", "weekdays", "weekly"], description: "Supports repeating reminders/alarms: 'once', 'daily', 'weekdays', or 'weekly' (every week at the same time on the same day). Defaults to 'once' if omitted." }
+                recurrence: { type: "STRING", enum: ["once", "daily", "weekdays", "weekly"], description: "Supports repeating reminders/alarms: 'once', 'daily', 'weekdays', or 'weekly' (every week at the same time on the same day). Defaults to 'once' if omitted." },
+                alertMode: { type: "STRING", enum: ["both", "vocal", "chimes"], description: "How the alert should sound when it goes off: 'both' (chime sound + vocal announcement, default), 'vocal' (spoken announcement only), or 'chimes' (alert chime sound only)." },
+                maxRepeats: { type: "NUMBER", description: "How many times the alert will repeat every 30 seconds before automatically dismissing if unanswered (1 to 10, default 5 for alarms/timers, 1 for reminders)." }
               },
               required: ["type"]
 
@@ -966,9 +983,15 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "getTrainingSummary",
-            description: "Reads the user's Strava training log: totals for the last week, four weeks or year against the period before, active days, sport mix and the latest activities. Call it whenever they ask how their training, running, riding or exercise has been going. Report exactly what it returns; if it says Strava is not connected, say so.",
+            description: "Reads the user's Strava training log and activity records: all-time milestones (such as first ever run/activity, longest run ever, fastest run, biggest climb, total lifetime runs and miles), as well as recent weekly, monthly, or annual totals against the previous period. ALWAYS call this tool whenever the user asks about their first run, longest run, personal bests, all-time records, total mileage, or how their running and cycling training is going. Report exactly what the tool returns.",
             behavior: "BLOCKING",
-            parameters: { type: "OBJECT", properties: { period: { type: "STRING", description: "'week', 'month' (default) or 'year'." } } }
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                period: { type: "STRING", description: "'all_time' (for records, first run, longest run, personal bests, or lifetime totals), 'month' (default), 'week', or 'year'." },
+                query: { type: "STRING", description: "Optional specific milestone or query e.g. 'first run', 'longest run', 'fastest 5k', 'records'." }
+              }
+            }
           },
           {
             name: "tellJoke",

@@ -246,13 +246,12 @@ export default function ImsHub({
     }
   };
 
+  const bgShell = isDark ? 'bg-[#030712] text-slate-100' : 'bg-[#F4EFED] text-[#2E2B27]';
+  const headerBg = isDark ? 'bg-[#030712]/90 border-white/10' : 'bg-[#F4EFED]/90 border-[#2E2B27]/15';
+
   return (
-    <div className={`h-screen overflow-y-auto w-full flex flex-col font-sans transition-colors duration-300 ${
-      isDark ? 'bg-[#030712] text-[#f3f4f6]' : 'bg-[#f4efed] text-[#1f2937]'
-    }`}>
-      <header className={`px-6 py-4 flex items-center justify-between border-b backdrop-blur-xl sticky top-0 z-40 transition-colors duration-300 ${
-        isDark ? 'bg-[#030712]/80 border-white/5' : 'bg-[#f4efed]/85 border-[#2E2B27]/10'
-      }`}>
+    <div className={`h-screen overflow-y-auto w-full flex flex-col font-sans transition-colors duration-300 ${bgShell}`}>
+      <header className={`px-6 py-4 flex items-center justify-between border-b backdrop-blur-xl sticky top-0 z-40 transition-colors duration-300 ${headerBg}`}>
         <div className="flex items-center gap-4">
           <button
             onClick={() => navigateTo('/')}
@@ -277,9 +276,9 @@ export default function ImsHub({
           </div>
         </div>
 
-        {onThemeToggle && (
-          <div className="flex items-center gap-2 shrink-0">
-            <AccountChip isDark={isDark} />
+        <div className="flex items-center gap-2 shrink-0">
+          <AccountChip isDark={isDark} />
+          {onThemeToggle && (
             <button
               onClick={onThemeToggle}
               className={`p-2 rounded-xl transition-all border ${
@@ -291,8 +290,8 @@ export default function ImsHub({
             >
               {isDark ? <Sun size={16} /> : <Moon size={16} />}
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </header>
 
       <main className="flex-1 max-w-7xl w-full mx-auto p-6 flex flex-col gap-6">

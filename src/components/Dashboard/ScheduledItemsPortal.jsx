@@ -22,6 +22,12 @@ const RECURRENCE_OPTIONS = [
 ];
 
 
+const ALERT_MODE_OPTIONS = [
+  { value: 'both', label: '🔔 + 🗣️ Chimes & Vocal' },
+  { value: 'chimes', label: '🔔 Chimes only' },
+  { value: 'vocal', label: '🗣️ Vocal only' },
+];
+
 function toLocalInputValue(iso) {
   const d = new Date(iso);
   const pad = (n) => String(n).padStart(2, '0');
@@ -33,12 +39,14 @@ export default function ScheduledItemsPortal({ type, theme = 'dark', onThemeTogg
   const Icon = meta.icon;
   const isDark = theme === 'dark';
 
+  const defaultRepeats = type === 'reminder' ? 1 : 5;
+
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
   const [notification, setNotification] = useState(null);
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState({ label: '', when: '', recurrence: 'once' });
+  const [form, setForm] = useState({ label: '', when: '', recurrence: 'once', alertMode: 'both', maxRepeats: defaultRepeats });
   const [isCreating, setIsCreating] = useState(false);
   const [tab, setTab] = useState('active');           // 'active' | 'archive'
   const [archive, setArchive] = useState([]);
@@ -121,14 +129,26 @@ export default function ScheduledItemsPortal({ type, theme = 'dark', onThemeTogg
   const startEdit = (item) => {
     setEditingId(item.id);
     setIsCreating(false);
-    setForm({ label: item.label || '', when: toLocalInputValue(item.fireAt), recurrence: item.recurrence });
+    setForm({
+      label: item.label || '',
+      when: toLocalInputValue(item.fireAt),
+      recurrence: item.recurrence || 'once',
+      alertMode: item.alertMode || 'both',
+      maxRepeats: Number(item.maxRepeats) || defaultRepeats
+    });
   };
 
   const startCreate = () => {
     setIsCreating(true);
     setEditingId(null);
     const d = new Date(Date.now() + 3600000);
-    setForm({ label: '', when: toLocalInputValue(d.toISOString()), recurrence: 'once' });
+    setForm({
+      label: '',
+      when: toLocalInputValue(d.toISOString()),
+      recurrence: 'once',
+      alertMode: 'both',
+      maxRepeats: defaultRepeats
+    });
   };
 
   const cancelForm = () => { setEditingId(null); setIsCreating(false); };
@@ -138,7 +158,14 @@ export default function ScheduledItemsPortal({ type, theme = 'dark', onThemeTogg
     const dt = new Date(form.when);
     const date = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
     const time = `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
-    const body = { label: form.label || null, date, time, recurrence: form.recurrence };
+    const body = {
+      label: form.label || null,
+      date,
+      time,
+      recurrence: form.recurrence,
+      alertMode: form.alertMode || 'both',
+      maxRepeats: Number(form.maxRepeats) || defaultRepeats
+    };
     try {
       const url = editingId ? `${meta.apiPath}/${editingId}` : meta.apiPath;
       const res = await fetch(url, {
@@ -170,13 +197,13 @@ export default function ScheduledItemsPortal({ type, theme = 'dark', onThemeTogg
   };
 
   const fieldClass = `w-full px-3 py-2 rounded-lg text-xs outline-none border ${
-    isDark ? 'bg-slate-950/60 border-white/10 text-slate-100' : 'bg-white border-[#2E2B27]/10 text-slate-900'
+    isDark ? 'bg-slate-950/60 border-white/10 text-slate-100' : 'bg-white border-[#2E2B27]/15 text-[#2E2B27]'
   }`;
-  const panelClass = `rounded-2xl border p-5 ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/70 border-[#2E2B27]/10 shadow-sm'}`;
+  const panelClass = `rounded-2xl border p-5 ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/90 border-[#2E2B27]/10 shadow-sm'}`;
 
   return (
     <div className={`h-screen overflow-y-auto w-full flex flex-col font-sans transition-colors duration-300 ${
-      isDark ? 'bg-[#030712] text-[#f3f4f6]' : 'bg-[#f4efed] text-[#1f2937]'
+      isDark ? 'bg-[#030712] text-slate-100' : 'bg-[#F4EFED] text-[#2E2B27]'
     }`}>
       {notification && (
         <div className={`fixed top-6 right-6 z-50 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 backdrop-blur-md border animate-in fade-in slide-in-from-top-4 duration-200 ${
@@ -190,7 +217,7 @@ export default function ScheduledItemsPortal({ type, theme = 'dark', onThemeTogg
       )}
 
       <header className={`px-6 py-4 flex items-center justify-between border-b backdrop-blur-xl sticky top-0 z-40 transition-colors duration-300 ${
-        isDark ? 'bg-[#030712]/80 border-white/5' : 'bg-[#f4efed]/85 border-[#2E2B27]/10'
+        isDark ? 'bg-[#030712]/90 border-white/10' : 'bg-[#F4EFED]/90 border-[#2E2B27]/15'
       }`}>
         <div className="flex items-center gap-4">
           <button onClick={handleReturnHome} className={`p-2 rounded-xl flex items-center gap-2 text-xs font-bold transition-all active:scale-95 ${
@@ -252,28 +279,43 @@ export default function ScheduledItemsPortal({ type, theme = 'dark', onThemeTogg
           </div>
 
           {(isCreating || editingId) && (
-            <div className={`mb-4 p-4 rounded-xl border grid grid-cols-1 sm:grid-cols-3 gap-3 ${isDark ? 'bg-slate-950/40 border-white/10' : 'bg-white border-[#2E2B27]/10'}`}>
-              <div className="sm:col-span-3">
+            <div className={`mb-4 p-4 rounded-xl border grid grid-cols-1 sm:grid-cols-6 gap-3 ${isDark ? 'bg-slate-950/40 border-white/10' : 'bg-white border-[#2E2B27]/10'}`}>
+              <div className="sm:col-span-6">
                 <label className="text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70">Label</label>
                 <input className={fieldClass} value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder={`What's this ${type} for?`} />
               </div>
-              <div>
+              <div className="sm:col-span-3">
                 <label className="text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70">Date &amp; Time</label>
                 <input type="datetime-local" className={fieldClass} value={form.when} onChange={(e) => setForm({ ...form, when: e.target.value })} />
               </div>
-              <div>
+              <div className="sm:col-span-3">
                 <label className="text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70">Repeats</label>
                 <select className={fieldClass} value={form.recurrence} onChange={(e) => setForm({ ...form, recurrence: e.target.value })}>
                   {RECURRENCE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
               </div>
 
-              <div className="flex items-end gap-2">
-                <button onClick={submitForm} className={`flex-1 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gradient-to-r ${meta.gradient} text-white active:scale-95`}>
-                  <Save size={13} /> Save
+              <div className="sm:col-span-3">
+                <label className="text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70">Alert Playback Mode</label>
+                <select className={fieldClass} value={form.alertMode} onChange={(e) => setForm({ ...form, alertMode: e.target.value })}>
+                  {ALERT_MODE_OPTIONS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </select>
+              </div>
+              <div className="sm:col-span-3">
+                <label className="text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70">Auto-Dismiss Repeats</label>
+                <select className={fieldClass} value={form.maxRepeats} onChange={(e) => setForm({ ...form, maxRepeats: Number(e.target.value) })}>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                    <option key={n} value={n}>{n} {n === 1 ? 'repeat (immediate dismissal)' : 'repeats (~' + Math.round(n * 0.5) + ' mins)'}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="sm:col-span-6 flex items-center justify-end gap-2 pt-2 border-t border-white/5">
+                <button onClick={cancelForm} className={`px-4 py-2 rounded-xl text-xs font-bold ${isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}>
+                  Cancel
                 </button>
-                <button onClick={cancelForm} className={`px-3 py-2 rounded-xl text-xs font-bold ${isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}>
-                  <X size={13} />
+                <button onClick={submitForm} className={`px-5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gradient-to-r ${meta.gradient} text-white active:scale-95 shadow-md`}>
+                  <Save size={13} /> Save {type}
                 </button>
               </div>
             </div>
@@ -289,9 +331,23 @@ export default function ScheduledItemsPortal({ type, theme = 'dark', onThemeTogg
             <div className="flex flex-col gap-2">
               {items.map((item) => (
                 <div key={item.id} className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
-                  <div>
-                    <div className="font-bold">{item.label || `(unlabelled ${type})`}</div>
-                    <div className="text-[11px] text-slate-500">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-bold flex items-center gap-2 flex-wrap">
+                      <span className="truncate">{item.label || `(unlabelled ${type})`}</span>
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold tracking-tight ${
+                        item.alertMode === 'vocal'
+                          ? 'bg-purple-500/15 text-purple-400 border border-purple-500/20'
+                          : item.alertMode === 'chimes'
+                          ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20'
+                          : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                      }`}>
+                        {item.alertMode === 'vocal' ? '🗣️ Vocal only' : item.alertMode === 'chimes' ? '🔔 Chimes only' : '🔔 + 🗣️ Chimes & Vocal'}
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] text-slate-400">
+                        {item.maxRepeats || defaultRepeats} {Number(item.maxRepeats || defaultRepeats) === 1 ? 'repeat' : 'repeats'}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-1">
                       {new Date(item.fireAt).toLocaleString('en-GB', { timeZone: 'Europe/London' })}
                       {item.recurrence !== 'once' && <span className="ml-2 opacity-70">({item.recurrence})</span>}
                     </div>

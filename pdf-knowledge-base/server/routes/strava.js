@@ -5,7 +5,7 @@ import { requireSession, isApprovedSession } from '../middleware/requireSession.
 import { publicOrigin } from '../middleware/publicOrigin.js';
 import {
   getStatus, saveAppCredentials, authorizeUrl, completeAuthorisation, disconnect, syncActivities,
-  listActivities, listSports, getSummary, analyse, getSavedAnalysis,
+  listActivities, listSports, getSummary, analyse, getSavedAnalysis, setActivitySessionTag,
 } from '../services/stravaService.js';
 import {
   matchActivity, getStoredMatch, getGlucoseBadges, matchPending, getMatchProgress, getLoggerStatus, getInsights, analyseGlucose, getSavedGlucoseAnalysis, backfillNightscout, importLibreCsv,
@@ -62,6 +62,12 @@ router.post('/sync', async (req, res) => {
 });
 
 router.get('/activities', (req, res) => res.json({ success: true, ...listActivities(req.query) }));
+router.put('/activities/:id/tag', (req, res) => {
+  try {
+    const updated = setActivitySessionTag(Number(req.params.id), req.body?.tag ?? null);
+    res.json({ success: true, activity: updated });
+  } catch (err) { fail(res, err); }
+});
 router.get('/sports', (req, res) => res.json({ success: true, sports: listSports() }));
 router.get('/summary', (req, res) => res.json({ success: true, ...getSummary() }));
 router.get('/analysis', async (req, res) => { try { res.json({ success: true, analysis: await getSavedAnalysis(req.query.units === 'mi' ? 'mi' : 'km') }); } catch (err) { fail(res, err); } });

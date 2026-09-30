@@ -80,20 +80,20 @@ function recommend(distanceKm) {
 
 export function assessGoal(goal) {
   const today = todayStr();
-  const runs = db.prepare(`SELECT id, day, distance, moving_time, elevation FROM strava_activities WHERE sport IN (${RUN_SPORTS.map(() => '?').join(',')}) AND day >= ? AND distance >= 1500 ORDER BY day`)
+  const runs = db.prepare(`SELECT id, day, distance, moving_time, elevation, session_tag FROM strava_activities WHERE sport IN (${RUN_SPORTS.map(() => '?').join(',')}) AND day >= ? AND distance >= 1500 ORDER BY day`)
     .all(...RUN_SPORTS, addDays(today, -84));
   const last28 = runs.filter((r) => r.day >= addDays(today, -27));
   const last42 = runs.filter((r) => r.day >= addDays(today, -41));
   const weeklyKm = last28.reduce((a, r) => a + r.distance, 0) / 1000 / 4;
   const longest = last42.reduce((m, r) => (r.distance > (m?.distance ?? 0) ? r : m), null);
 
-  // Riegel: T2 = T1 * (D2 / D1) ^ 1.06, from each recent run of a useful length.
-  const preds = last42.filter((r) => r.distance >= 3000 && r.moving_time > 0 && (goal.distanceKm * 1000) / r.distance <= 3.2)
+  // Riegel: T2 = T1 * (D2 / D1) ^ 1.06, from each recent run of a useful length (excluding speed/hill sessions for steady goal predictions).
+  const preds = last42.filter((r) => r.distance >= 3000 && r.moving_time > 0 && (goal.distanceKm * 1000) / r.distance <= 3.2 && (!r.session_tag || (r.session_tag !== 'speed' && r.session_tag !== 'hill')))
     .map((r) => ({ id: r.id, day: r.day, km: r1(r.distance / 1000), minutes: Math.round((r.moving_time / 60) * 10) / 10, predMin: (r.moving_time / 60) * ((goal.distanceKm * 1000) / r.distance) ** 1.06 }))
     .sort((a, b) => a.predMin - b.predMin);
   const best = preds[0] || null;
   const typical = preds.length ? median(preds.slice(0, 3).map((p) => p.predMin)) : null;
-  const typicalPace = median(last42.filter((r) => r.distance >= 3000).map((r) => r.moving_time / 60 / (r.distance / 1000)));
+  const typicalPace = median(last42.filter((r) => r.distance >= 3000 && (!r.session_tag || (r.session_tag !== 'speed' && r.session_tag !== 'hill'))).map((r) => r.moving_time / 60 / (r.distance / 1000)));
 
   const rec = recommend(goal.distanceKm);
   const longestKm = longest ? longest.distance / 1000 : 0;

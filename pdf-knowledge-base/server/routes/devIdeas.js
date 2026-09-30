@@ -20,7 +20,12 @@ router.post('/', (req, res) => {
   try {
     res.json({
       success: true,
-      idea: addIdea({ text: req.body?.text, source: 'page', category: req.body?.category || 'Other' })
+      idea: addIdea({
+        text: req.body?.text,
+        source: req.body?.source || 'page',
+        category: req.body?.category || 'Other',
+        image: req.body?.image || null
+      })
     });
   } catch (err) {
     fail(res, err, 400);

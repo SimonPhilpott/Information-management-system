@@ -799,11 +799,12 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
       title="Code Best Practices"
       subtitle="Architectural patterns, SOLID assessments, and sustainability evaluations across repositories"
       icon={Code2}
-      theme={theme}
+      gradient="from-cyan-500 to-blue-600"
+      glow="rgba(6,182,212,0.3)"
+      isDark={isDark}
       onThemeToggle={onThemeToggle}
       currentPath="/ims/code-repo"
       setCurrentPath={setCurrentPath}
-      badgeText={`${snippets.length} Patterns`}
     >
       {/* Toast Notification */}
       {notification && (

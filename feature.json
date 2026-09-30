@@ -831,6 +831,151 @@
         "RAF-throttled and ResizeObserver-synchronized connector calculations preventing line flickering during streaming test logs",
         "One-click 'Save as PDF' vector export button with custom print media stylesheet and UI chrome isolation"
       ]
+    },
+    "Day Report Service Sub-Filtering & Information Tuning": {
+      "status": "enabled",
+      "description": "Granular, extensible sub-filtering and data targeting controls for the Day Report service (/ims/dayreport and morningReportService.js). Allows fine-tuning what exact metrics and sub-categories are extracted and summarised from connected services (Open-Meteo weather, Google Calendar, Strava training, Nightscout CGM & Glucose Hub, Alarms & Reminders, Music Scanner, News feeds, Birthday registry, Background Tasks, and Card Game campaigns) into the spoken daily briefing, with schema-driven persistence and live preview.",
+      "subFeatures": [
+        "Extensible SERVICE_SUB_FILTERS schema registry defining typed sub-filters (boolean flags, numeric thresholds, max limits) per connected service and section",
+        "Schema-driven default sub-filters and backward-compatible merging in getReportConfig() and saveReportConfig()",
+        "Interactive Sub-Filters drawer in DayReportPortal (/ims/dayreport) with toggle pills, category chips, numeric range steppers, and active tuning counters",
+        "Weather sub-filters for sky conditions, min/max temps, rain probability/totals, custom rain warning thresholds, wind speed/direction, and humidity",
+        "Calendar sub-filters for today's events, tomorrow evening previews, all-day vs timed appointments",
+        "Strava & Last Run sub-filters for activity counts, weekly distance comparisons, pace differences, fatigue/load spikes, weather correlation, and starting/lowest glucose",
+        "Nightscout CGM & Overnight sub-filters for trend arrows, IOB, personal target band evaluation, TIR, overnight minimums, hypo spell counts, and waking levels",
+        "Alarms & Reminders sub-filters for today's due items, 7-day upcoming week, alarms, reminders, and running timers",
+        "Music Scanner, News, Birthdays, Tasks, and Campaign sub-filters for want-list prioritisation, source importance thresholds, topic categories, age milestones, and partner gaming banter"
+      ]
+    },
+    "System Architecture Search & Component Highlighting": {
+      "status": "enabled",
+      "description": "Real-time interactive search and visual component highlighting for the System Architecture portal (/ims/architecture). Features instant visual illumination with glowing amber borders, text match mark tags, query match counting badges, keyboard shortcut navigation ('/' or 'Ctrl+K' to focus, 'Escape' to clear), and non-matching card dimming.",
+      "subFeatures": [
+        "Real-time search input bar with search icon, clear button ('X'), and live match count indicator badge",
+        "Deep query filtering matching across spoke and supporting card titles, descriptions, protocols, ports, and functional rows",
+        "Visual gold/amber glowing border and background illumination (ring-amber-400 border-amber-400 bg-amber-500/15) for matching components and rows",
+        "Mark text highlight rendering for precise keyword match visibility within titles and subtitle strings",
+        "Global keyboard shortcut handling ('/' or 'Ctrl+K' to focus search input, 'Escape' to clear query and blur)",
+        "Coexistence with 'Show only used items' prompt trace filter and connector line RAF rendering"
+      ]
+    },
+    "Unified Brand Theme Overhaul, Element Alignment & Old/New Preview Mode": {
+      "status": "enabled",
+      "description": "Comprehensive design overhaul and alignment sweep across all IMS service portals (/ims/*) featuring consistent Tailwind palette tokens, vertically centred switch controls, British English (en-GB) copywriting, and an interactive 'Old' vs 'New' header toggle allowing real-time preview across both Light and Dark themes.",
+      "subFeatures": [
+        "Persistent ThemeVersionProvider and useThemeVersion hook offering real-time switching between 'Old' and 'New' themes",
+        "Header toggle pill rendered in PortalShell, ImsHub, and standalone portals allowing instant Old/New preview across Light and Dark modes",
+        "Harmonised Oatmeal/Light (#F4EFED, #2E2B27) and Dark (#030712, slate-100) Tailwind palette tokens",
+        "Precision vertical alignment for toggle switch inner circles (items-center) and interactive controls across Day Report sub-filters",
+        "British English orthography standardization across copy, directives, labels, and placeholders (en-GB)"
+      ]
+    },
+    "Activity Session Tagging for Speed & Hill Sessions": {
+      "status": "enabled",
+      "description": "Activity session tagging for running and endurance workouts in the Activities Service (/ims/activities). Allows tagging activities as Speed sessions (intervals, reps, track) or Hill sessions (hill repeats, climbs), keeping full distance and time volume credited to weekly and monthly totals while strictly isolating and excluding session paces from weekly average pace calculations, baseline fitness models, fastest run records, and unsolicited AI coaching advice.",
+      "subFeatures": [
+        "SQLite strava_activities session_tag column persistence ('speed', 'hill', null/regular) and PUT /api/strava/activities/:id/tag API endpoint",
+        "Weekly breakdown and totals pace calculation strictly excluding speed and hill sessions while maintaining 100% distance and time volume credits",
+        "Interactive session tag dropdown selector and visual badge chips (⚡ Speed, ⛰️ Hill, Std) on activity table rows in ActivitiesPortal",
+        "Session tag selector pill integrated inside the activity detail and run scrutiny insight header in ActivitiesPortal",
+        "Session type filter dropdown in ActivitiesPortal allowing users to view all activities, standard only, speed sessions only, or hill sessions only",
+        "Baseline typical pace and goal prediction models in runPlanService.js and goalService.js isolated from workout interval pace distortions",
+        "Coaching prompt directives in stravaService.js analyse() and describeTraining() instructing Gemini not to treat interval rest pace as aerobic fitness deterioration"
+      ]
+    },
+    "MusicBrainz Scanner MBID Alignment, Folder Renaming & Artist Favourites": {
+      "status": "enabled",
+      "description": "Comprehensive scanning robustness, disk folder management, and favourite artist curation for the Music Scanner (/ims/musicscan). Includes explicit MusicBrainz MBID linking and direct release-group browsing bypassing search ambiguities (e.g. discography packs), automatic folder name noise cleaning, seamless disk folder and artist directory renaming on \\\\Sideburnt\\NorthField\\MUZAK, favourite artist toggling with persistence, and interactive favourites filtering across library views.",
+      "subFeatures": [
+        "Explicit mbId override in ims_scan_service.py executing direct musicbrainzngs.get_artist_by_id and browse_release_groups lookups",
+        "Automatic noise stripping in clean_artist_name_for_search removing ' - Discography', ' - Complete', and bracketed year ranges from folder queries",
+        "Fallback MusicBrainz Lucene queries capturing spelling variations and punctuation differences",
+        "Disk renaming tools for both individual album subfolders and root artist directories with automatic scan cache updates",
+        "Artist favourite flag persistence in ims_scan_artists.json overrides via POST /api/music-scan/artist/favourite",
+        "Interactive favourite star buttons, 'Fav' badges, and top-level 'Favourites (N)' view filters in MusicScanPortal"
+      ]
+    },
+    "All-Time Training Milestones & Sortable Activity Tables": {
+      "status": "enabled",
+      "description": "Comprehensive all-time running milestone extraction, grounding, and interactive table sorting for the Activities Service (/ims/activities and stravaService.js). Provides exact, grounded responses for all-time running queries (first ever run, first club run, longest run ever, fastest runs, total mileage) via Gemini Live voice tools and system prompt injections, and adds bidirectional column sorting across all activity metrics in the web portal.",
+      "subFeatures": [
+        "All-time running milestones engine in stravaService.js computing lifetime runs (191), total distance (1447.7 km / 899.5 mi), total hours (173.9 h), first club run (23 April 2024), first ever run (23 November 2023), longest run (23 November 2024, 8.5 mi / 13.7 km), and fastest 5k+ run (2 April 2026)",
+        "Prompt injection in hardwareClientService.js injecting fresh all-time training milestones directly into Gemini Live session setups",
+        "getTrainingSummary Gemini Live voice tool declaration and handler supporting period: 'all_time' and specific milestone queries",
+        "Interactive column sorting across all activity table headers (Date, Name, Sport / Tag, Distance, Time, Pace / Speed, Climb, HR) in ActivitiesPortal.jsx",
+        "Visual sorting indicators (ChevronUp, ChevronDown, ArrowUpDown) with active column highlighting (amber/orange text) and ascending/descending toggling",
+        "Safe SQL column ordering mapped in stravaService.js listActivities(options) preventing SQL injection"
+      ]
+    },
+    "Board Game HTML Entity Decoding & BGG Expansion Ownership Sync": {
+      "status": "enabled",
+      "description": "Comprehensive HTML entity decoding across board game titles, descriptions, and eBay search links, combined with live BoardGameGeek search, expansion discovery, and seamless 1-click addition of owned expansions to the collection.",
+      "subFeatures": [
+        "Universal decodeHtmlEntities helper in boardgamesService.js decoding numeric (&#039;, &#39;, &#x27;) and named (&quot;, &apos;, &amp;, &eacute;, &nbsp;) entities across primary names, expansions, and caches",
+        "Frontend decoding and search term normalization in BoardgamesPortal.jsx",
+        "BGG XML API2 search integration (/api/boardgames/search) querying games by title with year and thumbnail metadata",
+        "BGG XML API2 thing query integration (/api/boardgames/bgg-details/:id) fetching linked boardgameexpansion items",
+        "Add Games & Expansions modal workbench with dual Search BGG / Manual Entry modes and interactive expansion selection checklist",
+        "Expansion ownership persistence in SQLite boardgame_expansion_ownership table with PUT /api/boardgames/expansions/:id/own endpoint",
+        "1-click interactive checkbox in unowned expansion list items to mark expansions as owned and sync into the primary collection"
+      ]
+    },
+    "Scheduled Items Alert Modes & Auto-Dismiss Repeats": {
+      "status": "enabled",
+      "description": "Granular alert playback modes (Chimes, Vocal, Both) and configurable auto-dismiss repeat counts for Alarms, Timers, and Reminders across the web UI, SQLite storage, hardware client service, and ESP32-S3-BOX-3 firmware.",
+      "subFeatures": [
+        "SQLite schema migrations for alert_mode ('chimes', 'vocal', 'both') and max_repeats (1-10) in scheduled_items table",
+        "Alert playback mode selector and auto-dismiss repeat dropdown in ScheduledItemsPortal.jsx create/edit forms",
+        "Visual alert mode pill badges (🔔 + 🗣️ Chimes & Vocal, 🔔 Chimes only, 🗣️ Vocal only) and repeat count badges on active scheduled cards",
+        "15-second polling loop passing alertMode in WebSocket reminderFired payload to connected ESP32 terminals",
+        "Firmware main.cpp reminderFired handler conditionally gating audio chime (playAlertSound) and Gemini Live vocal speech query (sendTextQuery) based on alertMode",
+        "Voice tool declaration in hardwareClientService.js exposing alertMode and maxRepeats to Gemini Live function calling"
+      ]
+    },
+    "Board Game Box Art Hover Previews, Expansion Thumbnails & Release Year Display": {
+      "status": "enabled",
+      "description": "Interactive high-resolution box art hover popup previews for base board games and expansions, dedicated box art thumbnail rendering for expansions in the collection list, and release year display in brackets matching base games.",
+      "subFeatures": [
+        "Interactive ThumbnailHoverPreview component in BoardgamesPortal.jsx rendering smooth floating card previews with high-resolution box art, game/expansion title, and release year on hover",
+        "Expansion box art thumbnail extraction and caching from BGG XML API2 in boardgamesService.js",
+        "Expansion release year extraction and bracketed display (e.g. (2020)) in GameRow and orphanExpansions lists",
+        "Enriched boardgames_cache.json with high-resolution thumbnail URLs for all 227 base games and 97 owned expansions"
+      ]
+    },
+    "Board Game Collection Updates Drawer & Direct BGG Link Inspection": {
+      "status": "enabled",
+      "description": "Dedicated 'Show List Updates' workbench and modal drawer in the Board Games portal (/ims/boardgames) aggregating all locally added games, expansions, and toggled BGG expansions with direct BoardGameGeek links, box art previews, and release years to facilitate synchronising additions back to BoardGameGeek.",
+      "subFeatures": [
+        "Dedicated 'Show List Updates' button positioned directly to the left of 'Add Game / Expansions' with live item counter badge in BoardgamesPortal.jsx",
+        "Backend aggregation function getLocalUpdates() in boardgamesService.js inspecting SQLite boardgame_edits and boardgame_expansion_ownership",
+        "Interactive modal drawer with real-time text filter querying titles, base games, and release years",
+        "Box art thumbnails with ThumbnailHoverPreview popup integration and parent base game indicator tags",
+        "Direct outbound 'Open in BGG' links opening the exact BoardGameGeek page (boardgame/ or boardgameexpansion/) for rapid account collection updating"
+      ]
+    },
+    "Universal Board Game Expansion Box Art & Thumbnail Sync": {
+      "status": "enabled",
+      "description": "Comprehensive box art retrieval, caching, and display for all linked board game expansions (both owned and unowned) using BoardGameGeek XML API2 thing batching, backfill services, and UI sync controls.",
+      "subFeatures": [
+        "parseThingDetails helper in boardgamesService.js extracting high-resolution thumbnails, images, and release years for any BGG item",
+        "Enriched runRefresh() batch-querying unowned expansion box art in 20-item batches with rate-limited sleep pauses",
+        "startThumbnailBackfill() service with live progress reporting and REST endpoints (POST /api/boardgames/backfill-thumbnails, GET /api/boardgames/backfill-status)",
+        "Pre-loading of expansion box art during live BGG game inspection in getBggDetails()",
+        "Interactive 'Sync Box Art' button in BoardgamesPortal.jsx with real-time progress bar and state polling",
+        "Visual box art thumbnails rendered in the Add Games & Expansions modal expansion checklist"
+      ]
+    },
+    "Dev Ideas Screenshot Clipboard Paste & Antigravity Prompt Integration": {
+      "status": "enabled",
+      "description": "Direct clipboard screenshot pasting (Ctrl+V), file upload, image persistence, and one-click 'Copy Screenshot' & 'Copy Prompt' integration in the Dev Ideas portal (/ims/devideas) for rapid bug reporting and prompt hand-off to Antigravity and Claude Code.",
+      "subFeatures": [
+        "Direct clipboard paste listener in DevIdeasPortal.jsx supporting Ctrl+V screenshot capture",
+        "Visual thumbnail preview, image removal, and full-screen lightbox modal in DevIdeasPortal",
+        "One-click 'Copy Screenshot' utilizing the Clipboard API (ClipboardItem) to write binary image data to system clipboard",
+        "One-click 'Copy Prompt' generating structured markdown prompt headers for Antigravity",
+        "SQLite dev_ideas schema migration adding image column with backward compatibility",
+        "devIdeasService and REST routes (/api/dev-ideas) supporting image persistence on create and edit"
+      ]
     }
   }
 }

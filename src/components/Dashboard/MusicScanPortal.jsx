@@ -105,13 +105,18 @@ function MusicBrainzSearchModal({ artistName, genre, isDark, onClose, onAligned,
     }
   }, [artistName, runSearch]);
 
-  const handleApplyOverride = async (targetMbName) => {
+  const handleApplyOverride = async (targetMbName, targetMbId = null) => {
     setBusyAction(targetMbName);
     try {
       const res = await fetch('/api/music-scan/artist/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: artistName, searchName: targetMbName, aliases: [] })
+        body: JSON.stringify({
+          name: artistName,
+          searchName: targetMbName,
+          mbId: targetMbId || undefined,
+          aliases: []
+        })
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to update search name.');
@@ -122,7 +127,7 @@ function MusicBrainzSearchModal({ artistName, genre, isDark, onClose, onAligned,
         body: JSON.stringify({ name: artistName })
       });
 
-      showToast(`Set MusicBrainz search name to "${targetMbName}" and rescanned.`);
+      showToast(`Matched "${artistName}" to MusicBrainz artist "${targetMbName}" and rescanned.`);
       onAligned(targetMbName);
       onClose();
     } catch (err) {
@@ -165,7 +170,7 @@ function MusicBrainzSearchModal({ artistName, genre, isDark, onClose, onAligned,
             </div>
             <div>
               <h3 className="text-sm font-black uppercase tracking-wider">MusicBrainz Search &amp; Alignment</h3>
-              <p className="text-[11px] text-slate-500">Find the closest canonical match for folder: <strong className={isDark ? 'text-slate-300' : 'text-slate-700'}>{artistName}</strong></p>
+              <p className="text-[11px] text-slate-500">Find canonical match for folder: <strong className={isDark ? 'text-slate-300' : 'text-slate-700'}>{artistName}</strong></p>
             </div>
           </div>
           <button onClick={onClose} className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}>
@@ -227,8 +232,8 @@ function MusicBrainzSearchModal({ artistName, genre, isDark, onClose, onAligned,
                     {r.disambiguation && (
                       <p className="text-[11px] text-slate-500 mt-0.5 italic">{r.disambiguation}</p>
                     )}
-                    {r.lifeSpan && (
-                      <p className="text-[10px] text-slate-500 mt-0.5">Active: {r.lifeSpan}</p>
+                    {r.id && (
+                      <p className="text-[10px] text-slate-500 mt-0.5 font-mono">MBID: {r.id}</p>
                     )}
                     {r.aliases?.length > 0 && (
                       <p className="text-[10px] text-slate-500 mt-0.5 truncate">Aliases: {r.aliases.slice(0, 4).join(', ')}</p>
@@ -236,14 +241,14 @@ function MusicBrainzSearchModal({ artistName, genre, isDark, onClose, onAligned,
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <button
-                      onClick={() => handleApplyOverride(r.name)}
+                      onClick={() => handleApplyOverride(r.name, r.id)}
                       disabled={busyAction !== null}
-                      title="Keep folder name as-is, but search MusicBrainz as this artist"
+                      title="Keep folder name as-is, but link to this MusicBrainz artist MBID & name"
                       className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all ${
                         isDark ? 'border-white/10 hover:bg-white/10 text-slate-200' : 'border-[#2E2B27]/15 hover:bg-black/5 text-slate-800'
                       }`}
                     >
-                      {busyAction === r.name ? <RotateCw size={12} className="animate-spin" /> : 'Set Search Name'}
+                      {busyAction === r.name ? <RotateCw size={12} className="animate-spin" /> : 'Set MBID & Search Name'}
                     </button>
                     <button
                       onClick={() => handleRenameFolder(r.name)}
@@ -716,6 +721,23 @@ function ArtistCard({
     }
   };
 
+  const handleToggleFavourite = async (e) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch('/api/music-scan/artist/favourite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: artist.name, favourite: !Boolean(artist.favourite) })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to update favourite.');
+      showToast(!artist.favourite ? `Added "${artist.name}" to favourites.` : `Removed "${artist.name}" from favourites.`);
+      onChanged();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
   const owned = detail ? detail.releases.filter((r) => r.owned).length : artist.owned;
   const notOwned = detail ? detail.releases.filter((r) => !r.owned).length : artist.notOwned;
   const unlistedCount = detail ? detail.unlistedAlbums.length : artist.unlisted;
@@ -735,8 +757,22 @@ function ArtistCard({
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setOpen(!open); }}
         className="w-full px-3 py-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 cursor-pointer text-left"
       >
+        <button
+          onClick={handleToggleFavourite}
+          title={artist.favourite ? 'Remove from favourite artists' : 'Add to favourite artists'}
+          className={`p-1 rounded transition-colors shrink-0 ${artist.favourite ? 'text-amber-400' : 'text-slate-500 hover:text-amber-400'}`}
+        >
+          <Star size={14} fill={artist.favourite ? 'currentColor' : 'none'} />
+        </button>
         {open ? <ChevronDown size={14} className="shrink-0 opacity-60" /> : <ChevronRight size={14} className="shrink-0 opacity-60" />}
-        <span className="font-bold min-w-0 flex-1 basis-40 break-words">{artist.name}</span>
+        <span className="font-bold min-w-0 flex-1 basis-40 break-words flex items-center gap-1.5">
+          <span>{artist.name}</span>
+          {artist.favourite && (
+            <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              Fav
+            </span>
+          )}
+        </span>
         <span className={`hidden sm:inline text-[10px] uppercase tracking-wider ${GREY}`}>{artist.genre}</span>
         <span className="ml-auto flex flex-wrap items-center justify-end gap-x-2.5 gap-y-0.5 text-[11px] font-semibold">
           <span className={GREEN}>{owned} owned</span>
@@ -1171,6 +1207,7 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
   const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
   const [allArtists, setAllArtists] = useState([]);
   const [search, setSearch] = useState('');
+  const [favOnly, setFavOnly] = useState(false);
   const [viewLoading, setViewLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -1356,13 +1393,17 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
   const GREEN = isDark ? 'text-emerald-400' : 'text-emerald-600';
   const RED = isDark ? 'text-red-400' : 'text-red-600';
 
+  const favCount = (view === 'all' ? allArtists : (windowData?.artists || [])).filter(a => a.favourite).length;
+
   const visibleAll = allArtists.filter((a) => {
+    if (favOnly && !a.favourite) return false;
     const q = search.trim().toLowerCase();
     return !q || a.name.toLowerCase().includes(q) || (a.mbName || '').toLowerCase().includes(q) ||
       (a.aliases || []).some((x) => x.toLowerCase().includes(q));
   });
 
-  const artistsToShow = view === 'all' ? visibleAll : (windowData?.artists || []);
+  const rawWindowArtists = windowData?.artists || [];
+  const artistsToShow = view === 'all' ? visibleAll : (favOnly ? rawWindowArtists.filter(a => a.favourite) : rawWindowArtists);
   const windowLabel = VIEWS.find((v) => v.key === view)?.label;
 
   return (
@@ -1497,16 +1538,30 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
                 : view === 'discover' ? 'Artists you might like'
                 : `Released in the last ${windowLabel === 'Day' ? 'day (today)' : windowLabel.toLowerCase()}`}
             </h2>
-            <div className={`flex max-w-full overflow-x-auto rounded-lg border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
-              {VIEWS.map((v) => (
-                <button key={v.key} onClick={() => setView(v.key)}
-                  className={`shrink-0 whitespace-nowrap px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-all ${
-                    view === v.key ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white'
-                      : isDark ? 'text-slate-400 hover:bg-white/5' : 'text-slate-600 hover:bg-black/5'
-                  }`}>
-                  {v.label}
-                </button>
-              ))}
+            <div className="flex items-center gap-2 max-w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <button
+                onClick={() => setFavOnly(!favOnly)}
+                title={favOnly ? 'Showing only favourite artists. Click to show all.' : 'Filter to favourite artists only'}
+                className={`shrink-0 whitespace-nowrap px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all border ${
+                  favOnly
+                    ? 'bg-amber-500 text-white border-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.3)]'
+                    : isDark ? 'border-white/10 text-slate-400 hover:text-amber-400 hover:bg-white/5' : 'border-[#2E2B27]/10 text-slate-600 hover:text-amber-600 hover:bg-black/5'
+                }`}
+              >
+                <Star size={12} fill={favOnly ? 'currentColor' : 'none'} className={favOnly ? 'text-white' : 'text-amber-400'} />
+                <span>Favourites ({favCount})</span>
+              </button>
+              <div className={`flex max-w-full overflow-x-auto rounded-lg border ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
+                {VIEWS.map((v) => (
+                  <button key={v.key} onClick={() => setView(v.key)}
+                    className={`shrink-0 whitespace-nowrap px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-all ${
+                      view === v.key ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white'
+                        : isDark ? 'text-slate-400 hover:bg-white/5' : 'text-slate-600 hover:bg-black/5'
+                    }`}>
+                    {v.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -1516,6 +1571,7 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
               <span className={`flex items-center gap-1.5 ${RED}`}><span className="w-2 h-2 rounded-full bg-red-500" />Not owned</span>
               <span className="flex items-center gap-1.5 text-slate-500"><span className="w-2 h-2 rounded-full bg-slate-500" />Owned, not on MusicBrainz</span>
               {!['all', 'upcoming', 'wants', 'discover'].includes(view) && <span className="text-slate-500 text-[10px]">Highlighted rows are the releases inside this window. Year-only dates can't be placed in a window.</span>}
+              {favOnly && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">★ Filtered to Favourite Artists</span>}
             </div>
           )}
 
@@ -1637,10 +1693,25 @@ export default function MusicScanPortal({ theme = 'dark', onThemeToggle, setCurr
               )}
 
               {view === 'all' && (
-                <div className="relative mb-3">
-                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 opacity-50" />
-                  <input className={`${fieldClass} pl-8 font-sans`} placeholder={`Search ${allArtists.length} artists...`}
-                    value={search} onChange={(e) => setSearch(e.target.value)} />
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="relative flex-1">
+                    <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 opacity-50" />
+                    <input className={`${fieldClass} pl-8 font-sans`} placeholder={`Search ${allArtists.length} artists...`}
+                      value={search} onChange={(e) => setSearch(e.target.value)} />
+                  </div>
+                  {favCount > 0 && (
+                    <button
+                      onClick={() => setFavOnly(!favOnly)}
+                      className={`px-3 py-2 rounded-xl text-xs font-bold shrink-0 flex items-center gap-1.5 transition-all border ${
+                        favOnly
+                          ? 'bg-amber-500 text-white border-amber-500'
+                          : isDark ? 'border-white/10 hover:bg-white/5 text-slate-400' : 'border-[#2E2B27]/10 hover:bg-black/5 text-slate-600'
+                      }`}
+                    >
+                      <Star size={13} fill={favOnly ? 'currentColor' : 'none'} className={favOnly ? 'text-white' : 'text-amber-400'} />
+                      <span>{favOnly ? 'Showing Favs' : 'Favs'}</span>
+                    </button>
+                  )}
                 </div>
               )}
 

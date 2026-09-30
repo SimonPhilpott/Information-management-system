@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import express from 'express';
-import { getPublicConfig, saveConfig, getStatus, startRefresh, getGames, setWantToSell, importCollectionCsv, addGame, removeGame, restoreGame } from '../services/boardgamesService.js';
+import {
+  getPublicConfig, saveConfig, getStatus, startRefresh, getGames, setWantToSell,
+  importCollectionCsv, addGame, addGameWithExpansions, removeGame, restoreGame,
+  searchBgg, getBggDetails, setExpansionOwned, startThumbnailBackfill, getBackfillStatus
+} from '../services/boardgamesService.js';
 import { deckGameForBgg } from '../services/decksService.js';
 
 const router = Router();
@@ -9,7 +13,7 @@ router.get('/', (req, res) => {
   const data = getGames();
   // deckGame: the key of this game's deck builder (/ims/decks), when it has one
   data.games = data.games.map((g) => ({ ...g, deckGame: deckGameForBgg(g.id) }));
-  res.json({ success: true, config: getPublicConfig(), status: getStatus(), ...data });
+  res.json({ success: true, config: getPublicConfig(), status: getStatus(), backfillStatus: getBackfillStatus(), ...data });
 });
 
 // BoardGameGeek's "Export collection" CSV, sent as the raw file text.
@@ -29,6 +33,58 @@ router.post('/refresh', (req, res) => {
   const result = startRefresh();
   if (!result.started) return res.status(409).json({ error: result.reason });
   res.json({ success: true });
+});
+
+// Trigger backfilling expansion thumbnails / box art for all expansions currently in cache
+router.post('/backfill-thumbnails', (req, res) => {
+  const result = startThumbnailBackfill();
+  if (!result.started) return res.status(409).json({ error: result.reason });
+  res.json({ success: true, total: result.total });
+});
+
+router.get('/backfill-status', (req, res) => {
+  res.json({ success: true, status: getBackfillStatus() });
+});
+
+// Search BoardGameGeek for matching titles
+router.get('/search', async (req, res) => {
+  try {
+    const results = await searchBgg(req.query.q || req.query.query || '');
+    res.json({ success: true, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Fetch detailed game data including all BGG expansions for selection
+router.get('/bgg-details/:id', async (req, res) => {
+  try {
+    const details = await getBggDetails(req.params.id);
+    res.json({ success: true, details });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Add a game along with user-selected owned expansions
+router.post('/add-with-expansions', (req, res) => {
+  try {
+    const result = addGameWithExpansions(req.body || {});
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Toggle expansion owned status
+router.put('/expansions/:id/own', (req, res) => {
+  try {
+    const { owned } = req.body || {};
+    const result = setExpansionOwned(req.params.id, owned !== undefined ? Boolean(owned) : true);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // Add a game by hand, remove one, or bring a removed one back. Kept through CSV imports and BGG refreshes.

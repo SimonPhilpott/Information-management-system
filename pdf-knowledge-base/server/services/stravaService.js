@@ -39,6 +39,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_strava_sport ON strava_activities(sport, day);
 `);
 try { db.exec('ALTER TABLE strava_activities ADD COLUMN start_utc TEXT'); } catch (_) { /* already there */ }
+try { db.exec('ALTER TABLE strava_activities ADD COLUMN session_tag TEXT'); } catch (_) { /* already there */ }
 
 // ---- credentials ------------------------------------------------------------------
 function readCreds() {
@@ -189,18 +190,46 @@ export async function syncActivities({ full = false } = {}) {
 }
 
 // ---- reading & analysis ---------------------------------------------------------------
-export function listActivities({ sport = '', search = '', from = '', to = '', limit = 50, offset = 0 } = {}) {
+export function listActivities({ sport = '', search = '', from = '', to = '', tag = '', sortBy = 'start_local', sortDir = 'desc', limit = 50, offset = 0 } = {}) {
   const where = [];
   const params = [];
   if (sport) { where.push('sport = ?'); params.push(sport); }
   if (search) { where.push('name LIKE ?'); params.push(`%${String(search).slice(0, 60)}%`); }
   if (from) { where.push('day >= ?'); params.push(from); }
   if (to) { where.push('day <= ?'); params.push(to); }
+  if (tag) {
+    if (tag === 'none' || tag === 'regular') { where.push("(session_tag IS NULL OR session_tag = '' OR session_tag = 'regular')"); }
+    else { where.push('session_tag = ?'); params.push(tag); }
+  }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const total = db.prepare(`SELECT COUNT(*) AS n FROM strava_activities ${clause}`).get(...params).n;
-  const rows = db.prepare(`SELECT id, name, sport, start_local, day, distance, moving_time, elapsed_time, elevation, avg_speed, max_speed, avg_hr, max_hr, avg_watts, kudos, trainer, commute
-    FROM strava_activities ${clause} ORDER BY start_local DESC LIMIT ? OFFSET ?`).all(...params, Math.min(200, Number(limit) || 50), Math.max(0, Number(offset) || 0));
+
+  // Safe sort column mapping
+  const allowedSorts = {
+    start_local: 'start_local',
+    day: 'start_local',
+    name: 'name',
+    sport: 'sport',
+    distance: 'distance',
+    moving_time: 'moving_time',
+    avg_speed: 'avg_speed',
+    elevation: 'elevation',
+    avg_hr: 'avg_hr',
+    session_tag: 'session_tag'
+  };
+  const sortCol = allowedSorts[sortBy] || 'start_local';
+  const orderDir = String(sortDir).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
+  const rows = db.prepare(`SELECT id, name, sport, start_local, day, distance, moving_time, elapsed_time, elevation, avg_speed, max_speed, avg_hr, max_hr, avg_watts, kudos, trainer, commute, session_tag
+    FROM strava_activities ${clause} ORDER BY ${sortCol} ${orderDir} LIMIT ? OFFSET ?`).all(...params, Math.min(200, Number(limit) || 50), Math.max(0, Number(offset) || 0));
   return { total, activities: rows };
+}
+
+export function setActivitySessionTag(id, tag) {
+  const cleanTag = tag === 'speed' || tag === 'hill' ? tag : null;
+  db.prepare('UPDATE strava_activities SET session_tag = ? WHERE id = ?').run(cleanTag, Number(id));
+  const row = db.prepare('SELECT id, name, sport, start_local, day, distance, moving_time, elapsed_time, elevation, avg_speed, max_speed, avg_hr, max_hr, avg_watts, kudos, trainer, commute, session_tag FROM strava_activities WHERE id = ?').get(Number(id));
+  return row;
 }
 
 export const listSports = () => db.prepare('SELECT sport, COUNT(*) AS n FROM strava_activities GROUP BY sport ORDER BY n DESC').all();
@@ -213,11 +242,27 @@ function totals(fromDay, toDay, sport = '') {
   const r = db.prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(distance),0) AS distance, COALESCE(SUM(moving_time),0) AS time, COALESCE(SUM(elevation),0) AS elevation,
     AVG(avg_hr) AS avgHr,
     COALESCE(SUM(CASE WHEN sport IN ('Run','TrailRun','VirtualRun') THEN distance END),0) AS runDistance,
-    COALESCE(SUM(CASE WHEN sport IN ('Run','TrailRun','VirtualRun') THEN moving_time END),0) AS runTime
+    COALESCE(SUM(CASE WHEN sport IN ('Run','TrailRun','VirtualRun') THEN moving_time END),0) AS runTime,
+    COALESCE(SUM(CASE WHEN sport IN ('Run','TrailRun','VirtualRun') AND (session_tag IS NULL OR session_tag NOT IN ('speed', 'hill')) THEN distance END),0) AS paceRunDistance,
+    COALESCE(SUM(CASE WHEN sport IN ('Run','TrailRun','VirtualRun') AND (session_tag IS NULL OR session_tag NOT IN ('speed', 'hill')) THEN moving_time END),0) AS paceRunTime,
+    COALESCE(SUM(CASE WHEN session_tag = 'speed' THEN 1 ELSE 0 END),0) AS speedCount,
+    COALESCE(SUM(CASE WHEN session_tag = 'hill' THEN 1 ELSE 0 END),0) AS hillCount
     FROM strava_activities WHERE day >= ? AND day <= ? ${sport ? 'AND sport = ?' : ''}`).get(fromDay, toDay, ...(sport ? [sport] : []));
-  // Average running pace (min per km) = running time / running distance; null when there was no running.
-  const paceMinKm = r.runDistance > 500 ? +(r.runTime / 60 / (r.runDistance / 1000)).toFixed(3) : null;
-  return { count: r.count, distanceKm: +(r.distance / 1000).toFixed(1), hours: +(r.time / 3600).toFixed(1), elevationM: Math.round(r.elevation), avgHr: r.avgHr ? Math.round(r.avgHr) : null, runKm: +(r.runDistance / 1000).toFixed(1), paceMinKm };
+  // Average running pace (min per km) = running time / running distance; null when there was no standard/aerobic running.
+  // Speed and hill sessions are excluded from average pace calculations so interval rests or steep climbing do not distort standard pace.
+  const paceMinKm = r.paceRunDistance > 500 ? +(r.paceRunTime / 60 / (r.paceRunDistance / 1000)).toFixed(3) : null;
+  return {
+    count: r.count,
+    distanceKm: +(r.distance / 1000).toFixed(1),
+    hours: +(r.time / 3600).toFixed(1),
+    elevationM: Math.round(r.elevation),
+    avgHr: r.avgHr ? Math.round(r.avgHr) : null,
+    runKm: +(r.runDistance / 1000).toFixed(1),
+    paceRunKm: +(r.paceRunDistance / 1000).toFixed(1),
+    paceMinKm,
+    speedCount: r.speedCount,
+    hillCount: r.hillCount
+  };
 }
 
 export function getSummary() {
@@ -245,26 +290,90 @@ export function getSummary() {
   const bySport = db.prepare(`SELECT sport, COUNT(*) AS count, SUM(distance)/1000.0 AS km, SUM(moving_time)/3600.0 AS hours, SUM(elevation) AS elevation
     FROM strava_activities GROUP BY sport ORDER BY hours DESC`).all().map((r) => ({ sport: r.sport, count: r.count, km: +r.km.toFixed(1), hours: +r.hours.toFixed(1), elevationM: Math.round(r.elevation || 0) }));
 
-  const rec = (order, extra = '') => db.prepare(`SELECT id, name, sport, day, distance, moving_time, elevation, avg_speed FROM strava_activities WHERE distance > 0 ${extra} ORDER BY ${order} LIMIT 1`).get();
+  const rec = (order, extra = '') => db.prepare(`SELECT id, name, sport, start_local, day, distance, moving_time, elevation, avg_speed, session_tag FROM strava_activities WHERE distance > 0 ${extra} ORDER BY ${order} LIMIT 1`).get();
+  
+  // Specific all-time milestones for running and endurance
+  const firstClubRun = db.prepare(`SELECT id, name, sport, start_local, day, distance, moving_time, elevation, avg_speed FROM strava_activities WHERE sport IN ('Run','TrailRun','VirtualRun') AND (name LIKE '%1st Run%' OR day = '2024-04-23') ORDER BY start_local ASC LIMIT 1`).get();
+  const earliestEverRun = db.prepare(`SELECT id, name, sport, start_local, day, distance, moving_time, elevation, avg_speed FROM strava_activities WHERE sport IN ('Run','TrailRun','VirtualRun') ORDER BY start_local ASC LIMIT 1`).get();
+  const longestRun = db.prepare(`SELECT id, name, sport, start_local, day, distance, moving_time, elevation, avg_speed FROM strava_activities WHERE sport IN ('Run','TrailRun','VirtualRun') ORDER BY distance DESC LIMIT 1`).get();
+  const totalRuns = db.prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(distance),0) AS distance, COALESCE(SUM(moving_time),0) AS time, COALESCE(SUM(elevation),0) AS elevation FROM strava_activities WHERE sport IN ('Run','TrailRun','VirtualRun')`).get();
+
   const records = {
     longest: rec('distance DESC'),
+    longestRun,
+    firstEverRun: earliestEverRun,
+    firstClubRun,
     mostClimbing: rec('elevation DESC'),
     longestTime: rec('moving_time DESC'),
-    fastestRun: rec('avg_speed DESC', "AND sport IN ('Run','TrailRun') AND distance >= 5000"),
+    fastestRun: rec('avg_speed DESC', "AND sport IN ('Run','TrailRun') AND distance >= 5000 AND (session_tag IS NULL OR session_tag NOT IN ('speed', 'hill'))"),
     fastestRide: rec('avg_speed DESC', "AND sport IN ('Ride','GravelRide','MountainBikeRide','EBikeRide') AND distance >= 15000"),
+    allTimeRuns: {
+      count: totalRuns.count,
+      totalKm: +(totalRuns.distance / 1000).toFixed(1),
+      totalMiles: +(totalRuns.distance / 1609.344).toFixed(1),
+      totalHours: +(totalRuns.time / 3600).toFixed(1),
+      totalElevationM: Math.round(totalRuns.elevation)
+    }
   };
 
   const activeDays = db.prepare('SELECT COUNT(DISTINCT day) AS n FROM strava_activities WHERE day >= ?').get(addDays(today, -29)).n;
   return { today, periods, weekly, monthly, bySport, records, activeDaysLast30: activeDays };
 }
 
-const fmtActivity = (a) => `${a.day} ${a.sport} "${a.name}" ${(a.distance / 1000).toFixed(1)} km in ${Math.round(a.moving_time / 60)} min${a.elevation ? `, +${Math.round(a.elevation)} m` : ''}${a.avg_hr ? `, avg HR ${Math.round(a.avg_hr)}` : ''}`;
+const fmtActivity = (a) => {
+  const tagStr = a.session_tag === 'speed' ? ' [Speed Session - Pace Excluded from Averages]' : a.session_tag === 'hill' ? ' [Hill Session - Pace Excluded from Averages]' : '';
+  const miles = (a.distance / 1609.344).toFixed(1);
+  return `${a.day} ${a.sport} "${a.name}"${tagStr} ${(a.distance / 1000).toFixed(1)} km (${miles} mi) in ${Math.round(a.moving_time / 60)} min${a.elevation ? `, +${Math.round(a.elevation)} m` : ''}${a.avg_hr ? `, avg HR ${Math.round(a.avg_hr)}` : ''}`;
+};
 
 export function describeTraining(periodDays = 28) {
   const s = getSummary();
-  const key = periodDays <= 7 ? 'last7' : periodDays <= 28 ? 'last28' : 'last365';
+  const key = periodDays === 'all' || periodDays === 'all_time' ? 'all_time' : periodDays <= 7 ? 'last7' : periodDays <= 28 ? 'last28' : 'last365';
   const recent = listActivities({ limit: 8 }).activities.map(fmtActivity);
-  return { period: key, now: s.periods[key], before: s.periods[key].previous, activeDaysLast30: s.activeDaysLast30, bySport: s.bySport.slice(0, 5), recentActivities: recent };
+
+  const formatRunMilestone = (r) => {
+    if (!r) return null;
+    const km = (r.distance / 1000).toFixed(1);
+    const miles = (r.distance / 1609.344).toFixed(1);
+    const mins = Math.round(r.moving_time / 60);
+    const d = new Date(r.day + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    return {
+      date: d,
+      rawDay: r.day,
+      name: r.name,
+      distanceKm: Number(km),
+      distanceMiles: Number(miles),
+      durationMin: mins,
+      description: `"${r.name}" on ${d}: ${miles} miles (${km} km) in ${mins} minutes`
+    };
+  };
+
+  const allTimeRunning = {
+    totalRuns: s.records.allTimeRuns.count,
+    totalDistanceKm: s.records.allTimeRuns.totalKm,
+    totalDistanceMiles: s.records.allTimeRuns.totalMiles,
+    totalHours: s.records.allTimeRuns.totalHours,
+    firstEverRun: formatRunMilestone(s.records.firstEverRun),
+    firstClubRun: formatRunMilestone(s.records.firstClubRun),
+    longestRun: formatRunMilestone(s.records.longestRun),
+    fastest5kPlusRun: s.records.fastestRun ? formatRunMilestone(s.records.fastestRun) : null
+  };
+
+  return {
+    period: key,
+    now: key === 'all_time' ? s.periods['last365'] : s.periods[key],
+    before: key === 'all_time' ? s.periods['last365'].previous : s.periods[key].previous,
+    activeDaysLast30: s.activeDaysLast30,
+    bySport: s.bySport.slice(0, 5),
+    allTimeRunning,
+    allTimeRecords: {
+      longestActivity: s.records.longest ? `"${s.records.longest.name}" (${(s.records.longest.distance / 1000).toFixed(1)} km / ${(s.records.longest.distance / 1609.344).toFixed(1)} mi) on ${s.records.longest.day}` : null,
+      longestRun: allTimeRunning.longestRun ? allTimeRunning.longestRun.description : null,
+      firstRun: allTimeRunning.firstClubRun ? allTimeRunning.firstClubRun.description : allTimeRunning.firstEverRun ? allTimeRunning.firstEverRun.description : null,
+      mostClimbing: s.records.mostClimbing ? `"${s.records.mostClimbing.name}" (${Math.round(s.records.mostClimbing.elevation)} m climbed) on ${s.records.mostClimbing.day}` : null
+    },
+    recentActivities: recent
+  };
 }
 
 // A written analysis of the training log by Gemini, kept so the page can show it again.
@@ -277,6 +386,8 @@ export async function analyse(units = 'km') {
   const prompt =
     `You are a sensible, encouraging running/cycling/fitness coach reviewing one person's Strava log. Today is ${s.today}. Use British English. ${unitNote(units)} ` +
     `Base everything on the numbers below; do not invent activities, injuries or goals. Where there is not enough data, say so.\n\n` +
+    `CRITICAL RULE ON SPEED AND HILL SESSIONS:\n` +
+    `Activities tagged as [Speed Session] or [Hill Session] have their distance fully credited to weekly volume and load totals, but their pace is intentionally excluded from baseline running averages. Do NOT interpret the overall average pace of interval rests or hill climbs as aerobic fitness deterioration or use their average pace in general pacing advice unless explicitly asked for.\n\n` +
     `Write short sections with these headings: "Where you are now", "What is going well", "Watch out for", "Patterns", "Next 2 weeks" (3 concrete, modest suggestions). ` +
     `Comment on volume trend (last 28 days vs the 28 before), consistency (active days in the last 30: ${s.activeDaysLast30}), sport mix, and any sudden jumps in weekly load (more than about 10-15% up) that raise injury risk.\n\n` +
     `PERIOD TOTALS (last 7 / 28 / 365 days, each with the equal period before it):\n${JSON.stringify(s.periods)}\n\n` +
@@ -296,3 +407,4 @@ export async function getSavedAnalysis(units = 'km') {
     return { at: a.at, text: await textInUnits('analysis', 'all', a.text, a.units || 'km', units), units: normaliseUnits(units) };
   } catch (_) { return null; }
 }
+

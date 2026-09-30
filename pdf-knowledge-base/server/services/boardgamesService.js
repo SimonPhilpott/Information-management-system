@@ -25,6 +25,24 @@ db.exec(`
   );
 `);
 
+// Decode numeric and named HTML entities (e.g. &#039;, &#39;, &apos;, &amp;, &quot;, &lt;, &gt;, &eacute;)
+export function decodeHtmlEntities(str) {
+  if (typeof str !== 'string') return str || '';
+  return str
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#039;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&eacute;/g, 'é')
+    .replace(/&Eacute;/g, 'É')
+    .replace(/&nbsp;/g, ' ');
+}
+
 const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: '@_',
@@ -40,7 +58,8 @@ function primaryName(names) {
   if (!names) return '';
   const list = Array.isArray(names) ? names : [names];
   const primary = list.find((n) => n && n['@_type'] === 'primary') || list[0];
-  return String(text(primary) ?? '');
+  const val = (primary && typeof primary === 'object') ? (primary['@_value'] ?? primary['#text'] ?? primary) : primary;
+  return decodeHtmlEntities(String(val ?? ''));
 }
 
 export function parseCollection(xml) {
@@ -49,9 +68,27 @@ export function parseCollection(xml) {
   return items.map((it) => ({
     id: Number(it['@_objectid']),
     name: primaryName(it.name),
-    year: it.yearpublished ? Number(text(it.yearpublished)) : null,
+    year: it.yearpublished ? Number(text(it.yearpublished['@_value'] ?? it.yearpublished)) : null,
     thumbnail: text(it.thumbnail) || null,
   }));
+}
+
+// Parse full details for multiple items from a BGG /thing response (thumbnails, images, year)
+export function parseThingDetails(xml) {
+  const doc = parser.parse(xml);
+  const items = doc?.items?.item || [];
+  const list = Array.isArray(items) ? items : [items];
+  const map = new Map();
+  for (const it of list) {
+    if (!it) continue;
+    const id = Number(it['@_id']);
+    if (!id) continue;
+    const thumbnail = text(it.thumbnail) || null;
+    const image = text(it.image) || null;
+    const year = it.yearpublished ? Number(text(it.yearpublished['@_value'] ?? it.yearpublished)) : null;
+    map.set(id, { id, thumbnail, image, year });
+  }
+  return map;
 }
 
 // For each base game: every expansion BGG knows of (outbound
@@ -62,7 +99,7 @@ export function parseThingExpansions(xml) {
   for (const it of doc?.items?.item || []) {
     out[Number(it['@_id'])] = (it.link || [])
       .filter((l) => l['@_type'] === 'boardgameexpansion' && l['@_inbound'] !== 'true')
-      .map((l) => ({ id: Number(l['@_id']), name: String(l['@_value']) }));
+      .map((l) => ({ id: Number(l['@_id']), name: decodeHtmlEntities(String(l['@_value'] || '')) }));
   }
   return out;
 }
@@ -115,6 +152,9 @@ async function fetchXml(url) {
 let status = { state: 'idle', phase: null, done: 0, total: 0, error: null, startedAt: null, finishedAt: null };
 export const getStatus = () => ({ ...status });
 
+let backfillStatus = { state: 'idle', phase: null, done: 0, total: 0, error: null };
+export const getBackfillStatus = () => ({ ...backfillStatus });
+
 async function runRefresh() {
   const { username } = getConfig();
   const u = encodeURIComponent(username);
@@ -137,13 +177,52 @@ async function runRefresh() {
     if (i + THING_BATCH < ids.length) await sleep(REQUEST_GAP_MS);
   }
 
-  const ownedIds = new Set(ownedExpansions.map((e) => e.id));
+  const ownedMap = new Map(ownedExpansions.map((e) => [e.id, e]));
+
+  // Collect all unowned expansion IDs to batch-fetch box art & release years
+  const unownedExpansionIds = new Set();
+  for (const g of baseGames) {
+    for (const exp of (expansionsByGame[g.id] || [])) {
+      if (!ownedMap.has(exp.id)) {
+        unownedExpansionIds.add(exp.id);
+      }
+    }
+  }
+
+  const unownedIdList = Array.from(unownedExpansionIds);
+  const unownedDetailsMap = new Map();
+  if (unownedIdList.length > 0) {
+    status = { ...status, phase: 'Fetching expansion box art', done: 0, total: unownedIdList.length };
+    for (let i = 0; i < unownedIdList.length; i += THING_BATCH) {
+      const batch = unownedIdList.slice(i, i + THING_BATCH);
+      try {
+        const batchXml = await fetchXml(`${BGG}/thing?id=${batch.join(',')}`);
+        const parsedMap = parseThingDetails(batchXml);
+        for (const [id, det] of parsedMap.entries()) {
+          unownedDetailsMap.set(id, det);
+        }
+      } catch (err) {
+        console.error(`[Boardgames] Failed to fetch expansion batch ${batch.join(',')}:`, err.message);
+      }
+      status = { ...status, done: Math.min(i + THING_BATCH, unownedIdList.length) };
+      if (i + THING_BATCH < unownedIdList.length) await sleep(REQUEST_GAP_MS);
+    }
+  }
+
   const claimed = new Set();
   const games = baseGames.map((g) => {
     const expansions = (expansionsByGame[g.id] || []).map((e) => {
-      const owned = ownedIds.has(e.id);
+      const ownedItem = ownedMap.get(e.id);
+      const unownedItem = unownedDetailsMap.get(e.id);
+      const owned = Boolean(ownedItem);
       if (owned) claimed.add(e.id);
-      return { id: e.id, name: e.name, owned };
+      return {
+        id: e.id,
+        name: e.name,
+        year: ownedItem?.year || unownedItem?.year || null,
+        thumbnail: ownedItem?.thumbnail || unownedItem?.thumbnail || null,
+        owned
+      };
     });
     // Owned first, then the rest alphabetically.
     expansions.sort((a, b) => (b.owned - a.owned) || a.name.localeCompare(b.name));
@@ -152,7 +231,13 @@ async function runRefresh() {
   games.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
   // Owned expansions BGG doesn't link from any game in the collection.
-  const orphanExpansions = ownedExpansions.filter((e) => !claimed.has(e.id));
+  const orphanExpansions = ownedExpansions.filter((e) => !claimed.has(e.id)).map((e) => ({
+    id: e.id,
+    name: e.name,
+    year: e.year || null,
+    thumbnail: e.thumbnail || null,
+    owned: true
+  }));
 
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(CACHE_PATH, JSON.stringify({ fetchedAt: new Date().toISOString(), username, games, orphanExpansions }), 'utf8');
@@ -171,6 +256,80 @@ export function startRefresh() {
   return { started: true };
 }
 
+// Backfill box art for all expansions in the current cache that are missing thumbnails
+export function startThumbnailBackfill() {
+  if (backfillStatus.state === 'running') return { started: false, reason: 'A box art backfill is already running.' };
+  if (!getToken()) return { started: false, reason: 'No BGG API token set - add one in the settings panel.' };
+
+  const raw = readCache();
+  if (!raw.games || !raw.games.length) return { started: false, reason: 'No cached games found.' };
+
+  const missingIds = [];
+  const idToRefs = new Map();
+
+  for (const g of raw.games) {
+    for (const exp of (g.expansions || [])) {
+      if (exp.id > 0 && !exp.thumbnail) {
+        if (!idToRefs.has(exp.id)) {
+          idToRefs.set(exp.id, []);
+          missingIds.push(exp.id);
+        }
+        idToRefs.get(exp.id).push(exp);
+      }
+    }
+  }
+
+  for (const exp of (raw.orphanExpansions || [])) {
+    if (exp.id > 0 && !exp.thumbnail) {
+      if (!idToRefs.has(exp.id)) {
+        idToRefs.set(exp.id, []);
+        missingIds.push(exp.id);
+      }
+      idToRefs.get(exp.id).push(exp);
+    }
+  }
+
+  if (missingIds.length === 0) {
+    return { started: false, reason: 'All expansions already have box art.' };
+  }
+
+  backfillStatus = { state: 'running', phase: 'Fetching expansion box art', done: 0, total: missingIds.length, error: null };
+
+  (async () => {
+    try {
+      for (let i = 0; i < missingIds.length; i += THING_BATCH) {
+        const batch = missingIds.slice(i, i + THING_BATCH);
+        try {
+          const xml = await fetchXml(`${BGG}/thing?id=${batch.join(',')}`);
+          const detailsMap = parseThingDetails(xml);
+          for (const [id, details] of detailsMap.entries()) {
+            const refs = idToRefs.get(id);
+            if (refs) {
+              for (const ref of refs) {
+                if (details.thumbnail) ref.thumbnail = details.thumbnail;
+                if (details.year && !ref.year) ref.year = details.year;
+              }
+            }
+          }
+          fs.writeFileSync(CACHE_PATH, JSON.stringify(raw), 'utf8');
+        } catch (err) {
+          console.error(`[Boardgames] Backfill batch failed for ${batch.join(',')}:`, err.message);
+        }
+        backfillStatus.done = Math.min(i + THING_BATCH, missingIds.length);
+        if (i + THING_BATCH < missingIds.length) await sleep(REQUEST_GAP_MS);
+      }
+      fs.writeFileSync(CACHE_PATH, JSON.stringify(raw), 'utf8');
+      backfillStatus = { state: 'done', phase: null, done: missingIds.length, total: missingIds.length, error: null };
+      console.log(`[Boardgames] Successfully backfilled box art for ${missingIds.length} expansions.`);
+    } catch (err) {
+      console.error('[Boardgames] Backfill error:', err.message);
+      backfillStatus = { state: 'error', phase: null, done: backfillStatus.done, total: missingIds.length, error: err.message };
+    }
+  })();
+
+  return { started: true, total: missingIds.length };
+}
+
 function getFlags() {
   return new Set(db.prepare(`SELECT bgg_id FROM boardgame_flags WHERE want_to_sell = 1`).all().map((r) => r.bgg_id));
 }
@@ -180,6 +339,82 @@ export function setWantToSell(id, wantToSell) {
     `INSERT INTO boardgame_flags (bgg_id, want_to_sell, updated_at) VALUES (?, ?, ?)
      ON CONFLICT(bgg_id) DO UPDATE SET want_to_sell = excluded.want_to_sell, updated_at = excluded.updated_at`
   ).run(id, wantToSell ? 1 : 0, Date.now());
+}
+
+export function getLocalUpdates() {
+  const raw = readCache();
+  const edited = applyEdits(raw);
+  const ownershipRows = db.prepare('SELECT expansion_id, owned, updated_at FROM boardgame_expansion_ownership').all();
+  const manualEdits = db.prepare("SELECT * FROM boardgame_edits WHERE kind = 'add' ORDER BY created_at DESC").all();
+
+  const allExpansions = edited.games.flatMap((x) => (x.expansions || []).map((e) => ({ ...e, parentName: x.name, parentId: x.id })));
+  const allOrphans = edited.orphanExpansions || [];
+  const updates = [];
+
+  // 1. Manual base games
+  for (const item of manualEdits.filter((x) => x.item_type !== 'expansion')) {
+    updates.push({
+      id: item.bgg_id || -item.id,
+      bggId: item.bgg_id || null,
+      name: decodeHtmlEntities(item.name),
+      type: 'base_game',
+      year: item.year || null,
+      thumbnail: null,
+      updatedAt: item.created_at,
+      bggUrl: item.bgg_id ? `https://boardgamegeek.com/boardgame/${item.bgg_id}` : null
+    });
+  }
+
+  // 2. Manual expansions
+  for (const item of manualEdits.filter((x) => x.item_type === 'expansion')) {
+    const parent = edited.games.find((x) => x.id === item.parent_id);
+    updates.push({
+      id: item.bgg_id || -item.id,
+      bggId: item.bgg_id || null,
+      name: decodeHtmlEntities(item.name),
+      parentName: parent ? decodeHtmlEntities(parent.name) : null,
+      parentId: item.parent_id,
+      type: 'expansion',
+      year: item.year || null,
+      thumbnail: null,
+      updatedAt: item.created_at,
+      bggUrl: item.bgg_id ? `https://boardgamegeek.com/boardgameexpansion/${item.bgg_id}` : null
+    });
+  }
+
+  // 3. Toggled BGG expansions
+  for (const row of ownershipRows) {
+    if (row.owned === 1) {
+      const exp = allExpansions.find((e) => e.id === row.expansion_id) || allOrphans.find((e) => e.id === row.expansion_id);
+      if (exp) {
+        updates.push({
+          id: exp.id,
+          bggId: exp.id > 0 ? exp.id : null,
+          name: decodeHtmlEntities(exp.name),
+          parentName: exp.parentName ? decodeHtmlEntities(exp.parentName) : null,
+          parentId: exp.parentId || null,
+          type: 'expansion',
+          year: exp.year || null,
+          thumbnail: exp.thumbnail || null,
+          updatedAt: row.updated_at,
+          bggUrl: exp.id > 0 ? `https://boardgamegeek.com/boardgameexpansion/${exp.id}` : null
+        });
+      }
+    }
+  }
+
+  // Deduplicate by ID and sort newest first
+  const seen = new Set();
+  const deduped = [];
+  updates.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  for (const u of updates) {
+    const key = `${u.type}_${u.id}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(u);
+    }
+  }
+  return deduped;
 }
 
 export function getGames() {
@@ -197,6 +432,7 @@ export function getGames() {
     })),
     orphanExpansions: cache.orphanExpansions.map((e) => ({ ...e, wantToSell: selling.has(e.id) })),
     removed: edited.removed,
+    updates: getLocalUpdates(),
   };
 }
 
@@ -254,15 +490,126 @@ try {
 
 // ---- manual changes to the collection ------------------------------------------------------------------
 // Games added by hand (before BGG knows, or not on BGG at all) and games removed, kept apart from
-// the CSV/BGG data so a fresh import or refresh never undoes them. A hand-added game without a BGG
-// id gets a negative id, so it still works with "want to sell" and the rest.
-db.exec(`CREATE TABLE IF NOT EXISTS boardgame_edits (
-  id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, bgg_id INTEGER, name TEXT, year INTEGER,
-  item_type TEXT, parent_id INTEGER, created_at INTEGER NOT NULL
+// Expansion ownership overrides (for setting owned = true/false on BGG expansions)
+db.exec(`CREATE TABLE IF NOT EXISTS boardgame_expansion_ownership (
+  expansion_id INTEGER PRIMARY KEY,
+  owned INTEGER NOT NULL DEFAULT 1,
+  updated_at INTEGER NOT NULL
 )`);
 
+export function setExpansionOwned(expansionId, owned) {
+  const id = Number(expansionId);
+  if (!id) throw new Error('Invalid expansion ID');
+  db.prepare(`
+    INSERT INTO boardgame_expansion_ownership (expansion_id, owned, updated_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(expansion_id) DO UPDATE SET owned = excluded.owned, updated_at = excluded.updated_at
+  `).run(id, owned ? 1 : 0, Date.now());
+  return { expansionId: id, owned: Boolean(owned) };
+}
+
+function getExpansionOwnershipMap() {
+  const rows = db.prepare(`SELECT expansion_id, owned FROM boardgame_expansion_ownership`).all();
+  const map = new Map();
+  for (const r of rows) map.set(r.expansion_id, Boolean(r.owned));
+  return map;
+}
+
+// Search BoardGameGeek for games by query string
+export async function searchBgg(query) {
+  const q = String(query || '').trim();
+  if (!q) return [];
+  const url = `${BGG}/search?query=${encodeURIComponent(q)}&type=boardgame`;
+  const xml = await fetchXml(url);
+  const doc = parser.parse(xml);
+  const items = doc?.items?.item || [];
+  const list = Array.isArray(items) ? items : [items];
+  return list.map((it) => ({
+    id: Number(it['@_id']),
+    name: primaryName(it.name),
+    year: it.yearpublished ? Number(text(it.yearpublished['@_value'] ?? it.yearpublished)) : null,
+    type: it['@_type'] || 'boardgame'
+  }));
+}
+
+// Fetch details for a BGG game ID including thumbnail, full metadata, and all known expansions
+export async function getBggDetails(bggId) {
+  const id = Number(bggId);
+  if (!id) throw new Error('Invalid BGG ID');
+  const url = `${BGG}/thing?id=${id}&stats=1`;
+  const xml = await fetchXml(url);
+  const doc = parser.parse(xml);
+  const item = doc?.items?.item?.[0] || doc?.items?.item;
+  if (!item) throw new Error('Game not found on BoardGameGeek');
+
+  const name = primaryName(item.name);
+  const year = item.yearpublished ? Number(text(item.yearpublished['@_value'] ?? item.yearpublished)) : null;
+  const thumbnail = text(item.thumbnail) || null;
+  const image = text(item.image) || null;
+  const links = item.link || [];
+  const list = Array.isArray(links) ? links : [links];
+
+  const expansions = list
+    .filter((l) => l && l['@_type'] === 'boardgameexpansion' && l['@_inbound'] !== 'true')
+    .map((l) => ({
+      id: Number(l['@_id']),
+      name: decodeHtmlEntities(String(l['@_value'] || ''))
+    }));
+
+  // Fetch box art for these expansions if there are any (up to 40)
+  if (expansions.length > 0 && expansions.length <= 40) {
+    try {
+      const expIds = expansions.map((e) => e.id);
+      for (let i = 0; i < expIds.length; i += THING_BATCH) {
+        const batch = expIds.slice(i, i + THING_BATCH);
+        const expXml = await fetchXml(`${BGG}/thing?id=${batch.join(',')}`);
+        const detailsMap = parseThingDetails(expXml);
+        for (const exp of expansions) {
+          const det = detailsMap.get(exp.id);
+          if (det) {
+            if (det.thumbnail) exp.thumbnail = det.thumbnail;
+            if (det.year && !exp.year) exp.year = det.year;
+          }
+        }
+        if (i + THING_BATCH < expIds.length) await sleep(REQUEST_GAP_MS);
+      }
+    } catch (_) { /* non-fatal fallback */ }
+  }
+
+  return {
+    id,
+    name,
+    year,
+    thumbnail,
+    image,
+    expansions
+  };
+}
+
+export function addGameWithExpansions({ bggId, name, year, thumbnail, ownedExpansionIds = [] }) {
+  const id = bggId ? Number(bggId) : null;
+  const gameName = String(name || '').trim();
+  if (!gameName && !id) throw new Error('Game name or BGG ID required');
+
+  // Add the base game via addGame or cache insertion
+  const baseResult = addGame({
+    name: gameName,
+    year: year ? Number(year) : null,
+    type: 'base',
+    bggLink: id ? String(id) : ''
+  });
+
+  // For any owned expansions supplied, mark their ownership in DB
+  const ownedSet = new Set((ownedExpansionIds || []).map(Number));
+  for (const expId of ownedSet) {
+    if (expId) setExpansionOwned(expId, true);
+  }
+
+  return baseResult;
+}
+
 export function addGame({ name, year, type = 'base', parentId = null, bggLink = '' }) {
-  const n = String(name || '').trim();
+  const n = decodeHtmlEntities(String(name || '').trim());
   if (!n) throw new Error('Give the game a name.');
   const m = String(bggLink || '').match(/boardgame(?:expansion)?\/(\d+)/i) || String(bggLink || '').trim().match(/^(\d+)$/);
   const bggId = m ? Number(m[1]) : null;
@@ -291,20 +638,50 @@ export function restoreGame(id) {
 }
 
 function readCache() {
-  try { if (fs.existsSync(CACHE_PATH)) return JSON.parse(fs.readFileSync(CACHE_PATH, 'utf8')); } catch (_) { /* treat as empty */ }
+  try {
+    if (fs.existsSync(CACHE_PATH)) {
+      const raw = JSON.parse(fs.readFileSync(CACHE_PATH, 'utf8'));
+      // Clean HTML entities across raw cache games and expansions
+      if (raw.games) {
+        raw.games = raw.games.map((g) => ({
+          ...g,
+          name: decodeHtmlEntities(g.name),
+          expansions: (g.expansions || []).map((e) => ({ ...e, name: decodeHtmlEntities(e.name) }))
+        }));
+      }
+      if (raw.orphanExpansions) {
+        raw.orphanExpansions = raw.orphanExpansions.map((e) => ({ ...e, name: decodeHtmlEntities(e.name) }));
+      }
+      return raw;
+    }
+  } catch (_) { /* treat as empty */ }
   return { fetchedAt: null, games: [], orphanExpansions: [] };
 }
 function manualItems() {
   return db.prepare(`SELECT * FROM boardgame_edits WHERE kind = 'add' ORDER BY created_at`).all().map((r) => ({
-    id: r.bgg_id || -r.id, name: r.name, year: r.year, thumbnail: null, manual: true, type: r.item_type, parentId: r.parent_id, owned: true,
+    id: r.bgg_id || -r.id, name: decodeHtmlEntities(r.name), year: r.year, thumbnail: null, manual: true, type: r.item_type, parentId: r.parent_id, owned: true,
   }));
 }
 
 // The collection as imported, with the manual additions merged in and removals taken out.
 function applyEdits(cache) {
   const removed = new Set(db.prepare(`SELECT bgg_id FROM boardgame_edits WHERE kind = 'remove'`).all().map((r) => r.bgg_id));
-  const games = cache.games.filter((g) => !removed.has(g.id)).map((g) => ({ ...g, expansions: g.expansions.filter((e) => !removed.has(e.id)) }));
-  const orphanExpansions = cache.orphanExpansions.filter((e) => !removed.has(e.id));
+  const ownershipMap = getExpansionOwnershipMap();
+
+  const games = cache.games.filter((g) => !removed.has(g.id)).map((g) => ({
+    ...g,
+    name: decodeHtmlEntities(g.name),
+    expansions: g.expansions.filter((e) => !removed.has(e.id)).map((e) => ({
+      ...e,
+      name: decodeHtmlEntities(e.name),
+      owned: ownershipMap.has(e.id) ? ownershipMap.get(e.id) : Boolean(e.owned)
+    }))
+  }));
+  const orphanExpansions = cache.orphanExpansions.filter((e) => !removed.has(e.id)).map((e) => ({
+    ...e,
+    name: decodeHtmlEntities(e.name),
+    owned: ownershipMap.has(e.id) ? ownershipMap.get(e.id) : Boolean(e.owned)
+  }));
   const manual = manualItems();
   for (const m of manual.filter((x) => x.type !== 'expansion')) games.push({ ...m, expansions: [] });
   for (const m of manual.filter((x) => x.type === 'expansion')) {
@@ -314,7 +691,7 @@ function applyEdits(cache) {
   }
   games.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   const all = [...cache.games, ...cache.games.flatMap((g) => g.expansions), ...cache.orphanExpansions];
-  const removedList = [...removed].map((id) => all.find((g) => g.id === id)).filter(Boolean).map((g) => ({ id: g.id, name: g.name, year: g.year || null }));
+  const removedList = [...removed].map((id) => all.find((g) => g.id === id)).filter(Boolean).map((g) => ({ id: g.id, name: decodeHtmlEntities(g.name), year: g.year || null }));
   return { games, orphanExpansions, removed: removedList };
 }
 

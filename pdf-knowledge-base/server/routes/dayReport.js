@@ -4,20 +4,22 @@ import {
   saveReportConfig,
   resetReportConfig,
   buildReportParts,
-  AVAILABLE_SERVICES
+  AVAILABLE_SERVICES,
+  SERVICE_SUB_FILTERS
 } from '../services/morningReportService.js';
 
 const router = express.Router();
 
 // GET /api/day-report/config
-// Returns current sections and catalog of available services
+// Returns current sections, catalog of available services, and sub-filter schemas
 router.get('/config', async (req, res) => {
   try {
     const sections = getReportConfig();
     res.json({
       success: true,
       sections,
-      availableServices: AVAILABLE_SERVICES
+      availableServices: AVAILABLE_SERVICES,
+      subFilterSchemas: SERVICE_SUB_FILTERS
     });
   } catch (err) {
     console.error('[DayReportRoute] Failed to get config:', err);
@@ -26,7 +28,7 @@ router.get('/config', async (req, res) => {
 });
 
 // PUT /api/day-report/config
-// Updates sections ordering, enabled states, custom notes, and custom items
+// Updates sections ordering, enabled states, custom notes, custom items, and subFilters
 router.put('/config', async (req, res) => {
   try {
     const { sections } = req.body;
@@ -36,7 +38,8 @@ router.put('/config', async (req, res) => {
     const updated = saveReportConfig(sections);
     res.json({
       success: true,
-      sections: updated
+      sections: updated,
+      subFilterSchemas: SERVICE_SUB_FILTERS
     });
   } catch (err) {
     console.error('[DayReportRoute] Failed to save config:', err);
@@ -51,7 +54,8 @@ router.post('/reset', async (req, res) => {
     const reset = resetReportConfig();
     res.json({
       success: true,
-      sections: reset
+      sections: reset,
+      subFilterSchemas: SERVICE_SUB_FILTERS
     });
   } catch (err) {
     console.error('[DayReportRoute] Failed to reset config:', err);

@@ -3716,8 +3716,8 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         // Transparent reconnect from proxy - preserve current state if listening/thinking/speaking/verifying
         if (currentState != STATE_LISTENING && currentState != STATE_THINKING && currentState != STATE_SPEAKING && currentState != STATE_VERIFYING) {
           currentState = STATE_STANDBY;
-          lastTranscript = "Say 'Hey Ims' or tap screen";
-          renderScreen(true);
+          lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
+          renderScreen();
         }
       }
     }
@@ -3760,7 +3760,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       prerollHead = 0;
       prerollFilled = false;
       lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
-      renderScreen(true);
+      renderScreen();
     }
     // Backend forwarded Gemini's endConversation tool call (user said "bye"/
     // "goodbye"/etc.) - don't cut the farewell reply short. Just mark that
@@ -3830,8 +3830,15 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       JsonObject rf = doc["reminderFired"];
       const char *kind = rf["type"] | "reminder";
       const char *label = rf["label"] | "";
-      Serial.printf("[IMS] Reminder fired: %s \"%s\"\n", kind, label);
-      if (currentState == STATE_STANDBY) {
+      const char *alertMode = rf["alertMode"] | "both";
+      Serial.printf("[IMS] Reminder fired: %s \"%s\" (mode=%s)\n", kind, label, alertMode);
+      if (currentState == STATE_STANDBY || currentState == STATE_VERIFYING) {
+        if (currentState == STATE_VERIFYING) {
+          sendAudioStreamEnd();
+          micStreamingActive = false;
+          isSpeakingDetected = false;
+          currentState = STATE_STANDBY;
+        }
         char msg[96];
         if (label[0] != '\0') {
           snprintf(msg, sizeof(msg), "%s: %s", kind, label);
@@ -3840,7 +3847,14 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         }
         lastTranscript = String(msg);
         renderScreen(true);
-        playAlertSound(alertSoundIndex);
+
+        bool playChimes = (strcmp(alertMode, "vocal") != 0); // play chimes for 'chimes' or 'both'
+        bool playVocal = (strcmp(alertMode, "chimes") != 0);  // play vocal query for 'vocal' or 'both'
+
+        if (playChimes) {
+          playAlertSound(alertSoundIndex);
+        }
+
         // Have Gemini actually SPEAK what it was for, reusing the exact same
         // clientContent-text-turn mechanism the voice/personality preview
         // uses. This also means the announcement becomes a completely normal
@@ -3849,15 +3863,17 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         // reply) - so the existing STOP PHRASES handling in the system
         // prompt already covers "IMS stop" here for free, with no new
         // dismiss-alert mechanism needed.
-        char announceMsg[200];
-        if (label[0] != '\0') {
-          snprintf(announceMsg, sizeof(announceMsg),
-                   "Your %s for \"%s\" just went off - announce this briefly, in character, in your Yorkshire accent (flat northern vowels, no American r).", kind, label);
-        } else {
-          snprintf(announceMsg, sizeof(announceMsg),
-                   "Your %s just went off - announce this briefly, in character, in your Yorkshire accent (flat northern vowels, no American r).", kind);
+        if (playVocal) {
+          char announceMsg[200];
+          if (label[0] != '\0') {
+            snprintf(announceMsg, sizeof(announceMsg),
+                     "Your %s for \"%s\" just went off - announce this briefly, in character, in your Yorkshire accent (flat northern vowels, no American r).", kind, label);
+          } else {
+            snprintf(announceMsg, sizeof(announceMsg),
+                     "Your %s just went off - announce this briefly, in character, in your Yorkshire accent (flat northern vowels, no American r).", kind);
+          }
+          sendTextQuery(announceMsg);
         }
-        sendTextQuery(announceMsg);
       }
     }
     // Backend pushed wakeDaemon telemetry (Voice Detection Service & Wake status)

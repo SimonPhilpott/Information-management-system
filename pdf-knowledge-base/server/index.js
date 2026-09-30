@@ -692,13 +692,14 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         if (activeHardwareSession.geminiWs && (activeHardwareSession.geminiWs.readyState === WebSocket.OPEN || activeHardwareSession.geminiWs.readyState === WebSocket.CONNECTING)) {
           activeHardwareSession.geminiWs.close(1000, 'Replaced by new hardware session');
         }
-        if (activeHardwareSession.clientWs && activeHardwareSession.clientWs.readyState === WebSocket.OPEN) {
+        if (activeHardwareSession.clientWs) {
           activeHardwareSession.clientWs.close(1000, 'Replaced by new hardware session');
         }
       } catch (e) {
         console.error(`${tag} Error closing prior hardware session:`, e);
       }
     }
+    activeHardwareSession = { clientWs: ws, geminiWs: null };
   } else {
     if (activeBrowserSession && activeBrowserSession.clientWs !== ws) {
       console.warn(`${tag} ⚠️ Terminating previous browser session`);
@@ -1031,7 +1032,11 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     lastActivityAt = Date.now(); // a fresh session gets its full 15 s before the silence close
 
     if (isHardware) {
-      activeHardwareSession = { clientWs: ws, geminiWs: gWs };
+      if (activeHardwareSession && activeHardwareSession.clientWs === ws) {
+        activeHardwareSession.geminiWs = gWs;
+      } else {
+        activeHardwareSession = { clientWs: ws, geminiWs: gWs };
+      }
       pushScheduleStatus(ws);
       getGlucoseData().then((glucose) => {
         if (ws.readyState === WebSocket.OPEN && glucose?.value) {
@@ -1521,11 +1526,15 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 });
               }
             } else if (call.name === 'getTrainingSummary') {
-              const days = call.args?.period === 'week' ? 7 : call.args?.period === 'year' ? 365 : 28;
+              const p = call.args?.period;
+              const days = p === 'week' ? 7 : p === 'year' ? 365 : (p === 'all' || p === 'all_time') ? 'all_time' : 28;
               try {
                 const st = getStravaStatus();
                 if (!st.connected || !st.activityCount) respondToToolCall(call, { error: 'Strava is not connected or has no activities yet. Say so plainly.' });
-                else { console.log(`${tag} 🏃 getTrainingSummary(${days}d)`); respondToToolCall(call, describeTraining(days)); }
+                else {
+                  console.log(`${tag} 🏃 getTrainingSummary(period=${p || 'month'}, query="${call.args?.query || ''}")`);
+                  respondToToolCall(call, describeTraining(days));
+                }
               } catch (err) { respondToToolCall(call, { error: err.message }); }
             } else if (call.name === 'getCalendarEvents') {
               const days = Math.max(1, Math.min(30, Number(call.args?.days ?? 7)));
@@ -1872,7 +1881,16 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         return;
       }
 
-      // If unexpected fatal close (or client is already gone), close the client
+      // If upstream closes with 1011 (or other transient codes), for hardware clients keep the
+      // raw TCP socket connected to IMS and reset upstream so the next wake or reminder can connect cleanly.
+      if (!isClientClosed && ws.isHardwareClient && ws.readyState === ws.OPEN) {
+        console.warn(`${tag} Gemini Live upstream closed (${code}). Keeping hardware TCP link open in STANDBY.`);
+        currentTurnComplete = true;
+        if (currentGeminiWs === gWs) currentGeminiWs = null;
+        return;
+      }
+
+      // If unexpected fatal close on browser (or client is already gone), close the client
       try {
         const safeCode = (code === 1005 || code === 1006) ? 1000 : code;
         if (ws.readyState === ws.OPEN) {
@@ -1891,6 +1909,10 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         logCapture(
           `[${new Date().toISOString()}] ${tag} GEMINI ERROR: ${err.message}\n`);
       } catch (_) { }
+      if (!isClientClosed && ws.isHardwareClient && ws.readyState === ws.OPEN) {
+        console.warn(`${tag} Gemini Live WebSocket error on hardware session - keeping TCP link connected.`);
+        return;
+      }
       try {
         if (ws.readyState === ws.OPEN) ws.close(1011, 'Error communicating with Gemini');
       } catch (closeErr) {
@@ -2371,8 +2393,8 @@ hardwareTcpServer.listen(HARDWARE_TCP_PORT, () => {
   console.log(`[HardwareTCP] Raw TCP hardware endpoint listening on port ${HARDWARE_TCP_PORT}`);
 });
 
-// Timers/alarms/reminders: poll every 15s for anything due and push it to
-// the device. Deliberately NOT a Gemini turn - it's a lightweight control
+// Timers/alarms/reminders: poll every 1s for anything due and push it to
+// the device for exact second-accurate timer alerts. Deliberately NOT a Gemini turn - it's a lightweight control
 // frame (device chimes + shows it on screen, see reminderFired in main.cpp),
 // so it works whether or not a live conversation happens to be in progress,
 // and it's independent of any specific handleLiveProxyConnection() closure -
@@ -2381,7 +2403,9 @@ setInterval(() => {
   let fired;
   try {
     fired = checkDueScheduledItems();
-    pushScheduleStatus();
+    if (fired.length > 0) {
+      pushScheduleStatus();
+    }
   } catch (err) {
     console.error('[Reminders] checkDueScheduledItems failed:', err.message);
     return;
@@ -2395,7 +2419,7 @@ setInterval(() => {
     if (activeHardwareSession?.clientWs?.readyState === WebSocket.OPEN) {
       try {
         activeHardwareSession.clientWs.send(JSON.stringify({
-          reminderFired: { type: item.type, label: item.label || '' }
+          reminderFired: { type: item.type, label: item.label || '', alertMode: item.alertMode || 'both' }
         }));
       } catch (err) {
         console.error('[Reminders] Failed to notify device:', err.message);
@@ -2403,6 +2427,15 @@ setInterval(() => {
     } else {
       console.warn(`[Reminders] No connected hardware client to notify for id=${item.id} - it fired but was missed`);
     }
+  }
+}, 1000);
+
+// Schedule status periodic refresh (every 15s)
+setInterval(() => {
+  try {
+    pushScheduleStatus();
+  } catch (err) {
+    console.error('[Schedule] Periodic push failed:', err.message);
   }
 }, 15000);
 

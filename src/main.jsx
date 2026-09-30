@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import AuthGate from './AuthGate.jsx'
 import { ThemeProvider } from './ThemeContext.jsx'
+import { ThemeVersionProvider } from './context/ThemeVersionContext.jsx'
 import './index.css'
 
 class ErrorBoundary extends React.Component {
@@ -39,9 +40,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
       <ThemeProvider>
-        <AuthGate>
-          <App />
-        </AuthGate>
+        <ThemeVersionProvider>
+          <AuthGate>
+            <App />
+          </AuthGate>
+        </ThemeVersionProvider>
       </ThemeProvider>
     </ErrorBoundary>
   </React.StrictMode>,

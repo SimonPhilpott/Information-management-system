@@ -100,8 +100,8 @@ export default function CalendarPortal({ theme = 'dark', onThemeToggle, setCurre
     saveSettings({ calendarIds: next });
   };
 
-  const panel = `rounded-2xl border p-5 ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/70 border-[#2E2B27]/10 shadow-sm'}`;
-  const field = `w-full px-3 py-2 rounded-lg text-xs outline-none border ${isDark ? 'bg-slate-950/60 border-white/10 text-slate-100' : 'bg-white border-[#2E2B27]/10 text-slate-900'}`;
+  const panel = `rounded-2xl border p-5 ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/90 border-[#2E2B27]/10 shadow-sm'}`;
+  const field = `w-full px-3 py-2 rounded-lg text-xs outline-none border ${isDark ? 'bg-slate-950/60 border-white/10 text-slate-100' : 'bg-white border-[#2E2B27]/15 text-[#2E2B27]'}`;
   const label = 'text-[10px] font-bold uppercase tracking-wider mb-1 block opacity-70';
   const iconBtn = `p-1.5 rounded-lg ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`;
   const gradient = 'from-indigo-500 to-blue-600';

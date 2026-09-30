@@ -5,7 +5,7 @@ import {
   isScanRunning, runScanNow, getNextScheduledRun,
   getWants, addWant, removeWant, getSavedRecommendations, recommendArtists,
   getMusicAudit, getMuzakFolders, getArtistFolderContents, renameAlbumFolder, renameArtistFolder,
-  searchMusicBrainzArtist, linkArtistRelease, hideArtist
+  searchMusicBrainzArtist, linkArtistRelease, hideArtist, toggleArtistFavourite
 } from '../services/musicScanService.js';
 
 const router = Router();
@@ -103,13 +103,24 @@ router.post('/artist/hide', (req, res) => {
   }
 });
 
+// Toggle or set artist favourite flag
+router.post('/artist/favourite', (req, res) => {
+  const { name, favourite } = req.body || {};
+  if (!name) return res.status(400).json({ success: false, error: 'Artist name is required.' });
+  try {
+    res.json({ success: true, settings: toggleArtistFavourite(name, favourite) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Search MusicBrainz for closest artist matches
 router.get('/musicbrainz/search', async (req, res) => {
-  const { query } = req.query;
-  if (!query) return res.json({ success: true, results: [] });
+  const query = req.query.query || req.query.q;
+  if (!query) return res.json({ success: true, results: [], artists: [] });
   try {
     const results = await searchMusicBrainzArtist(String(query));
-    res.json({ success: true, results });
+    res.json({ success: true, results, artists: results });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -152,10 +163,10 @@ router.get('/artist', (req, res) => {
 });
 
 router.put('/artist/settings', (req, res) => {
-  const { name, searchName, aliases, hidden, linkedFolder, linkedReleases } = req.body || {};
+  const { name, searchName, aliases, hidden, favourite, mbId, linkedFolder, linkedReleases } = req.body || {};
   if (!name || typeof name !== 'string') return res.status(400).json({ error: 'name is required.' });
   try {
-    res.json({ success: true, settings: saveArtistSettings(name, { searchName, aliases, hidden, linkedFolder, linkedReleases }) });
+    res.json({ success: true, settings: saveArtistSettings(name, { searchName, aliases, hidden, favourite, mbId, linkedFolder, linkedReleases }) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

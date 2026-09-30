@@ -24,10 +24,13 @@ if not exist "pdf-knowledge-base\node_modules\" (
     cd ..
 )
 
-:: 3. Clean up conflicting ports
-echo [System] Cleaning up ports 6001, 3001, 5173, and orphaned Ngrok processes...
+:: 3. Clean up conflicting node processes and ports
+echo [System] Terminating prior node processes and cleaning up ports...
+powershell -NoProfile -Command "Stop-Process -Name node,ngrok -Force -ErrorAction SilentlyContinue"
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr :6001') do taskkill /f /pid %%a >nul 2>&1
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr :3001') do taskkill /f /pid %%a >nul 2>&1
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr :3002') do taskkill /f /pid %%a >nul 2>&1
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr :3003') do taskkill /f /pid %%a >nul 2>&1
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr :5173') do taskkill /f /pid %%a >nul 2>&1
 taskkill /f /im ngrok.exe >nul 2>&1
 

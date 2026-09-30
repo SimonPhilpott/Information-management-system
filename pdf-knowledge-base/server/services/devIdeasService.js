@@ -6,15 +6,18 @@ import db from '../db/database.js';
 
 db.exec(`CREATE TABLE IF NOT EXISTS dev_ideas (
   id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'page',
-  category TEXT DEFAULT 'Other', status TEXT NOT NULL DEFAULT 'new', notes TEXT,
+  category TEXT DEFAULT 'Other', image TEXT, status TEXT NOT NULL DEFAULT 'new', notes TEXT,
   created_at INTEGER NOT NULL, updated_at INTEGER
 )`);
 
-// Safe migration for category column if table already exists
+// Safe migration for category & image columns if table already exists
 try {
   const cols = db.pragma('table_info(dev_ideas)');
   if (!cols.some((c) => c.name === 'category')) {
     db.exec(`ALTER TABLE dev_ideas ADD COLUMN category TEXT DEFAULT 'Other'`);
+  }
+  if (!cols.some((c) => c.name === 'image')) {
+    db.exec(`ALTER TABLE dev_ideas ADD COLUMN image TEXT DEFAULT NULL`);
   }
 } catch (e) {
   console.warn('[DevIdeas] Migration note:', e.message);
@@ -22,6 +25,8 @@ try {
 
 export const STATUSES = ['new', 'picked_up', 'done', 'dismissed'];
 export const CATEGORIES = [
+  'IMS Desktop',
+  'IMS ESP32',
   'Music Scanner',
   'Blood Glucose / Diabetes',
   'Run Planner',
@@ -43,6 +48,7 @@ const present = (r) => r && ({
   text: r.text,
   source: r.source,
   category: r.category || 'Other',
+  image: r.image || null,
   status: r.status,
   notes: r.notes,
   createdAt: r.created_at,
@@ -72,22 +78,24 @@ export function listIdeas({ status, category } = {}) {
   return rows.map(present);
 }
 
-export function addIdea({ text, source = 'page', category = 'Other' }) {
+export function addIdea({ text, source = 'page', category = 'Other', image = null }) {
   const t = String(text || '').trim();
-  if (!t) throw new Error('The idea is empty.');
+  if (!t && !image) throw new Error('The idea is empty.');
   const cat = String(category || 'Other').trim() || 'Other';
-  const info = db.prepare('INSERT INTO dev_ideas (text, source, category, created_at) VALUES (?, ?, ?, ?)').run(t.slice(0, 4000), source, cat, Date.now());
+  const img = image && typeof image === 'string' && image.trim() ? image.trim() : null;
+  const info = db.prepare('INSERT INTO dev_ideas (text, source, category, image, created_at) VALUES (?, ?, ?, ?, ?)').run(t.slice(0, 8000), source, cat, img, Date.now());
   return present(db.prepare('SELECT * FROM dev_ideas WHERE id = ?').get(info.lastInsertRowid));
 }
 
-export function updateIdea(id, { text, status, category, notes }) {
+export function updateIdea(id, { text, status, category, image, notes }) {
   const row = db.prepare('SELECT * FROM dev_ideas WHERE id = ?').get(id);
   if (!row) throw new Error('Idea not found.');
   if (status !== undefined && !STATUSES.includes(status)) throw new Error(`Status must be one of ${STATUSES.join(', ')}.`);
-  db.prepare('UPDATE dev_ideas SET text = ?, status = ?, category = ?, notes = ?, updated_at = ? WHERE id = ?').run(
-    text !== undefined ? String(text).trim() || row.text : row.text,
+  db.prepare('UPDATE dev_ideas SET text = ?, status = ?, category = ?, image = ?, notes = ?, updated_at = ? WHERE id = ?').run(
+    text !== undefined ? (String(text).trim() || row.text) : row.text,
     status ?? row.status,
     category !== undefined ? (String(category).trim() || 'Other') : (row.category || 'Other'),
+    image !== undefined ? (image ? String(image).trim() : null) : row.image,
     notes !== undefined ? (String(notes).trim() || null) : row.notes,
     Date.now(), id,
   );

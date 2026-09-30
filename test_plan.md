@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 65
-- Verified Features: 65
+- Total Registered Features: 77
+- Verified Features: 77
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -73,6 +73,18 @@
 | FEAT-063 | Music Scanner Album Linking, Audit Screen & Dev Ideas Category Filtering | [MusicScanPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/MusicScanPortal.jsx) | Network folder inspection & renaming, MusicBrainz fuzzy alignment, Audit view tabs, release linking, and Dev Ideas category tags/filters | PASS |
 | FEAT-064 | Best Practice Code Inputs/Outputs Specifications & Outdated Repository Re-Scanner | [CodeRepoPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/CodeRepoPortal.jsx) | Structured inputs/outputs contract schema with types and concrete example payloads, commit SHA/pushed_at outdated detection, and incremental snippet re-scanner | PASS |
 | FEAT-065 | System Architecture Live Trace Tooltips, Show-Only-Used Filter & PDF Snapshot | [SystemArchitecturePortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/SystemArchitecturePortal.jsx) | Safe test prompt tool execution, reason descriptors on lit components, hover tooltips, show-only-used filter, PDF snapshot export, and RAF connector stabilization | PASS |
+| FEAT-066 | Day Report Service Sub-Filtering & Information Tuning | [DayReportPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/DayReportPortal.jsx) | Extensible sub-filtering registry across 16 services, interactive UI drawers, schema persistence & sub-filter-driven briefing generation | PASS |
+| FEAT-067 | System Architecture Search & Component Highlighting | [SystemArchitecturePortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/SystemArchitecturePortal.jsx) | Real-time search bar, query match count badges, amber glowing borders, text mark highlighting, and keyboard shortcuts ('/' to focus, Escape to clear) | PASS |
+| FEAT-068 | Unified Brand Theme Overhaul, Element Alignment & Old/New Preview Mode | [ThemeVersionContext.jsx](file:///d:/Information%20management%20system/src/context/ThemeVersionContext.jsx) | Header toggle pill, Old/New theme switching across light/dark modes, vertically centred toggle circles, and British English orthography | PASS |
+| FEAT-069 | Activity Session Tagging for Speed & Hill Sessions | [ActivitiesPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/ActivitiesPortal.jsx) | Speed & Hill session tagging, distance volume retention, and strict pace exclusion from running averages and coaching | PASS |
+| FEAT-070 | MusicBrainz Scanner MBID Alignment, Folder Renaming & Artist Favourites | [MusicScanPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/MusicScanPortal.jsx) | Explicit MusicBrainz MBID override & direct release-group browsing, folder noise stripping, disk folder and artist renaming, and favourite artist star toggling & view filtering | PASS |
+| FEAT-071 | All-Time Training Milestones & Sortable Activity Tables | [ActivitiesPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/ActivitiesPortal.jsx) | All-time running milestone extraction (first run, longest run 8.5 mi, total mileage), prompt grounding, getTrainingSummary voice tool, and sortable table columns | PASS |
+| FEAT-072 | Board Game HTML Entity Decoding & BGG Expansion Ownership Sync | [BoardgamesPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/BoardgamesPortal.jsx) | HTML entity unescaping across game titles/eBay queries, BGG live search, expansion checklist, and SQLite expansion ownership override sync | PASS |
+| FEAT-073 | Scheduled Items Alert Modes & Auto-Dismiss Repeats | [ScheduledItemsPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/ScheduledItemsPortal.jsx) | Alert mode (chimes, vocal, both) & auto-dismiss repeats in UI/SQLite/voice tools with conditional firmware audio chime and speech query dispatch | PASS |
+| FEAT-074 | Board Game Box Art Hover Previews, Expansion Thumbnails & Release Year Display | [BoardgamesPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/BoardgamesPortal.jsx) | Box art hover popup previews, expansion thumbnail integration, and release year display in brackets matching base games | PASS |
+| FEAT-075 | Board Game Collection Updates Drawer & Direct BGG Link Inspection | [BoardgamesPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/BoardgamesPortal.jsx) | Show List Updates button, update count badge, aggregation modal drawer, ThumbnailHoverPreview, and direct BGG links | PASS |
+| FEAT-076 | Universal Board Game Expansion Box Art & Thumbnail Sync | [BoardgamesPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/BoardgamesPortal.jsx) | Universal expansion thumbnail fetching, startThumbnailBackfill progress, and Add modal box art rendering | PASS |
+| FEAT-077 | Dev Ideas Screenshot Clipboard Paste & Antigravity Prompt Integration | [DevIdeasPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/DevIdeasPortal.jsx) | Clipboard paste listener (Ctrl+V), image column migration, Copy Screenshot binary write, and Copy Prompt generation | PASS |
 
 ## Section 2: Detailed Scenarios
 ### Suite 17: Bidirectional Pace & Estimated Time Editing (FEAT-043)
@@ -578,11 +590,11 @@
 
 ### Suite 53: System Architecture Guest Invites & Fullscreen Adaptive Viewport (FEAT-053)
 1. **Invite Modal Launch:** Navigate to `/ims/architecture`; verify the "Invite & Guests" button is visible in the top action bar next to "Fit to screen"; click it, or click the "Invited guests" row on the "Owner and access" spoke card; verify the `ArchitectureInviteModal` opens cleanly.
-2. **Daniel Philpott Preset & One-Click Invite:** In the modal, verify the dedicated banner for Daniel Philpott is displayed with an "Email Daniel" mailto link and "Grant Access" quick action; click "Grant Access" or enter an email; verify `POST /api/decks/invites` grants access and updates the guest list.
-3. **Copy Link & Revoke Access:** Verify the "Copy link" button copies `https://simon-ims.ngrok-free.app/campaigns?invite=1` to the clipboard with toast feedback; verify existing guests can be withdrawn via `DELETE /api/decks/invites/:email` with prompt confirmation.
+2. **Daniel Philpott Preset & One-Click Invite:** In the modal, verify the dedicated banner for Daniel Philpott is displayed with an "Email Daniel" mailto link (referencing System Architecture) and "Grant Access" quick action; click "Grant Access" or enter an email; verify `POST /api/decks/invites` grants access and updates the guest list.
+3. **Copy Link & Revoke Access:** Verify the "Copy link" button copies `${window.location.origin}/ims/architecture?invite=1` to the clipboard with toast feedback; verify existing guests can be withdrawn via `DELETE /api/decks/invites/:email` with prompt confirmation.
 4. **Fullscreen Right Column Auto-Collapse:** Click "Fit to screen" (or trigger fullscreen on `fitRef`); verify the right-hand summary column (`panelOpen`) automatically collapses to maximize the dependency map diagram viewport.
 5. **Fullscreen Exit Panel State Restoration:** Exit fullscreen mode (via Esc or "Exit full screen" button); verify the right-hand column automatically re-opens and restores its previous open state prior to entering fullscreen.
-6. **Defensive Invariant 63 (Fullscreen State Memory & Invite Security):** In `SystemArchitecturePortal.jsx`, `preFullscreenPanelRef` caches `panelOpen` prior to fullscreen transitions and restores exact state on `fullscreenchange` exit. All guest actions strictly reuse `/api/decks/invites` backend security constraints restricting invited accounts to basic Google profile authentication and Campaign Manager scope only.
+6. **Defensive Invariant 63 (Fullscreen State Memory & Invite Security):** In `SystemArchitecturePortal.jsx`, `preFullscreenPanelRef` caches `panelOpen` prior to fullscreen transitions and restores exact state on `fullscreenchange` exit. All guest actions strictly reuse `/api/decks/invites` backend security constraints restricting invited accounts to basic Google profile authentication and Architecture / Campaign Manager scope.
 
 ### Suite 54: Compact Half-Height IMS Face in Main App (FEAT-054)
 1. **Face Dimensions & Proportion:** In the main app home tab (`ImsPanel.jsx`), verify IMS's face card is rendered with `max-w-[280px]` (half of previous `max-w-xl`), resulting in an approximate height of ~186px while maintaining the 12:8 aspect ratio.
@@ -664,7 +676,147 @@
 5. **Incremental Re-scanning Pipeline:** Click **Re-scan Outdated** (or trigger `GET /api/code-repo/scan-outdated-stream`). Verify an SSE progress bar opens, existing code snippets modified on disk are updated in place (preserving user observation notes), and newly added source files are catalogued as new patterns. Confirm the repository resets to green **Up to date**.
 6. **Defensive Invariant 74 (Incremental Snippet Keying & Git Commit Traceability):** In `codeRepoService.js`, `scanRepository()` matches existing snippets by `repo_id + file_path` to update existing records in SQLite without creating duplicate entries or erasing `user_observations`. Git commit comparisons handle missing branch heads gracefully with fallback heuristics.
 
+### Suite 65: System Architecture Live Trace Tooltips, Show-Only-Used Filter & PDF Snapshot (FEAT-065)
+1. **Tool Execution & Reason Descriptors:** Run a test prompt on `/ims/architecture` (e.g. *"What is the weather in Leeds?"*); verify active components (Open-Meteo Weather Service, getWeather tool, Gemini Brain) light up amber/green and display explicit access reason descriptors.
+2. **Hover Tooltip Verification:** Hover over any active card; verify interactive tooltips display access reasons, step indices, and invocation counts.
+3. **Show Only Used Filter Toggle:** Check **Show only used items**; verify inactive cards collapse and only active components are displayed in the layout.
+4. **Anti-Flicker Line Stability:** Verify SVG connectors remain stable during streaming steps without line jumping or redraw flickering.
+5. **Vector PDF Snapshot:** Click **Save as PDF**; confirm browser print dialog opens with clean printable vector styles.
+6. **Defensive Invariant 75 (Connector Coordinate Caching & Resize Synchronization):** In `SystemArchitecturePortal.jsx`, connector layout computations are throttled via `requestAnimationFrame` and `ResizeObserver` lifecycle management.
 
+### Suite 66: Day Report Service Sub-Filtering & Information Tuning (FEAT-066)
+1. **Sub-Filter Drawer Accessibility:** Navigate to `/ims/dayreport`. Verify each connected service card (Weather, Reminders, Calendar, Strava, Glucose Now/Overnight, Birthdays, Music Releases, News, Tasks, etc.) displays a dedicated **Filters** accordion button alongside the **Notes** button.
+2. **Service-Specific Sub-Filter Controls:** Click **Filters** on the Weather card. Verify toggle pills for *Sky & Weather Conditions*, *Min & Max Temperatures*, *Rain Probability & Totals*, *Wind Speed & Direction*, and *Relative Humidity*, plus a slider for *Rain Warning Threshold (%)*.
+3. **Information Tuning & Exclusion:** Disable *Wind Speed* and *Humidity*, toggle off *National/World Headlines* in News, and toggle off *All-Day Events* in Calendar. Click **Live Preview** and verify the generated briefing text selectively includes only the target metrics and excludes unselected data points.
+4. **Configuration Persistence & Future Extensibility:** Click **Save Order & Filters**. Refresh the page and trigger `GET /api/day-report/config`. Verify all `subFilters` state maps are persisted to SQLite (`morning_report_config`), and that missing or newly added service filters automatically merge with defaults from `SERVICE_SUB_FILTERS`.
+5. **Defensive Invariant 76 (Schema-Driven Sub-Filter Backward Compatibility & Cache Invalidation):** In `morningReportService.js`, `getReportConfig()` dynamically merges persisted sub-filters with `SERVICE_SUB_FILTERS` schema defaults so new service capabilities never break existing configurations or throw undefined property errors. Every save automatically triggers `invalidateDayReportCache()`, updating the background pre-warm cache for sub-5ms voice delivery.
+
+### Suite 67: System Architecture Search & Component Highlighting (FEAT-067)
+1. **Search Input Bar & Keyboard Focus:** Navigate to `/ims/architecture`. Verify the top action bar displays an interactive search input with a magnifying glass icon. Press `/` or `Ctrl+K`; confirm the input receives focus immediately.
+2. **Real-Time Component & Row Highlighting:** Type `"glucose"`, `"weather"`, or `"TCP"`. Verify all matching spoke and supporting cards light up with glowing amber borders (`ring-amber-400 border-amber-400 bg-amber-500/15`), while non-matching cards are cleanly dimmed (`opacity-35 grayscale-[50%]`).
+3. **Keyword Snippet Highlighting:** Inspect matching rows inside cards (e.g. *Nightscout (Heroku + MongoDB)* or *Desk terminal*); verify the query substring is visually highlighted inside `<mark>` tags in high-contrast amber/espresso.
+4. **Match Count Badge & Clear Action:** Confirm the search bar displays a live match count badge (e.g. `4 matches`). Click the `X` clear button (or press `Escape`); verify the query resets, all cards restore to their default accent borders, and focus is cleanly released.
+5. **Coexistence with Used Filter & PDF Export:** Enter a search query while running a test prompt or with **Show only used items** enabled; verify prompt trace highlights and search highlights coexist without layout displacement or broken connector lines.
+6. **Defensive Invariant 77 (Search Regex Escaping & Case-Insensitive String Hygiene):** In `SystemArchitecturePortal.jsx`, `HighlightText` escapes special regex meta-characters (`.*+?^${}()|[\]\`) prior to constructing string splitting expressions, avoiding catastrophic runtime crashes or syntax errors on queries containing punctuation or brackets (e.g. `:3002`, `(OAuth)`, `[ESP-IDF]`). All matching logic operates case-insensitively with null/undefined guards across `main`, `sub`, and `tag` fields.
+
+### Suite 68: Unified Brand Theme Overhaul, Element Alignment & Old/New Preview Mode (FEAT-068)
+1. **Theme Version Switcher In Header:** Navigate to any portal (e.g. `/ims`, `/ims/dayreport`, `/ims/memories`). Verify the top header contains a dedicated toggle pill labelled `Old` and `New`.
+2. **Instant Visual Preview Mode:** Click between `Old` and `New`. Verify the styling dynamically transitions across header cards, background tokens, border weights, and font colors without requiring page reloads or losing local form state.
+3. **Dark / Light Theme Compatibility:** Toggle between Light and Dark theme modes (Sun/Moon button). Verify that both `Old` and `New` modes render cleanly in both dark (`#030712`) and light (`#F4EFED`) themes with strong contrast.
+4. **Sub-Filter Switch Circle Vertical Centering:** Navigate to `/ims/dayreport` and expand **Filters** on any service (e.g. *Music Releases & Wants* or *Weather*). Verify the inner white circle of boolean sub-filter toggle switches is vertically centred (`items-center`) inside the switch track in both enabled and disabled states.
+5. **British English Orthography Verification:** Verify British English spelling throughout UI titles, tooltips, sub-filters, directives, and notes (*customise*, *prioritise*, *organise*, *colour*, *behaviour*, *synchronise*, *centre*, *dialogue*, *initialise*).
+6. **Defensive Invariant 78 (Theme Version Persistence & LocalStorage Fallback):** In `ThemeVersionContext.jsx`, user preferences are stored in `localStorage` (`ims_theme_version`), safely defaulting to `'new'` with immediate DOM reaction and zero layout thrashing or hydration mismatches.
+
+### Suite 69: Activity Session Tagging for Speed & Hill Sessions (FEAT-069)
+1. **Activity Table Tag Dropdown & Badges:** Navigate to `/ims/activities`. In the activities table, locate any running activity (`Run`, `TrailRun`, `VirtualRun`). Select **⚡ Speed** or **⛰️ Hill** from the tag selector dropdown on that row. Verify the badge updates immediately to amber (`⚡ Speed`) or emerald (`⛰️ Hill`) and persists to SQLite.
+2. **Distance Volume Retention:** Inspect the **Weekly Summary** and **Last 7 / 28 Days** period metrics. Confirm the total running distance (`runKm` / `distanceKm`) and total time (`hours`) still fully credit the tagged activity (100% volume retention).
+3. **Pace Exclusion from Running Averages:** Switch the weekly breakdown metric to **Avg pace**. Verify that the pace of the tagged speed or hill session is strictly excluded from `paceMinKm`, preventing interval recovery walks or steep hill climbs from skewing the aerobic running pace average. Confirm the activity pace cell displays `(no avg)`.
+4. **Run Insight & Glucose Detail Tag Selector:** Click on an activity row to open its detail view and scroll to the **Run Scrutiny Insight** header. Verify the session tag dropdown allows changing the session type directly from within the detail drawer.
+5. **Session Type Table Filtering:** Select **⚡ Speed sessions only** or **⛰️ Hill sessions only** in the table filter bar. Verify the list filters exclusively to activities matching that tag, while selecting **Standard only** filters out tagged speed and hill sessions.
+6. **AI Training Coach & Baseline Model Isolation:** Click **Analyse my training** or evaluate baseline pace in `runPlanService.js` / `goalService.js`. Verify the Gemini prompt and Riegel prediction algorithms ignore tagged speed/hill paces, treating volume as complete while protecting baseline pacing advice from interval distortions.
+7. **Defensive Invariant 79 (Session Tag Schema Migration & Zero-Null Pace Division Guard):** In `stravaService.js`, `totals()` calculates `paceRunDistance` and `paceRunTime` exclusively over non-speed and non-hill sessions with a strict `paceRunDistance > 500` threshold guard, ensuring pace calculations never divide by zero when a week consists entirely of interval/hill workouts.
+
+### Suite 70: MusicBrainz Scanner MBID Alignment, Folder Renaming & Artist Favourites (FEAT-070)
+1. **Explicit MBID Override & Discography Match:** Open the MusicBrainz search modal for an unmatched or noisy folder (e.g. *A Day to Remember*). Search and select the verified artist match. Confirm that the exact MusicBrainz MBID (`mbId`) is saved to artist settings and sent to Python scanner `ims_scan_service.py`, directly executing `get_artist_by_id` and `browse_release_groups` without fuzzy match ambiguity.
+2. **Folder Noise Stripping:** Run or trigger a single-artist scan on a folder containing bracketed or metadata suffixes (e.g. `Band Name - Discography - 2004-2016`). Verify `clean_artist_name_for_search` removes discography tags, anthology markers, and year spans to successfully locate canonical MusicBrainz entries.
+3. **Disk Folder and Album Renaming:** In `FolderBrowserModal`, choose *Rename Album Folder* or *Rename Artist Directory*, specify a corrected title (e.g. fixing a typo in an album folder name on `\\Sideburnt\NorthField\MUZAK`), and submit. Verify `POST /api/music-scan/album/rename` or `POST /api/music-scan/artist/rename` renames the path on disk and refreshes the cache.
+4. **Artist Favourite Toggling:** Click the star icon next to an artist name in `ArtistCard`. Verify the star turns amber, a `Fav` badge appears on the artist row, and `POST /api/music-scan/artist/favourite` persists `favourite: true` in `ims_scan_artists.json` overrides.
+5. **View Favourites Filtering:** Click the **Favourites (N)** toggle button in the top action bar or inside the *All Artists* search header. Verify the artist list instantly filters down to display favourite artists exclusively, and toggling it off restores the full library view.
+6. **Defensive Invariant 80 (Explicit MBID Integrity & Overrides Fallback):** In `ims_scan_service.py` and `musicScanService.js`, manual overrides preserve custom `mbId`, `searchName`, `aliases`, `linked_releases`, and `favourite` attributes across full nightly library scans without erasing user modifications. Folder renaming executes path normalization and verifies source existence before moving directories on network shares.
+
+### Suite 71: All-Time Training Milestones & Sortable Activity Tables (FEAT-071)
+1. **Accurate Voice Answering for First Ever Run & Club Start:** Ask IMS via voice or chat *"When was my first ever run?"* or *"What was my first run?"*. Verify IMS accurately answers stating the first club run with Kippax Harriers was on **23 April 2024** (*1st Run, Beginners - Kippax Harriers*, 2.3 km / 1.5 mi) and first Couch to 5k run was on **23 November 2023** (4.4 km / 2.7 mi) without claiming it only knows this year's runs.
+2. **Accurate Voice Answering for Longest Run Ever:** Ask IMS *"What was my longest run ever?"* or *"What's my longest run?"*. Verify IMS accurately reports **8.5 miles (13.7 km)** on **23 November 2024** (*"Slippy and slushy"*) rather than guessing or claiming it is unsure.
+3. **All-Time Milestone Tool Calling:** Verify `getTrainingSummary(period: 'all_time')` in `stravaService.js` and `hardwareClientService.js` executes reliably, returning structured `allTimeRunning` metrics (191 total runs, 1,447.7 km / 899.5 miles, 173.9 hours, 14,406 m climbed, fastest 5k+ on 2 April 2026).
+4. **Interactive Activity Table Column Sorting:** Navigate to `/ims/activities`. Click on any column header in the table (`Date`, `Name`, `Sport / Tag`, `Distance`, `Time`, `Pace / speed`, `Climb`, `HR`). Verify:
+   - Clicking `Distance` sorts descending (highest mileage runs at the top, starting with the 13.7 km longest run).
+   - Clicking `Distance` again toggles ascending order (shortest runs at the top).
+   - Active column header displays orange text highlight with a clear `ChevronUp` or `ChevronDown` direction arrow.
+   - Non-sorted column headers display a subtle `ArrowUpDown` icon on hover.
+5. **Combined Sorting & Filter State:** In `/ims/activities`, apply a filter (e.g. `Runs only` or `⚡ Speed sessions only`) and sort by `Time` or `Pace / speed`. Confirm sorting respects the active filter without page reloads or layout shifts.
+6. **Defensive Invariant 81 (Safe SQL Column Mapping & Dual-Unit Milestones):** In `stravaService.js`, `listActivities(options)` strictly whitelists permitted `sortBy` columns (`start_local`, `name`, `sport`, `distance`, `moving_time`, `avg_speed`, `elevation`, `avg_hr`, `session_tag`) and bounds `sortDir` to `'ASC'` or `'DESC'`, preventing SQL injection. All running milestones provide both metric (km) and imperial (miles) values with exact formatted date strings (`DD MMMM YYYY`).
+
+### Suite 72: Board Game HTML Entity Decoding & BGG Expansion Ownership Sync (FEAT-072)
+1. **HTML Entity Decoding:** Open `/ims/boardgames`. Verify games with apostrophes (e.g. *Pandemic: In the Lab*, *Arkham Horror: The Card Game*, *Simon's Game*) or accented characters render standard readable characters rather than raw entity escapes like `&#039;`, `&apos;`, `&#39;`, or `&quot;`. Verify eBay search links format unescaped search titles cleanly.
+2. **BoardGameGeek Search Integration:** Click **+ Add Game** to open the addition workbench. Select the **Search BoardGameGeek** mode and type a game title (e.g. *"Spirit Island"* or *"Arkham Horror"*). Verify:
+   - Search results stream dynamically with thumbnail, release year, and BGG ID.
+   - Selecting a search result queries `/api/boardgames/bgg-details/:id` via XML API2, automatically discovering all official linked expansions.
+3. **Interactive Expansion Selection Checklist:** On the selected game details panel, inspect the expansion checklist. Select or unselect specific expansions using the checkboxes, or click **Select all** / **Clear all**.
+4. **Collection Addition & Expansion Sync:** Click **Add Game & Expansions to Collection**. Verify:
+   - The primary game is persisted to the local collection cache with base metadata.
+   - All chosen expansions are stamped as `owned: true` and written to SQLite `boardgame_expansion_ownership`.
+   - The board game catalog updates immediately, displaying the newly added game with its owned expansions.
+5. **1-Click Expansion Ownership Toggle in Game List:** Expand any game in the catalog to view unowned expansions. Click the interactive ownership checkbox next to an unowned expansion. Verify it immediately converts to owned without leaving the list, persists to `/api/boardgames/expansions/:id/own`, and recalculates owned expansion totals.
+6. **Defensive Invariant 82 (Expansion Sync Idempotence & Safe XML Entity Decoding):** In `boardgamesService.js`, `decodeHtmlEntities()` employs regex replacement across both decimal and hexadecimal character references. Expansion ownership overrides are maintained in SQLite (`boardgame_expansion_ownership`), insulating local user collection modifications from upstream BGG XML cache invalidations.
+
+### Suite 73: Scheduled Items Alert Modes & Auto-Dismiss Repeats (FEAT-073)
+1. **Alert Mode Selection in Creation/Edit Form:** Navigate to `/ims/alarms`, `/ims/timers`, or `/ims/reminders`. Click **New** or click the pencil edit button on an existing item. Verify the form contains:
+   - **Alert Playback Mode** dropdown with options: `🔔 + 🗣️ Chimes & Vocal`, `🔔 Chimes only`, `🗣️ Vocal only`.
+   - **Auto-Dismiss Repeats** dropdown with options ranging from `1 repeat (immediate dismissal)` up to `10 repeats (~5 mins)`.
+2. **Visual Alert Mode & Repeat Badges:** Save a new alarm/reminder. Verify the card renders in the active list displaying:
+   - A distinct alert mode pill badge (e.g. purple `🗣️ Vocal only`, amber `🔔 Chimes only`, or emerald `🔔 + 🗣️ Chimes & Vocal`).
+   - A repeat limit badge (e.g. `5 repeats`).
+3. **15-Second Polling & Alert Mode Forwarding:** Inspect backend 15-second polling loop in `server/index.js`. Verify `checkDueScheduledItems()` outputs `alertMode` in the `reminderFired` WebSocket payload (`{ type, label, alertMode }`).
+4. **Firmware main.cpp Gating:**
+   - For `alertMode: "chimes"`, Box-3 firmware plays `playAlertSound()` and updates the LCD display, but suppresses `sendTextQuery()`.
+   - For `alertMode: "vocal"`, Box-3 firmware updates the LCD display and sends `sendTextQuery()` for voice announcement, skipping `playAlertSound()`.
+   - For `alertMode: "both"`, Box-3 firmware plays `playAlertSound()` and immediately sends `sendTextQuery()`.
+5. **Auto-Dismiss Ring Count Limiting:** When an item fires, verify `ring_count` increments on each 30-second cycle until reaching `max_repeats`. Once `ring_count >= max_repeats`, the item automatically transitions to `unanswered` or `delivered` and stops firing.
+6. **Voice Creation Tooling:** Ask IMS via voice *"Set an alarm for 7am called Wake Up with chimes only"*. Verify `scheduleItem` accepts `alertMode: "chimes"` and saves the item with chime-only alerting.
+7. **Defensive Invariant 83 (Alert Mode Schema Fallbacks & Audio Core Collision Prevention):** In `remindersService.js`, schema migrations defensively default missing rows to `alert_mode = 'both'` and `max_repeats = 5` (or 1 for reminders). In `main.cpp`, audio chime and voice announcements run in sequence without I2S DMA TX buffer collisions.
+
+### Suite 74: Board Game Box Art Hover Previews, Expansion Thumbnails & Release Year Display (FEAT-074)
+1. **Base Game Thumbnail Hover Preview:** Navigate to `/ims/boardgames`. Hover over the box art thumbnail of any base game (e.g. *Spirit Island*, *Dune: Imperium*, *7 Wonders Duel*, *Arkham Horror: The Card Game*). Verify:
+   - A smooth, floating card popover appears adjacent to the thumbnail without delay.
+   - The popover displays a large, clear preview of the official box art.
+   - The full game title and release year (e.g. `Released: 2017`) are clearly displayed in the card footer.
+   - Moving the mouse away dismisses the preview cleanly with 120ms debounce.
+2. **Expansion Box Art Thumbnail Display:** Click to expand a game that has expansions (e.g. *Spirit Island* or *Arkham Horror: The Card Game*). Verify:
+   - Each expansion row renders a dedicated square box art thumbnail next to the ownership checkbox.
+   - Hovering over any expansion's thumbnail reveals a high-resolution preview card showing the expansion's box art, title, and release year.
+3. **Expansion Release Year in Brackets:** Inspect expansion titles in the expanded list. Verify each expansion displays its release year in brackets matching the base game styling (e.g. *Spirit Island: Jagged Earth* `(2020)`, *Spirit Island: Branch & Claw* `(2017)`).
+4. **Orphan Expansions Box Art & Hover:** Scroll down to the *Owned expansions not linked to a game in your collection* section. Verify orphan expansions render thumbnails with hover preview cards and bracketed release years.
+5. **Defensive Invariant 84 (Thumbnail Hover Containment & Safe Fallback):** In `BoardgamesPortal.jsx`, `ThumbnailHoverPreview` manages mouse enter/leave with debounce and defensive fallback squares for items lacking image URLs. Popovers utilize `pointer-events-none` and high z-index (`z-50`) to ensure thumbnail hovering never blocks row expansion or button click events.
+
+### Suite 75: Board Game Collection Updates Drawer & Direct BGG Link Inspection (FEAT-075)
+1. **Button Positioning & Badge Counter:** Navigate to `/ims/boardgames`. Verify:
+   - The **Show List Updates** button is positioned directly to the left of the **Add Game / Expansions** button.
+   - The button displays an emerald icon (`ClipboardList`) and an active pill counter reflecting the number of locally updated/added games and expansions (e.g. `27`).
+2. **Open Updates Drawer Modal:** Click the **Show List Updates** button. Verify:
+   - An elegant modal drawer opens with backdrop blur, displaying the total count of items.
+   - Every locally added base game, manual expansion, and toggled owned expansion is listed in chronological order (newest first).
+   - Each entry displays its box art thumbnail (or EXP/GAME fallback placeholder), title, bracketed release year, item type badge (*Base Game* or *Expansion*), and parent game name if it is an expansion.
+3. **Thumbnail Hover Previews:** In the updates list, hover over any item's thumbnail. Verify the high-resolution `ThumbnailHoverPreview` popover renders seamlessly.
+4. **Live Filter Input:** Type a query (e.g. `Dune` or `2024`) into the filter search box. Verify the list updates instantly to display only matching additions.
+5. **Direct BoardGameGeek Links:** Click the **Open in BGG** button next to any item. Verify:
+   - A new browser tab opens navigating directly to the item's official BoardGameGeek page (e.g. `https://boardgamegeek.com/boardgameexpansion/434489`), allowing rapid addition to the user's BGG profile.
+6. **Defensive Invariant 85 (Update Aggregation Deduplication & State Isolation):** In `boardgamesService.js`, `getLocalUpdates()` safely merges rows from `boardgame_edits` and `boardgame_expansion_ownership` without duplicate ID collisions, decoding HTML entities and providing fallback URLs when IDs are present. The modal cleanly releases focus and closes on Escape, backdrop tap, X icon, or Done button.
+
+### Suite 76: Universal Board Game Expansion Box Art & Thumbnail Sync (FEAT-076)
+1. **Unowned Expansion Thumbnail Rendering:** Navigate to `/ims/boardgames`. Expand any base game with known expansions (e.g. *Aeon's End*, *Arkham Horror: The Card Game*, *1066, Tears to Many Mothers*). Verify that unowned expansions display distinct box art square thumbnails alongside their names and release years rather than empty placeholder rectangles.
+2. **Expansion Box Art Hover Popover:** Hover over the box art thumbnail of an unowned expansion in the list. Verify a floating `ThumbnailHoverPreview` popover renders high-resolution box art, full expansion title, and release year.
+3. **Add Games & Expansions Modal Thumbnails:** Click **Add Game / Expansions** and select **Search BoardGameGeek**. Search for a title (e.g. *Dune: Imperium*). Select the game and inspect the *Select Owned Expansions* checklist. Verify each expansion item in the checklist renders a square box art thumbnail next to its checkbox.
+4. **Sync Box Art Backfill Trigger:** In the BoardGameGeek connection panel, click the **Sync Box Art** button. Verify:
+   - A success toast notification confirms the number of expansions queued for backfill.
+   - A smooth gradient progress bar (teal to lime) displays current progress (e.g. `20 / 140`) and phase description (`Fetching expansion box art`).
+   - The button transitions to an active pulsing state with label `Syncing Art...`.
+5. **Periodic Progress Polling & Cache Persistence:** During backfill, verify the client polls `/api/boardgames` every 3 seconds to update the progress bar. Inspect `data/boardgames_cache.json` on the server and verify that `thumbnail` fields for unowned expansions are populated with valid `https://cf.geekdo-images.com/...` URLs.
+6. **Defensive Invariant 86 (BGG Rate-Limit Gap & Batching Safety):** In `boardgamesService.js`, `startThumbnailBackfill()` and `runRefresh()` batch expansion queries into groups of 20 (`THING_BATCH = 20`) with mandatory 2500ms sleep gaps (`REQUEST_GAP_MS = 2500`) between XML requests to prevent BGG HTTP 429 rate limiting. In-flight progress is saved to disk after every batch to prevent data loss.
+### Suite 77: Dev Ideas Screenshot Clipboard Paste & Antigravity Prompt Integration (FEAT-077)
+1. **Clipboard Screenshot Paste (Ctrl+V):** Navigate to `/ims/devideas`. Capture a screenshot to your system clipboard (e.g. `Win + Shift + S`). Focus the creation text area and press `Ctrl + V`. Verify:
+   - A toast notification confirms `Screenshot pasted from clipboard.`.
+   - A thumbnail preview of the captured image appears immediately beneath the text field with an `X` removal button.
+   - The idea can be submitted with or without additional text.
+2. **File Picker Attachment Fallback:** Click the `Attach / Paste Image` button. Select an image file (e.g. `.png` or `.jpg`). Verify the image is converted to a base64 data URL and attached with a `Screenshot Attached` indicator.
+3. **Card Display & Lightbox Modal:** Once saved, inspect the idea card in the *Waiting* list. Verify:
+   - The screenshot renders cleanly alongside the text description and service tag.
+   - Clicking the screenshot opens a high-resolution lightbox zoom modal with dark backdrop blur.
+4. **Copy Screenshot to Clipboard:** In the idea card or inside the lightbox modal, click **Copy Screenshot** / **Copy Image to Clipboard**. Verify:
+   - The binary PNG image is written directly to the system clipboard using the standard `navigator.clipboard.write([new ClipboardItem(...)])` API.
+   - The screenshot can be pasted directly into Antigravity (`Ctrl + V`) without needing to locate a file on disk.
+5. **Copy Prompt for Antigravity:** Click the **Copy Prompt** button in the idea card footer. Verify the structured text `[Dev Idea #ID - Service]\n<text>\n\n(Screenshot attached in IMS Dev Ideas portal #ID)` is copied to the clipboard.
+6. **Editing & Inline Replacement:** Click the **Edit** button on any idea. Paste a new screenshot or click **Replace Image**. Save changes and verify the updated screenshot persists across server reloads.
+7. **Defensive Invariant 87 (5MB Image Gate & Safe Schema Migration):** In `DevIdeasPortal.jsx`, files larger than 5MB are rejected before reading into memory to prevent localStorage / memory bloat. In `devIdeasService.js`, SQLite `dev_ideas` schema upgrades dynamically apply `ALTER TABLE dev_ideas ADD COLUMN image TEXT DEFAULT NULL` on startup without data loss.
 
 
 

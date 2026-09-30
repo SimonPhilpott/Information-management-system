@@ -108,8 +108,8 @@ export default function RecordingsPortal({ theme = 'dark', onThemeToggle, setCur
     catch (_) { showToast('Could not copy - your browser blocked it.', 'error'); }
   };
 
-  const panel = `rounded-2xl border p-5 ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/70 border-[#2E2B27]/10 shadow-sm'}`;
-  const field = `w-full px-3 py-2 rounded-lg text-xs outline-none border ${isDark ? 'bg-slate-950/60 border-white/10 text-slate-100' : 'bg-white border-[#2E2B27]/10 text-slate-900'}`;
+  const panel = `rounded-2xl border p-5 ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/90 border-[#2E2B27]/10 shadow-sm'}`;
+  const field = `w-full px-3 py-2 rounded-lg text-xs outline-none border ${isDark ? 'bg-slate-950/60 border-white/10 text-slate-100' : 'bg-white border-[#2E2B27]/15 text-[#2E2B27]'}`;
   const iconBtn = `p-1.5 rounded-lg ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`;
   const gradient = 'from-rose-500 to-red-600';
   const liveFor = status.active ? Math.max(0, Math.round((Date.now() - status.startedAt) / 1000)) : 0;

@@ -474,8 +474,88 @@
         "pdf-knowledge-base/server/db/database.js",
         "pdf-knowledge-base/server/services/vectorService.js"
       ]
+    },
+    "src/components/Dashboard/DayReportPortal.jsx": {
+      "description": "Day Report configuration and fine-tuning portal (/ims/dayreport) supporting subject drag/re-ordering, enable/disable toggles, mention notes, and interactive service-specific sub-filtering drawers with live report preview.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx",
+        "pdf-knowledge-base/server/routes/dayReport.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/morningReportService.js": {
+      "description": "Core day report assembly and briefing service generating structured morning/day reports across 16 connected services, supporting extensible sub-filter schemas, fast background cache pre-warming, and strict non-repetition rules.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js",
+        "pdf-knowledge-base/server/services/weatherService.js",
+        "pdf-knowledge-base/server/services/calendarService.js",
+        "pdf-knowledge-base/server/services/remindersService.js",
+        "pdf-knowledge-base/server/services/birthdayService.js",
+        "pdf-knowledge-base/server/services/musicScanService.js",
+        "pdf-knowledge-base/server/services/stravaService.js",
+        "pdf-knowledge-base/server/services/glucoseHubService.js",
+        "pdf-knowledge-base/server/services/newsService.js",
+        "pdf-knowledge-base/server/services/tasksService.js"
+      ]
+    },
+    "src/context/ThemeVersionContext.jsx": {
+      "description": "Global theme version context providing ThemeVersionProvider, useThemeVersion hook, and ThemeVersionToggle pill component allowing seamless switching and live preview between 'Old' and 'New' brand themes across all IMS portals.",
+      "dependencies": []
+    },
+    "src/components/Dashboard/ActivitiesPortal.jsx": {
+      "description": "Strava training and activities portal (/ims/activities) supporting speed and hill session tagging, weekly volume graphs, pace breakdown, glucose matching charts, and AI post-run scrutiny debriefs.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx",
+        "pdf-knowledge-base/server/routes/strava.js",
+        "pdf-knowledge-base/server/services/stravaService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/stravaService.js": {
+      "description": "Strava activity synchronization and analysis service with SQLite strava_activities table, supporting speed/hill session tagging, weekly breakdown metrics, aerobic pace calculation isolation, and AI coaching summaries.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js",
+        "pdf-knowledge-base/server/services/aiTextService.js"
+      ]
+    },
+    "src/components/Dashboard/MusicScanPortal.jsx": {
+      "description": "Music library scanning and release discovery portal (/ims/musicscan) with MusicBrainz MBID alignment, folder browsing & disk renaming, favourites flagging and filtering, and multi-window release timelines.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx",
+        "pdf-knowledge-base/server/services/musicScanService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/musicScanService.js": {
+      "description": "Music library scanner orchestrator integrating with Python ims_scan_service.py on network share, managing artist overrides (MBID, search names, aliases, favourites, hidden state), album linking, and disk folder renaming.",
+      "dependencies": [
+        "pdf-knowledge-base/server/routes/musicScan.js"
+      ]
+    },
+    "src/components/Dashboard/BoardgamesPortal.jsx": {
+      "description": "Board game collection management portal (/ims/boardgames) featuring HTML entity unescaping, live BoardGameGeek search, expansion discovery checklist with box art, 1-click owned expansion addition, universal box art thumbnails for all expansions (owned and unowned), interactive high-resolution box art hover popup cards, release year display in brackets matching base games, a 'Sync Box Art' backfill button with live progress tracking, and a dedicated 'Show List Updates' modal drawer with direct BGG outbound links.",
+      "dependencies": [
+        "pdf-knowledge-base/server/routes/boardgames.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/boardgamesService.js": {
+      "description": "Board game catalog and BGG XML API2 service with HTML entity decoding across games and expansions, parseThingDetails() multi-item parser, live BGG query integration, universal expansion box art thumbnail batch fetching, background thumbnail backfill engine (startThumbnailBackfill), release year mapping, getLocalUpdates() change tracking, and SQLite boardgame_expansion_ownership persistence.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js"
+      ]
+    },
+    "src/components/Dashboard/DevIdeasPortal.jsx": {
+      "description": "Developer ideas portal (/ims/devideas) with service tagging, status workflows, direct screenshot clipboard pasting (Ctrl+V), image attachments, full-screen lightbox modal, and 1-click 'Copy Screenshot' & 'Copy Prompt' buttons for Antigravity and Claude Code hand-offs.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx",
+        "pdf-knowledge-base/server/routes/devIdeas.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/devIdeasService.js": {
+      "description": "Developer ideas queue and voice failure logging service with SQLite dev_ideas schema, supporting text, category, source, status, notes, and image data URL storage with automatic schema migrations.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js"
+      ]
     }
   }
 }
+
 
 

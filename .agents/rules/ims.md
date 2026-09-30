@@ -33,3 +33,8 @@ description: Development standards, database governance, and MCP tooling for Inf
 - Stack Paradigm: Clean, modular, and idiomatic TypeScript or Python. Prioritise functional separation, maintainability, and rapid iteration.
 - Separation of Concerns: Keep data access, business orchestration, and UI/presentation layers decoupled.
 - Avoid Unnecessary Overhead: Do not apply corporate SPFx conventions, `@microsoft/sp-property-pane` patterns, or Griffel CSS-in-JS constraints to this codebase unless explicitly requested.
+
+## Firmware Flashing & Windows Python Encoding
+- Mandatory Encoding Invariant: Whenever compiling or flashing ESP32 firmware on Windows, ALWAYS set `$env:PYTHONIOENCODING="utf-8"` in PowerShell or `set "PYTHONIOENCODING=utf-8"` in cmd.
+- Flashing Protocol: Avoid PlatformIO's upload target when uploading to COM3 because Click/Python terminal UI progress bar throws `UnicodeEncodeError: 'charmap'` on Windows cp1252. Prefer direct binary upload with `esptool.exe`:
+  `$env:PYTHONIOENCODING="utf-8"; & "$env:USERPROFILE\.platformio\penv\Scripts\esptool.exe" --chip esp32s3 -p COM3 -b 921600 write-flash 0x00000000 "firmware\esp32-s3-box-3\bin\firmware.factory.bin"`

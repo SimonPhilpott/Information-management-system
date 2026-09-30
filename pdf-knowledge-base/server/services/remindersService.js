@@ -14,7 +14,9 @@ db.exec(`
     created_at INTEGER NOT NULL,
     cancelled INTEGER NOT NULL DEFAULT 0,
     ringing INTEGER NOT NULL DEFAULT 0,
-    ring_count INTEGER NOT NULL DEFAULT 0
+    ring_count INTEGER NOT NULL DEFAULT 0,
+    alert_mode TEXT NOT NULL DEFAULT 'both',
+    max_repeats INTEGER NOT NULL DEFAULT 5
   );
 
   CREATE TABLE IF NOT EXISTS list_items (
@@ -24,11 +26,13 @@ db.exec(`
     created_at INTEGER NOT NULL
   );
 `);
-// Migration for the table as it existed before ringing/ring_count were
+// Migration for the table as it existed before ringing/ring_count/alert_mode/max_repeats were
 // added - CREATE TABLE IF NOT EXISTS above is a no-op against an
 // already-existing table, so these columns need adding explicitly.
 try { db.exec(`ALTER TABLE scheduled_items ADD COLUMN ringing INTEGER NOT NULL DEFAULT 0`); } catch (_) { }
 try { db.exec(`ALTER TABLE scheduled_items ADD COLUMN ring_count INTEGER NOT NULL DEFAULT 0`); } catch (_) { }
+try { db.exec(`ALTER TABLE scheduled_items ADD COLUMN alert_mode TEXT NOT NULL DEFAULT 'both'`); } catch (_) { }
+try { db.exec(`ALTER TABLE scheduled_items ADD COLUMN max_repeats INTEGER NOT NULL DEFAULT 5`); } catch (_) { }
 // History: nothing is ever deleted. scheduled_for is the time the user asked
 // for (fire_at drifts forward while an item re-rings); cancelled_at/ended_at/
 // ended_reason record how and when it finished ('cancelled', 'dismissed' =
@@ -62,6 +66,7 @@ function logEvent(item, event, { at = Date.now(), scheduledFor = null, detail = 
 
 const VALID_TYPES = ['timer', 'alarm', 'reminder'];
 const VALID_RECURRENCE = ['once', 'daily', 'weekdays', 'weekly'];
+const VALID_ALERT_MODES = ['chimes', 'vocal', 'both'];
 const LONDON_TZ = 'Europe/London';
 
 // All wall-clock reasoning ("7:30", "already passed today", "next weekday")
@@ -156,15 +161,19 @@ function computeFireAt({ whenSeconds, time, date }) {
   throw new Error('Either whenSeconds or time must be provided');
 }
 
-export function scheduleItem({ type, label, whenSeconds, time, date, recurrence }) {
+export function scheduleItem({ type, label, whenSeconds, time, date, recurrence, alertMode = 'both', maxRepeats = null }) {
   if (!VALID_TYPES.includes(type)) {
     throw new Error(`Unknown type "${type}" - expected one of ${VALID_TYPES.join(', ')}`);
   }
   const rec = VALID_RECURRENCE.includes(recurrence) ? recurrence : 'once';
+  const mode = VALID_ALERT_MODES.includes(alertMode) ? alertMode : 'both';
+  const parsedRepeats = Number.isInteger(Number(maxRepeats)) && Number(maxRepeats) >= 1 && Number(maxRepeats) <= 20
+    ? Number(maxRepeats)
+    : (type === 'reminder' ? 1 : 5);
   const fireAt = computeFireAt({ whenSeconds, time, date });
   const info = db.prepare(
-    `INSERT INTO scheduled_items (type, label, fire_at, recurrence, created_at, scheduled_for) VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(type, label || null, fireAt, rec, Date.now(), fireAt);
+    `INSERT INTO scheduled_items (type, label, fire_at, recurrence, created_at, scheduled_for, alert_mode, max_repeats) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(type, label || null, fireAt, rec, Date.now(), fireAt, mode, parsedRepeats);
   logEvent({ id: info.lastInsertRowid, type, label }, 'created', { scheduledFor: fireAt, detail: rec === 'once' ? null : rec });
   return {
     id: info.lastInsertRowid,
@@ -174,13 +183,15 @@ export function scheduleItem({ type, label, whenSeconds, time, date, recurrence 
     secondsFromNow: Math.round((fireAt - Date.now()) / 1000),
     goesOffAt: new Date(fireAt).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'long', hour: '2-digit', minute: '2-digit' }),
     recurrence: rec,
+    alertMode: mode,
+    maxRepeats: parsedRepeats,
   };
 }
 
 export function listScheduledItems(type = null) {
   const rows = type
-    ? db.prepare(`SELECT id, type, label, fire_at, recurrence FROM scheduled_items WHERE cancelled = 0 AND type = ? ORDER BY fire_at ASC`).all(type)
-    : db.prepare(`SELECT id, type, label, fire_at, recurrence FROM scheduled_items WHERE cancelled = 0 ORDER BY fire_at ASC`).all();
+    ? db.prepare(`SELECT id, type, label, fire_at, recurrence, alert_mode, max_repeats FROM scheduled_items WHERE cancelled = 0 AND type = ? ORDER BY fire_at ASC`).all(type)
+    : db.prepare(`SELECT id, type, label, fire_at, recurrence, alert_mode, max_repeats FROM scheduled_items WHERE cancelled = 0 ORDER BY fire_at ASC`).all();
   return rows.map((r) => ({
     id: r.id,
     type: r.type,
@@ -188,6 +199,8 @@ export function listScheduledItems(type = null) {
     fireAt: new Date(r.fire_at).toISOString(),
     secondsFromNow: Math.max(0, Math.round((r.fire_at - Date.now()) / 1000)),
     recurrence: r.recurrence,
+    alertMode: r.alert_mode || 'both',
+    maxRepeats: r.max_repeats || (r.type === 'reminder' ? 1 : 5),
   }));
 }
 
@@ -204,17 +217,24 @@ export function cancelScheduledItem(id) {
 // /ims/reminders and /ims/timers pages, where a user revises an existing
 // entry rather than cancelling and recreating it. Any field not supplied
 // keeps its current value.
-export function updateScheduledItem(id, { label, whenSeconds, time, date, recurrence }) {
+export function updateScheduledItem(id, { label, whenSeconds, time, date, recurrence, alertMode, maxRepeats }) {
   const existing = db.prepare(`SELECT * FROM scheduled_items WHERE id = ? AND cancelled = 0`).get(id);
   if (!existing) throw new Error('Scheduled item not found');
   const rec = recurrence !== undefined
     ? (VALID_RECURRENCE.includes(recurrence) ? recurrence : 'once')
     : existing.recurrence;
+  const mode = alertMode !== undefined
+    ? (VALID_ALERT_MODES.includes(alertMode) ? alertMode : 'both')
+    : (existing.alert_mode || 'both');
+  const parsedRepeats = maxRepeats !== undefined && Number.isInteger(Number(maxRepeats)) && Number(maxRepeats) >= 1 && Number(maxRepeats) <= 20
+    ? Number(maxRepeats)
+    : (existing.max_repeats || (existing.type === 'reminder' ? 1 : 5));
+
   const fireAt = (whenSeconds !== undefined || time !== undefined || date !== undefined)
     ? computeFireAt({ whenSeconds, time, date })
     : existing.fire_at;
-  db.prepare(`UPDATE scheduled_items SET label = ?, fire_at = ?, scheduled_for = ?, recurrence = ?, ringing = 0, ring_count = 0 WHERE id = ?`)
-    .run(label !== undefined ? (label || null) : existing.label, fireAt, fireAt, rec, id);
+  db.prepare(`UPDATE scheduled_items SET label = ?, fire_at = ?, scheduled_for = ?, recurrence = ?, alert_mode = ?, max_repeats = ?, ringing = 0, ring_count = 0 WHERE id = ?`)
+    .run(label !== undefined ? (label || null) : existing.label, fireAt, fireAt, rec, mode, parsedRepeats, id);
   logEvent({ id, type: existing.type, label: label !== undefined ? (label || null) : existing.label }, 'edited', { scheduledFor: fireAt });
   return {
     id,
@@ -223,6 +243,8 @@ export function updateScheduledItem(id, { label, whenSeconds, time, date, recurr
     fireAt: new Date(fireAt).toISOString(),
     secondsFromNow: Math.max(0, Math.round((fireAt - Date.now()) / 1000)),
     recurrence: rec,
+    alertMode: mode,
+    maxRepeats: parsedRepeats,
   };
 }
 
@@ -243,13 +265,13 @@ function nextOccurrence(prevFireAtMs, recurrence) {
 
 // A fired item keeps re-alerting rather than firing once and going quiet -
 // real alarms/timers/reminders should be hard to sleep through and easy to
-// dismiss once heard. Capped at MAX_RINGS so a forgotten/unreachable device
+// dismiss once heard. Capped at maxRepeats so a forgotten/unreachable device
 // doesn't ring forever.
 const RING_INTERVAL_MS = 30000;
 const MAX_RINGS = 10;
 
 // Retires a ringing item once it's done being repeated - either dismissed
-// (stopAllRinging()) or it's rung MAX_RINGS times with no response. 'once'
+// (stopAllRinging()) or it's rung maxRepeats times with no response. 'once'
 // items are finished; recurring ones advance to their next real occurrence
 // rather than staying cancelled.
 function retireRinging(item, reason = 'dismissed') {
@@ -275,13 +297,22 @@ export function checkDueScheduledItems() {
   const fired = [];
   for (const item of due) {
     const ringCount = item.ring_count + 1;
-    // Reminders are announced once and done; alarms and timers repeat until dismissed.
-    const maxRings = item.type === 'reminder' ? 1 : MAX_RINGS;
-    fired.push({ id: item.id, type: item.type, label: item.label, ringCount, maxRings });
+    // Configurable auto-dismiss repeats per item: default 1 for reminders, 5 for alarms/timers unless custom
+    const maxRings = item.max_repeats || (item.type === 'reminder' ? 1 : 5);
+    const alertMode = item.alert_mode || 'both';
+    fired.push({
+      id: item.id,
+      type: item.type,
+      label: item.label,
+      ringCount,
+      maxRings,
+      alertMode
+    });
     if (!item.first_fired_at) {
       db.prepare(`UPDATE scheduled_items SET first_fired_at = ? WHERE id = ?`).run(now, item.id);
       logEvent(item, 'fired', { at: now, scheduledFor: item.scheduled_for || item.fire_at });
     }
+    // Repeat alert rings until maxRings reached or dismissed
     if (ringCount >= maxRings) {
       retireRinging({ ...item, ring_count: ringCount }, item.type === 'reminder' ? 'delivered' : 'unanswered');
     } else {

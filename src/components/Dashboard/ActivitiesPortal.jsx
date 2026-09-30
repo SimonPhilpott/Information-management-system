@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, Fragment } from 'react';
-import { Activity, RotateCw, LogIn, Lock, Link2, Unlink, Sparkles, Save, ExternalLink, ChevronLeft, ChevronRight, AlertTriangle, TrendingUp, TrendingDown, Minus, Trophy, Droplets, ChevronDown, BookOpen, Edit3, Check, FileText, HeartPulse } from 'lucide-react';
+import { Activity, RotateCw, LogIn, Lock, Link2, Unlink, Sparkles, Save, ExternalLink, ChevronLeft, ChevronRight, ChevronUp, AlertTriangle, TrendingUp, TrendingDown, Minus, Trophy, Droplets, ChevronDown, BookOpen, Edit3, Check, FileText, HeartPulse, Zap, Mountain, ArrowUpDown } from 'lucide-react';
 import PortalShell from './PortalShell';
 import Prose from './Prose';
 import { useUnits, UnitToggle, dist, toKm, paceText, speedText, KM_PER_MI } from '../../utils/units';
@@ -36,7 +36,7 @@ function Delta({ now, before, invert = false }) {
 const LOW = 4.0, HIGH = 7.5;
 
 // One activity's glucose and insulin on board, from the Nightscout log.
-function GlucoseDetail({ id, km, isDark }) {
+function GlucoseDetail({ id, km, isDark, sessionTag, onUpdateTag }) {
   const [state, setState] = useState({ loading: true });
   useEffect(() => {
     let live = true;
@@ -127,10 +127,11 @@ function GlucoseDetail({ id, km, isDark }) {
         {chip('Temporary target', st.tempTarget ? `${st.tempTarget.bottom ?? '?'}-${st.tempTarget.top ?? '?'}${st.tempTarget.reason ? ` (${st.tempTarget.reason})` : ''}` : 'none')}
         {chip('After the finish', st.post?.bgMin != null ? `low ${st.post.bgMin}${st.post.hypo ? ' (hypo)' : ''}, high ${st.post.bgMax}` : 'not yet', st.post?.hypo ? 'text-red-500' : '')}
       </div>
-      <RunInsight id={id} km={km} isDark={isDark} />
+      <RunInsight id={id} km={km} isDark={isDark} sessionTag={sessionTag} onUpdateTag={onUpdateTag} />
     </div>
   );
 }
+
 
 const fmtNum = (v, suffix = '') => (v == null ? '-' : `${v}${suffix}`);
 
@@ -284,7 +285,7 @@ function GoalsPanel({ isDark, units, panel, field, label, btn, ghost, showToast 
 }
 
 // AI review of one run against the runner's targets, with advice for next time on the same route.
-function RunInsight({ id, km, isDark }) {
+function RunInsight({ id, km, isDark, sessionTag, onUpdateTag }) {
   const { units } = useUnits();
   const [insight, setInsight] = useState(null);
   const [routes, setRoutes] = useState({ routes: [], routeId: null, suggestions: [] });
@@ -398,6 +399,32 @@ function RunInsight({ id, km, isDark }) {
     <div className={`rounded-xl border p-4 ${isDark ? 'border-white/10 bg-slate-950/30' : 'border-[#2E2B27]/10 bg-white/60'}`}>
       <div className="flex flex-wrap items-center gap-3 mb-2">
         <h3 className="text-[11px] font-black uppercase tracking-wider flex items-center gap-2"><Sparkles size={12} className="text-emerald-400" />Review this run and plan the next one</h3>
+        
+        {/* Session Tag Selector in Insight Header */}
+        {onUpdateTag && (
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Tag:</span>
+            <select
+              value={sessionTag || ''}
+              onChange={(e) => onUpdateTag(id, e.target.value || null)}
+              className={`px-2 py-1 rounded-lg text-[11px] font-bold outline-none border transition-colors ${
+                sessionTag === 'speed'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                  : sessionTag === 'hill'
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                  : isDark
+                  ? 'bg-slate-950/60 border-white/10 text-slate-300'
+                  : 'bg-white border-[#2E2B27]/10 text-slate-700'
+              }`}
+              title="Tagging as Speed or Hill excludes pace from weekly running averages and baseline pace calculations while crediting distance"
+            >
+              <option value="">Standard (Aerobic)</option>
+              <option value="speed">⚡ Speed Session (Pace Excluded)</option>
+              <option value="hill">⛰️ Hill Session (Pace Excluded)</option>
+            </select>
+          </div>
+        )}
+
         <select value={routes.routeId ?? ''} onChange={(e) => setRoute(e.target.value ? Number(e.target.value) : null)} className={`px-2 py-1.5 rounded-lg text-[11px] outline-none border ${isDark ? 'bg-slate-950/60 border-white/10' : 'bg-white border-[#2E2B27]/10'}`} title="The saved route this run followed (its elevation is used for the advice)">
           <option value="">No saved route linked</option>
           {routes.routes.map((r) => <option key={r.id} value={r.id}>{r.name} ({dist(r.distanceKm, units)} {units}){suggested.includes(r.id) ? ' - similar length' : ''}</option>)}
@@ -415,6 +442,7 @@ function RunInsight({ id, km, isDark }) {
           </button>
         </div>
       </div>
+
       {routes.routes.length === 0 && <p className="text-[10px] text-slate-500 mb-2">Add your Komoot or GPX routes on the <a className="text-sky-500 hover:underline" href="/ims/runplanner">Run Planner</a> to include the route's climbing in the advice.</p>}
       
       {/* ── Runner Debrief & Scrutiny Notes Form ── */}
@@ -525,7 +553,8 @@ export default function ActivitiesPortal({ theme = 'dark', onThemeToggle, setCur
   const [summary, setSummary] = useState(null);
   const [sports, setSports] = useState([]);
   const [list, setList] = useState({ total: 0, activities: [] });
-  const [filters, setFilters] = useState({ sport: '', search: '' });
+  const [filters, setFilters] = useState({ sport: '', search: '', tag: '' });
+  const [sortConfig, setSortConfig] = useState({ key: 'start_local', direction: 'desc' });
   const [page, setPage] = useState(0);
   const [metric, setMetric] = useState('distanceKm');
   const [selectedWeek, setSelectedWeek] = useState(null);
@@ -537,6 +566,7 @@ export default function ActivitiesPortal({ theme = 'dark', onThemeToggle, setCur
   const [needsSignIn, setNeedsSignIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [busy, setBusy] = useState('');
+  const [taggingId, setTaggingId] = useState(null);
   const [creds, setCreds] = useState({ clientId: '', clientSecret: '' });
   const [notification, setNotification] = useState(null);
   const PAGE = 25;
@@ -577,10 +607,46 @@ export default function ActivitiesPortal({ theme = 'dark', onThemeToggle, setCur
 
   const loadList = useCallback(async () => {
     try {
-      const q = new URLSearchParams({ limit: PAGE, offset: page * PAGE, ...(filters.sport && { sport: filters.sport }), ...(filters.search && { search: filters.search }) });
+      const q = new URLSearchParams({
+        limit: PAGE,
+        offset: page * PAGE,
+        sortBy: sortConfig.key,
+        sortDir: sortConfig.direction,
+        ...(filters.sport && { sport: filters.sport }),
+        ...(filters.search && { search: filters.search }),
+        ...(filters.tag && { tag: filters.tag }),
+      });
       setList(await call(`/api/strava/activities?${q}`));
     } catch (_) { /* ignore */ }
-  }, [call, page, filters]);
+  }, [call, page, filters, sortConfig]);
+
+  const handleSort = (key) => {
+    setSortConfig((prev) => {
+      if (prev.key === key) {
+        return { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
+      }
+      return { key, direction: key === 'name' || key === 'sport' ? 'asc' : 'desc' };
+    });
+    setPage(0);
+  };
+
+  const updateActivityTag = async (id, tag) => {
+    setTaggingId(id);
+    try {
+      const d = await send(`/api/strava/activities/${id}/tag`, 'PUT', { tag });
+      setList((prev) => ({
+        ...prev,
+        activities: prev.activities.map((a) => (a.id === id ? { ...a, session_tag: d.activity?.session_tag ?? tag } : a)),
+      }));
+      showToast(tag === 'speed' ? 'Tagged as Speed Session (pace excluded from averages, distance credited)' : tag === 'hill' ? 'Tagged as Hill Session (pace excluded from averages, distance credited)' : 'Session tag reset to standard');
+      loadData();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setTaggingId(null);
+    }
+  };
+
 
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
@@ -983,26 +1049,103 @@ export default function ActivitiesPortal({ theme = 'dark', onThemeToggle, setCur
                     <option value="">All sports</option>
                     {sports.map((s) => <option key={s.sport} value={s.sport}>{s.sport} ({s.n})</option>)}
                   </select>
+                  <select className={`${field} !w-auto`} value={filters.tag} onChange={(e) => { setPage(0); setFilters({ ...filters, tag: e.target.value }); }}>
+                    <option value="">All session types</option>
+                    <option value="none">Standard only</option>
+                    <option value="speed">⚡ Speed sessions only</option>
+                    <option value="hill">⛰️ Hill sessions only</option>
+                  </select>
                   <input className={`${field} !w-48`} placeholder="Search names..." value={filters.search} onChange={(e) => { setPage(0); setFilters({ ...filters, search: e.target.value }); }} />
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
-                    <thead><tr className="text-left text-[10px] uppercase tracking-wider text-slate-500">
-                      <th className="py-1.5 pr-3">Date</th><th className="pr-3">Name</th><th className="pr-3">Sport</th><th className="pr-3 text-right">Distance</th><th className="pr-3 text-right">Time</th><th className="pr-3 text-right">Pace / speed</th><th className="pr-3 text-right">Climb</th><th className="pr-3 text-right">HR</th><th className="text-right">Glucose start / low / end</th><th />
-                    </tr></thead>
+                    <thead>
+                      <tr className="text-left text-[10px] uppercase tracking-wider text-slate-500 select-none">
+                        {[
+                          { key: 'start_local', label: 'Date', align: 'left', pr: 'pr-3' },
+                          { key: 'name', label: 'Name', align: 'left', pr: 'pr-3' },
+                          { key: 'sport', label: 'Sport / Tag', align: 'left', pr: 'pr-3' },
+                          { key: 'distance', label: 'Distance', align: 'right', pr: 'pr-3' },
+                          { key: 'moving_time', label: 'Time', align: 'right', pr: 'pr-3' },
+                          { key: 'avg_speed', label: 'Pace / speed', align: 'right', pr: 'pr-3' },
+                          { key: 'elevation', label: 'Climb', align: 'right', pr: 'pr-3' },
+                          { key: 'avg_hr', label: 'HR', align: 'right', pr: 'pr-3' },
+                        ].map((col) => {
+                          const active = sortConfig.key === col.key;
+                          return (
+                            <th
+                              key={col.key}
+                              onClick={() => handleSort(col.key)}
+                              className={`py-1.5 ${col.pr} text-${col.align} cursor-pointer transition-colors group ${
+                                active ? 'text-orange-400 font-black' : 'hover:text-slate-200'
+                              }`}
+                              title={`Sort by ${col.label} (${active && sortConfig.direction === 'asc' ? 'descending' : 'ascending'})`}
+                            >
+                              <div className={`inline-flex items-center gap-1 ${col.align === 'right' ? 'justify-end' : 'justify-start'}`}>
+                                <span>{col.label}</span>
+                                {active ? (
+                                  sortConfig.direction === 'asc' ? (
+                                    <ChevronUp size={12} className="text-orange-400 shrink-0" />
+                                  ) : (
+                                    <ChevronDown size={12} className="text-orange-400 shrink-0" />
+                                  )
+                                ) : (
+                                  <ArrowUpDown size={10} className="opacity-0 group-hover:opacity-40 shrink-0" />
+                                )}
+                              </div>
+                            </th>
+                          );
+                        })}
+                        <th className="text-right">Glucose start / low / end</th>
+                        <th />
+                      </tr>
+                    </thead>
                     <tbody>
                       {list.activities.map((a) => {
                         const bd = glucose.badges[a.id];
                         const open = openId === a.id;
+                        const isRun = PACE_SPORTS.includes(a.sport);
                         return (
                           <Fragment key={a.id}>
                             <tr onClick={() => setOpenId(open ? null : a.id)} className={`border-t cursor-pointer ${isDark ? 'border-white/5 hover:bg-white/5' : 'border-[#2E2B27]/5 hover:bg-black/5'}`}>
                               <td className="py-1.5 pr-3 whitespace-nowrap text-slate-500">{fmtDay(a.day)}</td>
-                              <td className="pr-3 font-semibold max-w-[16rem] truncate">{a.name}</td>
-                              <td className="pr-3">{a.sport}</td>
+                              <td className="pr-3 font-semibold max-w-[16rem]">
+                                <div className="truncate">{a.name}</div>
+                              </td>
+                              <td className="pr-3 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5">
+                                  <span>{a.sport}</span>
+                                  {isRun && (
+                                    <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+                                      <select
+                                        value={a.session_tag || ''}
+                                        disabled={taggingId === a.id}
+                                        onChange={(e) => updateActivityTag(a.id, e.target.value || null)}
+                                        className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
+                                          a.session_tag === 'speed'
+                                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                                            : a.session_tag === 'hill'
+                                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
+                                            : isDark
+                                            ? 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
+                                            : 'bg-black/5 text-slate-500 border-black/10 hover:text-slate-700'
+                                        }`}
+                                        title="Speed/Hill sessions credit distance to totals but exclude pace from running averages"
+                                      >
+                                        <option value="">Std</option>
+                                        <option value="speed">⚡ Speed</option>
+                                        <option value="hill">⛰️ Hill</option>
+                                      </select>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
                               <td className="pr-3 text-right tabular-nums">{dist(a.distance / 1000, units)} {units}</td>
                               <td className="pr-3 text-right tabular-nums">{fmtDur(a.moving_time)}</td>
-                              <td className="pr-3 text-right tabular-nums">{fmtPace(a, units)}</td>
+                              <td className="pr-3 text-right tabular-nums">
+                                <span className={a.session_tag ? 'italic opacity-85' : ''}>{fmtPace(a, units)}</span>
+                                {a.session_tag && <span className="block text-[8px] text-slate-500 uppercase tracking-tighter">(no avg)</span>}
+                              </td>
                               <td className="pr-3 text-right tabular-nums">{a.elevation ? `${Math.round(a.elevation)} m` : '-'}</td>
                               <td className="pr-3 text-right tabular-nums">{a.avg_hr ? Math.round(a.avg_hr) : '-'}</td>
                               <td className={`text-right tabular-nums whitespace-nowrap ${bd?.hypo ? 'text-red-500 font-bold' : ''}`}>{bd ? `${bd.bgStart ?? '-'} / ${bd.bgMin ?? '-'} / ${bd.bgEnd ?? '-'}${bd.iobStart != null ? ` (${bd.iobStart} U)` : ''}` : <span className="text-slate-500 text-[10px]">tap to check</span>}</td>
@@ -1011,7 +1154,7 @@ export default function ActivitiesPortal({ theme = 'dark', onThemeToggle, setCur
                                 <a href={`https://www.strava.com/activities/${a.id}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="opacity-50 hover:opacity-100 ml-1" title="Open on Strava"><ExternalLink size={12} className="inline" /></a>
                               </td>
                             </tr>
-                            {open && (<tr><td colSpan={10} className="px-1"><GlucoseDetail id={a.id} km={Math.round((a.distance / 1000) * 10) / 10} isDark={isDark} /></td></tr>)}
+                            {open && (<tr><td colSpan={10} className="px-1"><GlucoseDetail id={a.id} km={Math.round((a.distance / 1000) * 10) / 10} isDark={isDark} sessionTag={a.session_tag} onUpdateTag={updateActivityTag} /></td></tr>)}
                           </Fragment>
                         );
                       })}
@@ -1024,6 +1167,7 @@ export default function ActivitiesPortal({ theme = 'dark', onThemeToggle, setCur
                   <button className={ghost} disabled={page + 1 >= pages} onClick={() => setPage(page + 1)}><ChevronRight size={12} /></button>
                 </div>
               </div>
+
             </>
           )}
         </>

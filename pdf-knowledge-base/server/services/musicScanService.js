@@ -88,17 +88,19 @@ export function getArtistOverrides() {
   return readJson(ARTISTS_PATH, {});
 }
 
-export function saveArtistSettings(name, { searchName, aliases, hidden, linkedFolder, linkedReleases }) {
+export function saveArtistSettings(name, { searchName, aliases, hidden, favourite, mbId, linkedFolder, linkedReleases }) {
   const all = getArtistOverrides();
   const current = all[name] || {};
   
   const cleanAliases = (Array.isArray(aliases) ? aliases : (current.aliases || [])).map((a) => String(a).trim()).filter(Boolean);
   const cleanSearch = searchName !== undefined ? String(searchName || '').trim() : (current.searchName || '');
   const isHidden = hidden !== undefined ? Boolean(hidden) : Boolean(current.hidden);
+  const isFavourite = favourite !== undefined ? Boolean(favourite) : Boolean(current.favourite);
+  const cleanMbId = mbId !== undefined ? (String(mbId || '').trim() || null) : (current.mbId || null);
   const folderLink = linkedFolder !== undefined ? (String(linkedFolder || '').trim() || null) : (current.linkedFolder || null);
   const relLinks = linkedReleases !== undefined ? linkedReleases : (current.linkedReleases || {});
 
-  const hasContent = cleanSearch || cleanAliases.length > 0 || isHidden || folderLink || (relLinks && Object.keys(relLinks).length > 0);
+  const hasContent = cleanSearch || cleanAliases.length > 0 || isHidden || isFavourite || cleanMbId || folderLink || (relLinks && Object.keys(relLinks).length > 0);
   
   if (!hasContent) {
     delete all[name];
@@ -107,13 +109,22 @@ export function saveArtistSettings(name, { searchName, aliases, hidden, linkedFo
       ...(cleanSearch ? { searchName: cleanSearch } : {}),
       ...(cleanAliases.length ? { aliases: cleanAliases } : {}),
       ...(isHidden ? { hidden: true } : {}),
+      ...(isFavourite ? { favourite: true } : {}),
+      ...(cleanMbId ? { mbId: cleanMbId } : {}),
       ...(folderLink ? { linkedFolder: folderLink } : {}),
       ...(relLinks && Object.keys(relLinks).length ? { linkedReleases: relLinks } : {})
     };
   }
   
   fs.writeFileSync(ARTISTS_PATH, JSON.stringify(all, null, 2), 'utf8');
-  return all[name] || { searchName: '', aliases: [], hidden: false, linkedFolder: null, linkedReleases: {} };
+  return all[name] || { searchName: '', aliases: [], hidden: false, favourite: false, mbId: null, linkedFolder: null, linkedReleases: {} };
+}
+
+export function toggleArtistFavourite(name, favourite) {
+  const all = getArtistOverrides();
+  const current = all[name] || {};
+  const nextFav = favourite !== undefined ? Boolean(favourite) : !Boolean(current.favourite);
+  return saveArtistSettings(name, { favourite: nextFav });
 }
 
 export function hideArtist(name, hidden = true) {
@@ -153,13 +164,14 @@ function summarise(name, entry, overrides) {
     name,
     genre: entry.genre,
     mbName: entry.mbName,
-    mbId: entry.mbId || null,
+    mbId: entry.mbId || ov.mbId || null,
     owned: entry.releases.filter((r) => r.owned).length,
     notOwned: entry.releases.filter((r) => !r.owned).length,
     unlisted: entry.unlisted.length,
     searchName: ov.searchName || '',
     aliases: ov.aliases || [],
     hidden: Boolean(ov.hidden),
+    favourite: Boolean(ov.favourite),
     linkedFolder: ov.linkedFolder || null,
     linkedReleases: ov.linkedReleases || {}
   };
@@ -184,12 +196,13 @@ export function getArtistDetail(name) {
   };
 }
 
-// Audit: list all unmatched artists (no mbId or 0 releases) and artists with unowned releases
+// Audit: list all unmatched artists (no mbId or 0 releases), artists with unowned releases, and hidden folders
 export function getMusicAudit() {
   const overrides = getArtistOverrides();
   const results = getResults().artists;
   const unmatched = [];
   const withMissing = [];
+  const hidden = [];
 
   for (const [name, entry] of Object.entries(results)) {
     const isHidden = Boolean(overrides[name]?.hidden);
@@ -201,22 +214,38 @@ export function getMusicAudit() {
       error: entry.error || null
     };
 
+    if (isHidden) {
+      hidden.push(detail);
+      continue;
+    }
+
     const isUnmatched = !entry.mbId || entry.error || (entry.releases || []).length === 0;
     if (isUnmatched) {
       unmatched.push(detail);
-    } else if (sum.notOwned > 0) {
+    } else if (sum.notOwned > 0 || (entry.unlisted || []).length > 0) {
       withMissing.push(detail);
     }
   }
 
   unmatched.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-  withMissing.sort((a, b) => b.notOwned - a.notOwned || a.name.localeCompare(b.name));
+  withMissing.sort((a, b) => (b.notOwned + (b.unlistedAlbums?.length || 0)) - (a.notOwned + (a.unlistedAlbums?.length || 0)) || a.name.localeCompare(b.name));
+  hidden.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
   return {
+    summary: {
+      unmatchedCount: unmatched.length,
+      missingReleasesArtistCount: withMissing.length,
+      hiddenCount: hidden.length
+    },
     unmatchedCount: unmatched.length,
     withMissingCount: withMissing.length,
+    hiddenCount: hidden.length,
+    unmatchedArtists: unmatched,
+    missingReleases: withMissing,
+    hiddenArtists: hidden,
     unmatched,
-    withMissing
+    withMissing,
+    hidden
   };
 }
 

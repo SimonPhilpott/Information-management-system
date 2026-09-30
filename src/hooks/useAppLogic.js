@@ -248,12 +248,23 @@ export function useAppLogic() {
   const [showGraph, setShowGraph] = useState(false);
 
   // Active UI theme configuration
-  const [theme, setTheme] = useState(() => localStorage.getItem('app-theme') || 'light');
+  const [theme, setTheme] = useState(() => localStorage.getItem('app-theme') || 'dark');
   const [showCitations, setShowCitations] = useState(() => {
     const saved = localStorage.getItem('app-show-citations');
     return saved !== null ? JSON.parse(saved) : false;
   });
   const [deletingSessionIds, setDeletingSessionIds] = useState(new Set());
+
+  // Listen for storage events so cross-tab or nested route changes keep theme state in sync
+  useEffect(() => {
+    const handleStorage = (e) => {
+      if (e.key === 'app-theme' && e.newValue && (e.newValue === 'dark' || e.newValue === 'light')) {
+        setTheme(e.newValue);
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   // Enforces general theme attribute triggers on document elements
   useEffect(() => {
@@ -266,7 +277,11 @@ export function useAppLogic() {
   }, [theme]);
 
   const toggleTheme = useCallback(() => {
-    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+    setTheme(prev => {
+      const next = prev === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('app-theme', next);
+      return next;
+    });
   }, []);
 
   const toggleCitations = useCallback(() => {

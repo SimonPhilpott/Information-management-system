@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Network, Users, User, KeyRound, ShieldCheck, Monitor, Smartphone, Globe, BookOpen, Cpu, Sparkles, Bot,
   Waves, Mic, Wrench, Gauge, Hand, Moon, Plug, CalendarDays, HardDrive, Droplets, Syringe, Activity, Route,
   CloudSun, Apple, Music, Dices, Rss, Database, Layers, FileText, Lock, Settings, Boxes, Server, Code,
   Terminal, GitBranch, Clock, Timer, RefreshCw, Scale, ChevronRight, AlertTriangle, Info, Smile, Drama,
   MessageSquareQuote, Wifi, Newspaper, Heart, Radio, Speaker, Cake, Bell, ListChecks, Eye, Maximize2, Minimize2, Eraser,
-  UserPlus, Mail, ClipboardCopy, X, Check, Filter, Download, Printer,
+  UserPlus, Mail, ClipboardCopy, X, Check, Filter, Download, Printer, Search,
 } from 'lucide-react';
 import PortalShell from './PortalShell';
 import ImsFace from '../Ims/ImsFace';
@@ -207,10 +207,53 @@ const rowHot = (hot, card, main) => hot?.[`${card}|${main}`];
 // (the number at the end of each group) instead.
 const countOf = (card) => (card.key === 'services' ? card.rows.reduce((n, r) => n + (Number((r.main.match(/(\d+)$/) || [])[1]) || 0), 0) : card.key === 'environment' ? null : card.rows.length);
 
-function Card({ card, isDark, cardRef, onOpen, onRowAction, hot, showUsedOnly }) {
+// Helper to highlight matching text snippets
+function HighlightText({ text, query, isDark }) {
+  if (!text) return null;
+  const q = (query || '').trim();
+  if (!q) return <>{text}</>;
+  const parts = String(text).split(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.toLowerCase() === q.toLowerCase() ? (
+          <mark key={i} className="bg-amber-400 text-amber-950 font-bold px-0.5 rounded-[2px] shadow-sm">
+            {part}
+          </mark>
+        ) : (
+          <React.Fragment key={i}>{part}</React.Fragment>
+        )
+      )}
+    </>
+  );
+}
+
+// rowMatches: returns true if search query matches main, sub, tag, or card title
+const rowMatchesQuery = (r, card, query) => {
+  if (!query) return false;
+  const q = query.toLowerCase();
+  return (
+    r.main?.toLowerCase().includes(q) ||
+    r.sub?.toLowerCase().includes(q) ||
+    r.tag?.toLowerCase().includes(q) ||
+    card.title?.toLowerCase().includes(q)
+  );
+};
+
+// cardMatchesQuery: returns true if any row or card title matches query
+const cardMatchesQuery = (card, query) => {
+  if (!query) return false;
+  const q = query.toLowerCase();
+  return card.title?.toLowerCase().includes(q) || card.rows.some((r) => rowMatchesQuery(r, card, query));
+};
+
+function Card({ card, isDark, cardRef, onOpen, onRowAction, hot, showUsedOnly, searchQuery }) {
   const a = ACCENTS[card.accent];
   const Icon = card.icon;
   const anyLit = card.rows.some((r) => Boolean(rowHot(hot, card.key, r.main)));
+  const query = (searchQuery || '').trim().toLowerCase();
+  const cardHasMatch = Boolean(query && cardMatchesQuery(card, query));
+
   const visibleRows = showUsedOnly ? card.rows.filter((r) => Boolean(rowHot(hot, card.key, r.main))) : card.rows;
 
   if (showUsedOnly && !anyLit) {
@@ -223,12 +266,22 @@ function Card({ card, isDark, cardRef, onOpen, onRowAction, hot, showUsedOnly })
     );
   }
 
+  // Dim cards that don't match active search
+  const isDimmed = Boolean(query && !cardHasMatch);
+
   return (
-    <div ref={cardRef} className={`relative z-10 rounded-2xl border p-3.5 transition-all duration-300 ${isDark ? 'bg-slate-900/80 border-white/10' : 'bg-white border-slate-200/80 shadow-[0_6px_24px_rgba(15,23,42,0.06)]'}`}
-      style={anyLit ? { boxShadow: `0 0 0 2px ${a.line}, 0 0 26px ${a.line}66` } : undefined}>
+    <div ref={cardRef} className={`relative z-10 rounded-2xl border p-3.5 transition-all duration-300 ${isDimmed ? 'opacity-35 grayscale-[50%]' : ''} ${isDark ? 'bg-slate-900/80 border-white/10' : 'bg-white border-slate-200/80 shadow-[0_6px_24px_rgba(15,23,42,0.06)]'}`}
+      style={cardHasMatch ? { boxShadow: '0 0 0 2px #f59e0b, 0 0 30px rgba(245, 158, 11, 0.45)', borderColor: '#f59e0b' } : anyLit ? { boxShadow: `0 0 0 2px ${a.line}, 0 0 26px ${a.line}66` } : undefined}>
       <button onClick={onOpen} disabled={!onOpen} title={onOpen ? 'More detail in the Ims panel' : undefined} className="w-full flex items-center gap-2.5 mb-2 text-left">
-        <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${a.badge}`}><Icon size={16} className={a.text} /></span>
-        <span className="font-bold text-[15px] flex-1 min-w-0 truncate">{card.title}</span>
+        <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${cardHasMatch ? 'bg-amber-500/20 text-amber-400' : a.badge}`}><Icon size={16} className={cardHasMatch ? 'text-amber-400' : a.text} /></span>
+        <span className="font-bold text-[15px] flex-1 min-w-0 truncate">
+          <HighlightText text={card.title} query={query} isDark={isDark} />
+        </span>
+        {cardHasMatch && (
+          <span className="px-2 py-0.5 rounded-full text-[10.5px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40">
+            Match
+          </span>
+        )}
         {countOf(card) != null && <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}>{visibleRows.length}/{countOf(card)}</span>}
         {onOpen && <ChevronRight size={16} className="text-slate-400 shrink-0" />}
       </button>
@@ -238,28 +291,38 @@ function Card({ card, isDark, cardRef, onOpen, onRowAction, hot, showUsedOnly })
           const isActionable = Boolean(r.action && onRowAction);
           const h = rowHot(hot, card.key, r.main);
           const reason = h?.reason;
+          const isRowMatch = Boolean(query && rowMatchesQuery(r, card, query));
           return (
             <div key={r.main}
               onClick={isActionable ? () => onRowAction(r.action) : undefined}
-              className={`group/row relative flex items-start gap-2.5 rounded-md -mx-1.5 px-1.5 py-[3px] ${isActionable ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''} ${h?.pulse ? 'arch-pulse' : ''}`}
+              className={`group/row relative flex items-start gap-2.5 rounded-md -mx-1.5 px-1.5 py-[3px] ${isActionable ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''} ${h?.pulse ? 'arch-pulse' : ''} ${isRowMatch ? 'ring-1 ring-amber-400/80 bg-amber-500/15' : ''}`}
               style={{
-                backgroundColor: h ? `${a.line}35` : undefined,
-                transition: 'background-color .3s ease-out',
+                backgroundColor: isRowMatch ? 'rgba(245, 158, 11, 0.18)' : h ? `${a.line}35` : undefined,
+                transition: 'background-color .3s ease-out, box-shadow .3s ease-out',
                 '--pulse': `${a.line}66`,
               }}>
-              <RowIcon size={16} className={`${a.text} mt-0.5 shrink-0`} />
+              <RowIcon size={16} className={`${isRowMatch ? 'text-amber-400' : a.text} mt-0.5 shrink-0`} />
               <div className="min-w-0 flex-1">
                 <div className="text-[12.5px] font-semibold leading-tight flex items-center gap-2 flex-wrap">
-                  <span>{r.main}</span>
-                  {r.tag && <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${a.badge} ${a.text}`}>{r.tag}</span>}
+                  <span>
+                    <HighlightText text={r.main} query={query} isDark={isDark} />
+                  </span>
+                  {r.tag && <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${a.badge} ${a.text}`}><HighlightText text={r.tag} query={query} isDark={isDark} /></span>}
                   {isActionable && <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-purple-500/20 text-purple-400 hover:text-purple-300 flex items-center gap-1"><UserPlus size={10} /> Invite</span>}
+                  {isRowMatch && (
+                    <span className="px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-amber-500/25 text-amber-300 border border-amber-500/40">
+                      Match
+                    </span>
+                  )}
                   {h && (
                     <span className="px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                       Active
                     </span>
                   )}
                 </div>
-                <div className={`text-[11px] leading-tight ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{r.sub}</div>
+                <div className={`text-[11px] leading-tight ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  <HighlightText text={r.sub} query={query} isDark={isDark} />
+                </div>
               </div>
 
               {/* Rich hover tooltip explaining why this item was accessed */}
@@ -401,7 +464,7 @@ function ArchitectureInviteModal({ isOpen, onClose, isDark, toast }) {
 
   if (!isOpen) return null;
 
-  const link = `${window.location.origin}/campaigns?invite=1`;
+  const link = `${window.location.origin}/ims/architecture?invite=1`;
 
   const addInvite = async (targetEmail) => {
     const e = (targetEmail || email).trim();
@@ -450,7 +513,7 @@ function ArchitectureInviteModal({ isOpen, onClose, isDark, toast }) {
     });
   };
 
-  const mailtoDaniel = (e = 'daniel.philpott@gmail.com') => `mailto:${e}?subject=${encodeURIComponent('Join my IMS (Information Management System)')}&body=${encodeURIComponent(`Hi Daniel,\n\nI've added you to IMS. Open this link and sign in with your Google account (${e}):\n\n${link}\n\nYou'll get instant access to the Campaign Manager (Lord of the Rings and Arkham Horror LCGs) to build decks, see mine, test cards, and run AI insights.\n\nCheers,\nSimon`)}`;
+  const mailtoDaniel = (e = 'daniel.philpott@gmail.com') => `mailto:${e}?subject=${encodeURIComponent('Join my IMS (System Architecture)')}&body=${encodeURIComponent(`Hi Daniel,\n\nI've added you to IMS. Open this link and sign in with your Google account (${e}):\n\n${link}\n\nYou'll get instant access to the System Architecture interactive map, service dependencies, tools, and technical specifications.\n\nCheers,\nSimon`)}`;
 
   const isDanielInvited = list.some((x) => x.email?.toLowerCase().includes('daniel') && !x.revokedAt);
 
@@ -467,7 +530,7 @@ function ArchitectureInviteModal({ isOpen, onClose, isDark, toast }) {
           </div>
           <div>
             <h2 className="text-lg font-black tracking-tight">Invite & Access Management</h2>
-            <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Share IMS Campaign Manager with family and guests via basic Google sign-in</p>
+            <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Share IMS System Architecture with guests via basic Google sign-in</p>
           </div>
         </div>
 
@@ -590,6 +653,40 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
 
   // Filter option: show only components and services used by the test prompt
   const [showUsedOnly, setShowUsedOnly] = useState(false);
+
+  // Search option: highlight any component, tool, connection, data store, or text matching query
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef(null);
+
+  // Keyboard shortcut: '/' or 'Ctrl+K' focuses search, 'Escape' clears search
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.key === '/' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) && document.activeElement !== searchInputRef.current && document.activeElement?.tagName !== 'INPUT') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (e.key === 'Escape' && searchQuery) {
+        setSearchQuery('');
+        searchInputRef.current?.blur();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [searchQuery]);
+
+  // Count total matches across all spokes and supporting cards
+  const allCards = useMemo(() => [...spokes(live), ...supporting], [live]);
+  const searchMatchesCount = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return 0;
+    let count = 0;
+    for (const card of allCards) {
+      if (card.title?.toLowerCase().includes(q)) count++;
+      for (const row of card.rows) {
+        if (rowMatchesQuery(row, card, q)) count++;
+      }
+    }
+    return count;
+  }, [allCards, searchQuery]);
 
   // ---- test prompt: runs through Ims, lighting up each part of the map as it's used
   const [prompt, setPrompt] = useState('');
@@ -741,6 +838,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
     <div className={cls}>
       <Card card={byKey[key]} isDark={isDark} hot={hot} cardRef={(el) => { cardRefs.current[key] = el; }}
         showUsedOnly={showUsedOnly}
+        searchQuery={searchQuery}
         onOpen={() => openTab(key === 'data' ? 'data' : key === 'pipeline' ? 'turn' : 'overview')}
         onRowAction={handleRowAction} />
     </div>
@@ -763,9 +861,37 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
         }
       `}</style>
       <div className="no-print flex flex-wrap justify-between items-center gap-2 -mt-2 mb-3">
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0 max-w-2xl">
+          {/* Interactive Search Bar */}
+          <div className="relative flex-1 min-w-[200px] max-w-md">
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${searchQuery ? 'border-amber-500/70 shadow-[0_0_12px_rgba(245,158,11,0.2)] bg-amber-500/10' : isDark ? 'bg-white/5 border-white/10 text-slate-300 focus-within:border-violet-500' : 'bg-white border-slate-200 text-slate-700 focus-within:border-violet-500 shadow-sm'}`}>
+              <Search size={14} className={searchQuery ? 'text-amber-400 shrink-0' : 'text-slate-400 shrink-0'} />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search architecture components (Press '/' to focus)..."
+                className="w-full bg-transparent outline-none text-xs placeholder:text-slate-400 text-inherit"
+              />
+              {searchQuery && (
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                    {searchMatchesCount} {searchMatchesCount === 1 ? 'match' : 'matches'}
+                  </span>
+                  <button
+                    onClick={() => { setSearchQuery(''); searchInputRef.current?.focus(); }}
+                    className="p-0.5 rounded-md hover:bg-white/10 text-slate-400 hover:text-slate-200"
+                    title="Clear search (Esc)">
+                    <X size={13} />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Show only used filter checkbox */}
-          <label className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${showUsedOnly ? 'bg-violet-600 border-violet-500 text-white shadow-sm' : isDark ? 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
+          <label className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer shrink-0 ${showUsedOnly ? 'bg-violet-600 border-violet-500 text-white shadow-sm' : isDark ? 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
             <input
               type="checkbox"
               checked={showUsedOnly}
@@ -779,7 +905,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
           </label>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {/* Save as PDF / Snapshot button */}
           <button onClick={handleSaveAsPdf} title="Save current system architecture as PDF snapshot"
             className={`px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 border transition-colors ${isDark ? 'border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20' : 'border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100'}`}>
@@ -877,7 +1003,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
               <span className={`text-[11px] font-bold flex items-center gap-1 ${muted}`}>{supportOpen ? 'Hide' : 'Show'} <ChevronRight size={14} className={`transition-transform ${supportOpen ? '-rotate-90' : 'rotate-90'}`} /></span>
             </button>
             {supportOpen && supporting.map((c) => (
-              <div key={c.key}><Card card={c} isDark={isDark} hot={hot} showUsedOnly={showUsedOnly} onRowAction={handleRowAction} /></div>
+              <div key={c.key}><Card card={c} isDark={isDark} hot={hot} showUsedOnly={showUsedOnly} searchQuery={searchQuery} onRowAction={handleRowAction} /></div>
             ))}
           </div>
         </div>

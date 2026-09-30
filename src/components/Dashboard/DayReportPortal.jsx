@@ -34,6 +34,7 @@ import {
   X,
   FileText,
   Sliders,
+  Filter,
   CheckCircle2
 } from 'lucide-react';
 import PortalShell from './PortalShell';
@@ -110,13 +111,14 @@ export default function DayReportPortal({
 
   const [sections, setSections] = useState([]);
   const [availableServices, setAvailableServices] = useState([]);
+  const [subFilterSchemas, setSubFilterSchemas] = useState({});
   const [savedSections, setSavedSections] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [notification, setNotification] = useState(null);
 
-  // Expanded notes state
-  const [expandedId, setExpandedId] = useState(null);
+  // Active drawer tab: 'notes' or 'filters' (null if collapsed)
+  const [activeDrawer, setActiveDrawer] = useState({}); // { [sectionId]: 'notes' | 'filters' | null }
 
   // Custom item modal
   const [customModalOpen, setCustomModalOpen] = useState(false);
@@ -162,6 +164,7 @@ export default function DayReportPortal({
       setSections(rawSections);
       setSavedSections(rawSections);
       setAvailableServices(data.availableServices || []);
+      setSubFilterSchemas(data.subFilterSchemas || {});
     } catch (err) {
       console.error('[DayReportPortal] Load error:', err);
       showToast(err.message, 'error');
@@ -210,6 +213,34 @@ export default function DayReportPortal({
     );
   };
 
+  // Update a specific sub-filter property for a section
+  const updateSubFilter = (sectionId, filterKey, val) => {
+    setSections((prev) =>
+      prev.map((s) => {
+        if (s.id !== sectionId) return s;
+        const currentFilters = s.subFilters || {};
+        return {
+          ...s,
+          subFilters: {
+            ...currentFilters,
+            [filterKey]: val
+          }
+        };
+      })
+    );
+  };
+
+  // Toggle drawer open state for a section
+  const toggleDrawer = (sectionId, drawerTab) => {
+    setActiveDrawer((prev) => {
+      const current = prev[sectionId];
+      if (current === drawerTab) {
+        return { ...prev, [sectionId]: null };
+      }
+      return { ...prev, [sectionId]: drawerTab };
+    });
+  };
+
   // Save changes to backend
   const handleSave = async () => {
     setIsSaving(true);
@@ -225,7 +256,10 @@ export default function DayReportPortal({
       }
       setSections(data.sections);
       setSavedSections(data.sections);
-      showToast('Day report subjects and order saved successfully');
+      if (data.subFilterSchemas) {
+        setSubFilterSchemas(data.subFilterSchemas);
+      }
+      showToast('Day report subjects, sub-filters, and order saved successfully');
     } catch (err) {
       console.error('[DayReportPortal] Save error:', err);
       showToast(err.message, 'error');
@@ -236,7 +270,7 @@ export default function DayReportPortal({
 
   // Reset to defaults
   const handleReset = async () => {
-    if (!window.confirm('Reset all report subjects to their default sequence and built-in order? Custom items will be removed.')) {
+    if (!window.confirm('Reset all report subjects and sub-filters to their default sequence? Custom items will be removed.')) {
       return;
     }
     setIsSaving(true);
@@ -248,7 +282,11 @@ export default function DayReportPortal({
       }
       setSections(data.sections);
       setSavedSections(data.sections);
-      showToast('Reset to default day report subjects');
+      if (data.subFilterSchemas) {
+        setSubFilterSchemas(data.subFilterSchemas);
+      }
+      setActiveDrawer({});
+      showToast('Reset to default day report subjects and sub-filters');
     } catch (err) {
       console.error('[DayReportPortal] Reset error:', err);
       showToast(err.message, 'error');
@@ -321,7 +359,8 @@ export default function DayReportPortal({
         description: customForm.description.trim() || `Custom report item linked to ${serviceName}.`,
         enabled: true,
         customNote: customForm.customNote.trim(),
-        content: customForm.content.trim()
+        content: customForm.content.trim(),
+        subFilters: {}
       };
       setSections((prev) => [...prev, newItem]);
       showToast(`Added custom subject "${customForm.title.trim()}"`);
@@ -367,7 +406,7 @@ export default function DayReportPortal({
   return (
     <PortalShell
       title="Day Report Service"
-      subtitle="Edit & re-order daily briefing subjects, link services, and add custom items"
+      subtitle="Edit & re-order daily briefing subjects, configure fine-tuned service sub-filters, and add custom items"
       icon={SunMedium}
       gradient="from-amber-400 to-orange-500"
       glow="rgba(251,146,60,0.3)"
@@ -439,7 +478,7 @@ export default function DayReportPortal({
               }`}
             >
               <Save size={15} />
-              <span>{isSaving ? 'Saving...' : 'Save Order'}</span>
+              <span>{isSaving ? 'Saving...' : 'Save Order & Filters'}</span>
             </button>
           </div>
         </div>
@@ -451,8 +490,8 @@ export default function DayReportPortal({
           <div className="flex items-start gap-2.5">
             <Sliders size={16} className="text-amber-400 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold text-slate-200 dark:text-slate-200 text-slate-700">Daily Morning Briefing Sequence: </span>
-              Use the <span className="font-semibold">Move Up</span> and <span className="font-semibold">Move Down</span> buttons to re-order the report subjects. Toggle any subject off to exclude it from the spoken briefing. Click <span className="font-semibold">Mention Notes</span> on any subject to instruct IMS on what specific details or criteria to highlight. Custom items can link to existing services or standalone directives.
+              <span className="font-bold text-slate-200 dark:text-slate-200 text-slate-700">Daily Morning Briefing Sequence & Fine-Tuning: </span>
+              Use the <span className="font-semibold">Move Up</span> and <span className="font-semibold">Move Down</span> buttons to re-order the report subjects. Toggle any subject off to exclude it completely. Click <span className="font-semibold text-amber-500 dark:text-amber-400">Sub-Filters</span> on any service to target or exclude specific data points (e.g. rain warnings, run vs ride stats, glucose trend arrows, alarm scopes, or news thresholds). Click <span className="font-semibold">Notes</span> to add custom conversational directives.
             </div>
           </div>
         </div>
@@ -483,8 +522,18 @@ export default function DayReportPortal({
               const Icon = getServiceIcon(section);
               const isFirst = index === 0;
               const isLast = index === sections.length - 1;
-              const isExpanded = expandedId === section.id;
+              const drawerState = activeDrawer[section.id] || null;
+              const isNotesOpen = drawerState === 'notes';
+              const isFiltersOpen = drawerState === 'filters';
               const isCustom = section.type === 'custom';
+
+              // Resolve sub-filter schema for this section/service
+              const schema = subFilterSchemas[section.id] || subFilterSchemas[section.serviceId] || [];
+              const hasSubFilters = schema.length > 0;
+              const currentFilters = section.subFilters || {};
+
+              // Calculate active filter count if custom values applied
+              const activeFilterCount = schema.filter(f => currentFilters[f.key] !== f.default).length;
 
               return (
                 <div
@@ -579,6 +628,21 @@ export default function DayReportPortal({
                           <span>{section.serviceName || 'Built-in Service'}</span>
                         </span>
 
+                        {hasSubFilters && (
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold flex items-center gap-1 shrink-0 ${
+                            activeFilterCount > 0
+                              ? isDark
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold'
+                                : 'bg-amber-100 text-amber-900 border border-amber-300 font-bold'
+                              : isDark
+                              ? 'bg-white/5 text-slate-400 border border-white/5'
+                              : 'bg-slate-100 text-slate-600 border border-slate-200'
+                          }`}>
+                            <Filter size={10} />
+                            <span>{schema.length} Sub-Filters {activeFilterCount > 0 ? `(${activeFilterCount} tuned)` : ''}</span>
+                          </span>
+                        )}
+
                         {!section.enabled && (
                           <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-red-500/20 text-red-400 border border-red-500/30">
                             Inactive
@@ -590,7 +654,7 @@ export default function DayReportPortal({
                         {section.description}
                       </p>
 
-                      {section.customNote && !isExpanded && (
+                      {section.customNote && !isNotesOpen && (
                         <div className="mt-1 text-[11px] font-medium text-amber-400/90 dark:text-amber-300/90 flex items-center gap-1 truncate">
                           <span className="font-bold">Mention:</span> {section.customNote}
                         </div>
@@ -599,11 +663,32 @@ export default function DayReportPortal({
 
                     {/* Action Buttons */}
                     <div className="flex items-center gap-2 shrink-0">
-                      {/* Mention Notes / Expand Toggle */}
+                      {/* Sub-Filters Accordion Toggle */}
+                      {hasSubFilters && (
+                        <button
+                          onClick={() => toggleDrawer(section.id, 'filters')}
+                          className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                            isFiltersOpen || activeFilterCount > 0
+                              ? isDark
+                                ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40 shadow-sm'
+                                : 'bg-amber-600/15 text-amber-900 border border-amber-600/30 shadow-sm'
+                              : isDark
+                              ? 'hover:bg-white/10 text-slate-400 border border-transparent'
+                              : 'hover:bg-[#2E2B27]/10 text-slate-600 border border-transparent'
+                          }`}
+                          title="Tune service-specific data points and exclusion filters"
+                        >
+                          <Filter size={13} />
+                          <span className="hidden sm:inline">Filters</span>
+                          {isFiltersOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                        </button>
+                      )}
+
+                      {/* Mention Notes Toggle */}
                       <button
-                        onClick={() => setExpandedId(isExpanded ? null : section.id)}
+                        onClick={() => toggleDrawer(section.id, 'notes')}
                         className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                          isExpanded || section.customNote
+                          isNotesOpen || section.customNote
                             ? isDark
                               ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                               : 'bg-amber-600/10 text-amber-900 border border-amber-600/20'
@@ -615,7 +700,7 @@ export default function DayReportPortal({
                       >
                         <FileText size={13} />
                         <span className="hidden sm:inline">Notes</span>
-                        {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                        {isNotesOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                       </button>
 
                       {/* Edit button for custom items */}
@@ -665,8 +750,110 @@ export default function DayReportPortal({
                     </div>
                   </div>
 
-                  {/* Expandable Mention Notes / Directives Drawer */}
-                  {isExpanded && (
+                  {/* Sub-Filters Drawer */}
+                  {isFiltersOpen && hasSubFilters && (
+                    <div className={`p-4 border-t space-y-3 ${
+                      isDark ? 'bg-slate-950/70 border-white/10' : 'bg-[#F9F6F0] border-amber-900/10'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold uppercase tracking-wider text-amber-500 dark:text-amber-400 flex items-center gap-1.5">
+                          <Filter size={13} className="text-amber-400" />
+                          <span>{section.title} — Information Sub-Filters & Data Targeting</span>
+                        </label>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                          Target or exclude specific metrics from {section.serviceName || 'this service'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                        {schema.map((filter) => {
+                          const currentVal = currentFilters[filter.key] !== undefined ? currentFilters[filter.key] : filter.default;
+
+                          if (filter.type === 'boolean') {
+                            return (
+                              <div
+                                key={filter.key}
+                                onClick={() => updateSubFilter(section.id, filter.key, !currentVal)}
+                                className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 cursor-pointer transition-all select-none ${
+                                  currentVal
+                                    ? isDark
+                                      ? 'bg-white/5 border-amber-500/30 hover:border-amber-500/50'
+                                      : 'bg-white border-amber-500/40 hover:border-amber-600 shadow-sm'
+                                    : isDark
+                                    ? 'bg-slate-900/40 border-white/5 opacity-60 hover:opacity-80'
+                                    : 'bg-slate-100 border-slate-200 opacity-60 hover:opacity-80'
+                                }`}
+                              >
+                                <div className="space-y-0.5 flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`text-xs font-bold ${
+                                      currentVal ? (isDark ? 'text-slate-100' : 'text-slate-900') : 'text-slate-400'
+                                    }`}>
+                                      {filter.label}
+                                    </span>
+                                  </div>
+                                  <p className="text-[10px] text-slate-400 dark:text-slate-400 leading-tight">
+                                    {filter.description}
+                                  </p>
+                                </div>
+                                <div className={`relative inline-flex h-6 w-11 shrink-0 items-center cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                                  currentVal ? 'bg-amber-500' : isDark ? 'bg-slate-700' : 'bg-slate-300'
+                                }`}>
+                                  <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                    currentVal ? 'translate-x-5' : 'translate-x-0.5'
+                                  }`} />
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          if (filter.type === 'number') {
+                            return (
+                              <div
+                                key={filter.key}
+                                className={`p-2.5 rounded-xl border flex flex-col justify-between gap-2 ${
+                                  isDark ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200 shadow-sm'
+                                }`}
+                              >
+                                <div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-slate-200 dark:text-slate-200 text-slate-800">
+                                      {filter.label}
+                                    </span>
+                                    <span className="font-mono text-xs font-black text-amber-500 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                                      {currentVal}
+                                    </span>
+                                  </div>
+                                  <p className="text-[10px] text-slate-400 mt-0.5">
+                                    {filter.description}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-3 pt-1">
+                                  <input
+                                    type="range"
+                                    min={filter.min || 0}
+                                    max={filter.max || 100}
+                                    step={filter.step || 1}
+                                    value={currentVal}
+                                    onChange={(e) => updateSubFilter(section.id, filter.key, parseFloat(e.target.value))}
+                                    className="flex-1 h-1.5 rounded-lg appearance-none cursor-pointer bg-slate-700 accent-amber-500"
+                                  />
+                                  <span className="text-[10px] font-mono text-slate-500 w-8 text-right">
+                                    {filter.max} max
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return null;
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Mention Notes Drawer */}
+                  {isNotesOpen && (
                     <div className={`p-4 border-t space-y-3 ${
                       isDark ? 'bg-slate-950/60 border-white/5' : 'bg-slate-50 border-[#2E2B27]/10'
                     }`}>
@@ -676,7 +863,7 @@ export default function DayReportPortal({
                           <span>Mention Directives & Focus Notes</span>
                         </label>
                         <span className="text-[10px] text-slate-500">
-                          Instruct IMS what specific data or conditions to highlight
+                          Instruct IMS what specific conditions or priorities to emphasize
                         </span>
                       </div>
 
@@ -855,7 +1042,7 @@ export default function DayReportPortal({
                 <div>
                   <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-black'}`}>Live Day Report Preview</h3>
                   <span className={`text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Spoken briefing contents rendered according to your custom order
+                    Spoken briefing contents rendered according to your custom order & sub-filters
                   </span>
                 </div>
               </div>

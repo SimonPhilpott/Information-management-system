@@ -109,7 +109,7 @@ export default function BirthdayPortal({ theme = 'dark', onThemeToggle, setCurre
 
   return (
     <div className={`h-screen overflow-y-auto w-full flex flex-col font-sans transition-colors duration-300 ${
-      isDark ? 'bg-[#030712] text-[#f3f4f6]' : 'bg-[#f4efed] text-[#1f2937]'
+      isDark ? 'bg-[#030712] text-slate-100' : 'bg-[#F4EFED] text-[#2E2B27]'
     }`}>
       {notification && (
         <div className={`fixed top-6 right-6 z-50 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 backdrop-blur-md border animate-in fade-in slide-in-from-top-4 duration-200 ${
@@ -123,7 +123,7 @@ export default function BirthdayPortal({ theme = 'dark', onThemeToggle, setCurre
       )}
 
       <header className={`px-6 py-4 flex items-center justify-between border-b backdrop-blur-xl sticky top-0 z-40 transition-colors duration-300 ${
-        isDark ? 'bg-[#030712]/80 border-white/5' : 'bg-[#f4efed]/85 border-[#2E2B27]/10'
+        isDark ? 'bg-[#030712]/90 border-white/10' : 'bg-[#F4EFED]/90 border-[#2E2B27]/15'
       }`}>
         <div className="flex items-center gap-4">
           <button onClick={handleReturnHome} className={`p-2 rounded-xl flex items-center gap-2 text-xs font-bold transition-all active:scale-95 ${
