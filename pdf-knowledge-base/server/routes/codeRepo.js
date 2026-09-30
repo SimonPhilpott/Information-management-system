@@ -20,10 +20,48 @@ import {
   saveGitHubTokens,
   discoverGitHubRepositories,
   toggleRepositorySelection,
-  selectAllRepositories
+  selectAllRepositories,
+  suggestBestPractices,
+  generateProjectPrompt
 } from '../services/codeRepoService.js';
 
 const router = express.Router();
+
+/**
+ * POST /api/code-repo/suggest-best-practices
+ * Suggest matching best practice code patterns from the repository library.
+ */
+router.post('/suggest-best-practices', async (req, res) => {
+  try {
+    const { description, scaffold, cssFramework, preconditions } = req.body;
+    const suggestions = await suggestBestPractices({ description, scaffold, cssFramework, preconditions });
+    res.json({ success: true, suggestions });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/code-repo/generate-prompt
+ * Generate an exhaustive Antigravity project kick-off prompt and phased implementation plan.
+ */
+router.post('/generate-prompt', async (req, res) => {
+  try {
+    const { projectName, description, scaffold, cssFramework, preconditions, customPreconditions, selectedSnippetIds } = req.body;
+    const result = await generateProjectPrompt({
+      projectName,
+      description,
+      scaffold,
+      cssFramework,
+      preconditions,
+      customPreconditions,
+      selectedSnippetIds
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 /**
  * GET /api/code-repo/tokens

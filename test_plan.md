@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 77
-- Verified Features: 77
+- Total Registered Features: 78
+- Verified Features: 78
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -85,6 +85,7 @@
 | FEAT-075 | Board Game Collection Updates Drawer & Direct BGG Link Inspection | [BoardgamesPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/BoardgamesPortal.jsx) | Show List Updates button, update count badge, aggregation modal drawer, ThumbnailHoverPreview, and direct BGG links | PASS |
 | FEAT-076 | Universal Board Game Expansion Box Art & Thumbnail Sync | [BoardgamesPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/BoardgamesPortal.jsx) | Universal expansion thumbnail fetching, startThumbnailBackfill progress, and Add modal box art rendering | PASS |
 | FEAT-077 | Dev Ideas Screenshot Clipboard Paste & Antigravity Prompt Integration | [DevIdeasPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/DevIdeasPortal.jsx) | Clipboard paste listener (Ctrl+V), image column migration, Copy Screenshot binary write, and Copy Prompt generation | PASS |
+| FEAT-078 | Antigravity Project Scaffolder & Implementation Plan Generator | [CodeRepoPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/CodeRepoPortal.jsx) | Scaffold presets, CSS framework matrix, precondition selection, vector-based best practice suggestion engine, and 1-click clipboard implementation prompt export | PASS |
 
 ## Section 2: Detailed Scenarios
 ### Suite 17: Bidirectional Pace & Estimated Time Editing (FEAT-043)
@@ -817,6 +818,23 @@
 5. **Copy Prompt for Antigravity:** Click the **Copy Prompt** button in the idea card footer. Verify the structured text `[Dev Idea #ID - Service]\n<text>\n\n(Screenshot attached in IMS Dev Ideas portal #ID)` is copied to the clipboard.
 6. **Editing & Inline Replacement:** Click the **Edit** button on any idea. Paste a new screenshot or click **Replace Image**. Save changes and verify the updated screenshot persists across server reloads.
 7. **Defensive Invariant 87 (5MB Image Gate & Safe Schema Migration):** In `DevIdeasPortal.jsx`, files larger than 5MB are rejected before reading into memory to prevent localStorage / memory bloat. In `devIdeasService.js`, SQLite `dev_ideas` schema upgrades dynamically apply `ALTER TABLE dev_ideas ADD COLUMN image TEXT DEFAULT NULL` on startup without data loss.
+
+### Suite 78: Antigravity Project Scaffolder & Implementation Plan Generator (FEAT-078)
+1. **Workbench Access:** Navigate to `/ims/code-repo`. Verify the header toolbar displays the gradient button **Scaffold in Antigravity** with a rocket icon (`Rocket`).
+2. **Modal Configuration:** Click **Scaffold in Antigravity**. Verify the modal opens with:
+   - **Project Name & Goal:** Input fields for naming and high-level requirements.
+   - **Framework Scaffold Grid:** Selectable presets including React (Vite), Svelte / SvelteKit, Next.js (App Router), SharePoint SPFx Web Part, Vue 3 (Vite), SolidJS, Express REST API, and ESP32 Firmware (PlatformIO).
+   - **CSS & UI Framework:** Selectable presets including Tailwind CSS v4, Fluent UI React v9 / SPFx, Modern Vanilla CSS, and SCSS Modules.
+   - **Preconditions Matrix:** Checkboxes for SPFx Context, Strict TypeScript, WebSocket / SSE, SQLite MCP, and Offline / Local Storage Caching, plus custom text inputs.
+3. **AI Best Practice Suggestions:** Without manually checking snippets, enter a project description (e.g. *"Build an ESP32 voice terminal with WebSocket streaming and I2S audio"* or *"A modern SPFx dashboard with Fluent UI and SQLite backend"*). Click **Suggest Best Practices**. Verify:
+   - The backend runs vector embedding similarity search against indexed snippets.
+   - Matching snippets are automatically selected with green badges indicating match similarity % and relevance summary.
+4. **Manual Best Practice Selection:** Scroll to the snippet checklist. Verify snippets can be toggled on/off across personal and TurnTown repositories.
+5. **Implementation Plan & Prompt Generation:** Click **Generate Antigravity Prompt**. Verify:
+   - A structured, comprehensive kick-off prompt is rendered in the live markdown preview.
+   - The prompt contains exact CLI scaffolding commands, CSS setup rules, typed inputs/outputs contracts for selected snippets, an atomic 4-phase implementation plan, and Antigravity Invariants/DoD.
+6. **Copy to Clipboard:** Click **Copy Prompt to Clipboard**. Verify the toast confirms the copy, and the prompt pastes cleanly into a blank project folder for Antigravity execution.
+7. **Defensive Invariant 88 (Vector Fallback & Clean Modal Lifecycle):** In `codeRepoService.js`, `suggestBestPractices()` gracefully falls back to keyword matching if vector embeddings are temporarily unavailable. In `CodeRepoPortal.jsx`, modal closing resets ephemeral state and cleanly unmounts event listeners.
 
 
 

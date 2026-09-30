@@ -6,7 +6,7 @@ import {
   KeyRound, GitBranch, Lock, Eye, EyeOff, X, CheckSquare, Square,
   Boxes, Server, Wrench, Shield, ArrowRight, User, Building, HardDrive,
   Activity, Play, CheckCircle, Database, Mic, Speaker, ArrowUpRight,
-  ArrowRightLeft, LogIn, LogOut, GitCommit, HelpCircle
+  ArrowRightLeft, LogIn, LogOut, GitCommit, HelpCircle, Rocket, Wand2, FileSpreadsheet, CheckCheck
 } from 'lucide-react';
 import PortalShell from './PortalShell';
 
@@ -354,6 +354,50 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
   const [copiedCode, setCopiedCode] = useState(false);
   const [notification, setNotification] = useState(null);
 
+  // Antigravity Project Scaffolder & Prompt Generator Modal State
+  const [isScaffolderOpen, setIsScaffolderOpen] = useState(false);
+  const [scaffoldProjectName, setScaffoldProjectName] = useState('');
+  const [scaffoldDescription, setScaffoldDescription] = useState('');
+  const [selectedScaffold, setSelectedScaffold] = useState('React 18 + Vite (SPA)');
+  const [selectedCssFramework, setSelectedCssFramework] = useState('Tailwind CSS v4');
+  const [selectedPreconditions, setSelectedPreconditions] = useState(['TypeScript strict mode', 'Defensive module boundaries & resource cleanup']);
+  const [customPreconditions, setCustomPreconditions] = useState('');
+  const [selectedPromptSnippetIds, setSelectedPromptSnippetIds] = useState([]);
+  const [suggestedSnippets, setSuggestedSnippets] = useState([]);
+  const [isSuggestingSnippets, setIsSuggestingSnippets] = useState(false);
+  const [generatedPromptResult, setGeneratedPromptResult] = useState(null);
+  const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
+
+  const SCAFFOLD_OPTIONS = [
+    { label: 'React 18 + Vite (SPA)', value: 'React 18 + Vite (SPA)', badge: 'Fastest / Frontend SPA' },
+    { label: 'SvelteKit 2.0 (Universal)', value: 'SvelteKit 2.0 (Universal)', badge: 'Svelte Compiler / SSR' },
+    { label: 'Next.js 15 App Router', value: 'Next.js 15 App Router', badge: 'Full-stack / RSC' },
+    { label: 'SharePoint SPFx Web Part (v1.19+)', value: 'SharePoint SPFx Web Part (v1.19+)', badge: 'Enterprise / M365' },
+    { label: 'Vue 3 + Vite (Pinia)', value: 'Vue 3 + Vite (Pinia)', badge: 'Composition API' },
+    { label: 'SolidJS + Vite', value: 'SolidJS + Vite', badge: 'Fine-grained Reactivity' },
+    { label: 'Node.js + Express REST / SSE API', value: 'Node.js + Express REST / SSE API', badge: 'Backend Pipeline' },
+    { label: 'ESP32-S3 FreeRTOS C++ (PlatformIO)', value: 'ESP32-S3 FreeRTOS C++ (PlatformIO)', badge: 'Embedded Firmware' }
+  ];
+
+  const CSS_FRAMEWORKS = [
+    { label: 'Tailwind CSS v4 (Modern Utility)', value: 'Tailwind CSS v4', sub: 'Class-based styling & design tokens' },
+    { label: 'Fluent UI 2 (Microsoft / SPFx)', value: 'Fluent UI 2 (Griffel)', sub: 'Microsoft 365 enterprise components' },
+    { label: 'Vanilla Modern CSS (Custom Design Tokens)', value: 'Vanilla Modern CSS', sub: 'Clean variables, glassmorphism & zero dependencies' },
+    { label: 'SCSS / SASS Modules', value: 'SCSS / SASS Modules', sub: 'Scoped modular styling' }
+  ];
+
+  const COMMON_PRECONDITIONS = [
+    'TypeScript strict mode & complete interfaces',
+    'Defensive module boundaries & resource cleanup',
+    'Triple Registry compliance (feature.json, ProjectStructure.JSON, test_plan.md)',
+    'Full module emission without truncated snippets',
+    'SharePoint SPFx Context & PnPjs v3 integration',
+    'WebSocket real-time bidirectional telemetry',
+    'SQLite persistence with atomic schema migrations',
+    'British English (en-GB) and GBP (£) regionalisation'
+  ];
+
   const overviewRef = useRef(null);
 
   const showToast = useCallback((msg, type = 'success') => {
@@ -575,6 +619,87 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
     } finally {
       setIsSavingObs(false);
     }
+  };
+
+  // Auto-suggest best practice snippets based on description and scaffold
+  const handleSuggestSnippets = async () => {
+    if (!scaffoldDescription.trim() && !scaffoldProjectName.trim()) {
+      showToast('Please enter a project description or title first', 'error');
+      return;
+    }
+    setIsSuggestingSnippets(true);
+    try {
+      const res = await fetch('/api/code-repo/suggest-best-practices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description: scaffoldDescription,
+          scaffold: selectedScaffold,
+          cssFramework: selectedCssFramework,
+          preconditions: selectedPreconditions
+        })
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.suggestions)) {
+        setSuggestedSnippets(data.suggestions);
+        // Automatically select the top suggested snippets
+        const topIds = data.suggestions.slice(0, 4).map(s => s.id);
+        setSelectedPromptSnippetIds(prev => Array.from(new Set([...prev, ...topIds])));
+        showToast(`Matched ${data.suggestions.length} relevant code blueprints from your library`);
+      } else {
+        throw new Error(data.error || 'Failed suggesting snippets');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsSuggestingSnippets(false);
+    }
+  };
+
+  // Generate full Antigravity project kick-off prompt and implementation plan
+  const handleGenerateAntigravityPrompt = async () => {
+    setIsGeneratingPrompt(true);
+    try {
+      const res = await fetch('/api/code-repo/generate-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectName: scaffoldProjectName || 'New Project',
+          description: scaffoldDescription,
+          scaffold: selectedScaffold,
+          cssFramework: selectedCssFramework,
+          preconditions: selectedPreconditions,
+          customPreconditions: customPreconditions,
+          selectedSnippetIds: selectedPromptSnippetIds
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setGeneratedPromptResult(data);
+        showToast('Antigravity implementation plan and prompt generated!');
+      } else {
+        throw new Error(data.error || 'Failed generating prompt');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsGeneratingPrompt(false);
+    }
+  };
+
+  const handleCopyPromptToClipboard = () => {
+    if (!generatedPromptResult?.promptMarkdown) return;
+    navigator.clipboard.writeText(generatedPromptResult.promptMarkdown);
+    setCopiedPrompt(true);
+    showToast('Implementation prompt copied! Paste directly into Antigravity.');
+    setTimeout(() => setCopiedPrompt(false), 3000);
+  };
+
+  // Toggle snippet selection for prompt
+  const handleTogglePromptSnippet = (id) => {
+    setSelectedPromptSnippetIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
   };
 
   // Single repo scan
@@ -843,6 +968,16 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
           </div>
 
           <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+            {/* Launch Antigravity Project Scaffolder */}
+            <button
+              onClick={() => setIsScaffolderOpen(true)}
+              className="px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white transition-all shadow-md shadow-blue-500/20 active:scale-95"
+              title="Scaffold a new project with best-practice blueprints and generate an exhaustive Antigravity kick-off prompt"
+            >
+              <Rocket size={14} className="text-amber-300 animate-bounce" />
+              <span>Scaffold in Antigravity</span>
+            </button>
+
             {/* Outdated Repos Alert & Action */}
             {repositories.some(r => r.is_outdated) && (
               <button
@@ -2138,6 +2273,347 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
           </div>
         )}
       </div>
+
+      {/* ANTIGRAVITY PROJECT SCAFFOLDER & PROMPT GENERATOR MODAL */}
+      {isScaffolderOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/75 backdrop-blur-md animate-in fade-in duration-150">
+          <div className={`relative w-full max-w-5xl max-h-[92vh] flex flex-col rounded-3xl border shadow-[0_25px_60px_rgba(0,0,0,0.4)] overflow-hidden transition-all ${
+            isDark ? 'bg-slate-900 border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'
+          }`}>
+            {/* Modal Header */}
+            <div className="p-5 sm:p-6 flex items-center justify-between border-b border-slate-200/80 dark:border-white/10 shrink-0 bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-indigo-500/10">
+              <div className="flex items-center gap-3.5">
+                <span className="w-10 h-10 rounded-2xl flex items-center justify-center bg-gradient-to-br from-cyan-500 to-indigo-600 text-white shadow-md shadow-blue-500/20">
+                  <Rocket size={20} />
+                </span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base sm:text-lg font-black tracking-tight">
+                      Antigravity Project Scaffolder & Prompt Generator
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
+                      Phase 1 Kick-off
+                    </span>
+                  </div>
+                  <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Configure frameworks, preconditions, and inject verified GitHub best practice blueprints into an exhaustive Antigravity implementation plan.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsScaffolderOpen(false)}
+                className={`p-2 rounded-xl border transition-colors ${
+                  isDark ? 'border-slate-800 hover:bg-slate-800 text-slate-400' : 'border-slate-200 hover:bg-slate-100 text-slate-600'
+                }`}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body (Scrollable) */}
+            <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
+              {/* Row 1: Project Title & Description */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-1 flex flex-col gap-2">
+                  <label className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 opacity-80">
+                    <Terminal size={13} className="text-blue-500" />
+                    <span>Project Name</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. TurnTown Resource Planner"
+                    value={scaffoldProjectName}
+                    onChange={(e) => setScaffoldProjectName(e.target.value)}
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-semibold border outline-none ${
+                      isDark ? 'bg-slate-950 border-slate-800 focus:border-blue-500' : 'bg-slate-50 border-slate-300 focus:border-blue-500'
+                    }`}
+                  />
+                </div>
+
+                <div className="md:col-span-2 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 opacity-80">
+                      <Sparkles size={13} className="text-amber-500" />
+                      <span>Project Goal & Scope Description</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleSuggestSnippets}
+                      disabled={isSuggestingSnippets || (!scaffoldDescription.trim() && !scaffoldProjectName.trim())}
+                      className="text-[11px] font-bold text-amber-500 hover:text-amber-400 disabled:opacity-40 flex items-center gap-1 px-2 py-0.5 rounded-lg border border-amber-500/30 bg-amber-500/10"
+                      title="AI search through your GitHub snippet library for matching architectural blueprints"
+                    >
+                      <Wand2 size={12} className={isSuggestingSnippets ? 'animate-spin' : ''} />
+                      <span>{isSuggestingSnippets ? 'Matching Library...' : 'Auto-Match Best Practices'}</span>
+                    </button>
+                  </div>
+                  <textarea
+                    rows={2}
+                    placeholder="Describe what you want to build (e.g. SPFx web part with real-time WebSocket live updates, glassmorphism UI, and reactive state stores)..."
+                    value={scaffoldDescription}
+                    onChange={(e) => setScaffoldDescription(e.target.value)}
+                    className={`w-full px-3.5 py-2 rounded-xl text-xs leading-relaxed border outline-none resize-none ${
+                      isDark ? 'bg-slate-950 border-slate-800 focus:border-blue-500' : 'bg-slate-50 border-slate-300 focus:border-blue-500'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              {/* Row 2: Architecture Framework Scaffold & CSS Framework */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* Scaffold Choice */}
+                <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                  <label className="text-xs font-extrabold uppercase tracking-wider mb-2.5 flex items-center gap-1.5 opacity-90">
+                    <Boxes size={14} className="text-blue-500" />
+                    <span>1. Select Framework Scaffold</span>
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {SCAFFOLD_OPTIONS.map((opt) => {
+                      const isSelected = selectedScaffold === opt.value;
+                      return (
+                        <div
+                          key={opt.value}
+                          onClick={() => setSelectedScaffold(opt.value)}
+                          className={`p-2.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                            isSelected
+                              ? isDark
+                                ? 'bg-blue-950/60 border-blue-500 text-white shadow-sm'
+                                : 'bg-blue-50 border-blue-400 text-slate-900 shadow-sm'
+                              : isDark
+                                ? 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-1 mb-1">
+                            <span className="text-xs font-bold truncate">{opt.label}</span>
+                            {isSelected ? <CheckCircle2 size={13} className="text-blue-500 shrink-0" /> : <div className="w-3 h-3 rounded-full border border-slate-500/40" />}
+                          </div>
+                          <span className={`text-[9.5px] font-medium ${isSelected ? (isDark ? 'text-blue-300' : 'text-blue-700') : 'opacity-60'}`}>
+                            {opt.badge}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* CSS Framework Choice */}
+                <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                  <label className="text-xs font-extrabold uppercase tracking-wider mb-2.5 flex items-center gap-1.5 opacity-90">
+                    <Sparkles size={14} className="text-purple-500" />
+                    <span>2. Styling & Design System</span>
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {CSS_FRAMEWORKS.map((opt) => {
+                      const isSelected = selectedCssFramework === opt.value;
+                      return (
+                        <div
+                          key={opt.value}
+                          onClick={() => setSelectedCssFramework(opt.value)}
+                          className={`p-2.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                            isSelected
+                              ? isDark
+                                ? 'bg-purple-950/60 border-purple-500 text-white shadow-sm'
+                                : 'bg-purple-50 border-purple-400 text-slate-900 shadow-sm'
+                              : isDark
+                                ? 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-1 mb-1">
+                            <span className="text-xs font-bold truncate">{opt.label}</span>
+                            {isSelected ? <CheckCircle2 size={13} className="text-purple-500 shrink-0" /> : <div className="w-3 h-3 rounded-full border border-slate-500/40" />}
+                          </div>
+                          <span className={`text-[9.5px] font-medium ${isSelected ? (isDark ? 'text-purple-300' : 'text-purple-700') : 'opacity-60'}`}>
+                            {opt.sub}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 3: Preconditions & Invariants */}
+              <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                <label className="text-xs font-extrabold uppercase tracking-wider mb-2.5 flex items-center gap-1.5 opacity-90">
+                  <ShieldCheck size={14} className="text-emerald-500" />
+                  <span>3. Project Preconditions & Engineering Invariants</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-3">
+                  {COMMON_PRECONDITIONS.map((p) => {
+                    const isChecked = selectedPreconditions.includes(p);
+                    return (
+                      <div
+                        key={p}
+                        onClick={() => {
+                          setSelectedPreconditions(prev =>
+                            isChecked ? prev.filter(x => x !== p) : [...prev, p]
+                          );
+                        }}
+                        className={`p-2 rounded-xl border cursor-pointer text-xs flex items-start gap-2 transition-all ${
+                          isChecked
+                            ? isDark
+                              ? 'bg-emerald-950/50 border-emerald-500/40 text-emerald-200'
+                              : 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                            : isDark
+                              ? 'bg-slate-900/60 border-slate-800 text-slate-400'
+                              : 'bg-white border-slate-200 text-slate-600'
+                        }`}
+                      >
+                        <span className="mt-0.5 shrink-0 text-emerald-500">
+                          {isChecked ? <CheckSquare size={14} /> : <Square size={14} />}
+                        </span>
+                        <span className="text-[11px] font-semibold leading-tight">{p}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <input
+                  type="text"
+                  placeholder="Add custom preconditions (e.g. PnPjs v3 SPHttpClient, MSAL Auth, Web Audio API, or Azure OpenAI API key)..."
+                  value={customPreconditions}
+                  onChange={(e) => setCustomPreconditions(e.target.value)}
+                  className={`w-full px-3.5 py-2 rounded-xl text-xs border outline-none ${
+                    isDark ? 'bg-slate-950 border-slate-800 text-slate-200 focus:border-emerald-500' : 'bg-white border-slate-300 text-slate-900 focus:border-emerald-500'
+                  }`}
+                />
+              </div>
+
+              {/* Row 4: Attach Best Practice Blueprints from Library */}
+              <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-200/80 dark:border-white/10 flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <BookOpen size={15} className="text-cyan-500" />
+                    <span className="text-xs font-extrabold uppercase tracking-wider">
+                      4. Attach Reference Blueprints ({selectedPromptSnippetIds.length} Selected)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPromptSnippetIds(snippets.map(s => s.id))}
+                      className="text-[10.5px] font-bold text-blue-500 hover:underline"
+                    >
+                      Select All ({snippets.length})
+                    </button>
+                    <span className="opacity-30">•</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPromptSnippetIds([])}
+                      className="text-[10.5px] font-bold text-slate-400 hover:underline"
+                    >
+                      Clear Selection
+                    </button>
+                  </div>
+                </div>
+
+                {/* Suggested Snippets Section if AI Match was run */}
+                {suggestedSnippets.length > 0 && (
+                  <div className="mb-4 p-3 rounded-xl border border-amber-500/30 bg-amber-500/5">
+                    <div className="flex items-center gap-1.5 mb-2 text-amber-500 text-xs font-bold">
+                      <Sparkles size={13} />
+                      <span>AI Matched Blueprints for this Architecture:</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                      {suggestedSnippets.map((s) => {
+                        const isSelected = selectedPromptSnippetIds.includes(s.id);
+                        return (
+                          <div
+                            key={s.id}
+                            onClick={() => handleTogglePromptSnippet(s.id)}
+                            className={`p-2 rounded-lg border cursor-pointer flex items-center justify-between gap-1 text-[11px] font-semibold transition-all ${
+                              isSelected
+                                ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                            }`}
+                          >
+                            <span className="truncate">{s.title}</span>
+                            <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/30 text-amber-200 font-mono shrink-0">
+                              {s.similarity}% match
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Snippets Checklist (Compact grid) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 max-h-56 overflow-y-auto pr-1">
+                  {snippets.map((snip) => {
+                    const isChecked = selectedPromptSnippetIds.includes(snip.id);
+                    return (
+                      <div
+                        key={snip.id}
+                        onClick={() => handleTogglePromptSnippet(snip.id)}
+                        className={`p-2.5 rounded-xl border cursor-pointer flex items-start gap-2 transition-all ${
+                          isChecked
+                            ? isDark
+                              ? 'bg-blue-950/60 border-blue-500/80 text-white shadow-sm'
+                              : 'bg-blue-50 border-blue-400 text-slate-900 shadow-sm'
+                            : isDark
+                              ? 'bg-slate-900/60 border-slate-800/80 text-slate-400 hover:border-slate-700'
+                              : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                        }`}
+                      >
+                        <span className="mt-0.5 shrink-0 text-blue-500">
+                          {isChecked ? <CheckSquare size={14} /> : <Square size={14} />}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold truncate leading-tight">{snip.title}</div>
+                          <div className="text-[9.5px] font-mono opacity-60 truncate mt-0.5">{snip.technology} • {snip.file_path?.split('/').pop()}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Action Button: Generate Implementation Prompt */}
+              <div className="flex justify-center pt-2">
+                <button
+                  type="button"
+                  onClick={handleGenerateAntigravityPrompt}
+                  disabled={isGeneratingPrompt}
+                  className="px-6 py-3 rounded-2xl text-sm font-black flex items-center gap-2 bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white transition-all shadow-lg shadow-blue-500/25 active:scale-95 disabled:opacity-50"
+                >
+                  <Sparkles size={16} className={isGeneratingPrompt ? 'animate-spin text-amber-300' : 'text-amber-300'} />
+                  <span>{isGeneratingPrompt ? 'Synthesizing Architecture Plan...' : 'Generate Antigravity Kick-off Prompt'}</span>
+                </button>
+              </div>
+
+              {/* Generated Prompt Output Box */}
+              {generatedPromptResult && (
+                <div className={`p-5 rounded-2xl border ${isDark ? 'bg-slate-950 border-blue-500/40' : 'bg-slate-50 border-blue-300'} animate-in fade-in duration-200`}>
+                  <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-200/80 dark:border-white/10 flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={16} className="text-emerald-500" />
+                      <span className="text-xs font-extrabold uppercase tracking-wider">
+                        Generated Prompt for Antigravity ({generatedPromptResult.snippetCount} Reference Blueprints Attached)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopyPromptToClipboard}
+                      className="px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-black transition-all shadow-sm"
+                    >
+                      {copiedPrompt ? <Check size={14} /> : <Copy size={14} />}
+                      <span>{copiedPrompt ? 'Copied Prompt!' : 'Copy Prompt to Clipboard'}</span>
+                    </button>
+                  </div>
+                  <pre className="p-4 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed max-h-80 bg-slate-900 text-slate-200 border border-slate-800 select-all">
+                    <code>{generatedPromptResult.promptMarkdown}</code>
+                  </pre>
+                  <p className={`text-[11px] mt-2.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    💡 <strong>Next Step:</strong> Click <strong>Copy Prompt to Clipboard</strong>, open a fresh empty folder in your IDE, start a new Antigravity session, and paste this prompt to scaffold and build your project immediately.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </PortalShell>
   );
 }

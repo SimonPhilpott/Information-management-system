@@ -265,20 +265,21 @@
       "dependencies": []
     },
     "src/components/Dashboard/CodeRepoPortal.jsx": {
-      "description": "Interactive web portal at /ims/code-repo for reviewing best practice code snippets, featuring dual collapsible account accordions (Personal & TurnTown) with inline progress bar scanning, private repository lock badges, spacious padded header bar, redesigned GitHub PAT setup modal with direct creation links, full-width pattern grid grouped into 5 functional roles, circular radial gauge scores, visual interaction infographics, and full-column architecture overview.",
+      "description": "Interactive web portal at /ims/code-repo for reviewing best practice code snippets, featuring dual collapsible account accordions (Personal & TurnTown), inline progress bar scanning, private repository lock badges, GitHub PAT setup modal, full-width pattern grid grouped into 5 functional roles, circular radial gauge scores, visual interaction infographics, full-column architecture overview, and an Antigravity Project Scaffolder modal generating structured implementation plans.",
       "dependencies": [
-        "src/components/Dashboard/PortalShell.jsx"
+        "src/components/Dashboard/PortalShell.jsx",
+        "pdf-knowledge-base/server/routes/codeRepo.js"
       ]
     },
     "pdf-knowledge-base/server/services/codeRepoService.js": {
-      "description": "Multi-repository code analysis service managing personal and TurnTown GitHub PATs, discovering remote, local, private, and organisation repositories with multi-page pagination, executing authenticated git clones with account filtering, evaluating patterns against 5 core software engineering principles, storing results in SQLite, and generating vector embeddings for hybrid RAG search.",
+      "description": "Multi-repository code analysis and Antigravity project scaffolder service managing GitHub PATs, discovering remote/local repositories, evaluating patterns against 5 principles, storing snippets in SQLite, generating vector embeddings, suggesting matching best practice snippets via vector similarity, and generating structured multi-phase Antigravity kick-off prompts.",
       "dependencies": [
         "pdf-knowledge-base/server/db/database.js",
         "pdf-knowledge-base/server/services/embeddingService.js"
       ]
     },
     "pdf-knowledge-base/server/routes/codeRepo.js": {
-      "description": "Express router exposing repository listing, PAT token management, GitHub repository discovery, selective scanning toggles, account-filtered batch SSE scan streams, snippet querying, user observation updates, and AI re-evaluations.",
+      "description": "Express router exposing repository listing, PAT token management, GitHub repository discovery, selective scanning toggles, batch SSE scan streams, snippet querying, user observation updates, AI re-evaluations, vector best-practice suggestions (/api/code-repo/suggest-best-practices), and prompt generation (/api/code-repo/generate-prompt).",
       "dependencies": [
         "pdf-knowledge-base/server/services/codeRepoService.js"
       ]

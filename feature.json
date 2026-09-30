@@ -976,6 +976,18 @@
         "SQLite dev_ideas schema migration adding image column with backward compatibility",
         "devIdeasService and REST routes (/api/dev-ideas) supporting image persistence on create and edit"
       ]
+    },
+    "Antigravity Project Scaffolder & Prompt Generator": {
+      "status": "enabled",
+      "description": "Interactive project scaffold configurator and implementation plan generator in the Best Practice Code Repository portal (/ims/code-repo) with framework selectors, CSS stack presets, precondition matrix, vector-similarity best practice suggestions, and one-click clipboard export for initiating new projects in Antigravity.",
+      "subFeatures": [
+        "Dedicated 'Scaffold in Antigravity' workbench and modal in CodeRepoPortal.jsx with scaffold presets (React/Vite, SvelteKit, Next.js, SharePoint SPFx, Vue 3, SolidJS, Express API, ESP32 PlatformIO)",
+        "Curated CSS framework selector (Tailwind CSS v4, Fluent UI 2, Modern Vanilla CSS, SCSS Modular) with automatic init CLI commands and configuration rules",
+        "Configurable precondition matrix (SPFx context, TypeScript strict, WebSockets, SQLite MCP, Offline cache) and custom constraint additions",
+        "Intelligent AI best-practice suggestion service in codeRepoService.js matching repository code blueprints and contracts against user project descriptions using vector similarity",
+        "Multi-phase implementation plan generator outputting atomic phases (Scaffolding, Typed Contracts, UI/State, Verification), reference code blueprints with typed Inputs/Outputs, and Antigravity Invariants/DoD",
+        "Real-time markdown preview workbench with copy-to-clipboard feedback and snippet count indicators"
+      ]
     }
   }
 }
