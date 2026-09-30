@@ -369,34 +369,181 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
 
+  // Rich metadata for Scaffolder Presets with thorough details and use cases
   const SCAFFOLD_OPTIONS = [
-    { label: 'React 18 + Vite (SPA)', value: 'React 18 + Vite (SPA)', badge: 'Fastest / Frontend SPA' },
-    { label: 'SvelteKit 2.0 (Universal)', value: 'SvelteKit 2.0 (Universal)', badge: 'Svelte Compiler / SSR' },
-    { label: 'Next.js 15 App Router', value: 'Next.js 15 App Router', badge: 'Full-stack / RSC' },
-    { label: 'SharePoint SPFx Web Part (v1.19+)', value: 'SharePoint SPFx Web Part (v1.19+)', badge: 'Enterprise / M365' },
-    { label: 'Vue 3 + Vite (Pinia)', value: 'Vue 3 + Vite (Pinia)', badge: 'Composition API' },
-    { label: 'SolidJS + Vite', value: 'SolidJS + Vite', badge: 'Fine-grained Reactivity' },
-    { label: 'Node.js + Express REST / SSE API', value: 'Node.js + Express REST / SSE API', badge: 'Backend Pipeline' },
-    { label: 'ESP32-S3 FreeRTOS C++ (PlatformIO)', value: 'ESP32-S3 FreeRTOS C++ (PlatformIO)', badge: 'Embedded Firmware' }
+    {
+      label: 'React 18 + Vite (SPA)',
+      value: 'React 18 + Vite (SPA)',
+      badge: 'Fastest / Frontend SPA',
+      desc: 'Blazing fast Single Page Application with Vite HMR, React 18 concurrency, and optimal local development build speeds. Ideal for modern client-rendered web applications, dashboards, and internal tooling.',
+      highlights: ['Instant server start (<300ms)', 'Rollup production bundler', 'Full React 18 hook & suspense support', 'Clean asset pipeline'],
+      cli: 'npm create vite@latest my-app -- --template react-ts'
+    },
+    {
+      label: 'SvelteKit 2.0 (Universal)',
+      value: 'SvelteKit 2.0 (Universal)',
+      badge: 'Svelte Compiler / SSR',
+      desc: 'Compiler-driven reactive web framework with zero-runtime overhead, file-based routing, universal SSR/SPA rendering, and native form actions. Perfect for ultra-lean, high-performance web applications.',
+      highlights: ['Zero virtual DOM overhead', 'Scoped CSS by default', 'Built-in page transitions & animations', 'Universal load functions'],
+      cli: 'npx sv create my-app --template minimal --types ts'
+    },
+    {
+      label: 'Next.js 15 App Router',
+      value: 'Next.js 15 App Router',
+      badge: 'Full-stack / RSC',
+      desc: 'Enterprise full-stack framework with React Server Components (RSC), server actions, nested layouts, streaming SSR, and edge API routes. Best for SEO-critical portals, SaaS backends, and multi-tenant architectures.',
+      highlights: ['React Server Components', 'Server Actions for zero-API mutations', 'Incremental Static Regeneration (ISR)', 'Optimised font/image pipelines'],
+      cli: 'npx create-next-app@latest my-app --typescript --app'
+    },
+    {
+      label: 'SharePoint SPFx Web Part (v1.19+)',
+      value: 'SharePoint SPFx Web Part (v1.19+)',
+      badge: 'Enterprise / M365',
+      desc: 'Microsoft SharePoint Framework client-side web part running directly inside SharePoint Online, Microsoft Teams, and Microsoft 365. Handles page context, tenant permissions, PnPjs taxonomy, and enterprise authentication.',
+      highlights: ['Direct SharePoint PageContext access', 'PnPjs v3/v4 taxonomy integration', 'Native MS Teams tab support', 'Isolated tenant execution'],
+      cli: 'yo @microsoft/sharepoint --plusbeta'
+    },
+    {
+      label: 'Vue 3 + Vite (Pinia)',
+      value: 'Vue 3 + Vite (Pinia)',
+      badge: 'Composition API',
+      desc: 'Progressive JavaScript framework featuring Vue 3 Composition API, script setup syntax, and Pinia reactive state stores. Excellent developer ergonomics with fast Vite HMR and declarative templates.',
+      highlights: ['Single-File Components (<script setup>)', 'Type-safe Pinia state stores', 'Fine-grained proxy reactivity', 'Vite-powered bundle speeds'],
+      cli: 'npm create vite@latest my-app -- --template vue-ts'
+    },
+    {
+      label: 'SolidJS + Vite',
+      value: 'SolidJS + Vite',
+      badge: 'Fine-grained Reactivity',
+      desc: 'JSX-based UI library that compiles directly to real DOM operations without a virtual DOM, achieving peak runtime benchmark performance and memory efficiency for data-dense dashboards.',
+      highlights: ['Zero Virtual DOM overhead', 'Fine-grained signals reactivity', 'Real DOM micro-updates', 'Familiar JSX component syntax'],
+      cli: 'npm create vite@latest my-app -- --template solid-ts'
+    },
+    {
+      label: 'Node.js + Express REST / SSE API',
+      value: 'Node.js + Express REST / SSE API',
+      badge: 'Backend Pipeline',
+      desc: 'Modular Node.js and Express backend service with Server-Sent Events (SSE) streaming, SQLite/PostgreSQL persistence, and clean layered router/controller/service architecture.',
+      highlights: ['SSE real-time telemetry streaming', 'Modular route & service layering', 'SQLite/HNSW RAG store support', 'Async middleware error handling'],
+      cli: 'npm init -y && npm i express cors dotenv sqlite3'
+    },
+    {
+      label: 'ESP32-S3 FreeRTOS C++ (PlatformIO)',
+      value: 'ESP32-S3 FreeRTOS C++ (PlatformIO)',
+      badge: 'Embedded Firmware',
+      desc: 'Hardware firmware architecture for ESP32-S3 microcontrollers with dual-core FreeRTOS tasks, I2S microphone/speaker DMA buffers, WebSocket telemetry, and LovyanGFX display rendering.',
+      highlights: ['Dual-core FreeRTOS concurrency', 'I2S DMA audio acquisition & speaker DAC', 'PSRAM circular pre-roll ringbuffers', 'LovyanGFX LCD UI renderer'],
+      cli: 'pio project init --board esp32-s3-box-3 --project-option "framework=arduino"'
+    }
   ];
 
+  // Rich metadata for CSS Frameworks
   const CSS_FRAMEWORKS = [
-    { label: 'Tailwind CSS v4 (Modern Utility)', value: 'Tailwind CSS v4', sub: 'Class-based styling & design tokens' },
-    { label: 'Fluent UI 2 (Microsoft / SPFx)', value: 'Fluent UI 2 (Griffel)', sub: 'Microsoft 365 enterprise components' },
-    { label: 'Vanilla Modern CSS (Custom Design Tokens)', value: 'Vanilla Modern CSS', sub: 'Clean variables, glassmorphism & zero dependencies' },
-    { label: 'SCSS / SASS Modules', value: 'SCSS / SASS Modules', sub: 'Scoped modular styling' }
+    {
+      label: 'Tailwind CSS v4 (Modern Utility)',
+      value: 'Tailwind CSS v4',
+      sub: 'Class-based styling & design tokens',
+      desc: 'Next-generation utility-first CSS framework built in Rust (Lightning CSS). Generates zero unused CSS with instantaneous build times, native CSS color variables, and container queries.',
+      features: ['Lightning CSS engine', 'Native @theme token configuration', 'Container queries & modern CSS variables', 'Zero runtime overhead']
+    },
+    {
+      label: 'Fluent UI 2 (Microsoft / SPFx)',
+      value: 'Fluent UI 2 (Griffel)',
+      sub: 'Microsoft 365 enterprise components',
+      desc: 'Microsoft’s official design system for Microsoft 365, Teams, and SharePoint SPFx. Features Griffel CSS-in-JS ahead-of-time compilation, high-contrast themes, and accessible React v9 components.',
+      features: ['Official Microsoft 365 design language', 'AOT Griffel CSS-in-JS style extraction', 'High contrast & dark mode token tokens', 'WCAG 2.1 AA accessibility baked in']
+    },
+    {
+      label: 'Vanilla Modern CSS (Custom Design Tokens)',
+      value: 'Vanilla Modern CSS',
+      sub: 'Clean variables, glassmorphism & zero dependencies',
+      desc: 'Zero-dependency modern CSS architecture using CSS custom properties (--token), backdrop-filter glassmorphism, CSS Grid, and responsive flexbox layouts with maximum control and longevity.',
+      features: ['Zero third-party runtime or build dependencies', 'Dynamic CSS variables for dark/light themes', 'Glassmorphic card & drawer tokens', 'Maximum performance and portability']
+    },
+    {
+      label: 'SCSS / SASS Modules',
+      value: 'SCSS / SASS Modules',
+      sub: 'Scoped modular styling',
+      desc: 'Modular CSS with SCSS pre-processing, nested syntax, mixins, and component-scoped class hashing to prevent global namespace pollution.',
+      features: ['Locally scoped component CSS modules', 'Reusable mixins and calculation functions', 'Clean nesting for pseudo-selectors', 'Zero global selector leaks']
+    }
   ];
 
-  const COMMON_PRECONDITIONS = [
-    'TypeScript strict mode & complete interfaces',
-    'Defensive module boundaries & resource cleanup',
-    'Triple Registry compliance (feature.json, ProjectStructure.JSON, test_plan.md)',
-    'Full module emission without truncated snippets',
-    'SharePoint SPFx Context & PnPjs v3 integration',
-    'WebSocket real-time bidirectional telemetry',
-    'SQLite persistence with atomic schema migrations',
-    'British English (en-GB) and GBP (£) regionalisation'
-  ];
+  // Rich metadata for Preconditions & Invariants
+  const PRECONDITION_DETAILS = {
+    'TypeScript strict mode & complete interfaces': {
+      title: 'Strict TypeScript & Complete Type Contracts',
+      desc: 'Enforces "strict": true in tsconfig.json with zero "any" types. All function arguments, API responses, and component props must have explicit, well-defined TypeScript interfaces.',
+      benefit: 'Eliminates runtime undefined/null errors and ensures full IDE autocompletion for Antigravity.'
+    },
+    'Defensive module boundaries & resource cleanup': {
+      title: 'Defensive Engineering & Lifecycle Hygiene',
+      desc: 'Every async hook, WebSocket connection, setInterval, and event listener must implement explicit cleanup in return unmount handlers. File handles and DB connections must close cleanly.',
+      benefit: 'Prevents persistent memory leaks, dangling network connections, and unhandled promise rejections.'
+    },
+    'Triple Registry compliance (feature.json, ProjectStructure.JSON, test_plan.md)': {
+      title: 'Triple Registry Architectural Parity',
+      desc: 'Mandates synchronised updates across feature.json (unique feature ID), ProjectStructure.JSON (module dependency graph), and test_plan.md (Section 1 matrix, Section 2 scenario, Executive Summary).',
+      benefit: 'Guarantees complete traceability and automated verification of every delivered feature.'
+    },
+    'Full module emission without truncated snippets': {
+      title: 'Anti-Chunking & Full File Integrity',
+      desc: 'Requires emitting complete file modules without placeholders, truncated snippets, or partial comments ("// ... rest of code"). Maintains full lexical scope and closure integrity.',
+      benefit: 'Avoids corrupted code states, missing imports, and broken function closures.'
+    },
+    'SharePoint SPFx Context & PnPjs v3 integration': {
+      title: 'SharePoint PageContext & PnPjs API Bridge',
+      desc: 'Provides access to WebPartContext, current user profile, SharePoint REST endpoints, and taxonomy stores via PnPjs v3 spfi() factory with scoped caching.',
+      benefit: 'Seamlessly interacts with SharePoint lists, document libraries, and Managed Metadata terms.'
+    },
+    'WebSocket real-time bidirectional telemetry': {
+      title: 'Low-Latency Bidirectional WebSocket Streaming',
+      desc: 'Implements full-duplex WebSocket connections with automatic reconnection loops, heartbeat keep-alive pings, and structured JSON payload message routing.',
+      benefit: 'Enables instant hardware telemetry, live speech streaming, and reactive dashboard sync.'
+    },
+    'SQLite persistence with atomic schema migrations': {
+      title: 'SQLite Database Governance & Migrations',
+      desc: 'Local SQLite relational storage with WAL mode, parameterized prepared statements, and idempotent "CREATE TABLE IF NOT EXISTS" and "ALTER TABLE" on startup.',
+      benefit: 'Guarantees fast, ACID-compliant local data persistence and safe schema evolutions.'
+    },
+    'British English (en-GB) and GBP (£) regionalisation': {
+      title: 'British English Orthography & Currency Standard',
+      desc: 'Enforces UK English spelling (e.g. colour, synchronise, initialised, behaviour) and pound sterling (£) formatting across all UI labels, prompts, and documentation.',
+      benefit: 'Maintains consistent regional voice and compliance with UK business requirements.'
+    }
+  };
+
+  const COMMON_PRECONDITIONS = Object.keys(PRECONDITION_DETAILS);
+
+  // Hover Popover States
+  const [hoveredScaffold, setHoveredScaffold] = useState(null);
+  const [hoveredCss, setHoveredCss] = useState(null);
+  const [hoveredPrecondition, setHoveredPrecondition] = useState(null);
+  const [hoveredSnippet, setHoveredSnippet] = useState(null);
+  const [hoverCardPos, setHoverCardPos] = useState({ x: 0, y: 0 });
+  const hoverTimerRef = useRef(null);
+
+  const handleMouseEnterCard = (item, type, e) => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    const rect = e.currentTarget.getBoundingClientRect();
+    setHoverCardPos({
+      top: rect.bottom + 8,
+      left: Math.max(16, Math.min(window.innerWidth - 380, rect.left))
+    });
+    if (type === 'scaffold') setHoveredScaffold(item);
+    if (type === 'css') setHoveredCss(item);
+    if (type === 'precondition') setHoveredPrecondition(item);
+    if (type === 'snippet') setHoveredSnippet(item);
+  };
+
+  const handleMouseLeaveCard = () => {
+    hoverTimerRef.current = setTimeout(() => {
+      setHoveredScaffold(null);
+      setHoveredCss(null);
+      setHoveredPrecondition(null);
+      setHoveredSnippet(null);
+    }, 150);
+  };
 
   const overviewRef = useRef(null);
 
@@ -2363,9 +2510,14 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 {/* Scaffold Choice */}
                 <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-                  <label className="text-xs font-extrabold uppercase tracking-wider mb-2.5 flex items-center gap-1.5 opacity-90">
-                    <Boxes size={14} className="text-blue-500" />
-                    <span>1. Select Framework Scaffold</span>
+                  <label className="text-xs font-extrabold uppercase tracking-wider mb-2.5 flex items-center justify-between opacity-90">
+                    <span className="flex items-center gap-1.5">
+                      <Boxes size={14} className="text-blue-500" />
+                      <span>1. Select Framework Scaffold</span>
+                    </span>
+                    <span className="text-[10px] font-normal lowercase opacity-60 flex items-center gap-1">
+                      <HelpCircle size={11} /> hover for architecture details
+                    </span>
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {SCAFFOLD_OPTIONS.map((opt) => {
@@ -2374,14 +2526,16 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
                         <div
                           key={opt.value}
                           onClick={() => setSelectedScaffold(opt.value)}
-                          className={`p-2.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                          onMouseEnter={(e) => handleMouseEnterCard(opt, 'scaffold', e)}
+                          onMouseLeave={handleMouseLeaveCard}
+                          className={`p-2.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between relative group ${
                             isSelected
                               ? isDark
-                                ? 'bg-blue-950/60 border-blue-500 text-white shadow-sm'
-                                : 'bg-blue-50 border-blue-400 text-slate-900 shadow-sm'
+                                ? 'bg-blue-950/60 border-blue-500 text-white shadow-sm ring-1 ring-blue-500/50'
+                                : 'bg-blue-50 border-blue-400 text-slate-900 shadow-sm ring-1 ring-blue-400/50'
                               : isDark
-                                ? 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                                ? 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'
                           }`}
                         >
                           <div className="flex items-center justify-between gap-1 mb-1">
@@ -2399,9 +2553,14 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
 
                 {/* CSS Framework Choice */}
                 <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-                  <label className="text-xs font-extrabold uppercase tracking-wider mb-2.5 flex items-center gap-1.5 opacity-90">
-                    <Sparkles size={14} className="text-purple-500" />
-                    <span>2. Styling & Design System</span>
+                  <label className="text-xs font-extrabold uppercase tracking-wider mb-2.5 flex items-center justify-between opacity-90">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles size={14} className="text-purple-500" />
+                      <span>2. Styling & Design System</span>
+                    </span>
+                    <span className="text-[10px] font-normal lowercase opacity-60 flex items-center gap-1">
+                      <HelpCircle size={11} /> hover for stack features
+                    </span>
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {CSS_FRAMEWORKS.map((opt) => {
@@ -2410,14 +2569,16 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
                         <div
                           key={opt.value}
                           onClick={() => setSelectedCssFramework(opt.value)}
-                          className={`p-2.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                          onMouseEnter={(e) => handleMouseEnterCard(opt, 'css', e)}
+                          onMouseLeave={handleMouseLeaveCard}
+                          className={`p-2.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between relative group ${
                             isSelected
                               ? isDark
-                                ? 'bg-purple-950/60 border-purple-500 text-white shadow-sm'
-                                : 'bg-purple-50 border-purple-400 text-slate-900 shadow-sm'
+                                ? 'bg-purple-950/60 border-purple-500 text-white shadow-sm ring-1 ring-purple-500/50'
+                                : 'bg-purple-50 border-purple-400 text-slate-900 shadow-sm ring-1 ring-purple-400/50'
                               : isDark
-                                ? 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                                ? 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'
                           }`}
                         >
                           <div className="flex items-center justify-between gap-1 mb-1">
@@ -2436,13 +2597,19 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
 
               {/* Row 3: Preconditions & Invariants */}
               <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-                <label className="text-xs font-extrabold uppercase tracking-wider mb-2.5 flex items-center gap-1.5 opacity-90">
-                  <ShieldCheck size={14} className="text-emerald-500" />
-                  <span>3. Project Preconditions & Engineering Invariants</span>
+                <label className="text-xs font-extrabold uppercase tracking-wider mb-2.5 flex items-center justify-between opacity-90">
+                  <span className="flex items-center gap-1.5">
+                    <ShieldCheck size={14} className="text-emerald-500" />
+                    <span>3. Project Preconditions & Engineering Invariants</span>
+                  </span>
+                  <span className="text-[10px] font-normal lowercase opacity-60 flex items-center gap-1">
+                    <HelpCircle size={11} /> hover for invariant specifications
+                  </span>
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-3">
                   {COMMON_PRECONDITIONS.map((p) => {
                     const isChecked = selectedPreconditions.includes(p);
+                    const pMeta = PRECONDITION_DETAILS[p] || { title: p, desc: p, benefit: '' };
                     return (
                       <div
                         key={p}
@@ -2451,14 +2618,16 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
                             isChecked ? prev.filter(x => x !== p) : [...prev, p]
                           );
                         }}
-                        className={`p-2 rounded-xl border cursor-pointer text-xs flex items-start gap-2 transition-all ${
+                        onMouseEnter={(e) => handleMouseEnterCard(pMeta, 'precondition', e)}
+                        onMouseLeave={handleMouseLeaveCard}
+                        className={`p-2 rounded-xl border cursor-pointer text-xs flex items-start gap-2 transition-all relative group ${
                           isChecked
                             ? isDark
-                              ? 'bg-emerald-950/50 border-emerald-500/40 text-emerald-200'
-                              : 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                              ? 'bg-emerald-950/50 border-emerald-500/40 text-emerald-200 ring-1 ring-emerald-500/30'
+                              : 'bg-emerald-50 border-emerald-300 text-emerald-900 ring-1 ring-emerald-400/30'
                             : isDark
-                              ? 'bg-slate-900/60 border-slate-800 text-slate-400'
-                              : 'bg-white border-slate-200 text-slate-600'
+                              ? 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                              : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'
                         }`}
                       >
                         <span className="mt-0.5 shrink-0 text-emerald-500">
@@ -2489,7 +2658,11 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
                       4. Attach Reference Blueprints ({selectedPromptSnippetIds.length} Selected)
                     </span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] lowercase opacity-60 flex items-center gap-1">
+                      <HelpCircle size={11} /> hover blueprint for code summary
+                    </span>
+                    <span className="opacity-30">•</span>
                     <button
                       type="button"
                       onClick={() => setSelectedPromptSnippetIds(snippets.map(s => s.id))}
@@ -2522,10 +2695,12 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
                           <div
                             key={s.id}
                             onClick={() => handleTogglePromptSnippet(s.id)}
+                            onMouseEnter={(e) => handleMouseEnterCard(s, 'snippet', e)}
+                            onMouseLeave={handleMouseLeaveCard}
                             className={`p-2 rounded-lg border cursor-pointer flex items-center justify-between gap-1 text-[11px] font-semibold transition-all ${
                               isSelected
                                 ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
                             }`}
                           >
                             <span className="truncate">{s.title}</span>
@@ -2547,14 +2722,16 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
                       <div
                         key={snip.id}
                         onClick={() => handleTogglePromptSnippet(snip.id)}
-                        className={`p-2.5 rounded-xl border cursor-pointer flex items-start gap-2 transition-all ${
+                        onMouseEnter={(e) => handleMouseEnterCard(snip, 'snippet', e)}
+                        onMouseLeave={handleMouseLeaveCard}
+                        className={`p-2.5 rounded-xl border cursor-pointer flex items-start gap-2 transition-all relative group ${
                           isChecked
                             ? isDark
-                              ? 'bg-blue-950/60 border-blue-500/80 text-white shadow-sm'
-                              : 'bg-blue-50 border-blue-400 text-slate-900 shadow-sm'
+                              ? 'bg-blue-950/60 border-blue-500/80 text-white shadow-sm ring-1 ring-blue-500/40'
+                              : 'bg-blue-50 border-blue-400 text-slate-900 shadow-sm ring-1 ring-blue-400/40'
                             : isDark
-                              ? 'bg-slate-900/60 border-slate-800/80 text-slate-400 hover:border-slate-700'
-                              : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                              ? 'bg-slate-900/60 border-slate-800/80 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                              : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'
                         }`}
                       >
                         <span className="mt-0.5 shrink-0 text-blue-500">
@@ -2611,6 +2788,140 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
                 </div>
               )}
             </div>
+
+            {/* Floating Rich Hover Popovers */}
+            {hoveredScaffold && (
+              <div
+                className={`fixed z-[100] w-96 p-4 rounded-2xl border shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 pointer-events-none ${
+                  isDark ? 'bg-slate-900/95 border-blue-500/40 text-slate-100 shadow-[0_12px_36px_rgba(0,0,0,0.7)]' : 'bg-white/95 border-blue-300 text-slate-800 shadow-[0_12px_36px_rgba(0,0,0,0.15)]'
+                }`}
+                style={{ top: `${Math.min(window.innerHeight - 260, hoverCardPos.top)}px`, left: `${hoverCardPos.left}px` }}
+              >
+                <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-200/80 dark:border-white/10">
+                  <div className="flex items-center gap-2">
+                    <Boxes size={16} className="text-blue-500" />
+                    <span className="font-extrabold text-xs">{hoveredScaffold.label}</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                    {hoveredScaffold.badge}
+                  </span>
+                </div>
+                <p className="text-[11px] leading-relaxed mb-3 opacity-80">
+                  {hoveredScaffold.desc}
+                </p>
+                <div className="space-y-1 mb-3">
+                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-blue-500">Key Capabilities:</div>
+                  <div className="grid grid-cols-2 gap-1 text-[10px]">
+                    {hoveredScaffold.highlights?.map((h, i) => (
+                      <div key={i} className="flex items-center gap-1 opacity-90">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                        <span className="truncate">{h}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className={`p-2 rounded-lg font-mono text-[10px] border truncate ${isDark ? 'bg-black/50 border-white/10 text-cyan-300' : 'bg-slate-100 border-slate-200 text-blue-700'}`}>
+                  $ {hoveredScaffold.cli}
+                </div>
+              </div>
+            )}
+
+            {hoveredCss && (
+              <div
+                className={`fixed z-[100] w-96 p-4 rounded-2xl border shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 pointer-events-none ${
+                  isDark ? 'bg-slate-900/95 border-purple-500/40 text-slate-100 shadow-[0_12px_36px_rgba(0,0,0,0.7)]' : 'bg-white/95 border-purple-300 text-slate-800 shadow-[0_12px_36px_rgba(0,0,0,0.15)]'
+                }`}
+                style={{ top: `${Math.min(window.innerHeight - 240, hoverCardPos.top)}px`, left: `${hoverCardPos.left}px` }}
+              >
+                <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-200/80 dark:border-white/10">
+                  <div className="flex items-center gap-2">
+                    <Sparkles size={16} className="text-purple-500" />
+                    <span className="font-extrabold text-xs">{hoveredCss.label}</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                    {hoveredCss.sub}
+                  </span>
+                </div>
+                <p className="text-[11px] leading-relaxed mb-3 opacity-80">
+                  {hoveredCss.desc}
+                </p>
+                <div className="space-y-1">
+                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-purple-500">Styling Features:</div>
+                  <div className="grid grid-cols-2 gap-1 text-[10px]">
+                    {hoveredCss.features?.map((f, i) => (
+                      <div key={i} className="flex items-center gap-1 opacity-90">
+                        <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
+                        <span className="truncate">{f}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {hoveredPrecondition && (
+              <div
+                className={`fixed z-[100] w-96 p-4 rounded-2xl border shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 pointer-events-none ${
+                  isDark ? 'bg-slate-900/95 border-emerald-500/40 text-slate-100 shadow-[0_12px_36px_rgba(0,0,0,0.7)]' : 'bg-white/95 border-emerald-300 text-slate-800 shadow-[0_12px_36px_rgba(0,0,0,0.15)]'
+                }`}
+                style={{ top: `${Math.min(window.innerHeight - 220, hoverCardPos.top)}px`, left: `${hoverCardPos.left}px` }}
+              >
+                <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-200/80 dark:border-white/10">
+                  <ShieldCheck size={16} className="text-emerald-500" />
+                  <span className="font-extrabold text-xs">{hoveredPrecondition.title}</span>
+                </div>
+                <p className="text-[11px] leading-relaxed mb-2.5 opacity-80">
+                  {hoveredPrecondition.desc}
+                </p>
+                {hoveredPrecondition.benefit && (
+                  <div className={`p-2 rounded-lg text-[10px] leading-snug border ${isDark ? 'bg-emerald-950/40 border-emerald-500/20 text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-800'}`}>
+                    ✨ <strong>Antigravity Guarantee:</strong> {hoveredPrecondition.benefit}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {hoveredSnippet && (
+              <div
+                className={`fixed z-[100] w-[420px] p-4 rounded-2xl border shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 pointer-events-none ${
+                  isDark ? 'bg-slate-900/95 border-cyan-500/40 text-slate-100 shadow-[0_12px_36px_rgba(0,0,0,0.7)]' : 'bg-white/95 border-cyan-300 text-slate-800 shadow-[0_12px_36px_rgba(0,0,0,0.15)]'
+                }`}
+                style={{ top: `${Math.min(window.innerHeight - 280, hoverCardPos.top)}px`, left: `${Math.min(window.innerWidth - 440, hoverCardPos.left)}px` }}
+              >
+                <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-200/80 dark:border-white/10">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <BookOpen size={16} className="text-cyan-500 shrink-0" />
+                    <span className="font-extrabold text-xs truncate">{hoveredSnippet.title}</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 shrink-0">
+                    {hoveredSnippet.technology}
+                  </span>
+                </div>
+                <p className="text-[11px] leading-relaxed mb-3 opacity-80 line-clamp-3">
+                  {hoveredSnippet.description || 'Verified production pattern blueprint.'}
+                </p>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="opacity-60">Source File:</span>
+                    <span className="font-mono text-cyan-400 truncate max-w-[260px]">{hoveredSnippet.file_path}</span>
+                  </div>
+                  {hoveredSnippet.principles?.length > 0 && (
+                    <div className="flex items-center gap-1 flex-wrap pt-1">
+                      {hoveredSnippet.principles.slice(0, 3).map((pr, i) => (
+                        <span key={i} className={`text-[9px] px-1.5 py-0.5 rounded ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-700'}`}>
+                          {pr.name || pr}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {hoveredSnippet.inputs && (
+                    <div className={`mt-2 p-2 rounded-lg font-mono text-[9.5px] border ${isDark ? 'bg-black/50 border-white/10 text-emerald-300' : 'bg-slate-50 border-slate-200 text-emerald-700'}`}>
+                      <span className="font-bold opacity-70">Inputs Contract:</span> {typeof hoveredSnippet.inputs === 'string' ? hoveredSnippet.inputs.slice(0, 90) : JSON.stringify(hoveredSnippet.inputs).slice(0, 90)}...
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

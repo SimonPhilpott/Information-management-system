@@ -821,11 +821,11 @@
 
 ### Suite 78: Antigravity Project Scaffolder & Implementation Plan Generator (FEAT-078)
 1. **Workbench Access:** Navigate to `/ims/code-repo`. Verify the header toolbar displays the gradient button **Scaffold in Antigravity** with a rocket icon (`Rocket`).
-2. **Modal Configuration:** Click **Scaffold in Antigravity**. Verify the modal opens with:
-   - **Project Name & Goal:** Input fields for naming and high-level requirements.
-   - **Framework Scaffold Grid:** Selectable presets including React (Vite), Svelte / SvelteKit, Next.js (App Router), SharePoint SPFx Web Part, Vue 3 (Vite), SolidJS, Express REST API, and ESP32 Firmware (PlatformIO).
-   - **CSS & UI Framework:** Selectable presets including Tailwind CSS v4, Fluent UI React v9 / SPFx, Modern Vanilla CSS, and SCSS Modules.
-   - **Preconditions Matrix:** Checkboxes for SPFx Context, Strict TypeScript, WebSocket / SSE, SQLite MCP, and Offline / Local Storage Caching, plus custom text inputs.
+2. **Modal Configuration & Rich Hover Previews:** Click **Scaffold in Antigravity**. Verify the modal opens with interactive hover popovers across all options:
+   - **Framework Scaffolds:** Hover over any framework (e.g. *React 18 + Vite*, *SvelteKit 2.0*, *Next.js 15*, *SharePoint SPFx Web Part*, *ESP32-S3 FreeRTOS*). Verify a glassmorphic floating popover card appears showing full architecture explanation, 4 key capability bullets, and exact CLI init command.
+   - **CSS & UI Frameworks:** Hover over any styling choice (e.g. *Tailwind CSS v4*, *Fluent UI 2 / Griffel*, *Vanilla Modern CSS*, *SCSS Modules*). Verify a popover displays architecture details, design tokens, and styling features.
+   - **Preconditions Matrix:** Hover over any precondition (e.g. *TypeScript strict mode*, *Defensive module boundaries*, *Triple Registry compliance*, *SPFx Context*, *WebSocket bidirectional telemetry*, *SQLite persistence*). Verify a popover reveals clear invariant specifications and Antigravity guarantees.
+   - **Reference Blueprints:** Hover over any snippet card or AI suggestion pill. Verify a floating card displays full snippet title, technology badge, relative repository file path, 5-principle alignment tags, and typed Inputs/Outputs contract previews.
 3. **AI Best Practice Suggestions:** Without manually checking snippets, enter a project description (e.g. *"Build an ESP32 voice terminal with WebSocket streaming and I2S audio"* or *"A modern SPFx dashboard with Fluent UI and SQLite backend"*). Click **Suggest Best Practices**. Verify:
    - The backend runs vector embedding similarity search against indexed snippets.
    - Matching snippets are automatically selected with green badges indicating match similarity % and relevance summary.
@@ -834,7 +834,7 @@
    - A structured, comprehensive kick-off prompt is rendered in the live markdown preview.
    - The prompt contains exact CLI scaffolding commands, CSS setup rules, typed inputs/outputs contracts for selected snippets, an atomic 4-phase implementation plan, and Antigravity Invariants/DoD.
 6. **Copy to Clipboard:** Click **Copy Prompt to Clipboard**. Verify the toast confirms the copy, and the prompt pastes cleanly into a blank project folder for Antigravity execution.
-7. **Defensive Invariant 88 (Vector Fallback & Clean Modal Lifecycle):** In `codeRepoService.js`, `suggestBestPractices()` gracefully falls back to keyword matching if vector embeddings are temporarily unavailable. In `CodeRepoPortal.jsx`, modal closing resets ephemeral state and cleanly unmounts event listeners.
+7. **Defensive Invariant 88 (Vector Fallback & Clean Modal Lifecycle):** In `codeRepoService.js`, `suggestBestPractices()` gracefully falls back to keyword matching if vector embeddings are temporarily unavailable. In `CodeRepoPortal.jsx`, hover popovers use safe debounce and `pointer-events-none` to guarantee zero UI interference or modal dismissal issues.
 
 
 
