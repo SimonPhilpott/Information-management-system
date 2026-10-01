@@ -71,7 +71,7 @@ const brief = (plan) => plan && ({
   guidelineGrams: plan.guideline,
 });
 
-const unitNote = (units) => (units === 'mi' ? 'Write distances in MILES and pace in min per mile (the data below is in kilometres and min per km - convert: 1 mile = 1.609 km); elevation stays in metres.' : 'Write distances in kilometres and pace in min per km; elevation in metres.');
+const unitNote = (units) => 'Always write "minutes" and "miles" in full (or "min") - never "m", which could be read as either. ' + (units === 'mi' ? 'Write distances in MILES and pace in min per mile (the data below is in kilometres and min per km - convert: 1 mile = 1.609 km); elevation stays in metres.' : 'Write distances in kilometres and pace in min per km; elevation in metres.');
 export async function analyseActivity(id, units = 'km', debrief = null) {
   const m = await matchActivity(id);
   if (m.status !== 'ok') throw new Error(m.note || 'This activity has no glucose data to review.');
@@ -87,8 +87,10 @@ export async function analyseActivity(id, units = 'km', debrief = null) {
 
   // What happened, against the user's own targets.
   const inRun = m.series.filter((p) => p.m >= 0 && p.m <= dur && p.bg != null);
-  const minutesBelow = inRun.filter((p) => p.bg < targets.floor).length * 5;
-  const minutesAbove10 = inRun.filter((p) => p.bg > 10).length * 5;
+  // minutes from the share of readings (the log mixes 1- and 5-minute data)
+  const share = (f) => (inRun.length ? Math.round((inRun.filter(f).length / inRun.length) * dur) : 0);
+  const minutesBelow = share((p) => p.bg < targets.floor);
+  const minutesAbove10 = share((p) => p.bg > 10);
   const verdict = {
     startTarget: targets.startTarget, floor: targets.floor, startedAt: st.bgStart,
     startVsTarget: st.bgStart != null ? Math.round((st.bgStart - targets.startTarget) * 10) / 10 : null,
@@ -102,12 +104,13 @@ export async function analyseActivity(id, units = 'km', debrief = null) {
   const km = a.distance / 1000;
   const pace = a.moving_time / 60 / km;
   const base = { paceMinPerKm: pace, intensity: 'steady', sport: a.sport, ...(route ? { routeId: route.id } : { distanceKm: km }) };
-  const safe = (fn) => { try { return fn(); } catch (_) { return null; } };
+  // estimatePlan is async - await it, or brief() below reads a pending promise and throws
+  const safe = async (fn) => { try { return await fn(); } catch (_) { return null; } };
   const fromNow = now.bgFresh && now.bg != null
-    ? safe(() => estimatePlan({ ...base, startBg: now.bg, iob: now.iob ?? 0, cob: now.cob ?? 0, minutesSinceBolus: now.lastBolusMinutesAgo ?? undefined }))
+    ? await safe(() => estimatePlan({ ...base, startBg: now.bg, iob: now.iob ?? 0, cob: now.cob ?? 0, minutesSinceBolus: now.lastBolusMinutesAgo ?? undefined }))
     : null;
-  const fromTarget = safe(() => estimatePlan({ ...base, startBg: targets.startTarget, iob: 0 }));
-  const sameStart = safe(() => estimatePlan({ ...base, startBg: st.bgStart ?? targets.startTarget, iob: st.iobStart ?? 0, cob: st.cobStart ?? 0 }));
+  const fromTarget = await safe(() => estimatePlan({ ...base, startBg: targets.startTarget, iob: 0 }));
+  const sameStart = await safe(() => estimatePlan({ ...base, startBg: st.bgStart ?? targets.startTarget, iob: st.iobStart ?? 0, cob: st.cobStart ?? 0 }));
 
   const facts = {
     activity: { 
@@ -171,7 +174,7 @@ export async function analyseActivity(id, units = 'km', debrief = null) {
     `1. "What went right" - compared with their targets (start near ${targets.startTarget}, stay above ${targets.floor}) and Rulebook gates. Always find one to three genuine positives even in a hard run (for example: low insulin on board, never above 10, no low after finishing, a steady middle section, or solid aerobic base heart rate); if there truly are none, say "Not much this time" and then name the least bad thing. Do not start this section with an apology.\n` +
     `2. "What went wrong & incident scrutiny" - lows or highs, when they happened, and the likely contributors visible in the data evaluated against the Rulebook (insulin on board at the start vs the <1.0 U gate, recent bolus vs the 2h window, carb timing vs steep hills, pump suspension, gradient and effort, heart rate zone intensity such as high VO2 Max >168 bpm triggering counter-regulatory catecholamine liver glucose dumping, trend into the start, post-run dip). Directly address the runner's notes if they mentioned having to walk, feeling tired, or unexpected glucose dips.\n` +
     `3. "Carb timing retrospective" - evaluate when carbs were taken versus when they were actually needed. (For example, if glucose was elevated early on, clarify whether carbs at the start were redundant and only needed 30 minutes in; or if glucose dropped sharply early, explain why early carbs or waiting for lower IOB was critical; if high heart rate caused an adrenaline surge, explain why rapid carbs might have compounded the post-effort spike).\n` +
-    `4. "Next time on this route: adaptive suggestions" - based on where glucose and insulin on board are RIGHT NOW (use planIfYouStartHowYouAreNow if present; if it is null, say the current data is stale and use planIfYouStartAtTarget). Give concrete, adaptive advice: "Before you go" (start glucose, IOB gate, waiting time), "During the run" (precise carb timing, e.g. delay to 30m if starting with low IOB, or carb stops placed before climbs, or pacing adjustment if HR was in VO2 max zone), and "After the finish" (protecting against delayed nocturnal glycogen resynthesis hypoglycemia).\n` +
+    `4. "Next time on this route: adaptive suggestions" - based on where glucose and insulin on board are RIGHT NOW (use planIfYouStartHowYouAreNow if present; if it is null, say the current data is stale and use planIfYouStartAtTarget). Give concrete, adaptive advice: "Before you go" (start glucose, IOB gate, waiting time), "During the run" (precise carb timing, e.g. delay to 30 minutes if starting with low IOB, or carb stops placed before climbs, or pacing adjustment if HR was in VO2 max zone), and "After the finish" (protecting against delayed nocturnal glycogen resynthesis hypoglycemia).\n` +
     `5. "Insulin - things to discuss with your diabetes team" - only options the published guidance supports (reducing a bolus given within 2 hours of the run: about 20% per Riddell 2017 up to about 50% per ISPAD 2022; raising the exercise/activity target ahead of the run so IOB falls; an overnight basal reduction of about 20% for about 6 hours for pump users after evening runs). NEVER give a specific insulin dose, a specific target value, or a change to pump settings.\n` +
     `6. "How much to trust this" - sample size (personal fit: ${fromTarget?.basis?.personalRuns ?? 0} matched runs), the assumptions used, and that this is pattern-spotting from their own data, not medical advice.\n` +
     `Keep it under about 550 words. Start with one sentence summing up the run. Use short paragraphs or bullet lists.\n\nDATA (JSON):\n${JSON.stringify(facts)}`;

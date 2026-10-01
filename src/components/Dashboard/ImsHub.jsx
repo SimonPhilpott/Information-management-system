@@ -1,6 +1,6 @@
 import AccountChip from './AccountChip';
 import React from 'react';
-import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight , Droplets , Newspaper , ListChecks , MessageSquareQuote , Network , Lightbulb , Layers , DatabaseBackup, SunMedium, Code2 } from 'lucide-react';
+import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight , Droplets , Newspaper , ListChecks , MessageSquareQuote , Network , Lightbulb , Layers , DatabaseBackup, SunMedium, Code2, CloudSun } from 'lucide-react';
 
 // Each entry here is one card on the hub. Add a new one whenever a new
 // /ims/* page is built - this is the single place that needs to know about
@@ -228,6 +228,14 @@ const LINKS = [
     glow: 'rgba(251,146,60,0.3)'
   },
   {
+    path: '/ims/weather',
+    title: 'Weather',
+    description: 'Forecasts for home and saved places up to 16 days ahead, and the words Ims uses to describe them.',
+    icon: CloudSun,
+    gradient: 'from-sky-400 to-blue-600',
+    glow: 'rgba(14,165,233,0.3)'
+  },
+  {
     path: '/ims/doorbell',
     title: 'Doorbell',
     description: 'Direct Ring API integration, live dings, motion alerts, snapshots, and Yorkshire voice alerts.',
@@ -246,7 +254,7 @@ const LINKS = [
 ];
 
 const SECTIONS = [
-  ['Core functions', ['/ims/doorbell', '/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings', '/ims/tasks']],
+  ['Core functions', ['/ims/weather', '/ims/doorbell', '/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings', '/ims/tasks']],
   ['Personal', ['/ims/code-repo', '/ims/dayreport', '/ims/musicscan', '/ims/boardgames', '/campaigns', '/ims/news']],
   ['Health and fitness', ['/ims/glucose', '/ims/activities', '/ims/runplanner']],
   ['Customisation and system settings', ['/ims/device-health', '/ims/spend', '/ims/facedesigner', '/ims/persona', '/ims/phrases', '/ims/wifi', '/ims/devideas', '/ims/backups', '/ims/architecture']],
@@ -327,7 +335,7 @@ export default function ImsHub({
         <section key={section} className="flex flex-col gap-3">
         <h2 className={`text-xs font-black uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{section}</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {paths.map((p) => LINKS.find((l) => l.path === p)).filter(Boolean).map((link) => {
+          {paths.map((p) => LINKS.find((l) => l.path === p)).filter(Boolean).sort((a, b) => a.title.localeCompare(b.title, 'en-GB')).map((link) => {
             const Icon = link.icon;
             return (
               <button

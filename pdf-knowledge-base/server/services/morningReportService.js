@@ -172,7 +172,7 @@ const paceText = (minPerKm) => { const m = Math.floor(minPerKm); return `${m}:${
 
 export const AVAILABLE_SERVICES = [
   { id: 'standalone', name: 'Custom / Standalone Note', description: 'User-defined prompt or reminder without a backend service' },
-  { id: 'weather', name: 'Weather Service', description: 'Open-Meteo local forecast, temperatures, and rain' },
+  { id: 'weather', name: 'Weather Service', description: 'Home forecast for the rest of today and tomorrow (Open-Meteo), plus an optional second saved place' },
   { id: 'reminders', name: 'Reminders & Alarms', description: 'Scheduled alarms, timers, and reminder lists' },
   { id: 'calendar', name: 'Google Calendar', description: 'Google Calendar events, schedules, and meetings' },
   { id: 'birthdays', name: 'Birthday Service', description: 'Upcoming family and friend birthdays' },
@@ -195,7 +195,10 @@ export const SERVICE_SUB_FILTERS = {
     { key: 'includeRain', label: 'Rain Probability & Totals', type: 'boolean', default: true, description: 'State precipitation percentage and warn if rain is likely.' },
     { key: 'rainThreshold', label: 'Rain Warning Threshold (%)', type: 'number', default: 40, min: 10, max: 90, step: 5, description: 'Minimum chance of rain to trigger wet weather advice.' },
     { key: 'includeWind', label: 'Wind Speed & Direction', type: 'boolean', default: false, description: 'Include wind velocity in km/h and compass direction.' },
-    { key: 'includeHumidity', label: 'Relative Humidity', type: 'boolean', default: false, description: 'State relative humidity percentage.' }
+    { key: 'includeHumidity', label: 'Relative Humidity', type: 'boolean', default: false, description: 'State relative humidity percentage.' },
+    { key: 'includeTomorrow', label: "Tomorrow's Forecast", type: 'boolean', default: true, description: 'Add a line for tomorrow after the rest of today.' },
+    { key: 'includeUnusual', label: 'Unusual for the Time of Year', type: 'boolean', default: true, description: 'Point out weather that is unusually warm, cold, windy or out of season compared with the last 10 years.' },
+    { key: 'altLocation', label: 'Also Read Out the Weather For', type: 'select', default: '', optionsUrl: '/api/weather/places', description: 'A second saved place (add places on the Weather page). Home is always read first.' }
   ],
   reminders: [
     { key: 'includeToday', label: "Today's Due Items", type: 'boolean', default: true, description: 'List scheduled items and alarms due today.' },
@@ -547,46 +550,54 @@ export function resetReportConfig() {
 
 // Section generators with sub-filtering support
 async function buildWeatherSection(section, context) {
-  try {
-    const filters = section.subFilters || {};
-    const weather = await getWeather({});
-    if (weather.today) {
-      const t = weather.today;
-      const c = weather.current || {};
-      context.weatherRain = t.rain_probability_percent;
-
-      const segments = [];
-      if (filters.includeConditions !== false) {
-        segments.push(t.condition);
-      }
-      if (filters.includeTemps !== false) {
-        segments.push(`${t.min_temp_c}-${t.max_temp_c}°C`);
-      }
-      if (filters.includeRain !== false) {
-        const threshold = typeof filters.rainThreshold === 'number' ? filters.rainThreshold : 40;
-        let rainStr = `${t.rain_probability_percent}% chance of rain`;
-        if (t.rain_probability_percent >= threshold) {
-          rainStr += ' (worth mentioning it could turn wet later)';
-        }
-        segments.push(rainStr);
-      }
-      if (filters.includeWind === true && c.wind_speed_kmh != null) {
-        segments.push(`wind ${c.wind_speed_kmh} km/h ${c.wind_direction || ''}`.trim());
-      }
-      if (filters.includeHumidity === true && c.humidity_percent != null) {
-        segments.push(`${c.humidity_percent}% humidity`);
-      }
-
-      let line = `Weather: ${segments.join(', ')}.`;
-      if (section.customNote?.trim()) line += ` Note: ${section.customNote.trim()}.`;
-      return line;
-    } else if (weather.error) {
-      return `Weather: unavailable right now (${weather.error}).`;
+  // Home first (always), from the hours still to come today - so rain that fell before the report isn't
+  // reported as coming - then tomorrow and, if chosen, a second saved place.
+  const filters = section.subFilters || {};
+  const opts = { conditions: filters.includeConditions !== false, temps: filters.includeTemps !== false, rain: filters.includeRain !== false, wind: filters.includeWind === true };
+  const threshold = typeof filters.rainThreshold === 'number' ? filters.rainThreshold : 40;
+  const describe = (w, { withTomorrow }) => {
+    const p = (w.periods || []).filter((x) => x.name !== 'Overnight');
+    const parts = p.map((x) => `${x.name.toLowerCase()} ${periodText(x, opts)}`);
+    let line = parts.length ? `rest of today - ${parts.join('; ')}` : `tonight - ${periodText(w.periods?.[0] || {}, opts)}`;
+    if (filters.includeHumidity === true && w.current?.humidity_percent != null) line += `; humidity ${w.current.humidity_percent}%`;
+    if (opts.rain && (w.today?.rain_probability_percent ?? 0) >= threshold) line += ' (worth mentioning it could turn wet)';
+    const tomorrow = w.forecast?.[1];
+    if (withTomorrow && tomorrow) line += `. Tomorrow: ${tomorrow.summary}`;
+    if (filters.includeUnusual !== false) {
+      const odd = [w.forecast?.[0]?.unusual, withTomorrow ? tomorrow?.unusual : null].filter(Boolean).flatMap((u) => u.notes.map((n) => n.text));
+      if (odd.length) line += `. Unusual for the time of year: ${odd.join(' ')} (make a fresh remark of your own about it)`;
     }
+    return line;
+  };
+  try {
+    const home = await getWeather({ days: 2 });
+    if (home.error) return `Weather: unavailable right now (${home.error}). Say so - do not guess.`;
+    context.weatherRain = home.today?.rain_probability_percent ?? null;
+    const lang = home.description?.language_today;
+    let line = `Weather at home (${home.location.split(',')[0]}): ${describe(home, { withTomorrow: filters.includeTomorrow !== false })}.`;
+    if (lang) line += ` Words that fit today - rain: ${lang.rain.level} (never say ${lang.rain.avoid.slice(-4).join(', ')})`
+      + `; temperature: ${lang.temperature.band}; wind: ${lang.wind.band}${lang.extras.length ? `; also ${lang.extras.map((e) => e.kind.replace('_', ' ')).join(', ')}` : ''}. Describe it no stronger or weaker than that.`;
+    if (filters.altLocation) {
+      const alt = await getWeather({ location: filters.altLocation, days: 2 });
+      line += alt.error ? ` ${filters.altLocation}: forecast unavailable.` : ` Also in ${filters.altLocation}: ${describe(alt, { withTomorrow: filters.includeTomorrow !== false })}.`;
+    }
+    if (section.customNote?.trim()) line += ` Note: ${section.customNote.trim()}.`;
+    return line;
   } catch (err) {
-    return 'Weather: could not be retrieved.';
+    return 'Weather: could not be retrieved. Say so - do not guess.';
   }
-  return null;
+}
+
+// One period of the day ("afternoon sunny spells, dry, 16-18°C"), trimmed to the chosen sub-filters.
+function periodText(p, { conditions, temps, rain, wind }) {
+  const bits = String(p.text || '').split(', ');
+  // text is: sky, rain, temps, wind
+  const keep = [];
+  if (conditions && bits[0]) keep.push(bits[0]);
+  if (rain && bits[1]) keep.push(bits[1]);
+  if (temps && bits[2]) keep.push(bits[2]);
+  if (wind && bits[3]) keep.push(bits.slice(3).join(', '));
+  return keep.join(', ') || 'no details chosen';
 }
 
 async function buildRemindersSection(section, context) {

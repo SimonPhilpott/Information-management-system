@@ -38,7 +38,9 @@ const TOOL_ROWS = {
     ['services', 'Core functions - 8', 'Invoked Calendar management service']
   ],
   getWeather: [
-    ['connections', 'Open-Meteo', 'Retrieved live temperature, precipitation and forecasts from Open-Meteo REST API']
+    ['connections', 'Open-Meteo', 'Retrieved the hourly forecast (and, once per place, 10 years of history) from Open-Meteo'],
+    ['services', 'Core functions', 'Graded rain, temperature and wind for the hours still to come, and checked what is unusual for the time of year (weatherService)'],
+    ['rules', 'Weather words match the forecast', 'Handed Ims the words that fit the forecast and the ones that would overstate it']
   ],
   getBloodGlucose: [
     ['connections', 'Nightscout (Heroku + MongoDB)', 'Fetched live CGM blood glucose telemetry, trend arrows & device status'],
@@ -87,6 +89,7 @@ const TOOL_ROWS = {
   ],
   getDayReport: [
     ['connections', 'Open-Meteo', 'Retrieved current weather and forecast for the morning briefing'],
+    ['services', 'Core functions', 'Described the rest of today and tomorrow at home (and a second saved place if chosen) via weatherService'],
     ['connections', 'Google Calendar', 'Queried today’s scheduled appointments, deadlines and events'],
     ['connections', 'News feeds', 'Aggregated top morning news headlines across categories'],
     ['connections', 'Nightscout (Heroku + MongoDB)', 'Analysed overnight glucose stability and time-in-range metrics'],

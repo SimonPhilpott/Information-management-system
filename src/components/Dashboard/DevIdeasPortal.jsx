@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusItem } from '../../hooks/useFocusItem';
 import { Lightbulb, Pencil, Plus, AlertTriangle, Trash2, Mic, Monitor, Terminal, Check, X, RotateCcw, Save, Tag, Filter, Image as ImageIcon, Copy, ExternalLink, Sparkles } from 'lucide-react';
 import PortalShell from './PortalShell';
 
@@ -34,6 +35,7 @@ const DEFAULT_CATEGORIES = [
 export default function DevIdeasPortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
   const isDark = theme === 'dark';
   const [ideas, setIdeas] = useState([]);
+  useFocusItem(ideas.length); // Ctrl+K search results land on #<item>
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [newCategory, setNewCategory] = useState('Other');
@@ -171,7 +173,7 @@ export default function DevIdeasPortal({ theme = 'dark', onThemeToggle, setCurre
   const renderRow = (i) => {
     const [SrcIcon, srcLabel] = SOURCE[i.source] || SOURCE.page;
     return (
-      <div key={i.id} className={`p-3.5 rounded-xl border flex flex-col sm:flex-row gap-3 ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
+      <div key={i.id} id={`idea-${i.id}`} className={`p-3.5 rounded-xl border flex flex-col sm:flex-row gap-3 ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
         <div className="flex-1 min-w-0">
           {editing?.id === i.id ? (
             <div className="flex flex-col gap-2" onPaste={(e) => handlePasteImage(e, true)}>

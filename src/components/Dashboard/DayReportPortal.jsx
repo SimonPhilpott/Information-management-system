@@ -112,6 +112,8 @@ export default function DayReportPortal({
   const [sections, setSections] = useState([]);
   const [availableServices, setAvailableServices] = useState([]);
   const [subFilterSchemas, setSubFilterSchemas] = useState({});
+  // choices for 'select' sub-filters that load theirs from the server (e.g. the weather's saved places)
+  const [selectOptions, setSelectOptions] = useState({});
   const [savedSections, setSavedSections] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -214,6 +216,13 @@ export default function DayReportPortal({
   };
 
   // Update a specific sub-filter property for a section
+  useEffect(() => {
+    const urls = [...new Set(Object.values(subFilterSchemas).flat().filter((f) => f?.type === 'select' && f.optionsUrl).map((f) => f.optionsUrl))];
+    urls.filter((u) => !selectOptions[u]).forEach((u) => {
+      fetch(u).then((r) => r.json()).then((j) => setSelectOptions((o) => ({ ...o, [u]: j.options || [] }))).catch(() => {});
+    });
+  }, [subFilterSchemas]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const updateSubFilter = (sectionId, filterKey, val) => {
     setSections((prev) =>
       prev.map((s) => {
@@ -842,6 +851,32 @@ export default function DayReportPortal({
                                     {filter.max} max
                                   </span>
                                 </div>
+                              </div>
+                            );
+                          }
+
+                          if (filter.type === 'select') {
+                            const options = filter.options || selectOptions[filter.optionsUrl] || [];
+                            return (
+                              <div
+                                key={filter.key}
+                                className={`p-2.5 rounded-xl border flex flex-col justify-between gap-2 ${
+                                  isDark ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200 shadow-sm'
+                                }`}
+                              >
+                                <div>
+                                  <span className={`text-xs font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{filter.label}</span>
+                                  <p className="text-[10px] text-slate-400 mt-0.5">{filter.description}</p>
+                                </div>
+                                <select
+                                  value={currentVal ?? ''}
+                                  onChange={(e) => updateSubFilter(section.id, filter.key, e.target.value)}
+                                  className={`w-full rounded-lg border px-2 py-1.5 text-xs font-semibold outline-none focus:border-amber-500 ${
+                                    isDark ? 'bg-slate-900 border-white/10 text-slate-100' : 'bg-white border-slate-300 text-slate-800'
+                                  }`}
+                                >
+                                  {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                </select>
                               </div>
                             );
                           }

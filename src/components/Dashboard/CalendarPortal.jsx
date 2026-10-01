@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useFocusItem } from '../../hooks/useFocusItem';
 import { CalendarDays, Plus, Trash2, Pencil, Save, X, RotateCw, LogIn, Lock, ExternalLink, AlertTriangle, EyeOff } from 'lucide-react';
 import PortalShell from './PortalShell';
 
@@ -11,6 +12,7 @@ const todayLondon = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Eu
 export default function CalendarPortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
   const isDark = theme === 'dark';
   const [data, setData] = useState(null);
+  useFocusItem(data ? 1 : 0); // Ctrl+K search results land on #<item>
   const [rules, setRules] = useState([]);
   const [calendars, setCalendars] = useState([]);
   const [needsSignIn, setNeedsSignIn] = useState(false);
@@ -162,7 +164,7 @@ export default function CalendarPortal({ theme = 'dark', onThemeToggle, setCurre
                     <div className="text-[11px] font-black uppercase tracking-wider text-indigo-400 mb-1.5">{day === todayLondon() ? 'Today' : fmtDay(day)}</div>
                     <div className="flex flex-col gap-1.5">
                       {list.map((e) => (
-                        <div key={`${e.calendarId}-${e.id}`} className={`p-2.5 rounded-xl border flex items-center gap-3 text-xs ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
+                        <div key={`${e.calendarId}-${e.id}`} id={`event-${e.id}`} className={`p-2.5 rounded-xl border flex items-center gap-3 text-xs ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
                           <span className="w-20 shrink-0 font-mono text-[11px] text-slate-500">{e.time ? `${e.time}${e.endTime ? `-${e.endTime}` : ''}` : 'All day'}</span>
                           <div className="min-w-0 flex-1">
                             <div className="font-bold truncate">{e.title}</div>

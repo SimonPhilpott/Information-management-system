@@ -177,9 +177,12 @@ export function analyseCoords(points) {
 }
 
 // ---- storage ---------------------------------------------------------------------------------
+// Which Komoot account a route was imported from (blank for GPX files and routes imported before this was kept).
+try { db.exec('ALTER TABLE planned_routes ADD COLUMN account TEXT'); } catch (_) { /* already there */ }
+
 const present = (r, full = false) => ({
   id: r.id, source: r.source, externalId: r.external_id, name: r.name, distanceKm: r.distance_km, gainM: r.gain_m, lossM: r.loss_m,
-  minEle: r.min_ele, maxEle: r.max_ele, hasElevation: Boolean(r.has_elevation), createdAt: r.created_at,
+  minEle: r.min_ele, maxEle: r.max_ele, hasElevation: Boolean(r.has_elevation), createdAt: r.created_at, account: r.account || null,
   ...(full ? { profile: JSON.parse(r.profile), splits: JSON.parse(r.splits), path: r.path ? JSON.parse(r.path) : null } : {}),
 });
 
@@ -188,17 +191,17 @@ export async function saveRouteAsync({ source, externalId = null, name, points }
   return saveRoute({ source, externalId, name, points: enrichedPoints });
 }
 
-export function saveRoute({ source, externalId = null, name, points }) {
+export function saveRoute({ source, externalId = null, name, points, account = null }) {
   const a = analyseCoords(points);
   const nm = String(name || 'Route').trim().slice(0, 120) || 'Route';
   const existing = externalId ? db.prepare('SELECT id FROM planned_routes WHERE source = ? AND external_id = ?').get(source, String(externalId)) : null;
   if (existing) {
-    db.prepare(`UPDATE planned_routes SET name=?, distance_km=?, gain_m=?, loss_m=?, min_ele=?, max_ele=?, profile=?, splits=?, has_elevation=?, path=? WHERE id=?`)
-      .run(nm, a.distanceKm, a.gainM, a.lossM, a.minEle, a.maxEle, JSON.stringify(a.profile), JSON.stringify(a.splits), a.hasElevation ? 1 : 0, JSON.stringify(a.path), existing.id);
+    db.prepare(`UPDATE planned_routes SET name=?, distance_km=?, gain_m=?, loss_m=?, min_ele=?, max_ele=?, profile=?, splits=?, has_elevation=?, path=?, account=COALESCE(?, account) WHERE id=?`)
+      .run(nm, a.distanceKm, a.gainM, a.lossM, a.minEle, a.maxEle, JSON.stringify(a.profile), JSON.stringify(a.splits), a.hasElevation ? 1 : 0, JSON.stringify(a.path), account, existing.id);
     return getRoute(existing.id);
   }
-  const info = db.prepare(`INSERT INTO planned_routes (source, external_id, name, distance_km, gain_m, loss_m, min_ele, max_ele, profile, splits, has_elevation, created_at, path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(source, externalId ? String(externalId) : null, nm, a.distanceKm, a.gainM, a.lossM, a.minEle, a.maxEle, JSON.stringify(a.profile), JSON.stringify(a.splits), a.hasElevation ? 1 : 0, Date.now(), JSON.stringify(a.path));
+  const info = db.prepare(`INSERT INTO planned_routes (source, external_id, name, distance_km, gain_m, loss_m, min_ele, max_ele, profile, splits, has_elevation, created_at, path, account) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(source, externalId ? String(externalId) : null, nm, a.distanceKm, a.gainM, a.lossM, a.minEle, a.maxEle, JSON.stringify(a.profile), JSON.stringify(a.splits), a.hasElevation ? 1 : 0, Date.now(), JSON.stringify(a.path), account);
   return getRoute(Number(info.lastInsertRowid));
 }
 
@@ -282,10 +285,17 @@ async function fetchTour(tourId, { auth = null, shareToken = null } = {}) {
   return { name: t.name, points };
 }
 
-export async function importKomootTour(tourId) {
+// A Komoot tour's turn-by-turn directions and way names, for the route finder's short description.
+export async function fetchKomootDirections(tourId) {
   const { auth } = komootAuth();
+  const t = await komoot(`/v007/tours/${encodeURIComponent(tourId)}?_embedded=directions,way_types,coordinates`, auth);
+  return { directions: t._embedded?.directions?.items || [], wayTypes: t._embedded?.way_types?.items || [], coordinates: t._embedded?.coordinates?.items || [] };
+}
+
+export async function importKomootTour(tourId) {
+  const { auth, creds } = komootAuth();
   const t = await fetchTour(tourId, { auth });
-  return saveRoute({ source: 'komoot', externalId: tourId, name: t.name, points: t.points });
+  return saveRoute({ source: 'komoot', externalId: tourId, name: t.name, points: t.points, account: creds.email || null });
 }
 
 // A share link like https://www.komoot.com/tour/123456789?share_token=abc works without an account.

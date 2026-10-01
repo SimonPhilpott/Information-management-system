@@ -48,6 +48,7 @@ import { isCampaignPath, canonicalCampaignPath } from './components/Dashboard/ca
 import PhrasesPortal from './components/Dashboard/PhrasesPortal';
 import RunPlannerPortal from './components/Dashboard/RunPlannerPortal';
 import DoorbellPortal from './components/Dashboard/DoorbellPortal';
+import WeatherPortal from './components/Dashboard/WeatherPortal';
 import DeviceHealthPortal from './components/Dashboard/DeviceHealthPortal';
 import SpendBudgetPortal from './components/Dashboard/SpendBudgetPortal';
 import ImsHub from './components/Dashboard/ImsHub';
@@ -87,6 +88,19 @@ export default function App() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  // Ctrl+K search: a PDF library result opens the library with that book at the right page.
+  useEffect(() => {
+    const openPdf = (e) => {
+      const { driveFileId, page, filename } = e.detail || {};
+      if (!driveFileId) return;
+      window.history.pushState(null, '', '/');
+      setCurrentPath('/');
+      actions.setPdfViewer({ driveFileId, pageNum: page || 1, filename });
+    };
+    window.addEventListener('ims-open-pdf', openPdf);
+    return () => window.removeEventListener('ims-open-pdf', openPdf);
+  }, [actions]);
 
   // Auth callback check
   useEffect(() => {
@@ -1442,6 +1456,16 @@ export default function App() {
   if (currentPath === '/ims/phrases' || currentPath.startsWith('/ims/phrases')) {
     return (
       <PhrasesPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/weather' || currentPath.startsWith('/ims/weather')) {
+    return (
+      <WeatherPortal
         theme={state.theme}
         onThemeToggle={actions.toggleTheme}
         setCurrentPath={setCurrentPath}

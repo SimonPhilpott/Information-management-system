@@ -1,4 +1,5 @@
 import express from 'express';
+import { generateAgpPdf } from '../services/agpService.js';
 import { Router } from 'express';
 import {
   estimateCarbsFromPhoto, getSummary, getDay, logCarbs, listCarbs, deleteCarbs,
@@ -105,6 +106,18 @@ router.get('/report/pdf', async (req, res) => {
   try {
     const days = Number(req.query.days) || 14;
     const { pdf, filename } = await generateGlucosePdf({ days });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(pdf);
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// Clinic AGP report (14 or 90 days, ending on ?end=YYYY-MM-DD or today) as a PDF for the diabetes team.
+router.get('/report/agp', async (req, res) => {
+  try {
+    const { pdf, filename } = await generateAgpPdf({ days: Number(req.query.days) === 90 ? 90 : 14, end: req.query.end || null });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(pdf);

@@ -7,9 +7,11 @@ import {
   Boxes, Server, Wrench, Shield, ArrowRight, User, Building, HardDrive,
   Activity, Play, CheckCircle, Database, Mic, Speaker, ArrowUpRight,
   ArrowRightLeft, LogIn, LogOut, GitCommit, HelpCircle, Rocket, Wand2, FileSpreadsheet, CheckCheck,
-  FileCheck, Zap, BarChart3, Filter, Lightbulb
+  FileCheck, Zap, BarChart3, Filter, Lightbulb, ShieldAlert
 } from 'lucide-react';
 import PortalShell from './PortalShell';
+import DependencyWatchModal from './DependencyWatchModal';
+import { useDependencyWatch } from '../../hooks/useDependencyWatch';
 
 // System Architecture ACCENTS palette
 const ACCENTS = {
@@ -357,6 +359,8 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
 
   // Automated PR Quality, TypeScript Linting & Triple Registry Audit Modal State
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const [isDepsOpen, setIsDepsOpen] = useState(false);
+  const [depWatch, reloadDepWatch] = useDependencyWatch();
   const [isAuditing, setIsAuditing] = useState(false);
   const [auditResult, setAuditResult] = useState(null);
   const [auditFilter, setAuditFilter] = useState('all'); // 'all', 'registry', 'async_catch', 'type_definition'
@@ -1229,6 +1233,17 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
             >
               <FileCheck size={14} className={isAuditing ? 'animate-spin text-amber-300' : 'text-amber-300'} />
               <span>{isAuditing ? 'Auditing Codebase...' : 'PR Quality & Registry Audit'}</span>
+            </button>
+
+            {/* Dependency & vulnerability watch (weekly npm audit / outdated) */}
+            <button
+              onClick={() => { reloadDepWatch(); setIsDepsOpen(true); }}
+              className="px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-2 bg-gradient-to-r from-rose-600 to-orange-500 hover:from-rose-500 hover:to-orange-400 text-white transition-all shadow-md shadow-rose-500/20 active:scale-95"
+              title="npm audit and npm outdated for IMS and your scanned repos - critical and high advisories, and packages a major version behind"
+            >
+              <ShieldAlert size={14} />
+              <span>Dependencies</span>
+              {depWatch?.last?.summary?.critical > 0 && <span className="px-1.5 py-0.5 rounded-full bg-white text-rose-600 text-[10px] font-black">{depWatch.last.summary.critical}</span>}
             </button>
 
             {/* Launch Antigravity Project Scaffolder */}
@@ -2538,6 +2553,10 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
       </div>
 
       {/* AUTOMATED PR QUALITY, TYPESCRIPT LINTING & TRIPLE REGISTRY AUDIT MODAL */}
+      {isDepsOpen && (
+        <DependencyWatchModal isDark={isDark} onClose={() => setIsDepsOpen(false)} state={depWatch} reload={reloadDepWatch} showToast={showToast} />
+      )}
+
       {isAuditModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/75 backdrop-blur-md animate-in fade-in duration-150">
           <div className={`relative w-full max-w-5xl max-h-[92vh] flex flex-col rounded-3xl border shadow-[0_25px_60px_rgba(0,0,0,0.4)] overflow-hidden transition-all ${

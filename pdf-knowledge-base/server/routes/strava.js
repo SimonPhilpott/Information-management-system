@@ -1,3 +1,5 @@
+import { postRunReview } from '../services/postRunService.js';
+import { getTrainingLoad } from '../services/trainingLoadService.js';
 import { Router } from 'express';
 import crypto from 'crypto';
 import config from '../config.js';
@@ -70,6 +72,8 @@ router.put('/activities/:id/tag', (req, res) => {
 });
 router.get('/sports', (req, res) => res.json({ success: true, sports: listSports() }));
 router.get('/summary', (req, res) => res.json({ success: true, ...getSummary() }));
+router.get('/activities/:id/post-run', async (req, res) => { try { res.json({ success: true, review: await postRunReview(Number(req.params.id)) }); } catch (err) { fail(res, err); } });
+router.get('/training-load', (req, res) => { try { res.json({ success: true, load: getTrainingLoad() }); } catch (err) { fail(res, err); } });
 router.get('/analysis', async (req, res) => { try { res.json({ success: true, analysis: await getSavedAnalysis(req.query.units === 'mi' ? 'mi' : 'km') }); } catch (err) { fail(res, err); } });
 router.post('/analysis', async (req, res) => {
   try { res.json({ success: true, analysis: await analyse(req.body?.units === 'mi' ? 'mi' : 'km') }); } catch (err) { fail(res, err); }

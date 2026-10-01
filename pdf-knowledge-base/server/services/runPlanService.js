@@ -2,6 +2,7 @@ import db, { getSetting, setSetting } from '../db/database.js';
 import { getRoute } from './routeService.js';
 import { getLoopSettings } from './runGlucoseService.js';
 import { getWeather } from './weatherService.js';
+import { getTrainingLoad } from './trainingLoadService.js';
 
 // Run planner: given a distance or a saved route (with its elevation), a pace, and where glucose
 // and insulin on board are right now, estimate how glucose is likely to move during the run and
@@ -161,7 +162,7 @@ export function calculateHydration({ durationMin, distanceKm, weather = null, we
 const INTENSITY = { easy: 0.7, steady: 1.0, hard: 1.25 };
 const DIA_H = 3, INS_P = 1.5;
 
-function simulate({ startBg, iob, cob, isf, cr, kEx, sensMult, intensity, effort, durationMin, intakes, totalMin }) {
+function simulate({ startBg, iob, cob, isf, cr, kEx, sensMult, intensity, effort, durationMin, intakes, totalMin, exShape = null, insulinBoost = 1 }) {
   const effect = isf / cr; // mmol/L per gram of carbohydrate
   const exRate = kEx * (INTENSITY[intensity] ?? 1) * (1 + 0.5 * Math.max(0, effort - 1)); // mmol/L per hour
   const out = new Array(totalMin + 1);
@@ -174,7 +175,9 @@ function simulate({ startBg, iob, cob, isf, cr, kEx, sensMult, intensity, effort
     let rise = 0;
     for (const it of intakes) { const dt = t - it.t - 5; if (dt >= 0 && dt < 20) rise += (it.g * effect) / 20; }
     if (cob > 0) { const dt = t; if (dt < 60) rise += (cob * effect) / 60; }
-    const fall = ((isf * activity * mult) + (t <= durationMin ? exRate : 0)) / 60;
+    // exShape: how hard this minute is against the run's average (climbs > 1, descents < 1); insulinBoost:
+    // sensitivity still raised from a recent session
+    const fall = ((isf * activity * mult * insulinBoost) + (t <= durationMin ? exRate * (exShape ? exShape[Math.min(t, exShape.length - 1)] : 1) : 0)) / 60;
     bg = Math.max(1.5, bg + rise - fall);
   }
   return out;
@@ -295,7 +298,7 @@ function demandFrom({ distanceKm, dur, tl, terrain, route, intensity, pace, weat
 
 // The runner's own runs of a saved route, found by matching Strava runs to it: same starting
 // point (within 400 m) and about the same length (within 8%), or runs linked to it by hand.
-const havM = (a, b) => {
+export const havM = (a, b) => {
   const R = 6371000, rad = (d) => (d * Math.PI) / 180;
   const dLat = rad(b[0] - a[0]), dLng = rad(b[1] - a[1]);
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLng / 2) ** 2;
@@ -316,7 +319,7 @@ function decodePolyline(str) {
   return out;
 }
 // Share of `a`'s points lying within `tol` metres of the line `b` (point to segment, on a flat local grid).
-function shareNear(a, b, tol) {
+export function shareNear(a, b, tol) {
   if (a.length === 0 || b.length < 2) return 0;
   const lat0 = a[0][0], kx = 111320 * Math.cos((lat0 * Math.PI) / 180), ky = 110540;
   const P = (q) => [(q[1] - a[0][1]) * kx, (q[0] - lat0) * ky];
@@ -526,6 +529,42 @@ export async function estimatePlan(input = {}) {
 
   const combinedEffort = tl.effort * paceEffortFactor * weatherEffortMultiplier;
 
+  // Minute by minute, how hard each stretch is against the run's average: runners slow on climbs but
+  // still work harder, and ease off downhill. Averages to 1, so the run's total uptake is unchanged -
+  // it moves the glucose drop onto the climbs.
+  const rawShape = [];
+  for (let t = 0; t <= dur; t++) { const g = gradeAt(tl.marks, t); rawShape.push(Math.max(0.7, Math.min(1.6, 1 + 0.03 * Math.max(0, g) - 0.012 * Math.max(0, -g)))); }
+  const meanShape = rawShape.reduce((a, v) => a + v, 0) / rawShape.length || 1;
+  const exShape = rawShape.map((v) => v / meanShape);
+
+  // Recovery from recent training (Strava): insulin sensitivity still raised after a session in the last
+  // 48 hours (more after a harder one, fading to nothing), and low form (accumulated fatigue, lower muscle
+  // glycogen) meaning more reliance on blood glucose. Both are estimates; off with useRecovery: false.
+  let recovery = null, insulinBoost = 1, uptakeBoost = 0;
+  if (input.useRecovery !== false) {
+    try {
+      const tlg = getTrainingLoad();
+      if (tlg.available) {
+        const last = tlg.recovery.lastSession;
+        const hoursSince = last ? (Date.now() - Date.parse(last.endedAt)) / 3600000 : null;
+        const k = !last ? 0 : last.load < 50 ? 0.08 : last.load < 120 ? 0.15 : 0.25;
+        const sensBoost = hoursSince != null && hoursSince < 48 ? k * (1 - hoursSince / 48) : 0;
+        uptakeBoost = tlg.tsb < -10 ? Math.min(0.15, (-tlg.tsb - 10) * 0.01) : 0;
+        insulinBoost = 1 + sensBoost;
+        recovery = {
+          status: tlg.status, form: tlg.tsb, percentRecovered: tlg.recovery.percent, hoursLeft: tlg.recovery.hoursLeft,
+          lastSession: last ? { name: last.name, load: last.load, hoursSince: Math.round(hoursSince) } : null,
+          insulinSensitivityPct: Math.round(sensBoost * 100), glucoseUptakePct: Math.round(uptakeBoost * 100),
+          text: [
+            sensBoost > 0.01 ? `Your last session (${last.name}, ${Math.round(hoursSince)} hours ago) still has insulin working about ${Math.round(sensBoost * 100)}% harder.` : null,
+            uptakeBoost > 0.01 ? `Form is ${tlg.tsb} (tired), so muscles lean more on blood glucose - about ${Math.round(uptakeBoost * 100)}% more uptake.` : null,
+          ].filter(Boolean).join(' ') || 'Recovered - no carry-over from recent training.',
+        };
+      }
+    } catch (_) { /* no Strava */ }
+  }
+  const kExRun = kEx * (1 + uptakeBoost);
+
   // Calculate dynamic hydration strategy
   const hydration = calculateHydration({
     durationMin: dur,
@@ -535,7 +574,7 @@ export async function estimatePlan(input = {}) {
     effortFactor: combinedEffort
   });
 
-  const params = { startBg, iob, cob, isf, cr, kEx, sensMult, intensity, effort: combinedEffort, durationMin: dur, totalMin };
+  const params = { startBg, iob, cob, isf, cr, kEx: kExRun, sensMult, intensity, effort: combinedEffort, durationMin: dur, totalMin, exShape, insulinBoost };
   const runPlan = (start, iobStart) => {
     const p = { ...params, startBg: start, iob: iobStart };
     const intakes = [];
@@ -628,6 +667,31 @@ export async function estimatePlan(input = {}) {
   const elevation = [];
   for (let m = 0; m <= dur; m += Math.max(1, Math.round(dur / 120))) { const km = kmAt(tl.marks, m); elevation.push([m, Math.round(km * 100) / 100, Math.round(profileEle(terrain.profile, km) * 10) / 10]); }
 
+  // Per-minute series for the Run Plan chart (every 2 minutes): effort, hydration and insulin on board.
+  const effortSeries = [], hydrationSeries = [], iobSeries = [];
+  let fluid = 0;
+  for (let t = 0; t <= totalMin; t += 2) {
+    const sh = t <= dur ? exShape[Math.min(t, dur)] : 0;
+    effortSeries.push([t, Math.round(sh * combinedEffort * 100) / 100]);
+    if (t <= dur) fluid += (hydration.fluidPerHourMl * Math.max(0.6, sh) * 2) / 60;
+    hydrationSeries.push([t, Math.round(fluid)]);
+    const tau = t / 60;
+    iobSeries.push([t, Math.round((tau < DIA_H ? iob * (1 - tau / DIA_H) ** INS_P : 0) * 100) / 100]);
+  }
+  // sips: every 20 minutes, the fluid that window calls for (more on the hard, hot stretches)
+  const sips = [];
+  for (let t = 20; t < dur; t += 20) {
+    const a = hydrationSeries.find((x) => x[0] >= t - 20)?.[1] ?? 0, b = hydrationSeries.find((x) => x[0] >= t)?.[1] ?? 0;
+    sips.push({ minute: t, km: Math.round(kmAt(tl.marks, t) * 10) / 10, ml: Math.max(50, Math.round((b - a) / 10) * 10) });
+  }
+  const preRun = {
+    carbsToTargetG: startBg < targets.startTarget - 0.5 ? Math.round((targets.startTarget - startBg) / effect) : 0,
+    startCarbsG: main.intakes.filter((x) => x.kind === 'start').reduce((a, x) => a + x.g, 0),
+    tempTarget: 'Exercise target of 8.0-9.0 mmol/L set 60-90 minutes before, so the loop eases off insulin (rulebook).',
+    iobNote: iob >= 1 ? `${iob} U still on board - each unit takes off about ${(isf * sensMult * insulinBoost).toFixed(1)} mmol/L while running.` : 'Little insulin on board - a good start.',
+    drinkMl: Math.round(Math.min(500, Math.max(250, hydration.fluidPerHourMl * 0.6)) / 50) * 50,
+  };
+
   // What-if tables: different starting glucose (same IOB) and different IOB (same glucose).
   const scenario = (s, i) => { const r = runPlan(s, i); const g = r.intakes.reduce((a, x) => a + x.g, 0); return { totalCarbs: g, carbsAtStart: r.intakes.filter((x) => x.kind === 'start').reduce((a, x) => a + x.g, 0), minBg: Math.round(min(r.bg, 0, dur) * 10) / 10, endBg: Math.round(r.bg[dur] * 10) / 10 }; };
   const startScenarios = [6, 7, 8, 9, 10, 12].map((s) => ({ startBg: s, ...scenario(s, iob) }));
@@ -656,8 +720,9 @@ export async function estimatePlan(input = {}) {
 
   return {
     demand: demandFrom({ distanceKm, dur, tl, terrain, route, intensity, pace, weather }),
+    effortSeries, hydrationSeries, iobSeries, sips, preRun, recovery,
     inputs: { distanceKm, targetMinutes, paceMinPerKm: pace, averagePaceMinPerKm: tl.minutes / distanceKm, intensity, startBg, iob, cob, weightKg, sensMult, kEx, routeId: route?.id ?? null, routeName: route?.name ?? null, customCarbs, paceEffortFactor: Math.round(paceEffortFactor * 100) / 100, weatherEffortMultiplier: Math.round(weatherEffortMultiplier * 100) / 100 },
-    settings: { isf, cr, gPerMmol: Math.round((1 / effect) * 10) / 10, mmolPerGram: Math.round(effect * 1000) / 1000, floor, startTarget: targets.startTarget },
+    settings: { insulinBoost: Math.round(insulinBoost * 100) / 100, kExRun: Math.round(kExRun * 100) / 100, isf, cr, gPerMmol: Math.round((1 / effect) * 10) / 10, mmolPerGram: Math.round(effect * 1000) / 1000, floor, startTarget: targets.startTarget },
     run: { durationMin: dur, distanceKm: Math.round(tl.distanceKm * 100) / 100, gainM: terrain.gainM, lossM: terrain.lossM, effortFactor: Math.round(tl.effort * 100) / 100, combinedEffortFactor: Math.round(combinedEffort * 100) / 100, kcal: tl.kcal, hasElevation: route ? route.hasElevation : false },
     weather,
     hydration,

@@ -3,9 +3,11 @@ import { Route as RouteIcon, Mountain, RotateCw, Upload, Link2, Download, Unlink
 import RunGaugesBar from './RunGaugesBar';
 import CarbFuelingTimeline from './CarbFuelingTimeline';
 import PreRunReadinessCard from './PreRunReadinessCard';
-import { dist, toKm, paceText, paceToMinPerKm } from '../../../utils/units';
+import TrainingLoadCard from '../TrainingLoadCard';
+import RunPlanDock from './RunPlanDock';
+import { dist, toKm, paceText, paceToMinPerKm, elev, elevUnit } from '../../../utils/units';
 
-const fmtMin = (m) => `${Math.floor(m / 60)}h ${String(Math.round(m % 60)).padStart(2, '0')}m`;
+const fmtMin = (m) => `${Math.floor(m / 60)} h ${String(Math.round(m % 60)).padStart(2, '0')} min`;
 
 const renderDeltaBadge = (current, baseline, type = 'time', isDark = true) => {
   if (baseline == null || baseline <= 0 || current == null) return null;
@@ -96,6 +98,8 @@ export default function RunMissionControlTab({
   ghost,
   targets
 }) {
+  // signing in to a different Komoot account (the current one stays connected until the new one works)
+  const [switching, setSwitching] = React.useState(false);
   const weather = plan?.weather || demand?.weather;
   const hydration = plan?.hydration || demand?.hydration;
 
@@ -113,6 +117,9 @@ export default function RunMissionControlTab({
         targetBg={targets?.startTarget || 8.0}
         isDark={isDark}
       />
+
+      {/* TRAINING LOAD, RAMP AND RECOVERY (Strava) */}
+      <TrainingLoadCard isDark={isDark} units={units} />
 
       {/* PRE-RUN GLUCOSE READINESS CARD */}
       <PreRunReadinessCard
@@ -177,7 +184,7 @@ export default function RunMissionControlTab({
               <Droplets size={16} className="text-sky-400 shrink-0" />
               <div>
                 <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>Hydration Pacing</div>
-                <div className={`font-black ${isDark ? 'text-slate-100' : 'text-[#2E2B27]'}`}>~{Math.round(hydration.fluidPerHourMl / 3)} ml every 20m</div>
+                <div className={`font-black ${isDark ? 'text-slate-100' : 'text-[#2E2B27]'}`}>~{Math.round(hydration.fluidPerHourMl / 3)} ml every 20 minutes</div>
               </div>
             </div>
 
@@ -224,7 +231,7 @@ export default function RunMissionControlTab({
             <option value="">No route - just a distance</option>
             {routes.map((r) => (
               <option key={r.id} value={r.id}>
-                {r.name} - {dist(r.distanceKm, units)} {units}, {r.gainM} m up
+                {r.name} - {dist(r.distanceKm, units)} {units}, {elev(r.gainM, units)} {elevUnit(units)} up
               </option>
             ))}
           </select>
@@ -244,7 +251,7 @@ export default function RunMissionControlTab({
         {selected && (
           <div className={`flex flex-wrap items-center gap-2 text-[11px] mb-3 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
             <span>
-              {dist(selected.distanceKm, units)} {units} - {selected.gainM} m up / {selected.lossM} m down - {selected.minEle}-{selected.maxEle} m altitude - from {selected.source}
+              {dist(selected.distanceKm, units)} {units} - {elev(selected.gainM, units)} {elevUnit(units)} up / {elev(selected.lossM, units)} {elevUnit(units)} down - {elev(selected.minEle, units)}-{elev(selected.maxEle, units)} {elevUnit(units)} altitude - from {selected.source}
             </span>
             {!selected.hasElevation && <span className="text-amber-500">Auto-enriching elevation profile from Open-Meteo...</span>}
             <button onClick={() => removeRoute(selected)} className="ml-auto text-red-400 flex items-center gap-1">
@@ -275,7 +282,7 @@ export default function RunMissionControlTab({
           </div>
           <div>
             <label className={label}>Or connect your Komoot account</label>
-            {komoot.connected ? (
+            {komoot.connected && !switching ? (
               <div className="flex flex-wrap gap-2 items-center">
                 <span className="text-[11px] text-emerald-500 font-bold">Connected{komoot.email ? ` (${komoot.email})` : ''}</span>
                 <button onClick={() => loadTours('recorded')} disabled={busy === 'tours'} className={btn} title="Your completed activities on Komoot">
@@ -287,17 +294,28 @@ export default function RunMissionControlTab({
                 <button onClick={() => loadTours('planned')} disabled={busy === 'tours'} className={ghost}>
                   <Download size={13} /> Saved routes
                 </button>
-                <button onClick={async () => { await send('/api/planner/komoot/disconnect', 'POST'); setTours(null); loadAll(); }} className={ghost}>
+                <button onClick={() => { setKForm({ ...kForm, email: '', password: '' }); setSwitching(true); }} className={ghost} title="Sign in to a different Komoot account">
+                  <RotateCw size={13} /> Switch account
+                </button>
+                <button onClick={async () => { await send('/api/planner/komoot/disconnect', 'POST'); setTours(null); loadAll(); }} className={ghost} title="Disconnect Komoot">
                   <Unlink size={13} />
                 </button>
               </div>
             ) : (
               <div className="flex flex-col gap-2">
+                {switching && (
+                  <p className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>
+                    Sign in to the other Komoot account. {komoot.email} stays connected until this one signs in. Routes you have already imported stay in Saved routes.
+                  </p>
+                )}
                 <input className={field} value={kForm.email} onChange={(e) => setKForm({ ...kForm, email: e.target.value })} placeholder="Komoot email" autoComplete="off" />
                 <input className={field} type="password" value={kForm.password} onChange={(e) => setKForm({ ...kForm, password: e.target.value })} placeholder="Komoot password" autoComplete="new-password" />
-                <button onClick={connectKomoot} disabled={!kForm.email || !kForm.password || busy === 'komoot'} className={btn}>
-                  {busy === 'komoot' ? <RotateCw size={13} className="animate-spin" /> : <Link2 size={13} />}Connect
-                </button>
+                <div className="flex gap-2">
+                  <button onClick={async () => { const ok = await connectKomoot(); if (ok !== false && switching) { setSwitching(false); setTours(null); loadTours('planned'); } }} disabled={!kForm.email || !kForm.password || busy === 'komoot'} className={btn}>
+                    {busy === 'komoot' ? <RotateCw size={13} className="animate-spin" /> : <Link2 size={13} />}{switching ? 'Switch to this account' : 'Connect'}
+                  </button>
+                  {switching && <button onClick={() => setSwitching(false)} className={ghost}>Cancel</button>}
+                </div>
               </div>
             )}
           </div>
@@ -322,7 +340,7 @@ export default function RunMissionControlTab({
                       <div className={`font-bold truncate ${isDark ? '' : 'text-[#2E2B27]'}`}>{t.name}</div>
                       <div className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
                         {t.sport} - {t.distanceKm != null ? dist(t.distanceKm, units) : '?'} {units}
-                        {t.gainM != null ? ` - ${t.gainM} m up` : ''}
+                        {t.gainM != null ? ` - ${elev(t.gainM, units)} ${elevUnit(units)} up` : ''}
                       </div>
                     </div>
                     <a href={`https://www.komoot.com/tour/${t.id}`} target="_blank" rel="noreferrer" className={ghost}>
@@ -354,7 +372,7 @@ export default function RunMissionControlTab({
                 <div className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'opacity-70 text-slate-300' : 'text-[#2E2B27]'}`}>Elevation Profile</div>
                 <ElevationProfile route={routeFull} units={units} />
                 <p className={`text-[10px] leading-relaxed ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
-                  {dist(routeFull.distanceKm, units, 1)} {units}, {routeFull.gainM} m up and {routeFull.lossM} m down. Steepness: green flat, amber climbing, red steep, blue downhill.
+                  {dist(routeFull.distanceKm, units, 1)} {units}, {elev(routeFull.gainM, units)} {elevUnit(units)} up and {elev(routeFull.lossM, units)} {elevUnit(units)} down. Steepness: green flat, amber climbing, red steep, blue downhill.
                 </p>
               </div>
             </div>
@@ -518,26 +536,26 @@ export default function RunMissionControlTab({
               <option value="hard">Hard</option>
             </select>
           </div>
-          <button onClick={estimate} disabled={busy === 'estimate' || !form.startBg} className={btn}>
-            {busy === 'estimate' ? <RotateCw size={13} className="animate-spin" /> : <Calculator size={13} />}
-            Plan my carbs
-          </button>
+          <div className={`text-[10px] leading-snug ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
+            {busy === 'estimate' ? <span className="flex items-center gap-1"><RotateCw size={11} className="animate-spin" /> Updating the run plan...</span> : 'The run plan at the bottom updates as you change these.'}
+          </div>
         </div>
       </div>
 
-      {/* 6. THE PLAN & INFOGRAPHIC CARB FUELING TIMELINE */}
+      {/* 6. THE RUN PLAN - always on screen at the foot of the page (RunPlanDock), filled in as things change */}
+      <div className="h-24" aria-hidden="true" />
+      <RunPlanDock
+        plan={plan}
+        busy={busy === 'estimate'}
+        isDark={isDark}
+        units={units}
+        form={form}
+        setForm={setForm}
+        setPaceTouched={setPaceTouched}
+        waitingFor={!routeFull && !selected && !(Number(form.distanceKm) > 0) ? 'Pick a route (Route Finder, saved routes, Komoot or a GPX) or enter a distance to start your run plan.' : 'Working out your run plan...'}
+      >
       {plan && (
         <>
-          {(plan.warnings || []).length > 0 && (
-            <div className={`${panel} border-amber-500/40 flex flex-col gap-1.5`}>
-              {(plan.warnings || []).map((w, i) => (
-                <p key={i} className="text-xs flex items-start gap-2">
-                  <AlertTriangle size={13} className="text-amber-500 shrink-0 mt-0.5" />
-                  {w}
-                </p>
-              ))}
-            </div>
-          )}
 
           {/* Quick Metrics Chips Row with Steppers */}
           <div className={panel}>
@@ -554,29 +572,19 @@ export default function RunMissionControlTab({
                   <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>Estimated time</div>
                   {originalBaseline && renderDeltaBadge(plan.run?.durationMin, originalBaseline.durationMin, 'time', isDark)}
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="flex flex-col gap-0.5 shrink-0">
-                    <button
-                      onClick={() => stepTime(2)}
-                      disabled={busy === 'estimate'}
-                      className={`p-0.5 rounded active:scale-90 transition-colors ${isDark ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'}`}
-                      title="Increase time (+2 min)"
-                    >
-                      <ChevronUp size={11} />
-                    </button>
-                    <button
-                      onClick={() => stepTime(-2)}
-                      disabled={busy === 'estimate' || (plan.run?.durationMin || 0) <= 2}
-                      className={`p-0.5 rounded active:scale-90 transition-colors ${isDark ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'}`}
-                      title="Decrease time (-2 min)"
-                    >
-                      <ChevronDown size={11} />
-                    </button>
-                  </div>
+                <div className="grid grid-cols-[28px_minmax(0,1fr)_28px] items-center gap-1">
+                  {/* - and + sit at the far left and right, so a wider value never moves them */}
+                  <button
+                    onClick={() => stepTime(-2)}
+                    disabled={busy === 'estimate' || (plan.run?.durationMin || 0) <= 2}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center border active:scale-95 text-sm font-black transition-all select-none ${isDark ? 'border-white/10 bg-white/5 hover:bg-white/10 text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed' : 'border-[#2E2B27]/20 bg-white hover:bg-amber-100 text-[#2E2B27] shadow-xs disabled:opacity-30 disabled:cursor-not-allowed'}`}
+                    title="Decrease time (-2 min)"
+                    aria-label="Decrease time (-2 min)"
+                  >-</button>
                   {timeEditFocus ? (
                     <input
                       autoFocus
-                      className={`text-sm font-black tabular-nums w-full bg-transparent outline-none border-b ${isDark ? 'border-emerald-400 text-emerald-300' : 'border-emerald-600 text-emerald-700'}`}
+                      className={`text-sm font-black tabular-nums w-full text-center bg-transparent outline-none border-b ${isDark ? 'border-emerald-400 text-emerald-300' : 'border-emerald-600 text-emerald-700'}`}
                       value={timeEditDraft ?? fmtMin(plan.run?.durationMin || 0)}
                       onChange={(e) => setTimeEditDraft(e.target.value)}
                       onFocus={() => {
@@ -585,9 +593,10 @@ export default function RunMissionControlTab({
                       }}
                       onBlur={() => {
                         const raw = (timeEditDraft ?? '').trim();
-                        const hm = raw.match(/(\d+)h\s*(\d+)m/);
-                        const hOnly = raw.match(/^(\d+)h$/);
-                        const mOnly = raw.match(/^(\d+)m?$/);
+                        // accepts "1 h 05 min" (as shown), "1h 5m", "1h" or "65" / "65 min"
+                        const hm = raw.match(/(\d+)\s*h\w*\s*(\d+)\s*m/i);
+                        const hOnly = raw.match(/^(\d+)\s*h\w*$/i);
+                        const mOnly = raw.match(/^(\d+)\s*(m|min|mins|minutes)?$/i);
                         let newMin = null;
                         if (hm) newMin = parseInt(hm[1]) * 60 + parseInt(hm[2]);
                         else if (hOnly) newMin = parseInt(hOnly[1]) * 60;
@@ -607,17 +616,24 @@ export default function RunMissionControlTab({
                         if (e.key === 'Enter') e.target.blur();
                         if (e.key === 'Escape') { setTimeEditFocus(false); setTimeEditDraft(null); }
                       }}
-                      style={{ width: '80px' }}
+                      
                     />
                   ) : (
                     <button
-                      className={`text-sm font-black tabular-nums hover:underline cursor-text text-left w-full ${isDark ? '' : 'text-[#2E2B27]'}`}
+                      className={`text-sm font-black tabular-nums hover:underline cursor-text text-center w-full ${isDark ? '' : 'text-[#2E2B27]'}`}
                       onClick={() => { setTimeEditFocus(true); setTimeEditDraft(fmtMin(plan.run?.durationMin || 0)); }}
                     >
                       {fmtMin(plan.run?.durationMin || 0)}
                       <span className="ml-1 text-[9px] opacity-40 font-normal">✎</span>
                     </button>
                   )}
+                  <button
+                    onClick={() => stepTime(2)}
+                    disabled={busy === 'estimate'}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center border active:scale-95 text-sm font-black transition-all select-none ${isDark ? 'border-white/10 bg-white/5 hover:bg-white/10 text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed' : 'border-[#2E2B27]/20 bg-white hover:bg-amber-100 text-[#2E2B27] shadow-xs disabled:opacity-30 disabled:cursor-not-allowed'}`}
+                    title="Increase time (+2 min)"
+                    aria-label="Increase time (+2 min)"
+                  >+</button>
                 </div>
               </div>
 
@@ -627,29 +643,19 @@ export default function RunMissionControlTab({
                   <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>Average pace</div>
                   {originalBaseline && renderDeltaBadge(plan.inputs?.averagePaceMinPerKm, originalBaseline.averagePaceMinPerKm, 'pace', isDark)}
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="flex flex-col gap-0.5 shrink-0">
-                    <button
-                      onClick={() => stepPace(5)}
-                      disabled={busy === 'estimate'}
-                      className={`p-0.5 rounded active:scale-90 transition-colors ${isDark ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'}`}
-                      title="Slower pace (+5 sec)"
-                    >
-                      <ChevronUp size={11} />
-                    </button>
-                    <button
-                      onClick={() => stepPace(-5)}
-                      disabled={busy === 'estimate' || (plan.inputs?.averagePaceMinPerKm || 0) <= 2.5}
-                      className={`p-0.5 rounded active:scale-90 transition-colors ${isDark ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'}`}
-                      title="Faster pace (-5 sec)"
-                    >
-                      <ChevronDown size={11} />
-                    </button>
-                  </div>
+                <div className="grid grid-cols-[28px_minmax(0,1fr)_28px] items-center gap-1">
+                  {/* - and + sit at the far left and right, so a wider value never moves them */}
+                  <button
+                    onClick={() => stepPace(-5)}
+                    disabled={busy === 'estimate' || (plan.inputs?.averagePaceMinPerKm || 0) <= 2.5}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center border active:scale-95 text-sm font-black transition-all select-none ${isDark ? 'border-white/10 bg-white/5 hover:bg-white/10 text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed' : 'border-[#2E2B27]/20 bg-white hover:bg-amber-100 text-[#2E2B27] shadow-xs disabled:opacity-30 disabled:cursor-not-allowed'}`}
+                    title="Faster pace (-5 sec)"
+                    aria-label="Faster pace (-5 sec)"
+                  >-</button>
                   {paceEditFocus ? (
                     <input
                       autoFocus
-                      className={`text-sm font-black tabular-nums w-full bg-transparent outline-none border-b ${isDark ? 'border-emerald-400 text-emerald-300' : 'border-emerald-600 text-emerald-700'}`}
+                      className={`text-sm font-black tabular-nums w-full text-center bg-transparent outline-none border-b ${isDark ? 'border-emerald-400 text-emerald-300' : 'border-emerald-600 text-emerald-700'}`}
                       value={paceEditDraft ?? `${paceText(plan.inputs?.averagePaceMinPerKm || 5.0, units)}`}
                       onChange={(e) => setPaceEditDraft(e.target.value)}
                       onFocus={() => {
@@ -671,21 +677,28 @@ export default function RunMissionControlTab({
                         if (e.key === 'Enter') e.target.blur();
                         if (e.key === 'Escape') { setPaceEditFocus(false); setPaceEditDraft(null); }
                       }}
-                      style={{ width: '80px' }}
+                      
                     />
                   ) : (
                     <button
-                      className={`text-sm font-black tabular-nums hover:underline cursor-text text-left w-full ${isDark ? '' : 'text-[#2E2B27]'}`}
+                      className={`text-sm font-black tabular-nums hover:underline cursor-text text-center w-full ${isDark ? '' : 'text-[#2E2B27]'}`}
                       onClick={() => { setPaceEditFocus(true); setPaceEditDraft(paceText(plan.inputs?.averagePaceMinPerKm || 5.0, units)); }}
                     >
                       {paceText(plan.inputs?.averagePaceMinPerKm || 5.0, units)} /{units}
                       <span className="ml-1 text-[9px] opacity-40 font-normal">✎</span>
                     </button>
                   )}
+                  <button
+                    onClick={() => stepPace(5)}
+                    disabled={busy === 'estimate'}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center border active:scale-95 text-sm font-black transition-all select-none ${isDark ? 'border-white/10 bg-white/5 hover:bg-white/10 text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed' : 'border-[#2E2B27]/20 bg-white hover:bg-amber-100 text-[#2E2B27] shadow-xs disabled:opacity-30 disabled:cursor-not-allowed'}`}
+                    title="Slower pace (+5 sec)"
+                    aria-label="Slower pace (+5 sec)"
+                  >+</button>
                 </div>
               </div>
 
-              {chip('Climbing', plan.run?.hasElevation ? `${plan.run.gainM} m up` : 'flat / unknown')}
+              {chip('Climbing', plan.run?.hasElevation ? `${elev(plan.run.gainM, units)} ${elevUnit(units)} up` : 'flat / unknown')}
               {chip('Effort vs flat', `${Math.round(((plan.run?.effortFactor || 1) - 1) * 100)}% more`)}
 
               {/* Editable: Carbs in Total chip */}
@@ -694,25 +707,15 @@ export default function RunMissionControlTab({
                   <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-yellow-500/90' : 'text-amber-900 font-bold'}`}>Carbs in total</div>
                   {originalBaseline && renderDeltaBadge(plan.plan?.totalCarbs, originalBaseline.totalCarbs, 'carbs', isDark)}
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="flex flex-col gap-0.5 shrink-0">
-                    <button
-                      onClick={() => stepCarbs(5)}
-                      disabled={busy === 'estimate'}
-                      className={`p-0.5 rounded active:scale-90 transition-colors ${isDark ? 'text-yellow-400 hover:text-white hover:bg-white/10' : 'text-amber-700 hover:text-amber-900 hover:bg-amber-100'}`}
-                      title="Increase carbs (+5 g)"
-                    >
-                      <ChevronUp size={11} />
-                    </button>
-                    <button
-                      onClick={() => stepCarbs(-5)}
-                      disabled={busy === 'estimate' || (plan.plan?.totalCarbs || 0) <= 0}
-                      className={`p-0.5 rounded active:scale-90 transition-colors ${isDark ? 'text-yellow-400 hover:text-white hover:bg-white/10' : 'text-amber-700 hover:text-amber-900 hover:bg-amber-100'}`}
-                      title="Decrease carbs (-5 g)"
-                    >
-                      <ChevronDown size={11} />
-                    </button>
-                  </div>
+                <div className="grid grid-cols-[28px_minmax(0,1fr)_28px] items-center gap-1">
+                  {/* - and + sit at the far left and right, so a wider value never moves them */}
+                  <button
+                    onClick={() => stepCarbs(-5)}
+                    disabled={busy === 'estimate' || (plan.plan?.totalCarbs || 0) <= 0}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center border active:scale-95 text-sm font-black transition-all select-none ${isDark ? 'border-white/10 bg-white/5 hover:bg-white/10 text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed' : 'border-[#2E2B27]/20 bg-white hover:bg-amber-100 text-[#2E2B27] shadow-xs disabled:opacity-30 disabled:cursor-not-allowed'}`}
+                    title="Decrease carbs (-5 g)"
+                    aria-label="Decrease carbs (-5 g)"
+                  >-</button>
                   {carbsEditFocus ? (
                     <input
                       autoFocus
@@ -720,7 +723,7 @@ export default function RunMissionControlTab({
                       min="0"
                       max="300"
                       step="5"
-                      className={`text-sm font-black tabular-nums w-full bg-transparent outline-none border-b ${isDark ? 'border-yellow-400 text-yellow-300' : 'border-yellow-600 text-yellow-700'}`}
+                      className={`text-sm font-black tabular-nums w-full text-center bg-transparent outline-none border-b ${isDark ? 'border-yellow-400 text-yellow-300' : 'border-yellow-600 text-yellow-700'}`}
                       value={carbsEditDraft ?? String(plan.plan?.totalCarbs || 0)}
                       onChange={(e) => setCarbsEditDraft(e.target.value)}
                       onFocus={() => {
@@ -740,17 +743,24 @@ export default function RunMissionControlTab({
                         if (e.key === 'Enter') e.target.blur();
                         if (e.key === 'Escape') { setCarbsEditFocus(false); setCarbsEditDraft(null); }
                       }}
-                      style={{ width: '56px' }}
+                      
                     />
                   ) : (
                     <button
-                      className={`text-sm font-black tabular-nums hover:underline cursor-text text-left ${isDark ? 'text-yellow-400' : 'text-amber-800'}`}
+                      className={`text-sm font-black tabular-nums hover:underline cursor-text text-center w-full ${isDark ? 'text-yellow-400' : 'text-amber-800'}`}
                       onClick={() => { setCarbsEditFocus(true); setCarbsEditDraft(String(plan.plan?.totalCarbs || 0)); }}
                     >
                       {plan.plan?.totalCarbs || 0} g
                       <span className="ml-1 text-[9px] opacity-40 font-normal">✎</span>
                     </button>
                   )}
+                  <button
+                    onClick={() => stepCarbs(5)}
+                    disabled={busy === 'estimate'}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center border active:scale-95 text-sm font-black transition-all select-none ${isDark ? 'border-white/10 bg-white/5 hover:bg-white/10 text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed' : 'border-[#2E2B27]/20 bg-white hover:bg-amber-100 text-[#2E2B27] shadow-xs disabled:opacity-30 disabled:cursor-not-allowed'}`}
+                    title="Increase carbs (+5 g)"
+                    aria-label="Increase carbs (+5 g)"
+                  >+</button>
                 </div>
               </div>
 
@@ -923,6 +933,7 @@ export default function RunMissionControlTab({
           )}
         </>
       )}
+      </RunPlanDock>
     </div>
   );
 }

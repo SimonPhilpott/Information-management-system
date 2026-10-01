@@ -72,7 +72,7 @@ const spokes = (live) => [
     ],
   },
   {
-    key: 'connections', title: 'External connections', icon: Plug, accent: 'orange', count: 18, side: 'left',
+    key: 'connections', title: 'External connections', icon: Plug, accent: 'orange', count: 21, side: 'left',
     rows: [
       { icon: Bell, main: 'Ring Doorbell (Direct API)', sub: 'ring-client-api 2FA session, live SIP/WebSocket dings & motion' },
       { icon: CalendarDays, main: 'Google Calendar', sub: 'Events and rules, synced every 5 minutes' },
@@ -80,8 +80,9 @@ const spokes = (live) => [
       { icon: Droplets, main: 'Nightscout (Heroku + MongoDB)', sub: 'Glucose every minute; carbs posted as Meal Bolus' },
       { icon: Syringe, main: 'AndroidAPS', sub: 'Picks up carbs from Nightscout - insulin is never sent' },
       { icon: Activity, main: 'Strava', sub: 'Activities, synced every 30 minutes' },
-      { icon: Route, main: 'Komoot', sub: 'Routes for the run planner' },
-      { icon: CloudSun, main: 'Open-Meteo', sub: 'Weather for the desk footer and reports' },
+      { icon: Route, main: 'Komoot', sub: 'Saved routes and turn-by-turn directions for the run planner and route finder; switchable account; synced at 10pm on run days' },
+      { icon: Globe, main: 'OpenStreetMap', sub: 'Map tiles for routes, and Nominatim road names for GPX route descriptions' },
+      { icon: CloudSun, main: 'Open-Meteo', sub: 'Hourly forecasts 16 days ahead for home and saved places; 10 years of history for "unusual for the time of year"' },
       { icon: Apple, main: 'Open Food Facts', sub: 'Carb look-ups when you log food' },
       { icon: GitBranch, main: 'GitHub (Personal & TurnTown)', sub: 'Personal (@SimonPhilpott) & Work (@simon-philpott-turntown) repos; selective scan and code pattern extraction' },
       { icon: Music, main: 'MusicBrainz', sub: 'Nightly scan of new releases from your artists' },
@@ -92,6 +93,7 @@ const spokes = (live) => [
       { icon: FileText, main: 'Fantasy Flight Games', sub: 'Official LOTR and Arkham rulebooks and campaign guides' },
       { icon: Rss, main: 'News feeds', sub: `${live?.newsSources ?? 13} sources - BBC, Nature, NASA, metal and tour feeds` },
       { icon: Globe, main: 'ngrok', sub: 'Public HTTPS tunnel - simon-ims.ngrok-free.app' },
+      { icon: Boxes, main: 'npm registry', sub: 'Weekly npm audit and npm outdated for IMS and the scanned repos' },
     ],
   },
   {
@@ -102,15 +104,15 @@ const spokes = (live) => [
       { icon: BookOpen, main: 'Library databases', sub: 'Documents, topics, contents and validated answers' },
       { icon: FileText, main: 'Files', sub: 'PDFs, literature books, research notes, recordings, chronicle narration and art, maps, card data' },
       { icon: Lock, main: 'Sign-in sessions', sub: 'Stored in SQLite, so sign-in survives a restart' },
-      { icon: Settings, main: 'Config files', sub: 'Wi-Fi networks (encrypted), board games, report state' },
+      { icon: Settings, main: 'Config files', sub: 'Wi-Fi networks (encrypted), board games, report state, weather history per place' },
     ],
   },
   {
     key: 'services', title: 'Services', icon: Boxes, accent: 'indigo', count: 29, side: 'top',
     rows: [
-      { icon: Bell, main: 'Core functions - 9', sub: 'Doorbell, alarms, timers, reminders, birthdays, calendar, memories, recordings, tasks' },
-      { icon: Heart, main: 'Personal - 6', sub: 'Day report, Code best practices, music scanner, board games, campaigns, news' },
-      { icon: Droplets, main: 'Health and fitness - 3', sub: 'Blood sugar, activities, run planner & T1D Rulebook' },
+      { icon: Bell, main: 'Core functions - 10', sub: 'Weather, doorbell, alarms, timers, reminders, birthdays, calendar, memories, recordings, tasks' },
+      { icon: Heart, main: 'Personal - 6', sub: 'Day report, Code best practices (with dependency watch), music scanner, board games, campaigns, news' },
+      { icon: Droplets, main: 'Health and fitness - 3', sub: 'Blood sugar (clinic AGP report), activities (training load), run planner (live run plan, route finder, retrospective) & T1D Rulebook' },
       { icon: Settings, main: 'Customisation and system - 9', sub: 'Device health, Gemini spend budget, face designer, persona, wake phrases, Wi-Fi, dev ideas, backups, this page' },
       { icon: Eye, main: 'Disabled - 2', sub: 'Look and Faces, until the camera works' },
     ],
@@ -130,7 +132,7 @@ const spokes = (live) => [
 
 const supporting = [
   {
-    key: 'jobs', title: 'Background jobs', icon: RefreshCw, accent: 'teal', count: 6,
+    key: 'jobs', title: 'Background jobs', icon: RefreshCw, accent: 'teal', count: 8,
     rows: [
       { icon: Timer, main: 'Every 15 seconds', sub: 'Fires due alarms, timers and reminders; updates the desk icons' },
       { icon: Droplets, main: 'Every minute', sub: 'Glucose from Nightscout' },
@@ -138,10 +140,12 @@ const supporting = [
       { icon: Activity, main: 'Every 30 minutes', sub: 'Strava activities; weather' },
       { icon: Database, main: 'Hourly', sub: 'Nightscout storage auto-clear check' },
       { icon: Music, main: 'Nightly', sub: 'Music scan at its scheduled time; backup of all service data to the PC and Google Drive after 3am' },
+      { icon: Route, main: '10pm on run days', sub: 'New Komoot saved routes imported and described when the calendar has a run that day' },
+      { icon: ShieldCheck, main: 'Weekly', sub: 'Dependency and vulnerability watch (npm audit / outdated); dev idea per critical advisory' },
     ],
   },
   {
-    key: 'rules', title: 'Guardrails', icon: Scale, accent: 'amber', count: 6,
+    key: 'rules', title: 'Guardrails', icon: Scale, accent: 'amber', count: 7,
     rows: [
       { icon: MessageSquareQuote, main: 'English, Yorkshire accent', sub: 'Never another language, never American' },
       { icon: Hand, main: 'Never speaks unprompted', sub: 'Only answers when he is addressed' },
@@ -149,6 +153,7 @@ const supporting = [
       { icon: Smile, main: 'Jokes', sub: 'Dark humour is fine; never racist or sexist' },
       { icon: Heart, main: 'Greetings stay light', sub: 'No glucose or running talk outside reports' },
       { icon: Syringe, main: 'No insulin', sub: 'Only carbs are ever sent to Nightscout' },
+      { icon: CloudSun, main: 'Weather words match the forecast', sub: 'Graded rain, heat, cold and wind - drizzle is never "chucking it down"' },
     ],
   },
   {
@@ -710,7 +715,9 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
       const name = Array.isArray(item) ? item[1] : item?.name;
       const reason = Array.isArray(item) ? item[2] : item?.reason;
       const card = [...spokes(null), ...supporting].find((c) => c.key === cardKey);
-      const row = card?.rows.find((r) => r.main === name) || card?.rows.find((r) => r.main.toLowerCase().includes(String(name).toLowerCase()));
+      const group = (t) => String(t).replace(/\s*-\s*\d+$/, '').toLowerCase(); // "Core functions - 9" -> "core functions"
+      const row = card?.rows.find((r) => r.main === name) || card?.rows.find((r) => r.main.toLowerCase().includes(String(name).toLowerCase()))
+        || card?.rows.find((r) => group(r.main) === group(name));
       if (row) {
         out.push({ key: `${cardKey}|${row.main}`, reason });
       }

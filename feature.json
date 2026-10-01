@@ -1102,5 +1102,98 @@
         "Dynamic budget status badge and direct navigation link embedded in TokenUsageMeter.jsx in the top application header"
       ]
     }
-  }
+  },
+    "Weather Service & Honest Weather Language": {
+      "status": "enabled",
+      "description": "Dedicated weather service under Core functions (/ims/weather). Open-Meteo hourly forecasts for home and saved places up to 16 days ahead, graded from the hours still to come so rain that has already fallen is never reported as coming. Rain, temperature, wind, fog, frost, snow, thunder, UV and muggy days each have bands with the Yorkshire words that fit and the words that would overstate them, and each day is compared with the last 10 years at that place to flag weather that is unusual for the time of year.",
+      "subFeatures": [
+        "Hourly-based grading (dry / chance / light / moderate / heavy rain) replacing the whole-day worst weather code, with per-period descriptions (morning, afternoon, evening, overnight)",
+        "Home location and saved places (Weather page), any place by name, and days_ahead for tomorrow, a week, ten days or a fortnight ahead (getWeather tool)",
+        "Weather phrasebook for every weather type and strength, shown on the Weather page and handed to Ims with each forecast",
+        "Unusual-for-the-time-of-year checks against 10 years of Open-Meteo archive history (record warmth/cold, warm nights, early frost, out-of-season snow, unusual wind)",
+        "Day report weather section uses home for the rest of today plus tomorrow, with sub-filters for tomorrow, unusual weather and an optional second saved place",
+        "Represented in the System Architecture portal (Core functions, Open-Meteo, a weather-words guardrail) and lit up by test prompts"
+      ]
+    },
+    "Run Planner Units Sync for Gauges": {
+      "status": "enabled",
+      "description": "Run Planner radial gauges and climbing figures follow the km / miles toggle: pace and its target zones per km or per mile, and ascent in metres or feet.",
+      "subFeatures": [
+        "RunGaugesBar converts pace, pace zones and the target badge to the chosen unit",
+        "Ascent gauge, zones and labels in feet when miles are chosen; elev() and elevUnit() helpers in utils/units.jsx",
+        "Mission Control route lists, route summary and plan chips show climbing in the chosen unit"
+      ]
+    },
+    "Dependency & Vulnerability Watch": {
+      "status": "enabled",
+      "description": "Weekly npm audit and npm outdated for IMS and every scanned GitHub repo, with critical/high advisories and major-version lag in Code Repo > Dependencies and one dev idea per critical advisory.",
+      "subFeatures": [
+        "Temp-copy checks so projects are untouched; lockfiles generated when missing",
+        "Advisory chains resolved to their root advisories",
+        "Weekly scheduler plus Check now",
+        "Dev ideas grouped per GHSA advisory with every affected project"
+      ]
+    },
+    "Global Search in the Command Palette": {
+      "status": "enabled",
+      "description": "Ctrl+K searches memories, tasks, lists, chronicles, dev ideas, recordings, calendar and the PDF library at once, grouped, jumping straight to the item.",
+      "subFeatures": [
+        "/api/search with snippets around the match",
+        "useFocusItem scroll-and-highlight on target pages",
+        "Chronicle results open the book at the chapter",
+        "Library results open the PDF at the page"
+      ]
+    },
+    "Run Planner Route Finder & Duplicate Finder": {
+      "status": "enabled",
+      "description": "Find saved routes by shape, distance range and run-time range (from your own runs), with maps and one-line descriptions, plus a duplicate finder that respects direction.",
+      "subFeatures": [
+        "Loop / there and back / one way from the map line",
+        "Dual-handle range sliders",
+        "OpenStreetMap mini maps with start and direction",
+        "Komoot directions or Nominatim road names for descriptions",
+        "Komoot import job, switch account, evening sync on run days",
+        "Duplicate groups and reversed-route pairs"
+      ]
+    },
+    "Training Load, Ramp & Recovery": {
+      "status": "enabled",
+      "description": "Acute (7-day) and chronic (42-day) load, form, acute:chronic ratio and weekly running ramp from Strava, with warnings, suggestions and recovery time and percentage, on the Run Planner and Blood sugar pages.",
+      "subFeatures": [
+        "Strava Relative Effort per session, HR and duration fallbacks",
+        "Ramp >10% and ACWR >1.3/1.5 warnings",
+        "Recovery hours, days and percent to form -5"
+      ]
+    },
+    "Clinic AGP Report": {
+      "status": "enabled",
+      "description": "Ambulatory Glucose Profile PDF for 14 or 90 days for the diabetes team: time in ranges, GMI, CV, coverage, percentile profile, daily traces, hypo events and pod/sensor change overlays.",
+      "subFeatures": [
+        "Consensus targets and colour bands",
+        "Change events from Nightscout and the calendar",
+        "First 24 hours after a change compared with the period",
+        "Data-coverage warnings below 70%"
+      ]
+    },
+    "Post-Run Review & Automatic Carb Planning": {
+      "status": "enabled",
+      "description": "Real retrospective from a completed run's CGM trace with follow-ups linked to Blood sugar, carbs and the Run Planner; carbs planned automatically when a route is picked.",
+      "subFeatures": [
+        "What worked / what to watch from the trace, no placeholders",
+        "Insulin-sensitivity window and overnight risk timing",
+        "Glycogen refuelling grams",
+        "Next plan on the route; training-load recovery"
+      ]
+    },
+    "Live Run Plan Dock": {
+      "status": "enabled",
+      "description": "The run plan is always on screen at the foot of the Run Planner and recalculates as anything changes: time and pace, carbs, pre-run carbs and temp target, hydration from live weather, insulin and carb settings, and recovery carry-over, with one interactive chart of glucose, hydration, insulin on board and the course.",
+      "subFeatures": [
+        "Per-minute effort from the gradient in the glucose model",
+        "Recovery: residual insulin sensitivity and fatigue-raised uptake from Strava",
+        "Hydration series and sips sized to effort and weather",
+        "Hover readout at any minute",
+        "Live target-time slider"
+      ]
+    }
 }

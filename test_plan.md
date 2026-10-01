@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 89
-- Verified Features: 89
+- Total Registered Features: 98
+- Verified Features: 98
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -97,6 +97,15 @@
 | FEAT-087 | Voice Latency Telemetry & Tool Call Benchmarking | [SystemArchitecturePortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/SystemArchitecturePortal.jsx) | Voice turn milestone recording, 1800ms target budget charts, and tool duration diagnostics | PASS |
 | FEAT-088 | Pre-Run Glucose Readiness Card | [PreRunReadinessCard.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlanner/PreRunReadinessCard.jsx) | GO / WAIT / EAT FIRST status evaluation, pre-run carb recommendations, and 1-click run plan carb sync | PASS |
 | FEAT-089 | Gemini Spend Budget & Breakdown Service | [SpendBudgetPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/SpendBudgetPortal.jsx) | Per-service daily token & GBP cost breakdown, soft monthly budget warning thresholds (80%/95%), and expensive prompt optimizer | PASS |
+| FEAT-090 | Weather Service & Honest Weather Language | [WeatherPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/WeatherPortal.jsx) | Hourly-graded forecasts for home and saved places up to 16 days, weather phrasebook, unusual-for-the-time-of-year checks, day report and architecture integration | PASS |
+| FEAT-091 | Run Planner Units Sync for Gauges | [RunGaugesBar.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlanner/RunGaugesBar.jsx) | Pace, pace target badge and ascent follow the km / miles toggle | PASS |
+| FEAT-092 | Dependency & Vulnerability Watch | [DependencyWatchModal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/DependencyWatchModal.jsx) | Weekly npm audit/outdated, critical/high and major lag per project, dev idea per critical advisory | PASS |
+| FEAT-093 | Global Search in the Command Palette | [CommandPalette.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/CommandPalette.jsx) | Grouped search across services with jump-to-item highlight | PASS |
+| FEAT-094 | Run Planner Route Finder & Duplicate Finder | [RunRouteFinderTab.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlanner/RunRouteFinderTab.jsx) | Shape and range filters, maps, descriptions, duplicates and reverses, Komoot import and evening sync | PASS |
+| FEAT-095 | Training Load, Ramp & Recovery | [TrainingLoadCard.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/TrainingLoadCard.jsx) | ATL/CTL/TSB, ACWR, ramp warnings, recovery hours and percent | PASS |
+| FEAT-096 | Clinic AGP Report | [agpService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/agpService.js) | 14/90-day AGP PDF with TIR, GMI, CV, hypos and change overlays | PASS |
+| FEAT-097 | Post-Run Review & Automatic Carb Planning | [PostRunReviewPanel.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlanner/PostRunReviewPanel.jsx) | Trace-based retrospective with linked follow-ups; plan on route selection | PASS |
+| FEAT-098 | Live Run Plan Dock | [RunPlanDock.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlanner/RunPlanDock.jsx) | Always-on plan, auto re-planning, combined chart with effort, hydration, IOB and course | PASS |
 
 ## Section 2: Detailed Scenarios
 ### Suite 31: Observability Device Health Panel & Service (FEAT-086)
@@ -955,8 +964,62 @@
 5. **Gemini Live `getDoorbellStatus` Voice Tool:** While conversing with Ims, ask *"Who rang the doorbell?"* or *"What's the doorbell battery level?"*. Verify Gemini Live invokes the `getDoorbellStatus` tool and answers naturally in Yorkshire dialect with the latest activity and battery percentage.
 6. **Defensive Invariant 94 (Token Auto-Rotation, Event Throttling & Graceful Fallback):** In `doorbellService.js`, `onRefreshTokenUpdated` automatically persists rotated refresh tokens without dropping connection state. Ding events are throttled to maximum 1 per 10s and motion events to 1 per 30s to prevent spamming audio chimes. Unconfigured tokens log non-fatal warnings and allow IMS backend startup to proceed seamlessly without unhandled crash rejections.
 
+### Suite 90: Weather Service & Honest Weather Language (FEAT-090)
+1. **Rest of today only:** On a day where drizzle fell before dawn but the remaining hours are dry, `GET /api/weather` returns `today.rain_level: "dry"` and `description.rest_of_today` says "dry" for every remaining period; `description.language_today.rain.avoid` contains "chucking it down".
+2. **Graded wording:** For a period with light drizzle (peak under 1 mm/h), the rain level is `light` and its avoid list includes "chucking it down"; only `heavy` (4 mm/h or more, or heavy rain codes) offers "chucking it down" as a fitting phrase.
+3. **Future days:** `getWeather({ days_ahead: 1 })`, `7`, `10` and `14` return `requested_day` for tomorrow, a week, ten days and a fortnight; days beyond 7 carry `reliability: "rough guide only"`; a day beyond the forecast range returns an explanatory error, not invented weather.
+4. **Places:** On /ims/weather, add "York" (saved), switch to it, make it home and back; `PUT /api/weather/home` with an unknown place returns 400 "Couldn't find a place called ...". Asking Ims "what's the weather in York?" uses the saved place.
+5. **Unusual for the time of year:** A day more than about 4°C (and 1.5 standard deviations) above the 10-year norm for the same fortnight shows the sparkle badge on the Weather page and an `unusual` block with `how_to_mention`; history is cached in `data/weather_normals/`.
+6. **Day report:** The weather section reads home for the rest of today plus tomorrow; choosing a saved place under "Also Read Out the Weather For" adds a line for it; turning off "Unusual for the Time of Year" removes the unusual note.
+7. **Weather phrases:** The Weather page's "Weather phrases" section lists rain, temperature, wind, fog/frost/snow/thunder/sun/muggy and unusual-weather examples from `GET /api/weather/phrases`.
+8. **Architecture:** Running the test prompt "Ims, what's the weather doing?" on /ims/architecture lights Open-Meteo, Core functions and the "Weather words match the forecast" guardrail.
+9. **Failure:** With Open-Meteo unreachable, the tool returns an error and a fallback telling Ims to say he couldn't get the forecast - never a guessed one.
+10. **Sounds-like preview:** On /ims/weather, Rest of today, Tonight and Tomorrow show an italic Yorkshire-style line built only from the phrasebook words for that period's rain, temperature and wind bands, with the plain facts beneath; `getWeather({})` (the voice tool) has no `sounds_like` field.
 
+### Suite 91: Run Planner Units Sync for Gauges (FEAT-091)
+1. **Pace gauge:** With pace 5:00 /km, switch to miles: the gauge reads 8:03 /mi, the needle stays in the same zone, and the target badge reads "Target: 7:43 - 9:10 /mi".
+2. **Ascent gauge:** A route with 120 m of climbing shows 394 feet ascent and "+394ft / -...ft" in miles; switching back shows metres.
+3. **Flythrough:** Live pace (seconds per km) is shown per mile when miles are chosen.
+4. **Text:** Route lists, the route summary and the plan's Climbing chip show feet in miles mode and metres in km mode.
 
+### Suite 92: Dependency & Vulnerability Watch (FEAT-092)
+1. Code Repo > Dependencies > Check now: progress shows each project; on completion the summary lists critical, high, major-behind and dev ideas added.
+2. Each project expands to its critical/high advisories (with links and fixes) and packages a major version or more behind; repos without a lockfile say so.
+3. Each critical GHSA advisory creates one dev idea listing every affected project; a second run adds none while it is open.
+4. The weekly check runs when the last full check is 7 days old (checked every 6 hours).
 
+### Suite 93: Global Search in the Command Palette (FEAT-093)
+1. Ctrl+K, type "troll": the Campaign chronicles group shows the chapter; Enter opens /campaigns/lotr/<id> with the book open at that chapter.
+2. Type "sensor": Dev ideas, Calendar and PDF library groups appear; a dev idea opens /ims/devideas scrolled to and ringed; a calendar result offers Open in Google Calendar.
+3. A PDF library result opens the library with that book at the page.
+4. Results land on the right item when the page is already open (popstate re-runs the focus).
 
+### Suite 94: Run Planner Route Finder & Duplicate Finder (FEAT-094)
+1. Tab 2 Route Finder: shape pills and distance/time range sliders filter the saved routes; ends left at their limits mean any.
+2. Each card shows a map (start dot, direction arrow), a one-line description, distance, climb, altitude, last run, runs, best and expected time; Plan this run opens tab 1 with the route and plans carbs.
+3. With unimported Komoot saved routes, Import all shows progress and adds them; Switch account keeps the old login until the new one works.
+4. Duplicate routes groups same-direction copies (oldest marked keep), lists reversed routes separately, and deletes IMS copies only.
+5. At 22:00 on a day with a "Run" calendar event, new Komoot saved routes import once.
 
+### Suite 95: Training Load, Ramp & Recovery (FEAT-095)
+1. /api/strava/training-load returns fatigue, fitness, form, ratio, ramp and recovery; the card shows on Run Planner (full) and Blood sugar (compact).
+2. A week with >10% more running than the week before shows the ramp warning and a suggested cap; form below -20 shows the fatigue warning.
+3. After a hard session, recovery shows percent, hours and days left and when fully recovered.
+
+### Suite 96: Clinic AGP Report (FEAT-096)
+1. Blood sugar > Clinic AGP Report (14 days, today) downloads a 2-page A4 PDF: statistics, time in ranges with targets, AGP percentile chart, first 24 hours after changes, daily traces with pod/sensor markers, hypo and change tables.
+2. With less than 70% coverage or missing days, the report says so at the top.
+3. 90 days and an earlier end date produce the matching range.
+
+### Suite 97: Post-Run Review & Automatic Carb Planning (FEAT-097)
+1. Flythrough with Planned Course Simulation shows no retrospective, only a note; Completed Run Retrospective with a run shows what worked / what to watch from that run's trace.
+2. The follow-ups show the insulin-sensitivity window with percent left and overnight risk times, refuelling grams, the next plan on the route (Plan this run) and recovery.
+3. Choosing a route by any method plans the carbs immediately.
+
+### Suite 98: Live Run Plan Dock (FEAT-098)
+1. Open the Run Planner with no route: the Run plan bar at the foot says to pick a route or enter a distance. There is no Plan my carbs button.
+2. Pick a route (any method): within a second the bar fills (time and pace, carbs, fluid, glucose start-lowest-finish, recovery) without pressing anything.
+3. Change glucose, insulin on board, pace or effort: the plan recalculates about half a second later; the bar's spinner shows while it does.
+4. Open the plan: drag Target time - the pace, effort shading, sips, fluid total and glucose line all change; faster times show higher effort and more fluid.
+5. The chart's glucose falls faster across climbs (orange/red in the course panel); hovering shows minute, km, glucose, no-carbs, effort, height, fluid and insulin on board.
+6. Within 48 hours of a hard session, Recovery shows the carry-over and the insulin multiplier above 1; with form below -10 the exercise uptake rises.

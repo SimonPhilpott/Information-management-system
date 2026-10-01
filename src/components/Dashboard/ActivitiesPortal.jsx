@@ -16,7 +16,7 @@ const METRICS = [
 const fmtDur = (s) => {
   if (s == null) return '-';
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
-  return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m ${String(Math.round(s % 60)).padStart(2, '0')}s`;
+  return h ? `${h} h ${String(m).padStart(2, '0')} min` : `${m} min ${String(Math.round(s % 60)).padStart(2, '0')} s`;
 };
 const fmtDay = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' });
 const fmtPace = (a, units) => {
@@ -97,7 +97,7 @@ function GlucoseDetail({ id, km, isDark, sessionTag, onUpdateTag }) {
               <text x={X(e.m) + 3} y={H1 + GAP + 10 + (i % 3) * 9} fontSize="9" fill={e.type === 'bolus' ? '#f472b6' : '#facc15'}>{e.type === 'bolus' ? `${e.units} U` : `${e.grams} g`}</text>
             </g>
           ))}
-          {ticks.map((m) => (<text key={m} x={X(m)} y={H1 + GAP + H2 + 12} fontSize="9" textAnchor="middle" fill="currentColor" opacity="0.55">{m === 0 ? 'start' : `${m > 0 ? '+' : ''}${m}m`}</text>))}
+          {ticks.map((m) => (<text key={m} x={X(m)} y={H1 + GAP + H2 + 12} fontSize="9" textAnchor="middle" fill="currentColor" opacity="0.55">{m === 0 ? 'start' : `${m > 0 ? '+' : ''}${m} min`}</text>))}
         </svg>
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-500">
@@ -111,7 +111,7 @@ function GlucoseDetail({ id, km, isDark, sessionTag, onUpdateTag }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
         {chip('Start', st.bgStart, bgTone(st.bgStart))}
         {chip('End', st.bgEnd, bgTone(st.bgEnd))}
-        {chip('Lowest', st.bgMin != null ? `${st.bgMin}${st.bgMinAtMin != null ? ` (at ${st.bgMinAtMin}m)` : ''}` : null, bgTone(st.bgMin))}
+        {chip('Lowest', st.bgMin != null ? `${st.bgMin}${st.bgMinAtMin != null ? ` (at ${st.bgMinAtMin} min)` : ''}` : null, bgTone(st.bgMin))}
         {chip('Highest', st.bgMax, bgTone(st.bgMax))}
         {chip('Mean / variability', st.bgMean != null ? `${st.bgMean} (CV ${st.bgCv}%)` : null)}
         {chip('Change', st.bgChange != null ? `${st.bgChange > 0 ? '+' : ''}${st.bgChange}` : null)}
@@ -478,7 +478,7 @@ function RunInsight({ id, km, isDark, sessionTag, onUpdateTag }) {
               { label: '🚶 Walked 2 mi (low BG)', text: 'Had to walk for 2 miles because blood sugars became dangerously low', type: 'incident' },
               { label: '😫 Sluggish / heavy legs', text: 'Felt tired and fatigued, unable to sustain expected running pace', type: 'incident' },
               { label: '🍬 Carbs at start gave spike', text: 'Did not need carbs at start; caused early glucose spike', type: 'carb' },
-              { label: '⏱️ Delayed carbs to 30m', text: 'Delayed carbs to 30 mins in; kept glucose in stable band', type: 'carb' },
+              { label: '⏱️ Delayed carbs to 30 min', text: 'Delayed carbs to 30 mins in; kept glucose in stable band', type: 'carb' },
               { label: '🎯 Ran in range throughout', text: 'Felt strong, pace on target, stayed within 5.0-9.0 mmol/L', type: 'general' },
             ].map((p, idx) => (
               <button

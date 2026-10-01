@@ -12,6 +12,8 @@ const NIGHTSCOUT_URL = 'https://simon-philpott-nightscout.herokuapp.com';
 const HEROKU_SETTINGS_URL = 'https://dashboard.heroku.com/apps/simon-philpott-nightscout/settings';
 import PortalShell from './PortalShell';
 import PhotoCarbs from './PhotoCarbs';
+import TrainingLoadCard from './TrainingLoadCard';
+import { useUnits } from '../../utils/units';
 import Prose from './Prose';
 
 const PERIODS = [{ key: 1, label: '24 h' }, { key: 7, label: '7 days' }, { key: 14, label: '14 days' }, { key: 30, label: '30 days' }];
@@ -253,6 +255,7 @@ function ProfileStepChart({ items = [], maxVal = 2.0, unit = 'U/h', isDark = tru
 
 export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
   const isDark = theme === 'dark';
+  const { units } = useUnits();
   const [days, setDays] = useState(14);
   const [summary, setSummary] = useState(null);
   const [day, setDay] = useState(todayStr());
@@ -273,6 +276,10 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
   const [emailNote, setEmailNote] = useState('');
   const [emailBusy, setEmailBusy] = useState(false);
   const [downloadBusy, setDownloadBusy] = useState(false);
+  // clinic AGP report: 14 or 90 days ending on agpEnd
+  const [agpDays, setAgpDays] = useState(14);
+  const [agpEnd, setAgpEnd] = useState(() => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' }));
+  const [agpBusy, setAgpBusy] = useState(false);
   const [emailStatus, setEmailStatus] = useState(null);
 
   // Thresholds State
@@ -475,6 +482,32 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
   };
 
   // --- PDF Download Action ---
+  const downloadAgpReport = async () => {
+    setAgpBusy(true);
+    try {
+      notify(`Building the ${agpDays}-day AGP report for your diabetes team...`);
+      const response = await fetch(`/api/glucose-hub/report/agp?days=${agpDays}&end=${agpEnd}`);
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.error || `Failed to build the AGP report (${response.status})`);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `AGP_Report_${agpDays}d_to_${agpEnd}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      notify('AGP report downloaded.');
+    } catch (err) {
+      notify(err.message || 'AGP report failed', 'error');
+    } finally {
+      setAgpBusy(false);
+    }
+  };
+
   const downloadPdfReport = async () => {
     setDownloadBusy(true);
     try {
@@ -688,6 +721,25 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
             {downloadBusy ? 'Building PDF...' : 'Download PDF Report'}
           </button>
 
+          {/* Clinic AGP report - 14 or 90 days, for the diabetes team */}
+          <div className={`flex items-center gap-1 pl-1 rounded-lg border ${isDark ? 'border-white/15' : 'border-slate-300'}`}
+            title="Ambulatory Glucose Profile for your diabetes clinic: time in ranges, GMI, CV, hypo events, and pod and sensor change overlays">
+            <select value={agpDays} onChange={(e) => setAgpDays(Number(e.target.value))} aria-label="AGP report length"
+              className={`bg-transparent text-xs font-bold outline-none px-1 py-1.5 ${isDark ? 'text-white' : 'text-slate-800'}`}>
+              <option value={14} className="text-slate-900">14 days</option>
+              <option value={90} className="text-slate-900">90 days</option>
+            </select>
+            <span className="text-slate-500">to</span>
+            <input type="date" value={agpEnd} max={new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' })} onChange={(e) => setAgpEnd(e.target.value)} aria-label="AGP report end date"
+              className={`bg-transparent text-xs font-semibold outline-none py-1.5 ${isDark ? 'text-white [color-scheme:dark]' : 'text-slate-800'}`} />
+            <button onClick={downloadAgpReport} disabled={agpBusy}
+              className={`px-3 py-1.5 rounded-r-lg font-bold flex items-center gap-1.5 transition-all disabled:opacity-40 ${
+                isDark ? 'bg-sky-500/20 hover:bg-sky-500/30 text-sky-200' : 'bg-sky-50 hover:bg-sky-100 text-sky-800'}`}>
+              {agpBusy ? <RotateCw size={13} className="animate-spin" /> : <Download size={13} className="text-sky-400" />}
+              {agpBusy ? 'Building AGP...' : 'Clinic AGP Report'}
+            </button>
+          </div>
+
           <button
             onClick={() => {
               loadEmailStatus();
@@ -732,6 +784,9 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
           )}
         </div>
       </div>
+
+      {/* Training load and recovery - fatigue raises insulin sensitivity for a day or two after hard sessions */}
+      <TrainingLoadCard isDark={isDark} units={units} compact />
 
       {/* Email PDF Modal Dialog */}
       {emailModalOpen && (

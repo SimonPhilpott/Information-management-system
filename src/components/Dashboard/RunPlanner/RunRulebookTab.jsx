@@ -228,7 +228,7 @@ export default function RunRulebookTab({
                   <div className={`text-base font-black tabular-nums ${isDark ? '' : 'text-[#2E2B27]'}`}>&lt; 1.0 U <span className={`text-[10px] font-normal ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>start IOB</span></div>
                 </div>
                 <p className={`text-[10px] mt-2 leading-tight ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
-                  Set temp target (8.0-9.0) 60-90m prior. Reduce pre-run meal bolus by 30-50% within 2h.
+                  Set temp target (8.0-9.0) 60-90 minutes before. Reduce pre-run meal bolus by 30-50% within 2h.
                 </p>
               </div>
 
@@ -252,7 +252,7 @@ export default function RunRulebookTab({
                   <div className={`text-base font-black tabular-nums ${isDark ? '' : 'text-[#2E2B27]'}`}>Flats / Down <span className={`text-[10px] font-normal ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>stops</span></div>
                 </div>
                 <p className={`text-[10px] mt-2 leading-tight ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
-                  Fuel 3-5m before climbs or on descents. Avoid mid-climb fueling during anaerobic surges.
+                  Fuel 3-5 minutes before climbs or on descents. Avoid mid-climb fueling during anaerobic surges.
                 </p>
               </div>
 

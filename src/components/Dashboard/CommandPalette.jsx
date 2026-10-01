@@ -3,7 +3,7 @@ import {
   Search, Command, ArrowRight, Brain, User, Activity, Bell, Timer, Clock,
   Cake, Dices, Eye, Smile, Palette, Wifi, Mic, Calendar, MessageSquare, CheckSquare,
   Newspaper, Layers, Database, Lightbulb, MapPin, Code, FileText, Sparkles,
-  Zap, Plus, RefreshCw, X, Shield, ArrowUpRight, TrendingUp, Volume2
+  Zap, Plus, RefreshCw, X, Shield, ArrowUpRight, TrendingUp, Volume2, CloudSun, List, BookMarked, ExternalLink
 } from 'lucide-react';
 
 const PORTALS = [
@@ -31,6 +31,7 @@ const PORTALS = [
   { id: 'wifi', name: 'Wi-Fi Configuration', path: '/ims/wifi', category: 'Terminal & Hardware', icon: Wifi, description: 'Configure ESP32 Wi-Fi networks and connection telemetry' },
   { id: 'recordings', name: 'Voice Captures & Audio Logs', path: '/ims/recordings', category: 'Terminal & Hardware', icon: Mic, description: 'Listen to recorded speech turns and verify transcript text' },
   { id: 'phrases', name: 'Wake & Stop Phrases', path: '/ims/phrases', category: 'Terminal & Hardware', icon: MessageSquare, description: 'Approved wake phrases, room chatter rejection, and closing phrases' },
+  { id: 'weather', name: 'Weather', path: '/ims/weather', category: 'Intelligence & Memory', icon: CloudSun, description: 'Forecasts for home and saved places, hour by hour and 16 days ahead, and the weather phrases Ims uses' },
   { id: 'doorbell', name: 'Ring Doorbell Service', path: '/ims/doorbell', category: 'Terminal & Hardware', icon: Bell, description: 'Direct Ring API integration, live dings, motion alerts, snapshots, and Yorkshire voice alerts' },
   { id: 'devicehealth', name: 'Device Health & Observability', path: '/ims/device-health', category: 'Terminal & Hardware', icon: Activity, description: 'Minute-by-minute Box-3 Wi-Fi RSSI, free heap, uptime, underruns and reconnect sparklines' },
   { id: 'spend', name: 'Gemini Spend & Budget Breakdown', path: '/ims/spend', category: 'Development & Engineering', icon: Database, description: 'Tokens & estimated cost per service per day, soft monthly budget warning, and prompt optimization' },
@@ -174,9 +175,39 @@ export default function CommandPalette({ isOpen, onClose, onNavigate, theme = 'd
     );
   }, [query]);
 
+  // Search across every service (/api/search) once two or more letters are typed - grouped results that
+  // open the item itself: a page scrolled to it, or a library book at the right page.
+  const [searchResult, setSearchResult] = useState(null);
+  const [searching, setSearching] = useState(false);
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) { setSearchResult(null); return undefined; }
+    let live = true;
+    setSearching(true);
+    const t = setTimeout(() => {
+      fetch(`/api/search?q=${encodeURIComponent(q)}`).then((r) => r.json())
+        .then((j) => { if (live) setSearchResult(j.success ? j : null); })
+        .catch(() => { if (live) setSearchResult(null); })
+        .finally(() => { if (live) setSearching(false); });
+    }, 250);
+    return () => { live = false; clearTimeout(t); };
+  }, [query]);
+
+  const searchItems = useMemo(() => {
+    const ICON = { memories: Brain, tasks: CheckSquare, lists: List, chronicles: BookMarked, ideas: Lightbulb, recordings: Mic, calendar: Calendar, library: FileText };
+    return (searchResult?.groups || []).flatMap((g) => g.items.map((it, i) => ({
+      id: `search-${it.id}`, name: it.title, category: g.label, description: it.detail, icon: ICON[g.key] || Search,
+      groupStart: i === 0 ? `${g.label}${g.more ? ` (+${g.more} more)` : ''}` : null, external: it.external || null, isSearch: true,
+      disabled: !it.path && !it.pdf,
+      onExecute: it.pdf
+        ? () => { window.dispatchEvent(new CustomEvent('ims-open-pdf', { detail: it.pdf })); onClose(); }
+        : it.path ? () => { onNavigate(it.path); onClose(); } : () => {},
+    })));
+  }, [searchResult, onNavigate, onClose]);
+
   const allItems = useMemo(() => {
-    return [...quickActions, ...filteredPortals];
-  }, [quickActions, filteredPortals]);
+    return [...quickActions, ...filteredPortals, ...searchItems];
+  }, [quickActions, filteredPortals, searchItems]);
 
   // Reset selected index when query changes
   useEffect(() => {
@@ -308,7 +339,7 @@ export default function CommandPalette({ isOpen, onClose, onNavigate, theme = 'd
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search 24+ portals, check glucose, or add notes... (Type / or keywords)"
+              placeholder="Search everything - memories, tasks, chronicles, ideas, recordings, calendar, library - or jump to a page..."
               className={`flex-1 bg-transparent text-sm outline-none ${isDark ? 'text-white' : 'text-slate-900'}`}
               onKeyDown={(e) => {
                 if (e.key === 'Escape' || e.code === 'Escape') {
@@ -443,15 +474,18 @@ export default function CommandPalette({ isOpen, onClose, onNavigate, theme = 'd
             <div className="flex flex-col gap-1">
               {allItems.length === 0 ? (
                 <div className="py-12 text-center text-slate-500 text-sm">
-                  No matching portals or actions found for "{query}".
+                  {searching ? `Searching everything for "${query}"...` : `Nothing found for "${query}".`}
                 </div>
               ) : (
                 allItems.map((item, idx) => {
                   const Icon = item.icon || Layers;
                   const isSelected = idx === selectedIndex;
                   return (
+                    <React.Fragment key={item.id}>
+                    {item.groupStart && (
+                      <div className={`px-3.5 pt-3 pb-1 text-[10px] font-black uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{item.groupStart}</div>
+                    )}
                     <div
-                      key={item.id}
                       data-index={idx}
                       onClick={() => {
                         if (item.onExecute) {
@@ -481,10 +515,14 @@ export default function CommandPalette({ isOpen, onClose, onNavigate, theme = 'd
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0 pl-2">
-                        {item.path && <span className="text-[11px] font-mono text-slate-500 hidden sm:inline">{item.path}</span>}
-                        <ArrowRight size={14} className={isSelected ? 'text-violet-400' : 'text-slate-600'} />
+                        {item.path && !item.isSearch && <span className="text-[11px] font-mono text-slate-500 hidden sm:inline">{item.path}</span>}
+                        {item.external && (
+                          <a href={item.external} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title="Open in Google Calendar" className="p-1 rounded text-slate-500 hover:text-sky-400"><ExternalLink size={13} /></a>
+                        )}
+                        {!item.disabled && <ArrowRight size={14} className={isSelected ? 'text-violet-400' : 'text-slate-600'} />}
                       </div>
                     </div>
+                    </React.Fragment>
                   );
                 })
               )}

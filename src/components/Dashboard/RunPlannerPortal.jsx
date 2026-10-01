@@ -8,8 +8,9 @@ import RunMissionControlTab from './RunPlanner/RunMissionControlTab';
 import RunRulebookTab from './RunPlanner/RunRulebookTab';
 import RunTargetsTab from './RunPlanner/RunTargetsTab';
 import RunFlythroughTab from './RunPlanner/RunFlythroughTab';
+import RunRouteFinderTab from './RunPlanner/RunRouteFinderTab';
 
-const fmtMin = (m) => `${Math.floor(m / 60)}h ${String(Math.round(m % 60)).padStart(2, '0')}m`;
+const fmtMin = (m) => `${Math.floor(m / 60)} h ${String(Math.round(m % 60)).padStart(2, '0')} min`;
 
 // ---- route preview helpers -------------------------------------------------------------------------
 const gradeColour = (g) => (g <= -3 ? '#38bdf8' : g < 3 ? '#22c55e' : g < 6 ? '#f59e0b' : '#ef4444');
@@ -151,7 +152,7 @@ function DemandCard({ demand, units, isDark }) {
         {chip('Climb per ' + units, `${Math.round(units === 'mi' ? (r.climbPerKm || 0) * KM_PER_MI : (r.climbPerKm || 0))} m`)}
         {chip('Effort vs flat', `+${Math.round(((r.effortFactor || 1) - 1) * 100)}%`)}
         {chip('Like flat', `${dist(r.flatEquivalentKm || 0, units, 1)} ${units}`)}
-        {chip('Time at this pace', `${Math.floor((r.durationMin || 0) / 60) ? `${Math.floor((r.durationMin || 0) / 60)}h ` : ''}${Math.round((r.durationMin || 0) % 60)}m`)}
+        {chip('Time at this pace', `${Math.floor((r.durationMin || 0) / 60) ? `${Math.floor((r.durationMin || 0) / 60)} h ` : ''}${Math.round((r.durationMin || 0) % 60)} min`)}
       </div>
       {(h.runs || 0) > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -188,7 +189,7 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
   const isDark = theme === 'dark';
   const { units, setUnits } = useUnits();
 
-  // Top Tab State: 'mission' | 'rulebook' | 'targets' | 'flythrough'
+  // Top Tab State: 'mission' | 'rulebook' | 'targets' | 'flythrough' | 'finder'
   const [activeMainTab, setActiveMainTab] = useState('mission');
 
   const [routes, setRoutes] = useState([]);
@@ -341,6 +342,34 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
     return () => { live = false; clearTimeout(t); };
   }, [routeFull, form.distanceKm, form.intensity, form.pace, paceTouched, units]);
 
+  // The Run Plan recalculates by itself whenever anything that feeds it changes - the route (from the
+  // Route Finder, saved routes, a Komoot import, a link or a GPX), the distance, glucose, insulin and
+  // carbs on board, pace, effort, goal or targets. With no start glucose typed in, it starts from live
+  // glucose when fresh, otherwise the start target. A new route resets the "vs original plan" baseline.
+  const lastRouteRef = useRef(null);
+  const lastInputsRef = useRef('');
+  useEffect(() => {
+    const distKm = routeFull ? routeFull.distanceKm : toKm(form.distanceKm, units);
+    if (!(distKm > 0)) return undefined;
+    if (routeId && !routeFull) return undefined; // the chosen route is still loading
+    const typed = form.startBg !== '' && form.startBg != null && Number(form.startBg) > 0;
+    const startBg = typed ? Number(form.startBg) : now?.now?.bgFresh && now?.now?.bg ? now.now.bg : targets?.startTarget;
+    if (!startBg) return undefined;
+    const routeKey = routeFull?.id ?? `d${distKm}`;
+    const isNewRoute = lastRouteRef.current !== routeKey;
+    // filling in the start glucose below changes the form again - don't plan twice for the same inputs
+    const sig = JSON.stringify([routeKey, startBg, form.iob, form.cob, form.minutesSinceBolus, form.pace, form.intensity, goalId, targets, units]);
+    if (sig === lastInputsRef.current) return undefined;
+    const t = setTimeout(() => {
+      if (!typed) setForm((f) => ({ ...f, startBg: String(startBg) }));
+      lastRouteRef.current = routeKey;
+      lastInputsRef.current = sig;
+      estimate({ startBg, isTweak: !isNewRoute });
+    }, isNewRoute ? 0 : 500);
+    return () => clearTimeout(t);
+  }, [routeFull?.id, routeId, form.distanceKm, form.startBg, form.iob, form.cob, form.minutesSinceBolus, form.pace, form.intensity, goalId, targets, units]); // eslint-disable-line react-hooks/exhaustive-deps
+
+
   const estimate = async (overrides = {}, targetsOverride = null) => {
     setBusy('estimate');
     try {
@@ -356,7 +385,7 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
         distanceKm: distKm,
         paceMinPerKm: targetPace,
         intensity: form.intensity,
-        startBg: Number(form.startBg),
+        startBg: Number(overrides?.startBg ?? form.startBg),
         iob: form.iob === '' ? null : Number(form.iob),
         cob: form.cob === '' ? null : Number(form.cob),
         minutesSinceBolus: form.minutesSinceBolus === '' ? null : Number(form.minutesSinceBolus),
@@ -499,10 +528,12 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
       const d = await send('/api/planner/komoot/connect', 'POST', { email: kForm.email, password: kForm.password });
       setKomoot(d);
       setKForm({ ...kForm, password: '' });
-      showToast('Komoot connected.');
+      showToast(`Komoot connected${d.email ? ` as ${d.email}` : ''}.`);
       loadTours();
+      return true;
     } catch (err) {
       showToast(err.message, 'error');
+      return false;
     } finally {
       setBusy('');
     }
@@ -783,7 +814,7 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
             Distances in <UnitToggle units={units} setUnits={setUnits} isDark={isDark} />
           </div>
 
-          {/* TOP 4-TAB WORKSPACE NAVIGATOR */}
+          {/* TOP 5-TAB WORKSPACE NAVIGATOR */}
           <div className={`flex flex-wrap items-center gap-2 mb-5 p-1.5 rounded-2xl border ${isDark ? 'border-white/10 bg-slate-950/60 shadow-lg shadow-black/20' : 'border-[#2E2B27]/15 bg-[#F4EFE6]/90 shadow-sm shadow-[#2E2B27]/5'}`}>
             <button
               onClick={() => setActiveMainTab('mission')}
@@ -800,6 +831,37 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
             </button>
 
             <button
+              onClick={() => setActiveMainTab('finder')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                activeMainTab === 'finder'
+                  ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md'
+                  : isDark
+                  ? 'text-slate-400 hover:text-white hover:bg-white/5'
+                  : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'
+              }`}
+            >
+              <Compass size={14} />
+              <span>2. Route Finder</span>
+            </button>
+
+            <button
+              onClick={() => setActiveMainTab('flythrough')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                activeMainTab === 'flythrough'
+                  ? 'bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-md'
+                  : isDark
+                  ? 'text-slate-400 hover:text-white hover:bg-white/5'
+                  : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'
+              }`}
+            >
+              <Sparkles size={14} className={activeMainTab === 'flythrough' ? 'text-yellow-300' : (isDark ? 'text-yellow-400' : 'text-amber-600')} />
+              <span>3. Run Flythrough & Retrospective</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold uppercase tracking-wider ${isDark ? 'bg-sky-500/20 text-sky-300' : 'bg-sky-100 text-sky-900 border border-sky-300'}`}>
+                Replay
+              </span>
+            </button>
+
+            <button
               onClick={() => setActiveMainTab('rulebook')}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                 activeMainTab === 'rulebook'
@@ -810,7 +872,7 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
               }`}
             >
               <BookOpen size={14} />
-              <span>2. T1D Rulebook & Intelligence</span>
+              <span>4. T1D Rulebook & Intelligence</span>
               {pendingFindingsCount > 0 && (
                 <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-black ${isDark ? 'bg-amber-500/20 text-amber-300' : 'bg-amber-100 text-amber-900 border border-amber-300'} animate-pulse`}>
                   {pendingFindingsCount}
@@ -829,26 +891,28 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
               }`}
             >
               <Sliders size={14} />
-              <span>3. Targets & Assumptions</span>
-            </button>
-
-            <button
-              onClick={() => setActiveMainTab('flythrough')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                activeMainTab === 'flythrough'
-                  ? 'bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-md'
-                  : isDark
-                  ? 'text-slate-400 hover:text-white hover:bg-white/5'
-                  : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'
-              }`}
-            >
-              <Sparkles size={14} className={activeMainTab === 'flythrough' ? 'text-yellow-300' : (isDark ? 'text-yellow-400' : 'text-amber-600')} />
-              <span>4. Run Flythrough & Retrospective</span>
-              <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold uppercase tracking-wider ${isDark ? 'bg-sky-500/20 text-sky-300' : 'bg-sky-100 text-sky-900 border border-sky-300'}`}>
-                Replay
-              </span>
+              <span>5. Targets & Assumptions</span>
             </button>
           </div>
+
+          {/* TAB 2: ROUTE FINDER & DUPLICATES ("Plan this run" hands the route to tab 1) */}
+          {activeMainTab === 'finder' && (
+            <RunRouteFinderTab
+              call={call}
+              send={send}
+              units={units}
+              isDark={isDark}
+              panel={panel}
+              label={label}
+              field={field}
+              btn={btn}
+              ghost={ghost}
+              showToast={showToast}
+              komootConnected={Boolean(komoot?.connected)}
+              onUseRoute={(id) => { setRouteId(String(id)); setActiveMainTab('mission'); }}
+              onDeleteRoute={removeRoute}
+            />
+          )}
 
           {/* TAB 1: RUN PLANNER (THE MAIN RUN PLANNING COCKPIT) */}
           {activeMainTab === 'mission' && (
@@ -1000,6 +1064,7 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
           {/* TAB 4: RUN FLYTHROUGH & RETROSPECTIVE PLAYER */}
           {activeMainTab === 'flythrough' && (
             <RunFlythroughTab
+              onPlanRoute={(id) => { setRouteId(String(id)); setActiveMainTab('mission'); }}
               route={routeFull || selected}
               plan={plan}
               routeHistory={routeHistory}

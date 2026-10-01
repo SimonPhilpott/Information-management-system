@@ -684,7 +684,7 @@ function buildServicesParagraph() {
     "Lists such as shopping (addToList, readList, removeFromList, clearList). " +
     "Google Calendar (getCalendarEvents, addCalendarEvent). Birthdays (getUpcomingBirthdays). " +
     "Memories - things they asked you to remember (rememberFact, recallMemory, forgetMemory). " +
-    "Weather (getWeather). The morning / day report, any time (getDayReport). " +
+    "Weather for home or any saved or named place, now and up to 16 days ahead (getWeather; also on /ims/weather). The morning / day report, any time (getDayReport). " +
     "News and interests from their chosen sources and the BBC (getNews). " +
     "Background tasks - research that runs on its own and can be asked about later (startBackgroundTask, getBackgroundTasks; also on /ims/tasks). " +
     "Their board game collection - how many games and expansions, and which games suit a player count or time (getBoardGames; also on /ims/boardgames, where games are added, removed and marked for sale). " +
@@ -1197,18 +1197,22 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "getWeather",
-            description: "Call whenever the user asks about weather, temperature, rain or what to wear; defaults to Leeds if no place is given. Season the answer with natural Yorkshire weather talk (chucking it down, brass monkeys, grab your big coat). Gets real-time weather conditions and daily forecasts for any city, town, or region. If no location is specified by the user, defaults to the user's local area (Leeds / Yorkshire, UK). Returns current temperature (°C), feels-like temperature, sky condition, rain/precipitation, humidity, wind, and today's/tomorrow's forecast.",
+            description: "Call whenever the user asks about the weather, temperature, rain, wind or what to wear - now, later today, tomorrow or any day up to 16 days ahead, at home or anywhere else. With no place it uses their home (set on the Weather page); places they have saved can be named directly. The result is the facts to describe, worked out hour by hour for the time that is still to come: description.rest_of_today, tonight, tomorrow and outlook, plus language_today (and a language set on every day) saying how strong the rain, temperature and wind are, the words that fit and the words that would overstate it. Describe it in your own Yorkshire words but NEVER stronger or weaker than those facts - drizzle is not 'chucking it down', a 20% chance is not a wet day, 16 degrees is not 'roasting'. Rain that fell earlier is over; don't talk about it as coming. When a day has 'unusual', remark on how unusual it is for the time of year with a fresh line of your own. More than a week ahead is only a rough guide - say so. Never guess or invent weather.",
             behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
               properties: {
                 location: {
                   type: "STRING",
-                  description: "City, town, or region name (e.g. 'Leeds', 'London', 'York', 'Sheffield', 'Manchester', 'Paris', 'New York'). Omit or leave empty for local area."
+                  description: "A place name (a saved place such as 'York', or any city or town). Omit for home."
+                },
+                days_ahead: {
+                  type: "NUMBER",
+                  description: "When they ask about one particular day: 0 today, 1 tomorrow, 2 the day after, 7 a week today, 10 for ten days' time, 14 a fortnight / two weeks. Work out named days (e.g. 'next Saturday') from today's date. The answer is in requested_day. Up to 15."
                 },
                 days: {
                   type: "NUMBER",
-                  description: "Number of forecast days (1 to 7). Defaults to 2 (today and tomorrow)."
+                  description: "How many days of forecast to list (1-16) for 'the week ahead' style questions. Defaults to 2."
                 }
               }
             }

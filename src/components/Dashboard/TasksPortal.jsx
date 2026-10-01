@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useFocusItem } from '../../hooks/useFocusItem';
 import { ListChecks, Plus, RotateCw, Trash2, ChevronDown, ChevronRight, ExternalLink, CheckCircle2, XCircle, Loader2, Clock } from 'lucide-react';
 import PortalShell from './PortalShell';
 import Prose from './Prose';
@@ -17,7 +18,7 @@ function TaskRow({ task, isDark, onRerun, onDelete }) {
   const Icon = st.icon;
   const border = isDark ? 'border-white/10' : 'border-[#2E2B27]/10';
   return (
-    <div className={`rounded-xl border ${border} ${isDark ? 'bg-slate-950/40' : 'bg-white'}`}>
+    <div id={`task-${task.id}`} className={`rounded-xl border ${border} ${isDark ? 'bg-slate-950/40' : 'bg-white'}`}>
       <div className="px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs cursor-pointer" onClick={() => setOpen(!open)}>
         {open ? <ChevronDown size={14} className="opacity-60 shrink-0" /> : <ChevronRight size={14} className="opacity-60 shrink-0" />}
         <span className="font-bold min-w-0 flex-1 basis-48 break-words">{task.title}</span>
@@ -58,6 +59,7 @@ function TaskRow({ task, isDark, onRerun, onDelete }) {
 export default function TasksPortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
   const isDark = theme === 'dark';
   const [tasks, setTasks] = useState([]);
+  useFocusItem(tasks.length); // Ctrl+K search results land on #<item>
   const [request, setRequest] = useState('');
   const [busy, setBusy] = useState(false);
   const [notification, setNotification] = useState(null);

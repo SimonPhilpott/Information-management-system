@@ -1,6 +1,6 @@
 import React from 'react';
 import RadialGauge from './RadialGauge';
-import { paceToMinPerKm } from '../../../utils/units';
+import { paceToMinPerKm, paceText, elev, elevUnit, KM_PER_MI, FT_PER_M } from '../../../utils/units';
 
 /**
  * Top Telemetry Bar containing three radial gauges with target zones:
@@ -23,28 +23,30 @@ export default function RunGaugesBar({
   liveBg = null,
   isLiveFlythrough = false
 }) {
-  // Pace parsing: convert mm:ss to decimal minutes per km
-  const parsedPace = paceToMinPerKm(paceTextVal) || 5.25;
-  const activePaceNum = livePaceSec != null ? livePaceSec / 60 : parsedPace;
-  const activePaceDisplay = isLiveFlythrough && livePaceSec != null
-    ? `${Math.floor(livePaceSec / 60)}:${String(Math.round(livePaceSec % 60)).padStart(2, '0')}`
-    : paceTextVal || '5:15';
+  // Everything below is worked out in km and metres, then shown in the chosen units: pace per km or
+  // per mile, climbing in metres or feet. paceTextVal is already per the chosen unit; livePaceSec is per km.
+  const perUnit = units === 'mi' ? KM_PER_MI : 1; // min/km -> min per chosen unit
+  const parsedPaceKm = paceToMinPerKm(paceTextVal, units) || 5.25;
+  const activePaceKm = isLiveFlythrough && livePaceSec != null ? livePaceSec / 60 : parsedPaceKm;
+  const activePaceDisplay = isLiveFlythrough && livePaceSec != null ? paceText(livePaceSec / 60, units) : paceTextVal || paceText(5.25, units);
 
-  // Pace target zones (aerobic zone around 5:00 - 5:40 /km)
+  // Pace target zones (aerobic zone around 4:48 - 5:42 /km), scaled to the chosen unit
   const paceZones = [
     { from: 3.5, to: 4.8, color: '#f59e0b', label: 'Anaerobic' },
     { from: 4.8, to: 5.7, color: '#10b981', label: 'Target Safe' },
     { from: 5.7, to: 8.5, color: '#38bdf8', label: 'Aerobic Base' }
-  ];
+  ].map((z) => ({ ...z, from: z.from * perUnit, to: z.to * perUnit }));
 
-  // Elevation gauge parameters
-  const elevVal = isLiveFlythrough && liveElevationM != null ? liveElevationM : (gainM || 0);
-  const elevMax = Math.max(150, Math.ceil(((gainM || 50) * 1.3) / 50) * 50);
+  // Elevation gauge parameters (metres, or feet with miles)
+  const toUnit = units === 'mi' ? FT_PER_M : 1;
+  const elevValM = isLiveFlythrough && liveElevationM != null ? liveElevationM : (gainM || 0);
+  const elevMaxM = Math.max(150, Math.ceil(((gainM || 50) * 1.3) / 50) * 50);
   const elevZones = [
     { from: 0, to: 50, color: '#10b981', label: 'Flat' },
     { from: 50, to: 120, color: '#38bdf8', label: 'Rolling' },
-    { from: 120, to: elevMax, color: '#f97316', label: 'Climbing' }
-  ];
+    { from: 120, to: elevMaxM, color: '#f97316', label: 'Climbing' }
+  ].map((z) => ({ ...z, from: z.from * toUnit, to: z.to * toUnit }));
+  const eu = elevUnit(units);
 
   // Blood glucose gauge parameters (mmol/L)
   const bgVal = isLiveFlythrough && liveBg != null ? liveBg : (parseFloat(currentBg) || 8.0);
@@ -59,27 +61,27 @@ export default function RunGaugesBar({
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 mb-4">
       {/* 1. Pace Gauge */}
       <RadialGauge
-        value={activePaceNum}
-        min={3.5}
-        max={8.5}
+        value={activePaceKm * perUnit}
+        min={3.5 * perUnit}
+        max={8.5 * perUnit}
         unit={`/${units}`}
         title={isLiveFlythrough ? 'Instantaneous Pace' : 'Planned Running Pace'}
         zones={paceZones}
-        targetLabel="Target: 4:50 - 5:35"
+        targetLabel={`Target: ${paceText(4.8, units)} - ${paceText(5.7, units)} /${units}`}
         displayValue={activePaceDisplay}
         isDark={isDark}
       />
 
       {/* 2. Elevation Gauge */}
       <RadialGauge
-        value={elevVal}
+        value={elevValM * toUnit}
         min={0}
-        max={elevMax}
-        unit={isLiveFlythrough ? 'metres alt' : 'metres ascent'}
+        max={elevMaxM * toUnit}
+        unit={`${units === 'mi' ? 'feet' : 'metres'} ${isLiveFlythrough ? 'alt' : 'ascent'}`}
         title={isLiveFlythrough ? 'Current Altitude' : 'Total Route Ascent'}
         zones={elevZones}
-        targetLabel={gainM ? `+${gainM}m / -${lossM}m` : 'Flat Course'}
-        displayValue={String(Math.round(elevVal))}
+        targetLabel={gainM ? `+${elev(gainM, units)}${eu} / -${elev(lossM, units)}${eu}` : 'Flat Course'}
+        displayValue={String(elev(elevValM, units))}
         isDark={isDark}
       />
 

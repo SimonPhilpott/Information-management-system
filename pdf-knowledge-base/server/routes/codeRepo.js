@@ -1,4 +1,5 @@
 import express from 'express';
+import { getDependencyWatch, runDependencyWatch } from '../services/dependencyWatchService.js';
 import {
   listRepositories,
   getRepository,
@@ -32,6 +33,13 @@ const router = express.Router();
  * POST /api/code-repo/audit
  * Run automated PR Quality, TypeScript linting, and Triple Registry audit.
  */
+// Dependency and vulnerability watch (npm audit + npm outdated, weekly or on demand)
+router.get('/dependencies', (req, res) => res.json({ success: true, ...getDependencyWatch() }));
+router.post('/dependencies/run', (req, res) => {
+  runDependencyWatch({ reason: 'manual' }).catch((err) => console.error('[DependencyWatch]', err.message));
+  res.json({ success: true, ...getDependencyWatch() });
+});
+
 router.post('/audit', async (req, res) => {
   try {
     const result = await auditQualityAndRegistry();

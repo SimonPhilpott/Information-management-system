@@ -312,6 +312,22 @@ export default function Chronicle({ c, chron, byCode = {}, setC, toast = () => {
     return { pages: out, starts: st };
   }, [chapters, split, wide]);
 
+  // Opened from a Ctrl+K search result (#chronicle-<scenario>): open the book at that chapter.
+  const wantChapter = useRef(null);
+  useEffect(() => {
+    const m = window.location.hash.match(/^#chronicle-(.+)$/);
+    if (!m) return;
+    const name = decodeURIComponent(m[1]);
+    if (chapters.some((x) => x.name === name)) { wantChapter.current = name; setOpen(true); }
+  }, [chapters]);
+  useEffect(() => {
+    if (!open || !split || !wantChapter.current) return;
+    const i = chapters.findIndex((x) => x.name === wantChapter.current);
+    if (i >= 0) setPage(starts[i]);
+    wantChapter.current = null;
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  }, [open, split, starts, chapters]);
+
   const step = wide ? 2 : 1;
   const at = Math.min(page - (page % step), Math.max(0, pages.length - 1));
   // Turning a page: a two-sided leaf hinged on the spine swings across while the spread it reveals sits

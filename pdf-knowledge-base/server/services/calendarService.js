@@ -249,6 +249,25 @@ export function getDeviceIcons() {
   return Object.values(bySlot).map(({ icon, color, slot }) => ({ icon, color, slot }));
 }
 
+// Past (or future) pod and sensor changes from the calendar, for the clinic AGP report: events between
+// two dates whose titles match the 'pod' and 'sensor' icon rules (e.g. "Fit a new sensor").
+export async function getDeviceChangeEvents(fromDate, toDate) {
+  const rules = listRules().filter((r) => r.action === 'icon' && ['pod', 'sensor'].includes(r.icon));
+  if (!rules.length) return [];
+  const cal = calendarApi();
+  const out = [];
+  for (const calendarId of getSettingsView().calendarIds) {
+    const res = await cal.events.list({ calendarId, timeMin: `${fromDate}T00:00:00Z`, timeMax: `${addDays(toDate, 1)}T00:00:00Z`, singleEvents: true, orderBy: 'startTime', maxResults: 2500 });
+    for (const e of res.data.items || []) {
+      if (e.status === 'cancelled' || !(e.start?.date || e.start?.dateTime)) continue;
+      const ev = normalise(e, calendarId, calendarId);
+      const rule = rules.find((r) => titleMatches(ev, r));
+      if (rule) out.push({ kind: rule.icon, at: ev.allDay ? new Date(`${ev.date}T09:00:00Z`).getTime() : ev.startMs, date: ev.date, title: ev.title, source: 'calendar' });
+    }
+  }
+  return out;
+}
+
 // 'remind' rules turn matching events into ordinary Ims reminders, once each.
 function applyReminderRules(events) {
   const rules = listRules().filter((r) => r.enabled && r.action === 'remind');

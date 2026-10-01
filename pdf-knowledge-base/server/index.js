@@ -109,6 +109,8 @@ import { matchesWake, matchesStop } from './services/phrasesService.js';
 import wakeDaemonRoutes from './routes/wakeDaemon.js';
 import { wakeDaemonService, DAEMON_STATES } from './services/wakeDaemonService.js';
 import doorbellRoutes from './routes/doorbell.js';
+import weatherRoutes from './routes/weather.js';
+import searchRoutes from './routes/search.js';
 import { doorbellService } from './services/doorbellService.js';
 import { createTask, describeTasksForIms } from './services/tasksService.js';
 import appDb, { addMemory, getMemories, searchMemories, deleteMemory } from './db/database.js';
@@ -221,6 +223,8 @@ app.use('/api/day-report', dayReportRoutes);
 app.use('/api/code-repo', codeRepoRoutes);
 app.use('/api/wake-daemon', wakeDaemonRoutes);
 app.use('/api/doorbell', doorbellRoutes);
+app.use('/api/weather', weatherRoutes);
+app.use('/api/search', searchRoutes);
 app.use('/api/device-health', (await import('./routes/deviceHealth.js')).default);
 app.use('/api/voice-latency', (await import('./routes/voiceLatency.js')).default);
 
@@ -369,6 +373,8 @@ setTimeout(refreshCalendar, 10000);
 setInterval(refreshCalendar, 5 * 60 * 1000);
 // Nightly backup of every service's data (database and files) to the PC and Google Drive, after 03:00.
 import('./services/backupService.js').then((m) => m.startNightlyBackups()).catch((err) => console.error('[Backup] Scheduler failed to start:', err.message));
+import('./services/dependencyWatchService.js').then((m) => m.startWeeklyDependencyWatch()).catch((err) => console.error('[DependencyWatch] Scheduler failed to start:', err.message));
+import('./services/routeFinderService.js').then((m) => m.startEveningKomootSync()).catch((err) => console.error('[RouteFinder] Evening sync failed to start:', err.message));
 
 // Weather for the device footer, refreshed every 30 minutes.
 let deviceWeather = null;

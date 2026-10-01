@@ -168,8 +168,16 @@
       ]
     },
     "pdf-knowledge-base/server/services/weatherService.js": {
-      "description": "Weather service integrating with Open-Meteo geocoding and forecast APIs, providing real-time temperatures, conditions, precipitation, wind metrics, and multi-day forecasts with in-memory TTL caching and Yorkshire Leeds fallback.",
-      "dependencies": []
+      "description": "Weather service: Open-Meteo hourly forecasts up to 16 days for home (Leeds by default) and saved places, graded from the hours still to come into rain / temperature / wind / fog / frost / snow / thunder bands with the words Ims may and may not use, plus unusual-for-the-time-of-year checks against 10 years of archive history cached in data/weather_normals.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js"
+      ]
+    },
+    "pdf-knowledge-base/server/routes/weather.js": {
+      "description": "REST API for the Weather page: GET /api/weather (forecast with hourly), /places, PUT /home, POST/DELETE /places, GET /phrases.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/weatherService.js"
+      ]
     },
     "pdf-knowledge-base/server/services/glucoseService.js": {
       "description": "Nightscout CGM service polling bgnow.sgvs every 60 seconds, extracting scaled mmol/L readings and directional trend arrows, classifying ranges (<4.0 red, 4.0-7.5 green, >7.5 yellow), broadcasting to active hardware sessions, and providing REST API /api/glucose.",
@@ -645,7 +653,102 @@
         "pdf-knowledge-base/server/services/glucoseHubService.js"
       ]
     }
-  }
+  },
+    "src/components/Dashboard/WeatherPortal.jsx": {
+      "description": "Weather page (/ims/weather) under Core functions: home and saved places, today card, 16-day strip, 48-hour hourly strip with rain chance and wind, what Ims will say, and the weather phrases section.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx",
+        "pdf-knowledge-base/server/routes/weather.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/dependencyWatchService.js": {
+      "description": "Weekly npm audit / npm outdated across IMS and scanned repos; results in settings; dev ideas per critical advisory.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/devIdeasService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/globalSearchService.js": {
+      "description": "Command Palette search across memories, tasks, lists, chronicles, dev ideas, recordings, calendar and the PDF library.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/calendarService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/routes/search.js": {
+      "description": "GET /api/search.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/globalSearchService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/routeFinderService.js": {
+      "description": "Route finder (shape, distance and time ranges), duplicate finder, Komoot import job and evening sync on run days.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/routeService.js",
+        "pdf-knowledge-base/server/services/runPlanService.js",
+        "pdf-knowledge-base/server/services/routeDescriptionService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/routeDescriptionService.js": {
+      "description": "One-line route descriptions from Komoot directions or Nominatim road names, stored in planned_routes.description.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/routeService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/trainingLoadService.js": {
+      "description": "ATL/CTL/TSB, ACWR, weekly ramp, recovery time and percent from Strava.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/agpService.js": {
+      "description": "Clinic AGP report (14/90 days) built as HTML and printed to PDF.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/calendarService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/postRunService.js": {
+      "description": "Post-run review from a run's CGM trace with service-linked follow-ups.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/runGlucoseService.js",
+        "pdf-knowledge-base/server/services/runPlanService.js",
+        "pdf-knowledge-base/server/services/trainingLoadService.js"
+      ]
+    },
+    "src/components/Dashboard/DependencyWatchModal.jsx": {
+      "description": "Code Repo > Dependencies results modal.",
+      "dependencies": [
+        "src/hooks/useDependencyWatch.js"
+      ]
+    },
+    "src/hooks/useDependencyWatch.js": {
+      "description": "Loads the dependency watch state.",
+      "dependencies": []
+    },
+    "src/hooks/useFocusItem.js": {
+      "description": "Scrolls to and highlights the #item a search result opened.",
+      "dependencies": []
+    },
+    "src/components/Dashboard/TrainingLoadCard.jsx": {
+      "description": "Training load, ramp and recovery card (Run Planner, Blood sugar).",
+      "dependencies": []
+    },
+    "src/components/Dashboard/RunPlanner/RunRouteFinderTab.jsx": {
+      "description": "Run Planner tab 2: route finder with range sliders, mini maps, descriptions, Komoot import and duplicates.",
+      "dependencies": []
+    },
+    "src/components/Dashboard/RunPlanner/PostRunReviewPanel.jsx": {
+      "description": "Flythrough retrospective for a completed run with linked follow-ups.",
+      "dependencies": []
+    },
+    "src/components/Dashboard/RunPlanner/RunPlanDock.jsx": {
+      "description": "Always-on Run plan dock at the foot of the Run Planner.",
+      "dependencies": [
+        "src/components/Dashboard/RunPlanner/RunPlanChart.jsx"
+      ]
+    },
+    "src/components/Dashboard/RunPlanner/RunPlanChart.jsx": {
+      "description": "Interactive glucose / hydration / insulin on board / course chart for the run plan.",
+      "dependencies": []
+    }
 }
 
 

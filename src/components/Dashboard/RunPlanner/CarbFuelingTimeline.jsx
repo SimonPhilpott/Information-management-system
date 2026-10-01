@@ -53,7 +53,7 @@ export function PlanChart({ plan, isDark }) {
         ))}
         <path d={area} fill={isDark ? "rgba(148,163,184,0.25)" : "rgba(120,53,15,0.12)"} stroke={isDark ? "#94a3b8" : "#b45309"} strokeWidth="1.2" />
         <text x={2} y={H1 + GAP + 10} fontSize="9" fontWeight="700" fill="currentColor" opacity="0.7">{Math.round(eMax)}m</text>
-        {ticks.map((m) => (<text key={m} x={X(m)} y={H1 + GAP + H2 + 12} fontSize="9" fontWeight="600" textAnchor="middle" fill="currentColor" opacity="0.8">{m === 0 ? 'start' : `${m}m`}</text>))}
+        {ticks.map((m) => (<text key={m} x={X(m)} y={H1 + GAP + H2 + 12} fontSize="9" fontWeight="600" textAnchor="middle" fill="currentColor" opacity="0.8">{m === 0 ? 'start' : `${m} min`}</text>))}
       </svg>
       <div className={`flex flex-wrap gap-x-4 gap-y-1 text-[10px] mt-1 ${isDark ? 'text-slate-400' : 'text-[#2E2B27] font-medium'}`}>
         <span><span className="inline-block w-3 h-1 bg-sky-500 align-middle mr-1 rounded" />estimated glucose with plan</span>
@@ -128,7 +128,8 @@ export default function CarbFuelingTimeline({
           {/* Total Fuel — ± adjusts global total (proportional rebalance) */}
           <div className={`px-3 py-1.5 rounded-xl border text-right ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/15'}`}>
             <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/70'}`}>Total Fuel</div>
-            <div className="flex items-center gap-1.5 mt-0.5">
+            {/* - and + pinned left and right; the total sits in a fixed-width middle so they never shift */}
+            <div className="grid grid-cols-[28px_minmax(56px,1fr)_28px] items-center gap-1 mt-0.5">
               {onStepCarbs && (
                 <button
                   onClick={() => onStepCarbs(-5)}
@@ -137,7 +138,7 @@ export default function CarbFuelingTimeline({
                   title="Reduce total carbs by 5g (rebalances all stops proportionally)"
                 >-</button>
               )}
-              <span className={`text-sm font-black tabular-nums ${isDark ? 'text-yellow-400' : 'text-amber-950'}`}>
+              <span className={`text-sm font-black tabular-nums text-center ${isDark ? 'text-yellow-400' : 'text-amber-950'}`}>
                 {totalCarbs} <span className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-[#2E2B27]'}`}>g</span>
               </span>
               {onStepCarbs && (
@@ -264,14 +265,7 @@ export default function CarbFuelingTimeline({
         </div>
       )}
 
-      {/* Trajectory Elevation & Glucose Infographic Chart */}
-      <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-slate-950/50 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/10'}`}>
-        <div className={`text-xs font-black uppercase tracking-wider mb-2.5 flex items-center gap-2 ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>
-          <Sparkles size={13} className="text-sky-500" />
-          Physiologic Glucose Trajectory vs Course Topography
-        </div>
-        <PlanChart plan={plan} isDark={isDark} />
-      </div>
+      {/* The glucose / hydration / course chart lives at the top of the Run Plan (RunPlanChart). */}
     </div>
   );
 }

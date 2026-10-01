@@ -1,5 +1,6 @@
 import AccountChip from './AccountChip';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useFocusItem } from '../../hooks/useFocusItem';
 import { 
   Brain, 
   ArrowLeft, 
@@ -52,6 +53,7 @@ export default function MemoriesPortal({
   const isDark = theme === 'dark';
 
   const [memories, setMemories] = useState([]);
+  useFocusItem(memories.length); // Ctrl+K search results land on #<item>
   const [totalCount, setTotalCount] = useState(0);
   const [categoryCounts, setCategoryCounts] = useState({});
   const [isLoading, setIsLoading] = useState(true);
@@ -559,6 +561,7 @@ export default function MemoriesPortal({
                 return (
                   <div
                     key={mem.id}
+                    id={`memory-${mem.id}`}
                     className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col justify-between group hover:shadow-lg ${
                       isDark 
                         ? 'bg-slate-900/50 hover:bg-slate-900/80 border-white/5 hover:border-cyan-500/30 shadow-[0_4px_20px_rgba(0,0,0,0.2)]' 

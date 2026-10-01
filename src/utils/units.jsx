@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
 // Distance units for run data: kilometres or miles. One choice shared by every page and
-// remembered in the browser. (Elevation stays in metres.) The server always works in km.
+// remembered in the browser. Climbing follows it - metres with km, feet with miles. The server
+// always works in km and metres.
 const KEY = 'ims_units';
 export const KM_PER_MI = 1.609344;
+export const FT_PER_M = 3.28084;
 
 const read = () => { try { return localStorage.getItem(KEY) === 'mi' ? 'mi' : 'km'; } catch (_) { return 'km'; } };
 
@@ -41,6 +43,9 @@ export const paceToMinPerKm = (text, units) => {
   const perUnit = Number(m) + (Number(s) || 0) / 60;
   return units === 'mi' ? perUnit / KM_PER_MI : perUnit;
 };
+// metres of climbing/altitude -> metres or feet to match the distance unit.
+export const elev = (m, units) => (m == null ? null : Math.round(units === 'mi' ? m * FT_PER_M : Number(m)));
+export const elevUnit = (units) => (units === 'mi' ? 'ft' : 'm');
 // metres per second -> km/h or mph.
 export const speedText = (ms, units) => (units === 'mi' ? `${(ms * 3.6 / KM_PER_MI).toFixed(1)} mph` : `${(ms * 3.6).toFixed(1)} km/h`);
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useFocusItem } from '../../hooks/useFocusItem';
 import { Mic, Square, ChevronDown, ChevronRight, Copy, Check, Sparkles, Trash2, Pencil, Save, X, RotateCw, Circle } from 'lucide-react';
 import PortalShell from './PortalShell';
 
@@ -32,6 +33,7 @@ const summaryToText = (rec) => {
 export default function RecordingsPortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
   const isDark = theme === 'dark';
   const [recordings, setRecordings] = useState([]);
+  useFocusItem(recordings.length); // Ctrl+K search results land on #<item>
   const [status, setStatus] = useState({ active: false });
   const [isLoading, setIsLoading] = useState(true);
   const [withWhom, setWithWhom] = useState('');
@@ -159,7 +161,7 @@ export default function RecordingsPortal({ theme = 'dark', onThemeToggle, setCur
       ) : (
         <div className="flex flex-col gap-3">
           {recordings.map((r) => (
-            <div key={r.id} className={panel}>
+            <div key={r.id} id={`recording-${r.id}`} className={panel}>
               <div className="flex items-center gap-3">
                 <button onClick={() => openRecording(r.id)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
                   {openId === r.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}

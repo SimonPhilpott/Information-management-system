@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Play, Pause, Square, RotateCcw, FastForward, Rewind, Sparkles, CheckCircle2, AlertTriangle, Clock, Mountain, Cookie, Shield, HeartPulse, ChevronRight, History, Flag } from 'lucide-react';
 import RunGaugesBar from './RunGaugesBar';
+import PostRunReviewPanel from './PostRunReviewPanel';
 import { dist, paceText, paceToMinPerKm } from '../../../utils/units';
 
 /**
- * Tab 4: Interactive Run Flythrough & Retrospective Player
+ * Tab 3: Interactive Run Flythrough & Retrospective Player
  * Replays completed runs or simulated plans with an animated runner locator,
  * sweeping radial gauges, jump-to-time timeline scrubber, post-run recovery replay, and AI retrospective scrutiny.
  */
@@ -17,7 +18,8 @@ export default function RunFlythroughTab({
   panelClass = '',
   btnClass = '',
   ghostClass = '',
-  targets = null
+  targets = null,
+  onPlanRoute = null
 }) {
   // Mode: 'plan' (simulated plan) or 'history' (actual past completed run)
   const [replayMode, setReplayMode] = useState('plan');
@@ -191,7 +193,7 @@ export default function RunFlythroughTab({
     if (mins >= 60) {
       const hrs = Math.floor(mins / 60);
       const remMins = mins % 60;
-      return `${hrs}h ${String(remMins).padStart(2, '0')}m`;
+      return `${hrs} h ${String(remMins).padStart(2, '0')} min`;
     }
     return `${mins}:${String(secs).padStart(2, '0')}`;
   };
@@ -226,7 +228,7 @@ export default function RunFlythroughTab({
             >
               {routeHistory.runs.map((r, i) => (
                 <option key={r.id} value={i}>
-                  {r.day} — {dist(r.km, units, 1)} {units} in {Math.round(r.minutes)}m ({paceText(r.paceMinPerKm, units)}/{units})
+                  {r.day} — {dist(r.km, units, 1)} {units} in {Math.round(r.minutes)} min ({paceText(r.paceMinPerKm, units)}/{units})
                 </option>
               ))}
             </select>
@@ -431,7 +433,7 @@ export default function RunFlythroughTab({
                   key={idx}
                   className="absolute top-0 bottom-0 w-1 bg-yellow-400"
                   style={{ left: `${stopFrac * 100}%` }}
-                  title={`Carb Stop ${idx + 1}: ${s.grams}g at ${s.minute}m`}
+                  title={`Carb Stop ${idx + 1}: ${s.grams}g at ${s.minute} min`}
                 />
               );
             })}
@@ -444,7 +446,7 @@ export default function RunFlythroughTab({
 
             {/* Hover Tooltip Overlay */}
             <div className={`absolute left-2 top-1.5 text-[10px] font-mono pointer-events-none ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>
-              Scrubber: {formatTime(currentSec)} / {formatTime(totalDurationSec)} • Glucose: {currentSample.bg} mmol/L {currentSample.isRecovery ? `(Recovery +${currentSample.recoveryMin}m)` : ''}
+              Scrubber: {formatTime(currentSec)} / {formatTime(totalDurationSec)} • Glucose: {currentSample.bg} mmol/L {currentSample.isRecovery ? `(Recovery +${currentSample.recoveryMin} min)` : ''}
             </div>
           </div>
 
@@ -522,50 +524,12 @@ export default function RunFlythroughTab({
         </div>
       </div>
 
-      {/* RETROSPECTIVE AUDIT & AI INSIGHTS CARD */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* What Worked Panel */}
-        <div className={`p-4 rounded-xl border ${isDark ? 'border-emerald-500/20 bg-emerald-950/10' : 'border-emerald-600/30 bg-[#FAF7F2]'}`}>
-          <div className={`flex items-center gap-2 mb-2 font-bold text-xs uppercase tracking-wider ${isDark ? 'text-emerald-400' : 'text-emerald-800'}`}>
-            <CheckCircle2 size={15} />
-            <span>Retrospective: What Worked</span>
-          </div>
-          <div className={`flex flex-col gap-2 text-xs ${isDark ? 'text-slate-300' : 'text-[#2E2B27]'}`}>
-            <div className="flex items-start gap-2">
-              <span className={`w-1.5 h-1.5 rounded-full ${isDark ? 'bg-emerald-400' : 'bg-emerald-600'} mt-1.5 shrink-0`} />
-              <span>Starting glucose at {targets?.startTarget || 8.0} mmol/L provided sufficient aerobic headroom without immediate drop.</span>
-            </div>
-            {stops.length > 0 && (
-              <div className="flex items-start gap-2">
-                <span className={`w-1.5 h-1.5 rounded-full ${isDark ? 'bg-emerald-400' : 'bg-emerald-600'} mt-1.5 shrink-0`} />
-                <span>Carb stop timed at minute {stops[0].minute} blunted muscle uptake before the first steep incline.</span>
-              </div>
-            )}
-            <div className="flex items-start gap-2">
-              <span className={`w-1.5 h-1.5 rounded-full ${isDark ? 'bg-emerald-400' : 'bg-emerald-600'} mt-1.5 shrink-0`} />
-              <span>Downhill sections maintained stable glucose expenditure within aerobic base bounds.</span>
-            </div>
-          </div>
-        </div>
-
-        {/* What to Watch / Adjustments */}
-        <div className={`p-4 rounded-xl border ${isDark ? 'border-amber-500/20 bg-amber-950/10' : 'border-amber-600/30 bg-[#FAF7F2]'}`}>
-          <div className={`flex items-center gap-2 mb-2 font-bold text-xs uppercase tracking-wider ${isDark ? 'text-amber-400' : 'text-amber-800'}`}>
-            <AlertTriangle size={15} />
-            <span>Retrospective: What to Watch & Refine</span>
-          </div>
-          <div className={`flex flex-col gap-2 text-xs ${isDark ? 'text-slate-300' : 'text-[#2E2B27]'}`}>
-            <div className="flex items-start gap-2">
-              <span className={`w-1.5 h-1.5 rounded-full ${isDark ? 'bg-amber-400' : 'bg-amber-600'} mt-1.5 shrink-0`} />
-              <span>Steep gradient sections (&gt; 6%) demand 35% higher energy expenditure; ensure carbs are ingested 10 minutes prior.</span>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className={`w-1.5 h-1.5 rounded-full ${isDark ? 'bg-amber-400' : 'bg-amber-600'} mt-1.5 shrink-0`} />
-              <span>Watch post-run recovery: if insulin was reduced pre-run, monitor for mild late-evening hepatic rebound.</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* RETROSPECTIVE - only for a real completed run, from its own glucose trace */}
+      <PostRunReviewPanel
+        activityId={replayMode === 'history' ? routeHistory?.runs?.[selectedRunIdx]?.id : null}
+        isDark={isDark}
+        onPlanRoute={onPlanRoute}
+      />
     </div>
   );
 }

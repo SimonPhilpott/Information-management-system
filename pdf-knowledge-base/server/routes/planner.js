@@ -7,6 +7,7 @@ import {
 import { estimatePlan, estimateDemand, routeRunHistory, getTargets, saveTargets, personalFit, calculateHydration, SOURCES } from '../services/runPlanService.js';
 import { getCurrentState, getLoopSettings } from '../services/runGlucoseService.js';
 import { getWeather } from '../services/weatherService.js';
+import { findRoutes, findDuplicateRoutes, komootSyncStatus, startKomootSync } from '../services/routeFinderService.js';
 import { evaluateGlucoseReadiness } from '../services/glucoseReadinessService.js';
 import {
   getRulebook, saveRulebook, resetRulebook,
@@ -40,6 +41,19 @@ router.get('/targets', (req, res) => res.json({ success: true, targets: getTarge
 router.put('/targets', (req, res) => { try { res.json({ success: true, targets: saveTargets(req.body || {}) }); } catch (err) { fail(res, err); } });
 
 router.get('/routes', (req, res) => res.json({ success: true, routes: listRoutes() }));
+// Route finder and duplicate finder (before /routes/:id, which would otherwise swallow these paths)
+router.get('/routes/find', async (req, res) => {
+  try { res.json({ success: true, ...(await findRoutes({ shape: req.query.shape || 'any', minKm: req.query.minKm, maxKm: req.query.maxKm, minMinutes: req.query.minMinutes, maxMinutes: req.query.maxMinutes })) }); } catch (err) { fail(res, err); }
+});
+router.get('/routes/duplicates', async (req, res) => {
+  try { res.json({ success: true, ...(await findDuplicateRoutes()) }); } catch (err) { fail(res, err); }
+});
+router.get('/komoot/sync', async (req, res) => {
+  try { res.json({ success: true, ...(await komootSyncStatus()) }); } catch (err) { fail(res, err); }
+});
+router.post('/komoot/sync', async (req, res) => {
+  try { res.json({ success: true, job: await startKomootSync() }); } catch (err) { fail(res, err); }
+});
 router.get('/routes/:id', (req, res) => { const r = getRoute(Number(req.params.id)); r ? res.json({ success: true, route: r }) : fail(res, new Error('Route not found.'), 404); });
 router.delete('/routes/:id', (req, res) => { deleteRoute(Number(req.params.id)) ? res.json({ success: true }) : fail(res, new Error('Route not found.'), 404); });
 
