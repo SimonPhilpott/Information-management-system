@@ -148,13 +148,14 @@ export default function CommandPalette({ isOpen, onClose, onNavigate, theme = 'd
     setSelectedIndex(0);
   }, [query]);
 
-  // Handle keyboard navigation
+  // Handle keyboard navigation (Capture phase ensures Escape is handled even if inputs intercept it)
   useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' || e.code === 'Escape') {
         e.preventDefault();
+        e.stopPropagation();
         if (quickMode) {
           setQuickMode(null);
         } else {
@@ -185,8 +186,8 @@ export default function CommandPalette({ isOpen, onClose, onNavigate, theme = 'd
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [isOpen, selectedIndex, allItems, quickMode, onNavigate, onClose]);
 
   // Scroll selected item into view
@@ -255,7 +256,10 @@ export default function CommandPalette({ isOpen, onClose, onNavigate, theme = 'd
   const selectedBg = isDark ? 'bg-violet-600/20 border-violet-500/30 text-white' : 'bg-violet-50 border-violet-200 text-violet-950';
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-start justify-center pt-[12vh] px-4 backdrop-blur-md bg-black/50 animate-fadeIn">
+    <div 
+      className="fixed inset-0 z-[9999] flex items-start justify-center pt-[12vh] px-4 backdrop-blur-md bg-black/50 animate-fadeIn"
+      onClick={onClose}
+    >
       <div
         className={`w-full max-w-2xl rounded-2xl shadow-2xl border backdrop-blur-xl overflow-hidden flex flex-col max-h-[75vh] ${bgModal}`}
         onClick={(e) => e.stopPropagation()}
@@ -271,9 +275,27 @@ export default function CommandPalette({ isOpen, onClose, onNavigate, theme = 'd
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search 24+ portals, check glucose, or add notes... (Type / or keywords)"
               className={`flex-1 bg-transparent text-sm outline-none ${isDark ? 'text-white' : 'text-slate-900'}`}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape' || e.code === 'Escape') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onClose();
+                }
+              }}
             />
-            <div className="flex items-center gap-1.5 shrink-0">
-              <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold border ${isDark ? 'bg-slate-800/80 border-white/10 text-slate-400' : 'bg-slate-200 border-slate-300 text-slate-600'}`}>ESC to close</span>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold border ${isDark ? 'bg-slate-800/80 border-white/10 text-slate-400' : 'bg-slate-200 border-slate-300 text-slate-600'}`}>ESC</span>
+              <button
+                onClick={onClose}
+                className={`p-1.5 rounded-lg border transition-all active:scale-95 ${
+                  isDark 
+                    ? 'hover:bg-white/10 text-slate-400 hover:text-white border-white/10' 
+                    : 'hover:bg-slate-200 text-slate-500 hover:text-slate-900 border-slate-300'
+                }`}
+                title="Close Command Palette (Esc)"
+              >
+                <X size={16} />
+              </button>
             </div>
           </div>
         ) : (

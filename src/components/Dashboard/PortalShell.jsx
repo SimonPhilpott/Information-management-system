@@ -1,7 +1,7 @@
 import AccountChip from './AccountChip';
 import { useAuth } from '../../AuthGate';
 import React from 'react';
-import { ArrowLeft, Sun, Moon, Check, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Sun, Moon, Check, AlertCircle, Command } from 'lucide-react';
 
 // Common frame for /ims/* pages: scrollable page, sticky header with a back
 // button to the IMS Hub, theme toggle, and toast notification.
@@ -56,6 +56,18 @@ export default function PortalShell({
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => {
+              window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+            }}
+            title="Global Command Palette (Ctrl+K)"
+            className={`p-2 rounded-xl transition-all border flex items-center gap-1.5 text-xs font-bold ${
+              isDark ? 'bg-white/5 hover:bg-white/10 text-slate-300 border-white/5' : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 text-slate-700 border-[#2E2B27]/10'
+            }`}
+          >
+            <Command size={14} />
+            <span className="hidden md:inline font-mono text-[10px]">Ctrl+K</span>
+          </button>
           <AccountChip isDark={isDark} />
           {onThemeToggle && (
             <button onClick={onThemeToggle} className={`p-2 rounded-xl transition-all border ${
