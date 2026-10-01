@@ -71,20 +71,26 @@ export default function PreRunReadinessCard({
     clinicalNotes
   } = readiness;
 
-  let badgeColor = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+  let badgeColor = isDark
+    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+    : 'bg-emerald-100 text-emerald-900 border-emerald-300 font-black';
   let badgeIcon = CheckCircle2;
-  let borderAccent = isDark ? 'border-emerald-500/30' : 'border-emerald-400';
+  let borderAccent = isDark ? 'border-emerald-500/30' : 'border-emerald-300';
   let titleText = 'READY TO LAUNCH';
 
   if (status === 'WAIT') {
-    badgeColor = 'bg-rose-500/15 text-rose-400 border-rose-500/30';
+    badgeColor = isDark
+      ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+      : 'bg-rose-100 text-rose-950 border-rose-300 font-black';
     badgeIcon = AlertOctagon;
-    borderAccent = isDark ? 'border-rose-500/30' : 'border-rose-400';
+    borderAccent = isDark ? 'border-rose-500/30' : 'border-rose-300';
     titleText = 'WAIT & STABILISE FIRST';
   } else if (status === 'EAT FIRST') {
-    badgeColor = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+    badgeColor = isDark
+      ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+      : 'bg-amber-100 text-amber-950 border-amber-300 font-black';
     badgeIcon = AlertTriangle;
-    borderAccent = isDark ? 'border-amber-500/30' : 'border-amber-400';
+    borderAccent = isDark ? 'border-amber-500/30' : 'border-amber-300';
     titleText = 'CONSUME PRE-RUN CARBS FIRST';
   }
 
@@ -103,11 +109,11 @@ export default function PreRunReadinessCard({
               <span className={`text-[11px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md border ${badgeColor}`}>
                 {status}
               </span>
-              <span className="text-xs font-black uppercase tracking-tight text-slate-200">
+              <span className={`text-xs font-black uppercase tracking-tight ${isDark ? 'text-slate-100' : 'text-slate-950 font-black'}`}>
                 Pre-Run Glucose Readiness
               </span>
             </div>
-            <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+            <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-300' : 'text-slate-800 font-medium'}`}>
               {summary}
             </p>
           </div>
@@ -116,13 +122,13 @@ export default function PreRunReadinessCard({
         {/* Key Metrics Chips */}
         <div className="flex items-center gap-2 shrink-0">
           {recommendedPreRunCarbs > 0 && (
-            <div className={`px-3 py-1.5 rounded-xl border flex flex-col items-end ${isDark ? 'bg-amber-500/10 border-amber-500/20 text-amber-300' : 'bg-amber-50 border-amber-300 text-amber-900'}`}>
+            <div className={`px-3 py-1.5 rounded-xl border flex flex-col items-end ${isDark ? 'bg-amber-500/10 border-amber-500/20 text-amber-300' : 'bg-amber-50 border-amber-300 text-amber-950 font-bold'}`}>
               <span className="text-[9px] font-bold uppercase tracking-wider">Suggested Carbs</span>
               <span className="text-sm font-black tabular-nums font-mono">+{recommendedPreRunCarbs} g</span>
             </div>
           )}
           {delayMinutes > 0 && (
-            <div className={`px-3 py-1.5 rounded-xl border flex flex-col items-end ${isDark ? 'bg-rose-500/10 border-rose-500/20 text-rose-300' : 'bg-rose-50 border-rose-300 text-rose-900'}`}>
+            <div className={`px-3 py-1.5 rounded-xl border flex flex-col items-end ${isDark ? 'bg-rose-500/10 border-rose-500/20 text-rose-300' : 'bg-rose-50 border-rose-300 text-rose-950 font-bold'}`}>
               <span className="text-[9px] font-bold uppercase tracking-wider">Delay Launch</span>
               <span className="text-sm font-black tabular-nums font-mono">~{delayMinutes} min</span>
             </div>
@@ -135,24 +141,24 @@ export default function PreRunReadinessCard({
         <div className="flex flex-col gap-1.5 text-xs">
           {advisoryBullets.map((bullet, idx) => (
             <div key={idx} className="flex items-start gap-2">
-              <Sparkles size={13} className="text-amber-400 shrink-0 mt-0.5" />
-              <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>{bullet}</span>
+              <Sparkles size={13} className="text-amber-500 shrink-0 mt-0.5" />
+              <span className={isDark ? 'text-slate-300' : 'text-slate-800 font-medium'}>{bullet}</span>
             </div>
           ))}
         </div>
       )}
 
       {/* Target Launch Range & T1D Action Footer */}
-      <div className={`pt-2.5 border-t border-inherit flex flex-wrap items-center justify-between gap-2 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+      <div className={`pt-2.5 border-t border-inherit flex flex-wrap items-center justify-between gap-2 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-700 font-medium'}`}>
         <div className="flex items-center gap-3">
-          <span>Target Launch BG: <strong className="text-emerald-400 font-mono">{targetLaunchBg || '7.0 - 9.0'} mmol/L</strong></span>
-          <span>Trend buffer: <strong className="text-slate-300 font-mono">{trendBufferApplied || '0 g'}</strong></span>
+          <span>Target Launch BG: <strong className={`font-mono ${isDark ? 'text-emerald-400' : 'text-emerald-800 font-black'}`}>{targetLaunchBg || '7.0 - 9.0'} mmol/L</strong></span>
+          <span>Trend buffer: <strong className={`font-mono ${isDark ? 'text-slate-300' : 'text-slate-900 font-bold'}`}>{trendBufferApplied || '0 g'}</strong></span>
         </div>
 
         {recommendedPreRunCarbs > 0 && onApplyCarbs && (
           <button
             onClick={() => onApplyCarbs(recommendedPreRunCarbs)}
-            className="px-3 py-1 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 flex items-center gap-1.5 shadow-sm active:scale-95 transition"
+            className="px-3 py-1 rounded-lg text-xs font-black bg-amber-500 hover:bg-amber-400 text-slate-950 flex items-center gap-1.5 shadow-sm active:scale-95 transition"
           >
             <Cookie size={12} />
             <span>Apply +{recommendedPreRunCarbs}g to Run Plan</span>

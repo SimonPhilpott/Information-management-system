@@ -910,59 +910,59 @@ export default function ActivitiesPortal({ theme = 'dark', onThemeToggle, setCur
                   {/* 3 Interactive Zone Metric Cards */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {/* Zone 1 & 2: Aerobic */}
-                    <div className={`rounded-xl border p-3 flex flex-col justify-between ${isDark ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-emerald-200 bg-emerald-50/60'}`}>
+                    <div className={`rounded-xl border p-3 flex flex-col justify-between ${isDark ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-emerald-300 bg-emerald-50/80 shadow-sm'}`}>
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Aerobic (Z1-Z2)</span>
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">&lt; 145 bpm</span>
+                          <span className={`text-[10px] font-black uppercase tracking-wider ${isDark ? 'text-emerald-400' : 'text-emerald-800'}`}>Aerobic (Z1-Z2)</span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${isDark ? 'bg-emerald-500/20 text-emerald-300' : 'bg-emerald-200/80 text-emerald-900'}`}>&lt; 145 bpm</span>
                         </div>
-                        <div className="text-xl font-black tabular-nums text-slate-100 mb-0.5">
-                          {dist(summary.periods.last28.hrZones.aerobic.km, units)} <span className="text-xs font-bold text-slate-400">{units}</span>
-                          <span className="text-xs font-semibold text-slate-500 ml-1.5">({summary.periods.last28.hrZones.aerobic.hours} h)</span>
+                        <div className={`text-xl font-black tabular-nums mb-0.5 ${isDark ? 'text-slate-100' : 'text-slate-950 font-black'}`}>
+                          {dist(summary.periods.last28.hrZones.aerobic.km, units)} <span className={`text-xs font-bold ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>{units}</span>
+                          <span className={`text-xs font-bold ml-1.5 ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>({summary.periods.last28.hrZones.aerobic.hours} h)</span>
                         </div>
-                        <p className="text-[10px] text-slate-400 leading-tight">Base building, mitochondrial growth & fat oxidation. Safe for steady T1D glucose stability.</p>
+                        <p className={`text-[10px] leading-tight ${isDark ? 'text-slate-400' : 'text-slate-700 font-medium'}`}>Base building, mitochondrial growth & fat oxidation. Safe for steady T1D glucose stability.</p>
                       </div>
-                      <div className="mt-2.5 pt-2 border-t border-emerald-500/10 flex items-center justify-between text-[10px] text-slate-400">
+                      <div className={`mt-2.5 pt-2 border-t flex items-center justify-between text-[10px] ${isDark ? 'border-emerald-500/10 text-slate-400' : 'border-emerald-200 text-slate-700 font-semibold'}`}>
                         <span>{summary.periods.last28.hrZones.aerobic.count} sessions</span>
-                        <span className="font-bold text-emerald-400">{summary.periods.last28.hrZones.aerobic.pctDist}% of total volume</span>
+                        <span className={`font-bold ${isDark ? 'text-emerald-400' : 'text-emerald-800'}`}>{summary.periods.last28.hrZones.aerobic.pctDist}% of total volume</span>
                       </div>
                     </div>
 
                     {/* Zone 3 & 4: Threshold */}
-                    <div className={`rounded-xl border p-3 flex flex-col justify-between ${isDark ? 'border-amber-500/20 bg-amber-500/5' : 'border-amber-200 bg-amber-50/60'}`}>
+                    <div className={`rounded-xl border p-3 flex flex-col justify-between ${isDark ? 'border-amber-500/20 bg-amber-500/5' : 'border-amber-300 bg-amber-50/80 shadow-sm'}`}>
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">Threshold (Z3-Z4)</span>
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">145-168 bpm</span>
+                          <span className={`text-[10px] font-black uppercase tracking-wider ${isDark ? 'text-amber-400' : 'text-amber-900'}`}>Threshold (Z3-Z4)</span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${isDark ? 'bg-amber-500/20 text-amber-300' : 'bg-amber-200/80 text-amber-950'}`}>145-168 bpm</span>
                         </div>
-                        <div className="text-xl font-black tabular-nums text-slate-100 mb-0.5">
-                          {dist(summary.periods.last28.hrZones.threshold.km, units)} <span className="text-xs font-bold text-slate-400">{units}</span>
-                          <span className="text-xs font-semibold text-slate-500 ml-1.5">({summary.periods.last28.hrZones.threshold.hours} h)</span>
+                        <div className={`text-xl font-black tabular-nums mb-0.5 ${isDark ? 'text-slate-100' : 'text-slate-950 font-black'}`}>
+                          {dist(summary.periods.last28.hrZones.threshold.km, units)} <span className={`text-xs font-bold ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>{units}</span>
+                          <span className={`text-xs font-bold ml-1.5 ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>({summary.periods.last28.hrZones.threshold.hours} h)</span>
                         </div>
-                        <p className="text-[10px] text-slate-400 leading-tight">Lactate threshold & sustained tempo. Accelerates muscle glycogen burn rate.</p>
+                        <p className={`text-[10px] leading-tight ${isDark ? 'text-slate-400' : 'text-slate-700 font-medium'}`}>Lactate threshold & sustained tempo. Accelerates muscle glycogen burn rate.</p>
                       </div>
-                      <div className="mt-2.5 pt-2 border-t border-amber-500/10 flex items-center justify-between text-[10px] text-slate-400">
+                      <div className={`mt-2.5 pt-2 border-t flex items-center justify-between text-[10px] ${isDark ? 'border-amber-500/10 text-slate-400' : 'border-amber-200 text-slate-700 font-semibold'}`}>
                         <span>{summary.periods.last28.hrZones.threshold.count} sessions</span>
-                        <span className="font-bold text-amber-400">{summary.periods.last28.hrZones.threshold.pctDist}% of total volume</span>
+                        <span className={`font-bold ${isDark ? 'text-amber-400' : 'text-amber-900'}`}>{summary.periods.last28.hrZones.threshold.pctDist}% of total volume</span>
                       </div>
                     </div>
 
                     {/* Zone 5: VO2 Max */}
-                    <div className={`rounded-xl border p-3 flex flex-col justify-between ${isDark ? 'border-rose-500/20 bg-rose-500/5' : 'border-rose-200 bg-rose-50/60'}`}>
+                    <div className={`rounded-xl border p-3 flex flex-col justify-between ${isDark ? 'border-rose-500/20 bg-rose-500/5' : 'border-rose-300 bg-rose-50/80 shadow-sm'}`}>
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-rose-400">VO2 Max (Z5)</span>
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300">&gt; 168 bpm</span>
+                          <span className={`text-[10px] font-black uppercase tracking-wider ${isDark ? 'text-rose-400' : 'text-rose-900'}`}>VO2 Max (Z5)</span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${isDark ? 'bg-rose-500/20 text-rose-300' : 'bg-rose-200/80 text-rose-950'}`}>&gt; 168 bpm</span>
                         </div>
-                        <div className="text-xl font-black tabular-nums text-slate-100 mb-0.5">
-                          {dist(summary.periods.last28.hrZones.vo2max.km, units)} <span className="text-xs font-bold text-slate-400">{units}</span>
-                          <span className="text-xs font-semibold text-slate-500 ml-1.5">({summary.periods.last28.hrZones.vo2max.hours} h)</span>
+                        <div className={`text-xl font-black tabular-nums mb-0.5 ${isDark ? 'text-slate-100' : 'text-slate-950 font-black'}`}>
+                          {dist(summary.periods.last28.hrZones.vo2max.km, units)} <span className={`text-xs font-bold ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>{units}</span>
+                          <span className={`text-xs font-bold ml-1.5 ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>({summary.periods.last28.hrZones.vo2max.hours} h)</span>
                         </div>
-                        <p className="text-[10px] text-slate-400 leading-tight">Peak cardiovascular capacity & anaerobic intervals. High catecholamine release.</p>
+                        <p className={`text-[10px] leading-tight ${isDark ? 'text-slate-400' : 'text-slate-700 font-medium'}`}>Peak cardiovascular capacity & anaerobic intervals. High catecholamine release.</p>
                       </div>
-                      <div className="mt-2.5 pt-2 border-t border-rose-500/10 flex items-center justify-between text-[10px] text-slate-400">
+                      <div className={`mt-2.5 pt-2 border-t flex items-center justify-between text-[10px] ${isDark ? 'border-rose-500/10 text-slate-400' : 'border-rose-200 text-slate-700 font-semibold'}`}>
                         <span>{summary.periods.last28.hrZones.vo2max.count} sessions</span>
-                        <span className="font-bold text-rose-400">{summary.periods.last28.hrZones.vo2max.pctDist}% of total volume</span>
+                        <span className={`font-bold ${isDark ? 'text-rose-400' : 'text-rose-900'}`}>{summary.periods.last28.hrZones.vo2max.pctDist}% of total volume</span>
                       </div>
                     </div>
                   </div>
