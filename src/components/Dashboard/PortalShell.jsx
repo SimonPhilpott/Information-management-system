@@ -1,7 +1,7 @@
 import AccountChip from './AccountChip';
 import { useAuth } from '../../AuthGate';
 import React from 'react';
-import { ArrowLeft, Sun, Moon, Check, AlertCircle, Command } from 'lucide-react';
+import { ArrowLeft, Sun, Moon, Check, AlertCircle, Command, Activity } from 'lucide-react';
 
 // Common frame for /ims/* pages: scrollable page, sticky header with a back
 // button to the IMS Hub, theme toggle, and toast notification.
@@ -23,6 +23,8 @@ export default function PortalShell({
 
   const iconGradient = gradient || (isDark ? 'from-cyan-500 to-blue-600' : 'from-cyan-600 to-blue-700');
   const iconGlow = glow || 'rgba(6,182,212,0.3)';
+
+  const RenderIcon = Icon || Activity || null;
 
   return (
     // h-screen + overflow-y-auto: the app shell doesn't scroll the document,
@@ -47,7 +49,7 @@ export default function PortalShell({
           <div className="h-6 w-px bg-slate-500/20" /></>}
           <div className="flex items-center gap-3">
             <div className={`p-2 rounded-xl bg-gradient-to-tr ${iconGradient} shadow-[0_0_15px_var(--glow)]`} style={{ '--glow': iconGlow }}>
-              <Icon size={18} className="text-white" />
+              {RenderIcon && <RenderIcon size={18} className="text-white" />}
             </div>
             <div>
               <h1 className="text-base font-black tracking-tight leading-none uppercase">{title}</h1>

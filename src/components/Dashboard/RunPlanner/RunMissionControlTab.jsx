@@ -1,7 +1,8 @@
 import React from 'react';
-import { Route as RouteIcon, Mountain, RotateCw, Upload, Link2, Download, Unlink, ExternalLink, Trash2, Sparkles, Cookie, ChevronUp, ChevronDown, Calculator, Syringe, BookOpen, AlertTriangle, CheckCircle, Zap, CloudSun, Droplets, Wind, Thermometer, ShieldAlert } from 'lucide-react';
+import { Route as RouteIcon, Mountain, RotateCw, Upload, Link2, Download, Unlink, ExternalLink, Trash2, Sparkles, Cookie, ChevronUp, ChevronDown, Calculator, Syringe, BookOpen, AlertTriangle, CheckCircle, Zap, CloudSun, Droplets, Wind, Thermometer, ShieldAlert, FileText } from 'lucide-react';
 import RunGaugesBar from './RunGaugesBar';
 import CarbFuelingTimeline from './CarbFuelingTimeline';
+import PreRunReadinessCard from './PreRunReadinessCard';
 import { dist, toKm, paceText, paceToMinPerKm } from '../../../utils/units';
 
 const fmtMin = (m) => `${Math.floor(m / 60)}h ${String(Math.round(m % 60)).padStart(2, '0')}m`;
@@ -111,6 +112,19 @@ export default function RunMissionControlTab({
         bgCeiling={10.0}
         targetBg={targets?.startTarget || 8.0}
         isDark={isDark}
+      />
+
+      {/* PRE-RUN GLUCOSE READINESS CARD */}
+      <PreRunReadinessCard
+        currentBg={form.startBg || now?.now?.bg}
+        trendDirection={now?.now?.direction || 'Flat'}
+        plannedDurationMin={plan?.run?.durationMin || 45}
+        plannedIntensity={form.intensity || 'steady'}
+        sessionType="running"
+        isDark={isDark}
+        onApplyCarbs={(carbs) => {
+          if (stepCarbs) stepCarbs(carbs);
+        }}
       />
 
       {/* Safety Notice Banner */}
@@ -373,23 +387,38 @@ export default function RunMissionControlTab({
                         <div className={`text-[10px] ${isDark ? 'text-emerald-400/80' : 'text-emerald-700'}`}>~{fmtMin(routeHistory.expectedCurrentTimeMin)} • fitness</div>
                       </button>
                     )}
-                    {[['Last', routeHistory.last, 'sky'], ['Fastest', routeHistory.fastest, 'emerald'], ['Slowest', routeHistory.slowest, 'amber']].map(([name, run]) => (
-                      <button
+                    {[['Last', routeHistory.last, 'sky'], ['Fastest', routeHistory.fastest, 'emerald'], ['Slowest', routeHistory.slowest, 'amber']].map(([name, run]) => run && (
+                      <div
                         key={name}
                         onClick={() => {
                           setPaceTouched(true);
                           setForm((f) => ({ ...f, pace: paceText(run.paceMinPerKm, units) }));
                         }}
-                        className={`text-left rounded-lg px-3 py-2 border ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-[#2E2B27]/10 bg-white/70 hover:bg-white'} active:scale-95 transition-all`}
+                        className={`text-left rounded-lg p-2.5 border ${isDark ? 'border-white/10 hover:bg-white/5' : 'border-[#2E2B27]/10 bg-white/70 hover:bg-white'} active:scale-95 transition-all cursor-pointer flex flex-col justify-between`}
                       >
-                        <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'opacity-60 text-slate-400' : 'text-[#6A645D]'}`}>{name}</div>
-                        <div className={`text-sm font-black tabular-nums ${isDark ? '' : 'text-[#2E2B27]'}`}>
-                          {paceText(run.paceMinPerKm, units)} <span className={`text-[10px] font-bold ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>/{units}</span>
+                        <div>
+                          <div className="flex items-center justify-between gap-1 mb-0.5">
+                            <span className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'opacity-60 text-slate-400' : 'text-[#6A645D]'}`}>{name}</span>
+                            <a
+                              href={`/ims/activities?openActivity=${run.id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded transition-colors ${
+                                isDark ? 'bg-white/10 hover:bg-white/20 text-slate-300' : 'bg-black/5 hover:bg-black/10 text-slate-700'
+                              }`}
+                              title="Open this run's debrief notes and scrutiny in Activities"
+                            >
+                              <FileText size={9} />
+                              <span>Debrief</span>
+                            </a>
+                          </div>
+                          <div className={`text-sm font-black tabular-nums ${isDark ? '' : 'text-[#2E2B27]'}`}>
+                            {paceText(run.paceMinPerKm, units)} <span className={`text-[10px] font-bold ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>/{units}</span>
+                          </div>
                         </div>
-                        <div className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
+                        <div className={`text-[10px] mt-1 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
                           {new Date(`${run.day}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                         </div>
-                      </button>
+                      </div>
                     ))}
                     <button
                       onClick={() => {

@@ -32,6 +32,8 @@ const PORTALS = [
   { id: 'recordings', name: 'Voice Captures & Audio Logs', path: '/ims/recordings', category: 'Terminal & Hardware', icon: Mic, description: 'Listen to recorded speech turns and verify transcript text' },
   { id: 'phrases', name: 'Wake & Stop Phrases', path: '/ims/phrases', category: 'Terminal & Hardware', icon: MessageSquare, description: 'Approved wake phrases, room chatter rejection, and closing phrases' },
   { id: 'doorbell', name: 'Ring Doorbell Service', path: '/ims/doorbell', category: 'Terminal & Hardware', icon: Bell, description: 'Direct Ring API integration, live dings, motion alerts, snapshots, and Yorkshire voice alerts' },
+  { id: 'devicehealth', name: 'Device Health & Observability', path: '/ims/device-health', category: 'Terminal & Hardware', icon: Activity, description: 'Minute-by-minute Box-3 Wi-Fi RSSI, free heap, uptime, underruns and reconnect sparklines' },
+  { id: 'spend', name: 'Gemini Spend & Budget Breakdown', path: '/ims/spend', category: 'Development & Engineering', icon: Database, description: 'Tokens & estimated cost per service per day, soft monthly budget warning, and prompt optimization' },
   { id: 'news', name: 'News Feed Sources', path: '/ims/news', category: 'Intelligence & Memory', icon: Newspaper, description: 'RSS news subscriptions and daily morning briefing headlines' },
   { id: 'backups', name: 'System Backups & Maintenance', path: '/ims/backups', category: 'Development & Engineering', icon: Shield, description: 'Nightly SQLite database backups, schema snapshots, and vector store integrity' },
 ];
@@ -107,6 +109,38 @@ export default function CommandPalette({ isOpen, onClose, onNavigate, theme = 'd
           setQuickMode('glucose');
           fetchGlucoseTelemetry();
         }
+      },
+      {
+        id: 'action-audit',
+        name: 'Run Code Repository Audit',
+        category: 'Quick Actions',
+        icon: Shield,
+        description: 'Instant 1-click workspace static scan for TS types, unhandled async errors, and triple registry parity',
+        path: '/ims/code-repo?action=audit',
+      },
+      {
+        id: 'action-runplanner',
+        name: 'Plan Run Fuelling & Route',
+        category: 'Quick Actions',
+        icon: MapPin,
+        description: 'Interactive run planner with live weather, elevation scaling, and carb timeline',
+        path: '/ims/runplanner',
+      },
+      {
+        id: 'action-activities',
+        name: 'View Strava Training & HR Zones',
+        category: 'Quick Actions',
+        icon: TrendingUp,
+        description: 'Training activity logs, polarized HR volume distribution, and AI coaching debriefs',
+        path: '/ims/activities',
+      },
+      {
+        id: 'action-doorbell',
+        name: 'Open Ring Doorbell Live Hub',
+        category: 'Quick Actions',
+        icon: Bell,
+        description: 'Live doorbell motion & ding alerts, camera battery, snapshots, and Box-3 settings',
+        path: '/ims/doorbell',
       },
       {
         id: 'action-note',

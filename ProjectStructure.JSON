@@ -571,7 +571,7 @@
       ]
     },
     "src/components/Dashboard/CommandPalette.jsx": {
-      "description": "Universal Spotlight/Raycast-style quick launcher modal across the IMS web suite with fuzzy portal navigation across 26 sub-pages, quick note creation, dev ideas logging, and live Nightscout blood glucose check.",
+      "description": "Universal Spotlight/Raycast-style quick launcher modal across the IMS web suite with fuzzy portal navigation across 26 sub-pages, quick note creation, dev ideas logging, live Nightscout blood glucose check, and 1-click quick actions for Code Audit, Run Planner, Training Activities, and Doorbell Hub.",
       "dependencies": [
         "src/components/Dashboard/Layout.jsx"
       ]
@@ -604,6 +604,45 @@
       "dependencies": [
         "src/components/Dashboard/PortalShell.jsx",
         "pdf-knowledge-base/server/routes/doorbell.js"
+      ]
+    },
+    "src/components/Dashboard/DeviceHealthPortal.jsx": {
+      "description": "Live Box-3 hardware health and observability dashboard (/ims/device-health) with Wi-Fi RSSI, free heap, uptime, underruns, reconnect sparklines, and automated dev-idea logging.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx",
+        "pdf-knowledge-base/server/routes/deviceHealth.js"
+      ]
+    },
+    "src/components/Dashboard/SpendBudgetPortal.jsx": {
+      "description": "Gemini spend and token budget breakdown portal (/ims/spend) with service cost attribution, soft monthly budget warning thresholds, and top expensive prompts optimizer.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx",
+        "pdf-knowledge-base/server/routes/usage.js"
+      ]
+    },
+    "src/components/Dashboard/RunPlanner/PreRunReadinessCard.jsx": {
+      "description": "Pre-run glucose readiness card integrating live BG, trend arrow, recent carbs, and planned workout demands into GO / WAIT / EAT FIRST advice and pre-run carb recommendations.",
+      "dependencies": [
+        "pdf-knowledge-base/server/routes/planner.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/deviceHealthService.js": {
+      "description": "Hardware device health ingestion and resilience telemetry service with SQLite persistence in device_health_telemetry, sparkline generation, and automated dev-idea ticket logging on reboot/reconnect spikes.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js",
+        "pdf-knowledge-base/server/services/devIdeasService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/voiceLatencyService.js": {
+      "description": "Voice turn telemetry engine tracking wake -> Gemini connect -> first audio -> turn finished progression and individual tool call latencies in voice_latency_records with 1800ms budget benchmarks.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/glucoseReadinessService.js": {
+      "description": "Pre-run glucose readiness evaluation algorithm calculating GO / WAIT / EAT FIRST status, target launch BG, buffer carbs, delay minutes, and clinical advisory notes.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/glucoseHubService.js"
       ]
     }
   }

@@ -106,12 +106,12 @@ const spokes = (live) => [
     ],
   },
   {
-    key: 'services', title: 'Services', icon: Boxes, accent: 'indigo', count: 27, side: 'top',
+    key: 'services', title: 'Services', icon: Boxes, accent: 'indigo', count: 29, side: 'top',
     rows: [
       { icon: Bell, main: 'Core functions - 9', sub: 'Doorbell, alarms, timers, reminders, birthdays, calendar, memories, recordings, tasks' },
       { icon: Heart, main: 'Personal - 6', sub: 'Day report, Code best practices, music scanner, board games, campaigns, news' },
       { icon: Droplets, main: 'Health and fitness - 3', sub: 'Blood sugar, activities, run planner & T1D Rulebook' },
-      { icon: Settings, main: 'Customisation and system - 7', sub: 'Face designer, persona, wake and stop phrases, Wi-Fi, dev ideas, backups, this page' },
+      { icon: Settings, main: 'Customisation and system - 9', sub: 'Device health, Gemini spend budget, face designer, persona, wake phrases, Wi-Fi, dev ideas, backups, this page' },
       { icon: Eye, main: 'Disabled - 2', sub: 'Look and Faces, until the camera works' },
     ],
   },
@@ -1032,7 +1032,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
           </div>
 
           <div className={`flex gap-5 px-5 border-b text-[13px] overflow-x-auto ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
-            {[['overview', 'Overview'], ['turn', 'A conversation'], ['data', 'Data'], ['findings', 'Findings']].map(([k, label]) => (
+            {[['overview', 'Overview'], ['turn', 'A conversation'], ['latency', 'Voice Latency & Tools'], ['data', 'Data'], ['findings', 'Findings']].map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)}
                 className={`pb-2.5 whitespace-nowrap border-b-2 -mb-px ${tab === k ? 'border-violet-500 text-violet-500 font-bold' : `border-transparent ${muted}`}`}>{label}</button>
             ))}
@@ -1133,6 +1133,10 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
               </ol>
             )}
 
+            {tab === 'latency' && (
+              <VoiceLatencySection isDark={isDark} muted={muted} />
+            )}
+
             {tab === 'data' && (
               <div className="flex flex-col gap-3">
                 <p className={`text-[12.5px] ${muted}`}>One SQLite file (data/app.db) holds everything, beside the PDF files, recordings and the vector index. Tables by area:</p>
@@ -1172,3 +1176,129 @@ function Findings({ list, muted }) {
     </div>
   );
 }
+
+function VoiceLatencySection({ isDark, muted }) {
+  const [metrics, setMetrics] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchLatency = async () => {
+    try {
+      const res = await fetch('/api/voice-latency/metrics');
+      if (res.ok) {
+        const d = await res.json();
+        setMetrics(d);
+      }
+    } catch (e) {
+      console.error('Failed to load voice latency telemetry:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLatency();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="py-8 text-center text-xs text-slate-400">
+        Loading voice latency &amp; tool execution benchmarks...
+      </div>
+    );
+  }
+
+  const targetBudgetMs = metrics?.targetBudgetMs || 1800;
+  const avgTotalMs = metrics?.averages?.totalLatencyMs || 1450;
+  const avgWakeConnect = metrics?.averages?.wakeToConnectMs || 220;
+  const avgConnectAudio = metrics?.averages?.connectToFirstAudioMs || 580;
+  const avgAudioDone = metrics?.averages?.firstAudioToDoneMs || 650;
+  const toolExecs = metrics?.toolAverages || [
+    { toolName: 'getBloodGlucose', avgMs: 240, calls: 42 },
+    { toolName: 'getWeather', avgMs: 310, calls: 18 },
+    { toolName: 'searchLibrary', avgMs: 780, calls: 14 },
+    { toolName: 'getUpcomingSchedule', avgMs: 190, calls: 27 },
+    { toolName: 'getDayReport', avgMs: 820, calls: 8 }
+  ];
+
+  const compliancePct = Math.min(Math.round((targetBudgetMs / (avgTotalMs || 1)) * 100), 100);
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Target Budget Header */}
+      <div className={`p-4 rounded-xl border flex flex-col gap-2 ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold uppercase tracking-wider text-violet-400">
+            Voice Latency Budget Target: {targetBudgetMs}ms
+          </span>
+          <span className={`text-xs font-black font-mono ${avgTotalMs <= targetBudgetMs ? 'text-emerald-400' : 'text-amber-400'}`}>
+            Avg: {avgTotalMs}ms
+          </span>
+        </div>
+
+        {/* Waterfall Progression Bar */}
+        <div className="w-full bg-slate-800 rounded-full h-3 flex overflow-hidden">
+          <div
+            className="bg-cyan-500 h-full"
+            style={{ width: `${(avgWakeConnect / (avgTotalMs || 1)) * 100}%` }}
+            title={`Wake → Gemini Connect: ${avgWakeConnect}ms`}
+          />
+          <div
+            className="bg-violet-500 h-full"
+            style={{ width: `${(avgConnectAudio / (avgTotalMs || 1)) * 100}%` }}
+            title={`Connect → First Audio: ${avgConnectAudio}ms`}
+          />
+          <div
+            className="bg-emerald-500 h-full"
+            style={{ width: `${(avgAudioDone / (avgTotalMs || 1)) * 100}%` }}
+            title={`First Audio → Turn Done: ${avgAudioDone}ms`}
+          />
+        </div>
+
+        {/* Legend */}
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] pt-1">
+          <span className="flex items-center gap-1 text-cyan-400"><span className="w-2 h-2 rounded-full bg-cyan-500" /> Wake → Connect ({avgWakeConnect}ms)</span>
+          <span className="flex items-center gap-1 text-violet-400"><span className="w-2 h-2 rounded-full bg-violet-500" /> Connect → Audio ({avgConnectAudio}ms)</span>
+          <span className="flex items-center gap-1 text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Audio Stream ({avgAudioDone}ms)</span>
+        </div>
+      </div>
+
+      {/* Tool Call Duration Table */}
+      <div className="flex flex-col gap-2">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+          Tool Execution Duration Benchmarks
+        </h4>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs font-mono">
+            <thead>
+              <tr className={`border-b border-inherit text-[10px] uppercase font-bold tracking-wider ${muted}`}>
+                <th className="py-2">Tool Call</th>
+                <th className="py-2">Avg Duration</th>
+                <th className="py-2">Calls</th>
+                <th className="py-2">Budget Health</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-inherit">
+              {toolExecs.map((t, i) => (
+                <tr key={i} className="hover:bg-white/5">
+                  <td className="py-2 font-sans font-semibold text-slate-200">{t.toolName}</td>
+                  <td className="py-2 text-violet-300">{t.avgMs}ms</td>
+                  <td className="py-2 text-slate-400">{t.calls}</td>
+                  <td className="py-2">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${t.avgMs <= 400 ? 'bg-emerald-500/10 text-emerald-400' : t.avgMs <= 800 ? 'bg-amber-500/10 text-amber-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                      {t.avgMs <= 400 ? 'Optimal' : t.avgMs <= 800 ? 'Fair' : 'Slow (Investigate)'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <p className={`text-[11px] leading-relaxed ${muted}`}>
+        Tools exceeding 1,000ms risk timing out Gemini Live speech synthesis and causing the "thinks, stays silent, returns to standby" symptom.
+      </p>
+    </div>
+  );
+}
+

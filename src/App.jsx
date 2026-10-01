@@ -48,6 +48,8 @@ import { isCampaignPath, canonicalCampaignPath } from './components/Dashboard/ca
 import PhrasesPortal from './components/Dashboard/PhrasesPortal';
 import RunPlannerPortal from './components/Dashboard/RunPlannerPortal';
 import DoorbellPortal from './components/Dashboard/DoorbellPortal';
+import DeviceHealthPortal from './components/Dashboard/DeviceHealthPortal';
+import SpendBudgetPortal from './components/Dashboard/SpendBudgetPortal';
 import ImsHub from './components/Dashboard/ImsHub';
 import CommandPalette from './components/Dashboard/CommandPalette';
 
@@ -1450,6 +1452,26 @@ export default function App() {
   if (currentPath === '/ims/doorbell' || currentPath.startsWith('/ims/doorbell')) {
     return (
       <DoorbellPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/device-health' || currentPath.startsWith('/ims/device-health') || currentPath === '/ims/devicehealth') {
+    return (
+      <DeviceHealthPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/spend' || currentPath.startsWith('/ims/spend') || currentPath === '/ims/budget') {
+    return (
+      <SpendBudgetPortal
         theme={state.theme}
         onThemeToggle={actions.toggleTheme}
         setCurrentPath={setCurrentPath}

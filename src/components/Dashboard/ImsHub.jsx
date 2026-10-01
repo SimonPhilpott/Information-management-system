@@ -196,6 +196,22 @@ const LINKS = [
     glow: 'rgba(168,85,247,0.3)'
   },
   {
+    path: '/ims/device-health',
+    title: 'Device Health',
+    description: 'Minute-by-minute Box-3 Wi-Fi RSSI, free heap, uptime, underruns and reconnect sparklines.',
+    icon: Activity,
+    gradient: 'from-cyan-500 to-teal-600',
+    glow: 'rgba(6,182,212,0.3)'
+  },
+  {
+    path: '/ims/spend',
+    title: 'Gemini Spend Budget',
+    description: 'Tokens and cost per service per day, soft monthly budget cap, and expensive prompt optimization.',
+    icon: DatabaseBackup,
+    gradient: 'from-emerald-500 to-green-600',
+    glow: 'rgba(16,185,129,0.3)'
+  },
+  {
     path: '/ims/runplanner',
     title: 'Run Planner',
     description: 'Plan Komoot routes, timing and carbs to keep glucose steady.',
@@ -212,6 +228,14 @@ const LINKS = [
     glow: 'rgba(251,146,60,0.3)'
   },
   {
+    path: '/ims/doorbell',
+    title: 'Doorbell',
+    description: 'Direct Ring API integration, live dings, motion alerts, snapshots, and Yorkshire voice alerts.',
+    icon: Bell,
+    gradient: 'from-amber-500 to-rose-600',
+    glow: 'rgba(245,158,11,0.3)'
+  },
+  {
     path: '/ims/code-repo',
     title: 'Code Best Practices',
     description: 'Catalogued patterns, 5-principle engineering audits, and observations from your repositories.',
@@ -222,10 +246,10 @@ const LINKS = [
 ];
 
 const SECTIONS = [
-  ['Core functions', ['/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings', '/ims/tasks']],
+  ['Core functions', ['/ims/doorbell', '/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings', '/ims/tasks']],
   ['Personal', ['/ims/code-repo', '/ims/dayreport', '/ims/musicscan', '/ims/boardgames', '/campaigns', '/ims/news']],
   ['Health and fitness', ['/ims/glucose', '/ims/activities', '/ims/runplanner']],
-  ['Customisation and system settings', ['/ims/facedesigner', '/ims/persona', '/ims/phrases', '/ims/wifi', '/ims/devideas', '/ims/backups', '/ims/architecture']],
+  ['Customisation and system settings', ['/ims/device-health', '/ims/spend', '/ims/facedesigner', '/ims/persona', '/ims/phrases', '/ims/wifi', '/ims/devideas', '/ims/backups', '/ims/architecture']],
   ['Disabled', ['/ims/look', '/ims/faces']],
 ];
 

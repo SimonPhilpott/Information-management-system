@@ -55,9 +55,9 @@ db.exec(`
 export const DEFAULT_T1D_RULEBOOK = `# Running with T1D: Comprehensive Glucose Rulebook
 
 ## 1. Physiological Foundations & Fuel Metabolism
-* **Insulin-Independent vs Insulin-Mediated Glucose Uptake:** During aerobic running (Zone 1/Zone 2), skeletal muscle contraction triggers non-insulin-mediated GLUT4 transporter translocation to sarcolemma membranes, increasing cellular glucose uptake by 1.5x to 10x above baseline.
+* **Insulin-Independent vs Insulin-Mediated Glucose Uptake:** During aerobic running (Zone 1/Zone 2, HR <145 bpm), skeletal muscle contraction triggers non-insulin-mediated GLUT4 transporter translocation to sarcolemma membranes, increasing cellular glucose uptake by 1.5x to 10x above baseline.
 * **Circulating IOB Sensitivity Amplification:** Exercise dramatically increases microvascular perfusion and muscular blood flow, accelerating active insulin delivery. Circulating Insulin On Board (IOB) acts with 1.5x to 2.0x higher apparent potency while shutting down hepatic glycogenolysis and gluconeogenesis.
-* **Aerobic vs Anaerobic/Hill Dynamics:** Sustained aerobic running drives progressive downward glucose drift. High-intensity anaerobic efforts (steep gradient climbs, race finish sprints) stimulate catecholamines (adrenaline, noradrenaline) and cortisol, provoking acute counter-regulatory hepatic glucose release or delayed rebound crashes.
+* **Aerobic vs Anaerobic / VO2 Max Dynamics:** Sustained aerobic running (Z1-Z2 <145 bpm) drives progressive downward glucose drift. High-intensity anaerobic efforts or VO2 Max efforts (Zone 5, HR >168 bpm, speed intervals, steep gradient climbs) stimulate intense catecholamines (adrenaline, noradrenaline) and cortisol. This provokes acute counter-regulatory hepatic glucose release (unexplained spikes during or immediately post-run) followed by delayed glycogen resynthesis crashes 7-11 hours post-run.
 
 ## 2. Pre-Run Decision Matrix & Glycemic Gates
 * **Target Starting Glucose:** 7.0 – 10.0 mmol/L (optimal launch target ~9.0 mmol/L with a flat trend arrow).
@@ -81,6 +81,7 @@ export const DEFAULT_T1D_RULEBOOK = `# Running with T1D: Comprehensive Glucose R
 
 ## 4. In-Run Fueling Strategy & Elevation Adaptation
 * **Standard Aerobic Fueling Rate:** 30–60 g carbs per hour (up to 75 g/h during high IOB, sessions exceeding 90 minutes, or challenging terrain), divided into 15–20 g increments every 20–30 minutes.
+* **High Heart Rate / VO2 Max Carb Caution:** During high-intensity VO2 Max efforts (>168 bpm), counter-regulatory adrenaline elevates circulating glucose. Do not aggressively stack carbs during catecholamine-driven rises unless CGM confirms a subsequent downward inflection.
 * **Terrain & Elevation Stop Placement:** Never consume gels or chews mid-way through a steep uphill climb (risk of GI distress and delayed gastric emptying). Schedule stops 3–5 minutes prior to climbs or on gentle descents and flats.
 * **Gut Absorption Ceiling:** Monosaccharide intestinal transport saturates at ~1.0 g/min (~60 g/h) for pure glucose; dual-source (glucose:fructose 2:1) can sustain up to 75–90 g/h if practiced.
 * **Hydration Balance:** Drink water with electrolytes every 20–30 minutes. Dehydration decreases subcutaneous microcirculation and distorts CGM accuracy.
@@ -88,7 +89,7 @@ export const DEFAULT_T1D_RULEBOOK = `# Running with T1D: Comprehensive Glucose R
 ## 5. Post-Run Recovery & Late-Onset Nocturnal Hypo Defense
 * **Immediate Finish Line Fueling:** If finishing glucose is < 6.0 mmol/L or dropping, immediately take 15–20 g fast carbohydrates. Follow with 15–25 g protein and complex carbs within 30 minutes to facilitate glycogen resynthesis.
 * **Extended Sensitivity Window:** Muscle and hepatic glycogen replenishment maintains heightened insulin sensitivity for 12 to 24 hours following endurance running.
-* **Overnight Basal Temp Reduction:** Peak nocturnal hypoglycemia risk occurs 7 to 11 hours post-run (common following afternoon or evening runs). Apply an overnight basal rate reduction of ~20% for 6 hours (or maintain elevated night-time loop target of 6.5–7.0 mmol/L).
+* **Overnight Basal Temp Reduction:** Peak nocturnal hypoglycemia risk occurs 7 to 11 hours post-run (common following afternoon or evening runs or sessions with substantial VO2 Max volume). Apply an overnight basal rate reduction of ~20% for 6 hours (or maintain elevated night-time loop target of 6.5–7.0 mmol/L).
 `;
 
 const SETTING_KEY = 't1d_running_rulebook';

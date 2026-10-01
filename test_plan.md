@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 84
-- Verified Features: 84
+- Total Registered Features: 89
+- Verified Features: 89
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -92,8 +92,41 @@
 | FEAT-082 | Heart Rate Zone Training Volume Aggregation | [ActivitiesPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/ActivitiesPortal.jsx) | SQL conditional HR zone totals, multi-segment polarised distribution bar, zone scorecards & Gemini AI coaching integration | PASS |
 | FEAT-083 | Code Repo Automated PR Quality & TypeScript Linting Scanner | [CodeRepoPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/CodeRepoPortal.jsx) | Static workspace audit for missing type definitions, unhandled async catch blocks & Triple Registry parity with health scores | PASS |
 | FEAT-084 | Direct Ring Doorbell API Service & ESP32-S3-BOX-3 Alert Subsystem | [DoorbellPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/DoorbellPortal.jsx) | Direct Ring API integration, SIP/WebSocket dings & motion streaming, Box-3 chime alert frames & Yorkshire spoken announcements | PASS |
+| FEAT-085 | Cross-Service Touchpoints & Integrated Workflows | [CodeRepoPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/CodeRepoPortal.jsx) | 1-click audit-to-dev-ideas export, Strava-to-Run-Planner deep links, VO2 Max T1D coaching, and extended Ctrl+K actions | PASS |
+| FEAT-086 | Observability Device Health Panel & Service | [DeviceHealthPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/DeviceHealthPortal.jsx) | 1-minute Box-3 telemetry ingest, SVG sparklines, memory gauges, and automatic dev-idea logging on reboot/reconnect spikes | PASS |
+| FEAT-087 | Voice Latency Telemetry & Tool Call Benchmarking | [SystemArchitecturePortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/SystemArchitecturePortal.jsx) | Voice turn milestone recording, 1800ms target budget charts, and tool duration diagnostics | PASS |
+| FEAT-088 | Pre-Run Glucose Readiness Card | [PreRunReadinessCard.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlanner/PreRunReadinessCard.jsx) | GO / WAIT / EAT FIRST status evaluation, pre-run carb recommendations, and 1-click run plan carb sync | PASS |
+| FEAT-089 | Gemini Spend Budget & Breakdown Service | [SpendBudgetPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/SpendBudgetPortal.jsx) | Per-service daily token & GBP cost breakdown, soft monthly budget warning thresholds (80%/95%), and expensive prompt optimizer | PASS |
 
 ## Section 2: Detailed Scenarios
+### Suite 31: Observability Device Health Panel & Service (FEAT-086)
+1. **Telemetry Ingest:** Send sample telemetry payload to `POST /api/device-health/report` (`wifiRssi: -62`, `freeHeap: 184500`, `minFreeHeap: 142000`, `uptimeSeconds: 14200`, `bootCount: 2`, `reconnectCount: 1`, `audioBufferUnderruns: 0`). Verify HTTP 200 return and SQLite storage in `device_health_telemetry`.
+2. **Device Health Portal Rendering:** Navigate to `/ims/device-health` via ImsHub or Command Palette. Verify live status dot, Wi-Fi RSSI tile (-62 dBm with 'Good' rating), Free Heap tile, Uptime clock, and Reconnect count tile with SVG sparklines.
+3. **Historical Log Verification:** Verify the minute-by-minute telemetry table renders all recent reports formatted with UK timestamps.
+4. **Resilience Anomaly Triage:** Send a report with `reconnectCount: 8` or `resetReason: 'Software Watchdog Reset'`. Verify `deviceHealthService` invokes `devIdeasService.addIdea()` to auto-queue an engineering triage item in `/ims/devideas`.
+
+### Suite 32: Voice Latency Telemetry & Tool Call Benchmarking (FEAT-087)
+1. **Turn Milestone Logging:** Send voice turn timing record to `POST /api/voice-latency/record` with `wakeToConnectMs: 210`, `connectToFirstAudioMs: 540`, `firstAudioToDoneMs: 620`, and `toolCalls: [{ toolName: 'getBloodGlucose', durationMs: 230 }]`. Verify SQLite persistence in `voice_latency_records`.
+2. **Metrics Aggregation:** Query `GET /api/voice-latency/metrics`. Verify response returns average turn latencies and tool durations evaluated against the 1800ms target budget.
+3. **System Architecture Latency Tab:** Navigate to `/ims/architecture` and click the **Voice Latency & Tools** tab. Verify the multi-segment waterfall progress bar (`Wake -> Connect -> First Audio -> Done`) and the Tool Execution Duration benchmark table with health rating badges (Optimal / Fair / Slow).
+
+### Suite 33: Pre-Run Glucose Readiness Card (FEAT-088)
+1. **Algorithm Status Derivation:** Query `GET /api/planner/readiness?currentBg=4.2&trend=FortyFiveDown&durationMin=50&intensity=steady`. Verify the calculation returns `status: 'WAIT'`, `recommendedPreRunCarbs: 20`, `delayMinutes: 20`, and clinical advisory notes.
+2. **Run Planner Integration:** Navigate to `/ims/runplanner` in the Mission Control tab. Verify `PreRunReadinessCard` renders above the safety notice banner with status badge, target launch range (7.0 - 9.0 mmol/L), and suggested carbs. Click `Apply Carbs` to verify pre-run carbs increment the active plan.
+3. **Morning Report Integration:** Query `/api/day-report/preview`. Verify `buildGlucoseNowSection` in `morningReportService.js` includes the pre-run readiness summary within the blood glucose section when enabled.
+
+### Suite 34: Gemini Spend Budget & Breakdown Service (FEAT-089)
+1. **Service Cost Breakdown:** Query `GET /api/usage`. Verify response contains `serviceBreakdown` attributing costs across Chat & RAG, Gemini Live, Chronicles, Photo Carbs, and Code Repo scans.
+2. **Spend Portal Rendering:** Navigate to `/ims/spend` via ImsHub or Command Palette. Verify This Month's Spend card with progress bar, Today's usage card, Service breakdown table, and Monthly Cap modifier.
+3. **Soft Budget Warning:** Update spend cap to £1.00 when spend is £2.00 (or query `GET /api/usage/budget-warning`). Verify on-screen warning banner appears in `/ims/spend`, and `TokenUsageMeter.jsx` renders an alert icon (`⚠️` or `🚨`) linking directly to `/ims/spend`.
+4. **Expensive Prompt Optimization:** Verify Top Expensive Prompts table lists flagged queries with caching and cheaper model recommendations.
+
+### Suite 30: Cross-Service Touchpoints & Integrated Workflows (FEAT-085)
+1. **Code Audit to Dev Ideas:** Navigate to `/ims/code-repo?action=audit` (or trigger via Command Palette). Run code audit. Verify that every finding card displays an interactive `[💡 Log to Dev Ideas]` button, and the modal toolbar has a `[💡 Log Critical to Dev Ideas]` batch button. Click `[💡 Log to Dev Ideas]`. Verify the button turns into a green `[✓ Logged to Dev Ideas]` state and a new entry is created in the Dev Ideas portal (`POST /api/dev-ideas`).
+2. **Strava to Run Planner Debrief:** Navigate to `/ims/runplanner`. In the Mission Control tab, locate past run summaries (Last, Fastest, Slowest). Verify each card has an interactive `[📝 Debrief]` badge linking to `/ims/activities?openActivity={id}`. Click the badge. Verify navigation to the Training & Activities portal with the specific activity debrief section expanded. In the activity's Run Insight view, verify the `[🗺️ Plan Fuelling in Run Planner]` deep link returns cleanly to `/ims/runplanner`.
+3. **VO2 Max & T1D Coaching Retrospective:** Verify `runInsightService.js` populates `facts.activity.heartRateTelemetry` (including `vo2MaxZoneDetected` when avg HR > 168 bpm) and instructs Gemini to evaluate counter-regulatory catecholamine liver glucose surges during high-intensity sessions and delayed nocturnal resynthesis crashes. Verify `DEFAULT_T1D_RULEBOOK` contains Section 1 and Section 4 rules for high heart rate (>168 bpm) glucose spikes and carb restraint.
+4. **Command Palette Coverage:** Press `Ctrl+K`. Verify quick action items include: `Check Live Blood Glucose`, `Run Code Repository Audit`, `Plan Run Fuelling & Route`, `View Strava Training & HR Zones`, and `Open Ring Doorbell Live Hub`. Select each to verify instant routing or telemetry modal activation.
+
 ### Suite 17: Bidirectional Pace & Estimated Time Editing (FEAT-043)
 1. **Initial display:** Generate a run plan. Verify both **Estimated Time** and **Average Pace** chips show a pencil (✎) glyph indicating editability.
 2. **Edit estimated time:** Click the Estimated Time chip. Verify an inline text input appears pre-filled with the current time (e.g. `1h 16m`). Type `1h 00m`. Press Enter or click away. Verify: (a) Average Pace chip recalculates to show the faster pace, (b) carb stop table and glucose curve chart both update, (c) estimated time chip now shows `1h 00m`.

@@ -7,19 +7,28 @@ export default function TokenUsageMeter({ usage }) {
 
   const { percentage, status, month, today, spendCap, projectedCost } = usage;
 
-  const fillClass = status === 'critical' ? 'critical' : status;
+  const fillClass = status === 'critical' || percentage >= 95 ? 'critical' : percentage >= 80 ? 'warning' : status;
   const displayCost = month?.cost?.toFixed(4) || '0.0000';
   const displayCap = spendCap?.toFixed(2) || '250.00';
+  const isNearBudget = percentage >= 80;
 
   return (
     <div
-      className="token-meter"
+      className={`token-meter ${isNearBudget ? 'border-amber-500/40 bg-amber-500/10' : ''}`}
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
+      onClick={() => {
+        if (window.location.pathname !== '/ims/spend') {
+          window.history.pushState(null, '', '/ims/spend');
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        }
+      }}
       id="token-usage-meter"
+      style={{ cursor: 'pointer' }}
+      title="Click to view full Gemini Spend & Budget Breakdown (/ims/spend)"
     >
       <span style={{ fontSize: '12px' }}>
-        {status === 'critical' ? '⚠️' : '📊'}
+        {percentage >= 95 ? '🚨' : percentage >= 80 ? '⚠️' : '📊'}
       </span>
       <div className="token-meter-bar">
         <div

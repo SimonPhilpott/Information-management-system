@@ -1051,6 +1051,56 @@
         "Authentic Yorkshire spoken announcements triggered through Gemini Live voice brain (e.g. 'Hold on Simon, someone's at front door!')",
         "Comprehensive Doorbell Portal UI (/ims/doorbell) with camera listing, battery gauges, live activity timeline, live JPEG snapshot capture, and 2FA token setup"
       ]
+    },
+    "Cross-Service Touchpoints & Integrated Workflows": {
+      "status": "enabled",
+      "description": "Cross-service touchpoints connecting Code Audit findings to Dev Ideas prompt export, Strava completed activities to Run Planner post-run debrief, VO2 Max heart rate zone coaching in T1D rulebook, and expanded Command Palette (Ctrl+K) quick actions.",
+      "subFeatures": [
+        "1-click 'Log to Dev Ideas' on individual code repository audit findings and batch 'Log Critical to Dev Ideas' in CodeRepoPortal.jsx",
+        "Bidirectional links between completed Strava activities in ActivitiesPortal.jsx and Run Planner post-run debrief in RunMissionControlTab.jsx",
+        "VO2 Max (HR >168 bpm) and Anaerobic counter-regulatory catecholamine glucose surge and nocturnal rebound coaching in runInsightService.js and DEFAULT_T1D_RULEBOOK",
+        "Extended Command Palette quick launcher actions for Code Repo Audit, Run Planner, Training Activities, and Ring Doorbell Hub"
+      ]
+    },
+    "Observability Device Health Panel & Service": {
+      "status": "enabled",
+      "description": "1-minute hardware observability telemetry service and dedicated dashboard portal at /ims/device-health under Customisation. Tracks Wi-Fi RSSI, free heap, uptime, reconnect counts, audio buffer underruns, and last error with sparklines, auto-logging Dev Ideas when reboots or reconnects spike.",
+      "subFeatures": [
+        "SQLite device_health_telemetry schema and 1-minute telemetry ingest endpoint (POST /api/device-health/report)",
+        "Automated resilience anomaly detector auto-logging a triage ticket to Dev Ideas (devIdeasService.addIdea) on reboot or reconnect spikes",
+        "Interactive live telemetry dashboard portal at /ims/device-health with SVG sparklines, memory gauges, and minute-by-minute historical log",
+        "Registered navigation link in ImsHub under Customisation and system settings, routing in App.jsx, and CommandPalette registry"
+      ]
+    },
+    "Voice Latency Telemetry & Tool Call Benchmarking": {
+      "status": "enabled",
+      "description": "Voice turn telemetry engine and target budget visualization in System Architecture (/ims/architecture). Records wake -> Gemini connect -> first audio -> turn finished progression and individual tool call latencies to diagnose silent standby dropouts.",
+      "subFeatures": [
+        "SQLite voice_latency_records schema tracking multi-stage turn milestones and per-tool execution durations (POST /api/voice-latency/record)",
+        "Summary telemetry API (GET /api/voice-latency/metrics) computing stage averages against an 1800ms target budget",
+        "Interactive Voice Latency & Tool Execution tab in SystemArchitecturePortal.jsx with waterfall progress bars and per-tool health ratings",
+        "Diagnostic identification of slow tools exceeding 1000ms threshold causing Gemini Live speech synthesis timeouts"
+      ]
+    },
+    "Pre-Run Glucose Readiness Card": {
+      "status": "enabled",
+      "description": "Pre-run glucose readiness evaluation engine and interactive card for Run Planner (/ims/runplanner) and Day Report (/ims/dayreport). Combines current BG, trend arrow, recent carbs, IOB, and session type/length/intensity into an actionable GO / WAIT / EAT FIRST status with pre-run carb recommendations and launch delay guidance.",
+      "subFeatures": [
+        "Pre-run readiness evaluation algorithm in glucoseReadinessService.js evaluating BG bands, trend velocity, and session duration/intensity",
+        "REST API endpoint GET /api/planner/readiness returning status, target launch BG, carb recommendations, delay minutes, and advisory bullets",
+        "Interactive PreRunReadinessCard.jsx integrated directly into RunMissionControlTab.jsx with one-click 'Apply Carbs' to the active plan",
+        "Seamless integration into Morning & Day Report (morningReportService.js) under glucose_now without unprompted speech"
+      ]
+    },
+    "Gemini Spend Budget & Breakdown Service": {
+      "status": "enabled",
+      "description": "Comprehensive token and cost tracking service with a dedicated portal at /ims/spend under Customisation. Breaks down tokens and estimated GBP (£) cost per service per day (chat, live voice, chronicles, photo carbs, code repo scans), provides a configurable soft monthly budget cap with on-screen warnings, and highlights top expensive prompts for caching or cheaper models.",
+      "subFeatures": [
+        "Per-service daily and monthly token & cost attribution in usageService.js across Chat, Gemini Live, Chronicles, Photo Carbs, and Code Repo scans",
+        "Configurable soft monthly budget cap with multi-level on-screen alert thresholds (≥80% warning, ≥95% critical, >100% exceeded)",
+        "Interactive Spend & Budget Breakdown portal at /ims/spend with service share tables, spend cap modifier, and top expensive prompts optimizer",
+        "Dynamic budget status badge and direct navigation link embedded in TokenUsageMeter.jsx in the top application header"
+      ]
     }
   }
 }

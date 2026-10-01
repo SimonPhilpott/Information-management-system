@@ -7,6 +7,7 @@ import {
 import { estimatePlan, estimateDemand, routeRunHistory, getTargets, saveTargets, personalFit, calculateHydration, SOURCES } from '../services/runPlanService.js';
 import { getCurrentState, getLoopSettings } from '../services/runGlucoseService.js';
 import { getWeather } from '../services/weatherService.js';
+import { evaluateGlucoseReadiness } from '../services/glucoseReadinessService.js';
 import {
   getRulebook, saveRulebook, resetRulebook,
   uploadBook, listBooks, getBook, deleteBook,
@@ -19,6 +20,22 @@ router.use(requireSession); // glucose, insulin, routes and rulebook arbitration
 const fail = (res, err, code = 400) => res.status(code).json({ success: false, error: err.message });
 
 router.get('/now', (req, res) => res.json({ success: true, now: getCurrentState(), loop: getLoopSettings(), personal: personalFit('Run') }));
+router.get('/readiness', (req, res) => {
+  try {
+    const readiness = evaluateGlucoseReadiness({
+      bg: req.query.bg ? Number(req.query.bg) : undefined,
+      direction: req.query.direction,
+      iob: req.query.iob ? Number(req.query.iob) : undefined,
+      cob: req.query.cob ? Number(req.query.cob) : undefined,
+      sessionType: req.query.sessionType,
+      durationMin: req.query.durationMin ? Number(req.query.durationMin) : undefined,
+      intensity: req.query.intensity
+    });
+    res.json({ success: true, readiness });
+  } catch (err) {
+    fail(res, err);
+  }
+});
 router.get('/targets', (req, res) => res.json({ success: true, targets: getTargets(), sources: SOURCES }));
 router.put('/targets', (req, res) => { try { res.json({ success: true, targets: saveTargets(req.body || {}) }); } catch (err) { fail(res, err); } });
 

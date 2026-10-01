@@ -30,6 +30,31 @@ router.get('/history', (req, res) => {
 });
 
 /**
+ * GET /api/usage/expensive-prompts - Get flagged expensive prompts and optimization recommendations
+ */
+router.get('/expensive-prompts', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const { getExpensivePrompts } = await import('../services/usageService.js');
+    res.json({ success: true, expensivePrompts: getExpensivePrompts(limit) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/usage/budget-warning - Check soft budget status
+ */
+router.get('/budget-warning', async (req, res) => {
+  try {
+    const { isNearSpendCap } = await import('../services/usageService.js');
+    res.json({ success: true, ...isNearSpendCap() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * PUT /api/usage/cap - Update monthly spend cap
  */
 router.put('/cap', (req, res) => {

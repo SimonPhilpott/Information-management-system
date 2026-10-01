@@ -221,6 +221,8 @@ app.use('/api/day-report', dayReportRoutes);
 app.use('/api/code-repo', codeRepoRoutes);
 app.use('/api/wake-daemon', wakeDaemonRoutes);
 app.use('/api/doorbell', doorbellRoutes);
+app.use('/api/device-health', (await import('./routes/deviceHealth.js')).default);
+app.use('/api/voice-latency', (await import('./routes/voiceLatency.js')).default);
 
 // Live figures for the System Architecture page (/ims/architecture).
 app.get('/api/system/architecture', async (req, res) => {

@@ -7,7 +7,7 @@ import {
   Boxes, Server, Wrench, Shield, ArrowRight, User, Building, HardDrive,
   Activity, Play, CheckCircle, Database, Mic, Speaker, ArrowUpRight,
   ArrowRightLeft, LogIn, LogOut, GitCommit, HelpCircle, Rocket, Wand2, FileSpreadsheet, CheckCheck,
-  FileCheck, Zap, BarChart3, Filter
+  FileCheck, Zap, BarChart3, Filter, Lightbulb
 } from 'lucide-react';
 import PortalShell from './PortalShell';
 
@@ -360,6 +360,9 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
   const [isAuditing, setIsAuditing] = useState(false);
   const [auditResult, setAuditResult] = useState(null);
   const [auditFilter, setAuditFilter] = useState('all'); // 'all', 'registry', 'async_catch', 'type_definition'
+  const [loggedFindings, setLoggedFindings] = useState(new Set());
+  const [loggingFindingIdx, setLoggingFindingIdx] = useState(null);
+  const [loggingAllCritical, setLoggingAllCritical] = useState(false);
 
   // Antigravity Project Scaffolder & Prompt Generator Modal State
   const [isScaffolderOpen, setIsScaffolderOpen] = useState(false);
@@ -875,6 +878,81 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
       setIsAuditing(false);
     }
   };
+
+  // 1-Click Log audit finding to Dev Ideas
+  const handleLogFindingToDevIdeas = async (issue, idx) => {
+    setLoggingFindingIdx(idx);
+    try {
+      const text = `[Code Repo Audit] ${issue.title} in ${issue.file}${issue.line ? `:${issue.line}` : ''} (${issue.severity}): ${issue.description} -> Remediation: ${issue.remediation}`;
+      const res = await fetch('/api/dev-ideas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          category: issue.type === 'registry' ? 'IMS Desktop' : 'Architecture',
+          source: 'code_repo_audit'
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLoggedFindings(prev => new Set([...prev, idx]));
+        showToast('Finding logged to Dev Ideas queue (#ID ' + (data.idea?.id || '') + ')');
+      } else {
+        throw new Error(data.error || 'Failed logging idea');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setLoggingFindingIdx(null);
+    }
+  };
+
+  // Batch log all critical findings to Dev Ideas
+  const handleLogAllCriticalToDevIdeas = async () => {
+    if (!auditResult?.issues) return;
+    const criticals = auditResult.issues
+      .map((issue, idx) => ({ issue, idx }))
+      .filter(({ issue, idx }) => issue.severity === 'critical' && !loggedFindings.has(idx));
+
+    if (criticals.length === 0) {
+      showToast('All critical findings have already been logged to Dev Ideas');
+      return;
+    }
+
+    setLoggingAllCritical(true);
+    try {
+      let count = 0;
+      for (const { issue, idx } of criticals) {
+        const text = `[Critical Code Audit] ${issue.title} in ${issue.file}${issue.line ? `:${issue.line}` : ''}: ${issue.description} -> Remediation: ${issue.remediation}`;
+        const res = await fetch('/api/dev-ideas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text,
+            category: 'Architecture',
+            source: 'code_repo_audit'
+          })
+        });
+        if (res.ok) {
+          setLoggedFindings(prev => new Set([...prev, idx]));
+          count++;
+        }
+      }
+      showToast(`Logged ${count} critical findings to Dev Ideas`);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setLoggingAllCritical(false);
+    }
+  };
+
+  // Check URL search params for instant audit trigger (from Command Palette)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('action') === 'audit' || params.get('audit') === 'true') {
+      handleRunAudit();
+    }
+  }, []);
 
   // Single repo scan
   const handleStartScan = (repoId) => {
@@ -2623,69 +2701,120 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
                       </button>
                     </div>
 
-                    <button
-                      onClick={handleRunAudit}
-                      disabled={isAuditing}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
-                        isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-800'
-                      }`}
-                    >
-                      <RefreshCw size={12} className={isAuditing ? 'animate-spin' : ''} />
-                      <span>Re-Run Audit</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleLogAllCriticalToDevIdeas}
+                        disabled={loggingAllCritical || !auditResult?.issues?.some(i => i.severity === 'critical')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                          isDark ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30' : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300'
+                        } disabled:opacity-40 disabled:pointer-events-none`}
+                        title="Log all critical audit issues as actionable items in Dev Ideas"
+                      >
+                        <Lightbulb size={12} className={loggingAllCritical ? 'animate-spin text-amber-400' : 'text-amber-400'} />
+                        <span>{loggingAllCritical ? 'Logging Critical...' : 'Log Critical to Dev Ideas'}</span>
+                      </button>
+
+                      <button
+                        onClick={handleRunAudit}
+                        disabled={isAuditing}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                          isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-800'
+                        }`}
+                      >
+                        <RefreshCw size={12} className={isAuditing ? 'animate-spin' : ''} />
+                        <span>Re-Run Audit</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Issues List */}
                   <div className="space-y-3">
                     {auditResult.issues
                       .filter(i => auditFilter === 'all' || i.type === auditFilter)
-                      .map((issue, idx) => (
-                        <div
-                          key={idx}
-                          className={`p-4 rounded-2xl border transition-all ${
-                            issue.severity === 'critical'
-                              ? isDark ? 'bg-rose-950/30 border-rose-500/40 text-rose-200' : 'bg-rose-50 border-rose-300 text-rose-900'
-                              : issue.severity === 'warning'
-                                ? isDark ? 'bg-amber-950/30 border-amber-500/40 text-amber-200' : 'bg-amber-50 border-amber-300 text-amber-900'
-                                : isDark ? 'bg-slate-950/60 border-slate-800 text-slate-200' : 'bg-white border-slate-200 text-slate-800 shadow-sm'
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-3 mb-1.5">
-                            <div className="flex items-center gap-2">
-                              {issue.severity === 'critical' ? (
-                                <AlertCircle size={16} className="text-rose-500 shrink-0" />
-                              ) : issue.severity === 'warning' ? (
-                                <AlertTriangle size={16} className="text-amber-500 shrink-0" />
-                              ) : (
-                                <HelpCircle size={16} className="text-blue-500 shrink-0" />
-                              )}
-                              <span className="font-extrabold text-xs">{issue.title}</span>
+                      .map((issue, idx) => {
+                        const isLogged = loggedFindings.has(idx);
+                        const isLoggingThis = loggingFindingIdx === idx;
+                        return (
+                          <div
+                            key={idx}
+                            className={`p-4 rounded-2xl border transition-all ${
+                              issue.severity === 'critical'
+                                ? isDark ? 'bg-rose-950/30 border-rose-500/40 text-rose-200' : 'bg-rose-50 border-rose-300 text-rose-900'
+                                : issue.severity === 'warning'
+                                  ? isDark ? 'bg-amber-950/30 border-amber-500/40 text-amber-200' : 'bg-amber-50 border-amber-300 text-amber-900'
+                                  : isDark ? 'bg-slate-950/60 border-slate-800 text-slate-200' : 'bg-white border-slate-200 text-slate-800 shadow-sm'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3 mb-1.5">
+                              <div className="flex items-center gap-2">
+                                {issue.severity === 'critical' ? (
+                                  <AlertCircle size={16} className="text-rose-500 shrink-0" />
+                                ) : issue.severity === 'warning' ? (
+                                  <AlertTriangle size={16} className="text-amber-500 shrink-0" />
+                                ) : (
+                                  <HelpCircle size={16} className="text-blue-500 shrink-0" />
+                                )}
+                                <span className="font-extrabold text-xs">{issue.title}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-black/20 font-bold">
+                                  {issue.file}{issue.line ? `:${issue.line}` : ''}
+                                </span>
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  issue.severity === 'critical'
+                                    ? 'bg-rose-500 text-white'
+                                    : issue.severity === 'warning'
+                                      ? 'bg-amber-500 text-black'
+                                      : 'bg-blue-500/20 text-blue-400'
+                                }`}>
+                                  {issue.severity}
+                                </span>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-black/20 font-bold">
-                                {issue.file}{issue.line ? `:${issue.line}` : ''}
-                              </span>
-                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                                issue.severity === 'critical'
-                                  ? 'bg-rose-500 text-white'
-                                  : issue.severity === 'warning'
-                                    ? 'bg-amber-500 text-black'
-                                    : 'bg-blue-500/20 text-blue-400'
+                            <p className="text-xs leading-relaxed opacity-90 mb-2.5">
+                              {issue.description}
+                            </p>
+                            
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-black/10 dark:border-white/5">
+                              <div className={`p-2 rounded-xl text-[11px] leading-snug border flex-1 ${
+                                isDark ? 'bg-black/40 border-white/5 text-emerald-300' : 'bg-slate-50 border-slate-200 text-emerald-800'
                               }`}>
-                                {issue.severity}
-                              </span>
+                                <strong>Remediation:</strong> {issue.remediation}
+                              </div>
+
+                              <button
+                                onClick={() => handleLogFindingToDevIdeas(issue, idx)}
+                                disabled={isLoggingThis || isLogged}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shrink-0 transition-all ${
+                                  isLogged
+                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 cursor-default'
+                                    : isDark
+                                    ? 'bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 hover:border-amber-500/50 active:scale-95'
+                                    : 'bg-white hover:bg-amber-50 text-amber-900 border border-slate-200 shadow-sm active:scale-95'
+                                }`}
+                                title="Log finding as an actionable item in Dev Ideas"
+                              >
+                                {isLogged ? (
+                                  <>
+                                    <Check size={12} className="text-emerald-400" />
+                                    <span>Logged to Ideas</span>
+                                  </>
+                                ) : isLoggingThis ? (
+                                  <>
+                                    <RefreshCw size={12} className="animate-spin text-amber-400" />
+                                    <span>Logging...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Lightbulb size={12} className="text-amber-400" />
+                                    <span>Log to Dev Ideas</span>
+                                  </>
+                                )}
+                              </button>
                             </div>
                           </div>
-                          <p className="text-xs leading-relaxed opacity-90 mb-2">
-                            {issue.description}
-                          </p>
-                          <div className={`p-2 rounded-xl text-[11px] leading-snug border ${
-                            isDark ? 'bg-black/40 border-white/5 text-emerald-300' : 'bg-slate-50 border-slate-200 text-emerald-800'
-                          }`}>
-                            <strong>Remediation:</strong> {issue.remediation}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
 
                     {auditResult.issues.filter(i => auditFilter === 'all' || i.type === auditFilter).length === 0 && (
                       <div className={`p-8 text-center rounded-2xl border ${

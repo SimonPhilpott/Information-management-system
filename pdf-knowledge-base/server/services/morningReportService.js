@@ -230,7 +230,8 @@ export const SERVICE_SUB_FILTERS = {
     { key: 'includeTrend', label: 'Directional Trend Arrow', type: 'boolean', default: true, description: 'State if glucose is rising, falling, or flat.' },
     { key: 'includeIob', label: 'Insulin on Board (IOB)', type: 'boolean', default: true, description: 'State active units of insulin remaining.' },
     { key: 'includeTargetEvaluation', label: 'Personal Target Band Evaluation', type: 'boolean', default: true, description: 'Evaluate whether reading is spot-on in target vs running high/low.' },
-    { key: 'includeRunningTargetAdvice', label: 'Running Target Advice (~9 start, >5 min)', type: 'boolean', default: true, description: 'Include pre-run glucose recommendation.' }
+    { key: 'includeRunningTargetAdvice', label: 'Running Target Advice (~9 start, >5 min)', type: 'boolean', default: true, description: 'Include pre-run glucose recommendation.' },
+    { key: 'includePreRunReadiness', label: 'Pre-Run Readiness Status (Go/Wait/Eat First)', type: 'boolean', default: true, description: 'Include pre-run fueling readiness status in morning briefing summary.' }
   ],
   glucose_overnight: [
     { key: 'includeTir', label: 'Percentage Time in Range (TIR)', type: 'boolean', default: true, description: 'State overnight percentage between 3.9 and 10.0 mmol/L.' },
@@ -767,7 +768,17 @@ async function buildGlucoseNowSection(section, context) {
       }
 
       const runAdvice = filters.includeRunningTargetAdvice !== false ? ' (For runs, target start is ~9 and never dropping below 5).' : '';
-      let line = `Glucose right now: ${cur.bg} mmol/L${trend}${iob}${note}.${runAdvice}`;
+      
+      let readinessStr = '';
+      if (filters.includePreRunReadiness !== false) {
+        try {
+          const { evaluateGlucoseReadiness } = await import('./glucoseReadinessService.js');
+          const rd = evaluateGlucoseReadiness({ bg: cur.bg, direction: cur.direction, iob: cur.iob });
+          readinessStr = ` Pre-run readiness: ${rd.status === 'go' ? 'GO (Optimal)' : rd.status === 'eat_first' ? `EAT FIRST (+${rd.recommendedCarbsGrams}g carbs)` : 'WAIT (Delay departure)'}.`;
+        } catch (_) { }
+      }
+
+      let line = `Glucose right now: ${cur.bg} mmol/L${trend}${iob}${note}.${runAdvice}${readinessStr}`;
       if (section.customNote?.trim()) line += ` Note: ${section.customNote.trim()}.`;
       return line;
     }

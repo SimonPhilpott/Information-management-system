@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, Fragment } from 'react';
-import { Activity, RotateCw, LogIn, Lock, Link2, Unlink, Sparkles, Save, ExternalLink, ChevronLeft, ChevronRight, ChevronUp, AlertTriangle, TrendingUp, TrendingDown, Minus, Trophy, Droplets, ChevronDown, BookOpen, Edit3, Check, FileText, HeartPulse, Zap, Mountain, ArrowUpDown } from 'lucide-react';
+import { Activity, RotateCw, LogIn, Lock, Link2, Unlink, Sparkles, Save, ExternalLink, ChevronLeft, ChevronRight, ChevronUp, AlertTriangle, TrendingUp, TrendingDown, Minus, Trophy, Droplets, ChevronDown, BookOpen, Edit3, Check, FileText, HeartPulse, Zap, Mountain, ArrowUpDown, MapPin } from 'lucide-react';
 import PortalShell from './PortalShell';
 import Prose from './Prose';
 import { useUnits, UnitToggle, dist, toKm, paceText, speedText, KM_PER_MI } from '../../utils/units';
@@ -429,7 +429,17 @@ function RunInsight({ id, km, isDark, sessionTag, onUpdateTag }) {
           <option value="">No saved route linked</option>
           {routes.routes.map((r) => <option key={r.id} value={r.id}>{r.name} ({dist(r.distanceKm, units)} {units}){suggested.includes(r.id) ? ' - similar length' : ''}</option>)}
         </select>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2 flex-wrap">
+          <a
+            href={`/ims/runplanner?distance=${km}${routes.routeId ? `&routeId=${routes.routeId}` : ''}`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition-all ${
+              isDark ? 'bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border-sky-500/30' : 'bg-sky-50 hover:bg-sky-100 text-sky-800 border-sky-300'
+            }`}
+            title="Open Run Planner with this distance and route to plan your next run's fuelling and hydration"
+          >
+            <MapPin size={12} />
+            <span>Plan Fuelling in Run Planner</span>
+          </a>
           <button
             onClick={() => setShowNotesForm((v) => !v)}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition-all ${showNotesForm ? 'bg-white/10 text-white border-white/20' : isDark ? 'text-slate-400 hover:text-white border-white/10' : 'text-slate-600 hover:text-black border-black/10'}`}
@@ -652,6 +662,10 @@ export default function ActivitiesPortal({ theme = 'dark', onThemeToggle, setCur
     const p = new URLSearchParams(window.location.search);
     if (p.get('strava') === 'connected') showToast('Strava connected. Pulling your activities now...');
     else if (p.get('strava') === 'error') showToast(p.get('message') || 'Strava sign-in failed.', 'error');
+    const targetActivity = p.get('openActivity') || p.get('activityId');
+    if (targetActivity) {
+      setOpenId(Number(targetActivity));
+    }
     if (p.has('strava')) window.history.replaceState(null, '', '/ims/activities');
     loadStatus().then((s) => { if (s?.activityCount) loadData(); });
   }, [loadStatus, loadData, showToast]);
