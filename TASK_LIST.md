@@ -2,6 +2,7 @@
 
 | ID | Date Added (DD/MM/YYYY HH:mm) | Last Updated (DD/MM/YYYY HH:mm) | Status | Description | Notes / Dependencies |
 |---|---|---|---|---|---|
+| TASK-161 | 01/10/2026 08:57 | 01/10/2026 08:58 | PASS | Replace Apple Command symbol with Windows Ctrl in Command Palette footer | Updated footer label to render a styled '<kbd>Ctrl + K</kbd> Quick Launcher' badge conforming to Windows conventions |
 | TASK-160 | 01/10/2026 08:55 | 01/10/2026 08:56 | PASS | Add prominent Ctrl+K visual shortcut prompt badges across the UI | Added glassmorphic Ctrl+K quick search trigger pill in the top header and footer shortcut hints across Layout.jsx, ImsPanel.jsx, and PortalShell.jsx |
 | TASK-159 | 01/10/2026 08:52 | 01/10/2026 08:54 | PASS | Fix Escape key dismissal and add interactive mouse X close button to Command Palette | Added capture-phase Escape key listener on window and input element, outer backdrop click-to-close handler, interactive X button in search header, and PortalShell Ctrl+K trigger button |
 | TASK-158 | 01/10/2026 08:45 | 01/10/2026 08:48 | PASS | Build IMS Desktop Global Command Palette (Ctrl+K) with fuzzy portal routing and inline quick captures | Added universal CommandPalette component with fuzzy navigation across all 26 portals, inline memory note capture (POST /api/memories), dev idea logging (POST /api/dev-ideas), live Nightscout blood glucose widget (GET /api/glucose), Ctrl+K / Cmd+K keyboard listeners, and topbar trigger in Layout.jsx |

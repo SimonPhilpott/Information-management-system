@@ -464,9 +464,9 @@ export default function CommandPalette({ isOpen, onClose, onNavigate, theme = 'd
             <span className="flex items-center gap-1"><strong className="font-semibold text-slate-300">↵</strong> Select</span>
             <span className="flex items-center gap-1"><strong className="font-semibold text-slate-300">ESC</strong> Close</span>
           </div>
-          <div className="flex items-center gap-1 text-slate-500 font-mono">
-            <Command size={12} />
-            <span>+ K / Quick Launcher</span>
+          <div className="flex items-center gap-1.5 text-slate-400 font-mono">
+            <kbd className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-600/20 text-violet-300 border border-violet-500/30">Ctrl + K</kbd>
+            <span>Quick Launcher</span>
           </div>
         </div>
       </div>
