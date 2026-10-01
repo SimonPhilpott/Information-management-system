@@ -6,7 +6,8 @@ import {
   KeyRound, GitBranch, Lock, Eye, EyeOff, X, CheckSquare, Square,
   Boxes, Server, Wrench, Shield, ArrowRight, User, Building, HardDrive,
   Activity, Play, CheckCircle, Database, Mic, Speaker, ArrowUpRight,
-  ArrowRightLeft, LogIn, LogOut, GitCommit, HelpCircle, Rocket, Wand2, FileSpreadsheet, CheckCheck
+  ArrowRightLeft, LogIn, LogOut, GitCommit, HelpCircle, Rocket, Wand2, FileSpreadsheet, CheckCheck,
+  FileCheck, Zap, BarChart3, Filter
 } from 'lucide-react';
 import PortalShell from './PortalShell';
 
@@ -353,6 +354,12 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
   const [isSavingObs, setIsSavingObs] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [notification, setNotification] = useState(null);
+
+  // Automated PR Quality, TypeScript Linting & Triple Registry Audit Modal State
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const [isAuditing, setIsAuditing] = useState(false);
+  const [auditResult, setAuditResult] = useState(null);
+  const [auditFilter, setAuditFilter] = useState('all'); // 'all', 'registry', 'async_catch', 'type_definition'
 
   // Antigravity Project Scaffolder & Prompt Generator Modal State
   const [isScaffolderOpen, setIsScaffolderOpen] = useState(false);
@@ -849,6 +856,26 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
     );
   };
 
+  // Run Automated PR Quality, TypeScript Linting & Triple Registry Audit
+  const handleRunAudit = async () => {
+    setIsAuditing(true);
+    setIsAuditModalOpen(true);
+    try {
+      const res = await fetch('/api/code-repo/audit', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setAuditResult(data);
+        showToast(`Audit complete: Quality Health Score ${data.metrics.overallScore}/100`);
+      } else {
+        throw new Error(data.error || 'Failed executing quality audit');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsAuditing(false);
+    }
+  };
+
   // Single repo scan
   const handleStartScan = (repoId) => {
     setScanTarget(repoId);
@@ -1115,6 +1142,17 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
           </div>
 
           <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+            {/* PR Quality, TypeScript Lint & Triple Registry Audit */}
+            <button
+              onClick={handleRunAudit}
+              disabled={isAuditing}
+              className="px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white transition-all shadow-md shadow-emerald-500/20 active:scale-95 disabled:opacity-50"
+              title="Run automated PR quality scan checking for missing type definitions, unhandled async catch blocks, and out-of-sync Triple Registry entries"
+            >
+              <FileCheck size={14} className={isAuditing ? 'animate-spin text-amber-300' : 'text-amber-300'} />
+              <span>{isAuditing ? 'Auditing Codebase...' : 'PR Quality & Registry Audit'}</span>
+            </button>
+
             {/* Launch Antigravity Project Scaffolder */}
             <button
               onClick={() => setIsScaffolderOpen(true)}
@@ -2420,6 +2458,251 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
           </div>
         )}
       </div>
+
+      {/* AUTOMATED PR QUALITY, TYPESCRIPT LINTING & TRIPLE REGISTRY AUDIT MODAL */}
+      {isAuditModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/75 backdrop-blur-md animate-in fade-in duration-150">
+          <div className={`relative w-full max-w-5xl max-h-[92vh] flex flex-col rounded-3xl border shadow-[0_25px_60px_rgba(0,0,0,0.4)] overflow-hidden transition-all ${
+            isDark ? 'bg-slate-900 border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'
+          }`}>
+            {/* Modal Header */}
+            <div className="p-5 sm:p-6 flex items-center justify-between border-b border-slate-200/80 dark:border-white/10 shrink-0 bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-blue-500/10">
+              <div className="flex items-center gap-3.5">
+                <span className="w-10 h-10 rounded-2xl flex items-center justify-center bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/20">
+                  <FileCheck size={20} />
+                </span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base sm:text-lg font-black tracking-tight">
+                      Automated PR Quality & TypeScript Linting Scanner
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                      Code Integrity Audit
+                    </span>
+                  </div>
+                  <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Scans workspace for missing type definitions, unhandled async catch blocks, and Triple Registry (feature.json / ProjectStructure.JSON / test_plan.md) synchronisation.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsAuditModalOpen(false)}
+                className={`p-2 rounded-xl border transition-colors ${
+                  isDark ? 'border-slate-800 hover:bg-slate-800 text-slate-400' : 'border-slate-200 hover:bg-slate-100 text-slate-600'
+                }`}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
+              {isAuditing ? (
+                <div className="p-12 text-center flex flex-col items-center justify-center gap-3">
+                  <RefreshCw size={36} className="text-emerald-500 animate-spin" />
+                  <p className="text-sm font-extrabold">Scanning codebase files & Triple Registry invariant tables...</p>
+                  <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Checking TypeScript declarations, JSDoc signatures, async promise chains, and registry metrics parity.
+                  </p>
+                </div>
+              ) : auditResult ? (
+                <div className="space-y-6">
+                  {/* Top Score & Metric Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {/* Overall Score */}
+                    <div className={`p-4 rounded-2xl border flex items-center justify-between ${
+                      auditResult.metrics.overallScore >= 90
+                        ? isDark ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                        : auditResult.metrics.overallScore >= 75
+                          ? isDark ? 'bg-amber-950/40 border-amber-500/30 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-900'
+                          : isDark ? 'bg-rose-950/40 border-rose-500/30 text-rose-300' : 'bg-rose-50 border-rose-200 text-rose-900'
+                    }`}>
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider opacity-70">Code Health Score</span>
+                        <div className="text-2xl font-black">{auditResult.metrics.overallScore} / 100</div>
+                        <span className="text-[10px] font-medium opacity-80">
+                          {auditResult.metrics.overallScore >= 90 ? '✨ Production Ready' : '⚠️ Remediation Recommended'}
+                        </span>
+                      </div>
+                      <ShieldCheck size={32} className="opacity-80" />
+                    </div>
+
+                    {/* Triple Registry Status */}
+                    <div className={`p-4 rounded-2xl border flex items-center justify-between ${
+                      auditResult.metrics.tripleRegistryStats.inSync
+                        ? isDark ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                        : isDark ? 'bg-rose-950/40 border-rose-500/30 text-rose-300' : 'bg-rose-50 border-rose-200 text-rose-900'
+                    }`}>
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider opacity-70">Triple Registry</span>
+                        <div className="text-lg font-black">
+                          {auditResult.metrics.tripleRegistryStats.inSync ? 'In Parity (1:1)' : 'Out of Sync'}
+                        </div>
+                        <span className="text-[10px] font-medium opacity-80">
+                          {auditResult.metrics.tripleRegistryStats.featureJsonCount} Feats • {auditResult.metrics.tripleRegistryStats.projectStructureCount} Modules
+                        </span>
+                      </div>
+                      <Layers size={28} className="opacity-80" />
+                    </div>
+
+                    {/* Async Catch Status */}
+                    <div className={`p-4 rounded-2xl border flex items-center justify-between ${
+                      auditResult.metrics.asyncCatchIssuesCount === 0
+                        ? isDark ? 'bg-slate-900/80 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-800'
+                        : isDark ? 'bg-amber-950/40 border-amber-500/30 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-900'
+                    }`}>
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider opacity-70">Async / Catch Blocks</span>
+                        <div className="text-2xl font-black">{auditResult.metrics.asyncCatchIssuesCount}</div>
+                        <span className="text-[10px] font-medium opacity-80">
+                          {auditResult.metrics.asyncCatchIssuesCount === 0 ? 'Zero unhandled catches' : 'Empty catch or unhandled promises'}
+                        </span>
+                      </div>
+                      <Zap size={28} className="opacity-80" />
+                    </div>
+
+                    {/* Type Definition Status */}
+                    <div className={`p-4 rounded-2xl border flex items-center justify-between ${
+                      auditResult.metrics.typeIssuesCount === 0
+                        ? isDark ? 'bg-slate-900/80 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-800'
+                        : isDark ? 'bg-indigo-950/40 border-indigo-500/30 text-indigo-300' : 'bg-indigo-50 border-indigo-200 text-indigo-900'
+                    }`}>
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider opacity-70">Type Declarations</span>
+                        <div className="text-2xl font-black">{auditResult.metrics.typeIssuesCount}</div>
+                        <span className="text-[10px] font-medium opacity-80">
+                          {auditResult.metrics.totalFilesScanned} source files inspected
+                        </span>
+                      </div>
+                      <Code2 size={28} className="opacity-80" />
+                    </div>
+                  </div>
+
+                  {/* Filter Tabs & Re-Run */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-200/80 dark:border-white/10">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        onClick={() => setAuditFilter('all')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                          auditFilter === 'all'
+                            ? 'bg-emerald-500 text-black font-extrabold shadow-sm'
+                            : isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        }`}
+                      >
+                        All Findings ({auditResult.issues.length})
+                      </button>
+                      <button
+                        onClick={() => setAuditFilter('registry')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                          auditFilter === 'registry'
+                            ? 'bg-emerald-500 text-black font-extrabold shadow-sm'
+                            : isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        }`}
+                      >
+                        Triple Registry ({auditResult.metrics.tripleRegistryIssuesCount})
+                      </button>
+                      <button
+                        onClick={() => setAuditFilter('async_catch')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                          auditFilter === 'async_catch'
+                            ? 'bg-emerald-500 text-black font-extrabold shadow-sm'
+                            : isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        }`}
+                      >
+                        Async Catches ({auditResult.metrics.asyncCatchIssuesCount})
+                      </button>
+                      <button
+                        onClick={() => setAuditFilter('type_definition')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                          auditFilter === 'type_definition'
+                            ? 'bg-emerald-500 text-black font-extrabold shadow-sm'
+                            : isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        }`}
+                      >
+                        Type Defs ({auditResult.metrics.typeIssuesCount})
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={handleRunAudit}
+                      disabled={isAuditing}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                        isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-800'
+                      }`}
+                    >
+                      <RefreshCw size={12} className={isAuditing ? 'animate-spin' : ''} />
+                      <span>Re-Run Audit</span>
+                    </button>
+                  </div>
+
+                  {/* Issues List */}
+                  <div className="space-y-3">
+                    {auditResult.issues
+                      .filter(i => auditFilter === 'all' || i.type === auditFilter)
+                      .map((issue, idx) => (
+                        <div
+                          key={idx}
+                          className={`p-4 rounded-2xl border transition-all ${
+                            issue.severity === 'critical'
+                              ? isDark ? 'bg-rose-950/30 border-rose-500/40 text-rose-200' : 'bg-rose-50 border-rose-300 text-rose-900'
+                              : issue.severity === 'warning'
+                                ? isDark ? 'bg-amber-950/30 border-amber-500/40 text-amber-200' : 'bg-amber-50 border-amber-300 text-amber-900'
+                                : isDark ? 'bg-slate-950/60 border-slate-800 text-slate-200' : 'bg-white border-slate-200 text-slate-800 shadow-sm'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3 mb-1.5">
+                            <div className="flex items-center gap-2">
+                              {issue.severity === 'critical' ? (
+                                <AlertCircle size={16} className="text-rose-500 shrink-0" />
+                              ) : issue.severity === 'warning' ? (
+                                <AlertTriangle size={16} className="text-amber-500 shrink-0" />
+                              ) : (
+                                <HelpCircle size={16} className="text-blue-500 shrink-0" />
+                              )}
+                              <span className="font-extrabold text-xs">{issue.title}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-black/20 font-bold">
+                                {issue.file}{issue.line ? `:${issue.line}` : ''}
+                              </span>
+                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                issue.severity === 'critical'
+                                  ? 'bg-rose-500 text-white'
+                                  : issue.severity === 'warning'
+                                    ? 'bg-amber-500 text-black'
+                                    : 'bg-blue-500/20 text-blue-400'
+                              }`}>
+                                {issue.severity}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="text-xs leading-relaxed opacity-90 mb-2">
+                            {issue.description}
+                          </p>
+                          <div className={`p-2 rounded-xl text-[11px] leading-snug border ${
+                            isDark ? 'bg-black/40 border-white/5 text-emerald-300' : 'bg-slate-50 border-slate-200 text-emerald-800'
+                          }`}>
+                            <strong>Remediation:</strong> {issue.remediation}
+                          </div>
+                        </div>
+                      ))}
+
+                    {auditResult.issues.filter(i => auditFilter === 'all' || i.type === auditFilter).length === 0 && (
+                      <div className={`p-8 text-center rounded-2xl border ${
+                        isDark ? 'bg-slate-900/40 border-slate-800 text-slate-400' : 'bg-white border-slate-200 text-slate-500'
+                      }`}>
+                        <CheckCircle2 size={32} className="mx-auto mb-2 text-emerald-500" />
+                        <p className="text-xs font-bold">No issues found in this category.</p>
+                        <p className="text-[11px] opacity-70 mt-0.5">All examined modules satisfy verified architectural standards.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ANTIGRAVITY PROJECT SCAFFOLDER & PROMPT GENERATOR MODAL */}
       {isScaffolderOpen && (

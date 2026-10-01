@@ -1,5 +1,5 @@
 import React from 'react';
-import { Route as RouteIcon, Mountain, RotateCw, Upload, Link2, Download, Unlink, ExternalLink, Trash2, Sparkles, Cookie, ChevronUp, ChevronDown, Calculator, Syringe, BookOpen, AlertTriangle, CheckCircle, Zap } from 'lucide-react';
+import { Route as RouteIcon, Mountain, RotateCw, Upload, Link2, Download, Unlink, ExternalLink, Trash2, Sparkles, Cookie, ChevronUp, ChevronDown, Calculator, Syringe, BookOpen, AlertTriangle, CheckCircle, Zap, CloudSun, Droplets, Wind, Thermometer, ShieldAlert } from 'lucide-react';
 import RunGaugesBar from './RunGaugesBar';
 import CarbFuelingTimeline from './CarbFuelingTimeline';
 import { dist, toKm, paceText, paceToMinPerKm } from '../../../utils/units';
@@ -95,6 +95,9 @@ export default function RunMissionControlTab({
   ghost,
   targets
 }) {
+  const weather = plan?.weather || demand?.weather;
+  const hydration = plan?.hydration || demand?.hydration;
+
   return (
     <div className="flex flex-col gap-4">
       {/* 1. TOP TELEMETRY RADIAL GAUGES */}
@@ -117,6 +120,84 @@ export default function RunMissionControlTab({
           This is an <strong>infographic planning estimate</strong> from a metabolic uptake model, your Nightscout data, and sports endocrinology guidelines. Always carry fast carbohydrates and follow your clinical hypo safety plan.
         </span>
       </div>
+
+      {/* LIVE ROUTE WEATHER & DYNAMIC HYDRATION BAR */}
+      {weather?.current && hydration && (
+        <div className={`rounded-2xl border p-4 transition-all ${isDark ? 'bg-slate-900/50 border-sky-500/20' : 'bg-sky-50/60 border-sky-300 shadow-sm'}`}>
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 pb-3 mb-3 border-b border-sky-500/15">
+            <div className="flex items-center gap-2.5">
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isDark ? 'bg-sky-500/10 text-sky-400 border border-sky-500/20' : 'bg-sky-500/20 text-sky-800'}`}>
+                <CloudSun size={17} />
+              </div>
+              <div>
+                <h3 className={`text-xs font-black uppercase tracking-wider flex items-center gap-2 ${isDark ? 'text-slate-100' : 'text-[#2E2B27]'}`}>
+                  Live Course Weather &amp; Dynamic Hydration
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${isDark ? 'bg-sky-500/10 text-sky-300 border-sky-500/20' : 'bg-sky-100 text-sky-900 border-sky-300'}`}>
+                    Open-Meteo
+                  </span>
+                </h3>
+                <p className={`text-[11px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/80 font-medium'}`}>
+                  {weather.location}: {weather.current.condition}, {weather.current.temperature_c}°C (feels like {weather.current.feels_like_c}°C), {weather.current.humidity_percent}% humidity, wind {weather.current.wind_speed_kmh} km/h {weather.current.wind_direction}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className={`px-2.5 py-1 rounded-lg border text-right ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white/80 border-[#2E2B27]/10'}`}>
+                <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/70'}`}>Fluid Rate</div>
+                <div className={`text-xs font-black tabular-nums ${isDark ? 'text-sky-300' : 'text-sky-900'}`}>{hydration.fluidPerHourMl} ml/h</div>
+              </div>
+              <div className={`px-2.5 py-1 rounded-lg border text-right ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white/80 border-[#2E2B27]/10'}`}>
+                <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/70'}`}>Target / km</div>
+                <div className={`text-xs font-black tabular-nums ${isDark ? 'text-emerald-300' : 'text-emerald-900'}`}>{hydration.fluidPerKmMl} ml/km</div>
+              </div>
+              <div className={`px-2.5 py-1 rounded-lg border text-right ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white/80 border-[#2E2B27]/10'}`}>
+                <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/70'}`}>Total Volume</div>
+                <div className={`text-xs font-black tabular-nums ${isDark ? 'text-amber-300' : 'text-amber-950'}`}>{hydration.totalFluidLitres} L</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 text-xs">
+            <div className={`p-2.5 rounded-xl border flex items-center gap-2.5 ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white/90 border-[#2E2B27]/10'}`}>
+              <Droplets size={16} className="text-sky-400 shrink-0" />
+              <div>
+                <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>Hydration Pacing</div>
+                <div className={`font-black ${isDark ? 'text-slate-100' : 'text-[#2E2B27]'}`}>~{Math.round(hydration.fluidPerHourMl / 3)} ml every 20m</div>
+              </div>
+            </div>
+
+            <div className={`p-2.5 rounded-xl border flex items-center gap-2.5 ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white/90 border-[#2E2B27]/10'}`}>
+              <Zap size={16} className="text-amber-400 shrink-0" />
+              <div>
+                <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>Electrolytes (Sodium)</div>
+                <div className={`font-black ${isDark ? 'text-slate-100' : 'text-[#2E2B27]'}`}>{hydration.sodiumMg} mg ({hydration.electrolyteTablets} tab{hydration.electrolyteTablets === 1 ? '' : 's'})</div>
+              </div>
+            </div>
+
+            <div className={`p-2.5 rounded-xl border flex items-center gap-2.5 ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white/90 border-[#2E2B27]/10'}`}>
+              <Wind size={16} className="text-teal-400 shrink-0" />
+              <div>
+                <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>Wind Drag &amp; Effort</div>
+                <div className={`font-black ${isDark ? 'text-slate-100' : 'text-[#2E2B27]'}`}>{weather.current.wind_speed_kmh} km/h • {weather.current.wind_direction}</div>
+              </div>
+            </div>
+
+            <div className={`p-2.5 rounded-xl border flex items-center gap-2.5 ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white/90 border-[#2E2B27]/10'}`}>
+              <Thermometer size={16} className="text-rose-400 shrink-0" />
+              <div>
+                <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>Thermal Multiplier</div>
+                <div className={`font-black ${isDark ? 'text-slate-100' : 'text-[#2E2B27]'}`}>{plan?.inputs?.weatherEffortMultiplier ? `+${Math.round((plan.inputs.weatherEffortMultiplier - 1) * 100)}% burn` : 'Standard'}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className={`text-[11px] mt-2.5 px-3 py-1.5 rounded-lg border flex items-center gap-2 ${isDark ? 'bg-sky-500/10 text-sky-200 border-sky-500/20' : 'bg-sky-100/70 text-sky-950 border-sky-300 font-medium'}`}>
+            <Droplets size={12} className="text-sky-500 shrink-0" />
+            <span>{hydration.guidance}</span>
+          </div>
+        </div>
+      )}
 
       {/* 2. ROUTE SELECTION & KOMOOT INTEGRATION */}
       <div className={panel}>
@@ -151,7 +232,7 @@ export default function RunMissionControlTab({
             <span>
               {dist(selected.distanceKm, units)} {units} - {selected.gainM} m up / {selected.lossM} m down - {selected.minEle}-{selected.maxEle} m altitude - from {selected.source}
             </span>
-            {!selected.hasElevation && <span className="text-amber-500">this file has no elevation, so climbing is unknown</span>}
+            {!selected.hasElevation && <span className="text-amber-500">Auto-enriching elevation profile from Open-Meteo...</span>}
             <button onClick={() => removeRoute(selected)} className="ml-auto text-red-400 flex items-center gap-1">
               <Trash2 size={12} />
               Delete
@@ -427,7 +508,9 @@ export default function RunMissionControlTab({
                 </p>
               ))}
             </div>
-          )}          {/* Quick Metrics Chips Row with Steppers */}
+          )}
+
+          {/* Quick Metrics Chips Row with Steppers */}
           <div className={panel}>
             <h2 className={`text-xs font-black uppercase tracking-wider mb-3 flex items-center gap-2 ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>
               <Cookie size={13} className="text-amber-500" />
@@ -672,6 +755,7 @@ export default function RunMissionControlTab({
                     <th className="py-1 pr-3">When</th>
                     <th className="pr-3">Where</th>
                     <th className="pr-3 text-right">Carbs</th>
+                    <th className="pr-3 text-right">Hydration</th>
                     <th>Note</th>
                   </tr>
                 </thead>
@@ -681,6 +765,7 @@ export default function RunMissionControlTab({
                       <td className={`py-1.5 pr-3 tabular-nums font-bold ${isDark ? '' : 'text-[#2E2B27]'}`}>{s.minute === 0 ? 'At the start' : `${s.minute} min in`}</td>
                       <td className={`pr-3 tabular-nums ${isDark ? '' : 'text-[#6A645D]'}`}>{s.minute === 0 ? '-' : `${units} ${dist(s.km, units)}`}</td>
                       <td className="pr-3 text-right tabular-nums font-black text-yellow-500">{s.grams} g</td>
+                      <td className="pr-3 text-right tabular-nums font-black text-sky-400">{s.fluidMl || 150} ml</td>
                       <td className={isDark ? 'text-slate-500' : 'text-[#6A645D]'}>{s.note}</td>
                     </tr>
                   ))}
@@ -689,6 +774,7 @@ export default function RunMissionControlTab({
                       <td className={`py-1.5 pr-3 font-bold ${isDark ? '' : 'text-[#2E2B27]'}`}>At the finish</td>
                       <td>-</td>
                       <td className="pr-3 text-right font-black text-yellow-500 tabular-nums">{plan.plan.postCarbs} g</td>
+                      <td className="pr-3 text-right font-black text-sky-400 tabular-nums">250 ml</td>
                       <td className={isDark ? 'text-slate-500' : 'text-[#6A645D]'}>The estimate dips after you stop; insulin stays extra effective for hours.</td>
                     </tr>
                   )}
@@ -785,7 +871,7 @@ export default function RunMissionControlTab({
                 How this was worked out
               </h3>
               <p className={`text-[11px] leading-relaxed mb-2 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
-                Each minute: glucose falls with insulin action (your {plan.inputs?.iob} U on board over a 3-hour curve, times your ISF of {plan.settings?.isf} mmol/L per U, made {plan.inputs?.sensMult}x stronger during the run) and with exercise uptake ({plan.inputs?.kEx} mmol/L per hour, scaled by effort and the route's climbing), and rises with carbs ({plan.settings?.cr} g per U, so about {plan.settings?.mmolPerGram} mmol/L per gram, absorbed over about 20 minutes). Stops are placed so the estimate stays at least 1 mmol/L above your {plan.settings?.floor} floor, off steep climbs where possible. Your loop will also react (temp basals), which this ignores, so treat the estimate as cautious.
+                Each minute: glucose falls with insulin action (your {plan.inputs?.iob} U on board over a 3-hour curve, times your ISF of {plan.settings?.isf} mmol/L per U, made {plan.inputs?.sensMult}x stronger during the run) and with exercise uptake ({plan.inputs?.kEx} mmol/L per hour, scaled by effort, terrain gradients, and ambient weather), and rises with carbs ({plan.settings?.cr} g per U, so about {plan.settings?.mmolPerGram} mmol/L per gram, absorbed over about 20 minutes). Stops are placed so the estimate stays at least 1 mmol/L above your {plan.settings?.floor} floor, off steep climbs where possible. Your loop will also react (temp basals), which this ignores, so treat the estimate as cautious.
               </p>
               <p className={`text-[11px] leading-relaxed mb-2 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
                 {plan.basis.personalFitted
@@ -811,4 +897,3 @@ export default function RunMissionControlTab({
     </div>
   );
 }
-

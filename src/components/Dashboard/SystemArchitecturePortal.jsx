@@ -72,8 +72,9 @@ const spokes = (live) => [
     ],
   },
   {
-    key: 'connections', title: 'External connections', icon: Plug, accent: 'orange', count: 17, side: 'left',
+    key: 'connections', title: 'External connections', icon: Plug, accent: 'orange', count: 18, side: 'left',
     rows: [
+      { icon: Bell, main: 'Ring Doorbell (Direct API)', sub: 'ring-client-api 2FA session, live SIP/WebSocket dings & motion' },
       { icon: CalendarDays, main: 'Google Calendar', sub: 'Events and rules, synced every 5 minutes' },
       { icon: HardDrive, main: 'Google Drive', sub: 'Source of the PDF library' },
       { icon: Droplets, main: 'Nightscout (Heroku + MongoDB)', sub: 'Glucose every minute; carbs posted as Meal Bolus' },
@@ -96,7 +97,7 @@ const spokes = (live) => [
   {
     key: 'data', title: 'Data stores', icon: Database, accent: 'red', count: 6, side: 'right',
     rows: [
-      { icon: Database, main: 'SQLite - app.db', sub: `${live?.tables ?? 62} tables: memories, birthdays, carbs, tasks, campaigns, decks...` },
+      { icon: Database, main: 'SQLite - app.db', sub: `${live?.tables ?? 63} tables: memories, birthdays, carbs, tasks, campaigns, decks, doorbell_events...` },
       { icon: Layers, main: 'Vector index (HNSW)', sub: 'hnswlib over the embedded PDF passages' },
       { icon: BookOpen, main: 'Library databases', sub: 'Documents, topics, contents and validated answers' },
       { icon: FileText, main: 'Files', sub: 'PDFs, literature books, research notes, recordings, chronicle narration and art, maps, card data' },
@@ -105,9 +106,9 @@ const spokes = (live) => [
     ],
   },
   {
-    key: 'services', title: 'Services', icon: Boxes, accent: 'indigo', count: 26, side: 'top',
+    key: 'services', title: 'Services', icon: Boxes, accent: 'indigo', count: 27, side: 'top',
     rows: [
-      { icon: Bell, main: 'Core functions - 8', sub: 'Alarms, timers, reminders, birthdays, calendar, memories, recordings, tasks' },
+      { icon: Bell, main: 'Core functions - 9', sub: 'Doorbell, alarms, timers, reminders, birthdays, calendar, memories, recordings, tasks' },
       { icon: Heart, main: 'Personal - 6', sub: 'Day report, Code best practices, music scanner, board games, campaigns, news' },
       { icon: Droplets, main: 'Health and fitness - 3', sub: 'Blood sugar, activities, run planner & T1D Rulebook' },
       { icon: Settings, main: 'Customisation and system - 7', sub: 'Face designer, persona, wake and stop phrases, Wi-Fi, dev ideas, backups, this page' },

@@ -108,6 +108,8 @@ import phrasesRoutes from './routes/phrases.js';
 import { matchesWake, matchesStop } from './services/phrasesService.js';
 import wakeDaemonRoutes from './routes/wakeDaemon.js';
 import { wakeDaemonService, DAEMON_STATES } from './services/wakeDaemonService.js';
+import doorbellRoutes from './routes/doorbell.js';
+import { doorbellService } from './services/doorbellService.js';
 import { createTask, describeTasksForIms } from './services/tasksService.js';
 import appDb, { addMemory, getMemories, searchMemories, deleteMemory } from './db/database.js';
 import { getWeather } from './services/weatherService.js';
@@ -218,6 +220,7 @@ app.use('/api/reminders', scheduledRouter('reminder'));
 app.use('/api/day-report', dayReportRoutes);
 app.use('/api/code-repo', codeRepoRoutes);
 app.use('/api/wake-daemon', wakeDaemonRoutes);
+app.use('/api/doorbell', doorbellRoutes);
 
 // Live figures for the System Architecture page (/ims/architecture).
 app.get('/api/system/architecture', async (req, res) => {
@@ -1761,6 +1764,23 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 console.log(`${tag} 🎲 getBoardGames -> ${out.baseGames} games, ${out.expansions} expansions${out.matching !== undefined ? `, ${out.matching} matching` : ''}`);
                 respondToToolCall(call, { ...out, note: out.matching !== undefined ? 'Say how many match and name a few; offer more if there are lots.' : 'Give the counts.' });
               } catch (err) { respondToToolCall(call, { error: err.message }); }
+            } else if (call.name === 'getDoorbellStatus') {
+              try {
+                const status = doorbellService.getStatus();
+                const limit = Math.min(20, Math.max(1, Number(call.args?.limit) || 5));
+                const events = doorbellService.getEvents(limit);
+                console.log(`${tag} 🔔 getDoorbellStatus -> status=${status.status}, cameras=${status.cameraCount}, events=${events.length}`);
+                respondToToolCall(call, {
+                  ...status,
+                  recentEvents: events.map((e) => ({
+                    type: e.event_type,
+                    camera: e.camera_name,
+                    time: new Date(e.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+                    battery: e.battery_level
+                  })),
+                  instruction: 'Summarise the doorbell and visitor status in your authentic Yorkshire voice.'
+                });
+              } catch (err) { respondToToolCall(call, { error: err.message }); }
             } else if (call.name === 'getCampaigns') {
               try {
                 const campaigns = campaignsForIms({ name: call.args?.name, chronicle: Boolean(call.args?.chronicle) });
@@ -2487,6 +2507,62 @@ wakeDaemonService.on('stateChange', ({ state, reason }) => {
 
 wakeDaemonService.on('wakeVerified', ({ phrase }) => {
   pushWakeDaemonStatus({ state: 'CONVERSATION_ACTIVE', wakeVerified: true, phrase });
+});
+
+// Ring Doorbell Direct API Service: Wire real-time alerts to ESP32-S3-BOX-3 and Gemini spoken announcements
+doorbellService.on('doorbellEvent', (alert) => {
+  console.log(`[DoorbellAlert] Dispatching ${alert.event.toUpperCase()} to hardware client & voice brain...`);
+  
+  // 1. Push alert frame to connected hardware device (triggers alert sound / visual screen indicator)
+  if (activeHardwareSession?.clientWs?.readyState === WebSocket.OPEN) {
+    try {
+      activeHardwareSession.clientWs.send(JSON.stringify({
+        doorbellAlert: {
+          event: alert.event,
+          cameraName: alert.cameraName,
+          locationName: alert.locationName,
+          batteryLevel: alert.batteryLevel,
+          phrase: alert.yorkshirePhrase,
+          timestamp: alert.timestamp
+        }
+      }));
+      console.log(`[DoorbellAlert] Sent doorbellAlert frame to active hardware client.`);
+    } catch (err) {
+      console.error('[DoorbellAlert] Failed to push doorbellAlert to hardware client:', err.message);
+    }
+  }
+
+  // 2. If Gemini Live session is open with the hardware device or web client, speak the Yorkshire announcement
+  const targetGeminiWs = activeHardwareSession?.geminiWs || activeBrowserSession?.geminiWs;
+  if (targetGeminiWs && targetGeminiWs.readyState === WebSocket.OPEN) {
+    try {
+      console.log(`[DoorbellAlert] Triggering spoken announcement via Gemini Live turn: "${alert.yorkshirePhrase}"`);
+      targetGeminiWs.send(JSON.stringify({
+        clientContent: {
+          turns: [{
+            role: 'user',
+            parts: [{
+              text: `(System: The Ring Doorbell just triggered a ${alert.event} event at ${alert.cameraName}. Announce this urgently and naturally in your authentic Yorkshire persona right now: "${alert.yorkshirePhrase}")`
+            }]
+          }],
+          turnComplete: true
+        }
+      }));
+    } catch (err) {
+      console.error('[DoorbellAlert] Failed to trigger Gemini spoken announcement:', err.message);
+    }
+  }
+});
+
+// Initialise Doorbell service in the background on startup
+doorbellService.init().then((connected) => {
+  if (connected) {
+    console.log('[DoorbellService] Initialized and listening for Ring doorbell events');
+  } else {
+    console.log('[DoorbellService] Initialized (standing by for token configuration)');
+  }
+}).catch((err) => {
+  console.warn('[DoorbellService] Startup initialization skipped:', err.message);
 });
 
 

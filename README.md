@@ -6,11 +6,13 @@ IMS is a personal knowledge and home-assistant system built around **Ims**, a Yo
 - a **web app** for chatting with your PDF library (RAG over Google Drive + Gemini),
 - a set of **`/ims` services** for the things Ims knows about and can do: memories, persona, music releases, code repository best practices (Personal & TurnTown), alarms/timers/reminders, birthdays, calendar, blood sugar (Nightscout), Strava activities and a T1D run planner with a comprehensive glucose rulebook and book/research review engine, morning and day reports, news, background tasks, board games, and dev ideas,
 - the **Campaign Manager** (`/campaigns`) for card-game campaigns - a tab per game: **Lord of the Rings LCG** and **Arkham Horror LCG** - with decks, maps, rule checks, and an illustrated, narrated chronicle,
-- a **System Architecture** page (`/ims/architecture`) with a live test box that lights up every part of the system a prompt uses.
+- a **System Architecture** page (`/ims/architecture`) with a live test box that lights up every part of the system a prompt uses,
+- a **Direct Ring Doorbell API Service** (`/ims/doorbell`) with persistent 2FA refresh token storage, real-time SIP/WebSocket event streaming (dings and motions), ESP32-S3-BOX-3 chime alerts, and Yorkshire vocal announcements.
 
-Everything runs on your own machine. Cloud services used: Google (Drive, Calendar, Gemini) plus data sources such as GitHub (Personal & TurnTown repos), Nightscout, Strava, Komoot, BoardGameGeek, MusicBrainz, Open-Meteo, Open Food Facts, RingsDB, Hall of Beorn, ArkhamDB and the news feeds.
+Everything runs on your own machine. Cloud services used: Google (Drive, Calendar, Gemini) plus data sources such as GitHub (Personal & TurnTown repos), Nightscout, Strava, Komoot, Ring, BoardGameGeek, MusicBrainz, Open-Meteo, Open Food Facts, RingsDB, Hall of Beorn, ArkhamDB and the news feeds.
 
 > **Status:** the voice terminal, web app, and all active `/ims` services are operational.
+> **Commit History:** Inspect detailed commit activity and build changelogs at [GitHub Commits](https://github.com/SimonPhilpott/Information-management-system/commits/main).
 
 ---
 
@@ -27,6 +29,7 @@ Everything runs on your own machine. Cloud services used: Google (Drive, Calenda
 9. [Data, privacy and what is stored where](#data-privacy-and-what-is-stored-where)
 10. [Configuration reference](#configuration-reference)
 11. [Troubleshooting](#troubleshooting)
+12. [Commit History](#commit-history)
 
 ---
 
@@ -170,6 +173,7 @@ The **IMS Hub** (`/ims`) links to every service below. Each page has a back butt
 | `/ims/tasks` | **Background tasks.** Research Ims runs on its own (with Google Search) and reports on later, or in the next day report |
 | `/ims/devideas` | **Dev ideas.** Ideas for improving IMS, saved by Ims (`saveDevIdea`) or automatically when a tool fails, for pickup in Claude Code |
 | `/ims/phrases` | **Wake and stop phrases.** Record how you say them; your recorded spellings feed the wake gate |
+| `/ims/doorbell` | **Ring Doorbell.** Direct Ring API integration (`ring-client-api`) with persistent 2FA refresh token persistence, real-time SIP/WebSocket streaming for dings and motion, live snapshot previews, Box-3 hardware chime pushes, and Gemini Live Yorkshire spoken announcements |
 | `/ims/architecture` | **System Architecture.** How IMS is built: every client, model, connection, data store and service around Ims. The **Test a prompt** box under Ims runs a prompt through Ims's own persona and tools (read-only tools for real; anything that would change something is only shown), and each part of the map lights up in its card's colour as it's used, pulsing while it's used repeatedly, then fading back. The side panel and the "Across the whole system" row fold away to fit the map on one screen |
 | `/campaigns` | **Campaign Manager** - see below |
 
@@ -290,4 +294,10 @@ Long conversations survive Gemini cycling its upstream session (it does after ~3
 | Music scan can't reach the library | The share isn't reachable from the backend host; set the correct path on `/ims/musicscan` |
 | Clock shows the wrong hour | Time syncs via NTP with a Europe/London POSIX rule; the boot log prints raw UTC and the adjusted time - compare them |
 | Web page won't scroll / missing changes | Hard-refresh; the backend hot-reloads but the Vite app caches aggressively behind a tunnel |
+
+## Commit History
+
+All project milestones, feature additions, and bug fixes are tracked in source control. You can view the live commit stream and changelog on GitHub at:
+[https://github.com/SimonPhilpott/Information-management-system/commits/main](https://github.com/SimonPhilpott/Information-management-system/commits/main)
+
 

@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 80
-- Verified Features: 80
+- Total Registered Features: 84
+- Verified Features: 84
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -88,6 +88,10 @@
 | FEAT-078 | Antigravity Project Scaffolder & Implementation Plan Generator | [CodeRepoPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/CodeRepoPortal.jsx) | Scaffold presets, CSS framework matrix, precondition selection, vector-based best practice suggestion engine, and 1-click clipboard implementation prompt export | PASS |
 | FEAT-079 | IMS Main Screen Live Telemetry & Audio Visualizer Widget | [ImsPanel.jsx](file:///d:/Information%20management%20system/src/components/Ims/ImsPanel.jsx) | Real-time 24-bar FFT frequency spectrum canvas, RMS volume gauge, and Box-3 state mirroring | PASS |
 | FEAT-080 | IMS Desktop Global Command Palette | [CommandPalette.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/CommandPalette.jsx) | Ctrl+K global quick launcher, fuzzy portal routing across 26 sub-pages, quick note & dev idea capture | PASS |
+| FEAT-081 | Course Elevation & Weather Integration for Run Planner | [RunMissionControlTab.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlanner/RunMissionControlTab.jsx) | Open-Meteo elevation auto-enrichment, live weather retrieval, dynamic hydration (ml/h, ml/km, electrolytes), thermal/aerodynamic carb scaling | PASS |
+| FEAT-082 | Heart Rate Zone Training Volume Aggregation | [ActivitiesPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/ActivitiesPortal.jsx) | SQL conditional HR zone totals, multi-segment polarised distribution bar, zone scorecards & Gemini AI coaching integration | PASS |
+| FEAT-083 | Code Repo Automated PR Quality & TypeScript Linting Scanner | [CodeRepoPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/CodeRepoPortal.jsx) | Static workspace audit for missing type definitions, unhandled async catch blocks & Triple Registry parity with health scores | PASS |
+| FEAT-084 | Direct Ring Doorbell API Service & ESP32-S3-BOX-3 Alert Subsystem | [DoorbellPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/DoorbellPortal.jsx) | Direct Ring API integration, SIP/WebSocket dings & motion streaming, Box-3 chime alert frames & Yorkshire spoken announcements | PASS |
 
 ## Section 2: Detailed Scenarios
 ### Suite 17: Bidirectional Pace & Estimated Time Editing (FEAT-043)
@@ -854,6 +858,71 @@
    - Click or select **Check Blood Glucose** (`/cgm`). Verify live Nightscout telemetry (mmol/L value and trend arrow) renders directly inside the palette.
 4. **Escape & Click-Away Dismissal:** Press `Escape` or click outside the modal. Verify the palette closes cleanly and restores previous focus.
 5. **Defensive Invariant 90 (Global Key Listener Lifecycle):** In `App.jsx`, the global `keydown` event listener for `Ctrl+K` is registered once and removed cleanly on component unmount. In `CommandPalette.jsx`, keyboard event propagation is contained so form inputs elsewhere in the DOM do not conflict.
+
+### Suite 81: Course Elevation & Weather Integration for Run Planner (FEAT-081)
+1. **GPX Auto-Elevation Enrichment:** Navigate to `/ims/runplanner`. Upload a GPX route lacking `<ele>` coordinates. Verify:
+   - In `routeService.js`, `fetchOpenMeteoElevations()` batches coordinates into groups of 100 and fetches accurate topographical elevation from `https://api.open-meteo.com/v1/elevation`.
+   - The saved route contains non-zero `elevationGainM` and per-point elevation profiles.
+   - The route profile renders realistic terrain undulations.
+2. **Live Open-Meteo Weather Retrieval:** In the Run Planner workspace, select a saved route or click **Load Leeds Default Route**. Verify:
+   - The backend queries `https://api.open-meteo.com/v1/forecast` using route start coordinates (or Leeds fallback `53.8008, -1.5491`).
+   - The *Live Course Weather & Dynamic Hydration* card displays current condition, temperature (°C), feels-like temperature (°C), wind speed (km/h) & direction, and relative humidity (%).
+3. **Dynamic Hydration & Electrolyte Model:** Inspect the hydration telemetry readout. Verify:
+   - Sweat rate baseline (~500 ml/h at 15°C for 70kg) scales upward with ambient temperature (>15°C), high humidity (>70%), and pace effort.
+   - Per-km fluid targets (`ml/km`) and total fluid required (`L`) update dynamically when changing target pace or duration.
+   - Electrolyte targets calculate total sodium required (`mg`) and salt tablet dosage (~350mg Na/tab) with contextual guidance (e.g. *Moderate sodium replacement: 1 tablet per hour*).
+4. **Thermal & Aerodynamic Carb Burn Scaling:** Inspect the carbohydrate requirements and fueling timeline:
+   - In hot conditions (>20°C), verify carbohydrate burn rate increases by +1.5% per 1°C up to a +20% thermal cap to account for accelerated muscle glycogen oxidation.
+   - In `RunMissionControlTab.jsx`, the *When to Eat* table includes targeted fluid volumes (`s.fluidMl`) for each fueling stop.
+   - In `CarbFuelingTimeline.jsx`, verify the `Fluid/km` target header chip and per-stop hydration dosage pills (`~150ml`) render cleanly alongside carb chew milestones.
+5. **Defensive Invariant 91 (Weather Network Resilience & Batching Headroom):** In `routeService.js`, elevation batching uses 100 coordinates per request to avoid Open-Meteo URI length overflows, with fallback to zero delta on network timeouts. In `runPlanService.js`, `getWeather()` caches weather responses in memory for 10 minutes and falls back to standard 15°C neutral conditions if Open-Meteo is unreachable.
+
+### Suite 82: Heart Rate Zone Training Volume Aggregation (FEAT-082)
+1. **Heart Rate Zone Volume Card Rendering:** Navigate to `/ims/activities`. Verify that beneath the period summary cards, the *Heart Rate Zone Training Volume* card is rendered with an active `HeartPulse` icon and time frame subtext (*Last 28 Days (Rolling)*).
+2. **Multi-Segment Polarised Distribution Bar:** Inspect the volume distribution progress bar:
+   - Verify 3 proportional coloured segments: Emerald (`#10b981`) for Aerobic (<145 bpm), Amber (`#f59e0b`) for Threshold (145-168 bpm), and Rose (`#f43f5e`) for VO2 Max (>168 bpm).
+   - Hover over each segment. Verify native browser tooltips display the zone title, total distance (in active user unit preference `km` or `mi`), and percentage of total volume (e.g. `Aerobic: 42.5 km (78.5%)`).
+   - If no activities in the period have HR data, verify a clean fallback message (*No heart rate telemetry recorded in the last 28 days*) is displayed.
+3. **Three Responsive Zone Scorecards:** Inspect the three telemetry cards beneath the bar:
+   - **Aerobic (Zone 1 & 2):** Shows total distance, percentage badge (`% vol`), duration in hours, session count, and clinical note on base endurance and stable blood glucose.
+   - **Threshold (Zone 3 & 4):** Shows total distance, percentage badge, duration in hours, session count, and lactate threshold note.
+   - **VO2 Max (Zone 5):** Shows total distance, percentage badge, duration in hours, session count, and anaerobic power note.
+4. **Unit System Responsiveness:** Toggle unit switch between Metric (`km`) and Imperial (`mi`). Verify distances in the zone scorecards and distribution bar automatically recalculate using user unit preferences.
+5. **Gemini AI Coaching Integration:** Inspect the Gemini training analysis prompt in `stravaService.js`. Verify the prompt is injected with 28-day heart rate zone distributions and evaluates adherence to polarised 80/20 training rules and metabolic impact on T1D glucose stability.
+6. **Defensive Invariant 92 (Null HR Telemetry Safety & Zero-Division Guards):** In `stravaService.js`, SQL queries use conditional sums (`CASE WHEN avg_hr IS NOT NULL AND avg_hr < 145 THEN ...`) so activities recorded without heart rate monitors do not skew zone calculations or throw `NULL` aggregation errors. In `ActivitiesPortal.jsx`, percentage rendering includes defensive zero fallbacks (`|| 0`) to prevent `NaN%` displays on empty or single-zone periods.
+
+### Suite 83: Code Repo Automated PR Quality & TypeScript Linting Scanner (FEAT-083)
+1. **Audit Trigger Button:** Navigate to `/ims/code-repo`. In the top toolbar, locate the gradient button **PR Quality & Registry Audit** with a file check icon (`FileCheck`). Click the button.
+2. **Audit Execution & Scanner Modal:** Verify:
+   - The Code Integrity Audit modal opens immediately with dark backdrop blur.
+   - During scanning, a spinning progress indicator confirms analysis of workspace files and Triple Registry invariant tables.
+   - On completion, top telemetry cards render: Overall Code Health Score (out of 100), Triple Registry Parity Status (e.g. `83 Feats • 26 Modules`), Async / Catch Block findings tally, and Type Declarations finding tally.
+3. **Category Filtering & Findings Navigation:**
+   - Click **Triple Registry** tab: Verify parity checks between `feature.json` unique IDs, `ProjectStructure.JSON` module definitions, and `test_plan.md` matrix rows.
+   - Click **Async Catches** tab: Inspect findings for empty catch blocks or unhandled promise rejection chains.
+   - Click **Type Defs** tab: Inspect findings for missing TypeScript interfaces or unannotated exported service functions.
+4. **Remediation Inspection:** Verify each finding card displays the issue title, relative file path and line number badge, severity chip (`CRITICAL`, `WARNING`, `INFO`), detailed explanation, and concrete remediation instructions.
+5. **Re-Run & Dismissal:** Click **Re-Run Audit** to trigger dynamic re-evaluation. Click the `X` button or press Escape to dismiss the modal cleanly.
+6. **Defensive Invariant 93 (Safe Static Ast/Regex Parse & JSON Recovery):** In `codeRepoService.js`, `auditQualityAndRegistry()` uses defensive `try/catch` wrappers around filesystem reads (`feature.json`, `ProjectStructure.JSON`, `test_plan.md`) and graceful directory walking to guarantee zero crash risk even on corrupted files or partial project states. In `CodeRepoPortal.jsx`, filter views employ null-safe array operators preventing `TypeError` on empty finding collections.
+
+### Suite 84: Direct Ring Doorbell API Service & ESP32-S3-BOX-3 Alert Subsystem (FEAT-084)
+1. **Doorbell Portal Navigation:** Open global Command Palette (`Ctrl+K`), search for `Ring Doorbell Service`, or navigate directly to `/ims/doorbell`. Verify the page renders with four summary cards: Ring API Connection, Discovered Cameras, Spoken Announcements (Yorkshire Dialect), and Box-3 Terminal Link.
+2. **2FA Refresh Token Setup Modal:**
+   - Click **Configure Token**. Verify modal opens displaying setup instructions (`npx -p ring-client-api ring-auth-cli`).
+   - Entering an empty token keeps the save button disabled.
+   - On submitting a valid refresh token, verify `POST /api/doorbell/token` authenticates, persists token to SQLite `settings` table, discovers cameras, and automatically updates connection status to `Connected`.
+3. **Hardware Push Alert & Spoken Announcement Dispatch:**
+   - Click **Test Doorbell Ding** button on `/ims/doorbell`. Verify:
+     (a) An active alert banner flashes (*ACTIVE ALERT: DING DETECTED AT FRONT DOOR*).
+     (b) A `doorbellAlert` frame is dispatched over TCP to the connected ESP32-S3-BOX-3 hardware client, triggering chime audio (`playAlertSound(0)`) and updating LCD text to `DOORBELL: Front Door`.
+     (c) A Gemini Live text turn is triggered with Yorkshire announcement prompt (*"Hold on Simon, someone's at front door!"* or *"Doorbell's gone, lad."*).
+     (d) The ding event is appended to SQLite `doorbell_events` and rendered in the activity timeline.
+   - Click **Test Motion Alert** button. Verify motion chime audio (`playAlertSound(1)`), LCD text `MOTION: Front Door`, and motion timeline recording.
+4. **Live Snapshot Capture:** For any connected camera in the camera list, click **Grab Snapshot**. Verify `GET /api/doorbell/snapshot/:id` streams fresh JPEG binary data and renders a live camera snapshot preview in the UI card.
+5. **Gemini Live `getDoorbellStatus` Voice Tool:** While conversing with Ims, ask *"Who rang the doorbell?"* or *"What's the doorbell battery level?"*. Verify Gemini Live invokes the `getDoorbellStatus` tool and answers naturally in Yorkshire dialect with the latest activity and battery percentage.
+6. **Defensive Invariant 94 (Token Auto-Rotation, Event Throttling & Graceful Fallback):** In `doorbellService.js`, `onRefreshTokenUpdated` automatically persists rotated refresh tokens without dropping connection state. Ding events are throttled to maximum 1 per 10s and motion events to 1 per 30s to prevent spamming audio chimes. Unconfigured tokens log non-fatal warnings and allow IMS backend startup to proceed seamlessly without unhandled crash rejections.
+
+
 
 
 

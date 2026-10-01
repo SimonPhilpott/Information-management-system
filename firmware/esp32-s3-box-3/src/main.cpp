@@ -3876,6 +3876,35 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         }
       }
     }
+    // Ring Doorbell Direct API Alert (Ding / Motion)
+    if (doc["doorbellAlert"].is<JsonObject>()) {
+      JsonObject da = doc["doorbellAlert"];
+      const char *ev = da["event"] | "ding";
+      const char *cam = da["cameraName"] | "Front Door";
+      const char *phrase = da["phrase"] | "Someone's at front door!";
+      Serial.printf("[IMS] 🔔 Doorbell Alert received: event=%s, camera=%s\n", ev, cam);
+      
+      if (currentState == STATE_STANDBY || currentState == STATE_VERIFYING) {
+        if (currentState == STATE_VERIFYING) {
+          sendAudioStreamEnd();
+          micStreamingActive = false;
+          isSpeakingDetected = false;
+          currentState = STATE_STANDBY;
+        }
+        
+        char alertBanner[96];
+        if (strcmp(ev, "ding") == 0) {
+          snprintf(alertBanner, sizeof(alertBanner), "DOORBELL: %s", cam);
+          playAlertSound(0); // Doorbell chime
+        } else {
+          snprintf(alertBanner, sizeof(alertBanner), "MOTION: %s", cam);
+          playAlertSound(1); // Motion alert chime
+        }
+        
+        lastTranscript = String(alertBanner);
+        renderScreen(true);
+      }
+    }
     // Backend pushed wakeDaemon telemetry (Voice Detection Service & Wake status)
     if (doc["wakeDaemon"].is<JsonObject>()) {
       JsonObject wd = doc["wakeDaemon"];

@@ -1008,6 +1008,49 @@
         "Quick action modes for inline memory creation (POST /api/memories), dev idea logging (POST /api/dev-ideas), and live Nightscout blood glucose check (GET /api/glucose)",
         "Top navigation bar launcher button in Layout.jsx and keyboard up/down/enter navigation with Escape dismissal"
       ]
+    },
+    "Course Elevation & Weather Integration for Run Planner": {
+      "status": "enabled",
+      "description": "Integration with Open-Meteo elevation and forecasting APIs in the Run Planner portal (/ims/runplanner), auto-enriching GPX routes with topographical elevation, fetching live temperature/humidity/wind conditions, scaling carbohydrate oxidation rates by thermal/aerodynamic strain, and providing dynamic per-km hydration and electrolyte pacing.",
+      "subFeatures": [
+        "Automatic Open-Meteo elevation profile enrichment in routeService.js (fetchOpenMeteoElevations & enrichPointsWithElevation) for GPX routes lacking elevation coordinates",
+        "Live weather forecasting integration via Open-Meteo in runPlanService.js and planner.js (GET /api/planner/weather) returning ambient temperature, humidity, and wind conditions",
+        "Dynamic hydration and electrolyte calculation engine (calculateHydration) modeling fluid loss rates (ml/h), per-km target volumes (ml/km), and sodium replacement (mg / tablets)",
+        "Dynamic carbohydrate burn rate scaling with thermal multiplier (+10-20% in hot conditions) and aerodynamic drag resistance",
+        "Live Course Weather & Dynamic Hydration telemetry widget in RunMissionControlTab.jsx with fluid pacing recommendations and thermal effort readouts",
+        "Per-stop hydration dosage pills (~150ml) and fluid per km metrics integrated into CarbFuelingTimeline.jsx"
+      ]
+    },
+    "Heart Rate Zone Training Volume Aggregation": {
+      "status": "enabled",
+      "description": "Training volume aggregation and polarisation analysis by physiological heart rate zones (Aerobic Z1-Z2 <145 bpm, Threshold Z3-Z4 145-168 bpm, VO2 Max Z5 >168 bpm) in the Activities portal (/ims/activities) and AI coaching models.",
+      "subFeatures": [
+        "Multi-zone heart rate volume and time aggregation engine in stravaService.js (totals & getSummary)",
+        "Interactive multi-segmented Polarised Volume Distribution Bar in ActivitiesPortal.jsx displaying 80/20 aerobic vs quality breakdowns",
+        "Three dedicated zone telemetry scorecards (Aerobic, Threshold, VO2 Max) with distance, time, session counts, percentages, and clinical T1D guidance",
+        "AI training analysis prompt augmentation in stravaService.js evaluating aerobic base development and threshold creep"
+      ]
+    },
+    "Code Repo Automated PR Quality & TypeScript Linting Scanner": {
+      "status": "enabled",
+      "description": "Automated code health, TypeScript declaration, and Triple Registry integrity scanner accessible via 1-click in the Code Repo portal (/ims/code-repo) and REST endpoint (POST /api/code-repo/audit).",
+      "subFeatures": [
+        "Workspace-wide static scan detecting unhandled async catch blocks, empty error handlers, and unhandled promise rejections",
+        "TypeScript linting and missing JSDoc/TSDoc type definition discovery across exported service and utility methods",
+        "Triple Registry synchronization and parity verification between feature.json, ProjectStructure.JSON, and test_plan.md matrix/summary",
+        "Interactive Code Integrity Audit modal with health score gauge, category filter tabs, file link badges, and actionable remediation diffs"
+      ]
+    },
+    "Direct Ring Doorbell API Service & ESP32-S3-BOX-3 Alert Subsystem": {
+      "status": "enabled",
+      "description": "Direct Ring API integration (ring-client-api) in the IMS backend with persistent 2FA refresh token storage, real-time SIP/WebSocket event streaming for dings and motions, physical ESP32-S3-BOX-3 push notifications with chime audio, Gemini Live Yorkshire voice announcements, and a dedicated management portal (/ims/doorbell).",
+      "subFeatures": [
+        "Direct Ring API integration via ring-client-api in doorbellService.js with automatic token rotation and persistent SQLite storage",
+        "Real-time event subscriptions (SIP/WebSockets) for doorbell button presses (ding) and porch motion detection",
+        "Direct push alert frame dispatching to connected ESP32-S3-BOX-3 hardware client with audio chime and screen visitor alert banner",
+        "Authentic Yorkshire spoken announcements triggered through Gemini Live voice brain (e.g. 'Hold on Simon, someone's at front door!')",
+        "Comprehensive Doorbell Portal UI (/ims/doorbell) with camera listing, battery gauges, live activity timeline, live JPEG snapshot capture, and 2FA token setup"
+      ]
     }
   }
 }

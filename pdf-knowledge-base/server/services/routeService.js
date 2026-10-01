@@ -34,6 +34,69 @@ function haversine(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
+/**
+ * Fetch elevation profile from Open-Meteo Elevation API for route coordinates lacking elevation
+ * @param {Array<{lat: number, lng: number}>} points
+ * @returns {Promise<Array<number>>} Array of elevations in metres
+ */
+export async function fetchOpenMeteoElevations(points) {
+  if (!points || points.length === 0) return [];
+  const batchSize = 100;
+  const allElevations = [];
+  
+  for (let i = 0; i < points.length; i += batchSize) {
+    const chunk = points.slice(i, i + batchSize);
+    const lats = chunk.map((p) => p.lat.toFixed(5)).join(',');
+    const lngs = chunk.map((p) => p.lng.toFixed(5)).join(',');
+    const url = `https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lngs}`;
+    
+    try {
+      const res = await fetch(url, { headers: { 'User-Agent': 'IMS-RunPlanner/1.0' }, signal: AbortSignal.timeout(10000) });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.elevation)) {
+          allElevations.push(...data.elevation);
+        } else {
+          allElevations.push(...chunk.map(() => 0));
+        }
+      } else {
+        allElevations.push(...chunk.map(() => 0));
+      }
+    } catch (err) {
+      console.warn('[RouteService] Open-Meteo elevation auto-fetch error:', err.message);
+      allElevations.push(...chunk.map(() => 0));
+    }
+  }
+  return allElevations;
+}
+
+/**
+ * Auto-enrich route coordinates with elevation from Open-Meteo if missing
+ * @param {Array<{lat: number, lng: number, ele?: number}>} points
+ * @returns {Promise<Array<{lat: number, lng: number, ele: number}>>}
+ */
+export async function enrichPointsWithElevation(points) {
+  if (!points || points.length < 2) return points;
+  const hasEleCount = points.filter((p) => p.ele != null && Number.isFinite(p.ele)).length;
+  if (hasEleCount >= points.length * 0.8) {
+    return points; // already has elevation
+  }
+  
+  try {
+    const elevations = await fetchOpenMeteoElevations(points);
+    if (elevations.length === points.length) {
+      return points.map((p, i) => ({
+        lat: p.lat,
+        lng: p.lng,
+        ele: elevations[i] != null && Number.isFinite(elevations[i]) ? elevations[i] : (p.ele ?? 0)
+      }));
+    }
+  } catch (err) {
+    console.warn('[RouteService] Failed to auto-enrich route elevation:', err.message);
+  }
+  return points;
+}
+
 // GPX: <trkpt lat lon><ele>..</ele></trkpt>, or route points <rtept>.
 export function parseGpx(xml) {
   const pts = [];
@@ -119,6 +182,11 @@ const present = (r, full = false) => ({
   minEle: r.min_ele, maxEle: r.max_ele, hasElevation: Boolean(r.has_elevation), createdAt: r.created_at,
   ...(full ? { profile: JSON.parse(r.profile), splits: JSON.parse(r.splits), path: r.path ? JSON.parse(r.path) : null } : {}),
 });
+
+export async function saveRouteAsync({ source, externalId = null, name, points }) {
+  const enrichedPoints = await enrichPointsWithElevation(points);
+  return saveRoute({ source, externalId, name, points: enrichedPoints });
+}
 
 export function saveRoute({ source, externalId = null, name, points }) {
   const a = analyseCoords(points);

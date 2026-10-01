@@ -31,6 +31,7 @@ const PORTALS = [
   { id: 'wifi', name: 'Wi-Fi Configuration', path: '/ims/wifi', category: 'Terminal & Hardware', icon: Wifi, description: 'Configure ESP32 Wi-Fi networks and connection telemetry' },
   { id: 'recordings', name: 'Voice Captures & Audio Logs', path: '/ims/recordings', category: 'Terminal & Hardware', icon: Mic, description: 'Listen to recorded speech turns and verify transcript text' },
   { id: 'phrases', name: 'Wake & Stop Phrases', path: '/ims/phrases', category: 'Terminal & Hardware', icon: MessageSquare, description: 'Approved wake phrases, room chatter rejection, and closing phrases' },
+  { id: 'doorbell', name: 'Ring Doorbell Service', path: '/ims/doorbell', category: 'Terminal & Hardware', icon: Bell, description: 'Direct Ring API integration, live dings, motion alerts, snapshots, and Yorkshire voice alerts' },
   { id: 'news', name: 'News Feed Sources', path: '/ims/news', category: 'Intelligence & Memory', icon: Newspaper, description: 'RSS news subscriptions and daily morning briefing headlines' },
   { id: 'backups', name: 'System Backups & Maintenance', path: '/ims/backups', category: 'Development & Engineering', icon: Shield, description: 'Nightly SQLite database backups, schema snapshots, and vector store integrity' },
 ];

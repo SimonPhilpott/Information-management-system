@@ -238,6 +238,16 @@ const addDays = (dateStr, n) => { const d = new Date(`${dateStr}T00:00:00Z`); d.
 const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
 const mondayOf = (dateStr) => { const d = new Date(`${dateStr}T00:00:00Z`); const wd = (d.getUTCDay() + 6) % 7; return addDays(dateStr, -wd); };
 
+// Standard Heart Rate Zone thresholds for training volume distribution
+// - Aerobic (Zone 1 & 2): < 145 bpm (base building, fat oxidation, recovery)
+// - Threshold (Zone 3 & 4): 145 - 168 bpm (tempo, lactate threshold, race pace)
+// - VO2 Max (Zone 5): > 168 bpm (anaerobic intervals, peak cardiac output)
+export const HR_ZONES = {
+  aerobic: { label: 'Aerobic (Z1-Z2)', range: '< 145 bpm', min: 0, max: 144, color: '#10b981', desc: 'Base aerobic development & fat oxidation' },
+  threshold: { label: 'Threshold (Z3-Z4)', range: '145-168 bpm', min: 145, max: 168, color: '#f59e0b', desc: 'Lactate threshold & sustained tempo' },
+  vo2max: { label: 'VO2 Max (Z5)', range: '> 168 bpm', min: 169, max: 999, color: '#ef4444', desc: 'High-intensity neuromuscular & peak aerobic power' },
+};
+
 function totals(fromDay, toDay, sport = '') {
   const r = db.prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(distance),0) AS distance, COALESCE(SUM(moving_time),0) AS time, COALESCE(SUM(elevation),0) AS elevation,
     AVG(avg_hr) AS avgHr,
@@ -246,11 +256,27 @@ function totals(fromDay, toDay, sport = '') {
     COALESCE(SUM(CASE WHEN sport IN ('Run','TrailRun','VirtualRun') AND (session_tag IS NULL OR session_tag NOT IN ('speed', 'hill')) THEN distance END),0) AS paceRunDistance,
     COALESCE(SUM(CASE WHEN sport IN ('Run','TrailRun','VirtualRun') AND (session_tag IS NULL OR session_tag NOT IN ('speed', 'hill')) THEN moving_time END),0) AS paceRunTime,
     COALESCE(SUM(CASE WHEN session_tag = 'speed' THEN 1 ELSE 0 END),0) AS speedCount,
-    COALESCE(SUM(CASE WHEN session_tag = 'hill' THEN 1 ELSE 0 END),0) AS hillCount
+    COALESCE(SUM(CASE WHEN session_tag = 'hill' THEN 1 ELSE 0 END),0) AS hillCount,
+    -- Heart Rate Zone Aggregations
+    COALESCE(SUM(CASE WHEN avg_hr IS NOT NULL AND avg_hr < 145 THEN distance END),0) AS hrAerobicDistance,
+    COALESCE(SUM(CASE WHEN avg_hr IS NOT NULL AND avg_hr < 145 THEN moving_time END),0) AS hrAerobicTime,
+    COALESCE(SUM(CASE WHEN avg_hr IS NOT NULL AND avg_hr < 145 THEN 1 ELSE 0 END),0) AS hrAerobicCount,
+    COALESCE(SUM(CASE WHEN avg_hr >= 145 AND avg_hr <= 168 THEN distance END),0) AS hrThresholdDistance,
+    COALESCE(SUM(CASE WHEN avg_hr >= 145 AND avg_hr <= 168 THEN moving_time END),0) AS hrThresholdTime,
+    COALESCE(SUM(CASE WHEN avg_hr >= 145 AND avg_hr <= 168 THEN 1 ELSE 0 END),0) AS hrThresholdCount,
+    COALESCE(SUM(CASE WHEN avg_hr > 168 THEN distance END),0) AS hrVo2MaxDistance,
+    COALESCE(SUM(CASE WHEN avg_hr > 168 THEN moving_time END),0) AS hrVo2MaxTime,
+    COALESCE(SUM(CASE WHEN avg_hr > 168 THEN 1 ELSE 0 END),0) AS hrVo2MaxCount,
+    COALESCE(SUM(CASE WHEN avg_hr IS NOT NULL THEN distance END),0) AS hrTotalDistance,
+    COALESCE(SUM(CASE WHEN avg_hr IS NOT NULL THEN moving_time END),0) AS hrTotalTime,
+    COALESCE(SUM(CASE WHEN avg_hr IS NOT NULL THEN 1 ELSE 0 END),0) AS hrTotalCount
     FROM strava_activities WHERE day >= ? AND day <= ? ${sport ? 'AND sport = ?' : ''}`).get(fromDay, toDay, ...(sport ? [sport] : []));
   // Average running pace (min per km) = running time / running distance; null when there was no standard/aerobic running.
   // Speed and hill sessions are excluded from average pace calculations so interval rests or steep climbing do not distort standard pace.
   const paceMinKm = r.paceRunDistance > 500 ? +(r.paceRunTime / 60 / (r.paceRunDistance / 1000)).toFixed(3) : null;
+  const hrTotalTime = r.hrTotalTime || 0;
+  const hrTotalDist = r.hrTotalDistance || 0;
+
   return {
     count: r.count,
     distanceKm: +(r.distance / 1000).toFixed(1),
@@ -261,7 +287,33 @@ function totals(fromDay, toDay, sport = '') {
     paceRunKm: +(r.paceRunDistance / 1000).toFixed(1),
     paceMinKm,
     speedCount: r.speedCount,
-    hillCount: r.hillCount
+    hillCount: r.hillCount,
+    hrZones: {
+      totalCount: r.hrTotalCount,
+      totalKm: +(hrTotalDist / 1000).toFixed(1),
+      totalHours: +(hrTotalTime / 3600).toFixed(1),
+      aerobic: {
+        km: +(r.hrAerobicDistance / 1000).toFixed(1),
+        hours: +(r.hrAerobicTime / 3600).toFixed(1),
+        count: r.hrAerobicCount,
+        pctTime: hrTotalTime > 0 ? Math.round((r.hrAerobicTime / hrTotalTime) * 100) : 0,
+        pctDist: hrTotalDist > 0 ? Math.round((r.hrAerobicDistance / hrTotalDist) * 100) : 0,
+      },
+      threshold: {
+        km: +(r.hrThresholdDistance / 1000).toFixed(1),
+        hours: +(r.hrThresholdTime / 3600).toFixed(1),
+        count: r.hrThresholdCount,
+        pctTime: hrTotalTime > 0 ? Math.round((r.hrThresholdTime / hrTotalTime) * 100) : 0,
+        pctDist: hrTotalDist > 0 ? Math.round((r.hrThresholdDistance / hrTotalDist) * 100) : 0,
+      },
+      vo2max: {
+        km: +(r.hrVo2MaxDistance / 1000).toFixed(1),
+        hours: +(r.hrVo2MaxTime / 3600).toFixed(1),
+        count: r.hrVo2MaxCount,
+        pctTime: hrTotalTime > 0 ? Math.round((r.hrVo2MaxTime / hrTotalTime) * 100) : 0,
+        pctDist: hrTotalDist > 0 ? Math.round((r.hrVo2MaxDistance / hrTotalDist) * 100) : 0,
+      }
+    }
   };
 }
 
@@ -388,9 +440,15 @@ export async function analyse(units = 'km') {
     `Base everything on the numbers below; do not invent activities, injuries or goals. Where there is not enough data, say so.\n\n` +
     `CRITICAL RULE ON SPEED AND HILL SESSIONS:\n` +
     `Activities tagged as [Speed Session] or [Hill Session] have their distance fully credited to weekly volume and load totals, but their pace is intentionally excluded from baseline running averages. Do NOT interpret the overall average pace of interval rests or hill climbs as aerobic fitness deterioration or use their average pace in general pacing advice unless explicitly asked for.\n\n` +
+    `HEART RATE ZONE POLARISATION (Aerobic vs Threshold vs VO2 Max):\n` +
+    `Volume is categorised across three primary physiological heart rate bands:\n` +
+    `- Aerobic (Z1-Z2 < 145 bpm): Base aerobic endurance, mitochondrial density & fat metabolism\n` +
+    `- Threshold (Z3-Z4 145-168 bpm): Lactate threshold, tempo & race pace resilience\n` +
+    `- VO2 Max (Z5 > 168 bpm): High-intensity anaerobic power & peak cardiovascular stroke volume\n` +
+    `Evaluate whether the runner maintains a healthy 80/20 polarisation or if too much volume is creeping into the grey/threshold zone.\n\n` +
     `Write short sections with these headings: "Where you are now", "What is going well", "Watch out for", "Patterns", "Next 2 weeks" (3 concrete, modest suggestions). ` +
-    `Comment on volume trend (last 28 days vs the 28 before), consistency (active days in the last 30: ${s.activeDaysLast30}), sport mix, and any sudden jumps in weekly load (more than about 10-15% up) that raise injury risk.\n\n` +
-    `PERIOD TOTALS (last 7 / 28 / 365 days, each with the equal period before it):\n${JSON.stringify(s.periods)}\n\n` +
+    `Comment on volume trend (last 28 days vs the 28 before), consistency (active days in the last 30: ${s.activeDaysLast30}), sport mix, heart rate zone distribution, and any sudden jumps in weekly load (more than about 10-15% up) that raise injury risk.\n\n` +
+    `PERIOD TOTALS & HR ZONES (last 7 / 28 / 365 days, each with the equal period before it):\n${JSON.stringify(s.periods)}\n\n` +
     `WEEKLY TOTALS, oldest to newest (last 26 weeks):\n${JSON.stringify(s.weekly.map((w) => [w.weekStart, w.count, w.distanceKm, w.hours, w.elevationM]))}\n(each row: week starting, activities, km, hours, metres climbed)\n\n` +
     `BY SPORT (all time):\n${JSON.stringify(s.bySport)}\n\nRECORDS:\n${JSON.stringify(s.records)}\n\nLATEST 25 ACTIVITIES:\n${recent.join('\n')}`;
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });

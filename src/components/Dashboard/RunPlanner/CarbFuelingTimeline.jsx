@@ -94,6 +94,7 @@ export default function CarbFuelingTimeline({
   const baselineCarbs = originalBaseline?.totalCarbs || totalCarbs;
   const durationMin = plan.run.durationMin || 60;
   const carbRatePerHour = durationMin > 0 ? Math.round((totalCarbs / (durationMin / 60))) : 0;
+  const hydration = plan.hydration;
 
   // Shared stepper button style
   const stepBtn = (extraClass = '') =>
@@ -117,7 +118,7 @@ export default function CarbFuelingTimeline({
               {originalBaseline && renderDeltaBadge(totalCarbs, baselineCarbs, 'carbs', isDark)}
             </h3>
             <p className={`text-[11px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/80 font-medium'}`}>
-              Planned carbohydrate schedule timed to elevation gradients and aerobic demand
+              Planned carbohydrate &amp; hydration schedule timed to elevation gradients, ambient weather, and aerobic demand
             </p>
           </div>
         </div>
@@ -159,6 +160,16 @@ export default function CarbFuelingTimeline({
               {carbRatePerHour} <span className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-[#2E2B27]'}`}>g/h</span>
             </div>
           </div>
+
+          {/* Hydration Rate */}
+          {hydration && (
+            <div className={`px-3 py-1.5 rounded-xl border text-right ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/15'}`}>
+              <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/70'}`}>Fluid / km</div>
+              <div className={`text-sm font-black tabular-nums mt-0.5 ${isDark ? 'text-teal-400' : 'text-teal-900'}`}>
+                {hydration.fluidPerKmMl} <span className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-[#2E2B27]'}`}>ml</span>
+              </div>
+            </div>
+          )}
 
           <div className={`px-3 py-1.5 rounded-xl border text-right ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/15'}`}>
             <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/70'}`}>Stops</div>
@@ -209,6 +220,9 @@ export default function CarbFuelingTimeline({
                     </span>
                     <span className={`text-[10px] px-2 py-0.5 rounded border ${isDark ? 'bg-slate-800 text-slate-300 border-white/5' : 'bg-white text-[#2E2B27] border-[#2E2B27]/20 font-black shadow-2xs'}`}>
                       Fast Gel
+                    </span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded border ${isDark ? 'bg-sky-500/10 text-sky-300 border-sky-500/20' : 'bg-sky-50 text-sky-900 border-sky-300 font-bold'}`}>
+                      ~{s.fluidMl || 150}ml
                     </span>
                   </div>
 

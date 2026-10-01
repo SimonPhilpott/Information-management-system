@@ -22,10 +22,24 @@ import {
   toggleRepositorySelection,
   selectAllRepositories,
   suggestBestPractices,
-  generateProjectPrompt
+  generateProjectPrompt,
+  auditQualityAndRegistry
 } from '../services/codeRepoService.js';
 
 const router = express.Router();
+
+/**
+ * POST /api/code-repo/audit
+ * Run automated PR Quality, TypeScript linting, and Triple Registry audit.
+ */
+router.post('/audit', async (req, res) => {
+  try {
+    const result = await auditQualityAndRegistry();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 /**
  * POST /api/code-repo/suggest-best-practices

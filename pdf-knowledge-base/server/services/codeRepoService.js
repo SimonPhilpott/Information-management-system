@@ -1574,3 +1574,313 @@ ${s.code_content.slice(0, 1500)}${s.code_content.length > 1500 ? '\n// ... [code
     snippets: snippets.map(s => ({ id: s.id, title: s.title, repo: s.repo_name, tech: s.technology }))
   };
 }
+
+/**
+ * Execute an automated PR Quality, TypeScript linting, and Triple Registry audit.
+ * Checks for:
+ * 1. Missing type definitions (raw .js files without TypeScript declarations/JSDoc or un-annotated public exports)
+ * 2. Unhandled async catch blocks (empty catches, dangling promises without try/catch or .catch())
+ * 3. Triple Registry synchronization (feature.json, ProjectStructure.JSON, test_plan.md parity and count consistency)
+ */
+export async function auditQualityAndRegistry() {
+  const rootDir = path.resolve(__dirname, '..', '..');
+  const issues = [];
+  const metrics = {
+    totalFilesScanned: 0,
+    typeIssuesCount: 0,
+    asyncCatchIssuesCount: 0,
+    tripleRegistryIssuesCount: 0,
+    tripleRegistryStats: {
+      featureJsonCount: 0,
+      testPlanMatrixCount: 0,
+      testPlanSummaryCount: 0,
+      projectStructureCount: 0,
+      inSync: true
+    },
+    overallScore: 100
+  };
+
+  // 1. Triple Registry Invariant Audit
+  const featureJsonPath = path.join(rootDir, 'feature.json');
+  const projectStructureJsonPath = path.join(rootDir, 'ProjectStructure.JSON');
+  const testPlanPath = path.join(rootDir, 'test_plan.md');
+
+  let featureEntries = [];
+  let projectModules = {};
+  let testPlanContent = '';
+
+  try {
+    if (fs.existsSync(featureJsonPath)) {
+      featureEntries = JSON.parse(fs.readFileSync(featureJsonPath, 'utf8'));
+      metrics.tripleRegistryStats.featureJsonCount = featureEntries.length;
+    } else {
+      issues.push({
+        type: 'registry',
+        severity: 'critical',
+        file: 'feature.json',
+        title: 'Missing feature.json registry',
+        description: 'The root feature.json file does not exist on disk.',
+        remediation: 'Create feature.json and register all active system features.'
+      });
+      metrics.tripleRegistryStats.inSync = false;
+    }
+  } catch (e) {
+    issues.push({
+      type: 'registry',
+      severity: 'critical',
+      file: 'feature.json',
+      title: 'Malformed feature.json',
+      description: `JSON parse error in feature.json: ${e.message}`,
+      remediation: 'Fix JSON syntax in feature.json.'
+    });
+    metrics.tripleRegistryStats.inSync = false;
+  }
+
+  try {
+    if (fs.existsSync(projectStructureJsonPath)) {
+      const psData = JSON.parse(fs.readFileSync(projectStructureJsonPath, 'utf8'));
+      projectModules = psData.modules || psData;
+      metrics.tripleRegistryStats.projectStructureCount = Object.keys(projectModules).length;
+    } else {
+      issues.push({
+        type: 'registry',
+        severity: 'critical',
+        file: 'ProjectStructure.JSON',
+        title: 'Missing ProjectStructure.JSON',
+        description: 'The root ProjectStructure.JSON file does not exist on disk.',
+        remediation: 'Create ProjectStructure.JSON and map all architectural modules.'
+      });
+      metrics.tripleRegistryStats.inSync = false;
+    }
+  } catch (e) {
+    issues.push({
+      type: 'registry',
+      severity: 'critical',
+      file: 'ProjectStructure.JSON',
+      title: 'Malformed ProjectStructure.JSON',
+      description: `JSON parse error in ProjectStructure.JSON: ${e.message}`,
+      remediation: 'Fix JSON syntax in ProjectStructure.JSON.'
+    });
+    metrics.tripleRegistryStats.inSync = false;
+  }
+
+  try {
+    if (fs.existsSync(testPlanPath)) {
+      testPlanContent = fs.readFileSync(testPlanPath, 'utf8');
+      
+      // Extract Executive Summary Count
+      const summaryMatch = testPlanContent.match(/Total Registered Features:\s*(\d+)/i);
+      if (summaryMatch) {
+        metrics.tripleRegistryStats.testPlanSummaryCount = parseInt(summaryMatch[1], 10);
+      }
+
+      // Extract Matrix Row Count
+      const matrixMatches = testPlanContent.match(/\|\s*FEAT-\d+\s*\|/g) || [];
+      metrics.tripleRegistryStats.testPlanMatrixCount = matrixMatches.length;
+
+      // Parity check between feature.json and test_plan.md
+      if (metrics.tripleRegistryStats.featureJsonCount !== metrics.tripleRegistryStats.testPlanMatrixCount) {
+        issues.push({
+          type: 'registry',
+          severity: 'warning',
+          file: 'test_plan.md',
+          title: 'Feature Count Mismatch between feature.json and test_plan.md Matrix',
+          description: `feature.json has ${metrics.tripleRegistryStats.featureJsonCount} features, but test_plan.md Section 1 matrix has ${metrics.tripleRegistryStats.testPlanMatrixCount} rows.`,
+          remediation: 'Synchronise feature.json entries and test_plan.md Section 1 matrix rows 1:1.'
+        });
+        metrics.tripleRegistryStats.inSync = false;
+      }
+
+      if (metrics.tripleRegistryStats.testPlanSummaryCount !== metrics.tripleRegistryStats.testPlanMatrixCount) {
+        issues.push({
+          type: 'registry',
+          severity: 'warning',
+          file: 'test_plan.md',
+          title: 'Executive Summary Count Out of Sync in test_plan.md',
+          description: `test_plan.md Executive Summary specifies ${metrics.tripleRegistryStats.testPlanSummaryCount} features, but the matrix contains ${metrics.tripleRegistryStats.testPlanMatrixCount} items.`,
+          remediation: `Update 'Total Registered Features: ${metrics.tripleRegistryStats.testPlanMatrixCount}' in test_plan.md Executive Summary.`
+        });
+        metrics.tripleRegistryStats.inSync = false;
+      }
+
+      // Check each feature has a corresponding FEAT-XXX in test_plan.md
+      featureEntries.forEach(feat => {
+        const featId = feat.id || feat.featureId;
+        if (featId && !testPlanContent.includes(featId)) {
+          issues.push({
+            type: 'registry',
+            severity: 'warning',
+            file: 'test_plan.md',
+            title: `Missing Test Matrix Row for ${featId}`,
+            description: `Feature ${featId} ('${feat.name || feat.title}') is declared in feature.json but missing from test_plan.md.`,
+            remediation: `Append a row for ${featId} to Section 1 Matrix and add a verification scenario to Section 2.`
+          });
+          metrics.tripleRegistryStats.inSync = false;
+        }
+      });
+    } else {
+      issues.push({
+        type: 'registry',
+        severity: 'critical',
+        file: 'test_plan.md',
+        title: 'Missing test_plan.md',
+        description: 'test_plan.md does not exist at project root.',
+        remediation: 'Generate test_plan.md to document features, test suites, and defensive invariants.'
+      });
+      metrics.tripleRegistryStats.inSync = false;
+    }
+  } catch (e) {
+    issues.push({
+      type: 'registry',
+      severity: 'error',
+      file: 'test_plan.md',
+      title: 'Failed scanning test_plan.md',
+      description: e.message,
+      remediation: 'Ensure test_plan.md has valid UTF-8 encoding.'
+    });
+    metrics.tripleRegistryStats.inSync = false;
+  }
+
+  // 2. Scan Workspace Source Files for Typescript Linting and Unhandled Async Catches
+  const scanDirs = [
+    path.join(rootDir, 'src'),
+    path.join(rootDir, 'pdf-knowledge-base', 'server')
+  ];
+
+  function walkDir(dir) {
+    let files = [];
+    if (!fs.existsSync(dir)) return files;
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const ent of entries) {
+      if (ent.name === 'node_modules' || ent.name === 'dist' || ent.name === 'build' || ent.name === '.git') continue;
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) {
+        files = files.concat(walkDir(full));
+      } else if (/\.(jsx?|tsx?|mjs)$/i.test(ent.name)) {
+        files.push(full);
+      }
+    }
+    return files;
+  }
+
+  const allFiles = scanDirs.flatMap(d => walkDir(d));
+  metrics.totalFilesScanned = allFiles.length;
+
+  for (const filePath of allFiles) {
+    const relPath = path.relative(rootDir, filePath).replace(/\\/g, '/');
+    const content = fs.readFileSync(filePath, 'utf8');
+    const lines = content.split('\n');
+
+    // A. Check for Unhandled Async Catch / Empty Catch Blocks
+    lines.forEach((line, idx) => {
+      const lineNum = idx + 1;
+
+      // Empty catch pattern: catch (e) {} or catch {}
+      if (/catch\s*\([^)]*\)\s*\{\s*\}/.test(line) || /catch\s*\{\s*\}/.test(line)) {
+        issues.push({
+          type: 'async_catch',
+          severity: 'warning',
+          file: relPath,
+          line: lineNum,
+          title: 'Empty catch block',
+          description: `Silent exception swallowing at line ${lineNum}: '${line.trim()}'.`,
+          remediation: 'Log error to logger/console or return explicit error fallback.'
+        });
+      }
+
+      // Catch with only comments or empty whitespace inside
+      if (/catch\s*\([^)]*\)\s*\{/.test(line)) {
+        const nextLine = lines[idx + 1] || '';
+        if (/^\s*\}\s*$/.test(nextLine)) {
+          issues.push({
+            type: 'async_catch',
+            severity: 'warning',
+            file: relPath,
+            line: lineNum,
+            title: 'Empty catch handler',
+            description: `Catch block at line ${lineNum} does not handle or log the error.`,
+            remediation: 'Add defensive fallback, user toast, or logger entry.'
+          });
+        }
+      }
+
+      // Unhandled Promise without catch: .then() chain without .catch()
+      if (/\.then\([^)]+\)(?!\.catch)/.test(line) && !line.includes('.catch') && !line.includes('return')) {
+        // Only trigger if followed by semi-colon without trailing catch
+        if (line.trim().endsWith(');')) {
+          issues.push({
+            type: 'async_catch',
+            severity: 'info',
+            file: relPath,
+            line: lineNum,
+            title: 'Promise missing .catch() rejection handler',
+            description: `Promise chain terminated with ';'' without .catch() at line ${lineNum}: '${line.trim()}'.`,
+            remediation: 'Append .catch(err => { ... }) or convert to async/await with try/catch.'
+          });
+        }
+      }
+
+      // B. TypeScript Linting / Missing Type Definitions & Any types
+      if (/\.tsx?$/i.test(relPath)) {
+        // Check for loose `: any` annotations
+        if (/:\s*any\b/.test(line) && !line.includes('// eslint-disable') && !line.includes('/* eslint-disable')) {
+          issues.push({
+            type: 'type_definition',
+            severity: 'info',
+            file: relPath,
+            line: lineNum,
+            title: 'Loose `: any` type annotation',
+            description: `Found explicit 'any' type at line ${lineNum}: '${line.trim()}'.`,
+            remediation: 'Define a specific interface, generic type, or use \'unknown\' with runtime guards.'
+          });
+        }
+      } else {
+        // In JS/JSX, check for export functions lacking JSDoc parameter type tags
+        if (/^export\s+(async\s+)?function\s+([a-zA-Z0-9_]+)\s*\(([^)]*)\)/.test(line)) {
+          const match = line.match(/^export\s+(async\s+)?function\s+([a-zA-Z0-9_]+)\s*\(([^)]*)\)/);
+          const fnName = match[2];
+          const params = match[3].trim();
+          if (params.length > 0 && idx > 0) {
+            const prevLines = lines.slice(Math.max(0, idx - 6), idx).join('\n');
+            if (!prevLines.includes('/**') || !prevLines.includes('@param')) {
+              // Only flag key service/utility files
+              if (relPath.includes('service') || relPath.includes('utils') || relPath.includes('hooks')) {
+                issues.push({
+                  type: 'type_definition',
+                  severity: 'info',
+                  file: relPath,
+                  line: lineNum,
+                  title: `Missing JSDoc / TSDoc type contract for exported function '${fnName}'`,
+                  description: `Function '${fnName}(${params})' exported without parameter type annotations.`,
+                  remediation: `Add TSDoc comment above '${fnName}' specifying parameter and return types.`
+                });
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  metrics.typeIssuesCount = issues.filter(i => i.type === 'type_definition').length;
+  metrics.asyncCatchIssuesCount = issues.filter(i => i.type === 'async_catch').length;
+  metrics.tripleRegistryIssuesCount = issues.filter(i => i.type === 'registry').length;
+
+  // Calculate quality health score (100 base, deductions for errors/warnings)
+  let score = 100;
+  issues.forEach(i => {
+    if (i.severity === 'critical') score -= 15;
+    else if (i.severity === 'warning') score -= 5;
+    else if (i.severity === 'error') score -= 10;
+    else if (i.severity === 'info') score -= 1;
+  });
+  metrics.overallScore = Math.max(0, Math.min(100, Math.round(score)));
+
+  return {
+    success: true,
+    timestamp: new Date().toISOString(),
+    metrics,
+    issues
+  };
+}
+

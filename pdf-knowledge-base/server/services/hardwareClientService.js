@@ -1313,6 +1313,17 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
               },
               required: ["grams"]
             }
+          },
+          {
+            name: "getDoorbellStatus",
+            description: "Checks the status of the Ring Doorbell integration: whether it is connected, recent visitor dings, motion events, camera names, and battery levels. Use for questions like 'who rang the doorbell?', 'any recent motion at the front door?', 'is the doorbell online?', or 'what is the doorbell battery level?'.",
+            behavior: "BLOCKING",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                limit: { type: "NUMBER", description: "Number of recent events to return (default 5)." }
+              }
+            }
           }
         ]
       }]

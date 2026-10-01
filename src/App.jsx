@@ -47,6 +47,7 @@ import DecksPortal from './components/Dashboard/DecksPortal';
 import { isCampaignPath, canonicalCampaignPath } from './components/Dashboard/campaignPaths';
 import PhrasesPortal from './components/Dashboard/PhrasesPortal';
 import RunPlannerPortal from './components/Dashboard/RunPlannerPortal';
+import DoorbellPortal from './components/Dashboard/DoorbellPortal';
 import ImsHub from './components/Dashboard/ImsHub';
 import CommandPalette from './components/Dashboard/CommandPalette';
 
@@ -1439,6 +1440,16 @@ export default function App() {
   if (currentPath === '/ims/phrases' || currentPath.startsWith('/ims/phrases')) {
     return (
       <PhrasesPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/doorbell' || currentPath.startsWith('/ims/doorbell')) {
+    return (
+      <DoorbellPortal
         theme={state.theme}
         onThemeToggle={actions.toggleTheme}
         setCurrentPath={setCurrentPath}

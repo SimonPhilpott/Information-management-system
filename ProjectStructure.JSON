@@ -265,21 +265,21 @@
       "dependencies": []
     },
     "src/components/Dashboard/CodeRepoPortal.jsx": {
-      "description": "Interactive web portal at /ims/code-repo for reviewing best practice code snippets, featuring dual collapsible account accordions (Personal & TurnTown), inline progress bar scanning, private repository lock badges, GitHub PAT setup modal, full-width pattern grid grouped into 5 functional roles, circular radial gauge scores, visual interaction infographics, full-column architecture overview, and an Antigravity Project Scaffolder modal generating structured implementation plans.",
+      "description": "Interactive web portal at /ims/code-repo for reviewing best practice code snippets, featuring dual collapsible account accordions (Personal & TurnTown), inline progress bar scanning, private repository lock badges, GitHub PAT setup modal, full-width pattern grid grouped into 5 functional roles, circular radial gauge scores, visual interaction infographics, full-column architecture overview, an Antigravity Project Scaffolder modal generating structured implementation plans, and an Automated PR Quality & TypeScript Linting Scanner modal.",
       "dependencies": [
         "src/components/Dashboard/PortalShell.jsx",
         "pdf-knowledge-base/server/routes/codeRepo.js"
       ]
     },
     "pdf-knowledge-base/server/services/codeRepoService.js": {
-      "description": "Multi-repository code analysis and Antigravity project scaffolder service managing GitHub PATs, discovering remote/local repositories, evaluating patterns against 5 principles, storing snippets in SQLite, generating vector embeddings, suggesting matching best practice snippets via vector similarity, and generating structured multi-phase Antigravity kick-off prompts.",
+      "description": "Multi-repository code analysis, Antigravity project scaffolder, and automated PR quality scanner service managing GitHub PATs, discovering remote/local repositories, evaluating patterns against 5 principles, storing snippets in SQLite, generating vector embeddings, suggesting matching best practice snippets via vector similarity, generating structured multi-phase Antigravity kick-off prompts, and executing static TypeScript type declaration and Triple Registry parity audits.",
       "dependencies": [
         "pdf-knowledge-base/server/db/database.js",
         "pdf-knowledge-base/server/services/embeddingService.js"
       ]
     },
     "pdf-knowledge-base/server/routes/codeRepo.js": {
-      "description": "Express router exposing repository listing, PAT token management, GitHub repository discovery, selective scanning toggles, batch SSE scan streams, snippet querying, user observation updates, AI re-evaluations, vector best-practice suggestions (/api/code-repo/suggest-best-practices), and prompt generation (/api/code-repo/generate-prompt).",
+      "description": "Express router exposing repository listing, PAT token management, GitHub repository discovery, selective scanning toggles, batch SSE scan streams, snippet querying, user observation updates, AI re-evaluations, vector best-practice suggestions (/api/code-repo/suggest-best-practices), prompt generation (/api/code-repo/generate-prompt), and automated code quality auditing (POST /api/code-repo/audit).",
       "dependencies": [
         "pdf-knowledge-base/server/services/codeRepoService.js"
       ]
@@ -345,9 +345,24 @@
       ]
     },
     "pdf-knowledge-base/server/services/runPlanService.js": {
-      "description": "Run planning and glucose simulation service calculating route elevation profiles, energy expenditures, insulin and exercise glucose uptake rates with nonlinear pace effort scaling (speedRatio^1.35), custom carbs recalculations, and athlete recent performance history.",
+      "description": "Run planning, course elevation, and glucose simulation service calculating route elevation profiles, live Open-Meteo weather integration, dynamic hydration recommendations (ml/h, ml/km, sodium, salt tabs), thermal and aerodynamic carb oxidation scaling, energy expenditures, insulin and exercise glucose uptake rates with nonlinear pace effort scaling (speedRatio^1.35), custom carbs recalculations, and athlete recent performance history.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js",
+        "pdf-knowledge-base/server/services/routeService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/routeService.js": {
+      "description": "GPX route management and terrain elevation service auto-enriching coordinate tracks with topographical elevation from the Open-Meteo Elevation API in 100-point batches and computing elevation gain/loss.",
       "dependencies": [
         "pdf-knowledge-base/server/db/database.js"
+      ]
+    },
+    "pdf-knowledge-base/server/routes/planner.js": {
+      "description": "Express router for run planning and T1D intelligence, mounting GPX upload (/routes/gpx), demand calculation (/demand), plan estimation (/estimate), live Open-Meteo weather retrieval (/weather), and T1D rulebook arbitration.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/runPlanService.js",
+        "pdf-knowledge-base/server/services/routeService.js",
+        "pdf-knowledge-base/server/services/t1dRulebookService.js"
       ]
     },
     "pdf-knowledge-base/server/services/runInsightService.js": {
@@ -503,7 +518,7 @@
       "dependencies": []
     },
     "src/components/Dashboard/ActivitiesPortal.jsx": {
-      "description": "Strava training and activities portal (/ims/activities) supporting speed and hill session tagging, weekly volume graphs, pace breakdown, glucose matching charts, and AI post-run scrutiny debriefs.",
+      "description": "Strava training and activities portal (/ims/activities) supporting speed and hill session tagging, weekly volume graphs, pace breakdown, heart rate zone training volume aggregation (Aerobic, Threshold, VO2 Max), glucose matching charts, and AI post-run scrutiny debriefs.",
       "dependencies": [
         "src/components/Dashboard/PortalShell.jsx",
         "pdf-knowledge-base/server/routes/strava.js",
@@ -511,7 +526,7 @@
       ]
     },
     "pdf-knowledge-base/server/services/stravaService.js": {
-      "description": "Strava activity synchronization and analysis service with SQLite strava_activities table, supporting speed/hill session tagging, weekly breakdown metrics, aerobic pace calculation isolation, and AI coaching summaries.",
+      "description": "Strava activity synchronization and analysis service with SQLite strava_activities table, supporting speed/hill session tagging, weekly breakdown metrics, aerobic pace calculation isolation, heart rate zone volume classification and polarisation breakdown, and AI coaching summaries.",
       "dependencies": [
         "pdf-knowledge-base/server/db/database.js",
         "pdf-knowledge-base/server/services/aiTextService.js"
@@ -571,6 +586,25 @@
     "src/hooks/useImsLive.js": {
       "description": "Custom React hook managing bidirectional WebSocket streaming to Gemini Live voice sessions, Web Audio API playback, AnalyserNode frequency spectrum extraction, and hardware status synchronization.",
       "dependencies": []
+    },
+    "pdf-knowledge-base/server/services/doorbellService.js": {
+      "description": "Direct Ring API service using ring-client-api with automatic 2FA refresh token persistence, real-time SIP/WebSocket event subscriptions (ding, motion), snapshot capture, and Yorkshire voice announcement generation.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js"
+      ]
+    },
+    "pdf-knowledge-base/server/routes/doorbell.js": {
+      "description": "Doorbell REST endpoints for status querying, activity event logs, 2FA refresh token updates, reconnection, test alert dispatch, and live JPEG snapshot fetching.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/doorbellService.js"
+      ]
+    },
+    "src/components/Dashboard/DoorbellPortal.jsx": {
+      "description": "Interactive Ring Doorbell management portal (/ims/doorbell) with connection telemetry, discovered camera tiles, battery levels, live snapshot capture, ding/motion timeline, test alert triggers, and token setup modal.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx",
+        "pdf-knowledge-base/server/routes/doorbell.js"
+      ]
     }
   }
 }

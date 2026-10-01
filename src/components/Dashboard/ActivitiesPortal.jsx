@@ -850,6 +850,111 @@ export default function ActivitiesPortal({ theme = 'dark', onThemeToggle, setCur
                 })}
               </div>
 
+              {/* Heart Rate Zones Training Volume Distribution */}
+              {summary.periods?.last28?.hrZones && (
+                <div className={panel}>
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2">
+                      <HeartPulse size={16} className="text-rose-500" />
+                      <h2 className="text-xs font-black uppercase tracking-wider">Heart Rate Zone Training Volume</h2>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-500">
+                      Based on {summary.periods.last28.hrZones.totalCount} HR-monitored activities ({dist(summary.periods.last28.hrZones.totalKm, units)} {units} / {summary.periods.last28.hrZones.totalHours} h in last 28 days)
+                    </span>
+                  </div>
+
+                  {/* Multi-segmented Polarised Volume Distribution Bar */}
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                      <span>Polarised Volume Breakdown (Last 28 Days)</span>
+                      <span>Target: ~80% Aerobic / 20% Quality (Threshold & VO2 Max)</span>
+                    </div>
+                    <div className={`h-3 w-full rounded-full overflow-hidden flex ${isDark ? 'bg-slate-950' : 'bg-slate-200'}`}>
+                      <div
+                        className="bg-emerald-500 hover:brightness-110 transition-all cursor-pointer relative group"
+                        style={{ width: `${summary.periods.last28.hrZones.aerobic.pctDist}%` }}
+                        title={`Aerobic: ${summary.periods.last28.hrZones.aerobic.pctDist}% of distance (${dist(summary.periods.last28.hrZones.aerobic.km, units)} ${units})`}
+                      />
+                      <div
+                        className="bg-amber-500 hover:brightness-110 transition-all cursor-pointer relative group"
+                        style={{ width: `${summary.periods.last28.hrZones.threshold.pctDist}%` }}
+                        title={`Threshold: ${summary.periods.last28.hrZones.threshold.pctDist}% of distance (${dist(summary.periods.last28.hrZones.threshold.km, units)} ${units})`}
+                      />
+                      <div
+                        className="bg-rose-500 hover:brightness-110 transition-all cursor-pointer relative group"
+                        style={{ width: `${summary.periods.last28.hrZones.vo2max.pctDist}%` }}
+                        title={`VO2 Max: ${summary.periods.last28.hrZones.vo2max.pctDist}% of distance (${dist(summary.periods.last28.hrZones.vo2max.km, units)} ${units})`}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[9px] text-slate-500 mt-1 font-semibold">
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Aerobic ({summary.periods.last28.hrZones.aerobic.pctDist}%)</span>
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> Threshold ({summary.periods.last28.hrZones.threshold.pctDist}%)</span>
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-500 inline-block" /> VO2 Max ({summary.periods.last28.hrZones.vo2max.pctDist}%)</span>
+                    </div>
+                  </div>
+
+                  {/* 3 Interactive Zone Metric Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {/* Zone 1 & 2: Aerobic */}
+                    <div className={`rounded-xl border p-3 flex flex-col justify-between ${isDark ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-emerald-200 bg-emerald-50/60'}`}>
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Aerobic (Z1-Z2)</span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">&lt; 145 bpm</span>
+                        </div>
+                        <div className="text-xl font-black tabular-nums text-slate-100 mb-0.5">
+                          {dist(summary.periods.last28.hrZones.aerobic.km, units)} <span className="text-xs font-bold text-slate-400">{units}</span>
+                          <span className="text-xs font-semibold text-slate-500 ml-1.5">({summary.periods.last28.hrZones.aerobic.hours} h)</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 leading-tight">Base building, mitochondrial growth & fat oxidation. Safe for steady T1D glucose stability.</p>
+                      </div>
+                      <div className="mt-2.5 pt-2 border-t border-emerald-500/10 flex items-center justify-between text-[10px] text-slate-400">
+                        <span>{summary.periods.last28.hrZones.aerobic.count} sessions</span>
+                        <span className="font-bold text-emerald-400">{summary.periods.last28.hrZones.aerobic.pctDist}% of total volume</span>
+                      </div>
+                    </div>
+
+                    {/* Zone 3 & 4: Threshold */}
+                    <div className={`rounded-xl border p-3 flex flex-col justify-between ${isDark ? 'border-amber-500/20 bg-amber-500/5' : 'border-amber-200 bg-amber-50/60'}`}>
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">Threshold (Z3-Z4)</span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">145-168 bpm</span>
+                        </div>
+                        <div className="text-xl font-black tabular-nums text-slate-100 mb-0.5">
+                          {dist(summary.periods.last28.hrZones.threshold.km, units)} <span className="text-xs font-bold text-slate-400">{units}</span>
+                          <span className="text-xs font-semibold text-slate-500 ml-1.5">({summary.periods.last28.hrZones.threshold.hours} h)</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 leading-tight">Lactate threshold & sustained tempo. Accelerates muscle glycogen burn rate.</p>
+                      </div>
+                      <div className="mt-2.5 pt-2 border-t border-amber-500/10 flex items-center justify-between text-[10px] text-slate-400">
+                        <span>{summary.periods.last28.hrZones.threshold.count} sessions</span>
+                        <span className="font-bold text-amber-400">{summary.periods.last28.hrZones.threshold.pctDist}% of total volume</span>
+                      </div>
+                    </div>
+
+                    {/* Zone 5: VO2 Max */}
+                    <div className={`rounded-xl border p-3 flex flex-col justify-between ${isDark ? 'border-rose-500/20 bg-rose-500/5' : 'border-rose-200 bg-rose-50/60'}`}>
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-rose-400">VO2 Max (Z5)</span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300">&gt; 168 bpm</span>
+                        </div>
+                        <div className="text-xl font-black tabular-nums text-slate-100 mb-0.5">
+                          {dist(summary.periods.last28.hrZones.vo2max.km, units)} <span className="text-xs font-bold text-slate-400">{units}</span>
+                          <span className="text-xs font-semibold text-slate-500 ml-1.5">({summary.periods.last28.hrZones.vo2max.hours} h)</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 leading-tight">Peak cardiovascular capacity & anaerobic intervals. High catecholamine release.</p>
+                      </div>
+                      <div className="mt-2.5 pt-2 border-t border-rose-500/10 flex items-center justify-between text-[10px] text-slate-400">
+                        <span>{summary.periods.last28.hrZones.vo2max.count} sessions</span>
+                        <span className="font-bold text-rose-400">{summary.periods.last28.hrZones.vo2max.pctDist}% of total volume</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Weekly chart */}
               <div className={panel}>
                 <div className="flex flex-wrap items-center gap-3 mb-3">

@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { requireSession } from '../middleware/requireSession.js';
 import {
-  listRoutes, getRoute, deleteRoute, saveRoute, parseGpx, importKomootLink, connectKomoot, disconnectKomoot,
+  listRoutes, getRoute, deleteRoute, saveRoute, saveRouteAsync, parseGpx, importKomootLink, connectKomoot, disconnectKomoot,
   getKomootStatus, listKomootTours, importKomootTour,
 } from '../services/routeService.js';
-import { estimatePlan, estimateDemand, routeRunHistory, getTargets, saveTargets, personalFit, SOURCES } from '../services/runPlanService.js';
+import { estimatePlan, estimateDemand, routeRunHistory, getTargets, saveTargets, personalFit, calculateHydration, SOURCES } from '../services/runPlanService.js';
 import { getCurrentState, getLoopSettings } from '../services/runGlucoseService.js';
+import { getWeather } from '../services/weatherService.js';
 import {
   getRulebook, saveRulebook, resetRulebook,
   uploadBook, listBooks, getBook, deleteBook,
@@ -25,14 +26,15 @@ router.get('/routes', (req, res) => res.json({ success: true, routes: listRoutes
 router.get('/routes/:id', (req, res) => { const r = getRoute(Number(req.params.id)); r ? res.json({ success: true, route: r }) : fail(res, new Error('Route not found.'), 404); });
 router.delete('/routes/:id', (req, res) => { deleteRoute(Number(req.params.id)) ? res.json({ success: true }) : fail(res, new Error('Route not found.'), 404); });
 
-router.post('/routes/gpx', (req, res) => {
+router.post('/routes/gpx', async (req, res) => {
   try {
     const xml = String(req.body?.gpx || '');
     if (xml.length > 15 * 1024 * 1024) throw new Error('That file is too large.');
     const points = parseGpx(xml);
     if (points.length < 2) throw new Error('No route points were found - is this a GPX file?');
     const nameInFile = /<name>\s*([^<]{1,120}?)\s*<\/name>/.exec(xml)?.[1];
-    res.json({ success: true, route: saveRoute({ source: 'gpx', name: req.body?.name || nameInFile || 'Imported route', points }) });
+    const route = await saveRouteAsync({ source: 'gpx', name: req.body?.name || nameInFile || 'Imported route', points });
+    res.json({ success: true, route });
   } catch (err) { fail(res, err); }
 });
 
@@ -55,12 +57,28 @@ router.get('/routes/:id/history', (req, res) => {
   try { res.json({ success: true, ...routeRunHistory(Number(req.params.id)) }); } catch (err) { fail(res, err, 404); }
 });
 
-router.post('/demand', (req, res) => {
-  try { res.json({ success: true, ...estimateDemand(req.body || {}) }); } catch (err) { fail(res, err); }
+router.get('/weather', async (req, res) => {
+  try {
+    let loc = req.query.location || 'Leeds';
+    if (req.query.lat && req.query.lng) {
+      loc = `${req.query.lat},${req.query.lng}`;
+    } else if (req.query.routeId) {
+      const r = getRoute(Number(req.query.routeId));
+      if (r?.path?.[0]) loc = `${r.path[0][0]},${r.path[0][1]}`;
+    }
+    const weather = await getWeather({ location: loc, days: 1 });
+    res.json({ success: true, weather });
+  } catch (err) {
+    fail(res, err);
+  }
 });
 
-router.post('/estimate', (req, res) => {
-  try { res.json({ success: true, ...estimatePlan(req.body || {}) }); } catch (err) { fail(res, err); }
+router.post('/demand', async (req, res) => {
+  try { res.json({ success: true, ...(await estimateDemand(req.body || {})) }); } catch (err) { fail(res, err); }
+});
+
+router.post('/estimate', async (req, res) => {
+  try { res.json({ success: true, ...(await estimatePlan(req.body || {})) }); } catch (err) { fail(res, err); }
 });
 
 // T1D Rulebook Core Endpoints

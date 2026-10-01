@@ -1,6 +1,7 @@
 import db, { getSetting, setSetting } from '../db/database.js';
 import { getRoute } from './routeService.js';
 import { getLoopSettings } from './runGlucoseService.js';
+import { getWeather } from './weatherService.js';
 
 // Run planner: given a distance or a saved route (with its elevation), a pace, and where glucose
 // and insulin on board are right now, estimate how glucose is likely to move during the run and
@@ -88,6 +89,74 @@ const kmAt = (marks, minute) => {
 };
 const gradeAt = (marks, minute) => { for (let i = 0; i < marks.length - 1; i++) if (minute >= marks[i][0] && minute <= marks[i + 1][0]) return marks[i][2]; return 0; };
 
+// ---- hydration & thermal scaling -----------------------------------------------------------
+/**
+ * Calculate dynamic hydration & electrolyte requirements based on weather, duration, and terrain
+ * @param {Object} params
+ * @param {number} params.durationMin Total duration in minutes
+ * @param {number} params.distanceKm Total route distance in kilometres
+ * @param {Object} [params.weather] Live weather object from Open-Meteo
+ * @param {number} [params.weightKg] Runner's body weight in kg
+ * @param {number} [params.effortFactor] Terrain & pace combined effort factor
+ */
+export function calculateHydration({ durationMin, distanceKm, weather = null, weightKg = null, effortFactor = 1.0 }) {
+  const hours = Math.max(0.1, durationMin / 60);
+  const tempC = weather?.current?.temperature_c ?? 15;
+  const humidity = weather?.current?.humidity_percent ?? 55;
+  const windKmh = weather?.current?.wind_speed_kmh ?? 10;
+  
+  // Baseline sweat rate at 15°C moderate effort: ~500 ml/h for standard adult (70kg)
+  const baseWeight = weightKg || 70;
+  let baseRateMlPerHour = 500 * (baseWeight / 70);
+  
+  // Thermal scaling: +30 ml/h per 1°C above 15°C; -20 ml/h per 1°C below 10°C
+  if (tempC > 15) {
+    baseRateMlPerHour += (tempC - 15) * 32;
+  } else if (tempC < 10) {
+    baseRateMlPerHour = Math.max(350, baseRateMlPerHour - (10 - tempC) * 18);
+  }
+  
+  // Humidity scaling: High humidity (>70%) impairs evaporative cooling, increasing sweat rate
+  if (humidity > 70) {
+    baseRateMlPerHour *= 1 + Math.min(0.25, (humidity - 70) * 0.007);
+  }
+  
+  // Effort multiplier (hills + fast pace)
+  baseRateMlPerHour *= Math.max(0.85, Math.min(1.4, effortFactor));
+  
+  const fluidPerHourMl = Math.round(baseRateMlPerHour / 10) * 10;
+  const totalFluidMl = Math.round((fluidPerHourMl * hours) / 10) * 10;
+  const fluidPerKmMl = distanceKm > 0 ? Math.round(totalFluidMl / distanceKm) : Math.round(fluidPerHourMl / 10);
+  
+  // Electrolyte guidelines (Sodium): ~450-800 mg sodium per litre sweat
+  const sodiumPerLitreMg = tempC > 20 || humidity > 75 ? 700 : 500;
+  const totalSodiumMg = Math.round((totalFluidMl / 1000) * sodiumPerLitreMg);
+  const electrolyteTablets = totalFluidMl >= 600 || hours >= 1.25 ? Math.max(1, Math.round(totalSodiumMg / 350)) : 0;
+  
+  // Contextual guidance note
+  let guidance = 'Standard hydration: sip 120-180ml every 20-25 minutes.';
+  if (tempC >= 22) {
+    guidance = `Warm conditions (${tempC}°C): sweat rate is elevated. Carry electrolyte fluids and aim for ${fluidPerKmMl}ml per km.`;
+  } else if (tempC <= 5) {
+    guidance = `Cold conditions (${tempC}°C): thirst sensation is blunted; maintain regular scheduled sips (~${fluidPerKmMl}ml/km) to avoid dehydration.`;
+  } else if (humidity >= 75) {
+    guidance = `High humidity (${humidity}%): sweat evaporation is hindered; replace electrolytes (~${electrolyteTablets} salt tab${electrolyteTablets === 1 ? '' : 's'}) to prevent hyponatremia.`;
+  }
+
+  return {
+    tempC,
+    humidity,
+    windKmh,
+    fluidPerHourMl,
+    fluidPerKmMl,
+    totalFluidMl,
+    totalFluidLitres: Math.round((totalFluidMl / 1000) * 100) / 100,
+    sodiumMg: totalSodiumMg,
+    electrolyteTablets,
+    guidance
+  };
+}
+
 // ---- glucose model ---------------------------------------------------------------------------
 const INTENSITY = { easy: 0.7, steady: 1.0, hard: 1.25 };
 const DIA_H = 3, INS_P = 1.5;
@@ -162,7 +231,7 @@ const recommendFor = (d) => ({
   weeklyKm: Math.round((d <= 10 ? Math.max(20, 2.5 * d) : d <= 25 ? 3 * d : Math.min(2 * d, 70)) * 10) / 10,
 });
 
-function kmSplitsFrom(tl, route, distanceKm) {
+function kmSplitsFrom(tl, route, distanceKm, hydration = null) {
   // minute at which a given distance is reached, from the timeline marks [minute, km, grade%]
   const minuteAt = (km) => {
     const m = tl.marks;
@@ -173,16 +242,27 @@ function kmSplitsFrom(tl, route, distanceKm) {
     return m[m.length - 1][0];
   };
   const out = [];
+  const fluidPerKm = hydration?.fluidPerKmMl || 50;
   for (let k = 0; k < Math.ceil(distanceKm - 0.05); k++) {
     const from = k, to = Math.min(distanceKm, k + 1);
     const minutes = minuteAt(to) - minuteAt(from);
     const sp = route?.splits?.[k];
-    out.push({ km: k + 1, lengthKm: Math.round((to - from) * 100) / 100, minutes: Math.round(minutes * 100) / 100, paceMinPerKm: Math.round((minutes / (to - from)) * 100) / 100, gainM: sp?.gain ?? 0, lossM: sp?.loss ?? 0, maxGrade: sp?.maxGrade ?? 0, atMinute: Math.round(minuteAt(to)) });
+    out.push({
+      km: k + 1,
+      lengthKm: Math.round((to - from) * 100) / 100,
+      minutes: Math.round(minutes * 100) / 100,
+      paceMinPerKm: Math.round((minutes / (to - from)) * 100) / 100,
+      gainM: sp?.gain ?? 0,
+      lossM: sp?.loss ?? 0,
+      maxGrade: sp?.maxGrade ?? 0,
+      atMinute: Math.round(minuteAt(to)),
+      targetFluidMl: Math.round(fluidPerKm * (to - from))
+    });
   }
   return out;
 }
 
-function demandFrom({ distanceKm, dur, tl, terrain, route, intensity, pace }) {
+function demandFrom({ distanceKm, dur, tl, terrain, route, intensity, pace, weather = null }) {
   const hist = recentHistory();
   const climbPerKm = terrain.gainM / distanceKm;
   const ratio = { distance: hist.longestKm ? distanceKm / hist.longestKm : null, duration: hist.longestMin ? dur / hist.longestMin : null, climb: hist.climbPerKm && terrain.gainM ? climbPerKm / hist.climbPerKm : null };
@@ -199,6 +279,10 @@ function demandFrom({ distanceKm, dur, tl, terrain, route, intensity, pace }) {
     if (tl.effort > 1.03) why.push(`The hills make it about ${Math.round((tl.effort - 1) * 100)}% more effort than the same distance on the flat, roughly like ${Math.round(distanceKm * tl.effort * 10) / 10} flat km.`);
     if (steepest && steepest.maxGrade >= 6) why.push(`The steepest stretch is on km ${steepest.km}, up to ${steepest.maxGrade}%.`);
     if (intensity === 'hard') why.push('Run at a hard effort, this asks more than the distance alone suggests.');
+    if (weather?.current) {
+      if (weather.current.temperature_c >= 22) why.push(`Warm weather (${weather.current.temperature_c}°C) increases cardiovascular strain and substrate oxidation.`);
+      if (weather.current.wind_speed_kmh >= 25) why.push(`Wind (${weather.current.wind_speed_kmh} km/h ${weather.current.wind_direction}) adds aerodynamic drag resistance.`);
+    }
   } else why.push('No recent runs are logged, so this cannot be compared with your fitness yet.');
   return {
     level, score: Math.round(score * 100) / 100, why,
@@ -322,7 +406,7 @@ export function routeRunHistory(routeId) {
 }
 
 // Just the demands of a run (no glucose needed): what it asks of the runner, kilometre by kilometre.
-export function estimateDemand(input = {}) {
+export async function estimateDemand(input = {}) {
   const route = input.routeId ? getRoute(Number(input.routeId)) : null;
   if (input.routeId && !route) throw new Error('Route not found.');
   const distanceKm = route ? route.distanceKm : Number(input.distanceKm);
@@ -336,10 +420,37 @@ export function estimateDemand(input = {}) {
   const pace = targetMinutes ? targetMinutes / perFlatPace : (avgPace * distanceKm) / perFlatPace;
   const tl = runTimeline(terrain, pace, null);
   const dur = Math.max(1, Math.round(tl.minutes));
-  return { ...demandFrom({ distanceKm, dur, tl, terrain, route, intensity, pace }), inputs: { paceMinPerKm: pace, averagePaceMinPerKm: tl.minutes / distanceKm, intensity, targetMinutes } };
+
+  // Retrieve ambient route weather
+  let weather = input.weather || null;
+  if (!weather) {
+    try {
+      if (route?.path?.[0]) {
+        weather = await getWeather({ location: `${route.path[0][0]},${route.path[0][1]}`, days: 1 });
+      } else {
+        weather = await getWeather({ location: 'Leeds', days: 1 });
+      }
+    } catch (_) { /* fallback handled gracefully */ }
+  }
+
+  const hydration = calculateHydration({
+    durationMin: dur,
+    distanceKm,
+    weather,
+    weightKg: Number(input.weightKg) || null,
+    effortFactor: tl.effort
+  });
+
+  return {
+    ...demandFrom({ distanceKm, dur, tl, terrain, route, intensity, pace, weather }),
+    hydration,
+    weather,
+    splits: kmSplitsFrom(tl, route, distanceKm, hydration),
+    inputs: { paceMinPerKm: pace, averagePaceMinPerKm: tl.minutes / distanceKm, intensity, targetMinutes }
+  };
 }
 
-export function estimatePlan(input = {}) {
+export async function estimatePlan(input = {}) {
   // Allow callers to pass live target overrides directly in the request body so the simulation
   // can respond instantly to slider changes without requiring the user to persist them first.
   const savedTargets = getTargets();
@@ -383,13 +494,46 @@ export function estimatePlan(input = {}) {
   const totalMin = dur + 120;
   const floor = targets.floor, margin = 1.0;
 
+  // Retrieve ambient route weather (from request or live Open-Meteo)
+  let weather = input.weather || null;
+  if (!weather) {
+    try {
+      if (route?.path?.[0]) {
+        weather = await getWeather({ location: `${route.path[0][0]},${route.path[0][1]}`, days: 1 });
+      } else {
+        weather = await getWeather({ location: 'Leeds', days: 1 });
+      }
+    } catch (_) { /* fallback handled gracefully */ }
+  }
+
   // Factor pace / speed into effort: running faster than the runner's recent typical pace exponentially increases glycogen & glucose oxidation
   const hist = recentHistory(input.sport || 'Run');
   const baseTypicalPace = hist.typicalPace || typicalPace(input.sport || 'Run') || 6.0;
   const plannedPace = tl.minutes / distanceKm;
   const speedRatio = plannedPace > 0 ? baseTypicalPace / plannedPace : 1.0;
   const paceEffortFactor = Math.pow(Math.max(0.65, Math.min(2.5, speedRatio)), 1.35);
-  const combinedEffort = tl.effort * paceEffortFactor;
+  
+  // Ambient thermal and wind scaling factor on substrate oxidation:
+  // In hot weather (>22°C), glycogenolysis is accelerated by ~10-18% due to elevated core temperature and adrenaline.
+  // In strong headwinds (>20 km/h), aerobic drag increases effort.
+  let weatherEffortMultiplier = 1.0;
+  if (weather?.current) {
+    const tempC = weather.current.temperature_c ?? 15;
+    const windSpeed = weather.current.wind_speed_kmh ?? 0;
+    if (tempC > 20) weatherEffortMultiplier += Math.min(0.20, (tempC - 20) * 0.015);
+    if (windSpeed > 20) weatherEffortMultiplier += Math.min(0.12, (windSpeed - 20) * 0.004);
+  }
+
+  const combinedEffort = tl.effort * paceEffortFactor * weatherEffortMultiplier;
+
+  // Calculate dynamic hydration strategy
+  const hydration = calculateHydration({
+    durationMin: dur,
+    distanceKm,
+    weather,
+    weightKg,
+    effortFactor: combinedEffort
+  });
 
   const params = { startBg, iob, cob, isf, cr, kEx, sensMult, intensity, effort: combinedEffort, durationMin: dur, totalMin };
   const runPlan = (start, iobStart) => {
@@ -462,12 +606,20 @@ export function estimatePlan(input = {}) {
   // Put each stop where it is easy to eat: not in the middle of a steep climb.
   const stops = main.intakes.map((it) => {
     let t = it.t, note = '';
-    if (it.kind === 'start') return { minute: 0, km: 0, grams: it.g, note: 'Just before you set off (or in the last 10 minutes of warming up).' };
+    const kmTarget = kmAt(tl.marks, t);
+    const fluidAtStop = Math.round((hydration.fluidPerHourMl * (t / 60)) / 25) * 25;
+    if (it.kind === 'start') return { minute: 0, km: 0, grams: it.g, fluidMl: 150, note: 'Just before you set off. Take with ~150ml water.' };
     if (gradeAt(tl.marks, t) >= 6) {
       for (let back = 1; back <= 6; back++) if (gradeAt(tl.marks, t - back) < 4) { t -= back; note = 'Moved earlier, ahead of a steep climb.'; break; }
     }
     if (route && !note && gradeAt(tl.marks, t) <= -3) note = 'On a descent - easy to take.';
-    return { minute: Math.round(t), km: Math.round(kmAt(tl.marks, t) * 10) / 10, grams: it.g, note };
+    return {
+      minute: Math.round(t),
+      km: Math.round(kmTarget * 10) / 10,
+      grams: it.g,
+      fluidMl: Math.max(100, Math.min(250, fluidAtStop)),
+      note: note ? `${note} Take with 2-3 sips (~150ml) water.` : 'Take before fatigue sets in. Chase with 2-3 sips water.'
+    };
   }).sort((a, b) => a.minute - b.minute);
 
   // Sample the predicted curve every 2 minutes for the chart, with a matching elevation profile.
@@ -494,6 +646,7 @@ export function estimatePlan(input = {}) {
   else if (startBg > 15) warnings.push('Above 15 mmol/L: check ketones first (ISPAD: no exercise at 1.5 mmol/L or more).');
   if (minDuring < floor) warnings.push(`Even with the plan the estimate dips to ${minDuring.toFixed(1)}, below your ${floor} floor - start higher, run easier, or carry more and take it earlier.`);
   if (totalCarbs / hours > 75) warnings.push('The plan needs more than 75 g an hour, which is at the top of what guidelines suggest guts can absorb - consider starting higher or reducing insulin on board beforehand.');
+  if (weather?.current?.temperature_c >= 25) warnings.push(`High ambient temperature (${weather.current.temperature_c}°C): thermal strain elevates carbohydrate oxidation and rapid dehydration risk. Ensure ${hydration.fluidPerHourMl}ml/h fluid intake.`);
 
   const insulin = [];
   const since = Number(input.minutesSinceBolus);
@@ -502,16 +655,18 @@ export function estimatePlan(input = {}) {
   insulin.push({ title: 'After the run', text: 'Insulin sensitivity stays raised for hours: hypoglycaemia risk is highest during and shortly after exercise, and up to 24 hours later (7-11 hours overnight after an afternoon or evening run). ISPAD suggests around a 20% basal reduction for about 6 hours overnight for pump users after evening exercise. Your loop will react, but talk to your team about a temporary target or profile change for those hours.' });
 
   return {
-    demand: demandFrom({ distanceKm, dur, tl, terrain, route, intensity, pace }),
-    inputs: { distanceKm, targetMinutes, paceMinPerKm: pace, averagePaceMinPerKm: tl.minutes / distanceKm, intensity, startBg, iob, cob, weightKg, sensMult, kEx, routeId: route?.id ?? null, routeName: route?.name ?? null, customCarbs, paceEffortFactor: Math.round(paceEffortFactor * 100) / 100 },
+    demand: demandFrom({ distanceKm, dur, tl, terrain, route, intensity, pace, weather }),
+    inputs: { distanceKm, targetMinutes, paceMinPerKm: pace, averagePaceMinPerKm: tl.minutes / distanceKm, intensity, startBg, iob, cob, weightKg, sensMult, kEx, routeId: route?.id ?? null, routeName: route?.name ?? null, customCarbs, paceEffortFactor: Math.round(paceEffortFactor * 100) / 100, weatherEffortMultiplier: Math.round(weatherEffortMultiplier * 100) / 100 },
     settings: { isf, cr, gPerMmol: Math.round((1 / effect) * 10) / 10, mmolPerGram: Math.round(effect * 1000) / 1000, floor, startTarget: targets.startTarget },
-    run: { durationMin: dur, distanceKm: Math.round(tl.distanceKm * 100) / 100, gainM: terrain.gainM, lossM: terrain.lossM, effortFactor: Math.round(tl.effort * 100) / 100, kcal: tl.kcal, hasElevation: route ? route.hasElevation : false },
+    run: { durationMin: dur, distanceKm: Math.round(tl.distanceKm * 100) / 100, gainM: terrain.gainM, lossM: terrain.lossM, effortFactor: Math.round(tl.effort * 100) / 100, combinedEffortFactor: Math.round(combinedEffort * 100) / 100, kcal: tl.kcal, hasElevation: route ? route.hasElevation : false },
+    weather,
+    hydration,
     plan: {
       stops, totalCarbs, carbsPerHour: Math.round(totalCarbs / hours), postCarbs,
       predicted: { minDuring: Math.round(minDuring * 10) / 10, endBg: Math.round(endBg * 10) / 10, minAfter: Math.round(minAfter * 10) / 10, minWithoutCarbs: Math.round(min(noCarb, 0, dur) * 10) / 10 },
       toReachStartTarget: startBg < targets.startTarget - 0.5 ? Math.round((targets.startTarget - startBg) / effect) : 0,
     },
-    prediction, withoutCarbs, elevation, splits: terrain.splits,
+    prediction, withoutCarbs, elevation, splits: kmSplitsFrom(tl, route, distanceKm, hydration),
     startScenarios, iobScenarios, guideline, insulin, warnings,
     basis: { personalRuns: personal.runs, personalFitted: Boolean(personal.kEx), assumed },
     sources: SOURCES,
