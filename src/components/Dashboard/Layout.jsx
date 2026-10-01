@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Brain, User, Settings, Menu, Compass, X } from 'lucide-react';
+import { Brain, User, Settings, Menu, Compass, X, Command } from 'lucide-react';
 import { Tooltip } from './CursorHover';
 import Sidebar from '../Navigation/Sidebar';
 import TopicDiscovery from './TopicDiscovery';
@@ -204,6 +204,17 @@ export default function Layout({
               onClick={() => setIsTopicsOpen(!isTopicsOpen)}
             >
               <Compass size={20} />
+            </button>
+          </Tooltip>
+          <Tooltip text="Global Command Palette (Ctrl+K)">
+            <button
+              className="settings-cog-btn"
+              onClick={() => {
+                window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+              }}
+              title="Global Command Palette (Ctrl+K)"
+            >
+              <Command size={18} />
             </button>
           </Tooltip>
           <Tooltip text="IMS Memories Database (/ims/memories)">

@@ -48,35 +48,34 @@ import { isCampaignPath, canonicalCampaignPath } from './components/Dashboard/ca
 import PhrasesPortal from './components/Dashboard/PhrasesPortal';
 import RunPlannerPortal from './components/Dashboard/RunPlannerPortal';
 import ImsHub from './components/Dashboard/ImsHub';
+import CommandPalette from './components/Dashboard/CommandPalette';
 
-const getShortSummary = (text) => {
+function getShortSummary(text) {
   if (!text) return '';
-  // Strip HTML tags, replacing them with a space to prevent words from sticking together
-  let cleanText = text.replace(/<[^>]*>/g, ' ');
-  // Decode common HTML entities
-  cleanText = cleanText
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'");
-  // Strip synced metadata header
-  cleanText = cleanText.replace(/^\[SYNCED INTEL FROM [^\]]+\]\s*/i, '');
-  // Normalize whitespaces
-  cleanText = cleanText.replace(/\s+/g, ' ').trim();
-  
-  const sentences = cleanText.match(/[^.!?]+[.!?]+(\s|$)/g);
-  if (!sentences || sentences.length <= 2) return cleanText;
-  return sentences.slice(0, 2).join('').trim();
-};
+  const firstPeriod = text.indexOf('.');
+  if (firstPeriod !== -1 && firstPeriod < 160) {
+    return text.substring(0, firstPeriod + 1);
+  }
+  return text.length > 150 ? text.substring(0, 147) + '...' : text;
+}
 
 export default function App() {
   const { state, actions } = useAppLogic();
   const { authStatus, settings, loading } = state;
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
   const [showHnswModal, setShowHnswModal] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -2432,6 +2431,16 @@ export default function App() {
             onIndexBuilt={() => {
               if (actions.triggerSync) actions.triggerSync();
             }}
+          />
+          <CommandPalette 
+            isOpen={isCommandPaletteOpen}
+            onClose={() => setIsCommandPaletteOpen(false)}
+            onNavigate={(path) => {
+              setCurrentPath(path);
+              window.history.pushState(null, '', path);
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }}
+            theme={state.theme}
           />
       </AnimatePresence>
     </>

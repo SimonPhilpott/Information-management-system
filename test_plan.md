@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 78
-- Verified Features: 78
+- Total Registered Features: 80
+- Verified Features: 80
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -86,6 +86,8 @@
 | FEAT-076 | Universal Board Game Expansion Box Art & Thumbnail Sync | [BoardgamesPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/BoardgamesPortal.jsx) | Universal expansion thumbnail fetching, startThumbnailBackfill progress, and Add modal box art rendering | PASS |
 | FEAT-077 | Dev Ideas Screenshot Clipboard Paste & Antigravity Prompt Integration | [DevIdeasPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/DevIdeasPortal.jsx) | Clipboard paste listener (Ctrl+V), image column migration, Copy Screenshot binary write, and Copy Prompt generation | PASS |
 | FEAT-078 | Antigravity Project Scaffolder & Implementation Plan Generator | [CodeRepoPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/CodeRepoPortal.jsx) | Scaffold presets, CSS framework matrix, precondition selection, vector-based best practice suggestion engine, and 1-click clipboard implementation prompt export | PASS |
+| FEAT-079 | IMS Main Screen Live Telemetry & Audio Visualizer Widget | [ImsPanel.jsx](file:///d:/Information%20management%20system/src/components/Ims/ImsPanel.jsx) | Real-time 24-bar FFT frequency spectrum canvas, RMS volume gauge, and Box-3 state mirroring | PASS |
+| FEAT-080 | IMS Desktop Global Command Palette | [CommandPalette.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/CommandPalette.jsx) | Ctrl+K global quick launcher, fuzzy portal routing across 26 sub-pages, quick note & dev idea capture | PASS |
 
 ## Section 2: Detailed Scenarios
 ### Suite 17: Bidirectional Pace & Estimated Time Editing (FEAT-043)
@@ -835,6 +837,23 @@
    - The prompt contains exact CLI scaffolding commands, CSS setup rules, typed inputs/outputs contracts for selected snippets, an atomic 4-phase implementation plan, and Antigravity Invariants/DoD.
 6. **Copy to Clipboard:** Click **Copy Prompt to Clipboard**. Verify the toast confirms the copy, and the prompt pastes cleanly into a blank project folder for Antigravity execution.
 7. **Defensive Invariant 88 (Vector Fallback & Clean Modal Lifecycle):** In `codeRepoService.js`, `suggestBestPractices()` gracefully falls back to keyword matching if vector embeddings are temporarily unavailable. In `CodeRepoPortal.jsx`, hover popovers use safe debounce and `pointer-events-none` to guarantee zero UI interference or modal dismissal issues.
+
+### Suite 79: IMS Main Screen Live Telemetry & Audio Visualizer Widget (FEAT-079)
+1. **Live Visualizer & Header Mount:** On the home chat interface with Ims tab active, start a Live voice session (tap microphone). Verify:
+   - The top `BOX-3 MIRROR` telemetry header displays active connection status, current model name (`gemini-2.0-flash-exp`), and RMS volume percentage gauge.
+   - The central 24-bar audio frequency canvas renders smooth reactive animations under the pixel face avatar.
+2. **Frequency Spectrum Reactivity:** Speak into the microphone. Verify the visualizer renders cyan/emerald gradient bars responding to live acoustic frequencies. During assistant vocal playback, verify the bars render violet/indigo audio waveforms.
+3. **Defensive Invariant 89 (Audio Analyser Cleanup):** In `useImsLive.js` and `ImsPanel.jsx`, the Web Audio `AnalyserNode`, `AudioContext`, and `requestAnimationFrame` render loop are cleanly disconnected and cancelled on unmount or session teardown to prevent memory leaks.
+
+### Suite 80: IMS Desktop Global Command Palette (FEAT-080)
+1. **Keyboard Trigger (Ctrl+K / Cmd+K):** Press `Ctrl + K` (or `Cmd + K` on macOS) anywhere across the web application. Verify the Command Palette opens immediately with backdrop blur and auto-focused search input.
+2. **Fuzzy Navigation Search:** Type portal names or keywords (e.g. `glucose`, `boardgames`, `architecture`, `scaffold`, `strava`). Verify matches appear instantly with category badges and descriptions. Press Enter or click a result to navigate to that portal.
+3. **Quick Inline Actions:**
+   - Click or select **Quick Note / Memory** (`/note`). Type a memory fact and press Enter. Verify `POST /api/memories` is triggered and a confirmation appears.
+   - Click or select **Log Dev Idea** (`/idea`). Type a developer note/bug and press Enter. Verify `POST /api/dev-ideas` creates the entry.
+   - Click or select **Check Blood Glucose** (`/cgm`). Verify live Nightscout telemetry (mmol/L value and trend arrow) renders directly inside the palette.
+4. **Escape & Click-Away Dismissal:** Press `Escape` or click outside the modal. Verify the palette closes cleanly and restores previous focus.
+5. **Defensive Invariant 90 (Global Key Listener Lifecycle):** In `App.jsx`, the global `keydown` event listener for `Ctrl+K` is registered once and removed cleanly on component unmount. In `CommandPalette.jsx`, keyboard event propagation is contained so form inputs elsewhere in the DOM do not conflict.
 
 
 

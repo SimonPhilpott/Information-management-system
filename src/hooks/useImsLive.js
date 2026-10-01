@@ -25,7 +25,6 @@ const stripToolText = (t) => t
 const b64ToInt16 = (b64) => { const bin = atob(b64); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return new Int16Array(u8.buffer); };
 const int16ToB64 = (i16) => { const u8 = new Uint8Array(i16.buffer); let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
 
-
 export function useImsLive() {
   const [status, setStatus] = useState('asleep'); // asleep | connecting | listening | thinking | speaking | ready
   const [messages, setMessages] = useState([]);
@@ -207,5 +206,28 @@ export function useImsLive() {
   const stopSpeaking = useCallback(() => stopPlayback(), []);
   useEffect(() => () => { stopMic(); try { wsRef.current?.close(); } catch { /* closed */ } }, []);
 
-  return { status, messages, face, micOn, error, voiceReplies, setVoiceReplies, levelRef, sendText, toggleMic, stopSpeaking, clear: () => setMessages([]) };
+  const getAudioFrequencyData = useCallback((dataArray) => {
+    if (analyserRef.current) {
+      analyserRef.current.getByteFrequencyData(dataArray);
+      return true;
+    }
+    return false;
+  }, []);
+
+  return {
+    status,
+    messages,
+    face,
+    micOn,
+    error,
+    voiceReplies,
+    setVoiceReplies,
+    levelRef,
+    sendText,
+    toggleMic,
+    stopSpeaking,
+    clear: () => setMessages([]),
+    analyserRef,
+    getAudioFrequencyData,
+  };
 }

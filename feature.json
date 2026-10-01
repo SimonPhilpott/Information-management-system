@@ -988,6 +988,26 @@
         "Multi-phase implementation plan generator outputting atomic phases (Scaffolding, Typed Contracts, UI/State, Verification), reference code blueprints with typed Inputs/Outputs, and Antigravity Invariants/DoD",
         "Real-time markdown preview workbench with copy-to-clipboard feedback and snippet count indicators"
       ]
+    },
+    "IMS Main Screen Live Telemetry & Audio Visualizer Widget": {
+      "status": "enabled",
+      "description": "Real-time dynamic audio waveform visualizer and hardware telemetry mirroring in the central IMS chat interface and voice session hooks.",
+      "subFeatures": [
+        "AudioWaveVisualizer canvas component rendering 24 dynamic frequency bars with violet/indigo speech gradients and emerald/cyan listening states",
+        "Fast Fourier Transform (FFT) byte frequency data extraction callback via Web Audio AnalyserNode in useImsLive hook",
+        "Box-3 telemetry status header showing model name, connection status orb, and real-time RMS volume gauge",
+        "Defensive requestAnimationFrame canvas rendering lifecycle with automatic pixel ratio scaling and cleanup"
+      ]
+    },
+    "IMS Desktop Global Command Palette": {
+      "status": "enabled",
+      "description": "Spotlight/Raycast-style global launcher across the web application allowing instant keyboard navigation to all 26 IMS portals, quick note/memory/dev-idea capture, and live Nightscout blood glucose widget.",
+      "subFeatures": [
+        "Global Ctrl+K and Cmd+K keyboard shortcut listener with backdrop blur modal drawer",
+        "Complete fuzzy navigation registry matching titles, paths, categories, and keyword descriptions across all 26 IMS portals",
+        "Quick action modes for inline memory creation (POST /api/memories), dev idea logging (POST /api/dev-ideas), and live Nightscout blood glucose check (GET /api/glucose)",
+        "Top navigation bar launcher button in Layout.jsx and keyboard up/down/enter navigation with Escape dismissal"
+      ]
     }
   }
 }

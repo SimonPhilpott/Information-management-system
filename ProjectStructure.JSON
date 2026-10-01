@@ -554,6 +554,23 @@
       "dependencies": [
         "pdf-knowledge-base/server/db/database.js"
       ]
+    },
+    "src/components/Dashboard/CommandPalette.jsx": {
+      "description": "Universal Spotlight/Raycast-style quick launcher modal across the IMS web suite with fuzzy portal navigation across 26 sub-pages, quick note creation, dev ideas logging, and live Nightscout blood glucose check.",
+      "dependencies": [
+        "src/components/Dashboard/Layout.jsx"
+      ]
+    },
+    "src/components/Ims/ImsPanel.jsx": {
+      "description": "Central IMS assistant interface with live Box-3 telemetry header (model indicator, connection status orb, RMS audio volume gauge) and 24-bar dynamic audio frequency canvas visualizer mirroring ESP32 voice state.",
+      "dependencies": [
+        "src/hooks/useImsLive.js",
+        "src/components/Ims/ImsFace.jsx"
+      ]
+    },
+    "src/hooks/useImsLive.js": {
+      "description": "Custom React hook managing bidirectional WebSocket streaming to Gemini Live voice sessions, Web Audio API playback, AnalyserNode frequency spectrum extraction, and hardware status synchronization.",
+      "dependencies": []
     }
   }
 }
