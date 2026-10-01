@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Brain, User, Settings, Menu, Compass, X, Command } from 'lucide-react';
+import { Brain, User, Settings, Menu, Compass, X, Command, Search } from 'lucide-react';
 import { Tooltip } from './CursorHover';
 import Sidebar from '../Navigation/Sidebar';
 import TopicDiscovery from './TopicDiscovery';
@@ -198,23 +198,25 @@ export default function Layout({
               </div>
             )}
           </div>
+          <Tooltip text="Global Command Palette (Press Ctrl+K or tap to open)">
+            <button
+              className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl border transition-all active:scale-95 shadow-sm text-xs font-semibold cursor-pointer bg-white/5 hover:bg-white/10 border-white/10 text-slate-300 hover:text-white"
+              onClick={() => {
+                window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+              }}
+              title="Global Quick Launcher (Ctrl+K)"
+            >
+              <Search size={14} className="text-violet-400" />
+              <span className="hidden lg:inline text-slate-400 font-normal">Quick Search...</span>
+              <kbd className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-violet-600/20 border border-violet-500/30 text-violet-300">Ctrl + K</kbd>
+            </button>
+          </Tooltip>
           <Tooltip text="Toggle Topic Discovery Panel">
             <button
               className="mobile-toggle-btn topic-toggle-btn"
               onClick={() => setIsTopicsOpen(!isTopicsOpen)}
             >
               <Compass size={20} />
-            </button>
-          </Tooltip>
-          <Tooltip text="Global Command Palette (Ctrl+K)">
-            <button
-              className="settings-cog-btn"
-              onClick={() => {
-                window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
-              }}
-              title="Global Command Palette (Ctrl+K)"
-            >
-              <Command size={18} />
             </button>
           </Tooltip>
           <Tooltip text="IMS Memories Database (/ims/memories)">

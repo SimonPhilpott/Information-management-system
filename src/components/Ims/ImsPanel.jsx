@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Mic, MicOff, Send, Volume2, VolumeX, Square, Trash2, Utensils, Activity, Radio, Cpu, Sparkles, Wifi } from 'lucide-react';
+import { Mic, MicOff, Send, Volume2, VolumeX, Square, Trash2, Utensils, Activity, Radio, Cpu, Sparkles, Wifi, Command } from 'lucide-react';
 import PhotoCarbs, { CameraCapture } from '../Dashboard/PhotoCarbs';
 import ImsFace from './ImsFace';
 import { useImsLive } from '../../hooks/useImsLive';
@@ -198,6 +198,19 @@ export default function ImsPanel({ theme = 'dark' }) {
         />
 
         <div className="flex flex-wrap items-center gap-2 mt-1 max-w-xl mx-auto">
+          <button
+            onClick={() => {
+              window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+            }}
+            title="Open Global Command Palette (Ctrl+K)"
+            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border transition ${border} ${
+              isDark ? 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+            }`}
+          >
+            <Command size={12} className="text-violet-400" />
+            <span>Launcher</span>
+            <kbd className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-violet-600/20 text-violet-300 border border-violet-500/30">Ctrl+K</kbd>
+          </button>
           <button
             onClick={() => ims.setVoiceReplies(!ims.voiceReplies)}
             title={ims.voiceReplies ? 'Voice replies on - tap for text only' : 'Text-only replies - tap to hear him'}
