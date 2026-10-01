@@ -149,6 +149,7 @@ class WakeDaemonService extends EventEmitter {
     if (this.state === DAEMON_STATES.STANDBY) {
       this.state = DAEMON_STATES.VERIFYING;
       this.verifyingStartedAt = Date.now();
+      this.candidateTranscriptBuffer = '';
       console.log(`[WakeDaemon] Candidate audio detected from ${source} - state: VERIFYING`);
       this._addLog('candidate', `Candidate audio spike from ${source}`, { source });
       this.emit('stateChange', { state: this.state, source });
@@ -159,14 +160,23 @@ class WakeDaemonService extends EventEmitter {
    * Called when user speech transcript arrives
    */
   processUserSpeech(transcript, source = 'hardware') {
-    const raw = String(transcript || '').trim();
-    if (!raw) return { action: 'ignore' };
+    const rawChunk = String(transcript || '').trim();
+    if (!rawChunk) return { action: 'ignore' };
 
-    console.log(`[WakeDaemon] User speech [state=${this.state}, src=${source}]: "${raw.slice(0, 80)}"`);
-
-    // In STANDBY or VERIFYING: Check for wake phrase
+    // In STANDBY or VERIFYING: Accumulate streaming tokens and evaluate
     if (this.state === DAEMON_STATES.STANDBY || this.state === DAEMON_STATES.VERIFYING) {
-      const wake = this.isWakePhrase(raw);
+      if (this.state === DAEMON_STATES.STANDBY) {
+        this.state = DAEMON_STATES.VERIFYING;
+        this.verifyingStartedAt = Date.now();
+        this.candidateTranscriptBuffer = '';
+      }
+
+      this.candidateTranscriptBuffer = (this.candidateTranscriptBuffer + ' ' + rawChunk).trim();
+      const combined = this.candidateTranscriptBuffer;
+
+      console.log(`[WakeDaemon] User speech candidate [state=${this.state}, src=${source}]: chunk="${rawChunk}" combined="${combined.slice(0, 80)}"`);
+
+      const wake = this.isWakePhrase(combined);
       if (wake.matches) {
         this.state = DAEMON_STATES.CONVERSATION_ACTIVE;
         this.lastWakeAt = Date.now();
@@ -175,28 +185,24 @@ class WakeDaemonService extends EventEmitter {
         this.lastModelSpeechEndAt = 0;
         this.isModelSpeaking = false;
         this.conversationsCount++;
+        this.candidateTranscriptBuffer = '';
         console.log(`[WakeDaemon] 🎯 Wake phrase verified: "${wake.phrase}" -> CONVERSATION_ACTIVE`);
-        this._addLog('wake_verified', `Wake phrase verified: "${wake.phrase}" (transcript: "${raw}")`, { phrase: wake.phrase, transcript: raw, source });
+        this._addLog('wake_verified', `Wake phrase verified: "${wake.phrase}" (transcript: "${combined}")`, { phrase: wake.phrase, transcript: combined, source });
         this.emit('wakeVerified', { phrase: wake.phrase, source });
         this.emit('stateChange', { state: this.state, reason: 'wake_verified' });
         return { action: 'wake_accepted', phrase: wake.phrase };
       }
 
-      // If in VERIFYING and it's definitely not a wake phrase
-      if (this.state === DAEMON_STATES.VERIFYING) {
-        console.log(`[WakeDaemon] 🔇 Candidate rejected (not a wake phrase): "${raw.slice(0, 60)}" -> STANDBY`);
-        this._addLog('wake_rejected', `Candidate rejected: "${raw}" does not match wake phrases`, { transcript: raw, source });
-        this.forceStandby('no_wake_phrase');
-        return { action: 'wake_rejected' };
-      }
-
-      return { action: 'ignored_standby' };
+      // Do NOT immediately reject short partial chunks (e.g. "s", "hey"). 
+      // Allow subsequent streaming tokens to arrive until the VERIFY_WINDOW_MS expires in _watchdogTick.
+      this._addLog('candidate_chunk', `Candidate speech streaming: "${combined}"`, { chunk: rawChunk, combined, source });
+      return { action: 'candidate_streaming', currentText: combined };
     }
 
     // In CONVERSATION_ACTIVE: Normal user speech in active conversation (refresh silence clock)
     if (this.state === DAEMON_STATES.CONVERSATION_ACTIVE) {
       this.lastUserSpeechAt = Date.now();
-      this._addLog('speech', `User speech during active conversation: "${raw.slice(0, 60)}"`, { transcript: raw, source });
+      this._addLog('speech', `User speech during active conversation: "${rawChunk.slice(0, 60)}"`, { transcript: rawChunk, source });
       return { action: 'active_speech' };
     }
 
