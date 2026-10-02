@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 101
-- Verified Features: 101
+- Total Registered Features: 103
+- Verified Features: 103
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -109,6 +109,8 @@
 | FEAT-098 | Live Run Plan Dock | [RunPlanDock.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlanner/RunPlanDock.jsx) | Always-on plan, auto re-planning, combined chart with effort, hydration, IOB and course | PASS |
 | FEAT-100 | Scheduled Reminders & Alarms Look Ahead Slider | [DayReportPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/DayReportPortal.jsx) | Unified 14-step Look Ahead slider (1-day to 2-weeks, 1-day step) across alarms, reminders, tasks, and timers in Day Report | PASS |
 | FEAT-101 | Natural Language Scheduling & Single-Turn Confirmation Hardening | [hardwareClientService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/hardwareClientService.js) | Flexible 12h/24h time parsing, date normalisation, embedded preposition label extraction, multi-turn accumulation, and explicit confirmation pattern | PASS |
+| FEAT-102 | Phase 1: Repository Hygiene & Tunnel Access Hardening | [server/index.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/index.js) | Relocation of diagnostic scripts to server/scripts/, purging dead crash dumps, Express trust proxy, auto-secure session cookies, Helmet CSP, and 1MB global payload guards with 50MB upload exemptions | PASS |
+| FEAT-103 | Phase 2: Central Background Job Scheduler & Disaster Recovery | [schedulerService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/schedulerService.js) | Central schedulerService consolidating 18 intervals with concurrency run-locks, Europe/London time, telemetry API, weekly SQLite PRAGMA integrity_check drill, and 1-click restore with pre-restore safety snapshots | PASS |
 
 ## Section 2: Detailed Scenarios
 ### Suite 31: Observability Device Health Panel & Service (FEAT-086)
@@ -1051,4 +1053,29 @@
 4. **Flexible Time & Date Normalisation:** Verify `computeFireAt` parses `12pm`, `12:30 PM`, `noon`, `midday`, `midnight`, `18:45`, `today`, and `tomorrow`. Verify a 60-second grace window prevents immediate past-time exceptions when set during the current minute.
 5. **Mandatory Verbal Confirmation:** Verify that upon successful scheduling, Ims replies using the formula: *"Okay, that [timer / alarm / reminder] is set for [time/duration] [label]."*
 6. **False Interruption Immunity:** Speak slowly with natural pauses during a follow-up conversation. Verify that silence gaps under 3.5 seconds do not trigger premature *"didn't catch all of that"* clarification nudges.
+
+### Suite 102: Phase 1: Repository Hygiene & Tunnel Access Hardening (FEAT-102)
+1. **Diagnostic Script Relocation:** Inspect `pdf-knowledge-base/server/`. Confirm `check_cols.js`, `check_db.js`, `check_schema.js`, `check_settings.js`, `check_token.js`, `scratch_check_db.js`, `scratch_test_drive.js`, `test_attachment_extraction.js`, and `test_endpoint.js` have been moved to `pdf-knowledge-base/server/scripts/`.
+2. **Crash Artifact & Placeholder Purge:** Verify `bash.exe.stackdump`, empty 0-byte database files (`db/database.sqlite`, `db/library.db`), and `~$*` temporary lock files are removed from the repository. Verify `.gitignore` rules prevent their reintroduction.
+3. **Reverse Proxy IP & Protocol Detection:** Verify `app.set('trust proxy', 1)` is active in `server/index.js`, allowing accurate inspection of client IP and `X-Forwarded-Proto` over ngrok and reverse proxies.
+4. **Session Cookie Security Policy:** Inspect session middleware in `server/index.js`. Verify `sameSite: 'lax'` and `secure: 'auto'`, ensuring cookies are securely transmitted over HTTPS without breaking local HTTP testing.
+5. **Scoped Payload Limits:** Verify global Express JSON body parser enforces a strict 1MB limit. Verify 50MB payload exemptions are mounted for file/image upload routes (`/api/pdf`, `/api/glucose-hub/carbs/photo`, `/api/planner/rulebook/books/upload`).
+6. **Helmet & Content Security Policy:** Verify `helmet` middleware is active with customized CSP directives permitting OpenStreetMap tiles (`*.tile.openstreetmap.org`), Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`), and WebSockets (`wss:`, `ws:`). Verify `crossOriginEmbedderPolicy: false` prevents blocking external images.
+
+### Suite 103: Phase 2: Central Background Job Scheduler & Disaster Recovery (FEAT-103)
+1. **Central Scheduler Registration:** Query `GET /api/jobs`. Verify response returns the full inventory of background routines with their descriptions, categories (`realtime`, `sync`, `maintenance`, `monitoring`), intervals, `nextRun` timestamps, and execution states.
+2. **Concurrency Run-Lock Verification:** Verify `schedulerService` uses `isRunning` run-locks to reject overlapping executions when a job takes longer than its interval cadence.
+3. **Manual Execution Endpoint:** Send `POST /api/jobs/reminders_due_poll/run` (or any registered routine). Verify HTTP 200 return with `{ success: true, ok: true, durationMs }` updating `lastRun` and `nextRun` timestamps.
+4. **Architecture Portal Background Jobs Monitor:** Navigate to `/ims/architecture` and click the **Background Jobs** tab. Verify the telemetry card lists registered routines, category filters, countdown badges (e.g. `in 4m 12s`), execution duration, and functional "Run" buttons.
+5. **Automated SQLite PRAGMA Integrity Drill:** Call `POST /api/ims-backups/drill`. Verify `backupService.js` unzips the latest archive into a sandboxed temp database, runs `PRAGMA integrity_check`, verifies `ok`, updates setting `backup_drill_status`, and cleans up the sandbox file.
+6. **Backups Portal Drill Banner:** Navigate to `/ims/backups`. Verify the green **Automated Integrity Drill** banner displays `PASSED (PRAGMA integrity_check ok)`, archive name, page count, and "Run Drill Now" button.
+7. **Disaster Recovery 1-Click Restore:** In `/ims/backups`, click the **Restore** button next to an archive. Verify the safety modal appears with confirmations: (a) pre-restore safety snapshot creation, (b) preservation of `data/.wifi_key`, (c) sandbox integrity pre-check before database file replacement. Confirm restore execution via `POST /api/ims-backups/restore/:filename`.
+
+## Section 3: Defensive Engineering Invariants
+- **Scheduler Concurrency Protection:** All routines managed by `schedulerService` must acquire an execution run-lock (`isRunning`) before invoking the action and release it in a `finally` block to prevent SQLite database write lock contention.
+- **Pre-Restore Snapshot Guarantee:** Every database restoration via `backupService.restoreBackup()` must take a full SQLite backup snapshot of the active database (`LOCAL/pre-restore-app-${Date.now()}.db`) before touching live database or asset files.
+- **Hardware Credential Isolation:** The hardware Wi-Fi key (`data/.wifi_key`) must never be deleted or overwritten by backup archive unpack routines.
+- **Safe Sandboxing:** All backup verification drills must extract archive databases to temporary sandbox files with unique timestamps and explicitly unbind database handles and delete sandbox files in a `finally` block.
+- **Wall-Clock Timezone Anchoring:** All time-based scheduled windows (nightly backups post-03:00) must evaluate timestamps using `Europe/London` to avoid daylight savings discrepancies.
+
 

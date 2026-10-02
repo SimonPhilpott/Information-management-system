@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import session from 'express-session';
+import helmet from 'helmet';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -118,6 +119,7 @@ import appDb, { addMemory, getMemories, searchMemories, deleteMemory } from './d
 import { getWeather } from './services/weatherService.js';
 import { startGlucosePoller, getGlucoseData } from './services/glucoseService.js';
 import { checkAndTriggerNightlyScan } from './services/musicScanService.js';
+import { schedulerService } from './services/schedulerService.js';
 
 // A tool call the model has written out as text instead of calling it: setEmotion(emotion='happy'),
 // default_api.endConversation(), print(...) - never meant to be seen or kept.
@@ -128,11 +130,32 @@ const stripToolText = (text) => String(text).replace(TOOL_TEXT, '').replace(/[ 	
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
+// Trust reverse proxies (ngrok, cloudflared) so client IP and X-Forwarded-Proto are accurately detected
+app.set('trust proxy', 1);
+
 // Ensure data directories exist
 const dataDirs = ['data', 'data/pdfs', 'data/vectors'];
 for (const dir of dataDirs) {
   fs.mkdirSync(path.join(__dirname, dir), { recursive: true });
 }
+
+// Security Headers & Content Security Policy tailored for IMS (OpenStreetMap tiles, Google Fonts, WebSockets)
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      connectSrc: ["'self'", "https:", "wss:", "ws:"],
+      imgSrc: ["'self'", "data:", "blob:", "https:", "*.tile.openstreetmap.org", "*.openstreetmap.org"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      workerSrc: ["'self'", "blob:"],
+      mediaSrc: ["'self'", "data:", "blob:", "https:"],
+      frameSrc: ["'self'"]
+    }
+  },
+  crossOriginEmbedderPolicy: false
+}));
 
 // Middleware
 app.use(cors({
@@ -149,15 +172,24 @@ app.use(cors({
   },
   credentials: true
 }));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// Scoped upload parsers with 50MB limits for file/image uploads
+app.use('/api/pdf', express.json({ limit: '50mb' }), express.urlencoded({ limit: '50mb', extended: true }));
+app.use('/api/glucose-hub/carbs/photo', express.json({ limit: '50mb' }), express.urlencoded({ limit: '50mb', extended: true }));
+app.use('/api/planner/rulebook/books/upload', express.json({ limit: '50mb' }), express.urlencoded({ limit: '50mb', extended: true }));
+
+// Standard global 1MB limit for all other routes to protect against oversized payload crashes
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ limit: '1mb', extended: true }));
+
 const sessionMiddleware = session({
   store: new SqliteSessionStore(), // logins survive backend restarts
   secret: config.sessionSecret,
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false, // Set true in production with HTTPS
+    secure: 'auto', // Enforces secure cookie when connection is HTTPS or forwarded over HTTPS by ngrok
+    sameSite: 'lax',
     maxAge: 180 * 24 * 60 * 60 * 1000 // one sign-in per device lasts; renewed on every visit
   },
   rolling: true
@@ -262,7 +294,21 @@ app.post('/api/system/trace', async (req, res) => {
   res.end();
 });
 
-// Backups (/ims/backups): status, and a backup on demand.
+// Background Jobs telemetry and control (Dev Idea #44 & Phase 2)
+app.get('/api/jobs', (req, res) => {
+  res.json({ success: true, jobs: schedulerService.getJobs() });
+});
+
+app.post('/api/jobs/:name/run', async (req, res) => {
+  try {
+    const result = await schedulerService.runJobNow(req.params.name);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Backups (/ims/backups): status, drill, restore, and backup on demand (Dev Idea #48 & Phase 2)
 app.get('/api/ims-backups', async (req, res) => {
   const { backupStatus } = await import('./services/backupService.js');
   res.json({ success: true, ...backupStatus() });
@@ -270,6 +316,24 @@ app.get('/api/ims-backups', async (req, res) => {
 app.post('/api/ims-backups', async (req, res) => {
   const { runBackup } = await import('./services/backupService.js');
   try { res.json({ success: true, result: await runBackup({ reason: 'manual' }) }); } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+app.post('/api/ims-backups/restore/:filename', async (req, res) => {
+  const { restoreBackup } = await import('./services/backupService.js');
+  try {
+    const result = await restoreBackup(req.params.filename);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+app.post('/api/ims-backups/drill', async (req, res) => {
+  const { runIntegrityDrill } = await import('./services/backupService.js');
+  try {
+    const result = await runIntegrityDrill();
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.get('/api/glucose', async (req, res) => {
@@ -365,22 +429,10 @@ onDeviceCapture(({ seconds, resolve, reject }) => {
 // and re-send the icons. Silent no-op until the user has connected Calendar.
 const refreshCalendar = () => refreshEvents({ force: true }).then(() => pushScheduleStatus()).catch((err) => console.error('[Calendar] refresh failed:', err.message));
 // Strava: once connected, pull anything new every 30 minutes (well inside the rate limits).
-const refreshStrava = () => { const st = getStravaStatus(); if (st.connected && st.canReadActivities) syncStrava().catch((err) => console.error('[Strava] sync failed:', err.message)); };
+const refreshStrava = () => { const st = getStravaStatus(); if (st.connected && st.canReadActivities) return syncStrava().catch((err) => console.error('[Strava] sync failed:', err.message)); };
 // Nightscout only keeps a few hours, so glucose / IOB / treatments are logged locally every
 // 5 minutes; that log is what runs are matched against (services/runGlucoseService.js).
 const logGlucoseHistory = () => logNightscout().catch((err) => console.error('[NightscoutLog]', err.message));
-setTimeout(logGlucoseHistory, 15000);
-setInterval(logGlucoseHistory, 5 * 60 * 1000);
-setTimeout(refreshStrava, 20000);
-setInterval(refreshStrava, 30 * 60 * 1000);
-setTimeout(refreshCalendar, 10000);
-setInterval(refreshCalendar, 5 * 60 * 1000);
-// Nightly backup of every service's data (database and files) to the PC and Google Drive, after 03:00.
-import('./services/backupService.js').then((m) => m.startNightlyBackups()).catch((err) => console.error('[Backup] Scheduler failed to start:', err.message));
-import('./services/dependencyWatchService.js').then((m) => m.startWeeklyDependencyWatch()).catch((err) => console.error('[DependencyWatch] Scheduler failed to start:', err.message));
-import('./services/routeFinderService.js').then((m) => m.startEveningKomootSync()).catch((err) => console.error('[RouteFinder] Evening sync failed to start:', err.message));
-import('./services/runAlertsService.js').then((m) => m.startRunPushQueue()).catch((err) => console.error('[RunAlerts] Push queue failed to start:', err.message));
-import('./services/runLearningService.js').then((m) => m.startRunLearning()).catch((err) => console.error('[RunLearning] failed to start:', err.message)); // links sent runs to Strava and learns from them
 
 // Weather for the device footer, refreshed every 30 minutes.
 let deviceWeather = null;
@@ -389,8 +441,157 @@ const weatherKind = (c, day) => (/thunder/i.test(c) ? 'storm' : /snow/i.test(c) 
 const refreshDeviceWeather = () => getWeather({}).then((w) => {
   if (w?.current) { deviceWeather = { tempC: w.current.temperature_c, weather: weatherKind(w.current.condition, w.current.is_daylight) }; pushScheduleStatus(); }
 }).catch(() => {});
-setTimeout(refreshDeviceWeather, 20000);
-setInterval(refreshDeviceWeather, 30 * 60 * 1000);
+
+// Central Job Scheduler Registrations (Dev Idea #44 & Implementation Plan Phase 2)
+schedulerService.registerJob({
+  name: 'calendar_refresh',
+  description: 'Google Calendar event synchronization and automated reminder triggers',
+  category: 'sync',
+  intervalMs: 5 * 60 * 1000,
+  initialDelayMs: 10000,
+  action: refreshCalendar
+});
+
+schedulerService.registerJob({
+  name: 'strava_sync',
+  description: 'Strava activities sync and continuous training load calculation',
+  category: 'sync',
+  intervalMs: 30 * 60 * 1000,
+  initialDelayMs: 20000,
+  action: refreshStrava
+});
+
+schedulerService.registerJob({
+  name: 'nightscout_log',
+  description: 'Nightscout continuous glucose, IOB, and treatment history recording',
+  category: 'sync',
+  intervalMs: 5 * 60 * 1000,
+  initialDelayMs: 15000,
+  action: logGlucoseHistory
+});
+
+schedulerService.registerJob({
+  name: 'weather_device_refresh',
+  description: 'Live local weather update for desk terminal footer & speech status',
+  category: 'sync',
+  intervalMs: 30 * 60 * 1000,
+  initialDelayMs: 20000,
+  action: refreshDeviceWeather
+});
+
+schedulerService.registerJob({
+  name: 'morning_report_prewarm',
+  description: 'Pre-warm daily morning briefing cache for sub-5ms instant delivery',
+  category: 'maintenance',
+  intervalMs: 60 * 60 * 1000,
+  initialDelayMs: 60000,
+  action: () => prewarmDayReportCache({ reason: 'scheduler_prewarm' })
+});
+
+schedulerService.registerJob({
+  name: 'nightly_backup',
+  description: 'Nightly database & assets backup to PC and Google Drive (post-03:00 London)',
+  category: 'maintenance',
+  intervalMs: 10 * 60 * 1000,
+  initialDelayMs: 60000,
+  londonHourWindow: { minHour: 3 },
+  action: async () => {
+    const { runBackup } = await import('./services/backupService.js');
+    const day = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+    const { getSetting, setSetting } = await import('./db/database.js');
+    if (getSetting('backup_last_day') !== day) {
+      setSetting('backup_last_day', day);
+      await runBackup({ reason: 'nightly' });
+    }
+  }
+});
+
+schedulerService.registerJob({
+  name: 'backup_integrity_drill',
+  description: 'Weekly SQLite archive PRAGMA integrity_check drill & sandbox verification',
+  category: 'maintenance',
+  intervalMs: 7 * 24 * 60 * 60 * 1000,
+  initialDelayMs: 5 * 60 * 1000,
+  action: async () => {
+    const { runIntegrityDrill } = await import('./services/backupService.js');
+    await runIntegrityDrill();
+  }
+});
+
+schedulerService.registerJob({
+  name: 'dependency_watch',
+  description: 'Weekly audit of project dependencies, outdated packages, and CVEs',
+  category: 'maintenance',
+  intervalMs: 6 * 60 * 60 * 1000,
+  initialDelayMs: 3 * 60 * 1000,
+  action: async () => {
+    const { checkDependencyWatch } = await import('./services/dependencyWatchService.js');
+    if (checkDependencyWatch) await checkDependencyWatch();
+  }
+});
+
+schedulerService.registerJob({
+  name: 'route_komoot_sync',
+  description: 'Evening synchronization of saved routes and elevation tours from Komoot',
+  category: 'sync',
+  intervalMs: 10 * 60 * 1000,
+  initialDelayMs: 60000,
+  action: async () => {
+    const { eveningKomootCheck } = await import('./services/routeFinderService.js');
+    if (eveningKomootCheck) await eveningKomootCheck();
+  }
+});
+
+schedulerService.registerJob({
+  name: 'run_learning_tick',
+  description: 'Match sent running sessions to Strava activities and update learning models',
+  category: 'sync',
+  intervalMs: 15 * 60 * 1000,
+  initialDelayMs: 60000,
+  action: async () => {
+    const { tickRunLearning } = await import('./services/runLearningService.js');
+    if (tickRunLearning) await tickRunLearning();
+  }
+});
+
+schedulerService.registerJob({
+  name: 'run_push_queue_tick',
+  description: 'Phone push notification queue processor for carb stops and hydration alerts',
+  category: 'realtime',
+  intervalMs: 10000,
+  action: async () => {
+    const { tickRunPushQueue } = await import('./services/runAlertsService.js');
+    if (tickRunPushQueue) await tickRunPushQueue();
+  }
+});
+
+schedulerService.registerJob({
+  name: 'glucose_hub_autoclear',
+  description: 'Scheduled purge of ancient Nightscout entries exceeding retention policy',
+  category: 'maintenance',
+  intervalMs: 60 * 60 * 1000,
+  initialDelayMs: 10 * 60 * 1000,
+  action: async () => {
+    clearOldNightscout();
+  }
+});
+
+schedulerService.registerJob({
+  name: 'camera_heartbeat',
+  description: 'Desk camera daemon healthcheck and frame capture heartbeat verification',
+  category: 'monitoring',
+  intervalMs: 60000,
+  action: async () => {
+    heartbeat();
+  }
+});
+
+// Also initialize standalone watchers for persistent listeners
+import('./services/backupService.js').then((m) => m.startNightlyBackups()).catch((err) => console.error('[Backup] Scheduler failed to start:', err.message));
+import('./services/dependencyWatchService.js').then((m) => m.startWeeklyDependencyWatch()).catch((err) => console.error('[DependencyWatch] Scheduler failed to start:', err.message));
+import('./services/routeFinderService.js').then((m) => m.startEveningKomootSync()).catch((err) => console.error('[RouteFinder] Evening sync failed to start:', err.message));
+import('./services/runAlertsService.js').then((m) => m.startRunPushQueue()).catch((err) => console.error('[RunAlerts] Push queue failed to start:', err.message));
+import('./services/runLearningService.js').then((m) => m.startRunLearning()).catch((err) => console.error('[RunLearning] failed to start:', err.message));
 
 // The footer line: the soonest timer (the device counts it down), and unified rolling ticker of all upcoming items.
 function deviceInfo() {
@@ -2491,11 +2692,8 @@ hardwareTcpServer.listen(HARDWARE_TCP_PORT, () => {
 
 // Timers/alarms/reminders: poll every 1s for anything due and push it to
 // the device for exact second-accurate timer alerts. Deliberately NOT a Gemini turn - it's a lightweight control
-// frame (device chimes + shows it on screen, see reminderFired in main.cpp),
-// so it works whether or not a live conversation happens to be in progress,
-// and it's independent of any specific handleLiveProxyConnection() closure -
-// it just needs whichever hardware session is currently active, if any.
-setInterval(() => {
+// frame (device chimes + shows it on screen, see reminderFired in main.cpp).
+function pollDueReminders() {
   let fired;
   try {
     fired = checkDueScheduledItems();
@@ -2524,27 +2722,34 @@ setInterval(() => {
       console.warn(`[Reminders] No connected hardware client to notify for id=${item.id} - it fired but was missed`);
     }
   }
-}, 1000);
+}
 
-// Schedule status periodic refresh (every 15s)
-setInterval(() => {
-  try {
-    pushScheduleStatus();
-  } catch (err) {
-    console.error('[Schedule] Periodic push failed:', err.message);
-  }
-}, 15000);
+schedulerService.registerJob({
+  name: 'reminders_due_poll',
+  description: 'Second-accurate due checks for timers, alarms, and reminders',
+  category: 'realtime',
+  intervalMs: 1000,
+  action: pollDueReminders
+});
 
-// Music library scan (/ims/musicscan): checked once a minute against its own
-// configurable schedule_time, unlike reminders' 15s poll - it fires at most
-// once a day, so minute-granularity is more than enough and cheaper.
-setInterval(() => {
-  try {
-    checkAndTriggerNightlyScan();
-  } catch (err) {
-    console.error('[MusicScan] checkAndTriggerNightlyScan failed:', err.message);
-  }
-}, 60000);
+schedulerService.registerJob({
+  name: 'schedule_status_push',
+  description: 'Periodic schedule ticker and soonest timer push to hardware client',
+  category: 'realtime',
+  intervalMs: 15000,
+  action: () => { pushScheduleStatus(); }
+});
+
+schedulerService.registerJob({
+  name: 'music_nightly_scan',
+  description: 'Daily check and trigger for album releases and want-list updates',
+  category: 'maintenance',
+  intervalMs: 60000,
+  action: () => { checkAndTriggerNightlyScan(); }
+});
+
+// Launch central background scheduler
+schedulerService.start();
 
 // Nightscout Blood Glucose: poll every 60s and push to active hardware client
 startGlucosePoller((glucose) => {

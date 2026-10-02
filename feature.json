@@ -1229,6 +1229,33 @@
         "Strict mandatory verbal confirmation formula ('Okay, that [reminder/alarm/timer] is set for [time/duration] [label]')",
         "Calibrated speech clarification watchdog threshold preventing premature audio pause interrupts"
       ]
+    },
+    "Architecture Phase 1: Repository Hygiene & Tunnel Access Hardening": {
+      "status": "enabled",
+      "description": "System architecture housekeeping and access security hardening covering loose script relocation, dead artifact purging, Express trust proxy activation, dynamic HTTPS session cookie protection, Helmet CSP headers, and 1MB global payload guards with 50MB upload exemptions.",
+      "subFeatures": [
+        "Relocation of 9 diagnostic scripts to server/scripts/ and purging dead stackdumps and placeholder files",
+        "Express app.set('trust proxy', 1) for reverse proxy IP and protocol inspection",
+        "Dynamic HTTPS session cookie policies with sameSite: lax and auto-secure detection",
+        "1MB standard global body-parser limit preventing oversized payload memory exhaustion",
+        "50MB scoped upload route exemptions for PDFs, rulebooks, and food photos",
+        "Helmet Content Security Policy configured for OpenStreetMap tiles, Google Fonts, and WebSockets"
+      ]
+    },
+    "Architecture Phase 2: Central Job Scheduler & Disaster Recovery": {
+      "status": "enabled",
+      "description": "Consolidation of 18 background intervals into a unified schedulerService with concurrency run-locks, Europe/London time anchoring, execution telemetry, automated SQLite PRAGMA integrity_check weekly drills, and authenticated 1-click restore with pre-restore safety snapshots and hardware Wi-Fi key retention.",
+      "subFeatures": [
+        "Central schedulerService replacing scattered setInterval calls across services",
+        "Per-job concurrency run-locks preventing simultaneous overlapping executions",
+        "Europe/London wall-clock aware execution windows and nextRun countdown tracking",
+        "Background Jobs telemetry monitor in System Architecture portal (/ims/architecture) with manual run triggers",
+        "Weekly automated SQLite archive PRAGMA integrity_check drill in backupService",
+        "Automated Disaster Recovery drill badge and verification metrics in /ims/backups",
+        "1-Click authenticated restore endpoint (/api/ims-backups/restore/:filename)",
+        "Pre-restore safety snapshot generation preserving active app.db before any restore operation",
+        "Hardware Wi-Fi encryption key (.wifi_key) independent protection across restorations"
+      ]
     }
   }
 }

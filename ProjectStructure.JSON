@@ -780,6 +780,23 @@
         "pdf-knowledge-base/server/services/calendarService.js",
         "pdf-knowledge-base/server/services/weatherService.js"
       ]
+    },
+    "pdf-knowledge-base/server/services/schedulerService.js": {
+      "description": "Central background job scheduler consolidating timers and periodic syncs with concurrency run-locks, Europe/London time anchoring, and execution telemetry.",
+      "dependencies": []
+    },
+    "pdf-knowledge-base/server/services/backupService.js": {
+      "description": "System database and asset archive manager with automated weekly SQLite PRAGMA integrity_check drills and 1-click safe disaster recovery restoration.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js",
+        "pdf-knowledge-base/server/services/driveService.js"
+      ]
+    },
+    "src/components/Dashboard/BackupsPortal.jsx": {
+      "description": "Backups and disaster recovery portal displaying automated SQLite integrity drill badges, archive inventories, and 1-click restore confirmation modals.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx"
+      ]
     }
   }
 }

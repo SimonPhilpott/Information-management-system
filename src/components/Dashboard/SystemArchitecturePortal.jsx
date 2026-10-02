@@ -5,7 +5,7 @@ import {
   CloudSun, Apple, Music, Dices, Rss, Database, Layers, FileText, Lock, Settings, Boxes, Server, Code,
   Terminal, GitBranch, Clock, Timer, RefreshCw, Scale, ChevronRight, AlertTriangle, Info, Smile, Drama,
   MessageSquareQuote, Wifi, Newspaper, Heart, Radio, Speaker, Cake, Bell, ListChecks, Eye, Maximize2, Minimize2, Eraser,
-  UserPlus, Mail, ClipboardCopy, X, Check, Filter, Download, Printer, Search,
+  UserPlus, Mail, ClipboardCopy, X, Check, Filter, Download, Printer, Search, Play, Loader2, CheckCircle2,
 } from 'lucide-react';
 import PortalShell from './PortalShell';
 import ImsFace from '../Ims/ImsFace';
@@ -175,7 +175,7 @@ const FINDINGS = [
   { level: 'warn', title: 'Fixed server address', sub: 'The desk terminal connects to 192.168.1.78 (include/config.h) - if the PC gets a new IP, it cannot connect' },
   { level: 'info', title: 'One host', sub: 'Backend, database and tunnel all run on one Windows PC - when it is off, Ims is offline everywhere. Everything is backed up nightly to Google Drive (/ims/backups)' },
   { level: 'info', title: 'Nightscout storage', sub: 'MongoDB free tier - usage shows on the desk screen; old data can be auto-cleared after 3 months' },
-  { level: 'info', title: 'Architecture Modernisation Roadmap', sub: '5-phase implementation plan covering database resilience, telemetry, API caching, task queues and live config (see docs/SYSTEM_ARCHITECTURE_PLAN.md)' },
+  { level: 'info', title: 'Phase 1 & 2 Live: Master Scheduler & Disaster Recovery', sub: 'Unified central scheduler governs background routines with concurrency locks; automated weekly SQLite PRAGMA integrity_check drills and 1-click restore operational (see docs/SYSTEM_ARCHITECTURE_PLAN.md)' },
 ];
 
 const TURN = [
@@ -1040,7 +1040,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
           </div>
 
           <div className={`flex gap-5 px-5 border-b text-[13px] overflow-x-auto ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
-            {[['overview', 'Overview'], ['turn', 'A conversation'], ['latency', 'Voice Latency & Tools'], ['data', 'Data'], ['findings', 'Findings']].map(([k, label]) => (
+            {[['overview', 'Overview'], ['jobs', 'Background Jobs'], ['turn', 'A conversation'], ['latency', 'Voice Latency & Tools'], ['data', 'Data'], ['findings', 'Findings']].map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)}
                 className={`pb-2.5 whitespace-nowrap border-b-2 -mb-px ${tab === k ? 'border-violet-500 text-violet-500 font-bold' : `border-transparent ${muted}`}`}>{label}</button>
             ))}
@@ -1139,6 +1139,10 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
                   </li>
                 ))}
               </ol>
+            )}
+
+            {tab === 'jobs' && (
+              <BackgroundJobsSection isDark={isDark} muted={muted} />
             )}
 
             {tab === 'latency' && (
@@ -1309,4 +1313,210 @@ function VoiceLatencySection({ isDark, muted }) {
     </div>
   );
 }
+
+function BackgroundJobsSection({ isDark, muted }) {
+  const [jobs, setJobs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [category, setCategory] = useState('all');
+  const [triggering, setTriggering] = useState(null);
+  const [note, setNote] = useState(null);
+
+  const fetchJobs = useCallback(async () => {
+    try {
+      const res = await fetch('/api/jobs');
+      if (res.ok) {
+        const d = await res.json();
+        if (d.success && Array.isArray(d.jobs)) {
+          setJobs(d.jobs);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load background jobs:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchJobs();
+    const interval = setInterval(fetchJobs, 5000);
+    return () => clearInterval(interval);
+  }, [fetchJobs]);
+
+  const runJob = async (name) => {
+    setTriggering(name);
+    setNote(null);
+    try {
+      const res = await fetch(`/api/jobs/${encodeURIComponent(name)}/run`, { method: 'POST' });
+      const d = await res.json();
+      if (d.success) {
+        setNote({ ok: true, msg: `Job "${name}" executed successfully (${d.result?.job?.durationMs ?? d.result?.durationMs ?? 0}ms).` });
+      } else {
+        setNote({ ok: false, msg: `Job "${name}" failed: ${d.error || 'Execution error'}` });
+      }
+      fetchJobs();
+    } catch (e) {
+      setNote({ ok: false, msg: e.message });
+    } finally {
+      setTriggering(null);
+    }
+  };
+
+  const filteredJobs = useMemo(() => {
+    if (category === 'all') return jobs;
+    return jobs.filter((j) => j.category === category);
+  }, [jobs, category]);
+
+  const formatCountdown = (nextRun) => {
+    if (!nextRun) return 'Unscheduled';
+    const diffSec = Math.round((nextRun - Date.now()) / 1000);
+    if (diffSec <= 0) return 'Due now';
+    if (diffSec < 60) return `in ${diffSec}s`;
+    const min = Math.floor(diffSec / 60);
+    const sec = diffSec % 60;
+    if (min < 60) return `in ${min}m ${sec}s`;
+    const hr = Math.floor(min / 60);
+    return `in ${hr}h ${min % 60}m`;
+  };
+
+  const formatUKTime = (ts) => {
+    if (!ts) return 'Never';
+    return new Date(ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
+
+  const categoryAccents = {
+    realtime: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+    sync: 'text-sky-400 bg-sky-500/10 border-sky-500/20',
+    maintenance: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+    monitoring: 'text-purple-400 bg-purple-500/10 border-purple-500/20'
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-bold text-sm">Background Jobs Telemetry</h3>
+          <p className={`text-[11px] ${muted}`}>Central Job Scheduler with concurrency run-locks & London time</p>
+        </div>
+        <button
+          onClick={fetchJobs}
+          disabled={loading}
+          className={`p-1.5 rounded-lg border text-xs font-bold flex items-center gap-1 ${
+            isDark ? 'border-white/10 hover:bg-white/5' : 'border-slate-200 hover:bg-slate-50'
+          }`}
+          title="Refresh jobs telemetry"
+        >
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+        </button>
+      </div>
+
+      {/* Category filter pills */}
+      <div className="flex flex-wrap gap-1.5">
+        {['all', 'realtime', 'sync', 'maintenance', 'monitoring'].map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setCategory(cat)}
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold capitalize transition-colors ${
+              category === cat
+                ? 'bg-violet-600 text-white'
+                : isDark ? 'bg-white/5 text-slate-400 hover:bg-white/10' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            {cat} {cat === 'all' ? `(${jobs.length})` : `(${jobs.filter((j) => j.category === cat).length})`}
+          </button>
+        ))}
+      </div>
+
+      {note && (
+        <div className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 ${
+          note.ok
+            ? isDark ? 'bg-emerald-950/20 border-emerald-500/20 text-emerald-400' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+            : isDark ? 'bg-rose-950/20 border-rose-500/20 text-rose-400' : 'bg-rose-50 border-rose-200 text-rose-800'
+        }`}>
+          {note.ok ? <CheckCircle2 size={14} className="shrink-0" /> : <AlertTriangle size={14} className="shrink-0" />}
+          <span>{note.msg}</span>
+        </div>
+      )}
+
+      {loading && !jobs.length ? (
+        <div className={`py-6 text-center text-xs ${muted}`}>Loading registered routines...</div>
+      ) : (
+        <div className="flex flex-col gap-2.5 max-h-[60vh] overflow-y-auto pr-1">
+          {filteredJobs.map((j) => (
+            <div
+              key={j.name}
+              className={`p-3 rounded-2xl border transition-all ${
+                j.isRunning
+                  ? isDark ? 'bg-violet-950/20 border-violet-500/40 shadow-sm' : 'bg-violet-50 border-violet-300'
+                  : isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-slate-200/80 shadow-sm'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2 mb-1.5">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-xs font-bold text-slate-200">{j.name}</span>
+                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${categoryAccents[j.category] || 'text-slate-400'}`}>
+                      {j.category}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                      j.isRunning
+                        ? 'bg-blue-500/20 text-blue-400 animate-pulse'
+                        : j.status === 'ok'
+                          ? 'bg-emerald-500/15 text-emerald-400'
+                          : j.status === 'failed'
+                            ? 'bg-rose-500/15 text-rose-400'
+                            : 'bg-slate-500/15 text-slate-400'
+                    }`}>
+                      {j.isRunning ? 'Executing...' : j.status}
+                    </span>
+                  </div>
+                  <div className={`text-[11.5px] mt-1 leading-snug ${muted}`}>{j.description}</div>
+                </div>
+
+                <button
+                  onClick={() => runJob(j.name)}
+                  disabled={j.isRunning || triggering === j.name}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 shrink-0 border transition-colors ${
+                    isDark
+                      ? 'border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20'
+                      : 'border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100'
+                  } disabled:opacity-40`}
+                  title="Trigger immediate execution"
+                >
+                  {triggering === j.name ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+                  <span>Run</span>
+                </button>
+              </div>
+
+              {/* Timing metrics grid */}
+              <div className={`grid grid-cols-3 gap-2 mt-2 pt-2 border-t text-[10.5px] font-mono ${
+                isDark ? 'border-white/5 text-slate-400' : 'border-slate-100 text-slate-600'
+              }`}>
+                <div>
+                  <span className="block text-[9.5px] uppercase font-sans tracking-wider opacity-70">Next Run</span>
+                  <span className="font-bold text-slate-200">{formatCountdown(j.nextRun)}</span>
+                </div>
+                <div>
+                  <span className="block text-[9.5px] uppercase font-sans tracking-wider opacity-70">Last Run</span>
+                  <span>{formatUKTime(j.lastRun)}</span>
+                </div>
+                <div>
+                  <span className="block text-[9.5px] uppercase font-sans tracking-wider opacity-70">Duration</span>
+                  <span>{j.durationMs != null ? `${j.durationMs}ms` : '-'}</span>
+                </div>
+              </div>
+
+              {j.lastError && (
+                <div className="mt-2 p-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[10.5px] font-mono leading-tight">
+                  Error: {j.lastError}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 

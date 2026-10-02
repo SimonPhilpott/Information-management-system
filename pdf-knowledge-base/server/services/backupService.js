@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import AdmZip from 'adm-zip';
+import Database from 'better-sqlite3';
 import { google } from 'googleapis';
 import db, { getSetting, setSetting } from '../db/database.js';
 import { getAuthenticatedClient } from './driveService.js';
@@ -31,14 +32,18 @@ const FILES = [
 
 let running = null;
 const STATUS_KEY = 'backup_status';
+const DRILL_KEY = 'backup_drill_status';
+
 export function backupStatus() {
   let s = {};
   try { s = JSON.parse(getSetting(STATUS_KEY) || '{}'); } catch (_) { /* none yet */ }
+  let drill = null;
+  try { drill = JSON.parse(getSetting(DRILL_KEY) || 'null'); } catch (_) { /* none yet */ }
   const local = fs.existsSync(LOCAL) ? fs.readdirSync(LOCAL).filter((f) => f.endsWith('.zip')).sort().reverse()
     .map((f) => ({ name: f, sizeMb: +(fs.statSync(path.join(LOCAL, f)).size / 1048576).toFixed(1) })) : [];
-  return { ...s, running: Boolean(running), local, keepLocal: KEEP_LOCAL, keepDrive: KEEP_DRIVE, driveFolder: DRIVE_FOLDER };
+  return { ...s, drill, running: Boolean(running), local, keepLocal: KEEP_LOCAL, keepDrive: KEEP_DRIVE, driveFolder: DRIVE_FOLDER };
 }
-const saveStatus = (patch) => setSetting(STATUS_KEY, JSON.stringify({ ...backupStatus(), ...patch, running: undefined, local: undefined }));
+const saveStatus = (patch) => setSetting(STATUS_KEY, JSON.stringify({ ...backupStatus(), ...patch, running: undefined, local: undefined, drill: undefined }));
 
 async function driveFolderId(drive) {
   const q = `name='${DRIVE_FOLDER}' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false`;
@@ -119,3 +124,160 @@ export function startNightlyBackups() {
   setTimeout(check, 60 * 1000);
   setInterval(check, 10 * 60 * 1000);
 }
+
+// Automated weekly SQLite PRAGMA integrity_check drill against latest local archive
+export async function runIntegrityDrill() {
+  const started = Date.now();
+  if (!fs.existsSync(LOCAL)) {
+    throw new Error('No local backups found on this PC to verify');
+  }
+  const archives = fs.readdirSync(LOCAL).filter((f) => f.endsWith('.zip')).sort().reverse();
+  if (!archives.length) {
+    throw new Error('No backup archive found to run integrity drill against');
+  }
+  const targetArchive = archives[0];
+  const zipPath = path.join(LOCAL, targetArchive);
+  const sizeMb = +(fs.statSync(zipPath).size / 1048576).toFixed(1);
+  const tempSandboxDb = path.join(LOCAL, `drill-sandbox-${Date.now()}.db`);
+
+  try {
+    const zip = new AdmZip(zipPath);
+    const entry = zip.getEntry('app.db') || zip.getEntry('database.sqlite');
+    if (!entry) {
+      throw new Error(`Archive ${targetArchive} is missing database file`);
+    }
+    fs.writeFileSync(tempSandboxDb, entry.getData());
+
+    // Inspect sandboxed database via SQLite PRAGMA integrity_check
+    const sandbox = new Database(tempSandboxDb, { readonly: true, fileMustExist: true });
+    const integrityRows = sandbox.pragma('integrity_check');
+    const pageCount = sandbox.pragma('page_count', { simple: true });
+    const pageSize = sandbox.pragma('page_size', { simple: true });
+    sandbox.close();
+
+    const isOk = Array.isArray(integrityRows) && integrityRows.length === 1 && integrityRows[0].integrity_check === 'ok';
+    if (!isOk) {
+      throw new Error(`Integrity check failed: ${JSON.stringify(integrityRows)}`);
+    }
+
+    const result = {
+      ok: true,
+      verifiedAt: Date.now(),
+      archiveName: targetArchive,
+      sizeMb,
+      pageCount,
+      pageSize,
+      dbBytes: pageCount * pageSize,
+      integrityCheck: 'ok',
+      durationMs: Date.now() - started
+    };
+    setSetting(DRILL_KEY, JSON.stringify(result));
+    console.log(`[BackupDrill] ✅ Automated integrity drill PASSED for ${targetArchive} (${sizeMb} MB, ${pageCount} pages, ${result.durationMs}ms)`);
+    return result;
+  } catch (err) {
+    const failure = {
+      ok: false,
+      verifiedAt: Date.now(),
+      archiveName: targetArchive,
+      sizeMb,
+      error: err.message,
+      durationMs: Date.now() - started
+    };
+    setSetting(DRILL_KEY, JSON.stringify(failure));
+    console.error(`[BackupDrill] ❌ Automated integrity drill FAILED:`, err.message);
+    throw err;
+  } finally {
+    try {
+      if (fs.existsSync(tempSandboxDb)) fs.unlinkSync(tempSandboxDb);
+    } catch (_) { /* ignore cleanup error */ }
+  }
+}
+
+// 1-Click Authenticated Disaster Recovery Restore
+export async function restoreBackup(filename) {
+  if (!filename || typeof filename !== 'string' || !filename.endsWith('.zip')) {
+    throw new Error('Invalid backup archive filename provided for restore.');
+  }
+  const cleanName = path.basename(filename);
+  const zipPath = path.join(LOCAL, cleanName);
+  if (!fs.existsSync(zipPath)) {
+    throw new Error(`Backup archive ${cleanName} does not exist in local backups directory.`);
+  }
+
+  const started = Date.now();
+  console.log(`[Restore] Initiating safe restore from archive: ${cleanName}`);
+
+  // Step 1: Pre-restore safety snapshot of active database
+  const snapshotName = `pre-restore-app-${Date.now()}.db`;
+  const snapshotPath = path.join(LOCAL, snapshotName);
+  fs.mkdirSync(LOCAL, { recursive: true });
+  await db.backup(snapshotPath);
+  console.log(`[Restore] Created safety pre-restore database snapshot: ${snapshotName}`);
+
+  // Step 2: Backup encryption key (.wifi_key) so hardware credentials survive restoration
+  const wifiKeyPath = path.join(DATA, '.wifi_key');
+  let wifiKeyData = null;
+  if (fs.existsSync(wifiKeyPath)) {
+    wifiKeyData = fs.readFileSync(wifiKeyPath);
+    console.log(`[Restore] Preserved existing .wifi_key hardware encryption secret.`);
+  }
+
+  // Step 3: Unpack archive
+  const zip = new AdmZip(zipPath);
+  const zipEntries = zip.getEntries();
+  let extractedCount = 0;
+
+  for (const entry of zipEntries) {
+    if (entry.isDirectory) continue;
+    const entryName = entry.entryName;
+
+    // Never overwrite .wifi_key with whatever is in the backup
+    if (entryName === '.wifi_key') continue;
+
+    if (entryName === 'app.db' || entryName === 'database.sqlite') {
+      // For app.db, extract to temporary staging file then replace safely
+      const stageDbPath = path.join(LOCAL, `restore-stage-${Date.now()}.db`);
+      fs.writeFileSync(stageDbPath, entry.getData());
+
+      // Verify staging DB before copying
+      const stageDb = new Database(stageDbPath, { readonly: true, fileMustExist: true });
+      const check = stageDb.pragma('integrity_check');
+      stageDb.close();
+      if (!check || check[0]?.integrity_check !== 'ok') {
+        fs.unlinkSync(stageDbPath);
+        throw new Error(`Corrupted database inside archive ${cleanName}`);
+      }
+
+      // Copy over app.db
+      const targetDbPath = path.join(DATA, 'app.db');
+      fs.copyFileSync(stageDbPath, targetDbPath);
+      try { fs.unlinkSync(stageDbPath); } catch (_) {}
+      extractedCount++;
+    } else if (entryName !== 'README.txt') {
+      // Asset files / JSON files
+      const targetPath = path.join(DATA, entryName);
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+      fs.writeFileSync(targetPath, entry.getData());
+      extractedCount++;
+    }
+  }
+
+  // Step 4: Re-assert .wifi_key
+  if (wifiKeyData) {
+    fs.writeFileSync(wifiKeyPath, wifiKeyData);
+  }
+
+  const result = {
+    ok: true,
+    restoredArchive: cleanName,
+    safetySnapshot: snapshotName,
+    filesRestored: extractedCount,
+    wifiKeyRetained: Boolean(wifiKeyData),
+    durationMs: Date.now() - started,
+    restoredAt: Date.now()
+  };
+
+  console.log(`[Restore] ✅ Successfully restored IMS state from ${cleanName} in ${result.durationMs}ms`);
+  return result;
+}
+

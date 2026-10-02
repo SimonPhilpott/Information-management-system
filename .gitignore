@@ -72,3 +72,9 @@ pdf-knowledge-base/server/python/models
 .claude/
 Dunwich.jpg
 frodo.jpg
+
+# Crash artifacts, temporary lock files, and scratch dumps
+*.stackdump
+~$*
+scratch_*
+*.tmp
