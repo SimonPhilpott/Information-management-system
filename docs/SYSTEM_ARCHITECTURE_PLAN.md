@@ -22,6 +22,18 @@ graph TD
 
 ---
 
+## High-Level Experience Matrix: What Changes for You (At a Glance)
+
+| Phase | Core Objective | What Looks Different | What Feels Different |
+|---|---|---|---|
+| **Phase 1** | Housekeeping & Tunnel Hardening | Clean file trees, absence of loose scratch scripts, and valid security badges on remote browsers | Reassurance when accessing IMS away from home over mobile or public Wi-Fi; protected against oversized request crashes |
+| **Phase 2** | Master Scheduler & Disaster Recovery | Brand new **Background Jobs** card in `/ims/architecture` and a **1-Click Restore** section in `/ims/backups` with verified drill badges | Zero database locking freezes; background jobs no longer clash; peace of mind that a full restore takes seconds if the PC fails |
+| **Phase 3** | Instant Live Updates & Searchable Logbook | Instant UI transitions on doorbell dings and glucose arrivals; brand new **Logs Explorer** tab in `/ims/architecture` | The app feels "alive" with zero polling lag; laptop and phone battery life improves with the elimination of endless HTTP polling loops |
+| **Phase 4** | AI SDK Upgrade & Vector Slimming | Reclaimed 3–4 GB of drive space; new **Storage Breakdown** visualizer in the Admin panel | PDF uploads index 3–5x faster without freezing the system; sharper, up-to-date Gemini responses across reports and research |
+| **Phase 5** | Monolith Modularisation & Code-Splitting | Zero `>500 kB` bundle warnings; smooth, on-demand component loading across all 29 portal views | Near-instant initial page loads, particularly over mobile ngrok links; silky smooth portal transitions and zero IDE lag during development |
+
+---
+
 ## The 5 Implementation Phases
 
 ### Phase 1: Spring Clean & Locking the Front Doors
@@ -40,6 +52,16 @@ Think of this as tidying up the workshop bench so you don't trip over old testin
    - Set session cookie security policies: enforce `sameSite: 'lax'` and conditionally set `secure: true` whenever requests arrive over HTTPS.
    - Restrict the global JSON body parser from `50mb` down to `1mb` standard payload limits, granting `50mb` exemptions only to specific document and photo upload routers (`/api/pdf`, `/api/carbs/photo`, `/api/rulebook`).
    - Integrate Helmet middleware with Content Security Policy (CSP) tailored to allow OpenStreetMap map tiles, Google Web Fonts, and local WebSocket connections.
+
+#### Tangible Changes: What You Will See & Feel
+- **Visual Appearance:**
+  - The repository root and backend folder structure look clean and professional, with all diagnostic tools tucked away into an organized `scripts/` directory.
+  - In remote browsers (via `simon-ims.ngrok-free.app`), the address bar displays a clean HTTPS lock badge without mixed-content warnings or insecure cookie notices.
+  - The browser developer console stays free of cross-origin or insecure iframe warnings.
+- **Everyday Feel & Experience:**
+  - Total confidence when accessing IMS from a smartphone on external mobile networks or public coffee-shop Wi-Fi, knowing session cookies cannot be intercepted.
+  - Immediate protection against accidental large payload locks—dropping an accidental 100 MB file onto an ordinary text field immediately returns a clean, polite `413 Payload Too Large` error rather than crashing the Node server process.
+  - Valid photo carb scans and PDF uploads continue to upload seamlessly.
 
 #### Trade-Offs & Stability Risks
 * **Pros:** Closes remote denial-of-service vulnerabilities, protects session cookies from sniffing over public Wi-Fi, and eliminates cognitive clutter in the codebase.
@@ -66,6 +88,16 @@ Replacing 18 separate kitchen egg timers with one smart master clock on the wall
    - Implement an authenticated **Restore** endpoint (`POST /api/backups/restore/:filename`) that pauses background jobs, creates a pre-restore safety snapshot of the active `app.db`, replaces database and asset files, and gracefully reboots.
    - Add a separate secure backup mechanism for `data/.wifi_key` so hardware credentials survive restorations.
 
+#### Tangible Changes: What You Will See & Feel
+- **Visual Appearance:**
+  - In **System Architecture** (`/ims/architecture`), a brand new **Background Jobs** monitor card appears. It displays all 18 system routines with countdown badges showing exactly when each will run next (e.g. `Next: 14m 22s`), how long the previous run took in milliseconds, a green/amber/red health pill, and a manual **"Run Now"** trigger button.
+  - In the **Backups Portal** (`/ims/backups`), a prominent green status banner announces: `Automated Drill: Passed (Today at 03:00 - Database integrity verified)`.
+  - Beside every backup entry, a distinctive **"Restore"** button appears, opening an interactive safety modal with pre-flight check confirmations.
+- **Everyday Feel & Experience:**
+  - No more mysterious UI freezes or brief SQLite lock hiccups caused when heavy jobs (like Strava activity sync and morning report pre-warming) collide at the exact same second.
+  - Restoring the entire IMS state after a PC failure changes from a 30-minute stressful manual command-line process into a 10-second single click with zero anxiety.
+  - Restoring a backup never knocks your ESP32-S3-BOX-3 offline because Wi-Fi encryption keys are preserved independently.
+
 #### Trade-Offs & Stability Risks
 * **Pros:** Prevents simultaneous background tasks from locking the SQLite database; guarantees backup archives are uncorrupted and recoverable without command-line intervention.
 * **Cons:** Requires centralising 18 diverse job contracts with different retry behaviours.
@@ -90,6 +122,17 @@ Instead of your web browser repeatedly tapping the server on the shoulder every 
    - Introduce a structured logger (`pino`) with service tags (`[Weather]`, `[MorningReport]`, `[HardwareProxy]`) and levelled filters (`trace`, `debug`, `info`, `warn`, `error`).
    - Configure asynchronous log rotation in `data/logs/` capped at 14 days.
    - Quieten repetitive HTTP poll logging and add an interactive **Logs Explorer** tab inside `/ims/architecture` supporting full-text search, level filters, and direct links to trace IDs.
+
+#### Tangible Changes: What You Will See & Feel
+- **Visual Appearance:**
+  - **Doorbell Alerts (`/ims/doorbell`):** A doorbell ding or motion event updates the screen with live snapshot thumbnails *the exact millisecond* it occurs—no more waiting up to 10 seconds for the next client poll.
+  - **Blood Sugar Monitoring (`/ims/glucose` & Top Header):** Glucose readings and trend arrows update synchronously the moment Nightscout publishes a new 1-minute delta.
+  - **Music Scan Progress (`/ims/musicscan`):** The scan bar moves with continuous, silky animation as each artist is processed, rather than jumping in staggered leaps.
+  - **System Architecture (`/ims/architecture`):** A dedicated **Logs Explorer** tab lets you search and filter live server logs by severity (`ERROR`, `WARN`, `INFO`) or service name (`[Weather]`, `[MorningReport]`) with live keyword search and syntax highlighting.
+- **Everyday Feel & Experience:**
+  - Opening browser DevTools Network tab shows a calm, silent network: hundreds of repetitive `GET /api/...` calls every minute are replaced by one quiet, continuous stream.
+  - Laptop and smartphone battery drain while leaving IMS dashboard tabs open drops noticeably.
+  - Diagnosing an unexpected error or voice tool failure is instantaneous—no need to remote-desktop into the PC or search raw text files in PowerShell.
 
 #### Trade-Offs & Stability Risks
 * **Pros:** Reduces client-server HTTP network chatter by >80%; delivers instant UI feedback (zero delay on doorbell rings or glucose alarms); provides instant diagnostic traceability for bugs.
@@ -116,6 +159,16 @@ Updating your AI subscription to Google's brand-new software engine, while digit
    - Implement incremental node updates in `hnswlib` (`indexDocumentIncremental()`) to remove the need for slow, full-index rebuilds on new uploads.
    - Add storage utilisation breakdowns per subject to the Admin panel.
 
+#### Tangible Changes: What You Will See & Feel
+- **Visual Appearance:**
+  - In the **Admin Panel** (`/admin`), a new **Storage Utilisation Breakdown** widget displays sleek horizontal bar charts showing exact megabytes used by PDFs and vector embeddings across subjects (LOTR, Arkham, Diabetes, Technology, Board Games).
+  - The **Model Switcher** and **System Architecture** cards show updated, uniform AI model badges reflecting `gemini-2.5-flash`, `gemini-2.5-pro`, and `gemini-3.8-live` consistently.
+  - Vector indexing modal displays instant per-document progress bars instead of a global blocking screen.
+- **Everyday Feel & Experience:**
+  - Your PC reclaims **3.0 to 4.5 GB of solid-state disk space** immediately.
+  - Adding a new PDF rulebook or clinical paper indexes in seconds: the system no longer locks CPU cores for several minutes recalculating the entire library's HNSW vector graph.
+  - AI responses—from Day Reports and RAG rule checks to Photo Carbs food analyses—feel faster, more consistent, and immune to upcoming Google API deprecation shutdowns.
+
 #### Trade-Offs & Stability Risks
 * **Pros:** Future-proofs IMS against Google API deprecations; reclaims 3–4 GB of disk space; accelerates document ingestion and reduces RAM usage.
 * **Cons:** Quantisation introduces a microscopic (<1%) trade-off in mathematical retrieval precision.
@@ -140,6 +193,15 @@ Taking two 2,500-page telephone directories that have everything crammed into th
    - Implement asynchronous code-splitting using `React.lazy()` and `Suspense` for all 29 portal views.
    - Resolve Vite's `>500 kB` bundle warning (currently bundling a 3.94 MB JavaScript blob).
 
+#### Tangible Changes: What You Will See & Feel
+- **Visual Appearance:**
+  - Initial browser loading displays a crisp, instant top navigation bar and subtle skeleton loader as portals mount effortlessly.
+  - In terminal build logs, the persistent yellow warning `(!) Some chunks are larger than 500 kB after minification` completely disappears. In its place, Vite outputs cleanly isolated bundles (e.g., `dist/assets/RunPlanner-[hash].js`, `dist/assets/Campaigns-[hash].js`).
+- **Everyday Feel & Experience:**
+  - **Lightning Initial Page Load:** Opening IMS on mobile or desktop drops the initial JavaScript download from ~4 MB down to ~250 kB—making first page load instantaneous.
+  - Navigating between unrelated portals (e.g. jumping from Blood Sugar to Arkham Horror Campaign Manager) feels snappier and lighter on browser memory.
+  - Future AI development sessions and human code edits become vastly quicker and less error-prone: modifying one portal's logic has zero risk of inadvertently breaking another portal or causing merge conflicts in `App.jsx`.
+
 #### Trade-Offs & Stability Risks
 * **Pros:** Speeds up initial browser page load times; eliminates merge conflicts; makes future pair-programming and AI code generation significantly safer and faster.
 * **Cons:** High refactoring surface area requiring touchpoints across every portal in the application.
@@ -150,17 +212,17 @@ Taking two 2,500-page telephone directories that have everything crammed into th
 
 ## Complete Dev Ideas Cross-Reference
 
-| Dev Idea ID | Category | Summary Description | Assigned Phase |
-|---|---|---|---|
-| **#49** | Housekeeping | Tidy root scripts, remove stale databases, extend `.gitignore` | **Phase 1** |
-| **#46** | Security | Harden tunnel access, secure cookies, trust proxy, body limits, Helmet CSP | **Phase 1** |
-| **#44** | Reliability | Central job scheduler, London time sync, concurrency locks, jobs panel | **Phase 2** |
-| **#48** | Reliability | One-click backup restore, weekly integrity drill, separate Wi-Fi key export | **Phase 2** |
-| **#50** | Observability | Structured levelled logging (Pino), log rotation, Architecture Logs tab | **Phase 3** |
-| **#42** | Performance | Single `/api/events` SSE push stream to eliminate browser polling | **Phase 3** |
-| **#47** | Reliability | Upgrade to `@google/genai` SDK, centralise model constants in `config.js` | **Phase 4** |
-| **#51** | Storage/Perf | PDF deduplication, int8 vector quantisation, incremental HNSW indexing | **Phase 4** |
-| **#43** | Maintainability | Split `server/index.js` and `App.jsx`, implement `React.lazy` code splitting | **Phase 5** |
+| Dev Idea ID | Category | Summary Description | Assigned Phase | Primary Experience Impact |
+|---|---|---|---|---|
+| **#49** | Housekeeping | Tidy root scripts, remove stale databases, extend `.gitignore` | **Phase 1** | Clean, uncluttered repository and zero scratch file noise |
+| **#46** | Security | Harden tunnel access, secure cookies, trust proxy, body limits, Helmet CSP | **Phase 1** | Secure mobile access and DOS payload protection |
+| **#44** | Reliability | Central job scheduler, London time sync, concurrency locks, jobs panel | **Phase 2** | Live background jobs card and zero database lockups |
+| **#48** | Reliability | One-click backup restore, weekly integrity drill, separate Wi-Fi key export | **Phase 2** | 10-second panic restore button and automated drill badges |
+| **#50** | Observability | Structured levelled logging (Pino), log rotation, Architecture Logs tab | **Phase 3** | In-app searchable logs explorer and instant debugging |
+| **#42** | Performance | Single `/api/events` SSE push stream to eliminate browser polling | **Phase 3** | Instant doorbell/glucose updates and silent network tab |
+| **#47** | Reliability | Upgrade to `@google/genai` SDK, centralise model constants in `config.js` | **Phase 4** | Future-proof AI engine and consistent modern models |
+| **#51** | Storage/Perf | PDF deduplication, int8 vector quantisation, incremental HNSW indexing | **Phase 4** | 3–4 GB disk space reclaimed and 3–5x faster indexing |
+| **#43** | Maintainability | Split `server/index.js` and `App.jsx`, implement `React.lazy` code splitting | **Phase 5** | Instant first page load (~250 kB shell) and clean builds |
 
 ---
 
