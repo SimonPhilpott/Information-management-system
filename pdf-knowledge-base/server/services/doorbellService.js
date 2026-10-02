@@ -37,6 +37,38 @@ class DoorbellService extends EventEmitter {
     this.lastMotionTime = 0;
     this.activeAlert = null;
     this.alertClearTimer = null;
+    this.snapshotCache = new Map(); // cameraId -> { buffer, timestamp }
+  }
+
+  /**
+   * Notification preference getters & setters
+   */
+  isDingNotifyEnabled() {
+    return getSetting("doorbell_ding_notify_enabled") !== "false";
+  }
+
+  isMotionNotifyEnabled() {
+    return getSetting("doorbell_motion_notify_enabled") !== "false";
+  }
+
+  getNotificationSettings() {
+    return {
+      dingEnabled: this.isDingNotifyEnabled(),
+      motionEnabled: this.isMotionNotifyEnabled()
+    };
+  }
+
+  setNotificationSettings({ dingEnabled, motionEnabled }) {
+    if (typeof dingEnabled === "boolean") {
+      setSetting("doorbell_ding_notify_enabled", dingEnabled ? "true" : "false");
+    }
+    if (typeof motionEnabled === "boolean") {
+      setSetting("doorbell_motion_notify_enabled", motionEnabled ? "true" : "false");
+    }
+    const settings = this.getNotificationSettings();
+    console.log(`[DoorbellService] 🔔 Notification settings updated: dingEnabled=${settings.dingEnabled}, motionEnabled=${settings.motionEnabled}`);
+    this.emit("settingsChange", settings);
+    return settings;
   }
 
   /**
@@ -154,26 +186,55 @@ class DoorbellService extends EventEmitter {
   /**
    * Handles incoming ding or motion event from Ring API
    */
-  async handleCameraEvent(eventType, camera, locationName = "Home") {
+  async handleCameraEvent(eventType, camera, locationName = "Home", isTest = false) {
     const now = Date.now();
     const cameraName = camera?.name || "Front Door";
     const cameraId = String(camera?.id || "unknown");
     const batteryLevel = camera?.batteryLevel ?? null;
 
-    // Throttle duplicate dings within 10 seconds, and duplicate motions within 30 seconds
-    if (eventType === "ding" && now - this.lastDingTime < 10000) {
-      console.log(`[DoorbellService] 🔔 Throttling duplicate ding event on "${cameraName}"`);
-      return;
+    // Check user notification toggles: if disabled, log to database for records but do not alert or speak
+    const isDingEnabled = this.isDingNotifyEnabled();
+    const isMotionEnabled = this.isMotionNotifyEnabled();
+
+    if (!isTest) {
+      if (eventType === "ding" && !isDingEnabled) {
+        console.log(`[DoorbellService] 🔔 Ding notifications are turned OFF. Event logged to DB without alert dispatch.`);
+        try {
+          db.prepare(`
+            INSERT INTO doorbell_events (event_type, camera_id, camera_name, location_name, battery_level, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).run(eventType, cameraId, cameraName, locationName, batteryLevel, now);
+        } catch (_) {}
+        return null;
+      }
+      if (eventType === "motion" && !isMotionEnabled) {
+        console.log(`[DoorbellService] 🔔 Motion notifications are turned OFF. Event logged to DB without alert dispatch.`);
+        try {
+          db.prepare(`
+            INSERT INTO doorbell_events (event_type, camera_id, camera_name, location_name, battery_level, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).run(eventType, cameraId, cameraName, locationName, batteryLevel, now);
+        } catch (_) {}
+        return null;
+      }
     }
-    if (eventType === "motion" && now - this.lastMotionTime < 30000) {
-      console.log(`[DoorbellService] 🔔 Throttling duplicate motion event on "${cameraName}"`);
-      return;
+
+    // Throttle duplicate dings within 10 seconds, and duplicate motions within 30 seconds (bypass if test)
+    if (!isTest) {
+      if (eventType === "ding" && now - this.lastDingTime < 10000) {
+        console.log(`[DoorbellService] 🔔 Throttling duplicate ding event on "${cameraName}"`);
+        return this.activeAlert;
+      }
+      if (eventType === "motion" && now - this.lastMotionTime < 30000) {
+        console.log(`[DoorbellService] 🔔 Throttling duplicate motion event on "${cameraName}"`);
+        return this.activeAlert;
+      }
     }
 
     if (eventType === "ding") this.lastDingTime = now;
     if (eventType === "motion") this.lastMotionTime = now;
 
-    console.log(`[DoorbellService] 🚨 RING EVENT: ${eventType.toUpperCase()} on "${cameraName}" (${locationName})`);
+    console.log(`[DoorbellService] 🚨 RING EVENT${isTest ? ' [TEST]' : ''}: ${eventType.toUpperCase()} on "${cameraName}" (${locationName})`);
 
     // Log event into database
     try {
@@ -194,8 +255,13 @@ class DoorbellService extends EventEmitter {
       locationName,
       batteryLevel,
       yorkshirePhrase,
+      isTest: !!isTest,
       timestamp: now,
-      timeFormatted: new Date(now).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+      timeFormatted: new Date(now).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+      notificationToggles: {
+        dingEnabled: isDingEnabled,
+        motionEnabled: isMotionEnabled
+      }
     };
 
     this.activeAlert = alertPayload;
@@ -208,35 +274,140 @@ class DoorbellService extends EventEmitter {
     // Emit event for server/index.js to push to ESP32-S3-BOX-3 and web UI
     this.emit(eventType, alertPayload);
     this.emit("doorbellEvent", alertPayload);
+    return alertPayload;
   }
 
   /**
-   * Triggers a synthetic test event (ding or motion) for testing and verification
+   * Triggers a synthetic test event (ding or motion) for testing and verification.
+   * Targets discovered physical camera when available and bypasses duplicate throttling.
    */
   async triggerTestEvent(eventType = "ding", customCameraName = "Front Door") {
     console.log(`[DoorbellService] 🧪 Triggering test ${eventType} alert...`);
-    const mockCamera = {
-      name: customCameraName,
-      id: "test-camera-1",
-      batteryLevel: 94
+    const primaryCam = this.cameras.length > 0 ? this.cameras[0] : null;
+    const targetCamera = {
+      name: primaryCam?.name || customCameraName,
+      id: primaryCam?.id || "test-camera-1",
+      batteryLevel: primaryCam?.batteryLevel ?? 95,
+      location: primaryCam?.location || "Home"
     };
-    await this.handleCameraEvent(eventType, mockCamera, "Home");
-    return this.activeAlert;
+
+    return await this.handleCameraEvent(eventType, targetCamera, targetCamera.location, true);
   }
 
   /**
-   * Grabs a fresh JPEG snapshot from a camera
+   * Finds the active Ring camera object matching cameraId or default primary camera
    */
-  async getCameraSnapshot(cameraId) {
-    if (!this.ringApi) throw new Error("Ring API is not connected");
+  async findCameraInstance(cameraId) {
+    if (!this.ringApi) {
+      const connected = await this.init();
+      if (!connected || !this.ringApi) throw new Error("Ring API is not connected");
+    }
+
     const locations = await this.ringApi.getLocations();
     for (const location of locations) {
-      const camera = location.cameras.find((c) => String(c.id) === String(cameraId));
-      if (camera) {
-        return await camera.getSnapshot();
+      if (cameraId) {
+        const found = location.cameras.find((c) => String(c.id) === String(cameraId));
+        if (found) return found;
+      } else if (location.cameras.length > 0) {
+        return location.cameras[0];
       }
     }
-    throw new Error(`Camera with ID ${cameraId} not found`);
+
+    if (cameraId) {
+      throw new Error(`Camera with ID ${cameraId} not found`);
+    } else {
+      throw new Error("No Ring cameras discovered in account");
+    }
+  }
+
+  /**
+   * Grabs a fresh JPEG snapshot from a camera with 2-second in-memory throttle caching
+   */
+  async getCameraSnapshot(cameraId) {
+    const cacheKey = String(cameraId || "default");
+    const cached = this.snapshotCache.get(cacheKey);
+    const now = Date.now();
+
+    // If cached snapshot is under 2 seconds old, serve immediately to prevent rate-limiting & battery drain
+    if (cached && now - cached.timestamp < 2000) {
+      return cached.buffer;
+    }
+
+    const camera = await this.findCameraInstance(cameraId);
+    try {
+      const buffer = await camera.getSnapshot();
+      this.snapshotCache.set(cacheKey, { buffer, timestamp: now });
+      return buffer;
+    } catch (err) {
+      if (cached?.buffer) {
+        console.warn(`[DoorbellService] Snapshot grab failed (${err.message}), returning cached snapshot.`);
+        return cached.buffer;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Retrieves recent motion, ding, and on-demand events directly from the Ring cloud API
+   */
+  async getRecordings({ limit = 30, cameraId } = {}) {
+    const camera = await this.findCameraInstance(cameraId);
+    const safeLimit = Math.min(100, Math.max(1, limit));
+
+    console.log(`[DoorbellService] 📹 Fetching past ${safeLimit} recordings/events for camera "${camera.name}" (${camera.id})...`);
+    const eventsResult = await camera.getEvents({ limit: safeLimit });
+    const rawEvents = eventsResult?.events || [];
+
+    const formattedEvents = rawEvents.map((ev) => {
+      const isPerson = !!(ev.cv_properties?.person_detected || ev.cv_properties?.detection_type === "human");
+      return {
+        id: ev.ding_id_str,
+        dingId: ev.ding_id_str,
+        eventId: ev.event_id,
+        kind: ev.kind || ev.event_type, // 'motion' | 'ding' | 'on_demand'
+        state: ev.state,
+        createdAt: ev.created_at,
+        createdTimestamp: new Date(ev.created_at).getTime(),
+        timeFormatted: new Date(ev.created_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+        dateFormatted: new Date(ev.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+        cameraName: ev.doorbot?.description || camera.name || "Front Door",
+        cameraId: String(ev.doorbot?.id || ev.source_id || camera.id),
+        batteryLevel: ev.doorbot?.battery_life ?? camera.batteryLevel ?? null,
+        duration: ev.duration || null,
+        recorded: ev.recorded !== false,
+        recordingStatus: ev.recording_status || (ev.recorded ? "ready" : "none"),
+        personDetected: isPerson,
+        detectionType: ev.cv_properties?.detection_type || (isPerson ? "human" : null),
+        favorite: !!ev.favorite
+      };
+    });
+
+    return {
+      success: true,
+      cameraName: camera.name,
+      cameraId: String(camera.id),
+      count: formattedEvents.length,
+      events: formattedEvents,
+      meta: eventsResult?.meta || {}
+    };
+  }
+
+  /**
+   * Resolves the Amazon S3 / Ring MP4 video download URL for a specific event
+   */
+  async getRecordingUrl(dingId, cameraId) {
+    if (!dingId) throw new Error("Missing dingId for recording URL lookup");
+    const camera = await this.findCameraInstance(cameraId);
+    console.log(`[DoorbellService] 📹 Resolving recording video URL for ding ${dingId}...`);
+    const url = await camera.getRecordingUrl(dingId);
+    if (!url) {
+      throw new Error(`Recording URL for event ${dingId} is not available (video may not have finished uploading)`);
+    }
+    return {
+      success: true,
+      dingId: String(dingId),
+      url
+    };
   }
 
   /**
@@ -252,7 +423,7 @@ class DoorbellService extends EventEmitter {
   }
 
   /**
-   * Returns current service status and camera summaries
+   * Returns current service status, notification toggles, and camera summaries
    */
   getStatus() {
     const hasToken = !!(getSetting("ring_refresh_token") || "").trim();
@@ -265,12 +436,13 @@ class DoorbellService extends EventEmitter {
       cameras: this.cameras,
       activeAlert: this.activeAlert,
       lastDingTime: this.lastDingTime,
-      lastMotionTime: this.lastMotionTime
+      lastMotionTime: this.lastMotionTime,
+      notificationSettings: this.getNotificationSettings()
     };
   }
 
   /**
-   * Returns recent doorbell event history
+   * Returns recent doorbell event history from local database
    */
   getEvents(limit = 50) {
     try {
@@ -295,6 +467,7 @@ class DoorbellService extends EventEmitter {
       this.status = "unconfigured";
       this.cleanupSubscriptions();
       this.cameras = [];
+      this.snapshotCache.clear();
       return { success: true, message: "Token cleared" };
     }
 

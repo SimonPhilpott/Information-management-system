@@ -602,13 +602,13 @@
       ]
     },
     "pdf-knowledge-base/server/routes/doorbell.js": {
-      "description": "Doorbell REST endpoints for status querying, activity event logs, 2FA refresh token updates, reconnection, test alert dispatch, and live JPEG snapshot fetching.",
+      "description": "Doorbell REST endpoints for status querying, activity event logs, 2FA refresh token updates, reconnection, test alert dispatch, live snapshot capture, cloud recordings discovery, signed MP4 URLs, and Range-supported video streaming.",
       "dependencies": [
         "pdf-knowledge-base/server/services/doorbellService.js"
       ]
     },
     "src/components/Dashboard/DoorbellPortal.jsx": {
-      "description": "Interactive Ring Doorbell management portal (/ims/doorbell) with connection telemetry, discovered camera tiles, battery levels, live snapshot capture, ding/motion timeline, test alert triggers, and token setup modal.",
+      "description": "Interactive Ring Doorbell management portal (/ims/doorbell) with connection telemetry, discovered camera tiles, live feed viewer with auto-refresh, Web Audio dual-tone chime and Yorkshire SpeechSynthesis alerts, historical motion/ding recordings gallery, and in-portal MP4 video playback modal.",
       "dependencies": [
         "src/components/Dashboard/PortalShell.jsx",
         "pdf-knowledge-base/server/routes/doorbell.js"

@@ -3884,7 +3884,10 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       const char *phrase = da["phrase"] | "Someone's at front door!";
       Serial.printf("[IMS] 🔔 Doorbell Alert received: event=%s, camera=%s\n", ev, cam);
       
-      if (currentState == STATE_STANDBY || currentState == STATE_VERIFYING) {
+      // Recording a call or meeting: total silence - no chime, no announcement (the user's standing rule).
+      if (recordingActive) {
+        Serial.println("[IMS] Doorbell alert ignored: recording in progress.");
+      } else if (currentState == STATE_STANDBY || currentState == STATE_VERIFYING) {
         if (currentState == STATE_VERIFYING) {
           sendAudioStreamEnd();
           micStreamingActive = false;
@@ -3903,6 +3906,15 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         
         lastTranscript = String(alertBanner);
         renderScreen(true);
+
+        // Then have Ims SAY it, through the same text-turn path reminders use (enters THINKING and pre-warms the
+        // speaker so his reply is actually played). The backend no longer injects its own turn for the device,
+        // so it's said once.
+        char announceMsg[260];
+        snprintf(announceMsg, sizeof(announceMsg),
+                 "The Ring doorbell just reported a %s at the %s. Announce it to the user briefly and naturally, in character, in your Yorkshire accent (flat northern vowels, no American r) - for example: \"%s\"",
+                 strcmp(ev, "ding") == 0 ? "doorbell press" : "motion alert", cam, phrase);
+        sendTextQuery(announceMsg);
       }
     }
     // Backend pushed wakeDaemon telemetry (Voice Detection Service & Wake status)

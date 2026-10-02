@@ -644,7 +644,10 @@ schedulerService.registerJob({
   category: 'monitoring',
   intervalMs: 60000,
   action: async () => {
-    heartbeat();
+    // Read-only: only the device itself may report a heartbeat. Calling heartbeat() here faked a camera being
+    // plugged in every minute, which flashed the yellow/green camera icon on Ims's screen with no camera attached.
+    const { attached, awake } = getCameraStatus();
+    return { attached, awake };
   }
 });
 
@@ -2876,7 +2879,9 @@ doorbellService.on('doorbellEvent', (alert) => {
   }
 
   // 2. If Gemini Live session is open with the hardware device or web client, speak the Yorkshire announcement
-  const targetGeminiWs = activeHardwareSession?.geminiWs || activeBrowserSession?.geminiWs;
+  // Speaking it: the ESP32 asks Ims itself when the doorbellAlert frame arrives (firmware - speaker ready, said once);
+  // only a browser voice session with no device connected gets the announcement injected from here.
+  const targetGeminiWs = activeHardwareSession?.clientWs?.readyState === WebSocket.OPEN ? null : activeBrowserSession?.geminiWs;
   if (targetGeminiWs && targetGeminiWs.readyState === WebSocket.OPEN) {
     try {
       console.log(`[DoorbellAlert] Triggering spoken announcement via Gemini Live turn: "${alert.yorkshirePhrase}"`);

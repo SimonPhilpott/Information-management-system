@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 104
-- Verified Features: 104
+- Total Registered Features: 105
+- Verified Features: 105
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -112,6 +112,7 @@
 | FEAT-102 | Phase 1: Repository Hygiene & Tunnel Access Hardening | [server/index.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/index.js) | Relocation of diagnostic scripts to server/scripts/, purging dead crash dumps, Express trust proxy, auto-secure session cookies, Helmet CSP, and 1MB global payload guards with 50MB upload exemptions | PASS |
 | FEAT-103 | Phase 2: Central Background Job Scheduler & Disaster Recovery | [schedulerService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/schedulerService.js) | Central schedulerService consolidating 18 intervals with concurrency run-locks, Europe/London time, telemetry API, weekly SQLite PRAGMA integrity_check drill, and 1-click restore with pre-restore safety snapshots | PASS |
 | FEAT-104 | Phase 3: Real-Time SSE Push Stream & Searchable Logs Explorer | [eventBus.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/eventBus.js) | Central SSE /api/events with 20s keep-alives, useSystemEvents hook, structured logger with 2,000 entry ring buffer and 14-day file rotation, Logs Explorer tab in Architecture portal | PASS |
+| FEAT-105 | Ring Doorbell Live Feed & Motion Recordings Playback | [DoorbellPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/DoorbellPortal.jsx) | Web Audio dual-tone chime (F#5->D5), SpeechSynthesis Yorkshire voice announcement, live snapshot feed with 5s auto-refresh, cloud recordings retrieval & Range MP4 proxy streaming | PASS |
 
 ## Section 2: Detailed Scenarios
 ### Suite 31: Observability Device Health Panel & Service (FEAT-086)
@@ -1081,6 +1082,13 @@
 6. **Log Filtering, Search & Export:** Type a search query into the search box and select a service from the dropdown. Verify list filters instantaneously. Click **Export** to verify browser download of `ims-logs-YYYY-MM-DD.json`. Click **Clear** to verify in-memory buffer reset.
 7. **Quiet HTTP Poll Logging:** Inspect server console logs during client activity. Verify high-frequency background endpoints (`/api/glucose`, `/api/events`, `/api/jobs`, `/device/health`, `/api/logs`) are logged at `debug` level only, keeping the terminal output calm and focused on significant events.
 
+### Suite 105: Ring Doorbell Live Feed & Motion Recordings Playback (FEAT-105)
+1. **Web Audio Chime & Yorkshire Voice Announcement:** In `/ims/doorbell`, click **Test Doorbell Ding**. Verify an immediate, clear dual-tone chime (F#5 740Hz to D5 587Hz) plays directly from browser speakers via `AudioContext` and the Yorkshire phrase (*"Hold on Simon, someone's at front door!"*) is spoken via `window.speechSynthesis`. Click **Test Motion Alert** to verify the tri-tone blip.
+2. **Throttle Bypass on Synthetic Tests:** Trigger **Test Doorbell Ding** multiple times in rapid succession. Verify `triggerTestEvent` flags `isTest = true`, bypassing the 10-second duplicate suppression window so every test click sounds immediately.
+3. **Live Camera Feed & Auto-Refresh:** On `/ims/doorbell`, verify the Live Feed viewport displays the primary camera's current image with battery percentage and SIP active indicator. Click **Enable Auto-Refresh** to verify 5-second automatic snapshot polling, and click **Capture Snapshot** for on-demand frame capture.
+4. **Cloud Recordings Retrieval:** Switch to the **Motion Recordings** tab. Verify `GET /api/doorbell/recordings` loads recent past events with event kind badges (`Doorbell Ding`, `Motion`, `Live View`), UK timestamps, duration, and person detection indicators.
+5. **Interactive MP4 Video Playback:** Click any recording tile to open the video playback modal. Verify the embedded HTML5 player loads and streams video smoothly from `/api/doorbell/recordings/:dingId/video`. Verify the **Download MP4** button links to the signed download URL.
+
 ## Section 3: Defensive Engineering Invariants
 - **Scheduler Concurrency Protection:** All routines managed by `schedulerService` must acquire an execution run-lock (`isRunning`) before invoking the action and release it in a `finally` block to prevent SQLite database write lock contention.
 - **Pre-Restore Snapshot Guarantee:** Every database restoration via `backupService.restoreBackup()` must take a full SQLite backup snapshot of the active database (`LOCAL/pre-restore-app-${Date.now()}.db`) before touching live database or asset files.
@@ -1090,5 +1098,7 @@
 - **SSE Tunnel Resilience:** The unified event push stream (`/api/events`) must emit keep-alive comments (`: ping\n\n`) at least once every 20 seconds to prevent edge reverse proxies, Cloudflare tunnels, or ngrok gateways from terminating idle HTTP connections.
 - **Log Buffer Memory Bounds:** The in-memory logging ring buffer in `loggerService` must be strictly capped at 2,000 entries using FIFO pruning to guarantee bounded heap consumption.
 - **Log File Retention Lifecycle:** Daily log archives in `data/logs/` must automatically purge entries exceeding 14 days of age during daily rotation.
+- **Snapshot Rate-Limit Throttle:** Ring camera snapshot requests (`getCameraSnapshot`) must cache the latest JPEG buffer for at least 2,000ms to protect battery-powered doorbells from aggressive client auto-refresh polling and API rate limiting.
+- **Video Range Streaming:** Recording video proxy (`/api/doorbell/recordings/:dingId/video`) must pass incoming HTTP `Range` headers to upstream S3 and emit `Content-Range` with status 206 to ensure smooth, non-blocking HTML5 video scrubbing without downloading entire files in memory.
 
 

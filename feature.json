@@ -1274,6 +1274,17 @@
         "Export filtered logs as JSON and 1-click stack trace clipboard copying",
         "Quieted HTTP request logging middleware suppressing high-frequency polling spam from console"
       ]
+    },
+    "Ring Doorbell Live Feed & Motion Recordings Playback": {
+      "status": "enabled",
+      "description": "Enhanced Ring Doorbell capabilities providing direct Web Audio API dual-tone chime and Yorkshire vocal announcement for in-browser alert verification, low-latency live camera feed with auto-refresh snapshot capability, and historical motion/ding video recording playback with Range-supported MP4 proxy streaming.",
+      "subFeatures": [
+        "Web Audio API dual-tone chime synthesis (F#5 to D5) and SpeechSynthesis en-GB Yorkshire vocal playback on test and live triggers",
+        "Live camera feed view with auto-refresh snapshot stream (5s toggle) and manual capture controls",
+        "Cloud recordings retrieval API (GET /api/doorbell/recordings) querying Ring events history with event kind badges and person detection flags",
+        "Signed MP4 video URL resolution (GET /api/doorbell/recordings/:dingId/url) and HTTP 206 Range proxy streaming (GET /api/doorbell/recordings/:dingId/video)",
+        "Interactive video playback modal with embedded HTML5 video player, duration metrics, person detection badges, and direct MP4 download"
+      ]
     }
   }
 }
