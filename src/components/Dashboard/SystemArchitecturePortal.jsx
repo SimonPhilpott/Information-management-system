@@ -115,7 +115,7 @@ const spokes = (live) => [
       { icon: Bell, main: 'Core functions - 10', sub: 'Weather, doorbell, alarms, timers, reminders (1d–2w look-ahead), birthdays, calendar, memories, recordings, tasks' },
       { icon: Heart, main: 'Personal - 6', sub: 'Day report, Code best practices (with dependency watch), music scanner, board games, campaigns, news' },
       { icon: Droplets, main: 'Health and fitness - 3', sub: 'Blood sugar (clinic AGP report), activities (training load), run planner (live run plan, route finder, retrospective) & T1D Rulebook' },
-      { icon: Settings, main: 'Customisation and system - 9', sub: 'Device health, Gemini spend budget, face designer, persona, wake phrases, Wi-Fi, dev ideas, backups, this page' },
+      { icon: Settings, main: 'Customisation and system - 12', sub: 'Device health, storage, model switcher, costs, Gemini spend budget, face designer, persona, wake phrases, Wi-Fi, dev ideas, backups, this page' },
       { icon: Eye, main: 'Disabled - 2', sub: 'Look and Faces, until the camera works' },
     ],
   },

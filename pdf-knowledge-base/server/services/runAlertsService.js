@@ -94,10 +94,8 @@ async function pushRouteLink({ name, komoot, distanceKm = null, durationMin = nu
 const ALARM_TAGS = new Set(['candy', 'droplet', 'checkered_flag']);
 
 // Every 10 seconds: push whatever has come due.
-let pushTicker = null;
-export function startRunPushQueue() {
-  if (pushTicker) return;
-  pushTicker = setInterval(async () => {
+// Run by the scheduler ('run_push_queue_tick' in index.js).
+export async function tickRunPushQueue() {
     const due = db.prepare('SELECT * FROM run_push_queue WHERE sent_at IS NULL AND due_at <= ? ORDER BY due_at LIMIT 5').all(Date.now());
     for (const p of due) {
       try { await pushNow({ ...p, actions: p.actions || null, click: p.click || null, alarm: ALARM_TAGS.has(p.tags) }); db.prepare('UPDATE run_push_queue SET sent_at = ?, error = NULL WHERE id = ?').run(Date.now(), p.id); }
@@ -106,7 +104,12 @@ export function startRunPushQueue() {
         if (Date.now() - p.due_at > 120000) db.prepare('UPDATE run_push_queue SET sent_at = ?, error = ? WHERE id = ?').run(Date.now(), err.message, p.id);
       }
     }
-  }, 10000);
+    return { sent: due.length };
+}
+let pushTicker = null;
+export function startRunPushQueue() {
+  if (pushTicker) return;
+  pushTicker = setInterval(() => { tickRunPushQueue().catch(() => {}); }, 10000);
 }
 
 export async function testPush() {

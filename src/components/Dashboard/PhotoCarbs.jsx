@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Camera, Loader2, X, Check, Image as ImageIcon, Zap } from 'lucide-react';
+import { Camera, Loader2, X, Check, Image as ImageIcon, Zap, Minus, Plus, BookmarkCheck, Trash2 } from 'lucide-react';
 
 // The camera, inside IMS: a live preview and a shutter. Handing off to the phone's own camera app (a file
 // input with capture) lets the phone close the page in the background - IMS runs as an installed app with a
@@ -123,10 +123,14 @@ export default function PhotoCarbs({ isDark, field, gradient, notify, onLogged, 
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(null);
   const [camera, setCamera] = useState(false);
+  const [foods, setFoods] = useState(null); // your saved carb values, when the list is open
+  const sub = isDark ? 'text-slate-300' : 'text-slate-700';
 
   // a photo taken elsewhere (the food button beside Ims's mic) is read straight away
   useEffect(() => { if (file) take(file); }, [file]); // eslint-disable-line react-hooks/exhaustive-deps
-  const total = (est?.items || []).reduce((n, i) => n + (Number(i.carbs) || 0), 0);
+  // each food is count x carbs for one
+  const lineCarbs = (it) => Math.round((Number(it.count) || 0) * (Number(it.carbsEach) || 0));
+  const total = (est?.items || []).reduce((n, i) => n + lineCarbs(i), 0);
 
   const analyse = async (blob, withNote = '') => {
     setBusy('reading');
@@ -134,7 +138,7 @@ export default function PhotoCarbs({ isDark, field, gradient, notify, onLogged, 
       const res = await fetch(`/api/glucose-hub/carbs/photo${withNote ? `?note=${encodeURIComponent(withNote)}` : ''}`, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
       const d = await res.json().catch(() => ({ success: false, error: `The server answered ${res.status} - try again.` }));
       if (!d.success) throw new Error(d.error);
-      setEst({ items: d.items, summary: d.summary, caution: d.caution });
+      setEst({ items: d.items.map((it) => ({ ...it, seenCount: it.count, remember: true })), summary: d.summary, caution: d.caution });
     } catch (err) { notify(err.message, 'error'); }
     setBusy(null);
   };
@@ -151,6 +155,29 @@ export default function PhotoCarbs({ isDark, field, gradient, notify, onLogged, 
 
   const setItem = (i, patch) => setEst((x) => ({ ...x, items: x.items.map((it, j) => (j === i ? { ...it, ...patch } : it)) }));
 
+  // What was changed on the page: corrected carbs are remembered for next time (when "remember" is ticked);
+  // a changed amount is just for this meal. The log describes the meal as actually eaten.
+  const fmtCount = (n) => (n === 0.5 ? 'half a' : Number.isInteger(n) ? String(n) : String(n));
+  const corrected = (it) => it.edited && Number(it.carbsEach) !== it.geminiEach;
+  const mealSummary = () => {
+    const items = est?.items || [];
+    const changed = items.some((it) => it.count !== it.seenCount || it.edited || it.removed) || est?.removedAny;
+    if (!changed && est?.summary) return est.summary;
+    return items.map((it) => `${fmtCount(it.count)} ${it.unit && it.unit !== 'portion' ? `${it.unit} ` : ''}${it.name}`.replace(/^1 portion /, '')).join(', ').slice(0, 100) || 'Food';
+  };
+  const rememberCorrections = () => {
+    const items = (est?.items || []).filter((it) => corrected(it) && it.remember).map((it) => ({ name: it.name, unit: it.unit, carbsEach: Number(it.carbsEach) }));
+    if (!items.length) return;
+    fetch('/api/glucose-hub/carbs/foods', { method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true, body: JSON.stringify({ items }) }).catch(() => {});
+  };
+  const openFoods = async () => {
+    if (foods) { setFoods(null); return; }
+    try { const d = await (await fetch('/api/glucose-hub/carbs/foods')).json(); setFoods(d.foods || []); } catch (err) { notify(err.message, 'error'); }
+  };
+  const forgetFood = async (id) => {
+    try { await fetch(`/api/glucose-hub/carbs/foods/${id}`, { method: 'DELETE' }); setFoods((f) => f.filter((x) => x.id !== id)); } catch (err) { notify(err.message, 'error'); }
+  };
+
   // "Send to AAPS": copy carbs to clipboard immediately, trigger Tasker 'Open AAPS', and log meal note
   const handleSendToAaps = () => {
     const numericCarbs = Math.round(total);
@@ -158,7 +185,8 @@ export default function PhotoCarbs({ isDark, field, gradient, notify, onLogged, 
     copyCarbsToClipboard(numericCarbs);
 
     // 2. Dispatch informational Note treatment to Nightscout in background
-    const foodSummary = est?.summary || (est?.items || []).map((i) => i.name).join(', ') || 'Food';
+    rememberCorrections();
+    const foodSummary = mealSummary();
     fetch('/api/glucose-hub/carbs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -190,7 +218,8 @@ export default function PhotoCarbs({ isDark, field, gradient, notify, onLogged, 
 
     setBusy('logging');
     try {
-      const foodSummary = est?.summary || (est?.items || []).map((i) => i.name).join(', ') || 'Food';
+      rememberCorrections();
+      const foodSummary = mealSummary();
       const res = await fetch('/api/glucose-hub/carbs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -235,13 +264,47 @@ export default function PhotoCarbs({ isDark, field, gradient, notify, onLogged, 
             {est && <>
               {!est.items.length && <div className="text-rose-500">No food found in the photo - take another.</div>}
               {est.items.map((it, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="flex-1 min-w-0"><b>{it.name}</b> <span className="text-slate-500">{it.portion}</span> <span className={conf[it.confidence]} title={`${it.confidence} confidence`}>●</span></span>
-                  <input className={`${field} !w-16 !py-1 text-right`} inputMode="decimal" value={it.carbs} onChange={(e) => setItem(i, { carbs: e.target.value.replace(/[^\d.]/g, '') })} />
-                  <span className="text-slate-500">g</span>
-                  <button onClick={() => setEst((x) => ({ ...x, items: x.items.filter((_, j) => j !== i) }))} className="p-1 rounded hover:bg-slate-500/10 text-slate-500" title="Not on the plate"><X size={12} /></button>
+                <div key={i} className={`rounded-lg border p-2 ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
+                  <div className="flex items-start gap-2">
+                    <span className="flex-1 min-w-0">
+                      <b>{it.name}</b> <span className={conf[it.confidence]} title={`${it.confidence} confidence`}>●</span>
+                      {it.yours && <span className="ml-1.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-700 text-white text-[10px] font-bold" title="Your carb value from a previous correction"><BookmarkCheck size={10} />your value</span>}
+                      <span className={`block ${sub}`}>{it.portion}</span>
+                    </span>
+                    <button onClick={() => setEst((x) => ({ ...x, removedAny: true, items: x.items.filter((_, j) => j !== i) }))} className={`p-1 rounded hover:bg-slate-500/10 ${sub}`} title="Not on the plate"><X size={13} /></button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                    {/* how many were eaten - just for this meal */}
+                    <button onClick={() => setItem(i, { count: it.count > 1 ? it.count - 1 : 0.5 })} disabled={it.count <= 0.5} className="p-1.5 rounded-md border border-slate-500/30 disabled:opacity-30" title="Fewer"><Minus size={12} /></button>
+                    <span className="min-w-[2.2rem] text-center font-bold tabular-nums">{it.count === 0.5 ? '½' : it.count}</span>
+                    <button onClick={() => setItem(i, { count: it.count < 1 ? 1 : it.count + 1 })} className="p-1.5 rounded-md border border-slate-500/30" title="More"><Plus size={12} /></button>
+                    <span className={sub}>{it.unit || 'portion'}{it.count > 1 && it.unit && it.unit !== 'portion' ? 's' : ''} ×</span>
+                    {/* carbs for one - corrected from the packet, remembered for next time */}
+                    <input className={`${field} !w-16 !py-1 text-right`} inputMode="decimal" value={it.carbsEach} aria-label={`Carbs in one ${it.unit || 'portion'}`}
+                      onChange={(e) => setItem(i, { carbsEach: e.target.value.replace(/[^\d.]/g, ''), edited: true })} />
+                    <span className={sub}>g each =</span>
+                    <b className="tabular-nums">{lineCarbs(it)} g</b>
+                  </div>
+                  {corrected(it) && (
+                    <label className={`mt-1.5 flex items-center gap-1.5 cursor-pointer ${sub}`}>
+                      <input type="checkbox" checked={it.remember} onChange={(e) => setItem(i, { remember: e.target.checked })} />
+                      Remember {it.carbsEach} g per {it.unit || 'portion'} for “{it.name}” next time <span className="opacity-90">(IMS said {it.geminiEach} g)</span>
+                    </label>
+                  )}
                 </div>
               ))}
+              <button onClick={openFoods} className={`self-start underline underline-offset-2 ${sub}`}>{foods ? 'Hide your saved foods' : 'Your saved foods'}</button>
+              {foods && (
+                <div className={`rounded-lg border p-2 ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
+                  {!foods.length && <div className={sub}>None yet - correct the carbs for a food and log the meal, and it's kept here.</div>}
+                  {foods.map((f) => (
+                    <div key={f.id} className="flex items-center gap-2 py-0.5">
+                      <span className="flex-1 min-w-0 truncate"><b>{f.name}</b> <span className={sub}>{f.carbsEach} g per {f.unit}{f.uses ? ` · used ${f.uses}×` : ''}</span></span>
+                      <button onClick={() => forgetFood(f.id)} className={`p-1 rounded hover:bg-slate-500/10 ${sub}`} title="Forget this value"><Trash2 size={12} /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
               {est.caution && <div className="text-amber-500">{est.caution}</div>}
               <div className="flex gap-2">
                 <input className={`${field} flex-1 !py-1.5`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Anything to add? e.g. a full cup of rice, no sauce" />

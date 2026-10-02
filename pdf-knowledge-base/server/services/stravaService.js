@@ -1,7 +1,7 @@
 import db, { getSetting, setSetting } from '../db/database.js';
 import config from '../config.js';
 import { encryptSecret, decryptSecret } from './wifiService.js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiClient.js';
 import { textInUnits, clearUnitCache, normaliseUnits } from './aiTextService.js';
 
 // Strava activities, logged locally for analysis. Sign-in is Strava's OAuth flow

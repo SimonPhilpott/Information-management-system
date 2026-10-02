@@ -2,7 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import db from '../db/database.js';
-import { searchHnsw, invalidateIndex } from './hnswService.js';
+import { searchHnsw, indexDocumentIncremental, removeFromIndex, renameSubjectInIndex } from './hnswService.js';
+import { unpackChunks, readVectorFileSync, writeVectorFile } from './vectorCodec.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const VECTORS_DIR = path.join(__dirname, '..', 'data', 'vectors');
@@ -85,7 +86,7 @@ async function getCachedChunks(filePath) {
 
   // Use async file read so we don't block the event loop on large files (e.g. 330MB AI vector files)
   const raw = await fs.promises.readFile(filePath, 'utf-8');
-  const chunks = JSON.parse(raw);
+  const chunks = unpackChunks(JSON.parse(raw)); // int8 files decode to Float32Array embeddings
   vectorCache.set(filePath, {
     chunks,
     size,
@@ -123,7 +124,7 @@ export function resolveDriveFileIdsForSubjects(subjects, showPersonal = false) {
 
   try {
     const docs = db.prepare(`
-      SELECT drive_file_id, subject FROM documents 
+      SELECT drive_file_id, subject FROM documents
       WHERE (${conditions.join(' OR ')})
     `).all(...params);
 
@@ -144,7 +145,7 @@ export function storeEmbeddings(subject, documentId, driveFileId, filename, embe
   let existing = [];
   if (fs.existsSync(filePath)) {
     try {
-      existing = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      existing = readVectorFileSync(filePath);
     } catch {
       existing = [];
     }
@@ -154,8 +155,9 @@ export function storeEmbeddings(subject, documentId, driveFileId, filename, embe
   existing = existing.filter(entry => entry.driveFileId !== driveFileId);
 
   // Add new entries
+  const added = [];
   for (const chunk of embeddedChunks) {
-    existing.push({
+    added.push({
       documentId,
       driveFileId,
       filename,
@@ -167,13 +169,14 @@ export function storeEmbeddings(subject, documentId, driveFileId, filename, embe
       hasImages: chunk.hasImages
     });
   }
+  existing.push(...added);
 
-  fs.writeFileSync(filePath, JSON.stringify(existing));
-  
+  writeVectorFile(filePath, existing); // int8 (vectorCodec.js)
+
   // Invalidate cache entry on write so future queries reload the fresh data
   vectorCache.delete(filePath);
-  // Mark HNSW index as needing rebuild
-  invalidateIndex();
+  // Add just this document to the HNSW index (its old passages marked deleted) - no full rebuild
+  indexDocumentIncremental(driveFileId, added);
 }
 
 /**
@@ -207,10 +210,10 @@ export async function searchSimilar(queryEmbedding, subjects = [], topK = 8, sho
   if (subjects.length > 0) {
     const placeholders = subjects.map(() => '?').join(',');
     const docs = db.prepare(`
-      SELECT drive_file_id, subject FROM documents 
+      SELECT drive_file_id, subject FROM documents
       WHERE subject IN (${placeholders}) OR folder_path IN (${placeholders})
     `).all(...subjects, ...subjects);
-    
+
     const filteredDocs = showPersonal ? docs : docs.filter(d => !isEntertainment(d.subject));
     const uniqueSubjects = [...new Set(filteredDocs.map(d => d.subject))];
     vectorFiles = uniqueSubjects.map(s => path.join(VECTORS_DIR, `${subjectToFilename(s)}.json`));
@@ -234,10 +237,10 @@ export async function searchSimilar(queryEmbedding, subjects = [], topK = 8, sho
       for (const chunk of chunks) {
         // Filter by driveFileId if we have a target list
         if (allowedDriveFileIds && !allowedDriveFileIds.has(chunk.driveFileId)) continue;
-        
+
         // Secondary check inside chunks if personal files are disabled
         if (!showPersonal && (isEntertainment(chunk.subject) || isEntertainment(chunk.filename))) continue;
-        
+
         const similarity = cosineSimilarity(queryEmbedding, chunk.embedding);
         results.push({
           ...chunk,
@@ -346,15 +349,17 @@ export function removeDocument(driveFileId, subject) {
   if (!fs.existsSync(filePath)) return;
 
   try {
-    let data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    let data = readVectorFileSync(filePath);
     const initialCount = data.length;
     data = data.filter(d => d.driveFileId !== driveFileId);
-    
+
     if (data.length === 0) {
       fs.unlinkSync(filePath);
     } else if (data.length < initialCount) {
-      fs.writeFileSync(filePath, JSON.stringify(data));
+      writeVectorFile(filePath, data);
     }
+    vectorCache.delete(filePath);
+    removeFromIndex(driveFileId);
   } catch (err) {
     console.error(`Failed to remove document ${driveFileId} from vector store:`, err);
   }
@@ -372,9 +377,9 @@ export function updateDocumentSubject(driveFileId, oldSubject, newSubject) {
   if (!fs.existsSync(oldPath)) return;
 
   try {
-    let oldData = JSON.parse(fs.readFileSync(oldPath, 'utf-8'));
+    let oldData = readVectorFileSync(oldPath);
     const documentChunks = oldData.filter(d => d.driveFileId === driveFileId);
-    
+
     if (documentChunks.length === 0) return;
 
     // Remove from old subject
@@ -382,13 +387,13 @@ export function updateDocumentSubject(driveFileId, oldSubject, newSubject) {
     if (oldData.length === 0) {
       fs.unlinkSync(oldPath);
     } else {
-      fs.writeFileSync(oldPath, JSON.stringify(oldData));
+      writeVectorFile(oldPath, oldData);
     }
 
     // Add to new subject
     let newData = [];
     if (fs.existsSync(newPath)) {
-      newData = JSON.parse(fs.readFileSync(newPath, 'utf-8'));
+      newData = readVectorFileSync(newPath);
     }
 
     const updatedChunks = documentChunks.map(chunk => ({
@@ -397,7 +402,10 @@ export function updateDocumentSubject(driveFileId, oldSubject, newSubject) {
     }));
 
     newData.push(...updatedChunks);
-    fs.writeFileSync(newPath, JSON.stringify(newData));
+    writeVectorFile(newPath, newData);
+    vectorCache.delete(oldPath);
+    vectorCache.delete(newPath);
+    renameSubjectInIndex(driveFileId, newSubject);
   } catch (err) {
     console.error(`Failed to update document ${driveFileId} subject in vector store:`, err);
   }

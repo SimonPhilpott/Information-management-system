@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import db, { getSetting, setSetting } from '../db/database.js';
 import config from '../config.js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiClient.js';
 import { extractPdfText } from './pdfService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

@@ -1,6 +1,6 @@
 import db from '../db/database.js';
 import config from '../config.js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiClient.js';
 
 // Call / meeting recordings. While one is active Ims must be completely silent
 // (see index.js, which drops everything Gemini says and the firmware, which

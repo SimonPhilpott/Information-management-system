@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiClient.js';
 import config from '../config.js';
 import { logUsage } from './usageService.js';
 

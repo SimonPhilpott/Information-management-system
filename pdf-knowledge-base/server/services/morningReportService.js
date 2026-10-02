@@ -114,8 +114,13 @@ export function invalidateDayReportCache() {
  * Returns in <5ms if cache is available. If stale or missing, returns existing cache
  * and triggers a background refresh, or builds immediately if cold.
  */
+// A section that failed when the cache was built (weather service briefly down, etc.) must not be served
+// for the next 15 minutes - Ims told the user "the weather's unavailable" from a stale cache.
+const hasFailedSection = (c) => /Weather: (unavailable right now|could not be retrieved)/.test(c?.reportText || (c?.parts || []).join(' '));
+
 export async function getOrBuildReportCache({ forceRefresh = false, markNews = true } = {}) {
   const now = Date.now();
+  if (!forceRefresh && hasFailedSection(memoryReportCache || readReportCacheDisk())) forceRefresh = true;
   // 1. Check memory cache (fresh within 15 minutes)
   if (!forceRefresh && memoryReportCache && (now - memoryReportCache.cachedAt < 15 * 60 * 1000)) {
     // If older than 3 minutes, schedule background refresh
@@ -141,15 +146,7 @@ export async function getOrBuildReportCache({ forceRefresh = false, markNews = t
   return await prewarmDayReportCache({ markNews });
 }
 
-// Automatically start periodic background pre-warming every 1 hour (60 minutes)
-if (!prewarmIntervalTimer) {
-  prewarmIntervalTimer = setInterval(() => {
-    prewarmDayReportCache({ markNews: false }).catch(() => {});
-  }, 60 * 60 * 1000);
-  if (typeof prewarmIntervalTimer.unref === 'function') {
-    prewarmIntervalTimer.unref();
-  }
-}
+// Hourly pre-warming is run by the scheduler ('morning_report_prewarm' in index.js).
 
 // True only for the FIRST hardware session that starts on a given London
 // calendar day - checked (and immediately marked, so it never fires twice)
@@ -649,7 +646,8 @@ async function buildWeatherSection(section, context) {
     return line;
   };
   try {
-    const home = await getWeather({ days: 2 });
+    let home = await getWeather({ days: 2 });
+    if (home.error) { await new Promise((r) => setTimeout(r, 1500)); home = await getWeather({ days: 2 }); } // one retry for a brief blip
     if (home.error) return `Weather: unavailable right now (${home.error}). Say so - do not guess.`;
     context.weatherRain = home.today?.rain_probability_percent ?? null;
     const lang = home.description?.language_today;
@@ -1346,7 +1344,7 @@ export async function getDayReport() {
 
 
 // ---- an example of one section, as Ims would say it ----
-import { GoogleGenerativeAI as _GenAI } from '@google/generative-ai';
+import { GoogleGenerativeAI as _GenAI } from './geminiClient.js';
 import _config from '../config.js';
 import { loadPersonaRules as _persona } from './hardwareClientService.js';
 export async function sampleSection(section) {

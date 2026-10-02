@@ -31,7 +31,16 @@ function notifyStatus(newStatus) {
   });
 }
 
+// Topics already bound on each EventSource: a listener can't be removed from the connection when a
+// topic's last subscriber goes, so without this every re-subscribe added another one and each event
+// was dispatched several times (e.g. the doorbell announcement spoken over itself).
+const boundTopics = new WeakMap();
+
 function bindTopicListener(es, topic) {
+  if (!boundTopics.has(es)) boundTopics.set(es, new Set());
+  const bound = boundTopics.get(es);
+  if (bound.has(topic)) return;
+  bound.add(topic);
   es.addEventListener(topic, (e) => {
     try {
       const data = JSON.parse(e.data);

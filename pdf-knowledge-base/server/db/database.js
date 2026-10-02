@@ -80,7 +80,7 @@ db.exec(`
     completion_tokens INTEGER DEFAULT 0,
     total_tokens INTEGER DEFAULT 0,
     estimated_cost REAL DEFAULT 0,
-    operation TEXT CHECK(operation IN ('chat', 'embedding', 'topic_extraction'))
+    operation TEXT
   );
 
   CREATE TABLE IF NOT EXISTS canvas_state (
@@ -254,6 +254,30 @@ try {
 
 // Memories are never destroyed: deleting one archives it (deleted_at) so it can
 // be reviewed or restored from the /ims/memories archive.
+// token_usage used to only accept 'chat' / 'embedding' / 'topic_extraction', so every other
+// service's usage failed to log (silently). SQLite can't drop a CHECK, so rebuild the table once.
+try {
+  const ddl = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'token_usage'").get()?.sql || '';
+  if (/CHECK\s*\(\s*operation/i.test(ddl)) {
+    db.transaction(() => {
+      db.exec(`CREATE TABLE token_usage_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        model TEXT,
+        prompt_tokens INTEGER DEFAULT 0,
+        completion_tokens INTEGER DEFAULT 0,
+        total_tokens INTEGER DEFAULT 0,
+        estimated_cost REAL DEFAULT 0,
+        operation TEXT
+      )`);
+      db.exec('INSERT INTO token_usage_new SELECT id, timestamp, model, prompt_tokens, completion_tokens, total_tokens, estimated_cost, operation FROM token_usage');
+      db.exec('DROP TABLE token_usage');
+      db.exec('ALTER TABLE token_usage_new RENAME TO token_usage');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_usage_timestamp ON token_usage(timestamp)');
+    })();
+    console.log('[DB] token_usage: operation CHECK removed - all services can now log usage');
+  }
+} catch (err) { console.error('[DB] token_usage migration failed:', err.message); }
 try { db.exec(`ALTER TABLE ims_memories ADD COLUMN deleted_at TEXT`); } catch (_) { }
 try { db.exec(`ALTER TABLE ims_memories ADD COLUMN updated_at TEXT`); } catch (_) { }
 

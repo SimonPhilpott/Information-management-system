@@ -7,7 +7,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "./geminiClient.js";
 import config from "../config.js";
 import db, { getSetting, setSetting, addMemory, getMemories, searchMemories, deleteMemory } from "../db/database.js";
 import { searchSimilar } from "./vectorStore.js";

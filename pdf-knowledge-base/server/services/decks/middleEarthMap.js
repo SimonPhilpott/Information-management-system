@@ -164,7 +164,7 @@ async function writeLore(name, pack) {
       passages = hits.map((h) => String(h.text || '').slice(0, 900)).join('\n---\n');
     }
   } catch (_) { /* rulebooks not indexed yet - Gemini's own knowledge */ }
-  const { GoogleGenerativeAI } = await import('@google/generative-ai');
+  const { GoogleGenerativeAI } = await import('../geminiClient.js');
   const config = (await import('../../config.js')).default;
   const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({
     model: 'gemini-2.5-flash',

@@ -1,6 +1,6 @@
 import db, { getSetting, setSetting } from '../db/database.js';
 import config from '../config.js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiClient.js';
 
 // News and interests for Ims: built-in BBC News feeds by topic, plus any sources the user adds on
 // /ims/news. A source can be an RSS/Atom feed or an ordinary web page - for a page, IMS looks for

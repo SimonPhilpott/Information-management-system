@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiClient.js';
 import config from '../config.js';
 import db from '../db/database.js';
 import { updateDocumentSubject } from './vectorStore.js';

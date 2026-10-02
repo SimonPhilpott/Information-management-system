@@ -1,3 +1,4 @@
+import { getModelFor } from './modelRegistry.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -168,7 +169,7 @@ export function transcribeLikeLive(pcm16k) {
     const done = () => { if (finished) return; finished = true; try { ws.close(); } catch (_) { /* closed */ } resolve(text.trim()); };
     const timer = setTimeout(done, 12000);
     ws.on('open', () => ws.send(JSON.stringify({ setup: {
-      model: 'models/gemini-3.8-live', generationConfig: { responseModalities: ['AUDIO'], speechConfig: { languageCode: 'en-GB' } },
+      model: `models/${getModelFor('imsVoice')}`, generationConfig: { responseModalities: ['AUDIO'], speechConfig: { languageCode: 'en-GB' } },
       systemInstruction: { parts: [{ text: 'Say nothing at all.' }] }, inputAudioTranscription: {},
     } })));
     ws.on('message', (m) => {

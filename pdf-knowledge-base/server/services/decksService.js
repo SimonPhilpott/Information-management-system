@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiClient.js';
 import db, { getSetting, setSetting } from '../db/database.js';
 import config from '../config.js';
 import { getGames as getCollection } from './boardgamesService.js';

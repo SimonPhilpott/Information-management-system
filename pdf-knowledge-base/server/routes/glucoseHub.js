@@ -5,7 +5,8 @@ import {
   estimateCarbsFromPhoto, getSummary, getDay, logCarbs, listCarbs, deleteCarbs,
   analyse, getSavedInsight, getNightscoutWriteStatus, setNightscoutSecret,
   testNightscoutWrite, getNightscoutDbSize, clearOldNightscout, getAutoClear, setAutoClear,
-  getGlucoseThresholds, setGlucoseThresholds, resetGlucoseThresholds
+  getGlucoseThresholds, setGlucoseThresholds, resetGlucoseThresholds,
+  listFoodMemory, saveFoodMemory, deleteFoodMemory
 } from '../services/glucoseHubService.js';
 import { lookUpFood } from '../services/foodService.js';
 import { getProfile, saveProfile, resetProfile, getSavedEvaluation, evaluateProfile, askProfileInsightQuestion } from '../services/glucoseInsightService.js';
@@ -52,6 +53,16 @@ router.get('/carbs', (req, res) => {
 router.post('/carbs/photo', express.raw({ type: 'image/*', limit: '12mb' }), async (req, res) => {
   try { res.json({ success: true, ...(await estimateCarbsFromPhoto(req.body, String(req.headers['content-type'] || 'image/jpeg').split(';')[0], String(req.query.note || '').slice(0, 300))) }); }
   catch (err) { fail(res, err, 400); }
+});
+// Your carb values for foods (corrected on a photo estimate, re-used next time)
+router.get('/carbs/foods', (req, res) => {
+  try { res.json({ success: true, foods: listFoodMemory() }); } catch (err) { fail(res, err); }
+});
+router.post('/carbs/foods', (req, res) => {
+  try { res.json({ success: true, ...saveFoodMemory(req.body?.items || []) }); } catch (err) { fail(res, err, 400); }
+});
+router.delete('/carbs/foods/:id', (req, res) => {
+  try { res.json({ success: deleteFoodMemory(req.params.id) }); } catch (err) { fail(res, err); }
 });
 router.post('/carbs', async (req, res) => {
   try { res.json({ success: true, entry: await logCarbs(req.body || {}) }); } catch (err) { fail(res, err, 400); }

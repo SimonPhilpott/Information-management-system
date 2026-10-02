@@ -88,6 +88,9 @@ import { getCameraStatus, getFrame, wakeCamera, setFrame, heartbeat, appendDevic
 import { askLive } from './services/lookService.js';
 import { getAuthStatus } from './services/driveService.js';
 import { validateConfiguredModels } from './services/modelService.js';
+import { getModelFor } from './services/modelRegistry.js';
+import { setDeviceMicMuted, setDeviceConnected, isDeviceMicMuted } from './services/deviceState.js';
+import { recordUsage } from './services/geminiClient.js';
 import { loadHnswFromDisk } from './services/hnswService.js';
 import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getWebPersonaBlock, getPersonality, setPersonality, getCaptureLogging, setCaptureLogging, recordReplyText, getWebSetupPayload, ACCENT_RULE, refreshLiveContext } from './services/hardwareClientService.js';
 import { scheduleItem, listScheduledItems, cancelScheduledItem, addToList, readList, removeFromList, clearList, checkDueScheduledItems, stopAllRinging, getActiveScheduledStatus, getItemsDueToday, getHistorySummary } from './services/remindersService.js';
@@ -270,6 +273,10 @@ app.use('/api/weather', weatherRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/run-start', runStartRoutes);
 app.use('/api/device-health', (await import('./routes/deviceHealth.js')).default);
+// Phase 4: Model Switcher, Storage, Costs
+app.use('/api/models', (await import('./routes/models.js')).default);
+app.use('/api/storage', (await import('./routes/storage.js')).default);
+app.use('/api/costs', (await import('./routes/costs.js')).default);
 app.use('/api/voice-latency', (await import('./routes/voiceLatency.js')).default);
 
 // Live figures for the System Architecture page (/ims/architecture).
@@ -388,7 +395,8 @@ app.delete('/api/logs', (req, res) => {
 // Wire Doorbell real-time events to SSE EventBus
 doorbellService.on('doorbellEvent', (alert) => {
   try {
-    eventBus.broadcast('doorbell:ding', alert);
+    // the web app stays silent while the Box-3 is in MIC MUTED mode
+    eventBus.broadcast('doorbell:ding', { ...alert, deviceMuted: isDeviceMicMuted() });
     logger.info('Doorbell', `Broadcasted ${alert.event} alert for camera "${alert.cameraName}"`);
   } catch (_) {}
 });
@@ -588,7 +596,7 @@ schedulerService.registerJob({
   initialDelayMs: 3 * 60 * 1000,
   action: async () => {
     const { checkDependencyWatch } = await import('./services/dependencyWatchService.js');
-    if (checkDependencyWatch) await checkDependencyWatch();
+    return checkDependencyWatch();
   }
 });
 
@@ -600,7 +608,7 @@ schedulerService.registerJob({
   initialDelayMs: 60000,
   action: async () => {
     const { eveningKomootCheck } = await import('./services/routeFinderService.js');
-    if (eveningKomootCheck) await eveningKomootCheck();
+    return eveningKomootCheck();
   }
 });
 
@@ -612,7 +620,7 @@ schedulerService.registerJob({
   initialDelayMs: 60000,
   action: async () => {
     const { tickRunLearning } = await import('./services/runLearningService.js');
-    if (tickRunLearning) await tickRunLearning();
+    return tickRunLearning();
   }
 });
 
@@ -623,7 +631,7 @@ schedulerService.registerJob({
   intervalMs: 10000,
   action: async () => {
     const { tickRunPushQueue } = await import('./services/runAlertsService.js');
-    if (tickRunPushQueue) await tickRunPushQueue();
+    return tickRunPushQueue();
   }
 });
 
@@ -633,8 +641,35 @@ schedulerService.registerJob({
   category: 'maintenance',
   intervalMs: 60 * 60 * 1000,
   initialDelayMs: 10 * 60 * 1000,
+  // Only autoClearCheck() may clear: it respects the auto-clear switch, the 95%-full threshold and the
+  // once-a-day limit. (This job used to call clearOldNightscout() directly - deleting everything older than
+  // three months on Nightscout every hour regardless of any of those.)
   action: async () => {
-    clearOldNightscout();
+    const { autoClearCheck } = await import('./services/glucoseHubService.js');
+    return autoClearCheck();
+  }
+});
+
+schedulerService.registerJob({
+  name: 'model_assessment',
+  description: 'Finds new Gemini models and tries each in every IMS service it could run (Ims\'s persona and accent included)',
+  category: 'maintenance',
+  intervalMs: 24 * 3600 * 1000,
+  initialDelayMs: 10 * 60 * 1000,
+  action: async () => {
+    const { assessModels } = await import('./services/modelAudit.js');
+    return assessModels({ onlyNew: true });
+  }
+});
+
+schedulerService.registerJob({
+  name: 'pdf_dedupe',
+  description: 'Hard-links identical PDFs (SHA-256) so each is stored once - only new or changed files are read',
+  category: 'maintenance',
+  intervalMs: 24 * 3600 * 1000,
+  action: async () => {
+    const { dedupePdfs } = await import('./services/storageService.js');
+    return dedupePdfs();
   }
 });
 
@@ -651,12 +686,8 @@ schedulerService.registerJob({
   }
 });
 
-// Also initialize standalone watchers for persistent listeners
-import('./services/backupService.js').then((m) => m.startNightlyBackups()).catch((err) => console.error('[Backup] Scheduler failed to start:', err.message));
-import('./services/dependencyWatchService.js').then((m) => m.startWeeklyDependencyWatch()).catch((err) => console.error('[DependencyWatch] Scheduler failed to start:', err.message));
-import('./services/routeFinderService.js').then((m) => m.startEveningKomootSync()).catch((err) => console.error('[RouteFinder] Evening sync failed to start:', err.message));
-import('./services/runAlertsService.js').then((m) => m.startRunPushQueue()).catch((err) => console.error('[RunAlerts] Push queue failed to start:', err.message));
-import('./services/runLearningService.js').then((m) => m.startRunLearning()).catch((err) => console.error('[RunLearning] failed to start:', err.message));
+// Backups, dependency watch, the Komoot evening sync, run pushes and run learning are all run by the
+// scheduler jobs above - their old self-started timers are no longer started (they ran everything twice).
 
 // The footer line: the soonest timer (the device counts it down), and unified rolling ticker of all upcoming items.
 function deviceInfo() {
@@ -993,6 +1024,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       }
     }
     activeHardwareSession = { clientWs: ws, geminiWs: null };
+    setDeviceConnected(true);
   } else {
     if (activeBrowserSession && activeBrowserSession.clientWs !== ws) {
       console.warn(`${tag} ⚠️ Terminating previous browser session`);
@@ -1025,6 +1057,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
   let currentGeminiWs = null;
   let cachedSetupMsg = null;
+  let liveModel = null; // the voice model this session was set up with (Model Switcher), for usage logging
   let resumptionHandle = null; // latest Gemini session-resumption handle for this device connection
   let isClientClosed = false;
   const outboundQueue = [];
@@ -1440,6 +1473,9 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       let parsed = null;
       try {
         parsed = JSON.parse(msgStr);
+
+        // Live sessions report token use per turn (audio both ways) - logged for the Costs page
+        if (parsed.usageMetadata) recordUsage(liveModel || getModelFor(isHardware || imsWeb ? 'imsVoice' : 'browserVoice'), parsed.usageMetadata, isHardware || imsWeb ? 'imsVoice' : 'browserVoice');
 
         if (isHardware && isRecordingActive()) {
           recordingMessage(parsed, gWs);
@@ -2346,6 +2382,13 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           } catch (_) { }
           return;
         }
+        // The top button on the Box-3: MIC MUTED is Ims's silent mode - remembered so the web app
+        // doesn't speak doorbell alerts either.
+        if (isHardware && typeof maybeJson.micMuted === 'boolean') {
+          setDeviceMicMuted(maybeJson.micMuted);
+          console.log(`${tag} 🔇 Device mic ${maybeJson.micMuted ? 'MUTED - silent mode' : 'unmuted'}`);
+          return;
+        }
         // A call is being recorded: the device only streams its mic. Session
         // and touch messages must not reset or restart anything.
         if (isHardware && isRecordingActive() && (maybeJson.sessionClosed || maybeJson.touchToTalk)) return;
@@ -2548,6 +2591,17 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             msgStr = JSON.stringify(parsed);
             console.log(`${tag} 🎭 Applied saved Ims voice (${persona.voice}), personality and persona rules to browser live session`);
           }
+          // Model Switcher (Phase 4): the voice model chosen for this kind of session - Ims on the desk and
+          // in the web app share one choice, the library's generic voice chat has its own.
+          {
+            const chosen = getModelFor(isHardware || imsWeb ? 'imsVoice' : 'browserVoice');
+            const withModel = JSON.parse(msgStr);
+            if (chosen && withModel.setup) {
+              withModel.setup.model = `models/${chosen}`;
+              msgStr = JSON.stringify(withModel);
+              liveModel = chosen;
+            }
+          }
           normalSetupMsg = msgStr;
           if (isHardware && isRecordingActive()) msgStr = toSilentSetup(msgStr);
           cachedSetupMsg = msgStr;
@@ -2590,6 +2644,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     } catch (_) { }
     if (isHardware && activeHardwareSession?.clientWs === ws) {
       activeHardwareSession = null;
+      setDeviceConnected(false);
     } else if (!isHardware && activeBrowserSession?.clientWs === ws) {
       activeBrowserSession = null;
     }

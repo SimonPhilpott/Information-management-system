@@ -1,5 +1,6 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiClient.js';
 import config from '../config.js';
+import { getModelFor } from './modelRegistry.js';
 import { logUsage } from './usageService.js';
 
 // Initialize the SDK
@@ -11,14 +12,14 @@ const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
  * @returns {Promise<{success: boolean, imageBase64: string, revisedPrompt: string}>}
  */
 export async function generateImage(prompt) {
-  const modelName = config.gemini.chatModels.image || 'imagen-3.0-generate-001';
+  const modelName = getModelFor('image');
   
   console.log(`[ImageService] Generating image for prompt: "${prompt}" using ${modelName}`);
 
   try {
     // In the 2026 SDK, Imagen is often integrated into the GenerativeAI SDK
     // or accessed via a dedicated client. We'll use the standard model interface.
-    const model = genAI.getGenerativeModel({ model: modelName });
+    const model = genAI.getGenerativeModel({ model: modelName, generationConfig: { responseModalities: ['TEXT', 'IMAGE'] } });
     
     // Call the generation method (this matches the projected 2026 SDK pattern)
     const result = await model.generateContent(prompt);
@@ -36,7 +37,7 @@ export async function generateImage(prompt) {
     const imageBase64 = `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
 
     // Log usage (fixed cost per image)
-    logUsage(modelName, 0, 0, 'image_generation');
+    // usage is logged by geminiClient.js
 
     return {
       success: true,

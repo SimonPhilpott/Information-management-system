@@ -175,11 +175,14 @@ export function runDependencyWatch({ reason = 'manual' } = {}) {
 }
 
 // Weekly: checked every six hours, runs when the last full check is a week old.
+// Run by the scheduler ('dependency_watch' in index.js).
+export async function checkDependencyWatch() {
+  const last = getDependencyWatch().last;
+  if (!running && (!last || Date.now() - last.finishedAt >= WEEK)) return runDependencyWatch({ reason: 'weekly' });
+  return null;
+}
 export function startWeeklyDependencyWatch() {
-  const check = () => {
-    const last = getDependencyWatch().last;
-    if (!running && (!last || Date.now() - last.finishedAt >= WEEK)) runDependencyWatch({ reason: 'weekly' }).catch((err) => console.error('[DependencyWatch]', err.message));
-  };
+  const check = () => { checkDependencyWatch().catch((err) => console.error('[DependencyWatch]', err.message)); };
   setTimeout(check, 5 * 60000); // not in the busy first minutes after start-up
   setInterval(check, 6 * 3600000);
 }

@@ -3,7 +3,7 @@ import path from 'path';
 import { spawn, execFile } from 'child_process';
 import { getSetting, setSetting } from '../db/database.js';
 import config from '../config.js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiClient.js';
 
 // The scan engine lives outside this repo, in the pre-existing D:\Music
 // scanner project (it already has musicbrainzngs installed system-wide and

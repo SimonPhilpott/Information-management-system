@@ -1,6 +1,6 @@
 import db from '../db/database.js';
 import config from '../config.js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiClient.js';
 import { getArtistList } from './musicScanService.js';
 
 // Background tasks: the user asks Ims to look into something ("find out which of my bands are

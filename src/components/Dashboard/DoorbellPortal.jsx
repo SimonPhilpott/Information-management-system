@@ -89,8 +89,33 @@ function speakAnnouncement(phrase) {
  * Speaks the Yorkshire phrase using IMS Gemini TTS (POST /api/voice/tts)
  * with graceful fallback to browser SpeechSynthesis
  */
+// One announcement at a time, each alert once: the live event and the Test button's own reply
+// describe the same alert, so it's keyed by event + camera + time.
+let currentAudio = null;
+const announced = new Set();
+let testChimePlayedAt = 0;
+
+function stopAnnouncement() {
+  if (currentAudio) { try { currentAudio.pause(); } catch (_) { } currentAudio = null; }
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+}
+
+function announceAlert(alert, { chime = true } = {}) {
+  if (!alert?.event) return;
+  const key = `${alert.event}|${alert.cameraId || alert.cameraName}|${alert.timestamp}`;
+  if (announced.has(key)) return;
+  announced.add(key);
+  // The Box-3's top button is in MIC MUTED (Ims's silent mode): no chime, no voice here either.
+  if (alert.deviceMuted) return;
+  if (announced.size > 50) announced.delete(announced.values().next().value);
+  // the Test button already chimed the moment it was pressed
+  if (chime && !(alert.isTest && Date.now() - testChimePlayedAt < 15000)) playWebChime(alert.event);
+  if (alert.yorkshirePhrase) playImsVoice(alert.yorkshirePhrase);
+}
+
 async function playImsVoice(phrase) {
   if (!phrase) return;
+  stopAnnouncement();
   try {
     const res = await fetch('/api/voice/tts', {
       method: 'POST',
@@ -100,8 +125,10 @@ async function playImsVoice(phrase) {
     if (res.ok) {
       const blob = await res.blob();
       const audioUrl = URL.createObjectURL(blob);
+      stopAnnouncement(); // another announcement may have started while this one was fetched
       const audio = new Audio(audioUrl);
-      audio.onended = () => URL.revokeObjectURL(audioUrl);
+      currentAudio = audio;
+      audio.onended = () => { URL.revokeObjectURL(audioUrl); if (currentAudio === audio) currentAudio = null; };
       try {
         await audio.play();
         return;
@@ -270,12 +297,7 @@ export default function DoorbellPortal({ theme = 'dark', onThemeToggle, setCurre
       const isDing = alert.event === 'ding';
       const isMuted = isDing ? !notificationSettings.dingEnabled : !notificationSettings.motionEnabled;
 
-      if (!isMuted) {
-        playWebChime(alert.event);
-        if (alert.yorkshirePhrase) {
-          playImsVoice(alert.yorkshirePhrase);
-        }
-      }
+      if (!isMuted) announceAlert(alert);
       showNotification(`🚨 ${alert.event.toUpperCase()}: ${alert.cameraName} (${alert.yorkshirePhrase || ''})`);
 
       // Refresh snapshot of the camera that triggered
@@ -390,6 +412,7 @@ export default function DoorbellPortal({ theme = 'dark', onThemeToggle, setCurre
     try {
       // Audible chime immediately upon user interaction
       playWebChime(eventType);
+      testChimePlayedAt = Date.now();
 
       const res = await fetch('/api/doorbell/test-alert', {
         method: 'POST',
@@ -398,10 +421,8 @@ export default function DoorbellPortal({ theme = 'dark', onThemeToggle, setCurre
       });
       const data = await res.json();
       if (data.success) {
-        const phrase = data.alert?.yorkshirePhrase;
-        if (phrase) {
-          await playImsVoice(phrase);
-        }
+        // same alert as the live event - whichever arrives first speaks it, once
+        announceAlert(data.alert);
         showNotification(
           `Test ${eventType === 'ding' ? 'Doorbell Ding' : 'Motion'} chime & IMS voice announcement played!`,
           'success'

@@ -42,7 +42,7 @@ function placeMissing(names) {
   placing = (async () => {
     try {
       const labels = arkhamPlaces().map((p) => p.label);
-      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const { GoogleGenerativeAI } = await import('../geminiClient.js');
       const config = (await import('../../config.js')).default;
       const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({
         model: 'gemini-2.5-flash',
@@ -85,7 +85,7 @@ async function assignMaps(names, all) {
   const rows = Object.fromEntries(db.prepare(`SELECT * FROM arkham_scenario_places WHERE name IN (${names.map(() => '?').join(',')})`).all(...names).map((r) => [r.name, r]));
   const list = names.filter((n) => rows[n]);
   if (!list.length) return;
-  const { GoogleGenerativeAI } = await import('@google/generative-ai');
+  const { GoogleGenerativeAI } = await import('../geminiClient.js');
   const config = (await import('../../config.js')).default;
   const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({
     model: 'gemini-2.5-pro',

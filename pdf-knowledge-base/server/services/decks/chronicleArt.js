@@ -3,6 +3,8 @@ import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import config from '../../config.js';
+import { getModelFor } from '../modelRegistry.js';
+import { readGeminiJson } from '../geminiClient.js';
 
 // Illustrated chapters: a full-page plate for each chapter of the Chronicle - an antique pen-and-ink
 // engraving in sepia on parchment - painted by Gemini's image model from the chapter's summary, its place
@@ -33,14 +35,15 @@ export const artReady = (src) => { const key = keyOf(src); return fs.existsSync(
 async function paint(src) {
   for (let attempt = 1; ; attempt++) {
     try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
+      const model = getModelFor('image') || MODEL;
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.gemini.apiKey },
         body: JSON.stringify({ contents: [{ parts: [{ text: promptOf(src) }] }], generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '3:4' } } }),
         signal: AbortSignal.timeout(120000),
       });
       if (!res.ok) throw new Error(`Gemini image returned HTTP ${res.status}`);
-      const part = (await res.json())?.candidates?.[0]?.content?.parts?.find((p) => p.inlineData);
+      const part = (await readGeminiJson(res, model, 'image'))?.candidates?.[0]?.content?.parts?.find((p) => p.inlineData);
       if (!part?.inlineData?.data) throw new Error('Gemini returned no picture.');
       return Buffer.from(part.inlineData.data, 'base64');
     } catch (err) {

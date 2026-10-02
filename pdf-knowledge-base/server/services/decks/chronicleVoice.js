@@ -3,6 +3,8 @@ import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import config from '../../config.js';
+import { getModelFor } from '../modelRegistry.js';
+import { readGeminiJson } from '../geminiClient.js';
 
 // The Chronicle read aloud by the Narrator: an elderly, wise wizard narrating in a classical British stage
 // voice, via Gemini's TTS with a style direction. Each chapter's reading is made once and kept (keyed by
@@ -85,7 +87,8 @@ async function speak(text, style, voice = NARRATOR_VOICE) {
   }
 }
 async function speakOnce(text, style, voice) {
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
+  const model = getModelFor('tts') || MODEL;
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.gemini.apiKey },
     body: JSON.stringify({
@@ -95,7 +98,7 @@ async function speakOnce(text, style, voice) {
     signal: AbortSignal.timeout(180000),
   });
   if (!res.ok) throw new Error(`Gemini TTS returned HTTP ${res.status}`);
-  const part = (await res.json())?.candidates?.[0]?.content?.parts?.find((p) => p.inlineData);
+  const part = (await readGeminiJson(res, model, 'tts'))?.candidates?.[0]?.content?.parts?.find((p) => p.inlineData);
   if (!part?.inlineData?.data) throw new Error('Gemini TTS returned no audio.');
   return toPcm(Buffer.from(part.inlineData.data, 'base64'), part.inlineData.mimeType || '');
 }

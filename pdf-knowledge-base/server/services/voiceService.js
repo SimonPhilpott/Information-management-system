@@ -1,4 +1,6 @@
 import config from '../config.js';
+import { getModelFor } from './modelRegistry.js';
+import { readGeminiJson } from './geminiClient.js';
 import { getSpokenStyleDirective } from './hardwareClientService.js';
 
 // Text-to-speech for the web app's "read aloud". It speaks with EXACTLY the
@@ -38,7 +40,8 @@ function trimToSentence(text) {
 export async function synthesizeSpeech(text) {
   if (!config.gemini.apiKey) throw new Error('No Gemini API key is configured on the server.');
   const { voice, directive } = getSpokenStyleDirective();
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent`, {
+  const model = getModelFor('tts') || TTS_MODEL;
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.gemini.apiKey },
     body: JSON.stringify({
@@ -50,8 +53,10 @@ export async function synthesizeSpeech(text) {
     })
   });
   if (!res.ok) throw new Error(`Gemini TTS returned HTTP ${res.status}`);
-  const data = await res.json();
+  const data = await readGeminiJson(res, model, 'tts');
   const b64 = data?.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData?.data;
   if (!b64) throw new Error('Gemini TTS returned no audio.');
-  return pcmToWav(Buffer.from(b64, 'base64'));
+  const audio = Buffer.from(b64, 'base64');
+  // newer TTS models (gemini-3.8-flash-tts) return a finished WAV; 2.5 returns raw PCM
+  return audio.slice(0, 4).toString() === 'RIFF' ? audio : pcmToWav(audio);
 }

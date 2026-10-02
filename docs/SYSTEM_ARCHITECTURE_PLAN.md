@@ -145,6 +145,8 @@ Instead of your web browser repeatedly tapping the server on the shoulder every 
 ### Phase 4: Upgrading the AI Brain & Shrinking the Library
 *Addressing Dev Idea #47 (Google Gen AI SDK Migration) and Dev Idea #51 (Knowledge Base Storage Optimization)*
 
+> **Status: rolled out 02/10/2026** (TASK-262/263/264). Delivered: `@google/genai` behind `services/geminiClient.js`; `services/modelRegistry.js` with the **Model Switcher** page (`/ims/models` - per-service language/voice model, tested before switching, one-click roll back); PDF SHA-256 de-duplication by hard links (964.9 MB saved); int8 vectors (1,887.5 MB -> 275 MB, float originals kept until deleted from the Storage page); incremental HNSW updates; the **Storage** page (`/ims/storage`) and, added to the plan, the **Costs** page (`/ims/costs`). Differences from the plan: the storage breakdown lives in Customisation and system settings rather than `/admin`; the model list is read live from Google for the API key (the hard-coded list in the plan was out of date - `imagen-3.0` is no longer offered); the measured PDF saving was ~1 GB (only exact duplicates are linked), and the vector backup must be deleted to reclaim the remaining ~1.6 GB.
+
 #### What It Means in Plain English
 Updating your AI subscription to Google's brand-new software engine, while digitising and compressing an overflowing filing cabinet so it takes up a fraction of the room without losing any detail.
 
@@ -177,7 +179,7 @@ Updating your AI subscription to Google's brand-new software engine, while digit
 
 ---
 
-### Phase 5: Breaking Down the Two Giant "Do-Everything" Files
+### Phase 5: Breaking Down the Two Giant "Do-Everything" Files (still outstanding)
 *Addressing Dev Idea #43 (Monolith Decomposition)*
 
 #### What It Means in Plain English

@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiClient.js';
 import { chromium } from 'playwright';
 import path from 'path';
 import { fileURLToPath } from 'url';

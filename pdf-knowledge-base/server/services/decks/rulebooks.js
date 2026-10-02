@@ -173,7 +173,7 @@ export async function ruleCheck({ kind = null, scenarioPack = null, scenarioName
   if (!hits.length) throw new Error('Nothing in the rulebooks matched that question.');
   const title = (f) => String(f || '').replace(S.prefix, '').replace(/\.pdf$/i, '');
   const passages = hits.map((h, i) => `[${i + 1}] ${title(h.filename)}, page ${h.pageNum ?? '?'}:\n${String(h.text || '').slice(0, 1400)}`).join('\n\n');
-  const { GoogleGenerativeAI } = await import('@google/generative-ai');
+  const { GoogleGenerativeAI } = await import('../geminiClient.js');
   const config = (await import('../../config.js')).default;
   const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({
     model: 'gemini-2.5-flash',

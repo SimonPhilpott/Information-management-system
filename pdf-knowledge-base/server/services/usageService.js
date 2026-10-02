@@ -1,5 +1,13 @@
 import db from '../db/database.js';
 import config from '../config.js';
+import { KNOWN_PRICES } from './modelRegistry.js';
+
+// US$ per 1M tokens: Google's list prices where known, overridden by any set on the Costs page.
+export function getPrices() {
+  let custom = {};
+  try { const r = db.prepare('SELECT value FROM settings WHERE key = ?').get('model_prices'); if (r) custom = JSON.parse(r.value); } catch { }
+  return { ...KNOWN_PRICES, ...custom };
+}
 
 /**
  * Log a single API usage event
@@ -8,7 +16,7 @@ export function logUsage(model, promptTokens, completionTokens, operation) {
   const totalTokens = promptTokens + completionTokens;
 
   // Calculate cost based on model pricing (per million tokens)
-  const pricing = config.gemini.pricing[model] || { input: 0, output: 0 };
+  const pricing = getPrices()[model] || { input: 0, output: 0 };
   const estimatedCost = (promptTokens / 1_000_000) * pricing.input +
                         (completionTokens / 1_000_000) * pricing.output;
 

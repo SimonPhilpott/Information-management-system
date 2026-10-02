@@ -36,14 +36,12 @@ export default {
       pro: 'gemini-2.5-pro',
       thinking: 'gemini-2.5-flash',
       research: 'gemini-2.5-pro',
-      image: 'imagen-4.0-generate-001'
+      image: 'gemini-3.1-flash-image'
     },
-    pricing: {
-      'gemini-2.5-flash': { input: 0.15, output: 0.60 },
-      'gemini-2.5-pro': { input: 1.25, output: 5.00 },
-      'imagen-4.0-generate-001': { input: 1.00, output: 1.00 },
-      'gemini-embedding-001': { input: 0.00, output: 0.00 }
-    }
+    // Defaults only. Which model each service actually uses is chosen on the Model Switcher
+    // (services/modelRegistry.js); prices live on the Costs page (usageService.getPrices()).
+    liveModel: 'gemini-3.8-live',
+    ttsModel: 'gemini-2.5-flash-preview-tts'
   },
   defaults: {
     monthlySpendCap: 250,

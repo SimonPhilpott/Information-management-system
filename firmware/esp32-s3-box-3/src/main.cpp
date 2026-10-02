@@ -3173,6 +3173,14 @@ void sendSessionClosed() {
   Serial.println("[IMS] Sent sessionClosed - conversation closed on device");
 }
 
+// MIC MUTED is Ims's "stay silent and don't listen" mode - the backend is told so the web app
+// stays quiet as well (doorbell voice in the browser).
+void sendMicMuted(bool muted) {
+  if (!tcpClient.connected()) return;
+  const char *msg = muted ? "{\"micMuted\":true}" : "{\"micMuted\":false}";
+  sendFrame(0x00, (const uint8_t *)msg, strlen(msg));
+}
+
 void sendTouchToTalk() {
   if (!tcpClient.connected()) return;
   const char *msg = "{\"touchToTalk\":true}";
@@ -3262,6 +3270,11 @@ void playAlertSound(int index) {
 // plays through the already-working speaker path in handleFrame().
 void sendTextQuery(const char *text) {
   if (!tcpClient.connected() || !geminiSetupComplete) return;
+  if (isMicHardwareMuted) {
+    // MIC MUTED = stay silent: nothing may start Ims talking until the top button is released.
+    Serial.println("[IMS] Text query not sent: mic muted (silent mode)");
+    return;
+  }
   Serial.printf("[IMS] Sending text query: %s\n", text);
   JsonDocument doc;
   JsonObject clientContent = doc["clientContent"].to<JsonObject>();
@@ -3438,6 +3451,7 @@ void connectToBackend() {
     isSetupAcknowledged = true;
     geminiSetupComplete = false; // Will be set true when Gemini ACKs setup
     sendSetupHandshake();
+    sendMicMuted(isMicHardwareMuted);
     char resetDbg[48];
     snprintf(resetDbg, sizeof(resetDbg), "boot_reset_reason=%s", resetReasonName(esp_reset_reason()));
     sendDebug(resetDbg);
@@ -3832,7 +3846,17 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       const char *label = rf["label"] | "";
       const char *alertMode = rf["alertMode"] | "both";
       Serial.printf("[IMS] Reminder fired: %s \"%s\" (mode=%s)\n", kind, label, alertMode);
-      if (currentState == STATE_STANDBY || currentState == STATE_VERIFYING) {
+      if (isMicHardwareMuted) {
+        // MIC MUTED = stay silent: no chime and no spoken alert - shown on screen only.
+        Serial.printf("[IMS] %s shown silently: mic muted.\n", kind);
+        if (currentState == STATE_STANDBY) {
+          char msg[96];
+          if (label[0] != '\0') snprintf(msg, sizeof(msg), "%s: %s", kind, label);
+          else snprintf(msg, sizeof(msg), "%s finished", kind);
+          lastTranscript = String(msg);
+          renderScreen(true);
+        }
+      } else if (currentState == STATE_STANDBY || currentState == STATE_VERIFYING) {
         if (currentState == STATE_VERIFYING) {
           sendAudioStreamEnd();
           micStreamingActive = false;
@@ -3887,6 +3911,16 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       // Recording a call or meeting: total silence - no chime, no announcement (the user's standing rule).
       if (recordingActive) {
         Serial.println("[IMS] Doorbell alert ignored: recording in progress.");
+      } else if (isMicHardwareMuted) {
+        // Top mute button on = do not disturb: no chime and no spoken alert, just show it on screen
+        // (when nothing else is using it).
+        Serial.printf("[IMS] Doorbell %s shown silently: mic muted.\n", ev);
+        if (currentState == STATE_STANDBY) {
+          char alertBanner[96];
+          snprintf(alertBanner, sizeof(alertBanner), "%s: %s", strcmp(ev, "ding") == 0 ? "DOORBELL" : "MOTION", cam);
+          lastTranscript = String(alertBanner);
+          renderScreen(true);
+        }
       } else if (currentState == STATE_STANDBY || currentState == STATE_VERIFYING) {
         if (currentState == STATE_VERIFYING) {
           sendAudioStreamEnd();
@@ -4779,6 +4813,7 @@ void loop() {
     if (recordingActive) {
       // Muting mid-recording just stops the mic feed; it must not end the session.
       Serial.printf("[Button] Mic mute %s during recording\n", muteButtonActive ? "on" : "off");
+      sendMicMuted(muteButtonActive);
     } else if (isMicHardwareMuted) {
       Serial.println("[Button] Physical mic MUTE switch engaged (button illuminated)");
       if (currentState == STATE_LISTENING || currentState == STATE_VERIFYING) {
@@ -4789,16 +4824,20 @@ void loop() {
       conversationOpen = false;
       conversationShouldClose = false;
       sendSessionClosed();
-      if (currentState == STATE_LISTENING || currentState == STATE_THINKING || currentState == STATE_VERIFYING) {
-        currentState = STATE_STANDBY;
+      if (currentState == STATE_LISTENING || currentState == STATE_THINKING || currentState == STATE_VERIFYING || currentState == STATE_SPEAKING) {
+        currentState = STATE_STANDBY; // also drops any reply still arriving (standby audio is never played)
       }
+      modelTurnActive = false;
       if (audioOutQueue) {
         xQueueReset(audioOutQueue);
       }
+      setSpeakerMute(true); // cut off anything already in the speaker's buffer
+      sendMicMuted(true);
       lastTranscript = "MIC MUTED (Press top button)";
       renderScreen(true);
     } else {
       Serial.println("[Button] Physical mic MUTE switch released (unmuted)");
+      sendMicMuted(false);
       lastTranscript = "Say 'Hey Ims' or tap screen";
       renderScreen(true);
     }

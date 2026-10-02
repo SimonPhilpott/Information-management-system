@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiClient.js';
 import config from '../config.js';
 import db from '../db/database.js';
 import { generateEmbeddings, generateQueryEmbedding } from './embeddingService.js';

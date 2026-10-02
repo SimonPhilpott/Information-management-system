@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiClient.js';
 import config from '../config.js';
 import db from '../db/database.js';
 import { logUsage } from './usageService.js';
@@ -42,16 +42,7 @@ Return ONLY the JSON array, no other text.`;
     const response = result.response;
     const text = response.text();
 
-    // Log usage
-    const usage = response.usageMetadata;
-    if (usage) {
-      logUsage(
-        config.gemini.chatModels.flash,
-        usage.promptTokenCount || 0,
-        usage.candidatesTokenCount || 0,
-        'topic_extraction'
-      );
-    }
+    // usage is logged by geminiClient.js
 
     // Parse JSON response
     const jsonMatch = text.match(/\[[\s\S]*\]/);

@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiClient.js';
 import config from '../config.js';
 import { generateQueryEmbedding } from './embeddingService.js';
 import { searchSimilar, searchSimilarMultiQuery } from './vectorStore.js';
@@ -409,16 +409,8 @@ MANDATORY SUBJECT-DERIVED FORMULATION DIRECTIVE:
     const response = result.response;
     rawResponse = response.text();
     
-    // Log usage
+    // usage is logged by geminiClient.js (with thinking tokens) - kept here for the caller
     usage = response.usageMetadata;
-    if (usage) {
-      logUsage(
-        modelName,
-        usage.promptTokenCount || 0,
-        usage.candidatesTokenCount || 0,
-        'chat'
-      );
-    }
   } catch (err) {
     console.error('Gemini API Error:', err);
     throw new Error(`AI Engine Failure: ${err.message}`);
@@ -645,7 +637,7 @@ export function getChatSessions() {
 export async function verifyMessage(content) {
   try {
     // 1. Extract key claims
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: config.gemini.chatModels.flash });
     const claimResult = await model.generateContent(`
       Extract the 3 most important factual claims from the following text that should be verified against the web. 
       Return them as a simple numbered list.
@@ -656,7 +648,7 @@ export async function verifyMessage(content) {
 
     // 2. Verify against web
     const verifyModel = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
+      model: config.gemini.chatModels.flash,
       tools: [{ googleSearch: {} }]
     });
     

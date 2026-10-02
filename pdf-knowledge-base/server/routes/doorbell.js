@@ -1,3 +1,4 @@
+import { isDeviceMicMuted } from '../services/deviceState.js';
 import express from 'express';
 import { Readable } from 'stream';
 import doorbellService from '../services/doorbellService.js';
@@ -165,7 +166,8 @@ router.post('/test-alert', async (req, res) => {
   try {
     const { eventType = 'ding', cameraName = 'Front Door' } = req.body;
     const alert = await doorbellService.triggerTestEvent(eventType, cameraName);
-    res.json({ success: true, alert });
+    // the web app stays silent while the Box-3 is in MIC MUTED mode
+    res.json({ success: true, alert: { ...alert, deviceMuted: isDeviceMicMuted() } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

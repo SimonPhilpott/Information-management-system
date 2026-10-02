@@ -1,6 +1,6 @@
 import db from '../db/database.js';
 import config from '../config.js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiClient.js';
 
 // AI reviews are written once, in whichever distance unit was showing at the time. When the
 // km / miles switch is flipped, the saved text is rewritten in the other unit (one short model

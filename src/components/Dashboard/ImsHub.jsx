@@ -1,6 +1,6 @@
 import AccountChip from './AccountChip';
 import React from 'react';
-import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight , Droplets , Newspaper , ListChecks , MessageSquareQuote , Network , Lightbulb , Layers , DatabaseBackup, SunMedium, Code2, CloudSun } from 'lucide-react';
+import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight , Droplets , Newspaper , ListChecks , MessageSquareQuote , Network , Lightbulb , Layers , DatabaseBackup, SunMedium, Code2, CloudSun, HardDrive, BrainCircuit, PoundSterling } from 'lucide-react';
 
 // Each entry here is one card on the hub. Add a new one whenever a new
 // /ims/* page is built - this is the single place that needs to know about
@@ -212,6 +212,30 @@ const LINKS = [
     glow: 'rgba(16,185,129,0.3)'
   },
   {
+    path: '/ims/storage',
+    title: 'Storage',
+    description: 'Exact megabytes of PDFs and vector embeddings per subject (LOTR, Arkham, Diabetes, Technology, Board Games), and space savers.',
+    icon: HardDrive,
+    gradient: 'from-slate-500 to-sky-700',
+    glow: 'rgba(14,165,233,0.3)'
+  },
+  {
+    path: '/ims/models',
+    title: 'Model Switcher',
+    description: 'Choose the language and voice model for each service - why each exists, cost, depth, speed, reliability - with one-click roll back.',
+    icon: BrainCircuit,
+    gradient: 'from-indigo-500 to-violet-700',
+    glow: 'rgba(99,102,241,0.3)'
+  },
+  {
+    path: '/ims/costs',
+    title: 'Costs',
+    description: 'Gemini API costs for every service, plus subscriptions and the other services IMS relies on.',
+    icon: PoundSterling,
+    gradient: 'from-emerald-600 to-teal-700',
+    glow: 'rgba(16,185,129,0.3)'
+  },
+  {
     path: '/ims/runplanner',
     title: 'Run Planner',
     description: 'Plan Komoot routes, timing and carbs to keep glucose steady.',
@@ -257,7 +281,7 @@ const SECTIONS = [
   ['Core functions', ['/ims/weather', '/ims/doorbell', '/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings', '/ims/tasks']],
   ['Personal', ['/ims/code-repo', '/ims/dayreport', '/ims/musicscan', '/ims/boardgames', '/campaigns', '/ims/news']],
   ['Health and fitness', ['/ims/glucose', '/ims/activities', '/ims/runplanner']],
-  ['Customisation and system settings', ['/ims/device-health', '/ims/spend', '/ims/facedesigner', '/ims/persona', '/ims/phrases', '/ims/wifi', '/ims/devideas', '/ims/backups', '/ims/architecture']],
+  ['Customisation and system settings', ['/ims/device-health', '/ims/storage', '/ims/models', '/ims/costs', '/ims/spend', '/ims/facedesigner', '/ims/persona', '/ims/phrases', '/ims/wifi', '/ims/devideas', '/ims/backups', '/ims/architecture']],
   ['Disabled', ['/ims/look', '/ims/faces']],
 ];
 

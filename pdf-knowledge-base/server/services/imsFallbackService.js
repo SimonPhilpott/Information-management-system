@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiClient.js';
 import config from '../config.js';
 import { logUsage } from './usageService.js';
 
@@ -25,7 +25,5 @@ export async function askGeneral({ question, context = '' }) {
   });
   const prompt = `QUESTION: ${q}${context ? `\n\nCONTEXT: ${String(context).slice(0, 2000)}` : ''}`;
   const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
-  const u = res.response.usageMetadata;
-  if (u) { try { logUsage(modelName, u.promptTokenCount || 0, u.candidatesTokenCount || 0, 'ims-fallback'); } catch { /* not essential */ } }
   return res.response.text().trim();
 }

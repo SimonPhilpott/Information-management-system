@@ -93,7 +93,7 @@ export async function campaignSetup(campaignName) {
         const texts = [];
         for (const g of camp.guide) texts.push(await guideText(g));
         const text = texts.join('\n\n').replace(/\s+\n/g, '\n').slice(0, 120000);
-        const { GoogleGenerativeAI } = await import('@google/generative-ai');
+        const { GoogleGenerativeAI } = await import('../geminiClient.js');
         const config = (await import('../../config.js')).default;
         const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({
           model: 'gemini-2.5-flash',

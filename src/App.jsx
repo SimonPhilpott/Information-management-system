@@ -51,6 +51,9 @@ import DoorbellPortal from './components/Dashboard/DoorbellPortal';
 import WeatherPortal from './components/Dashboard/WeatherPortal';
 import DeviceHealthPortal from './components/Dashboard/DeviceHealthPortal';
 import SpendBudgetPortal from './components/Dashboard/SpendBudgetPortal';
+import StoragePortal from './components/Dashboard/StoragePortal';
+import ModelSwitcherPortal from './components/Dashboard/ModelSwitcherPortal';
+import CostsPortal from './components/Dashboard/CostsPortal';
 import ImsHub from './components/Dashboard/ImsHub';
 import CommandPalette from './components/Dashboard/CommandPalette';
 
@@ -1491,6 +1494,16 @@ export default function App() {
         setCurrentPath={setCurrentPath}
       />
     );
+  }
+
+  if (currentPath === '/ims/storage' || currentPath.startsWith('/ims/storage/')) {
+    return <StoragePortal theme={state.theme} onThemeToggle={actions.toggleTheme} setCurrentPath={setCurrentPath} />;
+  }
+  if (currentPath === '/ims/models' || currentPath.startsWith('/ims/models/')) {
+    return <ModelSwitcherPortal theme={state.theme} onThemeToggle={actions.toggleTheme} setCurrentPath={setCurrentPath} />;
+  }
+  if (currentPath === '/ims/costs' || currentPath.startsWith('/ims/costs/')) {
+    return <CostsPortal theme={state.theme} onThemeToggle={actions.toggleTheme} setCurrentPath={setCurrentPath} />;
   }
 
   if (currentPath === '/ims/spend' || currentPath.startsWith('/ims/spend') || currentPath === '/ims/budget') {

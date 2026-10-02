@@ -1,6 +1,7 @@
 import db, { getSetting, setSetting } from '../db/database.js';
 import config from '../config.js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, readGeminiJson } from './geminiClient.js';
+import { getModelFor } from './modelRegistry.js';
 import crypto from 'crypto';
 import { encryptSecret, decryptSecret } from './wifiService.js';
 import { getDeviceIcons } from './calendarService.js';
@@ -509,7 +510,7 @@ export function setAutoClear(enabled) {
   setSetting(AUTO_KEY, enabled ? 'true' : 'false');
   return getAutoClear();
 }
-async function autoClearCheck() {
+export async function autoClearCheck() {
   const { enabled, last } = getAutoClear();
   if (!enabled || !nsSecretHash()) return;
   if (last?.at && Date.now() - last.at < 24 * 3600000) return;
@@ -524,8 +525,54 @@ async function autoClearCheck() {
     setSetting(AUTO_LAST_KEY, JSON.stringify({ at: Date.now(), before: size.pct, ok: false, error: err.message }));
   }
 }
-setTimeout(() => autoClearCheck().catch(() => {}), 60000);
-setInterval(() => autoClearCheck().catch(() => {}), 3600000);
+// run hourly by the scheduler ('glucose_hub_autoclear' in index.js)
+
+// ---- your carb values for foods -----------------------------------------------------------------------------
+// When the carbs Gemini gave for a food are corrected (usually from the packet) and the meal is logged, the
+// corrected grams for ONE piece/serving are kept here and used the next time that food is in a photo.
+// Gemini is given these names so it names the same food the same way, and the match is on the name.
+db.exec(`CREATE TABLE IF NOT EXISTS food_carb_memory (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  unit TEXT NOT NULL DEFAULT 'portion',
+  carbs_each REAL NOT NULL,
+  uses INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+)`);
+
+// "Warburtons Toastie white bread, toasted" / "white toast" etc. -> a stable key: lower case, no brackets or
+// punctuation, simple plurals dropped ("slices" -> "slice").
+export function foodKey(name) {
+  return String(name || '').toLowerCase().replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(Boolean)
+    .map((w) => (w.length <= 3 ? w : /ies$/.test(w) ? `${w.slice(0, -3)}y` : /(ch|sh|x|ss|o)es$/.test(w) ? w.slice(0, -2) : /[^s]s$/.test(w) ? w.slice(0, -1) : w))
+    .join(' ').trim();
+}
+
+export function listFoodMemory() {
+  return db.prepare('SELECT id, name, unit, carbs_each AS carbsEach, uses, updated_at AS updatedAt FROM food_carb_memory ORDER BY updated_at DESC').all();
+}
+
+// [{ name, unit, carbsEach }] - only the items whose carbs were corrected on the page.
+export function saveFoodMemory(items = []) {
+  const now = new Date().toISOString();
+  const up = db.prepare(`INSERT INTO food_carb_memory (key, name, unit, carbs_each, uses, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET name = excluded.name, unit = excluded.unit, carbs_each = excluded.carbs_each, updated_at = excluded.updated_at`);
+  let saved = 0;
+  for (const it of items) {
+    const key = foodKey(it.name);
+    const each = Number(it.carbsEach);
+    if (!key || !Number.isFinite(each) || each < 0 || each > 500) continue;
+    up.run(key, String(it.name).slice(0, 80), String(it.unit || 'portion').slice(0, 30), Math.round(each * 10) / 10, now, now);
+    saved++;
+  }
+  return { saved };
+}
+
+export function deleteFoodMemory(id) {
+  return db.prepare('DELETE FROM food_carb_memory WHERE id = ?').run(Number(id)).changes > 0;
+}
 
 // ---- carbs from a photo ------------------------------------------------------------------------------------
 // A photo of a plate (from the phone): Gemini names each food with a portion and its carbs, and says how sure it
@@ -535,12 +582,17 @@ export async function estimateCarbsFromPhoto(image, mimeType = 'image/jpeg', not
   if (!image?.length) throw new Error('No photo came through.');
   if (image.length > 12 * 1024 * 1024) throw new Error('The photo is too big - try again.');
   const config = (await import('../config.js')).default;
+  const remembered = listFoodMemory().slice(0, 80);
+  const memoryLine = remembered.length
+    ? `\nFoods this person has given exact carb values for before (from the packet). If you see one of these, use EXACTLY this name and unit so it can be matched: ${remembered.map((m) => `"${m.name}" (per ${m.unit})`).join('; ')}.`
+    : '';
   const prompt = `You are helping someone with type 1 diabetes count carbohydrates. Look at this photo of food and estimate the carbs as accurately as you can, for a UK diet.
-List each separate food or drink you can see, with: name (plain, specific - e.g. "white basmati rice", "garlic naan"), portion (your estimate of the amount, in grams or a household measure, as seen), carbs (grams of carbohydrate in that portion), and confidence ("high", "medium" or "low").
+List each separate food or drink you can see, with: name (plain, specific - e.g. "white basmati rice", "garlic naan"), portion (your estimate of the amount, in grams or a household measure, as seen), count (how many separate pieces or servings of it there are - 2 for two slices of toast, 3 for three biscuits; 1 for anything not counted in pieces, like a pile of rice), unit (what one of the count is, singular - "slice", "biscuit", "sausage", or "portion" when not counted in pieces), carbs (grams of carbohydrate in ALL of it together), and confidence ("high", "medium" or "low").
 Use standard nutrition values (like the UK's McCance and Widdowson data or pack labels). Count only carbohydrate, not sugar alone, and not fibre. Judge the portion from the plate, cutlery and anything else for scale.
 Also give: total (the sum of the carbs), summary (a short description of the meal, under 60 characters, for a log), and caution (one sentence on anything that makes the estimate uncertain - hidden ingredients, sauces, unclear portions - or "" if none).
-If there is no food in the photo, return no items and say so in caution.${note ? `\nWhat the person says about it (believe this over the picture): ${note}` : ''}`;
-  const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
+If there is no food in the photo, return no items and say so in caution.${memoryLine}${note ? `\nWhat the person says about it (believe this over the picture): ${note}` : ''}`;
+  const model = getModelFor('glucose');
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.gemini.apiKey },
     body: JSON.stringify({
       contents: [{ parts: [{ inlineData: { mimeType, data: Buffer.from(image).toString('base64') } }, { text: prompt }] }],
@@ -549,7 +601,7 @@ If there is no food in the photo, return no items and say so in caution.${note ?
         responseSchema: {
           type: 'OBJECT',
           properties: {
-            items: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, portion: { type: 'STRING' }, carbs: { type: 'NUMBER' }, confidence: { type: 'STRING', enum: ['high', 'medium', 'low'] } }, required: ['name', 'portion', 'carbs', 'confidence'] } },
+            items: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, portion: { type: 'STRING' }, count: { type: 'NUMBER' }, unit: { type: 'STRING' }, carbs: { type: 'NUMBER' }, confidence: { type: 'STRING', enum: ['high', 'medium', 'low'] } }, required: ['name', 'portion', 'count', 'unit', 'carbs', 'confidence'] } },
             total: { type: 'NUMBER' }, summary: { type: 'STRING' }, caution: { type: 'STRING' },
           },
           required: ['items', 'total', 'summary', 'caution'],
@@ -559,9 +611,29 @@ If there is no food in the photo, return no items and say so in caution.${note ?
     signal: AbortSignal.timeout(60000),
   });
   if (!res.ok) throw new Error(`Gemini returned HTTP ${res.status}`);
-  const text = (await res.json())?.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text;
+  const text = (await readGeminiJson(res, model, 'glucose'))?.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text;
   if (!text) throw new Error('Could not read the photo - try another.');
   const out = JSON.parse(text);
-  const items = (out.items || []).map((i) => ({ name: String(i.name).slice(0, 80), portion: String(i.portion || '').slice(0, 60), carbs: Math.max(0, Math.round(Number(i.carbs) || 0)), confidence: i.confidence || 'medium' }));
+  // Each item as count x carbs for one; a food you've corrected before uses your value for one.
+  const memory = new Map(remembered.map((m) => [foodKey(m.name), m]));
+  const bump = db.prepare('UPDATE food_carb_memory SET uses = uses + 1 WHERE id = ?');
+  const items = (out.items || []).map((i) => {
+    const count = Math.max(0.5, Math.round((Number(i.count) || 1) * 2) / 2);
+    const total = Math.max(0, Number(i.carbs) || 0);
+    const item = {
+      name: String(i.name).slice(0, 80), portion: String(i.portion || '').slice(0, 60), unit: String(i.unit || 'portion').slice(0, 30),
+      count, carbsEach: Math.round((total / count) * 10) / 10, confidence: i.confidence || 'medium', yours: false, geminiEach: Math.round((total / count) * 10) / 10,
+    };
+    const mine = memory.get(foodKey(item.name));
+    if (mine) {
+      item.carbsEach = mine.carbsEach;
+      item.unit = mine.unit || item.unit;
+      item.yours = true;
+      item.confidence = 'high';
+      try { bump.run(mine.id); } catch { /* not essential */ }
+    }
+    item.carbs = Math.round(item.count * item.carbsEach);
+    return item;
+  });
   return { items, total: items.reduce((n, i) => n + i.carbs, 0), summary: String(out.summary || '').slice(0, 80), caution: String(out.caution || '') };
 }

@@ -548,7 +548,7 @@ ${fallen.length ? `\nFALLEN HEROES: ${fallen.join(', ')}` : ''}
 ${boons.length ? `\nBOONS GAINED: ${boons.join(', ')}` : ''}
 ${burdens.length ? `\nBURDENS CARRIED: ${burdens.join(', ')}` : ''}
 ${c.threatPenalty ? `\nThey ended the journey heavily wearied.` : ''}`;
-      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const { GoogleGenerativeAI } = await import('./geminiClient.js');
       const config = (await import('../config.js')).default;
       const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({
         model: 'gemini-2.5-flash',
@@ -649,7 +649,7 @@ ${cards.length ? `GAINED OR BURDENED HERE: ${cards.map((x) => `${x.name} (${x.ki
 ${fellHere.length ? `HEROES WHO FELL HERE - tell of their fall; it is a grievous loss to the company: ${fellHere.join(', ')}` : ''}${fellBefore.length ? `\nHEROES WHO FELL ELSEWHERE on the journey (no longer with the company; remember them only if it fits): ${fellBefore.join(', ')}` : ''}
 ${story ? `THE SCENARIO'S STORY: ${story.replace(/\s+/g, ' ').slice(0, 1400)}` : ''}
 ${previous ? `THE PREVIOUS CHAPTER ENDED: ${previous.slice(-400)}` : 'This is the first chapter - open the chronicle.'}`;
-  const { GoogleGenerativeAI } = await import('@google/generative-ai');
+  const { GoogleGenerativeAI } = await import('./geminiClient.js');
   const config = (await import('../config.js')).default;
   const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({
     model: 'gemini-2.5-flash',
@@ -979,7 +979,7 @@ Hero: ${heroWithTraits(e.hero, c.game)} - keep to what the traits say they are.
 ${e.scenario ? `They fell on the journey at "${e.scenario}"${place ? ` (${place})` : ''}.` : 'They fell on the journey.'}
 ${comrades.length ? `Their closest companions: ${comrades.join(', ')}.` : ''}
 Write it as J.R.R. Tolkien would: a lament of two to four sentences, grave, tender and noble, wholly within Middle-earth. Nothing from our world - no real names, no dates or years, no game terms. Do not begin with "Here lies".`;
-    const { GoogleGenerativeAI } = await import('@google/generative-ai');
+    const { GoogleGenerativeAI } = await import('./geminiClient.js');
     const config = (await import('../config.js')).default;
     const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({
       model: 'gemini-2.5-flash',
@@ -1032,7 +1032,7 @@ Give ONE new title for the chapter below: short (two to seven words), evocative 
 
 THE CHAPTER:
 ${body}`;
-  const { GoogleGenerativeAI } = await import('@google/generative-ai');
+  const { GoogleGenerativeAI } = await import('./geminiClient.js');
   const config = (await import('../config.js')).default;
   const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({
     model: 'gemini-2.5-flash',
@@ -1061,7 +1061,10 @@ export async function transcribeVoiceNote(id, audio, mimeType = 'audio/webm', by
 Names that may come up - spell them like this: ${names.join('; ')}.
 If nothing intelligible was said, return an empty string.`;
   const config = (await import('../config.js')).default;
-  const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
+  const { getModelFor } = await import('./modelRegistry.js');
+  const { readGeminiJson } = await import('./geminiClient.js');
+  const model = getModelFor('campaigns');
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.gemini.apiKey },
     body: JSON.stringify({
       contents: [{ parts: [{ inlineData: { mimeType: String(mimeType).split(';')[0], data: Buffer.from(audio).toString('base64') } }, { text: prompt }] }],
@@ -1070,6 +1073,6 @@ If nothing intelligible was said, return an empty string.`;
     signal: AbortSignal.timeout(60000),
   });
   if (!res.ok) throw new Error(`Gemini returned HTTP ${res.status}`);
-  const text = ((await res.json())?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').trim();
+  const text = ((await readGeminiJson(res, model, 'campaigns'))?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').trim();
   return { text: text.replace(/^["']|["']$/g, '').replace(/\s*\n+\s*/g, ' ').trim() };
 }

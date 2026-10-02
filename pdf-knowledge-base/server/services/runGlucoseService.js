@@ -1,6 +1,6 @@
 import db, { getSetting, setSetting } from '../db/database.js';
 import config from '../config.js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiClient.js';
 import { textInUnits, clearUnitCache, normaliseUnits } from './aiTextService.js';
 import { getRulebookPromptContext } from './t1dRulebookService.js';
 

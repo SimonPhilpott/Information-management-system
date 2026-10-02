@@ -3,6 +3,7 @@ const { HierarchicalNSW } = hnswPkg;
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { unpackChunks } from "./vectorCodec.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, "..", "data");
@@ -68,7 +69,7 @@ export async function buildIndex(onProgress = () => {}) {
     for (let i = 0; i < jsonFiles.length; i++) {
       const filePath = path.join(VECTORS_DIR, jsonFiles[i]);
       const raw = await fs.promises.readFile(filePath, "utf-8");
-      const chunks = JSON.parse(raw);
+      const chunks = unpackChunks(JSON.parse(raw));
       totalChunks += chunks.length;
       if (detectedDimension === DEFAULT_DIMENSION && chunks.length > 0 && chunks[0].embedding) {
         detectedDimension = chunks[0].embedding.length;
@@ -89,11 +90,11 @@ export async function buildIndex(onProgress = () => {}) {
     for (let fileIdx = 0; fileIdx < jsonFiles.length; fileIdx++) {
       const filePath = path.join(VECTORS_DIR, jsonFiles[fileIdx]);
       const raw = await fs.promises.readFile(filePath, "utf-8");
-      const chunks = JSON.parse(raw);
+      const chunks = unpackChunks(JSON.parse(raw));
 
       for (const chunk of chunks) {
         if (!chunk.embedding || chunk.embedding.length !== _dimension) continue;
-        newIndex.addPoint(chunk.embedding, insertedCount);
+        newIndex.addPoint(Array.from(chunk.embedding), insertedCount);
         newMetadata.push({
           documentId: chunk.documentId,
           driveFileId: chunk.driveFileId,
@@ -134,6 +135,87 @@ export async function buildIndex(onProgress = () => {}) {
   }
 }
 
+// ---- incremental updates (Phase 4): one document in or out, no full rebuild ----
+// Labels are positions in _metadata; a document's old passages are marked deleted (their metadata
+// slot set to null) and its new ones appended. Saved to disk a few seconds after the last change.
+let saveTimer = null;
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      if (!_index) return;
+      _index.writeIndexSync(INDEX_PATH);
+      fs.writeFileSync(META_PATH, JSON.stringify({ builtAt: _lastBuilt, updatedAt: new Date().toISOString(), dimension: _dimension, totalVectors: _totalVectors, chunks: _metadata }));
+      console.log("[HNSW] Incremental changes saved (" + _totalVectors.toLocaleString() + " live vectors)");
+    } catch (err) {
+      console.error("[HNSW] Could not save incremental changes:", err.message);
+    }
+  }, 5000);
+}
+
+function ensureLoaded() {
+  if (_isBuilt && _index) return true;
+  if (!fs.existsSync(INDEX_PATH) || !fs.existsSync(META_PATH)) return false;
+  try {
+    const meta = JSON.parse(fs.readFileSync(META_PATH, "utf-8"));
+    _dimension = meta.dimension || DEFAULT_DIMENSION;
+    _metadata = meta.chunks;
+    _totalVectors = _metadata.filter(Boolean).length;
+    _lastBuilt = meta.builtAt;
+    const idx = new HierarchicalNSW("cosine", _dimension);
+    idx.readIndexSync(INDEX_PATH);
+    _index = idx;
+    _isBuilt = true;
+    return true;
+  } catch (err) {
+    console.error("[HNSW] Could not load index for an incremental update:", err.message);
+    return false;
+  }
+}
+
+export function removeFromIndex(driveFileId) {
+  if (!ensureLoaded()) return 0;
+  let removed = 0;
+  for (let label = 0; label < _metadata.length; label++) {
+    if (_metadata[label]?.driveFileId === driveFileId) {
+      try { _index.markDelete(label); } catch { /* already deleted */ }
+      _metadata[label] = null;
+      removed++;
+    }
+  }
+  if (removed) { _totalVectors -= removed; scheduleSave(); }
+  return removed;
+}
+
+export function indexDocumentIncremental(driveFileId, chunks = []) {
+  // No index yet: nothing to update - searches use the linear scan until one is built.
+  if (!ensureLoaded()) return { updated: false, reason: "no index built yet" };
+  const started = Date.now();
+  removeFromIndex(driveFileId);
+  const usable = chunks.filter((c) => c.embedding && c.embedding.length === _dimension);
+  const needed = _metadata.length + usable.length;
+  if (needed > _index.getMaxElements()) _index.resizeIndex(Math.ceil(needed * 1.2));
+  for (const chunk of usable) {
+    const label = _metadata.length;
+    _index.addPoint(Array.from(chunk.embedding), label);
+    _metadata.push({
+      documentId: chunk.documentId, driveFileId: chunk.driveFileId, filename: chunk.filename, subject: chunk.subject,
+      pageNum: chunk.pageNum, chunkIndex: chunk.chunkIndex, text: chunk.text, hasImages: chunk.hasImages ?? false
+    });
+  }
+  _totalVectors += usable.length;
+  scheduleSave();
+  console.log("[HNSW] Added " + usable.length + " passages for " + driveFileId + " in " + (Date.now() - started) + " ms (no rebuild)");
+  return { updated: true, added: usable.length, ms: Date.now() - started };
+}
+
+export function renameSubjectInIndex(driveFileId, subject) {
+  if (!ensureLoaded()) return;
+  let n = 0;
+  for (const m of _metadata) if (m?.driveFileId === driveFileId) { m.subject = subject; n++; }
+  if (n) scheduleSave();
+}
+
 export function invalidateIndex() {
   _isBuilt = false;
   _index = null;
@@ -161,7 +243,7 @@ export function searchHnsw(queryEmbedding, topK = 8, allowedDriveFileIds = null,
         const meta = JSON.parse(metaRaw);
         _dimension = meta.dimension || DEFAULT_DIMENSION;
         _metadata = meta.chunks;
-        _totalVectors = _metadata.length;
+        _totalVectors = _metadata.filter(Boolean).length;
         _lastBuilt = meta.builtAt;
         const idx = new HierarchicalNSW("cosine", _dimension);
         idx.readIndexSync(INDEX_PATH);
@@ -176,7 +258,7 @@ export function searchHnsw(queryEmbedding, topK = 8, allowedDriveFileIds = null,
     }
   }
   try {
-    const fetchK = allowedDriveFileIds 
+    const fetchK = allowedDriveFileIds
       ? Math.min(Math.max(topK * 50, 500), _totalVectors)
       : Math.min(Math.max(topK * 5, 50), _totalVectors);
 
