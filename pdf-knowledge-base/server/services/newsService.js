@@ -529,6 +529,31 @@ async function tourPlace(i) {
   return { tier: 0, places: [] };
 }
 
+// When the UK shows are: dates written in the story ("14 March", "March 14th 2027", "Fri 14 Mar"), preferring ones
+// within a couple of hundred characters of a UK place it names. A date with no year is taken as its next
+// occurrence. Returns future dates (soonest first), up to two years ahead.
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const DATE_RX = /\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?(?:,?\s+(20\d\d))?\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(20\d\d))?\b/gi;
+async function showDates(i, places = []) {
+  const body = `${i.headline} ${i.summary || ''} ${await articleText(i.link)}`;
+  const now = Date.now();
+  const near = [], any = [];
+  const placeRx = places.length ? new RegExp(places.map((p) => p.replace(/\s*\(.*$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi') : null;
+  const placeAt = placeRx ? [...body.matchAll(placeRx)].map((m) => m.index) : [];
+  for (const m of body.matchAll(DATE_RX)) {
+    const day = Number(m[1] || m[5]);
+    const mon = MONTHS.indexOf(String(m[2] || m[4]).slice(0, 3).toLowerCase());
+    if (mon < 0 || day < 1 || day > 31) continue;
+    let year = Number(m[3] || m[6]) || new Date().getUTCFullYear();
+    let t = Date.UTC(year, mon, day, 19);
+    if (!m[3] && !m[6] && t < now - 7 * 86400000) t = Date.UTC(year + 1, mon, day, 19);
+    if (t < now - 86400000 || t > now + 730 * 86400000) continue;
+    (placeAt.some((p) => Math.abs(p - m.index) < 220) ? near : any).push(t);
+  }
+  const pick = near.length ? near : any;
+  return [...new Set(pick)].sort((a, b) => a - b);
+}
+
 export async function getTourNews({ days = 4, includeTold = false } = {}) {
   const matchers = artistMatchers();
   if (!matchers.length) return [];
@@ -553,14 +578,17 @@ export async function getTourNews({ days = 4, includeTold = false } = {}) {
     }
   }
   // Where are they playing? Only UK dates count; home cities first, then the north, London, other UK.
-  const placed = await Promise.all(found.slice(0, 40).map(async (f) => ({ ...f, where: f.where || await tourPlace(f) })));
+  const placed = await Promise.all(found.slice(0, 40).map(async (f) => { const where = f.where || await tourPlace(f); return { ...f, where, dates: where.tier ? await showDates(f, where.places).catch(() => []) : [] }; }));
   return placed.filter((f) => f.where.tier).map(strip)
-    .map((f) => ({ ...f, near: f.where.tier === 1 ? f.where.places : [], places: f.where.places, tier: f.where.tier }))
+    .map((f) => {
+      // no exact date, but a later year named ("2027 UK tour"): take the start of that year as a rough date
+      const yr = !f.dates?.length ? Number((`${f.headline} ${f.summary || ''}`.match(/\b(20\d\d)\b/g) || []).map(Number).find((y) => y > new Date().getFullYear())) || null : null;
+      return { ...f, near: f.where.tier === 1 ? f.where.places : [], places: f.where.places, tier: f.where.tier, nextShow: f.dates?.[0] ?? (yr ? Date.UTC(yr, 0, 1) : null), showYearOnly: Boolean(yr) };
+    })
     .sort((a, b) => a.tier - b.tier || (b.published || 0) - (a.published || 0));
 }
 
-export async function tourNewsForReport() {
-  const tours = (await getTourNews()).slice(0, 5);
-  markTold(tours);
-  return tours;
+export async function tourNewsForReport({ days = 4 } = {}) {
+  return getTourNews({ days });
 }
+export function markToursTold(tours) { markTold(tours); }

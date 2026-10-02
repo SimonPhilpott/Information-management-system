@@ -739,6 +739,24 @@
       "description": "Flythrough retrospective for a completed run with linked follow-ups.",
       "dependencies": []
     },
+    "src/components/Dashboard/RunPlanner/RunLearningTab.jsx": {
+      "description": "Run Learning tab: suggested and accepted lessons, kinds of run, runs list with retrospective.",
+      "dependencies": [
+        "src/components/Dashboard/RunPlanner/RunRetrospective.jsx"
+      ]
+    },
+    "src/components/Dashboard/RunPlanner/RunRetrospective.jsx": {
+      "description": "Plan against reality for one run: glucose vs plan vs model, intakes, notes, effort and findings.",
+      "dependencies": []
+    },
+    "pdf-knowledge-base/server/services/runLearningService.js": {
+      "description": "Run sessions, Taken / Skipped intakes, Strava linking, plan-vs-actual analysis and learning across runs.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/runPlanService.js",
+        "pdf-knowledge-base/server/services/runGlucoseService.js",
+        "pdf-knowledge-base/server/services/glucoseHubService.js"
+      ]
+    },
     "src/components/Dashboard/RunPlanner/RunPlanDock.jsx": {
       "description": "Always-on Run plan dock at the foot of the Run Planner.",
       "dependencies": [
@@ -748,7 +766,22 @@
     "src/components/Dashboard/RunPlanner/RunPlanChart.jsx": {
       "description": "Interactive glucose / hydration / insulin on board / course chart for the run plan.",
       "dependencies": []
+    },
+    "src/components/Dashboard/DayReportPortal.jsx": {
+      "description": "Day Report configuration and preview portal with multi-step level sliders, sub-filter toggles, custom notes, and sample speech generation.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx"
+      ]
+    },
+    "pdf-knowledge-base/server/services/morningReportService.js": {
+      "description": "Morning and day briefing synthesis engine with 14-step look-ahead scheduling filters, Yorkshire persona voicing, and multi-service aggregation.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/remindersService.js",
+        "pdf-knowledge-base/server/services/calendarService.js",
+        "pdf-knowledge-base/server/services/weatherService.js"
+      ]
     }
+  }
 }
 
 

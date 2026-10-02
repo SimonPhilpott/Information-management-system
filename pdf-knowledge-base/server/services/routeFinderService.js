@@ -1,8 +1,8 @@
 import db, { getSetting, setSetting } from '../db/database.js';
 import { refreshEvents, getEventsOn } from './calendarService.js';
-import { listRoutes, getRoute, listKomootTours, importKomootTour, getKomootStatus } from './routeService.js';
+import { listRoutes, getRoute, listKomootTours, importKomootTour, getKomootStatus, deleteRoute, hiddenKomootIds } from './routeService.js';
 import { routeRunHistory, havM, shareNear } from './runPlanService.js';
-import { describeMissing, describing, descriptionOf } from './routeDescriptionService.js';
+import { describeMissing, describing, descriptionOf, landmarksOf, landmarkSentence } from './routeDescriptionService.js';
 
 // Route finder and duplicate finder for the Run Planner's saved routes (Komoot imports and GPX files).
 // The finder narrows the routes down by shape (loop / there and back / one way), a distance or a run
@@ -65,8 +65,11 @@ export async function findRoutes({ shape = 'any', minKm = null, maxKm = null, mi
     // the time to judge by: the last time they ran it, or the estimate from current fitness
     const timeMin = last?.minutes ?? hist?.expectedCurrentTimeMin ?? null;
     all.push({
-      id: r.id, name: r.name, source: r.source, account: r.account, externalId: r.externalId, shape: s,
-      description: descriptionOf(r.id),
+      id: r.id, name: r.name, source: r.source, account: r.account, externalId: r.externalId, shape: s, sport: r.sport,
+      running: !r.sport || RUN_SPORTS.has(r.sport),
+      // the one-line description, plus the landmarks it passes ("Takes in Parlington Hollins woods...")
+      description: (() => { const d = descriptionOf(r.id); if (d == null) return null; return [d, landmarkSentence(landmarksOf(r.id), d)].filter(Boolean).join(' '); })(),
+      landmarks: landmarksOf(r.id),
       // a light copy of the line for the card's little map (about 80 points)
       mapPath: full?.path ? full.path.filter((_, i, a) => i % Math.max(1, Math.ceil(a.length / 80)) === 0 || i === a.length - 1) : null, shapeLabel: SHAPE_LABEL[s],
       distanceKm: r.distanceKm, gainM: r.gainM, lossM: r.lossM, minEle: r.minEle, maxEle: r.maxEle, hasElevation: r.hasElevation,
@@ -91,13 +94,16 @@ export async function findRoutes({ shape = 'any', minKm = null, maxKm = null, mi
   });
   // shortest first; routes you've run most recently first among equals
   matches.sort((a, b) => a.distanceKm - b.distanceKm || String(b.lastRun?.day || '').localeCompare(String(a.lastRun?.day || '')));
-  // the slider ends: the longest route and the longest time among all saved routes
+  // The slider ends: the longest RUNNING route (a 200 km hike would stretch the slider uselessly; the
+  // page rounds it up to the next mile or km) and your longest run ever on Strava, rounded up to the hour.
+  const longestRunMin = (db.prepare(`SELECT MAX(moving_time) AS s FROM strava_activities WHERE sport IN ('Run','TrailRun','VirtualRun')`).get().s || 0) / 60;
+  const runningRoutes = all.filter((r) => r.running);
   const bounds = {
-    maxKm: Math.ceil(Math.max(1, ...all.map((r) => r.distanceKm || 0))),
-    maxMinutes: Math.ceil(Math.max(10, ...all.map((r) => r.timeMinutes || 0)) / 5) * 5,
+    maxKm: Math.max(1, ...(runningRoutes.length ? runningRoutes : all).map((r) => r.distanceKm || 0)),
+    maxMinutes: Math.max(60, Math.ceil(longestRunMin / 60) * 60),
   };
   // routes without a description yet get one in the background (the page checks back)
-  if (all.some((r) => r.description == null)) describeMissing(routeShape).catch((err) => console.warn('[RouteDescription]', err.message));
+  if (all.some((r) => r.description == null || r.landmarks == null)) describeMissing(routeShape).catch((err) => console.warn('[RouteDescription]', err.message));
   return { total: all.length, count: matches.length, routes: matches, bounds, describing: describing(), komoot: getKomootStatus() };
 }
 
@@ -106,6 +112,7 @@ export async function findRoutes({ shape = 'any', minKm = null, maxKm = null, mi
 // imported into IMS first. With 100+ routes that takes a while, so it runs as a background job the
 // page follows; routes already imported are skipped (and re-imports just update them).
 
+const RUN_SPORTS = new Set(['jogging', 'running', 'run', 'trail_running']);
 let syncJob = null;          // { total, done, added, failed, current, startedAt, finishedAt }
 let tourCache = null;        // { at, account, tours }
 
@@ -120,17 +127,23 @@ async function komootSavedTours({ fresh = false } = {}) {
 export async function komootSyncStatus() {
   const status = getKomootStatus();
   if (!status.connected) return { connected: false, job: syncJob };
-  const have = new Set(listRoutes().filter((r) => r.source === 'komoot').map((r) => String(r.externalId)));
+  // routes already in IMS, plus Komoot routes you deleted (so syncing doesn't bring them back)
+  const have = new Set([...listRoutes().filter((r) => r.source === 'komoot').map((r) => String(r.externalId)), ...hiddenKomootIds()]);
   let tours = [];
   try { tours = await komootSavedTours(); } catch (err) { return { connected: true, account: status.email, error: err.message, job: syncJob }; }
   const missing = tours.filter((t) => !have.has(String(t.id)));
-  return { connected: true, account: status.email, saved: tours.length, imported: tours.length - missing.length, missing: missing.length, job: syncJob };
+  // routes imported before their sport was kept get it from the tour list
+  const setSport = db.prepare("UPDATE planned_routes SET sport = ? WHERE source = 'komoot' AND external_id = ? AND sport IS NULL");
+  for (const t of tours) if (t.sport) setSport.run(t.sport, String(t.id));
+  const hidden = hiddenKomootIds();
+  return { connected: true, account: status.email, saved: tours.length, imported: tours.length - missing.length, missing: missing.length, hidden: tours.filter((t) => hidden.has(String(t.id))).length, job: syncJob };
 }
 
 export async function startKomootSync() {
   if (!getKomootStatus().connected) throw new Error('Connect Komoot first.');
   if (syncJob && !syncJob.finishedAt) return syncJob;
-  const have = new Set(listRoutes().filter((r) => r.source === 'komoot').map((r) => String(r.externalId)));
+  // routes already in IMS, plus Komoot routes you deleted (so syncing doesn't bring them back)
+  const have = new Set([...listRoutes().filter((r) => r.source === 'komoot').map((r) => String(r.externalId)), ...hiddenKomootIds()]);
   const tours = (await komootSavedTours({ fresh: true })).filter((t) => !have.has(String(t.id)));
   syncJob = { total: tours.length, done: 0, added: 0, failed: [], current: null, startedAt: Date.now(), finishedAt: null };
   (async () => {
@@ -174,6 +187,15 @@ export async function eveningKomootCheck() {
 
 export function startEveningKomootSync() {
   setInterval(() => { eveningKomootCheck().catch((err) => console.error('[RouteFinder] evening sync:', err.message)); }, 10 * 60000);
+}
+
+// Deletes every duplicate copy, keeping the oldest in each group (from IMS only - Komoot is untouched).
+export async function deleteAllDuplicates() {
+  const { groups } = await findDuplicateRoutes();
+  const deleted = [];
+  for (const g of groups) for (const r of g.slice(1)) if (deleteRoute(r.id)) deleted.push({ id: r.id, name: r.name });
+  historyCache.clear();
+  return { deleted, kept: groups.length };
 }
 
 // ---- duplicates ---------------------------------------------------------------------------------

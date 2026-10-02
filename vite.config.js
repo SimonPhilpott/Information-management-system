@@ -612,6 +612,9 @@ export default defineConfig({
     allowedHosts: [
       'simon-ims.ngrok-free.app',
       '.ngrok-free.app',
+      '.ngrok-free.dev', // the current static domain ends .dev - without it Vite refused every request through ngrok (403)
+      '.ngrok.app',
+      '.ngrok.dev',
       '.ngrok.io',
       'localhost',
       '127.0.0.1'

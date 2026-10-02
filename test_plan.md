@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 98
-- Verified Features: 98
+- Total Registered Features: 100
+- Verified Features: 100
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -105,7 +105,9 @@
 | FEAT-095 | Training Load, Ramp & Recovery | [TrainingLoadCard.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/TrainingLoadCard.jsx) | ATL/CTL/TSB, ACWR, ramp warnings, recovery hours and percent | PASS |
 | FEAT-096 | Clinic AGP Report | [agpService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/agpService.js) | 14/90-day AGP PDF with TIR, GMI, CV, hypos and change overlays | PASS |
 | FEAT-097 | Post-Run Review & Automatic Carb Planning | [PostRunReviewPanel.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlanner/PostRunReviewPanel.jsx) | Trace-based retrospective with linked follow-ups; plan on route selection | PASS |
+| FEAT-099 | Run Learning & Retrospective | [RunLearningTab.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlanner/RunLearningTab.jsx) | Plan snapshot, Taken / Skipped, plan vs actual, lessons by route / kind / overall | PASS |
 | FEAT-098 | Live Run Plan Dock | [RunPlanDock.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlanner/RunPlanDock.jsx) | Always-on plan, auto re-planning, combined chart with effort, hydration, IOB and course | PASS |
+| FEAT-100 | Scheduled Reminders & Alarms Look Ahead Slider | [DayReportPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/DayReportPortal.jsx) | Unified 14-step Look Ahead slider (1-day to 2-weeks, 1-day step) across alarms, reminders, tasks, and timers in Day Report | PASS |
 
 ## Section 2: Detailed Scenarios
 ### Suite 31: Observability Device Health Panel & Service (FEAT-086)
@@ -1023,3 +1025,20 @@
 4. Open the plan: drag Target time - the pace, effort shading, sips, fluid total and glucose line all change; faster times show higher effort and more fluid.
 5. The chart's glucose falls faster across climbs (orange/red in the course panel); hovering shows minute, km, glucose, no-carbs, effort, height, fluid and insulin on board.
 6. Within 48 hours of a hard session, Recovery shows the carry-over and the insulin multiplier above 1; with form below -10 the exercise uptake rises.
+
+### Suite 99: Run Learning & Retrospective (FEAT-099)
+1. Send a run with push on and tap Start run: Run Learning > Your runs lists it as "run started - waiting for Strava"; the start carbs are recorded as taken.
+2. At each reminder tap Taken: the notification clears, the carbs appear in the carb log and Nightscout at that minute. Tap Skipped on another: nothing is logged.
+3. After the run syncs from Strava (within 15 minutes, or press Check for new runs) it shows "matched to Strava"; open it: your glucose, the planned line, the model with what you took (and fitted, when different), carbs planned (faint) and taken (solid).
+4. Change a stop's minute or mark it skipped: the analysis and chart update, and the carb log / Nightscout entry is replaced or removed.
+5. Add a note at a minute ("felt tired halfway") and an effort: the note sits on the glucose line and appears in What it teaches with the glucose and trend there. Telling Ims "note on my run that I had a stitch at 20 minutes" adds it too.
+6. With 2 clear runs on a route showing the same uptake difference (3 of a kind, 4 overall for post-run), a suggestion appears; Use this in my plans makes the plan show "Learned from your runs" and change carbs; Stop using it reverts.
+7. A lesson meaning fewer carbs is not suggested if any of its runs went below the floor. Accepting a kind-of-run lesson from 4+ runs over 2+ routes adds a pending finding to the T1D Rulebook.
+8. A run where glucose rises after stopping lists the rise with the causes that fit (late carbs, meal before, hard effort).
+
+### Suite 100: Scheduled Reminders & Alarms Look Ahead Slider (FEAT-100)
+1. **Unified Look Ahead Slider Visibility:** Navigate to `/ims/dayreport`. Click the filters button on the **Scheduled Reminders & Alarms** section card to expand the Information Sub-Filters & Data Targeting drawer.
+2. **14-Step Range Verification:** Locate the **Look Ahead** slider. Verify the range control has 14 discrete steps (min 0 to max 13). Verify moving the slider across every position updates the badge label sequentially: `1 day`, `2 days`, `3 days`, `4 days`, `5 days`, `6 days`, `1 week`, `8 days`, `9 days`, `10 days`, `11 days`, `12 days`, `13 days`, `2 weeks`.
+3. **Responsive Step Labels:** Verify the label ticks beneath the range slider render endpoints (`1 day`, `2 weeks`) and the midpoint milestone (`1 week`) with bold emphasis, and intermediate day numbers (`2d` through `13d`) cleanly without text collision or wrapping.
+4. **All-Item Scope Invariant:** Ensure the single look-ahead slider applies uniformly across all scheduled item kinds (Alarms, Reminders, Tasks, and Timers) when enabled.
+5. **Sample Speech Validation:** Click **Show an example** / **What Ims would say** with Look Ahead set to 1 day vs 1 week. Verify 1 day constrains upcoming reminders to tomorrow only, while 1 week incorporates items scheduled through the full 7-day period with natural British Yorkshire phrasing.

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Search, RotateCw, Repeat, ArrowLeftRight, Copy, Trash2, Check, Route as RouteIcon, RefreshCw, ExternalLink, Download, Undo2 } from 'lucide-react';
+import { Search, RotateCw, Repeat, ArrowLeftRight, Copy, Trash2, Check, Route as RouteIcon, RefreshCw, ExternalLink, Download, Undo2, Pencil, X } from 'lucide-react';
 import { dist, paceText, elev, elevUnit, KM_PER_MI } from '../../../utils/units';
 
 // Run Planner tab 2: find a saved route by shape (loop / there and back), a distance range and a run-time
@@ -16,43 +16,105 @@ const hm = (min) => (min == null ? '-' : min >= 60 ? `${Math.floor(min / 60)} h 
 const ukDate = (day) => (day ? new Date(`${day}T12:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 const komootLink = (r) => (r.source === 'komoot' && r.externalId ? `https://www.komoot.com/tour/${r.externalId}` : null);
 
-// A small OpenStreetMap map of the route: the line, a green start, and an arrow showing which way round.
-function MiniRouteMap({ path, isDark }) {
-  const view = React.useMemo(() => {
-    if (!path || path.length < 2) return null;
-    const W = 320, H = 170, pad = 22;
-    const lats = path.map((p) => p[0]), lngs = path.map((p) => p[1]);
-    const X = (lng, z) => ((lng + 180) / 360) * 256 * 2 ** z;
-    const Y = (lat, z) => { const sn = Math.sin((lat * Math.PI) / 180); return (0.5 - Math.log((1 + sn) / (1 - sn)) / (4 * Math.PI)) * 256 * 2 ** z; };
-    const [minLat, maxLat, minLng, maxLng] = [Math.min(...lats), Math.max(...lats), Math.min(...lngs), Math.max(...lngs)];
-    let z = 16;
-    for (; z > 9; z--) if (X(maxLng, z) - X(minLng, z) <= W - pad * 2 && Y(minLat, z) - Y(maxLat, z) <= H - pad * 2) break;
-    const ox = (X(minLng, z) + X(maxLng, z)) / 2 - W / 2, oy = (Y(minLat, z) + Y(maxLat, z)) / 2 - H / 2;
-    const n = 2 ** z, tiles = [];
-    for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + H) / 256); ty++) {
-      for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + W) / 256); tx++) {
-        if (ty >= 0 && ty < n) tiles.push({ key: `${tx}-${ty}`, url: `https://tile.openstreetmap.org/${z}/${((tx % n) + n) % n}/${ty}.png`, x: tx * 256 - ox, y: ty * 256 - oy });
-      }
+// OpenStreetMap map of a route, cropped to the line with a modest margin: the zoom is worked out exactly
+// (tiles from the nearest level, scaled to fit), and the height follows the route's own shape.
+function routeView(path, W, minH, maxH, pad, extraZoom = 0) {
+  if (!path || path.length < 2) return null;
+  const X = (lng, z) => ((lng + 180) / 360) * 256 * 2 ** z;
+  const Y = (lat, z) => { const sn = Math.sin((lat * Math.PI) / 180); return (0.5 - Math.log((1 + sn) / (1 - sn)) / (4 * Math.PI)) * 256 * 2 ** z; };
+  const lats = path.map((p) => p[0]), lngs = path.map((p) => p[1]);
+  const [minLat, maxLat, minLng, maxLng] = [Math.min(...lats), Math.max(...lats), Math.min(...lngs), Math.max(...lngs)];
+  // route size in pixels at zoom 0, then the height that matches its shape and the zoom that fills the box
+  const bw0 = Math.max(1e-9, X(maxLng, 0) - X(minLng, 0)), bh0 = Math.max(1e-9, Y(minLat, 0) - Y(maxLat, 0));
+  const H = Math.round(Math.min(maxH, Math.max(minH, ((W - pad * 2) * bh0) / bw0 + pad * 2)));
+  const zf = Math.min(17.5, Math.log2(Math.min((W - pad * 2) / bw0, (H - pad * 2) / bh0)));
+  const z = Math.min(18, Math.max(1, Math.floor(zf) + extraZoom));
+  const scale = 2 ** (zf - z); // < 1 when drawing a sharper (higher) zoom level smaller
+  const cx = (X(minLng, z) + X(maxLng, z)) / 2, cy = (Y(minLat, z) + Y(maxLat, z)) / 2;
+  const ox = cx - W / 2 / scale, oy = cy - H / 2 / scale;
+  const n = 2 ** z, tiles = [];
+  for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + H / scale) / 256); ty++) {
+    for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + W / scale) / 256); tx++) {
+      if (ty >= 0 && ty < n) tiles.push({ key: `${z}-${tx}-${ty}`, url: `https://tile.openstreetmap.org/${z}/${((tx % n) + n) % n}/${ty}.png`, x: (tx * 256 - ox) * scale, y: (ty * 256 - oy) * scale, size: 256 * scale });
     }
-    const pts = path.map((p) => [X(p[1], z) - ox, Y(p[0], z) - oy]);
-    // direction arrow about an eighth of the way round
-    const k = Math.max(1, Math.floor(pts.length / 8));
-    const [a, b] = [pts[k - 1], pts[Math.min(pts.length - 1, k + 1)]];
-    return { W, H, tiles, pts, arrow: { x: pts[k][0], y: pts[k][1], deg: (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI } };
-  }, [path]);
-  if (!view) return null;
+  }
+  const pts = path.map((p) => [(X(p[1], z) - ox) * scale, (Y(p[0], z) - oy) * scale]);
+  const k = Math.max(1, Math.floor(pts.length / 8));
+  const [a, b] = [pts[k - 1], pts[Math.min(pts.length - 1, k + 1)]];
+  return { W, H, tiles, pts, arrow: { x: pts[k][0], y: pts[k][1], deg: (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI } };
+}
+
+function RouteMapSvg({ view, isDark, big = false }) {
+  const line = view.pts.map((p) => p.join(',')).join(' ');
   return (
-    <div className={`relative mt-3 rounded-lg overflow-hidden border ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`} style={{ aspectRatio: `${view.W} / ${view.H}` }}>
-      <svg viewBox={`0 0 ${view.W} ${view.H}`} className="absolute inset-0 w-full h-full" aria-label="Route map">
-        {view.tiles.map((t) => <image key={t.key} href={t.url} x={t.x} y={t.y} width="256" height="256" />)}
-        <rect width={view.W} height={view.H} fill={isDark ? 'rgba(2,6,23,0.25)' : 'rgba(255,255,255,0.1)'} />
-        <polyline points={view.pts.map((p) => p.join(',')).join(' ')} fill="none" stroke="#fff" strokeWidth="5" strokeLinejoin="round" strokeLinecap="round" />
-        <polyline points={view.pts.map((p) => p.join(',')).join(' ')} fill="none" stroke="#e11d48" strokeWidth="2.6" strokeLinejoin="round" strokeLinecap="round" />
-        <g transform={`translate(${view.arrow.x},${view.arrow.y}) rotate(${view.arrow.deg})`}><path d="M-5,-4 L5,0 L-5,4 Z" fill="#e11d48" stroke="#fff" strokeWidth="1" /></g>
-        <circle cx={view.pts[0][0]} cy={view.pts[0][1]} r="5" fill="#10b981" stroke="#fff" strokeWidth="2" />
-      </svg>
-      <span className="absolute bottom-0 right-0 text-[8px] px-1 bg-white/80 text-slate-700">© OpenStreetMap</span>
-    </div>
+    <svg viewBox={`0 0 ${view.W} ${view.H}`} className="absolute inset-0 w-full h-full" aria-label="Route map">
+      {view.tiles.map((t) => <image key={t.key} href={t.url} x={t.x} y={t.y} width={t.size} height={t.size} />)}
+      {!big && <rect width={view.W} height={view.H} fill={isDark ? 'rgba(2,6,23,0.2)' : 'rgba(255,255,255,0.05)'} />}
+      <polyline points={line} fill="none" stroke="#fff" strokeWidth={big ? 7 : 5} strokeLinejoin="round" strokeLinecap="round" strokeOpacity={big ? 0.85 : 1} />
+      <polyline points={line} fill="none" stroke="#e11d48" strokeWidth={big ? 3.5 : 2.6} strokeLinejoin="round" strokeLinecap="round" strokeOpacity={big ? 0.85 : 1} />
+      <g transform={`translate(${view.arrow.x},${view.arrow.y}) rotate(${view.arrow.deg})`}><path d={big ? 'M-8,-6 L8,0 L-8,6 Z' : 'M-5,-4 L5,0 L-5,4 Z'} fill="#e11d48" stroke="#fff" strokeWidth="1" /></g>
+      <circle cx={view.pts[0][0]} cy={view.pts[0][1]} r={big ? 7 : 5} fill="#10b981" stroke="#fff" strokeWidth="2" />
+    </svg>
+  );
+}
+
+// A small map on each card; hovering it opens a large, more detailed one (road names readable) by the pointer.
+export function MiniRouteMap({ path, isDark }) {
+  const small = React.useMemo(() => routeView(path, 320, 90, 140, 14), [path]);
+  const [hover, setHover] = useState(null); // { x, y } of the pointer
+  const hovering = Boolean(hover);
+  // worked out once per hover, not on every pointer move
+  const big = React.useMemo(() => (hovering ? routeView(path, 720, 360, 480, 30, 1) : null), [hovering, path]);
+  if (!small) return null;
+  let pop = null;
+  if (hover && big) {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const left = hover.x + 24 + big.W > vw ? Math.max(8, hover.x - big.W - 24) : hover.x + 24;
+    const top = Math.min(Math.max(8, hover.y - big.H / 2), vh - big.H - 8);
+    pop = (
+      <div className={`fixed z-50 rounded-xl overflow-hidden border-2 shadow-2xl pointer-events-none ${isDark ? 'border-white/20' : 'border-[#2E2B27]/20'}`} style={{ left, top, width: big.W, height: big.H }}>
+        <RouteMapSvg view={big} isDark={isDark} big />
+        <span className="absolute bottom-0 right-0 text-[9px] px-1 bg-white/85 text-slate-700">© OpenStreetMap contributors</span>
+      </div>
+    );
+  }
+  return (
+    <>
+      <div className={`relative mt-3 rounded-lg overflow-hidden border cursor-zoom-in ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`} style={{ aspectRatio: `${small.W} / ${small.H}` }}
+        onMouseMove={(e) => setHover({ x: e.clientX, y: e.clientY })} onMouseLeave={() => setHover(null)}>
+        <RouteMapSvg view={small} isDark={isDark} />
+        <span className="absolute bottom-0 right-0 text-[8px] px-1 bg-white/80 text-slate-700">© OpenStreetMap</span>
+      </div>
+      {pop}
+    </>
+  );
+}
+
+// A route's name with a pencil to rename it (saved in IMS; kept if Komoot re-imports the route).
+function RouteName({ route, onRename, className = '', isDark }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(route.name);
+  const save = async () => {
+    const name = draft.trim();
+    if (name && name !== route.name) await onRename(route, name);
+    setEditing(false);
+  };
+  if (editing) {
+    return (
+      <span className="flex items-center gap-1 min-w-0">
+        <input autoFocus value={draft} maxLength={120} onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setDraft(route.name); setEditing(false); } }}
+          className={`flex-1 min-w-0 px-2 py-1 rounded-lg text-xs font-bold outline-none border ${isDark ? 'bg-slate-900 border-emerald-500/50 text-slate-100' : 'bg-white border-emerald-600/50'}`} aria-label="Route name" />
+        <button onClick={save} className="p-1 rounded text-emerald-500 hover:bg-emerald-500/10" title="Save name"><Check size={13} /></button>
+        <button onClick={() => { setDraft(route.name); setEditing(false); }} className="p-1 rounded text-slate-400 hover:bg-white/10" title="Cancel"><X size={13} /></button>
+      </span>
+    );
+  }
+  return (
+    <span className={`group inline-flex items-center gap-1 min-w-0 ${className}`}>
+      <span className="truncate" title={route.name}>{route.name}</span>
+      <button onClick={() => { setDraft(route.name); setEditing(true); }} className="p-0.5 rounded text-slate-400 hover:text-emerald-500 shrink-0" title="Rename this route" aria-label={`Rename ${route.name}`}><Pencil size={11} /></button>
+    </span>
   );
 }
 
@@ -77,7 +139,7 @@ function RangeSlider({ min, max, step, value, onChange, format, isDark, label })
   );
 }
 
-export default function RunRouteFinderTab({ call, send, units, isDark, panel, label, btn, ghost, onUseRoute, onDeleteRoute, showToast, komootConnected }) {
+export default function RunRouteFinderTab({ call, send, units, isDark, panel, label, btn, ghost, onUseRoute, onDeleteRoute, onRoutesDeleted, onRoutesRenamed, showToast, komootConnected }) {
   const [shape, setShape] = useState('any');
   const [bounds, setBounds] = useState(null); // { maxKm, maxMinutes } from the routes themselves
   const [kmRange, setKmRange] = useState(null); // in the display unit
@@ -86,6 +148,7 @@ export default function RunRouteFinderTab({ call, send, units, isDark, panel, la
   const [searching, setSearching] = useState(false);
   const [dupes, setDupes] = useState(null);
   const [sync, setSync] = useState(null);
+  const [clearing, setClearing] = useState(false);
   const muted = isDark ? 'text-slate-400' : 'text-[#6A645D]';
   const maxDist = bounds ? Math.ceil(units === 'mi' ? bounds.maxKm / KM_PER_MI : bounds.maxKm) : 0;
   const seq = useRef(0);
@@ -158,6 +221,28 @@ export default function RunRouteFinderTab({ call, send, units, isDark, panel, la
     await Promise.all([search(), loadDupes()]);
   };
 
+  // every extra copy in one go, keeping the oldest of each group
+  const deleteAllDupes = async () => {
+    if (!dupes?.duplicates) return;
+    if (!window.confirm(`Delete all ${dupes.duplicates} duplicate cop${dupes.duplicates === 1 ? 'y' : 'ies'}, keeping the oldest in each of the ${dupes.groups.length} groups? This removes them from IMS only - Komoot is untouched, and syncing won't bring them back.`)) return;
+    setClearing(true);
+    try {
+      const r = await call('/api/planner/routes/duplicates', { method: 'DELETE' });
+      onRoutesDeleted?.(r.deleted.map((d) => d.id));
+      showToast?.(`Deleted ${r.deleted.length} duplicate route${r.deleted.length === 1 ? '' : 's'}`);
+      await Promise.all([search(), loadDupes()]);
+    } catch (err) { showToast?.(err.message, 'error'); } finally { setClearing(false); }
+  };
+
+  const renameRoute = async (r, name) => {
+    try {
+      await call(`/api/planner/routes/${r.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      onRoutesRenamed?.();
+      showToast?.(`Renamed to "${name}"`);
+      await Promise.all([search(), loadDupes()]);
+    } catch (err) { showToast?.(err.message, 'error'); }
+  };
+
   const pill = (active) => `px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all ${
     active ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white border-transparent' : isDark ? 'border-white/10 text-slate-300 hover:bg-white/5' : 'border-[#2E2B27]/15 text-[#2E2B27] hover:bg-[#2E2B27]/5'}`;
   const sourceLabel = (r) => (r.source === 'komoot' ? `Komoot${r.account ? ` (${r.account})` : ''}` : r.source.toUpperCase());
@@ -187,7 +272,7 @@ export default function RunRouteFinderTab({ call, send, units, isDark, panel, la
         <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
           <h3 className="text-sm font-black uppercase tracking-wide flex items-center gap-2"><Search size={16} className="text-emerald-500" /> Route finder</h3>
           {komootConnected && sync && !sync.missing && !importing && sync.saved != null && (
-            <span className={`text-[11px] flex items-center gap-1.5 ${muted}`}><Check size={12} className="text-emerald-500" /> All {sync.saved} Komoot saved routes included
+            <span className={`text-[11px] flex items-center gap-1.5 ${muted}`}><Check size={12} className="text-emerald-500" /> All {sync.saved - (sync.hidden || 0)} Komoot saved routes included{sync.hidden ? ` (${sync.hidden} you deleted are left out)` : ''}
               <button onClick={() => { loadSync(); }} className="p-1 rounded hover:bg-white/10" title="Check Komoot for new saved routes"><RefreshCw size={11} /></button></span>
           )}
         </div>
@@ -206,7 +291,7 @@ export default function RunRouteFinderTab({ call, send, units, isDark, panel, la
             <RangeSlider label="Time of run" min={0} max={bounds.maxMinutes} step={5} value={minRange} onChange={setMinRange} isDark={isDark} format={(v) => hm(v)} />
           )}
         </div>
-        <p className={`text-[11px] mt-3 ${muted}`}>Time of run is how long you took the last time you ran each route (from your activities), or an estimate from your current fitness if you never have. Leave a slider at its ends for any.</p>
+        <p className={`text-[11px] mt-3 ${muted}`}>Time of run is how long you took the last time you ran each route (from your activities), or an estimate from your current fitness if you never have. Distance goes up to your longest running route and time up to your longest run on Strava (rounded up); leave a slider at its ends for any.</p>
 
         <div className="mt-5">
           <div className={`text-xs mb-2 flex items-center gap-2 ${muted}`}>
@@ -219,8 +304,8 @@ export default function RunRouteFinderTab({ call, send, units, isDark, panel, la
                 <div key={r.id} className={`rounded-xl border p-4 ${isDark ? 'border-white/10 bg-slate-950/40' : 'border-[#2E2B27]/10 bg-[#FAF7F2]'}`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="font-bold text-sm truncate" title={r.name}>{r.name}</div>
-                      <div className={`text-[11px] ${muted}`}>{r.shapeLabel} · from {sourceLabel(r)}
+                      <div className="font-bold text-sm"><RouteName route={r} onRename={renameRoute} isDark={isDark} /></div>
+                      <div className={`text-[11px] ${muted}`}>{r.shapeLabel}{!r.running && r.sport ? <span className="text-amber-500 font-bold"> · {r.sport === 'mtb' ? 'mountain bike' : r.sport} route</span> : null} · from {sourceLabel(r)}
                         {komootLink(r) && <a href={komootLink(r)} target="_blank" rel="noreferrer" className="ml-1.5 inline-flex items-center gap-0.5 text-sky-500 hover:underline">Komoot <ExternalLink size={10} /></a>}</div>
                     </div>
                     <button onClick={() => onUseRoute?.(r.id)} className={btn} title="Open this route in the Run Planner">Plan this run</button>
@@ -247,9 +332,17 @@ export default function RunRouteFinderTab({ call, send, units, isDark, panel, la
       <div className={panel}>
         <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
           <h3 className="text-sm font-black uppercase tracking-wide flex items-center gap-2"><Copy size={16} className="text-amber-500" /> Duplicate routes</h3>
-          <button onClick={loadDupes} className={ghost}><RotateCw size={13} /> Check again</button>
+          <div className="flex items-center gap-2">
+            {dupes?.duplicates > 0 && (
+              <button onClick={deleteAllDupes} disabled={clearing} className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-rose-600 hover:bg-rose-500 text-white disabled:opacity-50"
+                title="Delete every extra copy, keeping the oldest in each group">
+                {clearing ? <RotateCw size={13} className="animate-spin" /> : <Trash2 size={13} />} Delete all duplicates ({dupes.duplicates})
+              </button>
+            )}
+            <button onClick={loadDupes} className={ghost}><RotateCw size={13} /> Check again</button>
+          </div>
         </div>
-        <p className={`text-[11px] mb-3 ${muted}`}>Saved routes that are the same line on the map, run the same way round (lengths within 3%, each lying on the other), whatever they are called. The oldest in each group is marked to keep. Deleting removes the copy from IMS only - to tidy Komoot itself, open the route there.</p>
+        <p className={`text-[11px] mb-3 ${muted}`}>Saved routes that are the same line on the map, run the same way round (lengths within 3%, each lying on the other), whatever they are called. The oldest in each group is marked to keep. Deleting removes the copy from IMS only, and syncing with Komoot won't bring it back - to tidy Komoot itself, open the route there.</p>
         {!dupes && <p className={`text-xs ${muted}`}>Comparing routes...</p>}
         {dupes && !dupes.groups.length && <p className="text-xs flex items-center gap-1.5 text-emerald-500"><Check size={14} /> No duplicates among your {dupes.routes} saved routes.</p>}
         {dupes?.groups.map((g, gi) => (
@@ -258,7 +351,7 @@ export default function RunRouteFinderTab({ call, send, units, isDark, panel, la
             {g.map((r, i) => (
               <div key={r.id} className="flex items-center justify-between gap-2 text-xs py-1">
                 <span className="truncate">
-                  <span className="font-semibold">{r.name}</span>
+                  <RouteName route={r} onRename={renameRoute} isDark={isDark} className="font-semibold" />
                   <span className={muted}> · {sourceLabel(r)} · saved {new Date(r.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</span>
                 </span>
                 <span className="flex items-center gap-1 shrink-0">

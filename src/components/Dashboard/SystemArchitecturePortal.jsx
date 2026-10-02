@@ -110,7 +110,7 @@ const spokes = (live) => [
   {
     key: 'services', title: 'Services', icon: Boxes, accent: 'indigo', count: 29, side: 'top',
     rows: [
-      { icon: Bell, main: 'Core functions - 10', sub: 'Weather, doorbell, alarms, timers, reminders, birthdays, calendar, memories, recordings, tasks' },
+      { icon: Bell, main: 'Core functions - 10', sub: 'Weather, doorbell, alarms, timers, reminders (1d–2w look-ahead), birthdays, calendar, memories, recordings, tasks' },
       { icon: Heart, main: 'Personal - 6', sub: 'Day report, Code best practices (with dependency watch), music scanner, board games, campaigns, news' },
       { icon: Droplets, main: 'Health and fitness - 3', sub: 'Blood sugar (clinic AGP report), activities (training load), run planner (live run plan, route finder, retrospective) & T1D Rulebook' },
       { icon: Settings, main: 'Customisation and system - 9', sub: 'Device health, Gemini spend budget, face designer, persona, wake phrases, Wi-Fi, dev ideas, backups, this page' },
@@ -175,6 +175,7 @@ const FINDINGS = [
   { level: 'warn', title: 'Fixed server address', sub: 'The desk terminal connects to 192.168.1.78 (include/config.h) - if the PC gets a new IP, it cannot connect' },
   { level: 'info', title: 'One host', sub: 'Backend, database and tunnel all run on one Windows PC - when it is off, Ims is offline everywhere. Everything is backed up nightly to Google Drive (/ims/backups)' },
   { level: 'info', title: 'Nightscout storage', sub: 'MongoDB free tier - usage shows on the desk screen; old data can be auto-cleared after 3 months' },
+  { level: 'info', title: 'Architecture Modernisation Roadmap', sub: '5-phase implementation plan covering database resilience, telemetry, API caching, task queues and live config (see docs/SYSTEM_ARCHITECTURE_PLAN.md)' },
 ];
 
 const TURN = [

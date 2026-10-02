@@ -56,6 +56,14 @@ const TOOL_ROWS = {
   lookUpFood: [
     ['connections', 'Open Food Facts', 'Queried open food nutritional database for carbohydrate density and serving sizes']
   ],
+  askGemini: [
+    ['connections', 'Google Gemini', 'Plain Gemini answer (with Google Search) for a question outside IMS tools'],
+    ['services', 'Personal - 6', 'Ims fallback service shortened it for retelling in persona']
+  ],
+  addRunNote: [
+    ['data', 'SQLite - app.db', 'Saved a note on the latest run (run_note) for its retrospective'],
+    ['services', 'Health and fitness - 3', 'Run learning service lines the note up with the glucose trace']
+  ],
   clearOldNightscoutData: [
     ['connections', 'Nightscout (Heroku + MongoDB)', 'Initiated storage cleanup check on MongoDB Nightscout instance']
   ],

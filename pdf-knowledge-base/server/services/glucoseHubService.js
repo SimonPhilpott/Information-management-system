@@ -355,7 +355,7 @@ export async function logCarbs({ grams, food, at, source = 'voice', insulin = nu
   const g = Math.round(Number(grams));
   if (!Number.isFinite(g) || g <= 0 || g > 400) throw new Error('Give the carbs in grams (1 to 400).');
   const t = at ? Number(new Date(at)) : Date.now();
-  const info = db.prepare('INSERT INTO carb_log (at, grams, food, source, insulin) VALUES (?, ?, ?, ?, ?)').run(t, g, food ? String(food).slice(0, 120) : null, ['voice', 'photo', 'page'].includes(source) ? source : 'voice', null);
+  const info = db.prepare('INSERT INTO carb_log (at, grams, food, source, insulin) VALUES (?, ?, ?, ?, ?)').run(t, g, food ? String(food).slice(0, 120) : null, ['voice', 'photo', 'page', 'run'].includes(source) ? source : 'voice', null);
   let ns;
   try { ns = await postCarbsToNightscout(g, food, t); } catch (err) { ns = { sent: false, reason: err.message }; }
   if (ns.id || ns.identifier) db.prepare('UPDATE carb_log SET ns_id = ?, ns_identifier = ? WHERE id = ?').run(ns.id || null, ns.identifier || null, info.lastInsertRowid);

@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Play, Pause, Square, RotateCcw, FastForward, Rewind, Sparkles, CheckCircle2, AlertTriangle, Clock, Mountain, Cookie, Shield, HeartPulse, ChevronRight, History, Flag } from 'lucide-react';
 import RunGaugesBar from './RunGaugesBar';
-import PostRunReviewPanel from './PostRunReviewPanel';
+import RunPlanChart from './RunPlanChart';
+import RetroChart from './RetroChart';
+import FlythroughMap from './FlythroughMap';
 import { dist, paceText, paceToMinPerKm } from '../../../utils/units';
 
 /**
- * Tab 3: Interactive Run Flythrough & Retrospective Player
+ * Tab 3: Interactive Run Flythrough
  * Replays completed runs or simulated plans with an animated runner locator,
- * sweeping radial gauges, jump-to-time timeline scrubber, post-run recovery replay, and AI retrospective scrutiny.
+ * sweeping radial gauges, jump-to-time timeline scrubber and post-run recovery replay. The review of a run lives in Run Learning.
  */
 export default function RunFlythroughTab({
   route,
@@ -19,16 +21,48 @@ export default function RunFlythroughTab({
   btnClass = '',
   ghostClass = '',
   targets = null,
-  onPlanRoute = null
+  onPlanRoute = null,
+  call = null,
+  send = null
 }) {
   // Mode: 'plan' (simulated plan) or 'history' (actual past completed run)
   const [replayMode, setReplayMode] = useState('plan');
   const [selectedRunIdx, setSelectedRunIdx] = useState(0);
   const [includeRecovery, setIncludeRecovery] = useState(true);
 
+  // a completed run's own retrospective (real glucose against the plan), for the replay chart
+  const historyId = replayMode === 'history' ? routeHistory?.runs?.[selectedRunIdx]?.id : null;
+  const [retro, setRetro] = useState(null);
+  useEffect(() => {
+    if (!historyId || !call) return undefined;
+    let live = true;
+    call(`/api/planner/retro/${historyId}`).then((d) => live && setRetro({ id: historyId, ...d })).catch(() => live && setRetro({ id: historyId }));
+    return () => { live = false; };
+  }, [historyId, call]);
+  const retroA = retro?.id === historyId && retro?.analysis?.available ? retro.analysis : null;
+
+  // where the runner is on the map: km by minute from the plan (or the run's own course), else even pace
+  const courseByMinute = replayMode === 'history' ? (retroA?.elevation || null) : (plan?.elevation || null);
+  const kmAtMin = (m) => {
+    if (!courseByMinute?.length) return null;
+    let best = courseByMinute[0];
+    for (const p of courseByMinute) { if (p[0] > m) break; best = p; }
+    return best[1];
+  };
+  const minAtKm = (km) => (courseByMinute?.find((p) => p[1] >= km)?.[0] ?? null);
+  const mapStops = replayMode === 'history'
+    ? (retroA?.intakesOnRunClock || []).filter((x) => x.grams > 0).map((x) => ({ km: kmAtMin(x.minute) ?? 0, grams: x.grams }))
+    : (plan?.plan?.stops || []).map((x) => ({ km: x.km ?? 0, grams: x.grams }));
+
   // Playback state
   const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState(4); // 1x, 2x, 4x, 8x, 16x
+  const [playbackSpeed, setPlaybackSpeed] = useState(4); // forwards 1x-100x, or negative to play backwards
+  // << and >> step through these, like a video player: >> faster forwards, << slower and then backwards
+  const SPEEDS = [-100, -64, -32, -16, -8, -4, -2, -1, 1, 2, 4, 8, 16, 32, 64, 100];
+  const stepSpeed = (dir) => setPlaybackSpeed((cur) => {
+    const i = SPEEDS.indexOf(cur);
+    return SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, (i < 0 ? SPEEDS.indexOf(4) : i) + dir))];
+  });
   const [currentSec, setCurrentSec] = useState(0);
   const animFrameRef = useRef(null);
   const lastTickTimeRef = useRef(null);
@@ -161,6 +195,10 @@ export default function RunFlythroughTab({
             setIsPlaying(false);
             return totalDurationSec;
           }
+          if (next <= 0) { // rewound back to the start
+            setIsPlaying(false);
+            return 0;
+          }
           return next;
         });
       }
@@ -206,11 +244,11 @@ export default function RunFlythroughTab({
           <div className="flex items-center gap-2">
             <Sparkles size={16} className="text-sky-500" />
             <h2 className={`text-xs font-black uppercase tracking-wider ${isDark ? 'text-slate-200' : 'text-[#2E2B27]'}`}>
-              Interactive Run Flythrough & Retrospective Player
+              Interactive Run Flythrough
             </h2>
           </div>
           <p className={`text-[11px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>
-            Simulate your course replay, audit post-run glucose kinetics (+2h recovery), and inspect milestone carb arrivals.
+            Replay the planned course, or a run you've done against its plan, with the map, chart and gauges in step. The review of each run is in Run Learning.
           </p>
         </div>
 
@@ -261,7 +299,7 @@ export default function RunFlythroughTab({
                   : 'text-[#6A645D] hover:text-[#2E2B27]'
               }`}
             >
-              Completed Run Retrospective
+              Completed Run
             </button>
           </div>
 
@@ -324,76 +362,31 @@ export default function RunFlythroughTab({
           </div>
         </div>
 
-        {/* Simplified course track representation with glowing runner bead */}
-        <div className={`relative w-full h-44 rounded-xl overflow-hidden border flex items-center justify-center ${isDark ? 'bg-slate-950/80 border-white/10' : 'bg-[#FAF7F2] border-[#2E2B27]/15'}`}>
-          {route?.path && route.path.length > 1 ? (
-            <svg viewBox="0 0 600 160" className="w-full h-full p-4" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="flythroughGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stopColor="#0284c7" stopOpacity="0.4" />
-                  <stop offset="100%" stopColor="#0284c7" stopOpacity="0.0" />
-                </linearGradient>
-              </defs>
-
-              {/* Course Track Line */}
-              {courseTimeline.length > 1 && (
-                <path
-                  d={courseTimeline.filter((pt) => !pt.isRecovery).map((pt, i) => {
-                    const x = (pt.sec / runDurationSec) * (finishLineFrac * 580) + 10;
-                    const y = 140 - (pt.eleM / 200) * 100;
-                    return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-                  }).join(' ')}
-                  fill="none"
-                  stroke="#38bdf8"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                />
-              )}
-
-              {/* Finish Line Marker if Recovery Enabled */}
-              {includeRecovery && (
-                <g transform={`translate(${finishLineFrac * 580 + 10}, 20)`}>
-                  <line x1="0" y1="0" x2="0" y2="120" stroke="#a855f7" strokeWidth="1.5" strokeDasharray="4 2" />
-                  <rect x="-24" y="-12" width="48" height="14" rx="3" fill="#581c87" stroke="#a855f7" strokeWidth="1" />
-                  <text x="0" y="-2" textAnchor="middle" fontSize="8" fontWeight="bold" fill="#f3e8ff">
-                    FINISH
-                  </text>
-                </g>
-              )}
-
-              {/* Active Runner Bead */}
-              <g transform={`translate(${Math.min(finishLineFrac * 580 + 10, (currentProgressFrac * 580) + 10)}, ${140 - (currentSample.eleM / 200) * 100})`}>
-                <circle
-                  r="10"
-                  fill={currentSample.isRecovery ? '#c084fc' : '#38bdf8'}
-                  fillOpacity="0.3"
-                  className="animate-ping"
-                />
-                <circle
-                  r="6"
-                  fill={currentSample.isRecovery ? '#a855f7' : '#38bdf8'}
-                  stroke="#ffffff"
-                  strokeWidth="2"
-                />
-              </g>
-
-              {/* Carb Stops Flag Markers */}
-              {stops.map((s, idx) => {
-                const stopSec = s.minute * 60;
-                const sx = (stopSec / totalDurationSec) * 580 + 10;
-                return (
-                  <g key={idx} transform={`translate(${sx}, 30)`}>
-                    <line x1="0" y1="0" x2="0" y2="100" stroke="#facc15" strokeWidth="1" strokeDasharray="3 3" />
-                    <rect x="-18" y="-14" width="36" height="16" rx="4" fill="#854d0e" stroke="#facc15" strokeWidth="1" />
-                    <text x="0" y="-3" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#fef08a">
-                      {s.grams}g
-                    </text>
-                  </g>
-                );
-              })}
-            </svg>
-          ) : (
-            <div className={`text-xs ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>No route geometry loaded for flythrough.</div>
+        {/* The replay on the same chart as the Run Plan (glucose, water, insulin on board, course), with the
+            runner's position as a playhead - click anywhere on it to jump there */}
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-3 items-stretch">
+          <div className={`rounded-xl border p-3 ${isDark ? 'border-white/10 bg-slate-950/30' : 'border-[#2E2B27]/10 bg-white'}`}>
+            {replayMode === 'history' && retroA ? (
+              <RetroChart a={retroA} notes={retro.notes || []} isDark={isDark} units={units} playheadMin={currentSec / 60} onSeek={(m) => { setCurrentSec(Math.round(Math.min(totalDurationSec, m * 60))); }} />
+            ) : replayMode === 'history' && historyId ? (
+              <div className={`text-xs py-10 text-center ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>{retro?.id === historyId ? (retro?.analysis?.reason || retro?.error || 'No glucose data for this run.') : 'Loading this run...'}</div>
+            ) : plan?.prediction?.length ? (
+              <RunPlanChart plan={plan} isDark={isDark} units={units} playheadMin={currentSec / 60} onSeek={(m) => { setCurrentSec(Math.round(Math.min(totalDurationSec, m * 60))); }} />
+            ) : (
+              <div className={`text-xs py-10 text-center ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>Pick a route on the Run Planner tab - its plan is replayed here.</div>
+            )}
+          </div>
+          {/* the route map, with the runner moving as the replay plays - click the route to jump there */}
+          {route?.path?.length > 1 && (
+            <div className="h-[240px] lg:h-auto lg:min-h-[300px] order-first lg:order-none">
+              <FlythroughMap
+                route={route}
+                runnerKm={currentSample.isRecovery ? (route.distanceKm || 0) : (kmAtMin(currentSec / 60) ?? currentSample.distKm)}
+                finished={currentSample.isRecovery}
+                stops={mapStops}
+                onSeekKm={(km) => { const m = minAtKm(km) ?? (km / (route.distanceKm || 1)) * (runDurationSec / 60); setCurrentSec(Math.round(m * 60)); }}
+              />
+            </div>
           )}
         </div>
 
@@ -501,35 +494,25 @@ export default function RunFlythroughTab({
               )}
             </div>
 
-            {/* Speed Multipliers */}
-            <div className="flex items-center gap-1">
-              <span className={`text-[10px] font-bold uppercase mr-1 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>Speed:</span>
-              {[1, 2, 4, 8, 16].map((spd) => (
-                <button
-                  key={spd}
-                  onClick={() => setPlaybackSpeed(spd)}
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
-                    playbackSpeed === spd
-                      ? 'bg-sky-500 text-white'
-                      : isDark
-                      ? 'bg-slate-800 text-slate-400 hover:text-white'
-                      : 'bg-[#FAF7F2] text-[#6A645D] hover:text-[#2E2B27] border border-[#2E2B27]/10'
-                  }`}
-                >
-                  {spd}x
-                </button>
-              ))}
+            {/* Speed: << rewind / slower   value   faster / fast forward >> */}
+            <div className="flex items-center gap-1.5" role="group" aria-label="Playback speed">
+              <button onClick={() => stepSpeed(-1)} disabled={playbackSpeed === SPEEDS[0]} title="Slower - below 1x it plays backwards"
+                className={`w-8 h-8 rounded-lg flex items-center justify-center border active:scale-95 disabled:opacity-30 ${isDark ? 'border-white/10 bg-slate-800 text-slate-200 hover:bg-slate-700' : 'border-[#2E2B27]/15 bg-[#FAF7F2] text-[#2E2B27] hover:bg-white'}`} aria-label="Rewind / slower">
+                <Rewind size={15} />
+              </button>
+              <span className={`min-w-[64px] text-center text-sm font-black tabular-nums px-2 py-1 rounded-lg ${playbackSpeed < 0 ? (isDark ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-100 text-amber-900') : (isDark ? 'bg-sky-500/15 text-sky-300' : 'bg-sky-100 text-sky-900')}`}
+                title={playbackSpeed < 0 ? 'Playing backwards' : 'Playing forwards'}>
+                {playbackSpeed < 0 ? `◀ ${-playbackSpeed}×` : `${playbackSpeed}×`}
+              </span>
+              <button onClick={() => stepSpeed(1)} disabled={playbackSpeed === SPEEDS[SPEEDS.length - 1]} title="Faster forwards"
+                className={`w-8 h-8 rounded-lg flex items-center justify-center border active:scale-95 disabled:opacity-30 ${isDark ? 'border-white/10 bg-slate-800 text-slate-200 hover:bg-slate-700' : 'border-[#2E2B27]/15 bg-[#FAF7F2] text-[#2E2B27] hover:bg-white'}`} aria-label="Fast forward / faster">
+                <FastForward size={15} />
+              </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* RETROSPECTIVE - only for a real completed run, from its own glucose trace */}
-      <PostRunReviewPanel
-        activityId={replayMode === 'history' ? routeHistory?.runs?.[selectedRunIdx]?.id : null}
-        isDark={isDark}
-        onPlanRoute={onPlanRoute}
-      />
     </div>
   );
 }

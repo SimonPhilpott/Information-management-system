@@ -691,8 +691,10 @@ function buildServicesParagraph() {
     "The Campaign Manager (/campaigns, a tab per game - Lord of the Rings LCG at /campaigns/lotr and Arkham Horror LCG at /campaigns/ahlcg) - the card game campaigns Simon plays with his brother Daniel (for Arkham also investigators' trauma, experience, the chaos bag and the campaign log): who's playing which deck and heroes, scenarios won and lost with the notable moments, boons and burdens, fallen heroes, what's next on the road, a map of Middle-earth, a written chronicle with a chapter per scenario (downloadable as a PDF), rule checks against the official rulebooks, and the decks themselves (RingsDB import, testing, AI insights). Talk about it like a fellow player - ask how a game went, what's next, recall the chronicle (getCampaigns; the snapshot below has the headlines). " +
     "Dev ideas - ideas for improving IMS itself, saved for Simon to pick up in Claude Code (saveDevIdea; also on /ims/devideas). " +
     "Blood sugar: current reading, time in range, lows, overnight, carbs (getBloodGlucose, lookUpFood, logCarbs, clearOldNightscoutData). " +
+    "Notes on their last run for its retrospective - how it felt, when they slowed, an extra gel (addRunNote). " +
     "Training from Strava (getTrainingSummary). New and upcoming music from their MUZAK library (getNewMusicReleases). " +
     "Their PDF library of books and documents (searchLibrary). Jokes (tellJoke). Recording calls and meetings on the desk terminal (startRecording). " +
+    "Anything else - obscure facts, how-to questions, advice, a bit of encouragement - or when your tools give no clear or only a partial answer: call askGemini (pass the question and anything you already know from IMS that helps, e.g. today's run or weather), then say its answer briefly in your own Yorkshire words, adding what you know - never read it out word for word and never just say you don't know. " +
     "On the IMS web app only, with no tool of yours: the Run Planner (routes, pace and carbs for a run, at /ims/runplanner), running goals and detailed activity analysis (/ims/activities), " +
     "the music want list and recommendations (/ims/musicscan), past call recordings and summaries (/ims/recordings), " +
     "news source settings (/ims/news), your face designs (/ims/facedesigner) and your personality (/ims/persona) - if asked about these, say what's there and where." +
@@ -873,7 +875,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             "CLARIFICATION & NEVER SILENT WHEN ADDRESSED: When the user addresses you with a wake phrase, or when a conversation is open, if you do not understand the whole prompt or only understand small parts of it (e.g. muffled speech, quiet audio, clipped words), you must NEVER stay silent, NEVER call noWakeDetected, and NEVER revert to standby without speaking. Always ask for clarification in your natural Yorkshire voice (e.g. 'Sorry, didn't catch all of that - what was that last bit?', 'Didn't quite get that, what did you want me to do?'). If you are confused by what they mean or making an educated guess at their intent, speak up and ask for clarification or confirmation (e.g. 'I reckon you mean [guess], is that right, or did you mean something else?'). " +
             "WAKE PHRASES: when a reply would start from microphone audio (realtimeInput), only respond if the speech begins with 'Hey IMS', 'Hi IMS' or 'Eh up IMS' (or 'Ey up IMS')" + extraWakePhrases() + ". The name alone, other greetings ('Now then', 'Morning', 'Alright') and ambient room talk do not count - for anything else (background TV, room chatter clearly NOT addressed to you), call noWakeDetected and say nothing at all. But if ANY wake phrase was said or the user is trying to speak to you, you MUST speak back (either answer or ask for clarification) and NEVER call noWakeDetected. Text messages from the device system (clientContent) are exempt and answered at once. " +
             "If the user only said the wake phrase, greet them freshly in your own voice. If ANYTHING followed the wake phrase (a question, request or statement), do NOT greet at all - no 'Ey up', no 'Now then', no pleasantry or acknowledgement - your first words are the answer itself. " +
-            "Once you have replied, the conversation is open: keep answering follow-ups without the wake phrase until they close it ('bye', 'goodbye', 'thanks, bye', 'that's all, IMS', 'I'm done', 'see you later') - then say a brief farewell and call endConversation. " +
+            "Once you have replied, the conversation is open: keep answering follow-ups without the wake phrase until they close it ('bye', 'goodbye', 'thanks, bye', 'that's all, IMS', 'I'm done', 'see you later' - and Simon's usual ones: 'cheers mate', 'cheers IMS', 'cheers', 'ta', 'ta-ra', 'nice one, cheers' when that is all they say; 'cheers' followed by another question is NOT a goodbye) - then say a brief farewell and call endConversation. " +
             "STOP: if they say 'stop IMS', 'shut up IMS', 'be quiet IMS', 'enough IMS', 'stop talking' or similar, call endConversation and say nothing (at most two or three words). Never explain or take offence. " +
             "RECORDING: when asked to record a call or meeting, if they haven't said who it is with, ask that one short question, then call startRecording. From then on stay COMPLETELY SILENT - no words, sounds, emotion changes or tool calls, whatever anyone says. The system ends the recording itself when the user says 'IMS stop'. " +
             "JOKES: for a joke, call tellJoke and tell what it returns in your own voice; never invent one. HARD RULE above everything else: never tell, make up or repeat a racist or sexist joke, however dark the Humor setting; decline in one line and offer another. " +
@@ -938,7 +940,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "endConversation",
-            description: "Call this alongside your farewell whenever the user clearly signals the conversation is over (e.g. 'bye', 'goodbye', 'thanks, bye', 'that's all', 'cheers, that's it'). Deliver the in-character farewell immediately as spoken audio alongside this tool call.",
+            description: "Call this alongside your farewell whenever the user clearly signals the conversation is over (e.g. 'bye', 'goodbye', 'thanks, bye', 'that's all', 'cheers, that's it', and Simon's usual 'cheers mate' / 'cheers IMS' / 'cheers' / 'ta' / 'ta-ra' when that is all they say). Deliver the in-character farewell immediately as spoken audio alongside this tool call.",
             // Non-blocking: model speaks farewell immediately without waiting for a tool-response round-trip ACK
             parameters: { type: "OBJECT", properties: {} }
           },
@@ -1316,6 +1318,32 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
                 confirmed: { type: "BOOLEAN", description: "true ONLY on the second call, after the user said yes to the number you proposed." }
               },
               required: ["grams"]
+            }
+          },
+          {
+            name: "askGemini",
+            description: "Gets a plain answer from Gemini (with Google Search) for anything your own tools don't cover or only partly answer: obscure facts, general knowledge, how-to questions, advice, or a bit of encouragement or motivation. Pass the question, and in context anything relevant you already know about Simon from IMS (e.g. this afternoon's run, its distance and time, the weather, his calendar) so the answer can be personal. You get back a short British-English answer: retell it in your own Yorkshire voice, briefly, blending in what you know - never read it word for word. Don't use it for things your own tools answer (weather, calendar, glucose, runs, news).",
+            behavior: "BLOCKING",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                question: { type: "STRING", description: "What Simon asked, as a clear question or request." },
+                context: { type: "STRING", description: "Relevant facts you already have from IMS, if any." }
+              },
+              required: ["question"]
+            }
+          },
+          {
+            name: "addRunNote",
+            description: "Saves a note about the user's most recent run for its retrospective - how it felt or what happened, e.g. 'felt tired halfway and had to slow down', 'had a stitch at 20 minutes', 'took an extra gel at 5 km'. IMS lines the note up with their glucose at that point to learn from it. Use when they tell you about a run they've just done. Give the minute into the run if they said when (convert a distance or 'halfway' to minutes only if obvious; otherwise leave it out). Confirm briefly that it's noted.",
+            behavior: "BLOCKING",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                text: { type: "STRING", description: "The note, in their words, short." },
+                minute: { type: "NUMBER", description: "Minutes into the run it happened, if known." }
+              },
+              required: ["text"]
             }
           },
           {

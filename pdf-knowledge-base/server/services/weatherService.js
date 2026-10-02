@@ -44,8 +44,16 @@ export function getHome() {
   try { return { ...DEFAULT_HOME, ...JSON.parse(getSetting(HOME_KEY) || '{}') }; } catch { return { ...DEFAULT_HOME }; }
 }
 
+// A saved place becomes home exactly as saved (no new look-up that could land somewhere else); anything else is
+// looked up. The old home moves into the saved places, so it can be kept or deleted there.
 export async function setHome(query) {
-  const loc = await geocode(query, { strict: true });
+  const q = String(query || '').trim();
+  const saved = listPlaces().find((p) => p.name.toLowerCase() === q.toLowerCase());
+  const loc = saved || await geocode(q, { strict: true });
+  const old = getHome();
+  const places = listPlaces().filter((p) => p.name.toLowerCase() !== loc.name.toLowerCase() && p.name.toLowerCase() !== old.name.toLowerCase());
+  if (old.name.toLowerCase() !== loc.name.toLowerCase()) places.push(old);
+  setSetting(PLACES_KEY, JSON.stringify(places));
   setSetting(HOME_KEY, JSON.stringify(loc));
   cache.clear();
   return loc;
@@ -542,8 +550,7 @@ export async function getWeather({ location = '', days = 2, hourly = false, days
       } : null,
       forecast,
     };
-    if (hourly) {
-      // the Weather page's "sounds something like" preview (not for Ims - see sayHours)
+    // the Yorkshire-style retelling: shown on the Weather page, and given to Ims as the style to speak in
       const leads = { Morning: 'This morning', Afternoon: 'This afternoon', Evening: 'This evening', Overnight: 'Overnight' };
       const byPeriod = (_name, from, to) => restOfToday.filter((h) => h.hour >= from && h.hour < to);
       // one day seed, stepped per period, so neighbouring periods don't repeat the same phrase
@@ -558,13 +565,25 @@ export async function getWeather({ location = '', days = 2, hourly = false, days
       if (forecast[0]?.unusual && restSay.length) {
         payload.sounds_like.rest_of_today = restSay.join(' ').replace(/\.$/, ` - ${UNUSUAL_SAY[forecast[0].unusual.notes[0].kind] || 'not what you\'d expect for the time o\' year'}.`);
       }
+    // a particular day asked for ("a week on Saturday") gets its own example
+    if (requested && !requested.error) {
+      const dayName = new Date(`${requested.date}T12:00`).toLocaleDateString('en-GB', { weekday: 'long' });
+      const lead = requested.days_ahead === 0 ? 'Today' : requested.days_ahead === 1 ? 'Tomorrow' : `On ${dayName}`;
+      payload.sounds_like.requested_day = sayHours(hours.filter((h) => h.date === requested.date && h.hour >= 7 && h.hour <= 21), lead, seedOf(`${requested.date}req`), requested.unusual);
+    }
+    // Ims: the facts above are plain English for accuracy - he must retell them in dialect, never read them out
+    payload.how_to_speak = 'Do NOT read the description lines out as written - they are plain-English facts. Retell them the way a Yorkshireman would, in broad Yorkshire dialect and your own words, keeping exactly the same strength of weather. '
+      + `Say it something like this (vary the words every time; this is the style, not a script): "${payload.sounds_like.requested_day || [payload.sounds_like.rest_of_today, payload.sounds_like.tomorrow].filter(Boolean).join(' ')}"`;
+    if (hourly) {
       payload.hourly = ahead.slice(0, 48).map((h) => ({
         time: h.time, hour: h.hour, date: h.date, icon: hourIcon(h), condition: WMO[h.code] || '', temp_c: Math.round(h.temp),
         feels_like_c: Math.round(h.feels), rain_probability_percent: h.prob, rain_mm: r1(h.mm),
         wind_mph: h.windMph, gust_mph: h.gustMph, wind_direction: h.windDir, uv: Math.round(h.uv), is_day: h.isDay,
       }));
     }
-    return payload;
+    // the speaking instruction first, so it is read before the facts
+    const { how_to_speak: speak, ...rest } = payload;
+    return { how_to_speak: speak, ...rest };
   } catch (err) {
     console.error('[Weather] Failed:', err.message);
     return {

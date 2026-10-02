@@ -31,6 +31,7 @@ export default function WeatherPortal({ theme = 'dark', onThemeToggle, setCurren
   const [place, setPlace] = useState('');
   const [data, setData] = useState(null);
   const [places, setPlaces] = useState({ home: null, places: [] });
+  const [newHome, setNewHome] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [dayIdx, setDayIdx] = useState(0);
@@ -110,9 +111,21 @@ export default function WeatherPortal({ theme = 'dark', onThemeToggle, setCurren
               className={`rounded-full border px-3 py-1.5 text-xs outline-none focus:border-sky-500 w-40 ${isDark ? 'bg-slate-900 border-white/10 text-slate-100' : 'bg-white border-slate-300'}`} />
             <button type="submit" className="p-1.5 rounded-full bg-sky-500 text-white hover:bg-sky-600" title="Save this place"><Plus size={14} /></button>
           </form>
-          {place && <button onClick={() => makeHome(place)} className={`text-xs font-bold underline ${muted} hover:text-sky-500`}>Make {place} home</button>}
+          {place && <button onClick={() => makeHome(place)} className="px-3 py-1.5 rounded-full text-xs font-bold bg-amber-500 text-slate-950 hover:bg-amber-400 flex items-center gap-1" title={`${place} becomes home for Ims, the day report and the Run Planner; ${places.home?.name || 'the old home'} stays in your places, where you can delete it`}><Home size={12} /> Make {place} my home</button>}
           <button onClick={load} className={`ml-auto p-2 rounded-xl border ${card}`} title="Refresh"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /></button>
         </div>
+
+        {/* home: change it to a saved place or anywhere else; the old home stays in your places until you delete it */}
+        <form onSubmit={(e) => { e.preventDefault(); if (newHome.trim()) { makeHome(newHome.trim()); setNewHome(''); } }}
+          className={`flex flex-wrap items-center gap-2 text-xs rounded-xl border px-3 py-2 ${card}`}>
+          <Home size={14} className="text-amber-500" />
+          <span>Home is <b>{places.home?.name || '...'}</b>{places.home?.region ? `, ${places.home.region}` : ''} - used by Ims, the day report and the Run Planner.</span>
+          <input value={newHome} onChange={(e) => setNewHome(e.target.value)} placeholder="Change home to..." list="weather-place-names"
+            className={`rounded-full border px-3 py-1 text-xs outline-none focus:border-sky-500 w-44 ${isDark ? 'bg-slate-900 border-white/10 text-slate-100' : 'bg-white border-slate-300'}`} />
+          <datalist id="weather-place-names">{places.places.map((p) => <option key={p.name} value={p.name} />)}</datalist>
+          <button type="submit" className="px-3 py-1 rounded-full bg-sky-500 text-white font-bold hover:bg-sky-600">Set as home</button>
+          <span className={muted}>Pick a saved place or type any town. The old home moves into your places - remove it there with ×.</span>
+        </form>
 
         {error && <div className="p-4 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-500 text-sm flex items-center gap-2"><AlertTriangle size={16} /> {error}</div>}
 

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, AlertTriangle, BatteryCharging, TrendingUp, Lightbulb } from 'lucide-react';
+import { Activity, BatteryCharging, TrendingUp } from 'lucide-react';
 import { dist } from '../../utils/units';
+import TrainingLoadChart from './TrainingLoadChart';
+import Notice from './RunPlanner/Notice';
 
 // Training load and recovery (from Strava, via /api/strava/training-load) - shown on the Run Planner and
 // the Blood sugar page. Fatigue = 7-day load, fitness = 42-day load, form = fitness - fatigue.
@@ -88,16 +90,18 @@ export default function TrainingLoadCard({ isDark = true, units = 'km', compact 
           {data.ramp.pct != null && <span className={`ml-1.5 font-black ${data.ramp.pct > 10 ? 'text-rose-500' : 'text-emerald-500'}`}>{data.ramp.pct > 0 ? '+' : ''}{data.ramp.pct}%</span>}</span>
       </div>
 
-      {!compact && <div className="mb-3"><div className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${muted}`}>Form, last 42 days (below the shaded line = still recovering)</div><FormLine history={data.history} isDark={isDark} /></div>}
+      {!compact && <div className="mb-3">{data.days?.length ? <TrainingLoadChart days={data.days} isDark={isDark} /> : <FormLine history={data.history} isDark={isDark} />}</div>}
 
-      {data.warnings.map((w) => (
-        <div key={w.kind} className={`flex gap-2 text-xs p-2.5 rounded-xl mb-2 border ${w.level === 'high' ? 'border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'}`}>
-          <AlertTriangle size={14} className="shrink-0 mt-0.5" /> {w.text}
-        </div>
-      ))}
-      {data.suggestions.map((s) => (
-        <div key={s} className="flex gap-2 text-xs mb-1"><Lightbulb size={14} className="shrink-0 mt-0.5 text-amber-400" /> {s}</div>
-      ))}
+      {/* one notice in the shared style: the warning(s) as the title, what to do as the detail */}
+      {data.warnings.length > 0 ? (
+        <Notice isDark={isDark} tone={data.warnings.some((w) => w.level === 'high') ? 'stop' : 'warn'} title={data.warnings.map((w) => w.text).join(' ')}>
+          {data.suggestions.join(' ')}
+        </Notice>
+      ) : data.suggestions.length > 0 && (
+        <Notice isDark={isDark} tone={data.status === 'tired' || data.status === 'very tired' || data.status === 'recovering' ? 'info' : 'good'} title={data.suggestions[0]}>
+          {data.suggestions.slice(1).join(' ') || null}
+        </Notice>
+      )}
       {!compact && <p className={`text-[10px] mt-2 ${muted}`}>{data.notes}</p>}
     </div>
   );

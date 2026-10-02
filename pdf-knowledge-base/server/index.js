@@ -105,12 +105,13 @@ import { addIdea as addDevIdea, flagToolFailure } from './services/devIdeasServi
 import { describeCollectionForIms } from './services/boardgamesService.js';
 import { campaignsForIms } from './services/campaignsService.js';
 import phrasesRoutes from './routes/phrases.js';
-import { matchesWake, matchesStop } from './services/phrasesService.js';
+import { matchesWake, matchesStop, noteWakeCandidate } from './services/phrasesService.js';
 import wakeDaemonRoutes from './routes/wakeDaemon.js';
 import { wakeDaemonService, DAEMON_STATES } from './services/wakeDaemonService.js';
 import doorbellRoutes from './routes/doorbell.js';
 import weatherRoutes from './routes/weather.js';
 import searchRoutes from './routes/search.js';
+import runStartRoutes from './routes/runStart.js';
 import { doorbellService } from './services/doorbellService.js';
 import { createTask, describeTasksForIms } from './services/tasksService.js';
 import appDb, { addMemory, getMemories, searchMemories, deleteMemory } from './db/database.js';
@@ -167,6 +168,8 @@ app.use(sessionMiddleware);
 // sign-in routes themselves are open. The device talks over its own TCP link, not this API.
 const requireAdmin = (req, res, next) => {
   if (!req.path.startsWith('/api') || req.path.startsWith('/api/auth') || req.path.startsWith('/api/wake-daemon')) return next();
+  // the Start run button on a phone notification: guarded by its one-time token instead (routes/runStart.js)
+  if (req.path.startsWith('/api/run-start/')) return next();
   if (isApprovedSession(req)) return next();
   // Invited guests: the deck builder only, never invites or anything else in IMS.
   if (isGuestSession(req) && req.path.startsWith('/api/decks/') && !req.path.startsWith('/api/decks/invites')) return next();
@@ -225,6 +228,7 @@ app.use('/api/wake-daemon', wakeDaemonRoutes);
 app.use('/api/doorbell', doorbellRoutes);
 app.use('/api/weather', weatherRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/run-start', runStartRoutes);
 app.use('/api/device-health', (await import('./routes/deviceHealth.js')).default);
 app.use('/api/voice-latency', (await import('./routes/voiceLatency.js')).default);
 
@@ -375,6 +379,8 @@ setInterval(refreshCalendar, 5 * 60 * 1000);
 import('./services/backupService.js').then((m) => m.startNightlyBackups()).catch((err) => console.error('[Backup] Scheduler failed to start:', err.message));
 import('./services/dependencyWatchService.js').then((m) => m.startWeeklyDependencyWatch()).catch((err) => console.error('[DependencyWatch] Scheduler failed to start:', err.message));
 import('./services/routeFinderService.js').then((m) => m.startEveningKomootSync()).catch((err) => console.error('[RouteFinder] Evening sync failed to start:', err.message));
+import('./services/runAlertsService.js').then((m) => m.startRunPushQueue()).catch((err) => console.error('[RunAlerts] Push queue failed to start:', err.message));
+import('./services/runLearningService.js').then((m) => m.startRunLearning()).catch((err) => console.error('[RunLearning] failed to start:', err.message)); // links sent runs to Strava and learns from them
 
 // Weather for the device footer, refreshed every 30 minutes.
 let deviceWeather = null;
@@ -606,7 +612,7 @@ const GREETING_ONLY = /^\W*(hi|hiya|hi ya|heya|hey|hey up|hello|eh up|ey up|ay u
 const looksAddressed = (t) => {
   const text = String(t || '').trim();
   const opening = text.split(/\s+/).slice(0, 5).join(' ');
-  if (WAKE_RX.test(text) || NAME_TOKEN.test(opening) || GREETING_ONLY.test(text) || matchesWake(text)) return true; // + spellings recorded on /ims/phrases
+  if (WAKE_RX.test(text) || NAME_TOKEN.test(opening) || GREETING_ONLY.test(text) || matchesWake(text) || ehUpSounding(text)) return true; // + spellings recorded on /ims/phrases
   if (wakeDaemonService.isWakePhrase(text).matches) return true;
   return false;
 };
@@ -615,9 +621,19 @@ const looksAddressed = (t) => {
 const heardLikeWake = (t) => {
   const text = String(t || '').trim();
   if (!text) return false;
-  if (matchesWake(text) || WAKE_RX.test(text) || wakeDaemonService.isWakePhrase(text).matches) return true;
+  if (matchesWake(text) || WAKE_RX.test(text) || ehUpSounding(text) || wakeDaemonService.isWakePhrase(text).matches) return true;
   const words = text.split(/\s+/).filter(Boolean);
   return words.length <= 4 && /\b(\w*pims|\w*pms|ims|ems|eems|him's|hims|hymns?|m's)\W*$/i.test(text);
+};
+// "Eh up IMS" run together sounds like "pms", and speech-to-text writes it as "poems", "APM", "up ems"...
+// For a short utterance (three words at most), letters only: an optional eh/ey/ay sound, then p, any
+// vowels, m, and an optional s. Ordinary words rarely have that shape; Gemini, which heard the audio,
+// has also already chosen to answer before this is consulted.
+const EHUP_SHAPE = /^(?:[aeiuy]+h?[aeiouy]*)?p+[aeiouy]*m+[aeiouy]*[sz]?$/;
+const ehUpSounding = (t) => {
+  const text = String(t || '').trim();
+  if (!text || text.split(/\s+/).length > 3) return false;
+  return EHUP_SHAPE.test(text.toLowerCase().replace(/[^a-z]/g, ''));
 };
 const FOLLOW_UP_MS = 10000; // after Ims stops talking, a reply within this long needs no wake phrase
 
@@ -772,6 +788,23 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     if (isClientClosed || !currentGeminiWs || currentGeminiWs.readyState !== WebSocket.OPEN) return;
     if (!currentTurnComplete) return; // Ims is thinking or speaking
     if (isHardware && isRecordingActive()) return;
+    // The user spoke in the follow-up window, the mic carried it to Gemini, and 2.5 s after they
+    // stopped there's still no transcript and no reply - Gemini lost it (often the start was cut by the
+    // echo guard). Rather than sit in "thinking" until the silence timeout, ask Ims to check what they
+    // said. A reply to the user, never unprompted; once per thing said.
+    if (isHardware && !clarifyNudged && pendingSpeechFrames >= 15 && Date.now() - pendingSpeechLast >= 2500
+      && followUpUntil && pendingSpeechStart <= followUpUntil + 1000) {
+      clarifyNudged = true;
+      const frames = pendingSpeechFrames;
+      clearPendingSpeech();
+      textTurnSent = true;
+      lastActivityAt = Date.now();
+      try { logCapture(`[${new Date().toISOString()}] ${tag} NO REPLY TO SPEECH (${frames} speech frames, no transcript) - asking Ims to check what was said
+`); } catch (_) { }
+      console.log(`${tag} 🤔 Speech went unanswered - asking Ims to check what was said`);
+      currentGeminiWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: '(System: the user just said something to you, but it did not come through clearly - it may have been cut off. Do not stay silent. In one short sentence, in your Yorkshire voice, say you did not quite catch it and ask them to say it again. Do not greet them.)' }] }], turnComplete: true } }));
+      return;
+    }
     const playingUntil = isHardware ? (paceSentMs ? paceStart + paceSentMs : 0) : webAudioEndAt;
     const quietSince = Math.max(lastActivityAt, playingUntil, turnCompleteAt || 0);
     if (Date.now() - quietSince < SILENCE_CLOSE_MS) return;
@@ -832,6 +865,10 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // a text turn from the device (reminder announcement, voice preview). A model
   // turn that follows none of those is dropped - nothing reaches the speaker.
   let energeticMicFrames = 0;
+  // "Heard you, but nothing came back" (see the silence timer): speech the user sent after Ims's last
+  // turn that Gemini has neither transcribed nor answered, and whether Ims has been asked to check.
+  let pendingSpeechFrames = 0, pendingSpeechStart = 0, pendingSpeechLast = 0, clarifyNudged = false;
+  const clearPendingSpeech = () => { pendingSpeechFrames = 0; pendingSpeechStart = 0; pendingSpeechLast = 0; };
   let userTranscriptSeen = false;
   let textTurnSent = false;
   let unsolicitedTurn = false;
@@ -1144,6 +1181,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
         if (isHardware) {
           if (parsed.serverContent?.inputTranscription?.text) {
+            clearPendingSpeech();
             userTranscriptSeen = true; unsolicitedTurn = false;
             if (!heardStartAt) heardStartAt = Date.now();
             const incomingTranscript = parsed.serverContent.inputTranscription.text;
@@ -1166,6 +1204,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 unsolicitedTurn = true;
                 console.warn(`${tag} 🔇 Not addressed to Ims (late transcript) - dropping the held reply. Heard: "${heardThisTurn.slice(0, 80)}"`);
                 try { logCapture(`[${new Date().toISOString()}] ${tag} REPLY DROPPED - NOT ADDRESSED (late): "${heardThisTurn.slice(0, 120)}"\n`); } catch (_) { }
+                try { noteWakeCandidate(heardThisTurn); } catch (_) { /* never let this break the turn */ }
                 paceFlush();
                 if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ noWakeDetected: true }));
               } else {
@@ -1202,6 +1241,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               unsolicitedTurn = true;
               console.warn(`${tag} 🔇 Not addressed to Ims (no wake phrase, not a follow-up) - dropping the reply. Heard: "${heardThisTurn.slice(0, 80)}"`);
               try { logCapture(`[${new Date().toISOString()}] ${tag} REPLY DROPPED - NOT ADDRESSED: "${heardThisTurn.slice(0, 120)}"\n`); } catch (_) { }
+              try { noteWakeCandidate(heardThisTurn); } catch (_) { /* never let this break the turn */ }
               paceFlush();
               if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ noWakeDetected: true }));
             }
@@ -1229,6 +1269,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             if (part.inlineData?.mimeType?.startsWith('audio/') && part.inlineData.data) {
               lastModelAudioTime = Date.now();
               turnHadAudio = true;
+              clearPendingSpeech(); clarifyNudged = false;
               // currentTurnComplete was true -> this chunk starts a NEW turn,
               // so reset the opener-fingerprint tracker (see the
               // outputTranscription handler below) before flipping it false.
@@ -1435,6 +1476,15 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                   }));
                 }
               });
+            } else if (call.name === 'noWakeDetected' && isHardware && heardStartAt && followUpUntil && heardStartAt <= followUpUntil) {
+              // A follow-up within the conversation needs no wake phrase - Gemini sometimes forgets.
+              console.log(`${tag} 🔔 noWakeDetected overridden - follow-up within the conversation: "${heardThisTurn.slice(0, 60)}"`);
+              try { logCapture(`[${new Date().toISOString()}] ${tag} NOWAKE OVERRIDDEN (follow-up): "${heardThisTurn.slice(0, 80)}"
+`); } catch (_) { }
+              if (gWs.readyState === WebSocket.OPEN) {
+                gWs.send(JSON.stringify({ toolResponse: { functionResponses: [{ response: { output: withVoiceReminder({ status: 'overruled', note: 'This was a follow-up in an ongoing conversation - no wake phrase is needed. Answer it now; if you are not sure what they said, ask them to say it again.' }) }, id: call.id }] } }));
+                textTurnSent = true;
+              }
             } else if (call.name === 'noWakeDetected' && isHardware && heardLikeWake(heardThisTurn)) {
               // Gemini said "no wake phrase", but what it heard is one of the ways the wake phrase
               // actually comes through (recorded on /ims/phrases). Answer instead.
@@ -1744,6 +1794,16 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                   respondToToolCall(call, { status: 'logged', grams: e.grams, food: e.food, sentToNightscout: e.nightscout.sent, ...(e.nightscout.sent ? { note: 'It will show in AAPS once it syncs.' } : { nightscoutProblem: e.nightscout.reason }) });
                 }).catch((err) => respondToToolCall(call, { error: err.message }));
               }
+            } else if (call.name === 'askGemini') {
+              import('./services/imsFallbackService.js').then((m) => m.askGeneral({ question: call.args?.question, context: call.args?.context || '' })).then((answer) => {
+                console.log(`${tag} 💡 askGemini(${String(call.args?.question || '').slice(0, 60)})`);
+                respondToToolCall(call, { answer, say: 'Retell this briefly in your own Yorkshire voice (English only), adding anything you already know that fits. Do not read it word for word or mention Gemini unless asked.' });
+              }).catch((err) => respondToToolCall(call, { error: err.message, say: 'Answer as best you can yourself, briefly, in your own voice.' }));
+            } else if (call.name === 'addRunNote') {
+              import('./services/runLearningService.js').then((m) => m.noteOnLatestRun({ text: call.args?.text, minute: call.args?.minute ?? null })).then((r) => {
+                console.log(`${tag} 🏃 addRunNote on ${r.run}`);
+                respondToToolCall(call, { status: 'noted', run: r.run, note: 'It will be lined up with their glucose in the run retrospective (Run Planner, Flythrough).' });
+              }).catch((err) => respondToToolCall(call, { error: err.message }));
             } else if (call.name === 'clearOldNightscoutData') {
               clearOldNightscout(3).then((r) => {
                 const ok = r.results.every((x) => x.ok);
@@ -2103,6 +2163,13 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         // loud enough on the mic to look like speech. A quick follow-up from the user is
         // still recognised through its transcription instead.
         if (samples > 0 && Math.sqrt(sumSq / samples) > 300 && Date.now() - turnCompleteAt > 3000 && ++energeticMicFrames >= 8) unsolicitedTurn = false; // the user is talking: stop dropping
+        // speech after Ims's turn, in an open conversation - watched so a reply that never comes is noticed
+        if (samples > 0 && currentTurnComplete && turnCompleteAt && Math.sqrt(sumSq / samples) > 400) {
+          const t = Date.now();
+          if (!pendingSpeechStart) pendingSpeechStart = t;
+          pendingSpeechLast = t;
+          pendingSpeechFrames++;
+        }
       }
       const base64Audio = Buffer.from(message).toString('base64');
       const realtimePayload = JSON.stringify({

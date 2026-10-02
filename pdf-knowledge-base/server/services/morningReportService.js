@@ -4,17 +4,17 @@ import { fileURLToPath } from 'url';
 import { getWeather } from './weatherService.js';
 import { getItemsDueToday, getItemsComingUp } from './remindersService.js';
 import { listBirthdays } from './birthdayService.js';
-import { getTodayReleases, getWants } from './musicScanService.js';
+import { getTodayReleases, getWants, getArtistOverrides } from './musicScanService.js';
 import { identifyPeopleInView } from './lookService.js';
 import { getUpcomingEvents, getEventsOn, describeEvents, getDeviceIcons } from './calendarService.js';
 import { getStatus as getStravaStatus, getSummary, listActivities } from './stravaService.js';
 import { getCurrentState, getStoredMatch } from './runGlucoseService.js';
 import { listGoals, assessGoal } from './goalService.js';
 import { getOvernight, getNightscoutDbSize, getNightscoutWriteStatus } from './glucoseHubService.js';
-import { getReportNews, tourNewsForReport } from './newsService.js';
+import { getReportNews, tourNewsForReport, markToursTold } from './newsService.js';
 import { unreportedTasks } from './tasksService.js';
 import { recentCampaignGames } from './campaignsService.js';
-import { getSetting, setSetting } from '../db/database.js';
+import db, { getSetting, setSetting } from '../db/database.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STATE_PATH = path.join(__dirname, '..', 'data', 'morning_report_state.json');
@@ -202,10 +202,21 @@ export const SERVICE_SUB_FILTERS = {
   ],
   reminders: [
     { key: 'includeToday', label: "Today's Due Items", type: 'boolean', default: true, description: 'List scheduled items and alarms due today.' },
-    { key: 'includeUpcomingWeek', label: "Coming Up (Next 7 Days)", type: 'boolean', default: true, description: 'Mention reminders and alarms scheduled for the week ahead.' },
+    { key: 'includeUpcomingWeek', label: 'Coming Up (After Today)', type: 'boolean', default: true, description: 'Mention items after today - how far ahead is set by the look-ahead slider below.' },
     { key: 'includeAlarms', label: 'Alarms', type: 'boolean', default: true, description: 'Include time-based alarm wakeups.' },
     { key: 'includeReminders', label: 'Reminders & Tasks', type: 'boolean', default: true, description: 'Include standard scheduled reminders.' },
-    { key: 'includeTimers', label: 'Active Timers', type: 'boolean', default: true, description: 'Include short-interval running timers.' }
+    { key: 'includeTimers', label: 'Active Timers', type: 'boolean', default: true, description: 'Include short-interval running timers.' },
+    {
+      key: 'lookAhead',
+      label: 'Look Ahead',
+      type: 'level',
+      default: 6,
+      levels: [
+        '1 day', '2 days', '3 days', '4 days', '5 days', '6 days',
+        '1 week', '8 days', '9 days', '10 days', '11 days', '12 days', '13 days', '2 weeks'
+      ],
+      description: 'How far ahead to mention alarms, reminders, tasks, and timers (1 day up to 2 weeks).'
+    }
   ],
   calendar: [
     { key: 'includeToday', label: "Today's Events", type: 'boolean', default: true, description: 'Include meetings, shifts, and events scheduled for today.' },
@@ -221,6 +232,7 @@ export const SERVICE_SUB_FILTERS = {
   ],
   music_releases: [
     { key: 'prioritiseWants', label: 'Lead With Want-List Matches', type: 'boolean', default: true, description: 'Emphasise newly released albums saved on your vinyl/CD want list.' },
+    { key: 'prioritiseFavourites', label: 'Prioritise Favourite Artists', type: 'boolean', default: true, description: 'Lead with artists you have starred as favourites on the Music page.' },
     { key: 'includeAllReleases', label: 'All Library Artist Releases', type: 'boolean', default: true, description: 'Include new drops from all artists catalogued in your MUZAK collection.' },
     { key: 'includeSinglesAndEPs', label: 'Include Singles & EPs', type: 'boolean', default: true, description: 'Include short releases in addition to full albums.' }
   ],
@@ -259,7 +271,8 @@ export const SERVICE_SUB_FILTERS = {
     { key: 'includeDistanceAndPace', label: 'Distance & Average Pace', type: 'boolean', default: true, description: 'State distance in km and average mm:ss /km pace.' },
     { key: 'includeDaysAgo', label: 'Recency (Today / Yesterday / X Days)', type: 'boolean', default: true, description: 'State how long ago the run occurred.' },
     { key: 'includeGlucoseResponse', label: 'Start & Lowest Glucose During Run', type: 'boolean', default: true, description: 'Report blood sugar response and post-run hypo dips.' },
-    { key: 'maxDaysLookback', label: 'Max Days Lookback', type: 'number', default: 5, min: 1, max: 14, step: 1, description: 'Report as recent if run within this many days.' }
+    { key: 'maxDaysLookback', label: 'Max Days Lookback', type: 'number', default: 5, min: 1, max: 14, step: 1, description: 'Report as recent if run within this many days.' },
+    { key: 'opinion', label: "Ims's Opinion of the Run", type: 'level', default: 1, levels: ['None', 'A word', 'A view', 'Full verdict'], description: 'An honest take - positive and negative - from how it compares with your recent runs: a good effort, slower than usual, a tough one, a long one.' }
   ],
   goals: [
     { key: 'includeVerdict', label: 'Goal Status & Assessment Verdict', type: 'boolean', default: true, description: 'State whether active goals are on track or behind.' },
@@ -268,8 +281,10 @@ export const SERVICE_SUB_FILTERS = {
   ],
   tours: [
     { key: 'prioritiseYorkshire', label: 'Prioritise Yorkshire & Northern Venues', type: 'boolean', default: true, description: 'Lead with Leeds, Sheffield, Manchester, and York tour stops.' },
+    { key: 'prioritiseFavourites', label: 'Prioritise Favourite Artists', type: 'boolean', default: true, description: 'Lead with artists you have starred as favourites on the Music page - kept in even when the story count is capped.' },
     { key: 'includeLondon', label: 'Include London Shows', type: 'boolean', default: true, description: 'Mention London gigs as secondary alternatives.' },
     { key: 'includeFestivals', label: 'Include UK Music Festivals', type: 'boolean', default: true, description: 'Report festival appearances for library artists (Bloodstock, Download, etc.).' },
+    { key: 'lookAhead', label: 'Look Ahead', type: 'level', default: 6, levels: ['1 week', '2 weeks', '3 weeks', '1 month', '6 weeks', '2 months', '3 months', '4 months', '6 months', '9 months', '1 year'], description: 'Only tours with a UK show within this window. Tours with no dates announced yet are kept and flagged.' },
     { key: 'maxTours', label: 'Max Tour Stories', type: 'number', default: 5, min: 1, max: 10, step: 1, description: 'Maximum tour announcements in the daily briefing.' }
   ],
   news: [
@@ -277,7 +292,8 @@ export const SERVICE_SUB_FILTERS = {
     { key: 'includeTech', label: 'Technology Feeds', type: 'boolean', default: true, description: 'Include headlines from technology sources.' },
     { key: 'includeLocal', label: 'Local & Regional News', type: 'boolean', default: true, description: 'Include Yorkshire and regional news feeds.' },
     { key: 'includeGeneral', label: 'National / World Headlines', type: 'boolean', default: true, description: 'Include general news coverage.' },
-    { key: 'maxHeadlines', label: 'Max Headlines to Report', type: 'number', default: 6, min: 1, max: 12, step: 1, description: 'Cap total stories delivered in briefing.' }
+    { key: 'maxHeadlines', label: 'Max Headlines to Report', type: 'number', default: 6, min: 1, max: 12, step: 1, description: 'Cap total stories delivered in briefing.' },
+    { key: 'storyDetail', label: 'Story Detail', type: 'level', default: 2, levels: ['Headline only', 'One sentence', 'A few sentences', 'The full story'], description: 'How much Ims says about each story - never just a list of headlines.' }
   ],
   tasks: [
     { key: 'includeSummaries', label: 'Task Result Summaries', type: 'boolean', default: true, description: 'Briefly explain key findings or outputs of completed jobs.' },
@@ -288,6 +304,65 @@ export const SERVICE_SUB_FILTERS = {
     { key: 'offerClearout', label: 'Offer Automated Mongo Cleanup', type: 'boolean', default: true, description: 'Conclude report by asking whether to purge older readings.' }
   ]
 };
+
+// Detail sliders. Every "include..." filter is a 4-step slider - Off, Brief, Normal, Detailed - rather than an on /
+// off switch, so each item can be a passing mention or the full picture. Behaviour switches (prioritise..., offer...,
+// mention...) stay as switches. Old saved true / false values read as Normal / Off.
+export const DETAIL_LEVELS = ['Off', 'Brief', 'Normal', 'Detailed'];
+for (const list of Object.values(SERVICE_SUB_FILTERS)) {
+  for (const f of list) {
+    if (f.type === 'boolean' && /^include/.test(f.key)) { f.type = 'level'; f.levels = DETAIL_LEVELS; f.default = f.default ? 2 : 0; }
+  }
+}
+const LEVEL_WORDS = ['leave it out', 'brief - a passing mention, a few words', 'a normal sentence or so', 'in detail - every useful fact and number'];
+const levelOf = (v, def = 2, max = 3) => (typeof v === 'boolean' ? (v ? 2 : 0) : Number.isFinite(Number(v)) && v !== '' && v !== null ? Math.max(0, Math.min(max, Math.round(Number(v)))) : def);
+const maxLevel = (f) => (f.levels ? f.levels.length - 1 : 3);
+const schemaFor = (section) => SERVICE_SUB_FILTERS[section.id] || SERVICE_SUB_FILTERS[section.serviceId] || [];
+// saved values in the right shape: levels as 0-3 numbers
+function normaliseFilters(section, filters) {
+  const out = { ...filters };
+  // Migrate legacy reminders ahead filters to unified lookAhead if present
+  if (section?.id === 'reminders' || section?.serviceId === 'reminders') {
+    if (out.lookAhead === undefined) {
+      const oldDays = [0, 1, 3, 7, 14, 30, 90, 180];
+      const legacyVal = out.remindersAhead ?? out.alarmsAhead ?? out.timersAhead;
+      if (legacyVal !== undefined) {
+        const legacyIdx = levelOf(legacyVal, 3, oldDays.length - 1);
+        const days = Math.min(14, Math.max(1, oldDays[legacyIdx] ?? 7));
+        out.lookAhead = days - 1; // Map 1 day to 0, 7 days (1 week) to 6, 14 days (2 weeks) to 13
+      }
+    }
+    delete out.alarmsAhead;
+    delete out.remindersAhead;
+    delete out.timersAhead;
+  }
+  for (const f of schemaFor(section)) if (f.type === 'level' && out[f.key] !== undefined) out[f.key] = levelOf(out[f.key], f.default, maxLevel(f));
+  return out;
+}
+// what a section builder sees: level filters as on / off (so "include" checks keep working), levels kept aside
+export function prepareSection(section) {
+  const filters = { ...(section.subFilters || {}) };
+  const levels = {};
+  for (const f of schemaFor(section)) {
+    if (f.type !== 'level') continue;
+    const lv = levelOf(filters[f.key], f.default, maxLevel(f));
+    levels[f.key] = lv;
+    if (/^include/.test(f.key)) filters[f.key] = lv > 0;
+  }
+  return { ...section, subFilters: filters, levels };
+}
+// the "how much to say" line added to each section for Ims
+export function detailGuide(section) {
+  const levels = section.levels || {};
+  const bits = [];
+  for (const f of schemaFor(section)) {
+    if (f.type !== 'level' || !(f.key in levels)) continue;
+    const lv = levels[f.key];
+    if (['storyDetail', 'opinion', 'lookAhead'].includes(f.key) || /Ahead$/.test(f.key)) continue; // said in the section's own line
+    if (lv > 0) bits.push(`${f.label}: ${LEVEL_WORDS[lv]}`);
+  }
+  return bits.length ? ` HOW MUCH TO SAY in this section - ${bits.join('; ')}. Say each thing once only in this section; don't repeat it.` : ' Say each thing once only in this section; don\'t repeat it.';
+}
 
 // Generates default sub-filter state object from schema
 export function getDefaultSubFilters(serviceIdOrSectionId) {
@@ -493,7 +568,7 @@ export function getReportConfig() {
           }
           // Merge subFilters with standard schema defaults to maintain future compatibility
           const defaultFilterValues = getDefaultSubFilters(s.id) || getDefaultSubFilters(s.serviceId) || {};
-          const subFilters = { ...defaultFilterValues, ...(s.subFilters || {}) };
+          const subFilters = normaliseFilters(s, { ...defaultFilterValues, ...(s.subFilters || {}) });
           return { ...s, customNote, subFilters };
         });
         for (const def of DEFAULT_REPORT_SECTIONS) {
@@ -519,9 +594,9 @@ export function saveReportConfig(sections) {
       customNote = '';
     }
     const defaultFilterValues = getDefaultSubFilters(s.id) || getDefaultSubFilters(s.serviceId) || {};
-    const subFilters = typeof s.subFilters === 'object' && s.subFilters !== null
+    const subFilters = normaliseFilters(s, typeof s.subFilters === 'object' && s.subFilters !== null
       ? { ...defaultFilterValues, ...s.subFilters }
-      : defaultFilterValues;
+      : defaultFilterValues);
 
     return {
       id: s.id || `custom_${Date.now()}_${idx}`,
@@ -553,13 +628,17 @@ async function buildWeatherSection(section, context) {
   // Home first (always), from the hours still to come today - so rain that fell before the report isn't
   // reported as coming - then tomorrow and, if chosen, a second saved place.
   const filters = section.subFilters || {};
-  const opts = { conditions: filters.includeConditions !== false, temps: filters.includeTemps !== false, rain: filters.includeRain !== false, wind: filters.includeWind === true };
+  const windLevel = section.levels?.includeWind ?? (filters.includeWind === true ? 2 : 0);
+  // wind per part of the day only at Detailed; otherwise one line for the whole day (or none)
+  const opts = { conditions: filters.includeConditions !== false, temps: filters.includeTemps !== false, rain: filters.includeRain !== false, wind: windLevel >= 3 };
   const threshold = typeof filters.rainThreshold === 'number' ? filters.rainThreshold : 40;
   const describe = (w, { withTomorrow }) => {
     const p = (w.periods || []).filter((x) => x.name !== 'Overnight');
     const parts = p.map((x) => `${x.name.toLowerCase()} ${periodText(x, opts)}`);
     let line = parts.length ? `rest of today - ${parts.join('; ')}` : `tonight - ${periodText(w.periods?.[0] || {}, opts)}`;
     if (filters.includeHumidity === true && w.current?.humidity_percent != null) line += `; humidity ${w.current.humidity_percent}%`;
+    const today = w.forecast?.[0];
+    if (windLevel > 0 && windLevel < 3 && today?.wind_words) line += `; wind for the day: ${today.wind_words}${windLevel >= 2 && today.gust_max_mph ? ` (gusts up to ${today.gust_max_mph} mph)` : ''}`;
     if (opts.rain && (w.today?.rain_probability_percent ?? 0) >= threshold) line += ' (worth mentioning it could turn wet)';
     const tomorrow = w.forecast?.[1];
     if (withTomorrow && tomorrow) line += `. Tomorrow: ${tomorrow.summary}`;
@@ -576,7 +655,10 @@ async function buildWeatherSection(section, context) {
     const lang = home.description?.language_today;
     let line = `Weather at home (${home.location.split(',')[0]}): ${describe(home, { withTomorrow: filters.includeTomorrow !== false })}.`;
     if (lang) line += ` Words that fit today - rain: ${lang.rain.level} (never say ${lang.rain.avoid.slice(-4).join(', ')})`
-      + `; temperature: ${lang.temperature.band}; wind: ${lang.wind.band}${lang.extras.length ? `; also ${lang.extras.map((e) => e.kind.replace('_', ' ')).join(', ')}` : ''}. Describe it no stronger or weaker than that.`;
+      + `; temperature: ${lang.temperature.band}${windLevel > 0 ? `; wind: ${lang.wind.band}` : ''}${lang.extras.length ? `; also ${lang.extras.map((e) => e.kind.replace('_', ' ')).join(', ')}` : ''}. Describe it no stronger or weaker than that.`;
+    line += windLevel === 0 ? ' Do not mention the wind at all.' : windLevel < 3 ? ' Mention the wind ONCE for the whole forecast - not for each part of the day.' : '';
+    // the facts above are plain English for accuracy; the weather must be SPOKEN in Yorkshire dialect
+    if (home.sounds_like?.rest_of_today) line += ` Say the weather in broad Yorkshire dialect in your own words - never read the facts out as listed - something like (style only, vary it${windLevel < 3 ? '; it mentions the wind in every part - you must not' : ''}): "${home.sounds_like.rest_of_today}${filters.includeTomorrow !== false && home.sounds_like.tomorrow ? ` ${home.sounds_like.tomorrow}` : ''}"`;
     if (filters.altLocation) {
       const alt = await getWeather({ location: filters.altLocation, days: 2 });
       line += alt.error ? ` ${filters.altLocation}: forecast unavailable.` : ` Also in ${filters.altLocation}: ${describe(alt, { withTomorrow: filters.includeTomorrow !== false })}.`;
@@ -623,10 +705,29 @@ async function buildRemindersSection(section, context) {
 
   if (filters.includeUpcomingWeek !== false) {
     try {
-      const soon = getItemsComingUp(7).filter(filterItemType);
+      // 14-step look-ahead from 1 day up to 2 weeks (each step up is 1 day) for all scheduled items
+      const AHEAD_DAYS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+      let aheadDays = 7;
+      if (filters.lookAhead !== undefined || section.levels?.lookAhead !== undefined) {
+        const idx = section.levels?.lookAhead ?? levelOf(filters.lookAhead, 6, AHEAD_DAYS.length - 1);
+        aheadDays = AHEAD_DAYS[idx] ?? 7;
+      } else if (filters.remindersAhead !== undefined || filters.alarmsAhead !== undefined || filters.timersAhead !== undefined) {
+        const oldDays = [0, 1, 3, 7, 14, 30, 90, 180];
+        const legacyIdx = Math.max(
+          section.levels?.alarmsAhead ?? levelOf(filters.alarmsAhead, 3, oldDays.length - 1),
+          section.levels?.remindersAhead ?? levelOf(filters.remindersAhead, 3, oldDays.length - 1),
+          section.levels?.timersAhead ?? levelOf(filters.timersAhead, 0, oldDays.length - 1)
+        );
+        aheadDays = Math.min(14, Math.max(1, oldDays[legacyIdx] ?? 7));
+      }
+
+      const todayEnd = Date.parse(`${londonNow().dateStr}T23:59:59Z`);
+      const soon = aheadDays > 0 ? getItemsComingUp(aheadDays).filter(filterItemType)
+        .filter((i) => Date.parse(i.fireAt) <= todayEnd + aheadDays * 86400000 + 3600000) : [];
       if (soon.length) {
         const when = (i) => new Date(i.fireAt).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-        lines.push(`Reminders and alarms coming up this week: ${soon.map((i) => `${i.type} "${i.label || 'unlabelled'}" on ${when(i)}${i.recurrence ? ` (repeats ${i.recurrence})` : ''}`).join('; ')}.`);
+        const span = aheadDays <= 1 ? 'tomorrow' : aheadDays === 7 ? 'this week' : aheadDays === 14 ? 'over the next 2 weeks' : `over the next ${aheadDays} days`;
+        lines.push(`Reminders and alarms coming up ${span} (soonest first - say when each one is): ${soon.map((i) => `${i.type} "${i.label || 'unlabelled'}" on ${when(i)}${i.recurrence ? ` (repeats ${i.recurrence})` : ''}`).join('; ')}.`);
       }
     } catch (err) { console.warn('[MorningReport] Upcoming reminders skipped:', err.message); }
   }
@@ -698,6 +799,18 @@ async function buildBirthdaysSection(section, context) {
   return null;
 }
 
+const cleanArtist = (n) => String(n || '').toLowerCase().replace(/\s*[•·|].*$/, '').replace(/\s*[-–]\s*(discography|collection|albums?|complete).*$/i, '').replace(/\s*[\[(].*$/, '').replace(/\s+/g, ' ').trim();
+function favouriteArtists() {
+  const names = new Set();
+  try {
+    for (const [name, v] of Object.entries(getArtistOverrides())) {
+      if (!v.favourite) continue;
+      for (const n of [name, v.searchName, ...(v.aliases || [])]) if (cleanArtist(n)) names.add(cleanArtist(n));
+    }
+  } catch (_) { /* no music library */ }
+  return names;
+}
+
 async function buildMusicReleasesSection(section, context) {
   const filters = section.subFilters || {};
   let releases = getTodayReleases();
@@ -713,11 +826,16 @@ async function buildMusicReleasesSection(section, context) {
     releases = releases.filter(r => wanted.has(`${r.artist}|${r.title}`.toLowerCase()));
   }
 
+  const favs = filters.prioritiseFavourites !== false ? favouriteArtists() : new Set();
+  const isFav = (r) => favs.has(cleanArtist(r.artist));
+  if (favs.size) releases = [...releases].sort((a, b) => Number(isFav(b)) - Number(isFav(a)));
+
   if (releases.length > 0) {
     const desc = releases.map((r) => {
       const isWant = wanted.has(`${r.artist}|${r.title}`.toLowerCase());
       const wantNotice = isWant && filters.prioritiseWants !== false ? ' - ON THEIR WANT LIST, so lead with this one' : '';
-      return `${r.artist} - "${r.title}" (${r.type})${wantNotice}`;
+      const favNotice = isFav(r) ? ' - ONE OF THEIR FAVOURITE ARTISTS, so give it pride of place' : '';
+      return `${r.artist} - "${r.title}" (${r.type})${wantNotice}${favNotice}`;
     });
     let line = `New music out today from artists in the library: ${desc.join('; ')}.`;
     if (section.customNote?.trim()) line += ` Note: ${section.customNote.trim()}.`;
@@ -921,6 +1039,8 @@ async function buildLastRunSection(section, context) {
             } catch (_) { /* no glucose match */ }
           }
           line += '.';
+          const opinionLevel = section.levels?.opinion ?? 1;
+          if (opinionLevel > 0) line += ` ${runOpinion(last, opinionLevel)}`;
         } else if (days > maxLookback) {
           if (filters.includeDaysAgo !== false) {
             line = `No run for ${days} days.`;
@@ -934,6 +1054,51 @@ async function buildLastRunSection(section, context) {
     }
   } catch (err) { console.warn('[MorningReport] Last run skipped:', err.message); }
   return null;
+}
+
+// What Ims's opinion of a run is based on: how it compares with the last 90 days of runs - pace (and where it ranks),
+// distance (usual and longest), climb, heart rate, the session type, how hard it felt if logged, and any low.
+// Then how much opinion to give: a word, a view, or a full verdict - honest both ways, never invented.
+function runOpinion(run, level) {
+  const km = (run.distance || 0) / 1000;
+  const pace = km ? run.moving_time / 60 / km : null;
+  const since = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+  const others = db.prepare(`SELECT id, distance, moving_time, elevation, avg_hr FROM strava_activities WHERE sport IN ('Run','TrailRun','VirtualRun') AND day >= ? AND distance >= 1500 AND moving_time > 0 AND id != ?`).all(since, run.id);
+  const med = (xs) => { const v = xs.filter(Number.isFinite).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : null; };
+  const facts = [];
+  if (others.length >= 3 && pace) {
+    const paces = others.map((o) => o.moving_time / 60 / (o.distance / 1000));
+    const medPace = med(paces);
+    const diff = Math.round(((pace - medPace) / medPace) * 100);
+    const rank = paces.filter((p) => p < pace).length + 1;
+    facts.push(`pace ${paceText(pace)} against a usual ${paceText(medPace)} (${diff === 0 ? 'about the same' : diff < 0 ? `${-diff}% faster` : `${diff}% slower`}; ${rank === 1 ? 'the fastest' : `${rank}${rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th'} fastest`} of ${others.length + 1} runs in 90 days)`);
+    const medKm = med(others.map((o) => o.distance / 1000));
+    const longest = Math.max(...others.map((o) => o.distance / 1000));
+    facts.push(`distance ${km.toFixed(1)} km against a usual ${medKm.toFixed(1)} km${km > longest ? ' - the longest in 90 days' : km >= longest * 0.9 ? ' - one of the longest' : km < medKm * 0.7 ? ' - a short one' : ''}`);
+    const climb = run.elevation != null && km ? run.elevation / km : null;
+    const medClimb = med(others.filter((o) => o.elevation != null).map((o) => o.elevation / (o.distance / 1000)));
+    if (climb != null && medClimb != null) facts.push(`climb ${Math.round(climb)} m per km against a usual ${Math.round(medClimb)}${climb > medClimb * 1.5 ? ' (hilly)' : climb < medClimb * 0.5 ? ' (flat)' : ''}`);
+    const medHr = med(others.map((o) => o.avg_hr));
+    if (run.avg_hr && medHr) facts.push(`average heart rate ${Math.round(run.avg_hr)} against a usual ${Math.round(medHr)}`);
+  } else facts.push('not enough recent runs to compare with - judge it on its own');
+  if (run.session_tag) facts.push(`it was a ${run.session_tag} session (judge it as one, not on pace)`);
+  try {
+    const effort = db.prepare('SELECT effort FROM run_session WHERE activity_id = ?').get(run.id)?.effort;
+    if (effort) facts.push(`they said it felt ${effort}/10`);
+    const notes = db.prepare('SELECT n.text FROM run_note n JOIN run_session s ON s.id = n.session_id WHERE s.activity_id = ? ORDER BY n.id LIMIT 3').all(run.id).map((n) => n.text);
+    if (notes.length) facts.push(`their notes: "${notes.join('"; "')}"`);
+  } catch (_) { /* no run learning yet */ }
+  try {
+    const m = getStoredMatch(run.id);
+    if (m?.stats?.bgMin != null) facts.push(`glucose lowest ${m.stats.bgMin}${m.stats.hypoWithin2h ? ', with a low within two hours after' : ''}`);
+  } catch (_) { /* no glucose */ }
+  const how = [
+    '',
+    'Add a quick honest word of opinion on the run - a few words, like "a good solid effort", "a tough one, that", "not your quickest", "a proper long one" - picked from the comparisons below.',
+    'Give your honest opinion of the run in a sentence or two, like a mate who runs: praise what was genuinely good, and say plainly what was not (slower than usual, short, a low) - kind, never sugar-coated, never invented.',
+    'Give a fuller honest verdict on the run: what was good, what was not, how it compares with their recent runs, and one thing to try next time - positive and negative, from the comparisons below only.',
+  ][level];
+  return `${how} Compared with the last 90 days: ${facts.join('; ')}.`;
 }
 
 async function buildGoalsSection(section, context) {
@@ -964,7 +1129,14 @@ async function buildToursSection(section, context) {
   try {
     const filters = section.subFilters || {};
     const maxTours = typeof filters.maxTours === 'number' ? filters.maxTours : 5;
-    let tours = await tourNewsForReport();
+    const LOOK_DAYS = [7, 14, 21, 30, 42, 60, 90, 120, 180, 270, 365];
+    const aheadIdx = section.levels?.lookAhead ?? levelOf(filters.lookAhead, 6, 10);
+    const aheadDays = LOOK_DAYS[aheadIdx] ?? 90;
+    const aheadLabel = ['1 week', '2 weeks', '3 weeks', '1 month', '6 weeks', '2 months', '3 months', '4 months', '6 months', '9 months', '1 year'][aheadIdx] || '3 months';
+    // a tour announced a while back can still be months away, so look further back for longer windows
+    let tours = await tourNewsForReport({ days: Math.min(45, Math.max(4, Math.round(aheadDays / 4))) });
+    // only tours with a UK show inside the window; ones with no dates yet stay, flagged
+    tours = tours.filter((t) => !t.nextShow || t.nextShow <= Date.now() + aheadDays * 86400000);
 
     if (filters.includeFestivals === false) {
       tours = tours.filter(t => !/fest|festival/i.test(t.headline || '') && !/festival/i.test(t.places?.join(' ') || ''));
@@ -972,10 +1144,15 @@ async function buildToursSection(section, context) {
     if (filters.includeLondon === false) {
       tours = tours.filter(t => !t.places?.includes('London') || t.places?.length > 1);
     }
+    const favs = filters.prioritiseFavourites !== false ? favouriteArtists() : new Set();
+    const isFav = (t) => favs.has(cleanArtist(t.artist));
+    if (favs.size) tours = [...tours].sort((a, b) => Number(isFav(b)) - Number(isFav(a)));
     tours = tours.slice(0, maxTours);
+    if (context.markNews !== false) markToursTold(tours); // previews and examples don't use them up
+    const when = (t) => (t.showYearOnly ? `, UK dates in ${new Date(t.nextShow).getFullYear()} (exact dates not given yet)` : t.nextShow ? `, next UK show ${new Date(t.nextShow).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', ...(new Date(t.nextShow).getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) })}` : ', dates not given yet');
 
     if (tours.length) {
-      let line = `UK TOUR NEWS for bands in their music library (lead the news with these; Leeds, Sheffield, Manchester or York matter most, then the rest of the north; London is only a maybe - say where they're playing): ${tours.map((t) => `[${t.artist}, playing ${t.places.join(', ')}] ${t.headline}`).join(' | ')}.`;
+      let line = `UK TOUR NEWS for bands in their music library (lead the news with these; ${favs.size ? 'their FAVOURITE artists first, ' : ''}Leeds, Sheffield, Manchester or York matter most, then the rest of the north; London is only a maybe - say where they're playing): ${tours.map((t) => `[${t.artist}${isFav(t) ? ' - A FAVOURITE' : ''}, playing ${t.places.join(', ')}${when(t)}] ${t.headline}`).join(' | ')}. (Looking ${aheadLabel} ahead - say when each one is.)`;
       if (section.customNote?.trim()) line += ` Note: ${section.customNote.trim()}.`;
       return line;
     }
@@ -1003,7 +1180,9 @@ async function buildNewsSection(section, context) {
     news = news.slice(0, maxHeadlines);
 
     if (news.length) {
-      let line = `News and interests (from their chosen sources; importance 1-5 is how much each source matters to them - lead with and give more time to the higher ones, say which source): ${news.map((n) => `[${n.source}, importance ${n.importance}${n.alsoIn ? `; also covered by ${n.alsoIn.join(', ')}` : ''}] ${n.headline}${n.summary ? ` - ${n.summary}` : ''}`).join(' | ')}.`;
+      const storyLevel = levelOf(filters.storyDetail, 2);
+      const storyHow = ['the headline in your own words, a single short line', 'one sentence on what happened', 'two or three sentences: what happened and why it matters to them', 'the full story: what happened, the background and why it matters'][storyLevel];
+      let line = `News and interests - TELL the stories, don't rattle off a list of headlines: introduce each one naturally, say which source, and give ${storyHow}; link a story to them where it fits. Importance 1-5 is how much each source matters to them - lead with and give more time to the higher ones: ${news.map((n) => `[${n.source}, importance ${n.importance}${n.alsoIn ? `; also covered by ${n.alsoIn.join(', ')}` : ''}] ${n.headline}${n.summary ? ` - ${n.summary}` : ''}`).join(' | ')}.`;
       if (section.customNote?.trim()) line += ` Note: ${section.customNote.trim()}.`;
       return line;
     }
@@ -1079,10 +1258,19 @@ const SECTION_BUILDERS = {
   nightscout_db: buildNightscoutDbSection
 };
 
+// One section's line for Ims: built from its data with the sliders applied, plus how much to say.
+export async function buildSectionLine(section, context = { hour: londonNow().hour, weatherRain: null, markNews: false }) {
+  if (section.type === 'custom' || !SECTION_BUILDERS[section.id]) return buildCustomSection(section, context);
+  const prepared = prepareSection(section);
+  const line = await SECTION_BUILDERS[section.id](prepared, context);
+  return line && String(line).trim() ? `${String(line).trim()}${detailGuide(prepared)}` : line;
+}
+
 // Everything in the report, as short plain lines. Formulated according to the
 // user-configured subject order and enabled preferences.
-export async function buildReportParts({ markNews = true } = {}) {
+export async function buildReportParts({ markNews = true, sections = null } = {}) {
   const parts = [];
+  const titles = [];
   const hour = londonNow().hour;
   const context = { hour, weatherRain: null, markNews };
 
@@ -1108,32 +1296,27 @@ export async function buildReportParts({ markNews = true } = {}) {
     console.warn('[MorningReport] Face recognition skipped:', err.message);
   }
 
-  const configuredSections = getReportConfig();
+  const configuredSections = Array.isArray(sections) ? sections : getReportConfig();
 
   for (const section of configuredSections) {
     if (section.enabled === false) continue;
 
     try {
       let partLine = null;
-      if (section.type === 'custom' || !SECTION_BUILDERS[section.id]) {
-        partLine = await buildCustomSection(section, context);
-      } else {
-        const builder = SECTION_BUILDERS[section.id];
-        partLine = await builder(section, context);
-      }
-
+      partLine = await buildSectionLine(section, context);
       if (partLine && typeof partLine === 'string' && partLine.trim()) {
         parts.push(partLine.trim());
+        titles.push(section.title);
       }
     } catch (err) {
       console.warn(`[MorningReport] Section "${section.id}" (${section.title}) failed:`, err.message);
     }
   }
 
-  return { whoLine, parts, hour };
+  return { whoLine, parts, titles, hour };
 }
 
-const DELIVERY = "HOW TO DELIVER IT - IN YOUR YORKSHIRE ACCENT FROM THE FIRST WORD TO THE LAST (long reports are where it slips; hold the flat northern vowels and never sound an r after a vowel): this report is the one exception to your usual length limit - they ALWAYS want it IN FULL, however long that makes it. Cover EVERY section below and EVERY item within it, in the exact sequential order presented below. STRICT NON-REPETITION RULE: deliver each section and each topic ONCE only in its designated slot. For example, once Omnipod & Sensor Device Status has been stated, NEVER repeat device status or pod/sensor dates later in the briefing or in other sections. Link items where they connect naturally (rain and a run, an overnight low and a planned run, a busy afternoon and a pod change). Understand the metrics: 3.9-10.0 mmol/L is IN RANGE and 5.0 mmol/L is perfectly spot-on, not low. Under 3.0 is very low, 3.0-3.9 is low, 10.0-13.9 is high, and over 13.9 is very high. Tell each news story once in your own words, saying which source it's from; never repeat a story. Never give insulin doses. ";
+const DELIVERY = "HOW TO DELIVER IT - IN YOUR YORKSHIRE ACCENT FROM THE FIRST WORD TO THE LAST (long reports are where it slips; hold the flat northern vowels and never sound an r after a vowel): this report is the one exception to your usual length limit - they ALWAYS want it IN FULL, however long that makes it. Cover EVERY section below and EVERY item within it, in the exact sequential order presented below. STRICT NON-REPETITION RULE: deliver each section and each topic ONCE only in its designated slot. For example, once Omnipod & Sensor Device Status has been stated, NEVER repeat device status or pod/sensor dates later in the briefing or in other sections. Link items where they connect naturally (rain and a run, an overnight low and a planned run, a busy afternoon and a pod change). Understand the metrics: 3.9-10.0 mmol/L is IN RANGE and 5.0 mmol/L is perfectly spot-on, not low. Under 3.0 is very low, 3.0-3.9 is low, 10.0-13.9 is high, and over 13.9 is very high. Tell each news story once in your own words, saying which source it's from - a story, not a list of headlines; never repeat a story. Follow each section's HOW MUCH TO SAY exactly - brief means a passing mention, and something mentioned once is not mentioned again. Never give insulin doses. FINISH PROPERLY: after the last item, wrap the whole report up with a short warm sign-off in your own Yorkshire words - something like \"and that's your lot\", \"that's your day sorted\", \"have a grand day\" - different each time; never just stop after the last item. If the last item asks them a question (like clearing the Nightscout database), sign off just before asking it, so the question is the last thing they hear. ";
 
 // The first conversation of the day: offer the report, with its contents ready.
 export async function buildMorningReportDirective() {
@@ -1159,4 +1342,49 @@ export async function getDayReport() {
     sectionCount,
     instructions: (cached.whoLine || '') + countReminder + DELIVERY + (hour >= 16 ? 'It is later in the day, so frame it as a day report / evening round-up and include tomorrow where given.' : '')
   };
+}
+
+
+// ---- an example of one section, as Ims would say it ----
+import { GoogleGenerativeAI as _GenAI } from '@google/generative-ai';
+import _config from '../config.js';
+import { loadPersonaRules as _persona } from './hardwareClientService.js';
+export async function sampleSection(section) {
+  let line = await buildSectionLine(section, { hour: londonNow().hour, weatherRain: null, markNews: false });
+  // Nothing real to say today (no birthdays coming, no new releases...): make up realistic example data so the
+  // settings can still be seen in action - clearly marked as made up.
+  let dummy = false;
+  if (!line) {
+    dummy = true;
+    const prepared = prepareSection(section);
+    const offItems = schemaFor(section).filter((f) => f.type === 'level' && prepared.levels?.[f.key] === 0).map((f) => f.label);
+    line = `THERE IS NO REAL DATA FOR THIS SECTION TODAY. Invent realistic, plausible example data for a "${section.title}" section (${section.description || 'part of the day report'}) for the user - Simon, who lives in Garforth near Leeds, has type 1 diabetes, runs, loves metal and rock music, and plays card games with his brother Daniel - then say it as you would in the report.${offItems.length ? ` Leave out completely: ${offItems.join(', ')}.` : ''}${detailGuide(prepared)}${section.customNote?.trim() ? ` Note: ${section.customNote.trim()}.` : ''}`;
+  }
+  const model = new _GenAI(_config.gemini.apiKey).getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const prompt = `${_persona() || ''}
+
+You are Ims. Below is ONE section of the user's day report with ${dummy ? 'instructions to make up example data' : "today's real data and instructions"}. Write exactly what you would SAY for this section in the report - spoken words only, no headings, no lists, no stage directions, no greeting or sign-off - in your broad Yorkshire voice, English only, no self-corrections or false starts. Follow the HOW MUCH TO SAY guidance exactly and mention each thing once.
+
+SECTION: ${section.title}
+${line}`;
+  const out = (await model.generateContent(prompt)).response.text().trim();
+  return { text: out, line, dummy, reason: dummy ? 'No real data for this today - this example uses made-up data so you can hear how the section would sound.' : null };
+}
+
+// The whole report as Ims would say it, section by section, from the settings as they are on the page (saved or
+// not) - so it can be shaped and read through before he delivers it.
+export async function scriptReport(sections = null) {
+  const { parts, titles, hour } = await buildReportParts({ markNews: false, sections });
+  if (!parts.length) return { script: [], hour };
+  const model = new _GenAI(_config.gemini.apiKey).getGenerativeModel({ model: 'gemini-2.5-flash', generationConfig: { responseMimeType: 'application/json' } });
+  const name = hour < 12 ? 'morning report' : 'day report';
+  const prompt = `${_persona() || ''}
+
+You are Ims, delivering the user's ${name}. Below are its sections, in order, with today's real data and instructions. Write exactly what you will SAY for each section - spoken words only, in your broad Yorkshire voice, English only, no self-corrections, no headings or lists. Start the first section with a short natural opener; flow from one section to the next as you would aloud; end the last section with a short warm sign-off of your own (like "and that's your lot", "that's your day sorted", "have a grand day") - unless it asks them a question, in which case sign off just before the question. Follow each section's HOW MUCH TO SAY exactly, and never repeat something already said in an earlier section.
+Return JSON: an array with one string per section, in the same order.
+
+${parts.map((p, i) => `SECTION ${i + 1} - ${titles[i]}:\n${p}`).join('\n\n')}`;
+  let said = [];
+  try { said = JSON.parse((await model.generateContent(prompt)).response.text()); } catch { said = []; }
+  return { hour, script: parts.map((p, i) => ({ title: titles[i], text: typeof said[i] === 'string' ? said[i] : null, given: p })) };
 }

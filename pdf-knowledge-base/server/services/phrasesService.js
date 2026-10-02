@@ -88,6 +88,32 @@ export function matchesStop(text) {
 }
 export const wakePhraseNames = () => lists().wakePhrases;
 // How the wake phrases have actually been transcribed (from recordings and edits), for Ims's instructions.
+// Short things heard just before a reply the wake gate dropped - likely mishearings of a wake phrase
+// ("Eh up IMS" -> "poems", "APM", "sports"). Listed on /ims/phrases to accept as a spelling or dismiss.
+db.exec(`CREATE TABLE IF NOT EXISTS wake_candidates (
+  text TEXT PRIMARY KEY, count INTEGER NOT NULL DEFAULT 1, first_at INTEGER NOT NULL, last_at INTEGER NOT NULL, dismissed INTEGER NOT NULL DEFAULT 0
+)`);
+export function noteWakeCandidate(text) {
+  const t = norm(text);
+  if (!t || t.split(' ').length > 3 || t.length > 24 || matchesWake(t)) return;
+  const now = Date.now();
+  db.prepare(`INSERT INTO wake_candidates (text, count, first_at, last_at) VALUES (?, 1, ?, ?)
+    ON CONFLICT(text) DO UPDATE SET count = count + 1, last_at = excluded.last_at`).run(t, now, now);
+}
+export const listWakeCandidates = () => db.prepare('SELECT text, count, first_at AS firstAt, last_at AS lastAt FROM wake_candidates WHERE dismissed = 0 ORDER BY last_at DESC LIMIT 50').all();
+export function acceptWakeCandidate(text, phraseId) {
+  const t = norm(text);
+  const row = db.prepare("SELECT * FROM voice_phrases WHERE id = ? AND kind = 'wake'").get(Number(phraseId));
+  if (!row) throw new Error('Pick a wake phrase.');
+  const variants = JSON.parse(row.variants || '[]');
+  if (!variants.map(norm).includes(t)) variants.push(t);
+  db.prepare('UPDATE voice_phrases SET variants = ? WHERE id = ?').run(JSON.stringify(variants), row.id);
+  db.prepare('DELETE FROM wake_candidates WHERE text = ?').run(t);
+  invalidate();
+  return present(db.prepare('SELECT * FROM voice_phrases WHERE id = ?').get(row.id));
+}
+export const dismissWakeCandidate = (text) => db.prepare('UPDATE wake_candidates SET dismissed = 1 WHERE text = ?').run(norm(text)).changes > 0;
+
 export const wakeSpellings = () => [...new Set(lists().wake)].slice(0, 40);
 
 export function addPhrase({ kind, phrase }) {

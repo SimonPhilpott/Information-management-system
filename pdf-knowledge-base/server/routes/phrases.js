@@ -1,10 +1,13 @@
 import { Router } from 'express';
-import { listPhrases, addPhrase, updatePhrase, deletePhrase, addRecording, deleteRecording, recordingFile } from '../services/phrasesService.js';
+import { listPhrases, addPhrase, updatePhrase, deletePhrase, addRecording, deleteRecording, recordingFile, listWakeCandidates, acceptWakeCandidate, dismissWakeCandidate } from '../services/phrasesService.js';
 import { requestDeviceCapture } from '../services/deviceBus.js';
 
 const router = Router();
 const fail = (res, err, code = 500) => res.status(code).json({ success: false, error: err.message });
 
+router.get('/candidates', (req, res) => { try { res.json({ success: true, candidates: listWakeCandidates() }); } catch (err) { fail(res, err); } });
+router.post('/candidates/accept', (req, res) => { try { res.json({ success: true, phrase: acceptWakeCandidate(req.body?.text, req.body?.phraseId) }); } catch (err) { fail(res, err, 400); } });
+router.post('/candidates/dismiss', (req, res) => { try { res.json({ success: dismissWakeCandidate(req.body?.text) }); } catch (err) { fail(res, err); } });
 router.get('/', (req, res) => { try { res.json({ success: true, phrases: listPhrases() }); } catch (err) { fail(res, err); } });
 router.post('/', (req, res) => { try { res.json({ success: true, phrase: addPhrase(req.body || {}) }); } catch (err) { fail(res, err, 400); } });
 router.patch('/:id', (req, res) => { try { res.json({ success: true, phrase: updatePhrase(req.params.id, req.body || {}) }); } catch (err) { fail(res, err, 400); } });

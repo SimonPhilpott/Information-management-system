@@ -8,6 +8,8 @@ import { getRoute, fetchKomootDirections, getKomootStatus } from './routeService
 // Worked out once per route in the background and kept in planned_routes.description.
 
 try { db.exec('ALTER TABLE planned_routes ADD COLUMN description TEXT'); } catch (_) { /* already there */ }
+// Notable places the route passes (woods, parks, lakes, named trails), as a JSON list in route order.
+try { db.exec('ALTER TABLE planned_routes ADD COLUMN landmarks TEXT'); } catch (_) { /* already there */ }
 
 const CARDINAL = { N: 'north', NE: 'north-east', E: 'east', SE: 'south-east', S: 'south', SW: 'south-west', W: 'west', NW: 'north-west' };
 const WAY = { 'wt#off_grid': 'the off-road stretch', 'wt#way': 'the path', 'wt#trail': 'the trail', 'wt#track': 'the track', 'wt#footway': 'the footpath', 'wt#cycleway': 'the cycle path', 'wt#hiking_path': 'the footpath' };
@@ -95,6 +97,74 @@ async function fromMap(route, shape) {
   return sentence(steps, shape);
 }
 
+// ---- landmarks: named woods, parks, nature reserves, water and trails within a few metres of the line,
+// from OpenStreetMap via the public Overpass API (one request per route, spaced out) ----
+const NOISE = /definitive|footpath\s+\w+\s*\d|^\w+\s+\d+$|cycle route|national cycle|\bncn\b|branch$|^path$|bridleway \d/i;
+const kindOf = (t) => (t.natural === 'wood' || t.landuse === 'forest' ? 'wood' : t.leisure === 'park' ? 'park' : t.leisure === 'nature_reserve' ? 'reserve' : t.natural === 'water' ? 'water' : 'trail');
+const withKind = (name, kind) => {
+  if (kind === 'wood' && !/wood|forest|copse|plantation|spinney|hollins/i.test(name)) return `${name} woods`;
+  if (kind === 'park' && !/park|gardens?|ground|field|common|green|recreation/i.test(name)) return `${name} park`;
+  if (kind === 'water' && !/lake|reservoir|pond|water|mere|dam|lagoon/i.test(name)) return `${name} lake`;
+  return name;
+};
+let lastOverpass = 0;
+let overpassPausedUntil = 0; // the public Overpass servers are sometimes overloaded - back off rather than queue timeouts
+async function findLandmarks(path) {
+  if (!path || path.length < 4) return [];
+  const wait = lastOverpass + 1500 - Date.now();
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  lastOverpass = Date.now();
+  const step = Math.max(1, Math.ceil(path.length / 60));
+  const pts = path.filter((_, i) => i % step === 0 || i === path.length - 1);
+  const c = pts.map(([a, b]) => `${a.toFixed(5)},${b.toFixed(5)}`).join(',');
+  const q = `[out:json][timeout:25];(
+way(around:35,${c})["name"]["highway"~"^(path|footway|cycleway|track|bridleway)$"];
+relation(around:35,${c})["name"]["route"~"hiking|foot|walking"];
+way(around:25,${c})["name"]["natural"~"^(wood|water)$"];way(around:25,${c})["name"]["landuse"="forest"];
+way(around:25,${c})["name"]["leisure"~"^(park|nature_reserve)$"];relation(around:25,${c})["name"]["leisure"~"^(park|nature_reserve)$"];
+relation(around:25,${c})["name"]["landuse"="forest"];relation(around:25,${c})["name"]["natural"~"^(wood|water)$"];
+);out tags center;`;
+  const res = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: `data=${encodeURIComponent(q)}`,
+    headers: { 'User-Agent': 'IMS-Run-Planner/1.0 (personal route summaries)', 'Content-Type': 'application/x-www-form-urlencoded' }, signal: AbortSignal.timeout(40000) });
+  if (!res.ok) throw new Error(`Overpass said ${res.status}`);
+  const els = (await res.json()).elements || [];
+  // where along the route each one is first met, so they're listed in the order you pass them
+  const along = (lat, lon) => { let best = Infinity, at = 0; path.forEach(([a, b], i) => { const d = (a - lat) ** 2 + (b - lon) ** 2; if (d < best) { best = d; at = i; } }); return at; };
+  const seen = new Map();
+  for (const e of els) {
+    const name = String(e.tags?.name || '').trim();
+    if (!name || NOISE.test(name)) continue;
+    const kind = kindOf(e.tags);
+    const pos = e.center ? along(e.center.lat, e.center.lon) : 0;
+    const prev = seen.get(name);
+    // a wood or park outranks a path of the same name; keep the earliest position
+    if (!prev || (prev.kind === 'trail' && kind !== 'trail')) seen.set(name, { name, kind, pos: Math.min(pos, prev?.pos ?? pos) });
+    else prev.pos = Math.min(prev.pos, pos);
+  }
+  return [...seen.values()].sort((a, b) => a.pos - b.pos).map((x) => withKind(x.name, x.kind));
+}
+
+// "Takes in Parlington Hollins woods, The Lines Way and Brecks Wood." Footpaths named after streets
+// (Station Road, Medway Avenue) aren't landmarks and are left out; "YWT Hollinhurst Wood" gives way to
+// "Hollinhurst Wood"; woods, parks, water and reserves come first, then named trails - up to four, kept
+// in the order you pass them, skipping names the description already gives.
+const STREETY = /\b(drive|avenue|road|street|place|close|crescent|grove|court|terrace|mews|lane|row|square|gardens? road|view|rise|walk east|walk west)\b/i;
+const NATURAL = /\b(woods?|forest|hollins|copse|plantation|spinney|park|lake|pond|reservoir|water|mere|reserve|sssi|common|hills?|valley|meadows?|moor|fields?|nature)\b/i;
+const TRAIL = /\b(way|path|trod|line|lines|trail|greenway|walk|loop|track)\b/i;
+export function landmarkSentence(landmarks, description = '') {
+  const desc = String(description || '').toLowerCase();
+  // names saved before 'Recreation Ground' stopped getting 'park' added
+  const names = (landmarks || []).map((n) => n.replace(/(ground|field|fields|common|green) park$/i, '$1')).filter((n) => !STREETY.test(n) || NATURAL.test(n.replace(STREETY, '')) && /park|wood|lake|pond/i.test(n));
+  const plain = new Set(names.map((n) => n.toLowerCase()));
+  const kept = names.filter((n) => !/^ywt\s+/i.test(n) || !plain.has(n.replace(/^ywt\s+/i, '').toLowerCase()))
+    .filter((n) => !desc.includes(n.toLowerCase().replace(/ (woods|park|lake)$/, '')))
+    .map((n, i) => ({ n, i, rank: NATURAL.test(n) ? 0 : TRAIL.test(n) ? 1 : 2 }))
+    .filter((x) => x.rank < 2);
+  const list = kept.slice().sort((x, y) => x.rank - y.rank || x.i - y.i).slice(0, 4).sort((x, y) => x.i - y.i).map((x) => x.n);
+  if (!list.length) return '';
+  return `Takes in ${list.length === 1 ? list[0] : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}`}.`;
+}
+
 let job = null;
 
 // Fills in descriptions for routes that have none, one at a time, in the background.
@@ -114,9 +184,24 @@ export function describeMissing(shapeOf) {
       // '' marks "tried, nothing to say" so it isn't retried every time
       db.prepare('UPDATE planned_routes SET description = ? WHERE id = ?').run(text || '', r.id);
     }
+    // then the landmarks, for any route without them yet (left blank on failure, so tried again later)
+    let failures = 0;
+    for (const r of db.prepare('SELECT id, name FROM planned_routes WHERE landmarks IS NULL ORDER BY id').all()) {
+      if (Date.now() < overpassPausedUntil) break;
+      const route = getRoute(r.id);
+      if (!route) continue;
+      try {
+        db.prepare('UPDATE planned_routes SET landmarks = ? WHERE id = ?').run(JSON.stringify(await findLandmarks(route.path)), r.id);
+        failures = 0;
+      } catch (err) {
+        console.warn(`[RouteDescription] landmarks for ${r.name}: ${err.message}`);
+        if (++failures >= 2) { overpassPausedUntil = Date.now() + 15 * 60000; console.warn('[RouteDescription] Overpass not answering - landmark look-ups paused for 15 minutes'); break; }
+      }
+    }
   })().finally(() => { job = null; });
   return job;
 }
 
 export const describing = () => Boolean(job);
 export const descriptionOf = (id) => db.prepare('SELECT description FROM planned_routes WHERE id = ?').get(id)?.description ?? null;
+export const landmarksOf = (id) => { try { return JSON.parse(db.prepare('SELECT landmarks FROM planned_routes WHERE id = ?').get(id)?.landmarks ?? 'null'); } catch { return null; } };

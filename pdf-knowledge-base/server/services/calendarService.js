@@ -305,12 +305,14 @@ function calendarApi() {
 const validDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d || ''));
 const validTime = (t) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(t || ''));
 
-export async function createEvent({ title, date, time, durationMinutes = 30, description, location, calendarId }) {
+export async function createEvent({ title, date, time, durationMinutes = 30, description, location, calendarId, popupMinutes = null }) {
   if (!String(title || '').trim()) throw new Error('The event needs a title.');
   if (!validDate(date)) throw new Error('The event needs a date (YYYY-MM-DD).');
   if (time && !validTime(time)) throw new Error('The time must be HH:MM (24-hour).');
   const calId = calendarId || getSettingsView().calendarIds[0] || 'primary';
   const body = { summary: String(title).trim(), description: description || undefined, location: location || undefined };
+  // a phone notification exactly when it starts (e.g. run carb and water alerts), instead of the calendar's default
+  if (popupMinutes != null) body.reminders = { useDefault: false, overrides: [{ method: 'popup', minutes: Math.max(0, Number(popupMinutes) || 0) }] };
   if (time) {
     // Send London wall time with an explicit zone so Google handles BST/GMT itself.
     const [h, m] = time.split(':').map(Number);

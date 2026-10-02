@@ -138,6 +138,29 @@ export default function DayReportPortal({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewData, setPreviewData] = useState(null);
   const [copiedPreview, setCopiedPreview] = useState(false);
+  // what Ims would say: one section's example, and the whole report's script
+  const [examples, setExamples] = useState({}); // { [sectionId]: { loading, text, reason, error, stale } }
+  const [previewView, setPreviewView] = useState('script'); // 'script' | 'instructions'
+  const [script, setScript] = useState(null);
+  const [scriptLoading, setScriptLoading] = useState(false);
+  const loadExample = async (section) => {
+    setExamples((e) => ({ ...e, [section.id]: { ...(e[section.id] || {}), loading: true, error: null } }));
+    try {
+      const r = await fetch('/api/day-report/sample', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ section }) });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || 'Could not make an example');
+      setExamples((e) => ({ ...e, [section.id]: { text: j.text, reason: j.reason, dummy: j.dummy, loading: false, stale: false } }));
+    } catch (err) { setExamples((e) => ({ ...e, [section.id]: { loading: false, error: err.message } })); }
+  };
+  const loadScript = async () => {
+    setScriptLoading(true);
+    try {
+      const r = await fetch('/api/day-report/script', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sections }) });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || 'Could not write the script');
+      setScript(j.script || []);
+    } catch (err) { showToast(err.message, 'error'); } finally { setScriptLoading(false); }
+  };
 
   const showToast = useCallback((msg, type = 'success') => {
     setNotification({ msg, type });
@@ -224,6 +247,7 @@ export default function DayReportPortal({
   }, [subFilterSchemas]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateSubFilter = (sectionId, filterKey, val) => {
+    setExamples((e) => (e[sectionId] ? { ...e, [sectionId]: { ...e[sectionId], stale: true } } : e));
     setSections((prev) =>
       prev.map((s) => {
         if (s.id !== sectionId) return s;
@@ -389,8 +413,10 @@ export default function DayReportPortal({
     setPreviewOpen(true);
     setPreviewLoading(true);
     setCopiedPreview(false);
+    if (previewView === 'script') loadScript();
     try {
-      const res = await fetch('/api/day-report/preview');
+      // what Ims is given, from the sections as they are on the page
+      const res = await fetch('/api/day-report/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sections }) });
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to generate preview');
@@ -405,6 +431,12 @@ export default function DayReportPortal({
   };
 
   const copyPreviewText = () => {
+    if (previewView === 'script' && script?.length) {
+      navigator.clipboard.writeText(script.map((x) => `${x.title}\n${x.text || ''}`).join('\n\n'));
+      setCopiedPreview(true);
+      setTimeout(() => setCopiedPreview(false), 2500);
+      return;
+    }
     if (!previewData || !previewData.parts) return;
     const fullText = (previewData.whoLine || '') + previewData.parts.join('\n\n');
     navigator.clipboard.writeText(fullText);
@@ -499,7 +531,7 @@ export default function DayReportPortal({
           <div className="flex items-start gap-2.5">
             <Sliders size={16} className="text-amber-400 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold text-slate-200 dark:text-slate-200 text-slate-700">Daily Morning Briefing Sequence & Fine-Tuning: </span>
+              <span className={`font-bold ${isDark ? 'text-slate-100' : 'text-[#2E2B27]'}`}>Daily Morning Briefing Sequence & Fine-Tuning: </span>
               Use the <span className="font-semibold">Move Up</span> and <span className="font-semibold">Move Down</span> buttons to re-order the report subjects. Toggle any subject off to exclude it completely. Click <span className="font-semibold text-amber-500 dark:text-amber-400">Sub-Filters</span> on any service to target or exclude specific data points (e.g. rain warnings, run vs ride stats, glucose trend arrows, alarm scopes, or news thresholds). Click <span className="font-semibold">Notes</span> to add custom conversational directives.
             </div>
           </div>
@@ -816,6 +848,44 @@ export default function DayReportPortal({
                             );
                           }
 
+                          if (filter.type === 'level') {
+                            const levels = filter.levels || ['Off', 'Brief', 'Normal', 'Detailed'];
+                            const lv = typeof currentVal === 'boolean' ? (currentVal ? 2 : 0) : Number(currentVal ?? filter.default ?? 2);
+                            const off = filter.levels ? false : lv === 0;
+                            return (
+                              <div key={filter.key} className={`p-2.5 rounded-xl border flex flex-col gap-1.5 ${off ? (isDark ? 'bg-slate-900/40 border-white/5' : 'bg-slate-100 border-slate-200') : (isDark ? 'bg-white/5 border-amber-500/30' : 'bg-white border-amber-500/40 shadow-sm')}`}>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className={`text-xs font-bold ${off ? 'text-slate-400' : isDark ? 'text-slate-100' : 'text-slate-900'}`}>{filter.label}</span>
+                                  <span className={`text-[11px] font-black px-2 py-0.5 rounded-md ${off ? (isDark ? 'bg-white/5 text-slate-400' : 'bg-slate-200 text-slate-600') : (isDark ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-100 text-amber-900')}`}>{levels[lv]}</span>
+                                </div>
+                                <input type="range" min="0" max={levels.length - 1} step="1" value={lv}
+                                  onChange={(e) => updateSubFilter(section.id, filter.key, Number(e.target.value))}
+                                  className="w-full accent-amber-500 cursor-pointer" aria-label={`${filter.label} - how much detail`} />
+                                <div className={`flex justify-between text-[9px] font-bold ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+                                  {levels.length <= 8 ? (
+                                    levels.map((l, idx) => <span key={`${l}-${idx}`}>{l}</span>)
+                                  ) : (
+                                    levels.map((l, idx) => {
+                                      const isStart = idx === 0;
+                                      const isEnd = idx === levels.length - 1;
+                                      const isMiddle = idx === 6;
+                                      return (
+                                        <span
+                                          key={`${l}-${idx}`}
+                                          className={isStart || isEnd || isMiddle ? 'opacity-100 font-extrabold' : 'opacity-40 text-[8px]'}
+                                          title={l}
+                                        >
+                                          {isStart || isEnd || isMiddle ? l : (levels.length === 14 ? `${idx + 1}d` : l)}
+                                        </span>
+                                      );
+                                    })
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-slate-400 leading-tight">{filter.description}</p>
+                              </div>
+                            );
+                          }
+
                           if (filter.type === 'number') {
                             return (
                               <div
@@ -826,7 +896,7 @@ export default function DayReportPortal({
                               >
                                 <div>
                                   <div className="flex items-center justify-between">
-                                    <span className="text-xs font-bold text-slate-200 dark:text-slate-200 text-slate-800">
+                                    <span className={`text-xs font-bold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
                                       {filter.label}
                                     </span>
                                     <span className="font-mono text-xs font-black text-amber-500 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
@@ -884,6 +954,27 @@ export default function DayReportPortal({
                           return null;
                         })}
                       </div>
+
+                      {/* what Ims would say for this section today, with these settings */}
+                      {(() => {
+                        const ex = examples[section.id];
+                        return (
+                          <div className={`rounded-xl border p-3 ${isDark ? 'border-amber-500/30 bg-amber-500/5' : 'border-amber-400/60 bg-amber-50'}`}>
+                            <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                              <span className={`text-xs font-black uppercase tracking-wider ${isDark ? 'text-amber-300' : 'text-amber-900'}`}>What Ims would say</span>
+                              <button onClick={() => loadExample(section)} disabled={ex?.loading}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border disabled:opacity-50 ${isDark ? 'border-amber-500/40 text-amber-200 hover:bg-amber-500/10' : 'border-amber-500 text-amber-900 bg-white hover:bg-amber-100'}`}>
+                                {ex?.loading ? 'Writing...' : ex?.text || ex?.reason ? (ex.stale ? 'Settings changed - update the example' : 'Another example') : 'Show an example'}
+                              </button>
+                            </div>
+                            {ex?.error && <p className="text-[11px] text-rose-600">{ex.error}</p>}
+                            {ex?.dummy && ex?.text && <p className={`mb-1.5 inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${isDark ? 'bg-sky-500/15 text-sky-200' : 'bg-sky-100 text-sky-900'}`}>Made-up data - nothing real for this today</p>}
+                            {ex?.text ? <p className={`text-xs leading-relaxed whitespace-pre-line ${ex.stale ? 'opacity-50' : ''} ${isDark ? 'text-slate-100' : 'text-[#2E2B27]'}`}>{ex.text}</p>
+                              : ex?.reason ? <p className="text-[11px] text-slate-500">{ex.reason}</p>
+                              : !ex?.loading && <p className="text-[11px] text-slate-500">Today's real data, said in Ims's voice with the settings above - saved or not.</p>}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
 
@@ -1107,10 +1198,37 @@ export default function DayReportPortal({
               </div>
             </div>
 
+            <div className={`px-6 pt-3 flex gap-2 shrink-0 ${isDark ? 'bg-slate-900/60' : 'bg-slate-100/70'}`}>
+              {[['script', 'Script - what Ims will say'], ['instructions', 'What Ims is given']].map(([k, t]) => (
+                <button key={k} onClick={() => { setPreviewView(k); if (k === 'script' && !script && !scriptLoading) loadScript(); }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold ${previewView === k ? 'bg-amber-500 text-slate-950' : isDark ? 'bg-white/5 text-slate-300' : 'bg-white text-slate-700 border border-slate-300'}`}>{t}</button>
+              ))}
+            </div>
             <div className={`p-6 overflow-y-auto space-y-4 flex-1 text-xs ${
               isDark ? 'bg-slate-900/60' : 'bg-slate-100/70'
             }`}>
-              {previewLoading ? (
+              {previewView === 'script' ? (
+                scriptLoading ? (
+                  <div className="py-12 flex flex-col items-center justify-center gap-3">
+                    <div className="w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                    <span className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Writing today's script in Ims's voice...</span>
+                  </div>
+                ) : !script?.length ? (
+                  <div className={`text-center py-8 font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Nothing to say with these settings - check that subjects are enabled.</div>
+                ) : (
+                  <div className="space-y-3">
+                    {script.map((x, idx) => (
+                      <div key={idx} className="p-3.5 rounded-xl border border-slate-300 bg-white shadow-sm">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className="px-2 py-0.5 rounded font-mono text-[11px] font-black text-amber-950 bg-amber-200 border border-amber-400">{idx + 1}</span>
+                          <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">{x.title}</span>
+                        </div>
+                        <p className="text-sm leading-relaxed text-black whitespace-pre-line select-text" style={{ color: '#000000' }}>{x.text || '(no words came back for this section - refresh)'}</p>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : previewLoading ? (
                 <div className="py-12 flex flex-col items-center justify-center gap-3">
                   <div className="w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full animate-spin" />
                   <span className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Generating live report briefing...</span>
@@ -1147,9 +1265,9 @@ export default function DayReportPortal({
             <div className={`px-6 py-3 border-t text-[11px] flex items-center justify-between shrink-0 ${
               isDark ? 'border-white/10 bg-slate-900/80 text-slate-300' : 'border-slate-200 bg-slate-100 text-slate-800 font-medium'
             }`}>
-              <span>Delivered in authentic Yorkshire accent with full detail on "Morning IMS".</span>
+              <span>{previewView === 'script' ? 'From the settings on this page, saved or not - change them, then Refresh.' : 'The facts and instructions each section gives Ims.'}</span>
               <button
-                onClick={handleOpenPreview}
+                onClick={() => (previewView === 'script' ? loadScript() : handleOpenPreview())}
                 className="font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1"
               >
                 <RotateCcw size={11} /> Refresh

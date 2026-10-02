@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Route as RouteIcon, RotateCw, LogIn, Lock, Upload, Link2, Trash2, Mountain, Calculator, AlertTriangle, Save, Cookie, Syringe, BookOpen, Unlink, Download, ExternalLink, Edit3, Check, Copy, ChevronDown, ChevronUp, Sparkles, Shield, HeartPulse, Zap, Clock, FileText, Plus, CheckCircle, XCircle, ArrowRight, HelpCircle, Layers, Sliders, AlertCircle, Compass } from 'lucide-react';
+import { Route as RouteIcon, RotateCw, LogIn, Lock, Upload, Link2, Trash2, Mountain, Calculator, AlertTriangle, Save, Cookie, Syringe, BookOpen, Unlink, Download, ExternalLink, Edit3, Check, Copy, ChevronDown, ChevronUp, Sparkles, Shield, HeartPulse, Zap, Clock, FileText, Plus, CheckCircle, XCircle, ArrowRight, HelpCircle, Layers, Sliders, AlertCircle, Compass, GraduationCap, Printer } from 'lucide-react';
 import PortalShell from './PortalShell';
 import { useUnits, UnitToggle, dist, toKm, paceText, paceToMinPerKm, KM_PER_MI } from '../../utils/units';
 
@@ -9,6 +9,9 @@ import RunRulebookTab from './RunPlanner/RunRulebookTab';
 import RunTargetsTab from './RunPlanner/RunTargetsTab';
 import RunFlythroughTab from './RunPlanner/RunFlythroughTab';
 import RunRouteFinderTab from './RunPlanner/RunRouteFinderTab';
+import RunLearningTab from './RunPlanner/RunLearningTab';
+import RouteSelectionPanel from './RunPlanner/RouteSelectionPanel';
+import { printRunReport } from './RunPlanner/printRunReport';
 
 const fmtMin = (m) => `${Math.floor(m / 60)} h ${String(Math.round(m % 60)).padStart(2, '0')} min`;
 
@@ -189,11 +192,23 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
   const isDark = theme === 'dark';
   const { units, setUnits } = useUnits();
 
-  // Top Tab State: 'mission' | 'rulebook' | 'targets' | 'flythrough' | 'finder'
-  const [activeMainTab, setActiveMainTab] = useState('mission');
+  // Top Tab State: 'mission' | 'finder' | 'flythrough' | 'learning' | 'rulebook' (targets and rulebook)
+  const [activeMainTab, setActiveMainTab] = useState('finder'); // pick a route first, then plan the run
 
   const [routes, setRoutes] = useState([]);
-  const [routeId, setRouteId] = useState('');
+  const [routeId, setRouteIdState] = useState('');
+  // the chosen route is kept in IMS (not just this tab), so a refresh - or opening the planner on the phone -
+  // brings it back; choosing no route, or deleting it, clears it
+  const restoredRef = useRef(false);
+  const setRouteId = useCallback((id) => {
+    setRouteIdState(id);
+    fetch('/api/planner/selected-route', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ routeId: id || null }) }).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    fetch('/api/planner/selected-route').then((r) => r.json()).then((j) => { if (j.success && j.routeId) setRouteIdState((cur) => cur || String(j.routeId)); }).catch(() => {});
+  }, []);
   const [form, setForm] = useState({ distanceKm: '10', pace: '', intensity: 'steady', startBg: '', iob: '', cob: '', minutesSinceBolus: '' });
   const [targets, setTargets] = useState(null);
   const [now, setNow] = useState(null);
@@ -364,11 +379,52 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
       if (!typed) setForm((f) => ({ ...f, startBg: String(startBg) }));
       lastRouteRef.current = routeKey;
       lastInputsRef.current = sig;
-      estimate({ startBg, isTweak: !isNewRoute });
+      if (isNewRoute) setCustomTiming({ intakes: null, drinks: null });
+      estimate({ startBg, isTweak: !isNewRoute, ...(isNewRoute ? { customIntakes: null, customDrinks: null } : {}) });
     }, isNewRoute ? 0 : 500);
     return () => clearTimeout(t);
   }, [routeFull?.id, routeId, form.distanceKm, form.startBg, form.iob, form.cob, form.minutesSinceBolus, form.pace, form.intensity, goalId, targets, units]); // eslint-disable-line react-hooks/exhaustive-deps
 
+
+  // When a re-plan changes the carb stops, say why (which inputs moved) and offer to keep the previous stops -
+  // e.g. insulin on board falling between two plans can take a stop away even though the pace was all you touched.
+  const planRef = useRef(null);
+  const [carbChange, setCarbChange] = useState(null);
+  const stopsKey = (p) => (p?.plan?.stops || []).map((s) => `${s.minute}:${s.grams}`).join(',');
+  const noteCarbChange = (prev, next, isTweak) => {
+    if (!isTweak || !prev?.plan || !next?.plan || stopsKey(prev) === stopsKey(next)) return;
+    const pi = prev.inputs || {}, ni = next.inputs || {};
+    const r1 = (n) => Math.round(n * 10) / 10;
+    const reasons = [];
+    if (pi.iob !== ni.iob) reasons.push(`insulin on board ${pi.iob} → ${ni.iob} U (${ni.iob < pi.iob ? 'less insulin acting, so less of a drop' : 'more insulin acting, so more of a drop'})`);
+    if (pi.startBg !== ni.startBg) reasons.push(`start glucose ${pi.startBg} → ${ni.startBg}`);
+    if (pi.cob !== ni.cob) reasons.push(`carbs on board ${pi.cob} → ${ni.cob} g`);
+    if (prev.run?.durationMin !== next.run?.durationMin) reasons.push(`run time ${prev.run?.durationMin} → ${next.run?.durationMin} min (pace ${paceText(pi.averagePaceMinPerKm, units)} → ${paceText(ni.averagePaceMinPerKm, units)} per ${units})`);
+    if (pi.intensity !== ni.intensity) reasons.push(`effort ${pi.intensity} → ${ni.intensity}`);
+    if (r1(prev.run?.combinedEffortFactor || 1) !== r1(next.run?.combinedEffortFactor || 1)) reasons.push(`effort factor ${r1(prev.run?.combinedEffortFactor || 1)} → ${r1(next.run?.combinedEffortFactor || 1)}`);
+    if ((prev.learning?.applied?.length || 0) !== (next.learning?.applied?.length || 0)) reasons.push('lessons from your runs');
+    const fmt = (p) => (p.plan.stops.length ? p.plan.stops.map((s) => `${s.grams} g at ${s.minute === 0 ? 'the start' : `${s.minute} min`}`).join(', ') : 'no carbs');
+    setCarbChange({
+      from: fmt(prev), to: fmt(next), fromTotal: prev.plan.totalCarbs, toTotal: next.plan.totalCarbs, reasons,
+      lowest: next.plan.predicted?.minDuring, floor: next.settings?.floor,
+      prevIntakes: prev.plan.stops.map((s) => ({ t: s.minute, g: s.grams, kind: s.minute === 0 ? 'start' : 'run' })),
+    });
+  };
+  const keepPreviousStops = () => {
+    if (!carbChange) return;
+    setCustomTiming({ intakes: carbChange.prevIntakes });
+    estimate({ isTweak: true, customIntakes: carbChange.prevIntakes });
+    setCarbChange(null);
+  };
+
+  // Your own timing for carb stops and water-only drinks (dragged on the Run plan chart, or carbs changed per
+  // stop). Kept so any later re-plan (pace, glucose, effort...) keeps it; cleared by a new route or Reset.
+  const customTimingRef = useRef({ intakes: null, drinks: null });
+  const [hasCustomTiming, setHasCustomTiming] = useState(false);
+  const setCustomTiming = (t) => {
+    customTimingRef.current = { ...customTimingRef.current, ...t };
+    setHasCustomTiming(Boolean(customTimingRef.current.intakes || customTimingRef.current.drinks));
+  };
 
   const estimate = async (overrides = {}, targetsOverride = null) => {
     setBusy('estimate');
@@ -377,7 +433,9 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
       const isTweak = overrides?.isTweak === true;
       const targetPace = overrides?.paceMinPerKm ?? (form.pace ? paceToMinPerKm(form.pace, units) : null);
       const targetCarbs = overrides?.customCarbs;
-      const targetCustomIntakes = overrides?.customIntakes ?? null;
+      // an explicit override (even null) wins; otherwise the remembered custom timing
+      const targetCustomIntakes = overrides?.customIntakes !== undefined ? overrides.customIntakes : (overrides?.customCarbs !== undefined ? null : customTimingRef.current.intakes);
+      const targetCustomDrinks = overrides?.customDrinks !== undefined ? overrides.customDrinks : customTimingRef.current.drinks;
       // Use live (possibly unsaved) targets so the chart reacts instantly to Tab 3 adjustments
       const liveTargets = targetsOverride ?? targets;
 
@@ -397,6 +455,7 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
         goalId: goalId || null,
         customCarbs: targetCarbs,
         customIntakes: targetCustomIntakes,
+        customDrinks: targetCustomDrinks,
         // Live target overrides — backend uses these instead of persisted DB values
         ...(liveTargets?.startTarget !== undefined ? { startTarget: Number(liveTargets.startTarget) } : {}),
         ...(liveTargets?.floor !== undefined ? { floor: Number(liveTargets.floor) } : {}),
@@ -405,6 +464,8 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
       };
 
       const d = await send('/api/planner/estimate', 'POST', body);
+      noteCarbChange(planRef.current, d, isTweak);
+      planRef.current = d;
       setPlan(d);
 
       if (!isTweak) {
@@ -457,6 +518,15 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
 
   const stepCarbs = (deltaGrams) => {
     if (!plan || !plan.plan) return;
+    const own = customTimingRef.current.intakes;
+    if (own?.length) {
+      const total = own.reduce((n, it) => n + it.g, 0) || 1;
+      const target = Math.max(0, total + deltaGrams);
+      const scaled = own.map((it) => ({ ...it, g: Math.max(0, Math.round(((it.g / total) * target) / 5) * 5) }));
+      setCustomTiming({ intakes: scaled });
+      estimate({ isTweak: true, customIntakes: scaled });
+      return;
+    }
     const currentG = plan.plan.totalCarbs || 0;
     const newG = Math.max(0, currentG + deltaGrams);
     estimate({ isTweak: true, customCarbs: newG });
@@ -475,7 +545,57 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
       g: i === stopIdx ? Math.max(0, (s.grams || 0) + deltaGrams) : (s.grams || 0),
       kind: s.minute === 0 ? 'start' : 'run',
     }));
+    setCustomTiming({ intakes: newIntakes });
     estimate({ isTweak: true, customIntakes: newIntakes });
+  };
+
+  // dragging a carb line: that stop moves to a new minute (its water goes with it)
+  const moveStop = (stopIdx, minute) => {
+    const stops = plan?.plan?.stops || [];
+    if (!stops[stopIdx]) return;
+    const intakes = stops.map((st, i) => {
+      const t = i === stopIdx ? Math.max(0, Math.round(minute)) : st.minute;
+      return { t, g: st.grams || 0, kind: t === 0 ? 'start' : 'run' };
+    }).sort((a, b) => a.t - b.t);
+    setCustomTiming({ intakes });
+    estimate({ isTweak: true, customIntakes: intakes });
+  };
+  // full control of the stops: add one (10 g, in the middle of the longest gap) or remove one. Your own
+  // stops from then on - kept through re-plans until Reset or a new route.
+  const ownStops = (stops) => stops.map((st) => ({ t: st.minute, g: st.grams || 0, kind: st.minute === 0 ? 'start' : 'run' }));
+  const applyStops = (intakes) => {
+    const sorted = [...intakes].sort((a, b) => a.t - b.t);
+    setCustomTiming({ intakes: sorted });
+    estimate({ isTweak: true, customIntakes: sorted });
+  };
+  const addStop = (minute = null, grams = 10) => {
+    if (!plan?.plan) return;
+    const dur = plan.run?.durationMin || 30;
+    const stops = plan.plan.stops || [];
+    let t = minute;
+    if (t == null) {
+      const marks = [0, ...stops.map((s) => s.minute), dur].sort((a, b) => a - b);
+      let best = [0, dur];
+      for (let i = 1; i < marks.length; i++) if (marks[i] - marks[i - 1] > best[1] - best[0]) best = [marks[i - 1], marks[i]];
+      t = Math.round((best[0] + best[1]) / 2);
+    }
+    applyStops([...ownStops(stops), { t: Math.max(0, Math.min(dur, Math.round(t))), g: grams, kind: t === 0 ? 'start' : 'run' }]);
+  };
+  const removeStop = (stopIdx) => {
+    const stops = plan?.plan?.stops || [];
+    if (!stops[stopIdx]) return;
+    applyStops(ownStops(stops.filter((_, i) => i !== stopIdx)));
+  };
+
+  // dragging a water-only line
+  const moveDrink = (fromMinute, minute) => {
+    const own = (plan?.drinks || []).filter((d) => !d.withCarbs).map((d) => ({ minute: d.minute === fromMinute ? Math.max(1, Math.round(minute)) : d.minute, ml: d.ml }));
+    setCustomTiming({ drinks: own });
+    estimate({ isTweak: true, customDrinks: own });
+  };
+  const resetTiming = () => {
+    setCustomTiming({ intakes: null, drinks: null });
+    estimate({ isTweak: true, customIntakes: null, customDrinks: null });
   };
 
   const saveTargets = async () => {
@@ -809,27 +929,21 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
         <div className="py-16 flex justify-center"><RotateCw size={22} className="animate-spin opacity-50" /></div>
       ) : (
         <>
-          {/* Header Action Bar: Distances unit toggle */}
-          <div className={`flex items-center justify-end gap-2 text-[10px] ${isDark ? 'text-slate-500' : 'text-[#6A645D] font-medium'} mb-2`}>
-            Distances in <UnitToggle units={units} setUnits={setUnits} isDark={isDark} />
+          {/* Header Action Bar: the whole run as a PDF, and the distances unit toggle */}
+          <div className={`flex items-center justify-end gap-3 text-[10px] ${isDark ? 'text-slate-500' : 'text-[#6A645D] font-medium'} mb-2`}>
+            <button
+              onClick={() => printRunReport({ plan: plan?.plan ? plan : null, routeId: routeId ? Number(routeId) : null, units })}
+              disabled={!routeId && !plan?.plan}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold border disabled:opacity-40 ${isDark ? 'border-white/15 text-slate-200 hover:bg-white/5' : 'border-[#2E2B27]/20 text-[#2E2B27] hover:bg-[#F4EFE6]'}`}
+              title="The route, the run plan, the latest retrospective for the route and what your runs have taught - choose Save as PDF in the print dialogue"
+            >
+              <Printer size={13} /> Save as PDF
+            </button>
+            <span className="flex items-center gap-2">Distances in <UnitToggle units={units} setUnits={setUnits} isDark={isDark} /></span>
           </div>
 
           {/* TOP 5-TAB WORKSPACE NAVIGATOR */}
           <div className={`flex flex-wrap items-center gap-2 mb-5 p-1.5 rounded-2xl border ${isDark ? 'border-white/10 bg-slate-950/60 shadow-lg shadow-black/20' : 'border-[#2E2B27]/15 bg-[#F4EFE6]/90 shadow-sm shadow-[#2E2B27]/5'}`}>
-            <button
-              onClick={() => setActiveMainTab('mission')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                activeMainTab === 'mission'
-                  ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md'
-                  : isDark
-                  ? 'text-slate-400 hover:text-white hover:bg-white/5'
-                  : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'
-              }`}
-            >
-              <Mountain size={14} />
-              <span>1. Run Planner</span>
-            </button>
-
             <button
               onClick={() => setActiveMainTab('finder')}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
@@ -841,7 +955,21 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
               }`}
             >
               <Compass size={14} />
-              <span>2. Route Finder</span>
+              <span>1. Route Finder</span>
+            </button>
+
+            <button
+              onClick={() => setActiveMainTab('mission')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                activeMainTab === 'mission'
+                  ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md'
+                  : isDark
+                  ? 'text-slate-400 hover:text-white hover:bg-white/5'
+                  : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'
+              }`}
+            >
+              <Mountain size={14} />
+              <span>2. Run Planner</span>
             </button>
 
             <button
@@ -855,10 +983,24 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
               }`}
             >
               <Sparkles size={14} className={activeMainTab === 'flythrough' ? 'text-yellow-300' : (isDark ? 'text-yellow-400' : 'text-amber-600')} />
-              <span>3. Run Flythrough & Retrospective</span>
+              <span>3. Run Flythrough</span>
               <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold uppercase tracking-wider ${isDark ? 'bg-sky-500/20 text-sky-300' : 'bg-sky-100 text-sky-900 border border-sky-300'}`}>
                 Replay
               </span>
+            </button>
+
+            <button
+              onClick={() => setActiveMainTab('learning')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                activeMainTab === 'learning'
+                  ? 'bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-md'
+                  : isDark
+                  ? 'text-slate-400 hover:text-white hover:bg-white/5'
+                  : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'
+              }`}
+            >
+              <GraduationCap size={14} />
+              <span>4. Run Learning</span>
             </button>
 
             <button
@@ -872,7 +1014,7 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
               }`}
             >
               <BookOpen size={14} />
-              <span>4. T1D Rulebook & Intelligence</span>
+              <span>5. Targets and rulebook</span>
               {pendingFindingsCount > 0 && (
                 <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-black ${isDark ? 'bg-amber-500/20 text-amber-300' : 'bg-amber-100 text-amber-900 border border-amber-300'} animate-pulse`}>
                   {pendingFindingsCount}
@@ -880,23 +1022,18 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
               )}
             </button>
 
-            <button
-              onClick={() => setActiveMainTab('targets')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                activeMainTab === 'targets'
-                  ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md'
-                  : isDark
-                  ? 'text-slate-400 hover:text-white hover:bg-white/5'
-                  : 'text-[#6A645D] hover:text-[#2E2B27] hover:bg-[#2E2B27]/5'
-              }`}
-            >
-              <Sliders size={14} />
-              <span>5. Targets & Assumptions</span>
-            </button>
           </div>
 
-          {/* TAB 2: ROUTE FINDER & DUPLICATES ("Plan this run" hands the route to tab 1) */}
+          {/* TAB 1: ROUTE FINDER & DUPLICATES ("Plan this run" hands the route to tab 2, the Run Planner) */}
           {activeMainTab === 'finder' && (
+            <div className="flex flex-col gap-5">
+            <RouteSelectionPanel
+              panel={panel} label={label} field={field} btn={btn} ghost={ghost} isDark={isDark} units={units}
+              routes={routes} routeId={routeId} setRouteId={setRouteId} form={form} setForm={setForm} selected={selected} removeRoute={removeRoute}
+              fileRef={fileRef} addGpx={addGpx} busy={busy} kForm={kForm} setKForm={setKForm} addLink={addLink} komoot={komoot}
+              loadTours={loadTours} tours={tours} tourType={tourType} tourSearch={tourSearch} setTourSearch={setTourSearch}
+              importTour={importTour} connectKomoot={connectKomoot} send={send} setTours={setTours} loadAll={loadAll}
+            />
             <RunRouteFinderTab
               call={call}
               send={send}
@@ -911,7 +1048,10 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
               komootConnected={Boolean(komoot?.connected)}
               onUseRoute={(id) => { setRouteId(String(id)); setActiveMainTab('mission'); }}
               onDeleteRoute={removeRoute}
+              onRoutesRenamed={() => loadAll()}
+              onRoutesDeleted={(ids) => { if (ids.includes(Number(routeId))) setRouteId(''); loadAll(); }}
             />
+            </div>
           )}
 
           {/* TAB 1: RUN PLANNER (THE MAIN RUN PLANNING COCKPIT) */}
@@ -957,6 +1097,15 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
               stepPace={stepPace}
               stepCarbs={stepCarbs}
               stepStopCarbs={stepStopCarbs}
+              moveStop={moveStop}
+              addStop={addStop}
+              removeStop={removeStop}
+              carbChange={carbChange}
+              keepPreviousStops={keepPreviousStops}
+              dismissCarbChange={() => setCarbChange(null)}
+              moveDrink={moveDrink}
+              resetTiming={resetTiming}
+              hasCustomTiming={hasCustomTiming}
               timeEditFocus={timeEditFocus}
               setTimeEditFocus={setTimeEditFocus}
               timeEditDraft={timeEditDraft}
@@ -985,8 +1134,23 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
             />
           )}
 
-          {/* TAB 2: T1D RULEBOOK & INTELLIGENCE */}
+          {/* TAB 5: TARGETS AND RULEBOOK - your targets and the model's assumptions first, then the T1D rulebook */}
           {activeMainTab === 'rulebook' && (
+            <div className="flex flex-col gap-5">
+            <RunTargetsTab
+              targets={targets}
+              setTargets={setTargets}
+              saveTargets={saveTargets}
+              hasPlan={Boolean(plan)}
+              onTargetChange={estimateWithTargets}
+              busy={busy}
+              isDark={isDark}
+              panelClass={panel}
+              labelClass={label}
+              fieldClass={field}
+              btnClass={btn}
+              ghostClass={ghost}
+            />
             <RunRulebookTab
               rulebook={rulebook}
               rulebookDraft={rulebookDraft}
@@ -1041,27 +1205,13 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
               btnClass={btn}
               ghostClass={ghost}
             />
+            </div>
           )}
 
-          {/* TAB 3: TARGETS & ASSUMPTIONS */}
-          {activeMainTab === 'targets' && (
-            <RunTargetsTab
-              targets={targets}
-              setTargets={setTargets}
-              saveTargets={saveTargets}
-              hasPlan={Boolean(plan)}
-              onTargetChange={estimateWithTargets}
-              busy={busy}
-              isDark={isDark}
-              panelClass={panel}
-              labelClass={label}
-              fieldClass={field}
-              btnClass={btn}
-              ghostClass={ghost}
-            />
-          )}
+          {/* TAB 4: RUN LEARNING - lessons from your runs, and each run's retrospective */}
+          {activeMainTab === 'learning' && <RunLearningTab call={call} send={send} isDark={isDark} panelClass={panel} units={units} />}
 
-          {/* TAB 4: RUN FLYTHROUGH & RETROSPECTIVE PLAYER */}
+          {/* TAB 3: RUN FLYTHROUGH & RETROSPECTIVE PLAYER */}
           {activeMainTab === 'flythrough' && (
             <RunFlythroughTab
               onPlanRoute={(id) => { setRouteId(String(id)); setActiveMainTab('mission'); }}
@@ -1074,6 +1224,8 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
               btnClass={btn}
               ghostClass={ghost}
               targets={targets}
+              call={call}
+              send={send}
             />
           )}
         </>

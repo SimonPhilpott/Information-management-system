@@ -62,11 +62,11 @@ export default function RadialGauge({
 
   return (
     <div className={`flex flex-col items-center justify-between p-3.5 rounded-2xl border transition-all ${isDark ? 'bg-slate-900/60 border-white/10 shadow-lg shadow-black/20' : 'bg-white border-[#2E2B27]/10 shadow-sm'} ${className}`}>
-      {/* Title & Target Zone Badge */}
-      <div className="w-full flex items-center justify-between mb-1">
-        <span className={`text-[11px] font-black uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#2E2B27]'}`}>{title}</span>
+      {/* Title, then the target / zone pill on its own line so the title never wraps */}
+      <div className="w-full flex flex-col items-start gap-1 mb-1">
+        <span className={`text-sm font-black uppercase tracking-wide ${isDark ? 'text-slate-100' : 'text-[#2E2B27]'}`}>{title}</span>
         {targetLabel && (
-          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${isDark ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400' : 'bg-emerald-50 border-emerald-300 text-emerald-800 font-semibold'}`}>
+          <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${isDark ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300' : 'bg-emerald-50 border-emerald-300 text-emerald-800'}`}>
             {targetLabel}
           </span>
         )}

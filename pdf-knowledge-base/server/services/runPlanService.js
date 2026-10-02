@@ -3,6 +3,7 @@ import { getRoute } from './routeService.js';
 import { getLoopSettings } from './runGlucoseService.js';
 import { getWeather } from './weatherService.js';
 import { getTrainingLoad } from './trainingLoadService.js';
+import { learnedAdjustments, postRunPattern, refuelStatus } from './runLearningService.js';
 
 // Run planner: given a distance or a saved route (with its elevation), a pace, and where glucose
 // and insulin on board are right now, estimate how glucose is likely to move during the run and
@@ -181,6 +182,18 @@ function simulate({ startBg, iob, cob, isf, cr, kEx, sensMult, intensity, effort
     bg = Math.max(1.5, bg + rise - fall);
   }
   return out;
+}
+
+// The same model, for the run retrospective: replays a finished run with what actually happened (start
+// glucose, insulin on board, the carbs as taken) so the planner's error can be measured and learned from.
+export const replaySimulate = (params, intakes) => simulate({ ...params, intakes });
+
+// The kind of run, for learning that carries across routes: distance band, effort and how hilly.
+export function runProfile({ distanceKm, intensity = 'steady', climbPerKm = 0 }) {
+  const dist = distanceKm < 8 ? 'short' : distanceKm < 16 ? 'medium' : distanceKm < 25 ? 'long' : 'very long';
+  const eff = INTENSITY[intensity] ? intensity : 'steady';
+  const hills = climbPerKm < 8 ? 'flat' : climbPerKm < 20 ? 'rolling' : 'hilly';
+  return { key: `${dist}|${eff}|${hills}`, label: `${dist}, ${eff}, ${hills}`, distance: dist, intensity: eff, hills };
 }
 
 const min = (arr, a, b) => Math.min(...arr.slice(a, Math.min(b, arr.length - 1) + 1));
@@ -431,7 +444,7 @@ export async function estimateDemand(input = {}) {
       if (route?.path?.[0]) {
         weather = await getWeather({ location: `${route.path[0][0]},${route.path[0][1]}`, days: 1 });
       } else {
-        weather = await getWeather({ location: 'Leeds', days: 1 });
+        weather = await getWeather({ days: 1 }) /* home */;
       }
     } catch (_) { /* fallback handled gracefully */ }
   }
@@ -504,7 +517,7 @@ export async function estimatePlan(input = {}) {
       if (route?.path?.[0]) {
         weather = await getWeather({ location: `${route.path[0][0]},${route.path[0][1]}`, days: 1 });
       } else {
-        weather = await getWeather({ location: 'Leeds', days: 1 });
+        weather = await getWeather({ days: 1 }) /* home */;
       }
     } catch (_) { /* fallback handled gracefully */ }
   }
@@ -563,7 +576,14 @@ export async function estimatePlan(input = {}) {
       }
     } catch (_) { /* no Strava */ }
   }
-  const kExRun = kEx * (1 + uptakeBoost);
+  // What your own runs have taught (accepted in the Learning tab): this route first, else this kind of run.
+  // the kind of run, for learning across routes: distance, how hard (from the pace against your usual pace -
+  // effort isn't something you set) and how hilly
+  const paceBand = paceEffortFactor >= 1.1 ? 'hard' : paceEffortFactor <= 0.92 ? 'easy' : 'steady';
+  const profile = runProfile({ distanceKm, intensity: paceBand, climbPerKm: terrain.gainM && distanceKm ? terrain.gainM / distanceKm : 0 });
+  let learning = { uptakeMult: 1, postCarbsExtra: 0, applied: [] };
+  if (input.useLearning !== false) { try { learning = learnedAdjustments({ routeId: route?.id ?? null, profileKey: profile.key, baseKEx: kEx }); } catch (_) { /* no learning yet */ } }
+  const kExRun = kEx * (1 + uptakeBoost) * learning.uptakeMult;
 
   // Calculate dynamic hydration strategy
   const hydration = calculateHydration({
@@ -592,6 +612,15 @@ export async function estimatePlan(input = {}) {
         const g = Math.min(30, Math.max(10, round5((floor + margin - ahead) / effect)), Math.max(0, 75 - recent));
         if (g >= 10) intakes.push({ t, g, kind: 'run' });
       }
+    }
+    // Always at least one stop during the run (Simon's rule), even when the model says the start carbs are
+    // enough: 10 g, about 15 minutes ahead of the lowest point of the run (or halfway on a short run).
+    if (!intakes.some((i) => i.t > 0) && dur >= 15) {
+      base = simulate({ ...p, intakes });
+      let lowAt = 0;
+      for (let t = 1; t <= dur; t++) if (base[t] < base[lowAt]) lowAt = t;
+      const t = Math.round(dur < 30 ? dur / 2 : Math.max(10, Math.min(dur - 8, lowAt - 15)));
+      intakes.push({ t, g: 10, kind: 'run' });
     }
     return { intakes, bg: simulate({ ...p, intakes }) };
   };
@@ -640,15 +669,17 @@ export async function estimatePlan(input = {}) {
   const endBg = main.bg[dur];
   const minDuring = min(main.bg, 0, dur);
   const minAfter = min(main.bg, dur, totalMin);
-  const postCarbs = minAfter < floor + 0.5 ? Math.min(30, Math.max(10, round5((floor + 0.5 - minAfter) / effect))) : 0;
+  const basePostCarbs = minAfter < floor + 0.5 ? Math.min(30, Math.max(10, round5((floor + 0.5 - minAfter) / effect))) : 0;
+  // learned: you tend to drop more after runs than the model expects
+  const postCarbs = learning.postCarbsExtra ? Math.min(45, basePostCarbs + learning.postCarbsExtra) : basePostCarbs;
 
   // Put each stop where it is easy to eat: not in the middle of a steep climb.
   const stops = main.intakes.map((it) => {
     let t = it.t, note = '';
     const kmTarget = kmAt(tl.marks, t);
-    const fluidAtStop = Math.round((hydration.fluidPerHourMl * (t / 60)) / 25) * 25;
-    if (it.kind === 'start') return { minute: 0, km: 0, grams: it.g, fluidMl: 150, note: 'Just before you set off. Take with ~150ml water.' };
-    if (gradeAt(tl.marks, t) >= 6) {
+    if (it.kind === 'start') return { minute: 0, km: 0, grams: it.g, fluidMl: 100, note: 'Just before you set off.' };
+    // stops you placed yourself (dragged on the chart) stay exactly where you put them
+    if (!rawCustomIntakes && gradeAt(tl.marks, t) >= 6) {
       for (let back = 1; back <= 6; back++) if (gradeAt(tl.marks, t - back) < 4) { t -= back; note = 'Moved earlier, ahead of a steep climb.'; break; }
     }
     if (route && !note && gradeAt(tl.marks, t) <= -3) note = 'On a descent - easy to take.';
@@ -656,8 +687,8 @@ export async function estimatePlan(input = {}) {
       minute: Math.round(t),
       km: Math.round(kmTarget * 10) / 10,
       grams: it.g,
-      fluidMl: Math.max(100, Math.min(250, fluidAtStop)),
-      note: note ? `${note} Take with 2-3 sips (~150ml) water.` : 'Take before fatigue sets in. Chase with 2-3 sips water.'
+      fluidMl: 100,
+      note: note || 'Take before fatigue sets in.'
     };
   }).sort((a, b) => a.minute - b.minute);
 
@@ -667,29 +698,75 @@ export async function estimatePlan(input = {}) {
   const elevation = [];
   for (let m = 0; m <= dur; m += Math.max(1, Math.round(dur / 120))) { const km = kmAt(tl.marks, m); elevation.push([m, Math.round(km * 100) / 100, Math.round(profileEle(terrain.profile, km) * 10) / 10]); }
 
-  // Per-minute series for the Run Plan chart (every 2 minutes): effort, hydration and insulin on board.
-  const effortSeries = [], hydrationSeries = [], iobSeries = [];
-  let fluid = 0;
+  // ---- drinking ----
+  // What you SWEAT (hydration.fluidPerHourMl, from heat, humidity, effort and weight) is not what you need
+  // to DRINK. ACSM (Sawka 2007) aims to keep the deficit under ~2% of body weight, and for runs under about
+  // 60-90 minutes in cool weather drinking to thirst is enough (Kenefick 2018). So: a mouthful (~100 ml)
+  // to wash down each carb stop, plus only what keeps the loss under 1.5% (a margin below 2%) - added to
+  // the carb stops first, so carbs and water go down together, and only then as drink-only stops in long
+  // gaps. Fewer, bigger drinks = fewer toilet stops.
+  const bodyKg = weightKg || 70;
+  const sweatLossMl = Math.round((hydration.fluidPerHourMl * dur) / 60 / 10) * 10;
+  const lossPct = Math.round((sweatLossMl / (bodyKg * 10)) * 10) / 10;
+  const needMl = Math.max(0, Math.round((sweatLossMl - bodyKg * 1000 * 0.015) / 50) * 50);
+  const drinks = stops.map((st) => ({ minute: st.minute, km: st.km, ml: 100, withCarbs: true }));
+  if (needMl > 0) {
+    // drink-only stops about every 20 minutes wherever there's no carb stop nearby...
+    for (let t = 20; t < dur - 8; t += 20) {
+      if (!drinks.some((d) => d.minute > 0 && Math.abs(d.minute - t) <= 12)) drinks.push({ minute: t, km: Math.round(kmAt(tl.marks, t) * 10) / 10, ml: 100, withCarbs: false });
+    }
+    // ...then the amount shared evenly across all the in-run drinks (100-250 ml each)
+    const during = drinks.filter((d) => d.minute > 0);
+    const each = Math.min(250, Math.max(100, Math.round(needMl / Math.max(1, during.length) / 50) * 50));
+    for (const d of during) d.ml = each;
+  }
+  // water-only drinks you placed yourself (dragged on the chart) replace the planned ones
+  if (Array.isArray(input.customDrinks)) {
+    const own = input.customDrinks.map((d) => ({ minute: Math.max(1, Math.min(dur, Math.round(Number(d.minute) || 0))), ml: Math.max(50, Math.min(500, Math.round(Number(d.ml) || 100))) }))
+      .map((d) => ({ ...d, km: Math.round(kmAt(tl.marks, d.minute) * 10) / 10, withCarbs: false, custom: true }));
+    drinks.splice(0, drinks.length, ...drinks.filter((d) => d.withCarbs), ...own);
+  }
+  drinks.sort((a, b) => a.minute - b.minute);
+  for (const st of stops) st.fluidMl = drinks.find((d) => d.minute === st.minute)?.ml ?? 100;
+  const drinkTotalMl = drinks.reduce((a, d) => a + d.ml, 0);
+  hydration.sweatRateMlPerHour = hydration.fluidPerHourMl;
+  hydration.sweatLossMl = sweatLossMl;
+  hydration.lossPct = lossPct;
+  hydration.needMl = needMl;
+  hydration.drinkTotalMl = drinkTotalMl;
+  hydration.drinkToThirst = needMl === 0;
+  hydration.weightAssumed = !weightKg;
+  const longOrHot = dur >= 90 || hydration.tempC >= 22 || lossPct >= 2;
+  if (!longOrHot) { hydration.electrolyteTablets = 0; hydration.sodiumMg = 0; }
+  hydration.guidance = needMl === 0
+    ? `${dur} minutes at ${hydration.tempC}°C: you'd sweat about ${sweatLossMl} ml (${lossPct}% of your body weight${!weightKg ? ', assuming 70 kg' : ''}) - under the 2% where it starts to matter, so there's no need to drink for hydration. Just a mouthful (about 100 ml) to wash down each carb stop, and drink to thirst. Big drinks during a run are what send you looking for a toilet.`
+    : `${dur} minutes at ${hydration.tempC}°C: you'd sweat about ${sweatLossMl} ml (${lossPct}% of your body weight${!weightKg ? ', assuming 70 kg' : ''}), so drink about ${needMl} ml during the run to stay under 2% - taken at the carb stops${drinks.some((d) => !d.withCarbs) ? ', with water-only drinks between them about every 20 minutes' : ''}. Drink to thirst on top if you need to, but don't force it.`;
+  if (hydration.tempC >= 22) hydration.guidance += ` It's warm, so carry water and take a mouthful whenever you're thirsty, and add electrolytes if you sweat heavily.`;
+  hydration.basis = 'ACSM Exercise and Fluid Replacement (Sawka et al. 2007): keep the deficit under ~2% of body weight; drinking to thirst is enough for runs under about 60-90 minutes in cool conditions (Kenefick, Sports Med 2018).';
+
+  // Per-minute series for the Run Plan chart (every 2 minutes): effort, what you drink (steps at each drink)
+  // and what you sweat, and insulin on board.
+  const effortSeries = [], hydrationSeries = [], sweatSeries = [], iobSeries = [];
+  let sweat = 0;
   for (let t = 0; t <= totalMin; t += 2) {
     const sh = t <= dur ? exShape[Math.min(t, dur)] : 0;
     effortSeries.push([t, Math.round(sh * combinedEffort * 100) / 100]);
-    if (t <= dur) fluid += (hydration.fluidPerHourMl * Math.max(0.6, sh) * 2) / 60;
-    hydrationSeries.push([t, Math.round(fluid)]);
+    if (t <= dur) sweat += (hydration.fluidPerHourMl * Math.max(0.6, sh) * 2) / 60;
+    sweatSeries.push([t, Math.round(sweat)]);
+    hydrationSeries.push([t, drinks.filter((d) => d.minute <= t).reduce((a, d) => a + d.ml, 0)]);
     const tau = t / 60;
     iobSeries.push([t, Math.round((tau < DIA_H ? iob * (1 - tau / DIA_H) ** INS_P : 0) * 100) / 100]);
   }
-  // sips: every 20 minutes, the fluid that window calls for (more on the hard, hot stretches)
-  const sips = [];
-  for (let t = 20; t < dur; t += 20) {
-    const a = hydrationSeries.find((x) => x[0] >= t - 20)?.[1] ?? 0, b = hydrationSeries.find((x) => x[0] >= t)?.[1] ?? 0;
-    sips.push({ minute: t, km: Math.round(kmAt(tl.marks, t) * 10) / 10, ml: Math.max(50, Math.round((b - a) / 10) * 10) });
-  }
+  const sips = drinks;
   const preRun = {
     carbsToTargetG: startBg < targets.startTarget - 0.5 ? Math.round((targets.startTarget - startBg) / effect) : 0,
     startCarbsG: main.intakes.filter((x) => x.kind === 'start').reduce((a, x) => a + x.g, 0),
     tempTarget: 'Exercise target of 8.0-9.0 mmol/L set 60-90 minutes before, so the loop eases off insulin (rulebook).',
     iobNote: iob >= 1 ? `${iob} U still on board - each unit takes off about ${(isf * sensMult * insulinBoost).toFixed(1)} mmol/L while running.` : 'Little insulin on board - a good start.',
-    drinkMl: Math.round(Math.min(500, Math.max(250, hydration.fluidPerHourMl * 0.6)) / 50) * 50,
+    // ACSM: 5-7 ml/kg at least 4 hours before (more 2 hours before only if urine is dark); no big drink at the start
+    drinkMl: Math.round((bodyKg * 7) / 50) * 50,
+    drinkLowMl: Math.round((bodyKg * 5) / 50) * 50,
+    drinkText: `Drink about ${Math.round((bodyKg * 5) / 50) * 50}-${Math.round((bodyKg * 7) / 50) * 50} ml 2-4 hours before, then stop big drinks about 45 minutes before so you're not looking for a toilet. A mouthful with your start carbs is all you need as you set off.`,
   };
 
   // What-if tables: different starting glucose (same IOB) and different IOB (same glucose).
@@ -718,9 +795,23 @@ export async function estimatePlan(input = {}) {
   if (iob >= 1) insulin.push({ title: `${iob} U on board at the start`, text: `Insulin on board is the biggest reason carbs are needed. In this model ${iob} U removes about ${(isf * iob * sensMult * (1 - (1 - Math.min(1, hours / DIA_H)) ** INS_P)).toFixed(1)} mmol/L over the run. Allowing it to fall before the run (for example by setting your exercise/activity target 1-2 hours ahead so the loop stops adding more) shrinks the carbs needed - check how your AAPS settings do this with your team.` });
   insulin.push({ title: 'After the run', text: 'Insulin sensitivity stays raised for hours: hypoglycaemia risk is highest during and shortly after exercise, and up to 24 hours later (7-11 hours overnight after an afternoon or evening run). ISPAD suggests around a 20% basal reduction for about 6 hours overnight for pump users after evening exercise. Your loop will react, but talk to your team about a temporary target or profile change for those hours.' });
 
+  // from your own past runs: the usual post-run spike and a conservative correction estimate (see postRunPattern)
+  try {
+    const pr = postRunPattern();
+    const pat = (intensity === 'hard' && pr.hard) || pr.overall;
+    if (pat?.units) insulin.push({ title: `After the run: your usual spike (${pat.runs} runs)`, estimate: true, text: `After ${pat.runs === pr.overall?.runs ? 'your' : 'your hard'} runs glucose has typically risen about ${pat.rise} mmol/L, peaking around ${pat.peakAt} minutes after the finish (your loop added about ${pat.loopUnits} U on its own). With your ISF of ${pat.units.isf}, a full correction for that rise would be about ${pat.units.full} U; a conservative post-run correction - about half - is about ${pat.units.conservative} U, minus any insulin still on board. ${pr.caveat}` });
+    else if (pat && pat.runs) insulin.push({ title: 'After the run: your usual pattern', text: `From ${pat.runs} run${pat.runs === 1 ? '' : 's'} with data: a typical rise of ${pat.rise} mmol/L about ${pat.peakAt} minutes after the finish. A correction estimate appears once ${pr.needRuns} runs show a rise of 2 or more.` });
+  } catch (_) { /* no history yet */ }
+  try {
+    const rf = refuelStatus();
+    if (rf && rf.pct != null && rf.pct < 70 && rf.hoursSince < 72) warnings.push(`Refuelling: ${rf.text}`);
+  } catch (_) { /* no runs */ }
+
   return {
     demand: demandFrom({ distanceKm, dur, tl, terrain, route, intensity, pace, weather }),
-    effortSeries, hydrationSeries, iobSeries, sips, preRun, recovery,
+    effortSeries, hydrationSeries, sweatSeries, iobSeries, sips, drinks, preRun, recovery, learning, profile,
+    // the model's inputs, kept with the plan you run with so the retrospective can replay it
+    modelParams: { ...params, exShape: exShape.map((v) => Math.round(v * 100) / 100) },
     inputs: { distanceKm, targetMinutes, paceMinPerKm: pace, averagePaceMinPerKm: tl.minutes / distanceKm, intensity, startBg, iob, cob, weightKg, sensMult, kEx, routeId: route?.id ?? null, routeName: route?.name ?? null, customCarbs, paceEffortFactor: Math.round(paceEffortFactor * 100) / 100, weatherEffortMultiplier: Math.round(weatherEffortMultiplier * 100) / 100 },
     settings: { insulinBoost: Math.round(insulinBoost * 100) / 100, kExRun: Math.round(kExRun * 100) / 100, isf, cr, gPerMmol: Math.round((1 / effect) * 10) / 10, mmolPerGram: Math.round(effect * 1000) / 1000, floor, startTarget: targets.startTarget },
     run: { durationMin: dur, distanceKm: Math.round(tl.distanceKm * 100) / 100, gainM: terrain.gainM, lossM: terrain.lossM, effortFactor: Math.round(tl.effort * 100) / 100, combinedEffortFactor: Math.round(combinedEffort * 100) / 100, kcal: tl.kcal, hasElevation: route ? route.hasElevation : false },

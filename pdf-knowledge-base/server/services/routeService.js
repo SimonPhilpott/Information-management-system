@@ -179,10 +179,14 @@ export function analyseCoords(points) {
 // ---- storage ---------------------------------------------------------------------------------
 // Which Komoot account a route was imported from (blank for GPX files and routes imported before this was kept).
 try { db.exec('ALTER TABLE planned_routes ADD COLUMN account TEXT'); } catch (_) { /* already there */ }
+// Set when you rename a route, so a later Komoot re-import keeps your name.
+try { db.exec('ALTER TABLE planned_routes ADD COLUMN name_locked INTEGER NOT NULL DEFAULT 0'); } catch (_) { /* already there */ }
+// Komoot's sport for the route (jogging, hike, mtb...); blank for GPX files.
+try { db.exec('ALTER TABLE planned_routes ADD COLUMN sport TEXT'); } catch (_) { /* already there */ }
 
 const present = (r, full = false) => ({
   id: r.id, source: r.source, externalId: r.external_id, name: r.name, distanceKm: r.distance_km, gainM: r.gain_m, lossM: r.loss_m,
-  minEle: r.min_ele, maxEle: r.max_ele, hasElevation: Boolean(r.has_elevation), createdAt: r.created_at, account: r.account || null,
+  minEle: r.min_ele, maxEle: r.max_ele, hasElevation: Boolean(r.has_elevation), createdAt: r.created_at, account: r.account || null, sport: r.sport || null,
   ...(full ? { profile: JSON.parse(r.profile), splits: JSON.parse(r.splits), path: r.path ? JSON.parse(r.path) : null } : {}),
 });
 
@@ -191,23 +195,36 @@ export async function saveRouteAsync({ source, externalId = null, name, points }
   return saveRoute({ source, externalId, name, points: enrichedPoints });
 }
 
-export function saveRoute({ source, externalId = null, name, points, account = null }) {
+export function saveRoute({ source, externalId = null, name, points, account = null, sport = null }) {
   const a = analyseCoords(points);
   const nm = String(name || 'Route').trim().slice(0, 120) || 'Route';
   const existing = externalId ? db.prepare('SELECT id FROM planned_routes WHERE source = ? AND external_id = ?').get(source, String(externalId)) : null;
   if (existing) {
-    db.prepare(`UPDATE planned_routes SET name=?, distance_km=?, gain_m=?, loss_m=?, min_ele=?, max_ele=?, profile=?, splits=?, has_elevation=?, path=?, account=COALESCE(?, account) WHERE id=?`)
-      .run(nm, a.distanceKm, a.gainM, a.lossM, a.minEle, a.maxEle, JSON.stringify(a.profile), JSON.stringify(a.splits), a.hasElevation ? 1 : 0, JSON.stringify(a.path), account, existing.id);
+    db.prepare(`UPDATE planned_routes SET name=CASE WHEN name_locked = 1 THEN name ELSE ? END, distance_km=?, gain_m=?, loss_m=?, min_ele=?, max_ele=?, profile=?, splits=?, has_elevation=?, path=?, account=COALESCE(?, account), sport=COALESCE(?, sport) WHERE id=?`)
+      .run(nm, a.distanceKm, a.gainM, a.lossM, a.minEle, a.maxEle, JSON.stringify(a.profile), JSON.stringify(a.splits), a.hasElevation ? 1 : 0, JSON.stringify(a.path), account, sport, existing.id);
     return getRoute(existing.id);
   }
-  const info = db.prepare(`INSERT INTO planned_routes (source, external_id, name, distance_km, gain_m, loss_m, min_ele, max_ele, profile, splits, has_elevation, created_at, path, account) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(source, externalId ? String(externalId) : null, nm, a.distanceKm, a.gainM, a.lossM, a.minEle, a.maxEle, JSON.stringify(a.profile), JSON.stringify(a.splits), a.hasElevation ? 1 : 0, Date.now(), JSON.stringify(a.path), account);
+  const info = db.prepare(`INSERT INTO planned_routes (source, external_id, name, distance_km, gain_m, loss_m, min_ele, max_ele, profile, splits, has_elevation, created_at, path, account, sport) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(source, externalId ? String(externalId) : null, nm, a.distanceKm, a.gainM, a.lossM, a.minEle, a.maxEle, JSON.stringify(a.profile), JSON.stringify(a.splits), a.hasElevation ? 1 : 0, Date.now(), JSON.stringify(a.path), account, sport);
   return getRoute(Number(info.lastInsertRowid));
 }
 
 export const listRoutes = () => db.prepare('SELECT * FROM planned_routes ORDER BY created_at DESC').all().map((r) => present(r));
 export const getRoute = (id) => { const r = db.prepare('SELECT * FROM planned_routes WHERE id = ?').get(id); return r ? present(r, true) : null; };
+// Your own name for a route (kept through Komoot re-imports).
+export function renameRoute(id, name) {
+  const nm = String(name || '').trim().slice(0, 120);
+  if (!nm) throw new Error('Give the route a name.');
+  if (!db.prepare('UPDATE planned_routes SET name = ?, name_locked = 1 WHERE id = ?').run(nm, Number(id)).changes) throw new Error('Route not found.');
+  return getRoute(Number(id));
+}
+// Komoot routes you deleted from IMS, so syncing doesn't bring them straight back (each Komoot copy is
+// its own tour). Importing one by hand from the Komoot list un-hides it.
+db.exec('CREATE TABLE IF NOT EXISTS komoot_hidden (external_id TEXT PRIMARY KEY, name TEXT, hidden_at INTEGER NOT NULL)');
+export const hiddenKomootIds = () => new Set(db.prepare('SELECT external_id FROM komoot_hidden').all().map((r) => String(r.external_id)));
 export function deleteRoute(id) {
+  const r = db.prepare('SELECT source, external_id, name FROM planned_routes WHERE id = ?').get(id);
+  if (r?.source === 'komoot' && r.external_id) db.prepare('INSERT OR REPLACE INTO komoot_hidden (external_id, name, hidden_at) VALUES (?, ?, ?)').run(String(r.external_id), r.name, Date.now());
   db.prepare('DELETE FROM activity_route WHERE route_id = ?').run(id);
   return db.prepare('DELETE FROM planned_routes WHERE id = ?').run(id).changes > 0;
 }
@@ -282,7 +299,7 @@ async function fetchTour(tourId, { auth = null, shareToken = null } = {}) {
   const items = t._embedded?.coordinates?.items || [];
   const points = items.map((c) => ({ lat: c.lat, lng: c.lng, ele: c.alt ?? null })).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
   if (points.length < 2) throw new Error('Komoot returned no route points for that tour.');
-  return { name: t.name, points };
+  return { name: t.name, points, sport: t.sport || null };
 }
 
 // A Komoot tour's turn-by-turn directions and way names, for the route finder's short description.
@@ -293,9 +310,10 @@ export async function fetchKomootDirections(tourId) {
 }
 
 export async function importKomootTour(tourId) {
+  db.prepare('DELETE FROM komoot_hidden WHERE external_id = ?').run(String(tourId)); // chosen by hand: no longer hidden
   const { auth, creds } = komootAuth();
   const t = await fetchTour(tourId, { auth });
-  return saveRoute({ source: 'komoot', externalId: tourId, name: t.name, points: t.points, account: creds.email || null });
+  return saveRoute({ source: 'komoot', externalId: tourId, name: t.name, points: t.points, account: creds.email || null, sport: t.sport });
 }
 
 // A share link like https://www.komoot.com/tour/123456789?share_token=abc works without an account.

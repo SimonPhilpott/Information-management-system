@@ -1,4 +1,4 @@
-import db from '../db/database.js';
+import db, { getSetting } from '../db/database.js';
 
 // Training load from Strava: every session's load (Strava's Relative Effort, else a heart-rate estimate,
 // else its length), the acute load (7-day, "fatigue"), chronic load (42-day, "fitness") and their balance
@@ -92,6 +92,47 @@ export function getTrainingLoad({ now = Date.now() } = {}) {
   if (acwr != null && acwr < 0.8 && cur.ctl > 5) suggestions.push('Load has dropped below your usual - room to build back gradually.');
   if (!suggestions.length) suggestions.push('Good to train - a quality session is fine if one is planned.');
 
+  // Day by day for the chart: the last 28 days and the next 7 with no more training (the dashed projection),
+  // each day's load, and refuelling - carbs logged that day (IMS carb log and carbs entered in AAPS, the same food
+  // counted once) against what the day needed: about 3 g per kg for everyday life and light training, plus the
+  // glycogen that day's runs used (energy x carb share by effort). Only logged carbs count.
+  let kg = 70;
+  try { kg = Number(JSON.parse(getSetting('run_targets') || '{}').weightKg) || 70; } catch { /* default */ }
+  const london = (t) => new Date(t).toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+  const days = [];
+  for (let d = 27; d >= -7; d--) {
+    const t = now - d * DAY;
+    const key = london(t);
+    const st = stateAt(impulses, d >= 0 ? t : t); // future days: no new sessions, so this is the "if you rest" path
+    const dayImp = impulses.filter((x) => london(x.at) === key);
+    const runs = dayImp.filter((x) => RUNS.includes(x.a.sport));
+    const usedG = Math.round(runs.reduce((n, x) => {
+      const km = (x.a.distance || 0) / 1000;
+      const share = x.a.session_tag === 'speed' || x.a.session_tag === 'hill' || (x.a.avg_hr || 0) >= 165 ? 0.8 : 0.65;
+      return n + (kg * km * share) / 4;
+    }, 0));
+    days.push({
+      day: key, future: d < 0, today: d === 0,
+      atl: r1(st.atl), ctl: r1(st.ctl), tsb: r1(st.tsb), acwr: st.ctl > 0 ? Math.round((st.atl / st.ctl) * 100) / 100 : null,
+      run: dayImp.some((x) => RUNS.includes(x.a.sport)),
+      load: Math.round(dayImp.reduce((n, x) => n + x.load, 0)),
+      sessions: dayImp.map((x) => ({ name: x.a.name, sport: x.a.sport, load: Math.round(x.load), km: r1((x.a.distance || 0) / 1000) })),
+      needG: d < 0 ? null : Math.round(3 * kg + usedG), usedG,
+    });
+  }
+  // carbs logged per day (only from when IMS started logging them)
+  const firstMs = Date.parse(`${days[0].day}T00:00:00Z`) - DAY;
+  const logged = db.prepare('SELECT at, grams FROM carb_log WHERE at >= ?').all(firstMs);
+  let aaps = [];
+  try { aaps = db.prepare('SELECT at, carbs AS grams FROM ns_treatments WHERE at >= ? AND carbs > 0').all(firstMs); } catch { /* no Nightscout table */ }
+  const aapsOnly = aaps.filter((x) => !logged.some((l) => Math.abs(l.at - x.at) <= 20 * 60000 && Math.abs(l.grams - x.grams) <= Math.max(5, 0.2 * x.grams)));
+  const firstLog = Math.min(...[...logged, ...aapsOnly].map((x) => x.at), Infinity);
+  for (const dd of days) {
+    if (dd.future) continue;
+    const g = [...logged, ...aapsOnly].filter((x) => london(x.at) === dd.day).reduce((n, x) => n + x.grams, 0);
+    dd.carbsG = Number.isFinite(firstLog) && Date.parse(`${dd.day}T23:59:59Z`) >= firstLog ? Math.round(g) : null;
+  }
+
   // the last 42 days, day by day, for the chart
   const history = [];
   for (let d = 41; d >= 0; d--) {
@@ -112,7 +153,7 @@ export function getTrainingLoad({ now = Date.now() } = {}) {
       lastSession: last ? { name: last.a.name, sport: last.a.sport, day: last.a.day, endedAt: new Date(last.at).toISOString(), load: Math.round(last.load), loadFrom: last.from, tag: last.a.session_tag || null } : null,
     },
     ramp: { thisWeekKm: r1(thisWeek), lastWeekKm: r1(lastWeek), pct: rampPct != null ? Math.round(rampPct) : null },
-    warnings, suggestions, history,
+    warnings, suggestions, history, days, weightKg: kg,
     notes: 'Load uses Strava Relative Effort where available (else heart rate, else duration). Speed and hill sessions count towards load and distance; they stay out of pace analysis only.',
   };
 }

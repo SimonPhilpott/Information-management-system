@@ -13,7 +13,8 @@ export default function PreRunReadinessCard({
   plannedIntensity = 'steady',
   sessionType = 'running',
   isDark = true,
-  onApplyCarbs
+  onApplyCarbs,
+  embedded = false // shown inside "Where you are now" rather than as its own card
 }) {
   const [readiness, setReadiness] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -22,9 +23,10 @@ export default function PreRunReadinessCard({
   const fetchReadiness = async () => {
     setLoading(true);
     try {
+      // the server reads bg and direction (the old names were ignored, so the readiness used defaults)
       const params = new URLSearchParams({
-        currentBg: currentBg != null ? String(currentBg) : '7.2',
-        trend: trendDirection || 'Flat',
+        bg: currentBg != null ? String(currentBg) : '7.2',
+        direction: trendDirection || 'Flat',
         sessionType: sessionType || 'running',
         durationMin: plannedDurationMin != null ? String(plannedDurationMin) : '45',
         intensity: plannedIntensity || 'steady'
@@ -97,7 +99,7 @@ export default function PreRunReadinessCard({
   const BadgeIcon = badgeIcon;
 
   return (
-    <div className={`rounded-2xl border p-4 transition-all flex flex-col gap-3.5 ${borderAccent} ${isDark ? 'bg-slate-900/60' : 'bg-white shadow-sm'}`}>
+    <div className={embedded ? `mt-4 pt-4 border-t flex flex-col gap-3 ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}` : `rounded-2xl border p-4 transition-all flex flex-col gap-3.5 ${borderAccent} ${isDark ? 'bg-slate-900/60' : 'bg-white shadow-sm'}`}>
       {/* Top Title & Status Banner */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-inherit">
         <div className="flex items-center gap-2.5">

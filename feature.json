@@ -1195,5 +1195,28 @@
         "Hover readout at any minute",
         "Live target-time slider"
       ]
+    },
+    "Run Learning & Retrospective": {
+      "status": "enabled",
+      "description": "Every run teaches the next: the plan is saved when sent, Taken / Skipped on each phone reminder records what was actually taken (carbs logged to Nightscout), and after the run IMS matches Strava and CGM, replays the plan with what happened and suggests lessons per route, per kind of run and overall - applied to plans only once accepted, and offered to the T1D Rulebook when they hold across routes.",
+      "subFeatures": [
+        "Plan snapshot per sent run (run_session) and Taken / Skipped intake buttons",
+        "Plan vs actual chart with notes, effort and editable intakes",
+        "Model replay and fitted exercise uptake; post-run drift; on-time counterfactual",
+        "Suggestions with evidence; accept / dismiss / retire; planner applies accepted lessons",
+        "Rulebook findings from cross-route lessons; Ims addRunNote tool",
+        "Post-run rise detection with likely causes"
+      ]
+    },
+    "Scheduled Reminders & Alarms Look Ahead Slider": {
+      "status": "enabled",
+      "description": "Unified 14-step Look Ahead slider (1 day to 2 weeks, stepping 1 day at a time) governing all scheduled items (alarms, reminders, tasks, and timers) in the Day Report service.",
+      "subFeatures": [
+        "14 distinct day increments from 1 day up to 2 weeks (14 days)",
+        "Unified look-ahead window shared across alarms, reminders, tasks, and active timers",
+        "Backward compatibility migration from legacy split lookahead settings",
+        "Adaptive UI step labels with milestone indicators avoiding horizontal overlap"
+      ]
     }
+  }
 }

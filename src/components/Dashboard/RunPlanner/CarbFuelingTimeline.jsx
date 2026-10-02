@@ -107,7 +107,7 @@ export default function CarbFuelingTimeline({
   return (
     <div className={`p-4 rounded-2xl border transition-all ${isDark ? 'bg-slate-900/40 border-white/10' : 'bg-white border-[#2E2B27]/10 shadow-sm'} mb-4`}>
       {/* Header & Quick Stats */}
-      <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 pb-3 border-b ${isDark ? 'border-white/5' : 'border-[#2E2B27]/10'}`}>
+      <div className={`flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 mb-4 pb-3 border-b ${isDark ? 'border-white/5' : 'border-[#2E2B27]/10'}`}>
         <div className="flex items-center gap-2.5">
           <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isDark ? 'bg-amber-500/10 border border-amber-500/20 text-amber-400' : 'bg-amber-500/20 border border-amber-600/30 text-amber-800'}`}>
             <Cookie size={17} />
@@ -123,59 +123,45 @@ export default function CarbFuelingTimeline({
           </div>
         </div>
 
-        {/* Aggregate KPI chips — Total Fuel and Fuel Rate react to per-stop changes */}
-        <div className="flex items-center gap-2">
-          {/* Total Fuel — ± adjusts global total (proportional rebalance) */}
-          <div className={`px-3 py-1.5 rounded-xl border text-right ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/15'}`}>
-            <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/70'}`}>Total Fuel</div>
-            {/* - and + pinned left and right; the total sits in a fixed-width middle so they never shift */}
-            <div className="grid grid-cols-[28px_minmax(56px,1fr)_28px] items-center gap-1 mt-0.5">
-              {onStepCarbs && (
-                <button
-                  onClick={() => onStepCarbs(-5)}
-                  disabled={totalCarbs <= 0}
-                  className={stepBtn()}
-                  title="Reduce total carbs by 5g (rebalances all stops proportionally)"
-                >-</button>
-              )}
-              <span className={`text-sm font-black tabular-nums text-center ${isDark ? 'text-yellow-400' : 'text-amber-950'}`}>
-                {totalCarbs} <span className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-[#2E2B27]'}`}>g</span>
-              </span>
-              {onStepCarbs && (
-                <button
-                  onClick={() => onStepCarbs(5)}
-                  className={stepBtn()}
-                  title="Increase total carbs by 5g (rebalances all stops proportionally)"
-                >+</button>
-              )}
-            </div>
-            {onStepCarbs && (
-              <div className={`text-[9px] mt-0.5 ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>rebalances all stops</div>
-            )}
-          </div>
-
-          {/* Fuel Rate — display only, derived from total */}
-          <div className={`px-3 py-1.5 rounded-xl border text-right ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/15'}`}>
-            <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/70'}`}>Fuel Rate</div>
-            <div className={`text-sm font-black tabular-nums mt-0.5 ${isDark ? 'text-sky-400' : 'text-sky-900'}`}>
-              {carbRatePerHour} <span className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-[#2E2B27]'}`}>g/h</span>
-            </div>
-          </div>
-
-          {/* Hydration Rate */}
-          {hydration && (
-            <div className={`px-3 py-1.5 rounded-xl border text-right ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/15'}`}>
-              <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/70'}`}>Fluid / km</div>
-              <div className={`text-sm font-black tabular-nums mt-0.5 ${isDark ? 'text-teal-400' : 'text-teal-900'}`}>
-                {hydration.fluidPerKmMl} <span className={`text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-[#2E2B27]'}`}>ml</span>
-              </div>
-            </div>
-          )}
-
-          <div className={`px-3 py-1.5 rounded-xl border text-right ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-[#FAF7F2] border-[#2E2B27]/15'}`}>
-            <div className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/70'}`}>Stops</div>
-            <div className={`text-sm font-black tabular-nums mt-0.5 ${isDark ? 'text-emerald-400' : 'text-emerald-900'}`}>{stops.length}</div>
-          </div>
+        {/* One box, four equal cells split by thin lines: label at the top, value in the middle, a small line
+            at the bottom - so nothing can overlap or sit out of line (Total fuel just has its - / + by the value) */}
+        <div className={`grid grid-cols-2 sm:grid-cols-4 w-full lg:w-[560px] shrink-0 rounded-xl border overflow-hidden divide-x ${isDark ? 'bg-slate-950/40 border-white/10 divide-white/10' : 'bg-[#FAF7F2] border-[#2E2B27]/15 divide-[#2E2B27]/10'}`}>
+          {(() => {
+            const tile = 'h-[84px] min-w-0 px-2.5 py-2 flex flex-col items-center justify-between text-center';
+            const head = `text-[9px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#2E2B27]/70'}`;
+            const foot = `text-[9px] leading-none ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`;
+            const unit = `text-[10px] font-bold ${isDark ? 'text-slate-400' : 'text-[#2E2B27]'}`;
+            return (
+              <>
+                <div className={tile}>
+                  <div className={head}>Total fuel</div>
+                  <div className="grid grid-cols-[28px_1fr_28px] items-center gap-1 w-full">
+                    {onStepCarbs ? <button onClick={() => onStepCarbs(-5)} disabled={totalCarbs <= 0} className={stepBtn()} title="Reduce total carbs by 5 g (rebalances all stops)">-</button> : <span />}
+                    <span className={`text-base font-black tabular-nums ${isDark ? 'text-yellow-400' : 'text-amber-950'}`}>{totalCarbs} <span className={unit}>g</span></span>
+                    {onStepCarbs ? <button onClick={() => onStepCarbs(5)} className={stepBtn()} title="Increase total carbs by 5 g (rebalances all stops)">+</button> : <span />}
+                  </div>
+                  <div className={foot}>{onStepCarbs ? 'rebalances all stops' : '\u00a0'}</div>
+                </div>
+                <div className={tile}>
+                  <div className={head}>Fuel rate</div>
+                  <div className={`text-base font-black tabular-nums ${isDark ? 'text-sky-400' : 'text-sky-900'}`}>{carbRatePerHour} <span className={unit}>g/h</span></div>
+                  <div className={foot}>carbs an hour</div>
+                </div>
+                <div className={tile}>
+                  <div className={head}>Water</div>
+                  <div className={`text-base font-black tabular-nums ${isDark ? 'text-teal-400' : 'text-teal-900'}`}>
+                    {hydration?.drinkToThirst === false ? <>{hydration.needMl} <span className={unit}>ml</span></> : <>{(plan.drinks || []).filter((d) => d.minute > 0).reduce((n, d) => n + d.ml, 0)} <span className={unit}>ml</span></>}
+                  </div>
+                  <div className={foot}>{hydration?.drinkToThirst === false ? 'to stay under 2%' : 'with the carbs'}</div>
+                </div>
+                <div className={tile}>
+                  <div className={head}>Stops</div>
+                  <div className={`text-base font-black tabular-nums ${isDark ? 'text-emerald-400' : 'text-emerald-900'}`}>{stops.length}</div>
+                  <div className={foot}>{stops.some((x) => x.minute === 0) ? 'incl. one at the start' : 'during the run'}</div>
+                </div>
+              </>
+            );
+          })()}
         </div>
       </div>
 
@@ -223,7 +209,7 @@ export default function CarbFuelingTimeline({
                       Fast Gel
                     </span>
                     <span className={`text-[10px] px-2 py-0.5 rounded border ${isDark ? 'bg-sky-500/10 text-sky-300 border-sky-500/20' : 'bg-sky-50 text-sky-900 border-sky-300 font-bold'}`}>
-                      ~{s.fluidMl || 150}ml
+                      + {s.fluidMl || 100} ml water
                     </span>
                   </div>
 

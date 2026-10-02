@@ -301,8 +301,21 @@ export default function PhrasesPortal({ theme = 'dark', onThemeToggle, setCurren
   const panel = `rounded-2xl border p-5 ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/70 border-[#2E2B27]/10 shadow-sm'}`;
   const field = `px-3 py-2 rounded-lg text-xs outline-none border ${isDark ? 'bg-slate-950/60 border-white/10' : 'bg-white border-[#2E2B27]/10'}`;
 
+  const [candidates, setCandidates] = useState([]);
   const load = useCallback(async () => { const d = await (await fetch('/api/phrases')).json(); if (d.success) setPhrases(d.phrases); }, []);
-  useEffect(() => { load(); }, [load]);
+  const loadCandidates = useCallback(async () => { const d = await (await fetch('/api/phrases/candidates')).json(); if (d.success) setCandidates(d.candidates); }, []);
+  useEffect(() => { load(); loadCandidates(); }, [load, loadCandidates]);
+  // a short phrase heard just before a dropped reply: accept it as a spelling of a wake phrase, or dismiss it
+  const acceptCandidate = async (text, phraseId) => {
+    const d = await (await fetch('/api/phrases/candidates/accept', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, phraseId }) })).json();
+    if (!d.success) return notify(d.error, 'error');
+    changed(d.phrase); setCandidates((c) => c.filter((x) => x.text !== text));
+    notify(`"${text}" now wakes Ims as "${d.phrase.phrase}".`);
+  };
+  const dismissCandidate = async (text) => {
+    await fetch('/api/phrases/candidates/dismiss', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+    setCandidates((c) => c.filter((x) => x.text !== text));
+  };
   const changed = (p, removedId) => setPhrases((all) => (removedId ? all.filter((x) => x.id !== removedId) : all.map((x) => (x.id === p.id ? p : x))));
   const add = async (kind) => {
     const d = await (await fetch('/api/phrases', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, phrase: newPhrase[kind] }) })).json();
@@ -338,6 +351,26 @@ export default function PhrasesPortal({ theme = 'dark', onThemeToggle, setCurren
         Speech-to-text often writes these short phrases oddly ("Hey IMS" can come out as "HMs"). Press Record on Ims, then say the phrase to the desk unit within 3 seconds (its screen shows "Say the phrase now") - it records with its own microphone, the one it really listens with. Do each a few times. IMS runs the recording through the same speech-to-text Ims listens with, and adds any new spelling to the list. Ims then recognises those spellings too. You can edit the lists by hand. Speak from where you'd normally talk to Ims. He needs to be on standby (not mid-conversation).
       </div>
       {section('wake', 'Wake phrases', 'Start a conversation with Ims. Anything else he hears is ignored.')}
+      {candidates.length > 0 && (
+        <div className={panel}>
+          <h2 className="text-xs font-black uppercase tracking-wider mb-1">Heard but not recognised</h2>
+          <p className="text-[11px] text-slate-500 mb-3">Short things the speech-to-text wrote just before Ims went to answer and was stopped because it didn't look like a wake phrase - often a wake phrase misheard ("Eh up IMS" as "poems"). If one was you, add it as a spelling of the phrase you said; otherwise dismiss it.</p>
+          <div className="flex flex-col gap-2">
+            {candidates.map((c) => (
+              <div key={c.text} className={`flex flex-wrap items-center gap-2 p-2.5 rounded-xl border text-xs ${isDark ? 'border-white/10 bg-slate-950/40' : 'border-[#2E2B27]/10 bg-white'}`}>
+                <span className="font-bold">"{c.text}"</span>
+                <span className="text-slate-500">heard {c.count}× · last {new Date(c.lastAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                <span className="ml-auto flex flex-wrap gap-1.5">
+                  {phrases.filter((p) => p.kind === 'wake').map((p) => (
+                    <button key={p.id} onClick={() => acceptCandidate(c.text, p.id)} className="px-2.5 py-1 rounded-lg font-bold bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white" title={`Treat "${c.text}" as "${p.phrase}"`}>It was "{p.phrase}"</button>
+                  ))}
+                  <button onClick={() => dismissCandidate(c.text)} className={`px-2.5 py-1 rounded-lg font-bold border ${isDark ? 'border-white/10 text-slate-300' : 'border-[#2E2B27]/15'}`}>Dismiss</button>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {section('stop', 'Stop phrases', 'Stop Ims straight away - cancels what he is doing, silences a ringing alarm or timer, or ends a call recording.')}
     </PortalShell>
   );

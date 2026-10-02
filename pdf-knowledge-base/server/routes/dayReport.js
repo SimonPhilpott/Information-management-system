@@ -5,7 +5,9 @@ import {
   resetReportConfig,
   buildReportParts,
   AVAILABLE_SERVICES,
-  SERVICE_SUB_FILTERS
+  SERVICE_SUB_FILTERS,
+  sampleSection,
+  scriptReport
 } from '../services/morningReportService.js';
 
 const router = express.Router();
@@ -61,6 +63,31 @@ router.post('/reset', async (req, res) => {
     console.error('[DayReportRoute] Failed to reset config:', err);
     res.status(500).json({ success: false, error: err.message || 'Failed to reset day report configuration' });
   }
+});
+
+// POST /api/day-report/sample - what Ims would say for one section, with its sliders as set (saved or not)
+router.post('/sample', async (req, res) => {
+  try {
+    const section = req.body?.section;
+    if (!section?.id) return res.status(400).json({ success: false, error: 'Which section?' });
+    res.json({ success: true, ...(await sampleSection(section)) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message || 'Could not make an example' });
+  }
+});
+
+// POST /api/day-report/script - the whole report as Ims would say it, from the sections as they are on the page
+router.post('/script', async (req, res) => {
+  try { res.json({ success: true, ...(await scriptReport(Array.isArray(req.body?.sections) ? req.body.sections : null)) }); }
+  catch (err) { res.status(500).json({ success: false, error: err.message || 'Could not write the script' }); }
+});
+
+// POST /api/day-report/preview - the same, from the sections as they are on the page (saved or not)
+router.post('/preview', async (req, res) => {
+  try {
+    const { whoLine, parts, hour } = await buildReportParts({ markNews: false, sections: Array.isArray(req.body?.sections) ? req.body.sections : null });
+    res.json({ success: true, whoLine, parts, hour });
+  } catch (err) { res.status(500).json({ success: false, error: err.message || 'Failed to generate day report preview' }); }
 });
 
 // GET /api/day-report/preview
