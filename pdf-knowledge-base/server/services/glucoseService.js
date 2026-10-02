@@ -1,4 +1,6 @@
 import db from '../db/database.js';
+import eventBus from './eventBus.js';
+import logger from './loggerService.js';
 /**
  * Nightscout Blood Glucose Monitoring Service for IMS
  * Polls Nightscout API every 60 seconds and extracts blood glucose (mmol/L) and trend direction.
@@ -61,19 +63,19 @@ export async function fetchGlucose() {
     clearTimeout(timeout);
 
     if (!res.ok) {
-      console.warn(`[Glucose] HTTP error ${res.status} from Nightscout: ${res.statusText}`);
+      logger.warn('Glucose', `HTTP error ${res.status} from Nightscout: ${res.statusText}`);
       return cachedGlucose;
     }
 
     const data = await res.json();
     if (!data || !data.bgnow) {
-      console.warn('[Glucose] Missing bgnow in Nightscout response');
+      logger.warn('Glucose', 'Missing bgnow in Nightscout response');
       return cachedGlucose;
     }
 
     const sgvs = data.bgnow.sgvs;
     if (!Array.isArray(sgvs) || sgvs.length === 0) {
-      console.warn('[Glucose] No sgvs readings found in bgnow');
+      logger.warn('Glucose', 'No sgvs readings found in bgnow');
       return cachedGlucose;
     }
 
@@ -118,23 +120,28 @@ export async function fetchGlucose() {
       dbPct: (() => { const u = Number(data.dbsize?.details?.dataSize ?? data.dbsize?.totalDataSize), m = Number(data.dbsize?.details?.maxSize); return m > 0 && Number.isFinite(u) ? Math.ceil((u / m) * 1000) / 10 : cachedGlucose.dbPct; })()
     };
 
-    console.log(`[Glucose] Updated: ${cachedGlucose.value} mmol/L (${cachedGlucose.direction}, ${cachedGlucose.range}) [delta: ${deltaDisplay}]`);
+    logger.info('Glucose', `Updated: ${cachedGlucose.value} mmol/L (${cachedGlucose.direction}, ${cachedGlucose.range}) [delta: ${deltaDisplay}]`);
+
+    // Broadcast over SSE EventBus for instantaneous UI updates
+    try {
+      eventBus.broadcast('glucose:update', cachedGlucose);
+    } catch (_) {}
 
     // Notify all registered listeners (e.g. WebSocket pusher)
     for (const listener of listeners) {
       try {
         listener(cachedGlucose);
       } catch (err) {
-        console.error('[Glucose] Error in listener callback:', err.message);
+        logger.error('Glucose', `Error in listener callback: ${err.message}`);
       }
     }
 
     return cachedGlucose;
   } catch (err) {
     if (err.name === 'AbortError') {
-      console.warn('[Glucose] Request to Nightscout timed out (7s)');
+      logger.warn('Glucose', 'Request to Nightscout timed out (7s)');
     } else {
-      console.error('[Glucose] Fetch error:', err.message);
+      logger.error('Glucose', `Fetch error: ${err.message}`, { error: err.message });
     }
     return cachedGlucose;
   }

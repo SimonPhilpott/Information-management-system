@@ -5,6 +5,7 @@ import {
   Camera, Eye, Activity, ShieldAlert
 } from 'lucide-react';
 import PortalShell from './PortalShell';
+import { useSystemEvents } from '../../hooks/useSystemEvents';
 
 export default function DoorbellPortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
   const isDark = theme === 'dark';
@@ -57,12 +58,26 @@ export default function DoorbellPortal({ theme = 'dark', onThemeToggle, setCurre
     setLoading(false);
   }, [fetchStatus, fetchEvents]);
 
+  // Real-time SSE updates: update status and events immediately when doorbell triggers
+  useSystemEvents('doorbell:ding', (alert) => {
+    fetchStatus();
+    fetchEvents();
+    if (alert?.event) {
+      showNotification(`🚨 ${alert.event.toUpperCase()}: ${alert.cameraName} (${alert.yorkshirePhrase || ''})`);
+    }
+  }, [fetchStatus, fetchEvents]);
+
+  useSystemEvents('doorbell:cleared', () => {
+    fetchStatus();
+  }, [fetchStatus]);
+
   useEffect(() => {
     loadData();
+    // Gentle 60-second fallback sync instead of aggressive 10-second polling
     const interval = setInterval(() => {
       fetchStatus();
       fetchEvents();
-    }, 10000);
+    }, 60000);
     return () => clearInterval(interval);
   }, [loadData, fetchStatus, fetchEvents]);
 

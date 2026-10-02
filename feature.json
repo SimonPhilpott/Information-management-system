@@ -1256,6 +1256,24 @@
         "Pre-restore safety snapshot generation preserving active app.db before any restore operation",
         "Hardware Wi-Fi encryption key (.wifi_key) independent protection across restorations"
       ]
+    },
+    "Architecture Phase 3: Real-Time SSE Push Stream & Searchable Logs Explorer": {
+      "status": "enabled",
+      "description": "Unified Server-Sent Events (SSE) push stream (/api/events) replacing client HTTP polling loops, structured levelled logger with in-memory ring buffer (2,000 entries) and 14-day daily file rotation, and an interactive Logs Explorer tab in System Architecture with live stream toggles, severity filters, service tagging, full-text search, and JSON export.",
+      "subFeatures": [
+        "Unified SSE endpoint at GET /api/events with 20-second keep-alive heartbeats (: ping)",
+        "Central eventBus service publishing glucose updates, doorbell alerts, job completions, and live logs",
+        "Client hook useSystemEvents with shared singleton EventSource, automatic exponential backoff reconnection, and zero polling overhead",
+        "Structured levelled logger (loggerService.js) supporting debug, info, warn, error, and child service loggers",
+        "In-memory queryable ring buffer capped at 2,000 entries with level distribution counts",
+        "Asynchronous daily rotating disk persistence in data/logs/ with 14-day retention cleanup",
+        "Interactive Logs Explorer tab in System Architecture portal (/ims/architecture)",
+        "Live stream toggle with real-time log ingestion via SSE (log:entry)",
+        "Severity level filter pills (ALL, ERROR, WARN, INFO, DEBUG) with real-time count badges",
+        "Service dropdown and full-text search across log messages and structured metadata",
+        "Export filtered logs as JSON and 1-click stack trace clipboard copying",
+        "Quieted HTTP request logging middleware suppressing high-frequency polling spam from console"
+      ]
     }
   }
 }

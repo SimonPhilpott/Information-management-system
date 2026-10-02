@@ -6,6 +6,9 @@
  * awareness, run locks, execution timing telemetry, and manual run endpoints.
  */
 
+import eventBus from './eventBus.js';
+import logger from './loggerService.js';
+
 class SchedulerService {
   constructor() {
     this.jobs = new Map();
@@ -74,7 +77,7 @@ class SchedulerService {
     if (!job) return { error: `Job ${name} not found` };
 
     if (job.isRunning) {
-      console.warn(`[Scheduler] ⏳ Job "${name}" is already executing. Concurrency lock prevented overlap.`);
+      logger.warn('Scheduler', `Job "${name}" is already executing. Concurrency lock prevented overlap.`);
       return { skipped: true, reason: 'concurrency_lock', job: this._presentJob(job) };
     }
 
@@ -104,15 +107,26 @@ class SchedulerService {
       job.lastError = null;
       job.lastRun = Date.now();
       job.runCount++;
+      logger.info('Scheduler', `Completed job "${name}" in ${job.durationMs}ms`);
     } catch (err) {
       job.durationMs = Date.now() - start;
       job.status = 'failed';
       job.lastError = err.message || String(err);
       job.lastRun = Date.now();
-      console.error(`[Scheduler] ❌ Error in job "${name}":`, err.message);
+      logger.error('Scheduler', `Failed job "${name}": ${err.message}`, { error: err.message, stack: err.stack });
     } finally {
       job.isRunning = false;
       job.nextRun = Date.now() + job.intervalMs;
+      try {
+        eventBus.broadcast('job:complete', {
+          name: job.name,
+          status: job.status,
+          durationMs: job.durationMs,
+          lastRun: job.lastRun,
+          nextRun: job.nextRun,
+          lastError: job.lastError
+        });
+      } catch (_) {}
     }
 
     return { ok: job.status === 'ok', job: this._presentJob(job) };

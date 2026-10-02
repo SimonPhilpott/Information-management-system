@@ -6,9 +6,11 @@ import {
   Terminal, GitBranch, Clock, Timer, RefreshCw, Scale, ChevronRight, AlertTriangle, Info, Smile, Drama,
   MessageSquareQuote, Wifi, Newspaper, Heart, Radio, Speaker, Cake, Bell, ListChecks, Eye, Maximize2, Minimize2, Eraser,
   UserPlus, Mail, ClipboardCopy, X, Check, Filter, Download, Printer, Search, Play, Loader2, CheckCircle2,
+  Trash2,
 } from 'lucide-react';
 import PortalShell from './PortalShell';
 import ImsFace from '../Ims/ImsFace';
+import { useSystemEvents } from '../../hooks/useSystemEvents';
 
 // System Architecture (/ims/architecture): a hub-and-spokes map of how IMS is built, modelled on
 // an application dependency map - see docs/system-architecture-design.md for the design notes.
@@ -1040,7 +1042,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
           </div>
 
           <div className={`flex gap-5 px-5 border-b text-[13px] overflow-x-auto ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
-            {[['overview', 'Overview'], ['jobs', 'Background Jobs'], ['turn', 'A conversation'], ['latency', 'Voice Latency & Tools'], ['data', 'Data'], ['findings', 'Findings']].map(([k, label]) => (
+            {[['overview', 'Overview'], ['jobs', 'Background Jobs'], ['logs', 'Logs Explorer'], ['turn', 'A conversation'], ['latency', 'Voice Latency & Tools'], ['data', 'Data'], ['findings', 'Findings']].map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)}
                 className={`pb-2.5 whitespace-nowrap border-b-2 -mb-px ${tab === k ? 'border-violet-500 text-violet-500 font-bold' : `border-transparent ${muted}`}`}>{label}</button>
             ))}
@@ -1143,6 +1145,10 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
 
             {tab === 'jobs' && (
               <BackgroundJobsSection isDark={isDark} muted={muted} />
+            )}
+
+            {tab === 'logs' && (
+              <LogsExplorerSection isDark={isDark} muted={muted} />
             )}
 
             {tab === 'latency' && (
@@ -1513,6 +1519,310 @@ function BackgroundJobsSection({ isDark, muted }) {
               )}
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LogsExplorerSection({ isDark, muted }) {
+  const [logs, setLogs] = useState([]);
+  const [counts, setCounts] = useState({ total: 0, error: 0, warn: 0, info: 0, debug: 0 });
+  const [services, setServices] = useState([]);
+  const [selectedLevel, setSelectedLevel] = useState('all');
+  const [selectedService, setSelectedService] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [liveStream, setLiveStream] = useState(true);
+  const [expandedId, setExpandedId] = useState(null);
+  const [copiedId, setCopiedId] = useState(null);
+
+  const fetchLogs = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (selectedLevel !== 'all') params.set('level', selectedLevel);
+      if (selectedService !== 'all') params.set('service', selectedService);
+      if (searchQuery.trim()) params.set('search', searchQuery.trim());
+      params.set('limit', '150');
+
+      const res = await fetch(`/api/logs?${params.toString()}`);
+      if (res.ok) {
+        const d = await res.json();
+        setLogs(d.logs || []);
+        if (d.counts) setCounts(d.counts);
+      }
+    } catch (err) {
+      console.error('Failed to load logs:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedLevel, selectedService, searchQuery]);
+
+  const fetchServices = async () => {
+    try {
+      const res = await fetch('/api/logs/services');
+      if (res.ok) {
+        const d = await res.json();
+        setServices(d.services || []);
+      }
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    fetchLogs();
+    fetchServices();
+  }, [fetchLogs]);
+
+  // Real-time live log arrival via SSE
+  useSystemEvents('log:entry', (entry) => {
+    if (!liveStream) return;
+    setLogs((prev) => {
+      // Check filters
+      if (selectedLevel !== 'all' && entry.level !== selectedLevel) return prev;
+      if (selectedService !== 'all' && entry.service.toLowerCase() !== selectedService.toLowerCase()) return prev;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matches = entry.message.toLowerCase().includes(q) ||
+          entry.service.toLowerCase().includes(q) ||
+          (entry.data && JSON.stringify(entry.data).toLowerCase().includes(q));
+        if (!matches) return prev;
+      }
+      return [entry, ...prev.slice(0, 199)];
+    });
+    setCounts((prev) => ({
+      ...prev,
+      total: prev.total + 1,
+      [entry.level]: (prev[entry.level] || 0) + 1
+    }));
+  }, [liveStream, selectedLevel, selectedService, searchQuery]);
+
+  const clearLogs = async () => {
+    if (!window.confirm('Clear the active in-memory log buffer? (Disk logs remain intact)')) return;
+    try {
+      await fetch('/api/logs', { method: 'DELETE' });
+      setLogs([]);
+      setCounts({ total: 0, error: 0, warn: 0, info: 0, debug: 0 });
+    } catch (_) {}
+  };
+
+  const exportLogs = () => {
+    const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ims-logs-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const copyData = (id, data) => {
+    navigator.clipboard.writeText(typeof data === 'string' ? data : JSON.stringify(data, null, 2));
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 1500);
+  };
+
+  const levelStyles = {
+    error: 'bg-rose-500/15 border-rose-500/30 text-rose-400',
+    warn: 'bg-amber-500/15 border-amber-500/30 text-amber-400',
+    info: 'bg-sky-500/15 border-sky-500/30 text-sky-400',
+    debug: 'bg-purple-500/15 border-purple-500/30 text-purple-400',
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Top Controls Card */}
+      <div className={`p-4 rounded-2xl border flex flex-col gap-3 ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <Terminal size={16} className="text-violet-400" />
+            <span className="text-xs font-bold uppercase tracking-wider text-violet-400">Structured Logs Explorer</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              onClick={() => setLiveStream(!liveStream)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 border transition-colors ${
+                liveStream
+                  ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400 shadow-sm'
+                  : isDark ? 'bg-white/5 border-white/10 text-slate-400' : 'bg-white border-slate-200 text-slate-600'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${liveStream ? 'bg-emerald-400 animate-ping' : 'bg-slate-400'}`} />
+              <span>{liveStream ? 'Live Stream ON' : 'Paused'}</span>
+            </button>
+
+            <button
+              onClick={exportLogs}
+              disabled={logs.length === 0}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 border transition-colors ${
+                isDark ? 'border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20' : 'border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100'
+              } disabled:opacity-40`}
+              title="Export filtered logs as JSON"
+            >
+              <Download size={12} />
+              <span>Export</span>
+            </button>
+
+            <button
+              onClick={clearLogs}
+              className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 border transition-colors ${
+                isDark ? 'border-white/10 hover:bg-white/10 text-slate-400' : 'border-slate-200 hover:bg-slate-100 text-slate-600'
+              }`}
+              title="Clear in-memory buffer"
+            >
+              <Trash2 size={12} />
+            </button>
+
+            <button
+              onClick={fetchLogs}
+              className={`p-1.5 rounded-lg border transition-colors ${
+                isDark ? 'border-white/10 hover:bg-white/10 text-slate-400' : 'border-slate-200 hover:bg-slate-100 text-slate-600'
+              }`}
+              title="Refresh logs"
+            >
+              <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        </div>
+
+        {/* Level Filter Pills */}
+        <div className="flex items-center gap-1.5 flex-wrap pt-1">
+          {[
+            { id: 'all', label: 'ALL', count: counts.total, color: 'text-slate-200 bg-slate-500/15 border-slate-500/30' },
+            { id: 'error', label: 'ERROR', count: counts.error, color: 'text-rose-400 bg-rose-500/15 border-rose-500/30' },
+            { id: 'warn', label: 'WARN', count: counts.warn, color: 'text-amber-400 bg-amber-500/15 border-amber-500/30' },
+            { id: 'info', label: 'INFO', count: counts.info, color: 'text-sky-400 bg-sky-500/15 border-sky-500/30' },
+            { id: 'debug', label: 'DEBUG', count: counts.debug, color: 'text-purple-400 bg-purple-500/15 border-purple-500/30' }
+          ].map(lvl => (
+            <button
+              key={lvl.id}
+              onClick={() => setSelectedLevel(lvl.id)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all flex items-center gap-1.5 ${
+                selectedLevel === lvl.id
+                  ? `${lvl.color} shadow-sm ring-1 ring-white/20`
+                  : isDark
+                    ? 'border-white/5 bg-white/5 text-slate-400 hover:bg-white/10'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <span>{lvl.label}</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[9.5px] font-mono opacity-80 bg-black/20">
+                {lvl.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Search & Service Filter */}
+        <div className="flex items-center gap-2 pt-1 flex-wrap sm:flex-nowrap">
+          <div className="relative flex-1 min-w-[140px]">
+            <Search size={13} className={`absolute left-3 top-2.5 ${muted}`} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search log messages, data, stack traces..."
+              className={`w-full pl-8 pr-3 py-1.5 rounded-xl text-xs outline-none border transition-colors ${
+                isDark
+                  ? 'bg-slate-900 border-white/10 text-slate-200 focus:border-violet-500'
+                  : 'bg-white border-slate-200 text-slate-800 focus:border-violet-500'
+              }`}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-200"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+
+          <select
+            value={selectedService}
+            onChange={(e) => setSelectedService(e.target.value)}
+            className={`px-3 py-1.5 rounded-xl text-xs outline-none border font-medium ${
+              isDark
+                ? 'bg-slate-900 border-white/10 text-slate-200'
+                : 'bg-white border-slate-200 text-slate-800'
+            }`}
+          >
+            <option value="all">All Services</option>
+            {services.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Log Entries Stream */}
+      {logs.length === 0 ? (
+        <div className={`p-8 text-center text-xs rounded-2xl border ${isDark ? 'border-white/5 text-slate-400' : 'border-slate-200 text-slate-500'}`}>
+          No log entries matching the selected criteria.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2 max-h-[560px] overflow-y-auto pr-1">
+          {logs.map((entry) => {
+            const isExpanded = expandedId === entry.id;
+            const hasData = entry.data && Object.keys(entry.data).length > 0;
+            return (
+              <div
+                key={entry.id}
+                className={`p-3 rounded-xl border text-xs font-mono transition-colors ${
+                  isDark
+                    ? 'bg-slate-950/60 border-white/5 hover:border-white/10'
+                    : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10.5px] text-slate-400 font-sans">{entry.timeFormatted || entry.timestamp?.slice(11, 19)}</span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${levelStyles[entry.level] || 'text-slate-300'}`}>
+                      {entry.level}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded text-[10.5px] font-semibold border ${
+                      isDark ? 'bg-white/5 border-white/10 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'
+                    }`}>
+                      [{entry.service}]
+                    </span>
+                  </div>
+
+                  {hasData && (
+                    <button
+                      onClick={() => setExpandedId(isExpanded ? null : entry.id)}
+                      className={`px-2 py-0.5 rounded text-[10.5px] font-sans font-bold flex items-center gap-1 border transition-colors ${
+                        isDark ? 'border-white/10 hover:bg-white/10 text-slate-300' : 'border-slate-200 hover:bg-slate-100 text-slate-700'
+                      }`}
+                    >
+                      <span>{isExpanded ? 'Hide Data' : 'View Data'}</span>
+                      <ChevronRight size={12} className={`transition-transform ${isExpanded ? '-rotate-90' : 'rotate-90'}`} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="mt-1.5 text-slate-200 font-sans text-[12px] leading-relaxed break-words">
+                  {entry.message}
+                </div>
+
+                {isExpanded && hasData && (
+                  <div className={`mt-2 p-2.5 rounded-lg border text-[11px] overflow-x-auto relative ${
+                    isDark ? 'bg-slate-900 border-white/10 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-800'
+                  }`}>
+                    <button
+                      onClick={() => copyData(entry.id, entry.data)}
+                      className={`absolute top-2 right-2 px-2 py-1 rounded text-[10px] font-sans font-bold flex items-center gap-1 border ${
+                        isDark ? 'border-white/10 bg-white/5 hover:bg-white/10' : 'border-slate-200 bg-white hover:bg-slate-100'
+                      }`}
+                    >
+                      {copiedId === entry.id ? <Check size={11} className="text-emerald-400" /> : <ClipboardCopy size={11} />}
+                      <span>{copiedId === entry.id ? 'Copied' : 'Copy'}</span>
+                    </button>
+                    <pre className="font-mono whitespace-pre-wrap">{typeof entry.data === 'string' ? entry.data : JSON.stringify(entry.data, null, 2)}</pre>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

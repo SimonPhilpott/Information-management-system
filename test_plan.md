@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 103
-- Verified Features: 103
+- Total Registered Features: 104
+- Verified Features: 104
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -111,6 +111,7 @@
 | FEAT-101 | Natural Language Scheduling & Single-Turn Confirmation Hardening | [hardwareClientService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/hardwareClientService.js) | Flexible 12h/24h time parsing, date normalisation, embedded preposition label extraction, multi-turn accumulation, and explicit confirmation pattern | PASS |
 | FEAT-102 | Phase 1: Repository Hygiene & Tunnel Access Hardening | [server/index.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/index.js) | Relocation of diagnostic scripts to server/scripts/, purging dead crash dumps, Express trust proxy, auto-secure session cookies, Helmet CSP, and 1MB global payload guards with 50MB upload exemptions | PASS |
 | FEAT-103 | Phase 2: Central Background Job Scheduler & Disaster Recovery | [schedulerService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/schedulerService.js) | Central schedulerService consolidating 18 intervals with concurrency run-locks, Europe/London time, telemetry API, weekly SQLite PRAGMA integrity_check drill, and 1-click restore with pre-restore safety snapshots | PASS |
+| FEAT-104 | Phase 3: Real-Time SSE Push Stream & Searchable Logs Explorer | [eventBus.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/eventBus.js) | Central SSE /api/events with 20s keep-alives, useSystemEvents hook, structured logger with 2,000 entry ring buffer and 14-day file rotation, Logs Explorer tab in Architecture portal | PASS |
 
 ## Section 2: Detailed Scenarios
 ### Suite 31: Observability Device Health Panel & Service (FEAT-086)
@@ -1071,11 +1072,23 @@
 6. **Backups Portal Drill Banner:** Navigate to `/ims/backups`. Verify the green **Automated Integrity Drill** banner displays `PASSED (PRAGMA integrity_check ok)`, archive name, page count, and "Run Drill Now" button.
 7. **Disaster Recovery 1-Click Restore:** In `/ims/backups`, click the **Restore** button next to an archive. Verify the safety modal appears with confirmations: (a) pre-restore safety snapshot creation, (b) preservation of `data/.wifi_key`, (c) sandbox integrity pre-check before database file replacement. Confirm restore execution via `POST /api/ims-backups/restore/:filename`.
 
+### Suite 104: Phase 3: Real-Time SSE Push Stream & Searchable Logs Explorer (FEAT-104)
+1. **SSE Handshake & Keep-Alive Verification:** Connect to `GET /api/events`. Verify HTTP 200 response headers include `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`, and `X-Accel-Buffering: no`. Confirm initial `event: connected` payload arrives with client count. Confirm 20-second `: ping\n\n` comments keep the stream alive without tunnel timeouts.
+2. **Instant Glucose SSE Push:** Trigger or mock a glucose update in `glucoseService.js`. Verify `eventBus.broadcast('glucose:update', ...)` immediately dispatches payload to active SSE subscribers without awaiting client HTTP polling loops.
+3. **Instant Doorbell SSE Push:** Emit a doorbell alert via `doorbellService`. Verify `eventBus.broadcast('doorbell:ding', ...)` delivers immediate notifications to `DoorbellPortal.jsx`, activating the toast/banner within milliseconds.
+4. **Structured Logger Telemetry:** Call `logger.info()`, `logger.warn()`, and `logger.error()`. Verify console formatting reflects UK time `[HH:mm:ss]`, level badge, service tag, and serialized payload or stack trace. Verify automatic disk persistence to `data/logs/ims-YYYY-MM-DD.log`.
+5. **Logs Explorer UI Verification:** Navigate to `/ims/architecture` and click the **Logs Explorer** tab. Verify the real-time log list renders, level filter pills (ALL, ERROR, WARN, INFO, DEBUG) update with accurate count badges, and the live stream toggle activates incoming entries.
+6. **Log Filtering, Search & Export:** Type a search query into the search box and select a service from the dropdown. Verify list filters instantaneously. Click **Export** to verify browser download of `ims-logs-YYYY-MM-DD.json`. Click **Clear** to verify in-memory buffer reset.
+7. **Quiet HTTP Poll Logging:** Inspect server console logs during client activity. Verify high-frequency background endpoints (`/api/glucose`, `/api/events`, `/api/jobs`, `/device/health`, `/api/logs`) are logged at `debug` level only, keeping the terminal output calm and focused on significant events.
+
 ## Section 3: Defensive Engineering Invariants
 - **Scheduler Concurrency Protection:** All routines managed by `schedulerService` must acquire an execution run-lock (`isRunning`) before invoking the action and release it in a `finally` block to prevent SQLite database write lock contention.
 - **Pre-Restore Snapshot Guarantee:** Every database restoration via `backupService.restoreBackup()` must take a full SQLite backup snapshot of the active database (`LOCAL/pre-restore-app-${Date.now()}.db`) before touching live database or asset files.
 - **Hardware Credential Isolation:** The hardware Wi-Fi key (`data/.wifi_key`) must never be deleted or overwritten by backup archive unpack routines.
 - **Safe Sandboxing:** All backup verification drills must extract archive databases to temporary sandbox files with unique timestamps and explicitly unbind database handles and delete sandbox files in a `finally` block.
 - **Wall-Clock Timezone Anchoring:** All time-based scheduled windows (nightly backups post-03:00) must evaluate timestamps using `Europe/London` to avoid daylight savings discrepancies.
+- **SSE Tunnel Resilience:** The unified event push stream (`/api/events`) must emit keep-alive comments (`: ping\n\n`) at least once every 20 seconds to prevent edge reverse proxies, Cloudflare tunnels, or ngrok gateways from terminating idle HTTP connections.
+- **Log Buffer Memory Bounds:** The in-memory logging ring buffer in `loggerService` must be strictly capped at 2,000 entries using FIFO pruning to guarantee bounded heap consumption.
+- **Log File Retention Lifecycle:** Daily log archives in `data/logs/` must automatically purge entries exceeding 14 days of age during daily rotation.
 
 

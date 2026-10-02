@@ -120,6 +120,8 @@ import { getWeather } from './services/weatherService.js';
 import { startGlucosePoller, getGlucoseData } from './services/glucoseService.js';
 import { checkAndTriggerNightlyScan } from './services/musicScanService.js';
 import { schedulerService } from './services/schedulerService.js';
+import eventBus from './services/eventBus.js';
+import logger from './services/loggerService.js';
 
 // A tool call the model has written out as text instead of calling it: setEmotion(emotion='happy'),
 // default_api.endConversation(), print(...) - never meant to be seen or kept.
@@ -209,9 +211,15 @@ const requireAdmin = (req, res, next) => {
 };
 
 app.use(requireAdmin);
+const QUIET_POLL_PATHS = ['/api/glucose', '/api/events', '/api/jobs', '/api/device-health', '/device/health', '/api/live/status', '/api/logs'];
 app.use((req, res, next) => {
   if (req.path.startsWith('/api')) {
-    console.log(`[API] ${req.method} ${req.path}`);
+    const isQuiet = QUIET_POLL_PATHS.some(p => req.path.startsWith(p));
+    if (isQuiet) {
+      logger.debug('API', `${req.method} ${req.path}`);
+    } else {
+      logger.info('API', `${req.method} ${req.path}`);
+    }
   }
   next();
 });
@@ -334,6 +342,60 @@ app.post('/api/ims-backups/drill', async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// Unified SSE Push Stream (Dev Idea #42 & Implementation Plan Phase 3)
+app.get('/api/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  if (typeof res.flushHeaders === 'function') {
+    res.flushHeaders();
+  }
+
+  const client = eventBus.addClient(res, req.ip || req.socket?.remoteAddress);
+  logger.debug('SSE', `Client connected (${eventBus.getClientCount()} total active)`);
+
+  req.on('close', () => {
+    eventBus.removeClient(client);
+    logger.debug('SSE', `Client disconnected (${eventBus.getClientCount()} remaining)`);
+  });
+});
+
+// Structured Logging Telemetry & Explorer (Dev Idea #50 & Implementation Plan Phase 3)
+app.get('/api/logs', (req, res) => {
+  const { limit, level, service, search, since } = req.query;
+  const result = logger.getRecentLogs({
+    limit: limit ? parseInt(limit, 10) : 200,
+    level,
+    service,
+    search,
+    since
+  });
+  res.json({ success: true, ...result });
+});
+
+app.get('/api/logs/services', (req, res) => {
+  res.json({ success: true, services: logger.getServices() });
+});
+
+app.delete('/api/logs', (req, res) => {
+  logger.clearBuffer();
+  res.json({ success: true, message: 'In-memory log buffer cleared' });
+});
+
+// Wire Doorbell real-time events to SSE EventBus
+doorbellService.on('doorbellEvent', (alert) => {
+  try {
+    eventBus.broadcast('doorbell:ding', alert);
+    logger.info('Doorbell', `Broadcasted ${alert.event} alert for camera "${alert.cameraName}"`);
+  } catch (_) {}
+});
+doorbellService.on('alertCleared', () => {
+  try {
+    eventBus.broadcast('doorbell:cleared', {});
+  } catch (_) {}
 });
 
 app.get('/api/glucose', async (req, res) => {

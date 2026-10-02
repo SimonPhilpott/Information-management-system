@@ -797,6 +797,20 @@
       "dependencies": [
         "src/components/Dashboard/PortalShell.jsx"
       ]
+    },
+    "pdf-knowledge-base/server/services/eventBus.js": {
+      "description": "Central Server-Sent Events (SSE) push hub broadcasting real-time glucose, doorbell alerts, job completions, and live logs with 20s keep-alive pings.",
+      "dependencies": []
+    },
+    "pdf-knowledge-base/server/services/loggerService.js": {
+      "description": "Structured levelled logger with in-memory ring buffer (2,000 entries), 14-day daily file rotation in data/logs, and real-time SSE publishing.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/eventBus.js"
+      ]
+    },
+    "src/hooks/useSystemEvents.js": {
+      "description": "Shared singleton SSE client hook providing real-time subscriptions, exponential backoff reconnection, and zero-polling data updates across portals.",
+      "dependencies": []
     }
   }
 }
