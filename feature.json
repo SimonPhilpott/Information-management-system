@@ -1217,6 +1217,18 @@
         "Backward compatibility migration from legacy split lookahead settings",
         "Adaptive UI step labels with milestone indicators avoiding horizontal overlap"
       ]
+    },
+    "Natural Language Scheduling & Single-Turn Confirmation Hardening": {
+      "status": "enabled",
+      "description": "Eliminates multi-turn prompting loops and false clarification interrupts when scheduling alarms, reminders, and timers via voice or natural language. Extracts embedded prepositional labels, normalises 12h/24h time strings and relative dates, accumulates multi-turn slots, and enforces explicit verbal confirmations upon scheduling.",
+      "subFeatures": [
+        "Robust 12h/24h and natural time normalisation ('12pm', '12:30 PM', 'noon', 'midday', 'midnight', '18:45') in computeFireAt",
+        "Flexible relative date parsing ('today', 'tomorrow', 'YYYY-MM-DD') with 60-second grace window for immediate minute execution",
+        "Tool schema and prompt hardening to extract embedded labels following 'for', 'to', or 'about' in a single turn",
+        "Multi-turn conversational slot accumulation preventing re-asking for previously provided details",
+        "Strict mandatory verbal confirmation formula ('Okay, that [reminder/alarm/timer] is set for [time/duration] [label]')",
+        "Calibrated speech clarification watchdog threshold preventing premature audio pause interrupts"
+      ]
     }
   }
 }

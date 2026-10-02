@@ -111,14 +111,37 @@ function isLondonWeekend(ms) {
 }
 
 // Accepts EITHER a relative delay ("in 10 minutes" -> whenSeconds) or an
-// absolute clock time ("at 7:30" -> time, 24-hour HH:MM, optionally paired
-// with date, "YYYY-MM-DD") - Gemini picks whichever matches how the user
+// absolute clock time ("at 7:30", "12pm", "noon" -> time, 24-hour HH:MM, optionally paired
+// with date, "YYYY-MM-DD", "today", "tomorrow") - Gemini picks whichever matches how the user
 // actually phrased it, rather than being forced to convert everything to one
-// form itself. Deliberately doesn't try to parse "this Saturday" or "the
-// 25th" itself - the system prompt gives Gemini today's real London date
-// specifically so IT resolves phrases like that into an explicit date,
-// which is far more reliable than a bespoke natural-language date parser
-// here would be.
+// form itself.
+function normaliseTime(raw) {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  const str = raw.trim().toLowerCase();
+  if (str === 'noon' || str === 'midday') return { hh: 12, mm: 0 };
+  if (str === 'midnight') return { hh: 0, mm: 0 };
+
+  // Match: HH:MM:SS, HH:MM, HH.MM, HH, with optional am/pm (e.g. "12pm", "12:30pm", "7:00 am", "14:30", "9")
+  const m = /^(\d{1,2})(?:[:.](\d{2}))?(?::\d{2})?\s*(am|pm)?$/i.exec(str);
+  if (!m) return null;
+
+  let hh = parseInt(m[1], 10);
+  const mm = m[2] !== undefined ? parseInt(m[2], 10) : 0;
+  const meridiem = m[3] ? m[3].toLowerCase() : null;
+
+  if (meridiem) {
+    if (hh < 1 || hh > 12) return null;
+    if (meridiem === 'am') {
+      hh = (hh === 12) ? 0 : hh;
+    } else {
+      hh = (hh === 12) ? 12 : hh + 12;
+    }
+  }
+
+  if (hh > 23 || mm > 59) return null;
+  return { hh, mm };
+}
+
 function computeFireAt({ whenSeconds, time, date }) {
   const now = Date.now();
   const secs = Number(whenSeconds); // Gemini sometimes sends the number as text ("3600")
@@ -126,34 +149,41 @@ function computeFireAt({ whenSeconds, time, date }) {
     return now + Math.round(secs) * 1000;
   }
   if (typeof time === 'string') {
-    const m = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
-    if (!m) throw new Error(`Unrecognised time "${time}" - expected 24-hour HH:MM`);
-    const hh = parseInt(m[1], 10), mm = parseInt(m[2], 10);
-    if (hh > 23 || mm > 59) throw new Error(`Unrecognised time "${time}" - expected 24-hour HH:MM`);
+    const parsed = normaliseTime(time);
+    if (!parsed) throw new Error(`Unrecognised time "${time}" - expected HH:MM or 12h/24h format`);
+    const { hh, mm } = parsed;
 
-    let year, month, day, explicitDate = false;
-    if (typeof date === 'string' && date.trim()) {
-      const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.trim());
-      if (!dm) throw new Error(`Unrecognised date "${date}" - expected YYYY-MM-DD`);
-      year = parseInt(dm[1], 10); month = parseInt(dm[2], 10); day = parseInt(dm[3], 10);
-      explicitDate = true;
+    let year, month, day, isExplicitCustomDate = false;
+    const today = londonParts(new Date(now));
+    const trimmedDate = typeof date === 'string' ? date.trim().toLowerCase() : '';
+
+    if (trimmedDate && trimmedDate !== 'today') {
+      if (trimmedDate === 'tomorrow') {
+        year = today.year; month = today.month; day = today.day + 1;
+      } else {
+        const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmedDate);
+        if (!dm) throw new Error(`Unrecognised date "${date}" - expected YYYY-MM-DD`);
+        year = parseInt(dm[1], 10); month = parseInt(dm[2], 10); day = parseInt(dm[3], 10);
+        // Check if date given is actually today
+        if (year !== today.year || month !== today.month || day !== today.day) {
+          isExplicitCustomDate = true;
+        }
+      }
     } else {
-      const today = londonParts(new Date(now));
       year = today.year; month = today.month; day = today.day;
     }
 
     let fireMs = londonWallTimeToUtcMs(year, month, day, hh, mm, 0);
+    // If calculated time is in the past:
     if (fireMs <= now) {
-      if (explicitDate) {
-        // A specific date was given and it's already past - almost
-        // certainly a mistake (or the user meant next year), not "roll to
-        // tomorrow" as with the no-date case below. Reject rather than
-        // silently scheduling something that fires immediately.
+      // Allow up to a 60-second grace window if user just set something for the current minute
+      if (now - fireMs <= 60000) {
+        return now + 2000; // fire in 2 seconds
+      }
+      if (isExplicitCustomDate) {
         throw new Error(`${date} ${time} is in the past`);
       }
-      // No date given and that time already passed today (London) -> tomorrow.
-      // Date.UTC correctly rolls day=32 etc. into the next month, so a plain
-      // +1 is safe here.
+      // Same-day without explicit future date (or date explicitly stated as today) that already passed -> roll to tomorrow
       fireMs = londonWallTimeToUtcMs(year, month, day + 1, hh, mm, 0);
     }
     return fireMs;

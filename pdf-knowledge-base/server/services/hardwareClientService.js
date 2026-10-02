@@ -882,12 +882,14 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             "GREETINGS AND SMALL TALK: keep them conversational - never mention blood sugar, glucose, insulin, carbs, runs or training unless the user asks; that information is for the morning / day report. " +
             "FACE: call setEmotion at the start of every spoken reply, and again if your tone shifts partway through. Tools are only ever called, never written or spoken: never put a function name or call (like setEmotion(...)) into your words. " +
             "ITEM CREATION & REQUIREMENT SCOPES (STRICT GUIDELINES FOR CREATING ITEMS):\n" +
-            "When the user asks to create or set up a new item in any service, follow these exact requirement scopes. " +
-            "Rule 1 - PARSE ALL GIVEN DETAILS: Extract everything the user already stated (e.g. 'set a reminder today at 1pm for a meeting' -> type: reminder, time: 13:00, date: today, label: 'meeting'). DO NOT re-ask for details they already gave you!\n" +
-            "Rule 2 - ASK ONLY FOR MISSING REQUIRED SCOPES: If a required detail is missing, ask for ONLY what is missing in one concise question:\n" +
-            "• ALARMS (scheduleItem): Required: [time (24h or AM/PM), label/purpose, recurrence ('once', 'daily', 'weekdays', 'weekly')]. If time is given without a purpose, ask what it's for. If time is given without AM/PM or morning/afternoon context (e.g. 'alarm for 7'), clarify morning or evening. If recurrence is not stated, you may ask or default to once while confirming.\n" +
+            "When the user asks to create or set up a new item in any service, follow these exact requirement scopes.\n" +
+            "Rule 1 - PARSE ALL GIVEN DETAILS: Extract everything the user already stated. For reminders, alarms, and timers (e.g. 'Set up a new reminder for claude code reset at 12pm today', 'reminder for meeting at 3pm', '15 minute timer for pasta', 'alarm for work tomorrow at 7am'), extract type, label, time, and date immediately. Extract whatever follows 'for', 'to', or 'about' as the label (e.g. 'claude code reset'). DO NOT re-ask for details already given!\n" +
+            "Rule 2 - MULTI-TURN SLOT ACCUMULATION: Remember details already given across previous conversation turns. If the user previously said 'reminder for claude code reset' and then in the next turn says 'at 12pm today', combine them: type='reminder', label='claude code reset', time='12:00', date='today'. NEVER loop or re-ask for a detail already supplied!\n" +
+            "Rule 3 - MANDATORY VERBAL CONFIRMATION: Once you have the required details, call the tool immediately. Upon confirmation, ALWAYS confirm clearly to the user with phrasing like: 'Okay, that [reminder/alarm/timer] is set for [time/duration] [label].'\n" +
+            "Rule 4 - ASK ONLY FOR MISSING REQUIRED SCOPES: If a required detail is strictly missing, ask for ONLY what is missing in one concise question:\n" +
+            "• ALARMS (scheduleItem): Required: [time (24h or AM/PM), label/purpose, recurrence ('once', 'daily', 'weekdays', 'weekly')]. If time is given without a purpose, ask what it's for. If time is given without AM/PM or morning/afternoon context (e.g. 'alarm for 7'), clarify morning or evening. Recurrence defaults to 'once'.\n" +
             "• TIMERS (scheduleItem): Required: [duration / whenSeconds]. A label is optional for countdown timers. If duration is given (e.g. '10 minute timer'), create it immediately without asking questions.\n" +
-            "• REMINDERS (scheduleItem): Required: [time/whenSeconds, label/note, date (defaults to today if time is future)]. If they say 'remind me to call mum at 4pm', you have everything needed -> call scheduleItem immediately.\n" +
+            "• REMINDERS (scheduleItem): Required: [time/whenSeconds, label/note, date (defaults to today if time is future)]. If they say 'set a reminder for claude code reset at 12pm today' or 'remind me to call mum at 4pm', you have everything needed -> call scheduleItem immediately.\n" +
             "• CALENDAR EVENTS (addCalendarEvent): Required: [title/what, date, time (optional for all-day events)]. If title and date are provided, call addCalendarEvent immediately.\n" +
             "• MEMORIES (rememberFact): Required: [fact, category]. If fact is stated, call rememberFact immediately.\n" +
             "• LIST ITEMS (addToList): Required: [listName (e.g. 'shopping', 'todo'), item]. If list or item is missing, ask.\n" +
@@ -965,22 +967,21 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "scheduleItem",
-            description: "Creates a timer, alarm, or reminder. Scope requirements: 1) For 'timer': requires duration (whenSeconds). Label is optional. 2) For 'alarm': requires exact time (HH:MM / am-pm resolved) and label/purpose (if missing, ask what it is for); recurrence defaults to 'once' (supports 'daily', 'weekdays', 'weekly'). 3) For 'reminder': requires when (time/date or whenSeconds) AND what to be reminded about (label). IMPORTANT: If the user already provided all required details in their request (e.g. 'set a reminder today at 1pm for a meeting'), DO NOT ask again - call the tool immediately. NEVER guess am/pm: if an hour is ambiguous (e.g. 'at 3') without context, clarify morning or afternoon first. Use whenSeconds for relative times ('in 20 mins') and time/date for absolute times. Briefly confirm what you set.",
+            description: "Creates a timer, alarm, or reminder. Scope requirements: 1) For 'timer': requires duration (whenSeconds). Label is optional. 2) For 'alarm': requires exact time (HH:MM / am-pm resolved) and label/purpose (if missing, ask what it is for); recurrence defaults to 'once' (supports 'daily', 'weekdays', 'weekly'). 3) For 'reminder': requires when (time/date or whenSeconds) AND what to be reminded about (label). IMPORTANT: If the user provides details in their request (e.g. 'Set up a new reminder for claude code reset at 12pm today', 'reminder for meeting at 3pm'), extract the label (e.g. 'claude code reset') and time immediately. DO NOT re-ask for details already given. If details were given across earlier turns in this conversation, accumulate them. NEVER ask for a label if the user already stated what the reminder or alarm is for. Call the tool immediately once you have the required scopes. When confirmed, ALWAYS confirm aloud to the user using the exact phrase pattern: 'Okay, that [reminder/alarm/timer] is set for [time/duration] [label].'",
             behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
               properties: {
                 type: { type: "STRING", enum: ["timer", "alarm", "reminder"], description: "What kind of item this is." },
-                label: { type: "STRING", description: "What this is for, e.g. 'pasta' or 'call mum' - always ask the user for this before calling the tool if they didn't already say (timers are the one exception - a plain countdown with no stated purpose is fine to leave unlabelled)." },
+                label: { type: "STRING", description: "What this item is for or titled (e.g. 'claude code reset', 'call mum', 'pasta'). Extract this directly from whatever follows 'for', 'to', or 'about' in the user's request. Only ask the user for a label if they did not mention what it is for (timers can be left unlabelled)." },
                 whenSeconds: { type: "NUMBER", description: "Seconds from now, for relative phrasing like 'in 10 minutes'. Omit if using time/date instead." },
-                time: { type: "STRING", description: "24-hour HH:MM clock time. Omit if using whenSeconds instead." },
-                date: { type: "STRING", description: "YYYY-MM-DD, the real calendar date the time above applies to - resolved by YOU from whatever the user said (see this tool's main description) using the current date given in this prompt. Omit only for a same-day alarm/reminder with no date mentioned (rolls to tomorrow automatically if that time has already passed today)." },
-                recurrence: { type: "STRING", enum: ["once", "daily", "weekdays", "weekly"], description: "Supports repeating reminders/alarms: 'once', 'daily', 'weekdays', or 'weekly' (every week at the same time on the same day). Defaults to 'once' if omitted." },
-                alertMode: { type: "STRING", enum: ["both", "vocal", "chimes"], description: "How the alert should sound when it goes off: 'both' (chime sound + vocal announcement, default), 'vocal' (spoken announcement only), or 'chimes' (alert chime sound only)." },
+                time: { type: "STRING", description: "Clock time (e.g. '12:00', '12pm', '14:30', '7am'). Omit if using whenSeconds instead." },
+                date: { type: "STRING", description: "YYYY-MM-DD, 'today', or 'tomorrow'. The calendar date the time applies to. Defaults to today if omitted." },
+                recurrence: { type: "STRING", enum: ["once", "daily", "weekdays", "weekly"], description: "Supports repeating reminders/alarms: 'once', 'daily', 'weekdays', or 'weekly'. Defaults to 'once' if omitted." },
+                alertMode: { type: "STRING", enum: ["both", "vocal", "chimes"], description: "How the alert should sound when it goes off: 'both' (default), 'vocal', or 'chimes'." },
                 maxRepeats: { type: "NUMBER", description: "How many times the alert will repeat every 30 seconds before automatically dismissing if unanswered (1 to 10, default 5 for alarms/timers, 1 for reminders)." }
               },
               required: ["type"]
-
             }
           },
           {

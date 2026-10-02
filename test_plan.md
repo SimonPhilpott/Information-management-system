@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 100
-- Verified Features: 100
+- Total Registered Features: 101
+- Verified Features: 101
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -108,6 +108,7 @@
 | FEAT-099 | Run Learning & Retrospective | [RunLearningTab.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlanner/RunLearningTab.jsx) | Plan snapshot, Taken / Skipped, plan vs actual, lessons by route / kind / overall | PASS |
 | FEAT-098 | Live Run Plan Dock | [RunPlanDock.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlanner/RunPlanDock.jsx) | Always-on plan, auto re-planning, combined chart with effort, hydration, IOB and course | PASS |
 | FEAT-100 | Scheduled Reminders & Alarms Look Ahead Slider | [DayReportPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/DayReportPortal.jsx) | Unified 14-step Look Ahead slider (1-day to 2-weeks, 1-day step) across alarms, reminders, tasks, and timers in Day Report | PASS |
+| FEAT-101 | Natural Language Scheduling & Single-Turn Confirmation Hardening | [hardwareClientService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/hardwareClientService.js) | Flexible 12h/24h time parsing, date normalisation, embedded preposition label extraction, multi-turn accumulation, and explicit confirmation pattern | PASS |
 
 ## Section 2: Detailed Scenarios
 ### Suite 31: Observability Device Health Panel & Service (FEAT-086)
@@ -1042,3 +1043,12 @@
 3. **Responsive Step Labels:** Verify the label ticks beneath the range slider render endpoints (`1 day`, `2 weeks`) and the midpoint milestone (`1 week`) with bold emphasis, and intermediate day numbers (`2d` through `13d`) cleanly without text collision or wrapping.
 4. **All-Item Scope Invariant:** Ensure the single look-ahead slider applies uniformly across all scheduled item kinds (Alarms, Reminders, Tasks, and Timers) when enabled.
 5. **Sample Speech Validation:** Click **Show an example** / **What Ims would say** with Look Ahead set to 1 day vs 1 week. Verify 1 day constrains upcoming reminders to tomorrow only, while 1 week incorporates items scheduled through the full 7-day period with natural British Yorkshire phrasing.
+
+### Suite 101: Natural Language Scheduling & Single-Turn Confirmation Hardening (FEAT-101)
+1. **Single-Turn Natural Scheduling:** Provide the voice/text prompt *"Set up a new reminder for claude code reset at 12pm today"*. Verify that Gemini calls `scheduleItem` immediately with `{ type: 'reminder', label: 'claude code reset', time: '12:00' (or '12pm'), date: 'today' }` without re-prompting for label or time.
+2. **Prepositional Label Extraction:** Test natural phrasing with prepositional targets (e.g. *"Set a reminder to take insulin at 2pm"*, *"Reminder for team meeting tomorrow at 9am"*, *"15 minute timer for pasta"*). Verify `label` extracts the target phrase (`take insulin`, `team meeting`, `pasta`) without looping.
+3. **Multi-Turn Slot Accumulation:** Say *"Reminder for claude code reset"*. When Ims asks what time, answer *"12:30 this afternoon"*. Verify Ims accumulates the prior label (`claude code reset`) with the new time (`12:30`) and schedules immediately without re-asking what it will be called.
+4. **Flexible Time & Date Normalisation:** Verify `computeFireAt` parses `12pm`, `12:30 PM`, `noon`, `midday`, `midnight`, `18:45`, `today`, and `tomorrow`. Verify a 60-second grace window prevents immediate past-time exceptions when set during the current minute.
+5. **Mandatory Verbal Confirmation:** Verify that upon successful scheduling, Ims replies using the formula: *"Okay, that [timer / alarm / reminder] is set for [time/duration] [label]."*
+6. **False Interruption Immunity:** Speak slowly with natural pauses during a follow-up conversation. Verify that silence gaps under 3.5 seconds do not trigger premature *"didn't catch all of that"* clarification nudges.
+

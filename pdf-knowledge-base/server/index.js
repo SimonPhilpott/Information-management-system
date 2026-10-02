@@ -788,19 +788,20 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     if (isClientClosed || !currentGeminiWs || currentGeminiWs.readyState !== WebSocket.OPEN) return;
     if (!currentTurnComplete) return; // Ims is thinking or speaking
     if (isHardware && isRecordingActive()) return;
-    // The user spoke in the follow-up window, the mic carried it to Gemini, and 2.5 s after they
+    // The user spoke in the follow-up window, the mic carried it to Gemini, and 3.5 s after they
     // stopped there's still no transcript and no reply - Gemini lost it (often the start was cut by the
     // echo guard). Rather than sit in "thinking" until the silence timeout, ask Ims to check what they
     // said. A reply to the user, never unprompted; once per thing said.
-    if (isHardware && !clarifyNudged && pendingSpeechFrames >= 15 && Date.now() - pendingSpeechLast >= 2500
+    // Require at least 45 frames (~1.4s of genuine speech) so natural brief pauses or throat-clears
+    // aren't treated as abandoned speech and prematurely interrupted.
+    if (isHardware && !clarifyNudged && pendingSpeechFrames >= 45 && Date.now() - pendingSpeechLast >= 3500
       && followUpUntil && pendingSpeechStart <= followUpUntil + 1000) {
       clarifyNudged = true;
       const frames = pendingSpeechFrames;
       clearPendingSpeech();
       textTurnSent = true;
       lastActivityAt = Date.now();
-      try { logCapture(`[${new Date().toISOString()}] ${tag} NO REPLY TO SPEECH (${frames} speech frames, no transcript) - asking Ims to check what was said
-`); } catch (_) { }
+      try { logCapture(`[${new Date().toISOString()}] ${tag} NO REPLY TO SPEECH (${frames} speech frames, no transcript) - asking Ims to check what was said\n`); } catch (_) { }
       console.log(`${tag} 🤔 Speech went unanswered - asking Ims to check what was said`);
       currentGeminiWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: '(System: the user just said something to you, but it did not come through clearly - it may have been cut off. Do not stay silent. In one short sentence, in your Yorkshire voice, say you did not quite catch it and ask them to say it again. Do not greet them.)' }] }], turnComplete: true } }));
       return;
