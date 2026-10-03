@@ -9,7 +9,7 @@ import { learnedAdjustments, postRunPattern, refuelStatus } from './runLearningS
 // and insulin on board are right now, estimate how glucose is likely to move during the run and
 // where carbs would be needed to stay above the floor. It is an ESTIMATE from a simple model, a
 // planning aid, not a dosing tool: it suggests carbohydrate (grams and timing) and only points at
-// published guidance for insulin adjustments, which are for the user and their diabetes team.
+// published guidance for insulin adjustments, provided as parameters for the user to consider.
 //
 // The model, per minute:  glucose  =  glucose
 //     - insulin action (from IOB, the AAPS insulin sensitivity factor, boosted while exercising)
@@ -791,9 +791,9 @@ export async function estimatePlan(input = {}) {
 
   const insulin = [];
   const since = Number(input.minutesSinceBolus);
-  if (Number.isFinite(since) && since < 120) insulin.push({ title: 'Your last bolus was within 2 hours', text: `Published starting points for a run within 2 hours of a mealtime bolus are a reduction of that bolus of about 20% (Riddell 2017) to about 50% (ISPAD 2022 starting plan for aerobic exercise; more if the run is hard or the meal was small). That is a decision for you and your diabetes team, not something this page can set.` });
-  if (iob >= 1) insulin.push({ title: `${iob} U on board at the start`, text: `Insulin on board is the biggest reason carbs are needed. In this model ${iob} U removes about ${(isf * iob * sensMult * (1 - (1 - Math.min(1, hours / DIA_H)) ** INS_P)).toFixed(1)} mmol/L over the run. Allowing it to fall before the run (for example by setting your exercise/activity target 1-2 hours ahead so the loop stops adding more) shrinks the carbs needed - check how your AAPS settings do this with your team.` });
-  insulin.push({ title: 'After the run', text: 'Insulin sensitivity stays raised for hours: hypoglycaemia risk is highest during and shortly after exercise, and up to 24 hours later (7-11 hours overnight after an afternoon or evening run). ISPAD suggests around a 20% basal reduction for about 6 hours overnight for pump users after evening exercise. Your loop will react, but talk to your team about a temporary target or profile change for those hours.' });
+  if (Number.isFinite(since) && since < 120) insulin.push({ title: 'Your last bolus was within 2 hours', text: `Published starting points for a run within 2 hours of a mealtime bolus are a reduction of that bolus of about 20% (Riddell 2017) to about 50% (ISPAD 2022 starting plan for aerobic exercise; more if the run is hard or the meal was small). That is a parameter to consider for your run, not something this page can set.` });
+  if (iob >= 1) insulin.push({ title: `${iob} U on board at the start`, text: `Insulin on board is the biggest reason carbs are needed. In this model ${iob} U removes about ${(isf * iob * sensMult * (1 - (1 - Math.min(1, hours / DIA_H)) ** INS_P)).toFixed(1)} mmol/L over the run. Allowing it to fall before the run (for example by setting your exercise/activity target 1-2 hours ahead so the loop stops adding more) shrinks the carbs needed - check how your AAPS settings handle this.` });
+  insulin.push({ title: 'After the run', text: 'Insulin sensitivity stays raised for hours: hypoglycaemia risk is highest during and shortly after exercise, and up to 24 hours later (7-11 hours overnight after an afternoon or evening run). ISPAD suggests around a 20% basal reduction for about 6 hours overnight for pump users after evening exercise. Your loop will react, and a temporary target or profile change can be considered for those hours.' });
 
   // from your own past runs: the usual post-run spike and a conservative correction estimate (see postRunPattern)
   try {

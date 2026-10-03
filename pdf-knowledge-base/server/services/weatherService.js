@@ -1,3 +1,4 @@
+import { inYourVoice, dialectLabel, usesYorkshireWeatherPhrasing } from './personaService.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -529,9 +530,11 @@ export async function getWeather({ location = '', days = 2, hourly = false, days
         rain: todayRain, sky: gradeSky(restOfToday), uv: forecast[0]?.uv_max ?? 0, humidity: current.humidity_percent,
       }),
       unusual_today: forecast[0]?.unusual || null,
-      rules: 'Describe the weather ONLY from these facts, in your own Yorkshire words. "rest_of_today" covers only the hours still to come - '
+      rules: `Describe the weather ONLY from these facts, ${inYourVoice()} (${dialectLabel()}). "rest_of_today" covers only the hours still to come - `
         + 'rain that has already fallen is over and must not be talked about as coming. Match how strongly you describe rain to its level '
-        + '(dry < chance < light < moderate < heavy): drizzle or light rain is never "chucking it down" - save that, "siling it down" and the like for heavy rain. '
+        + (usesYorkshireWeatherPhrasing()
+          ? '(dry < chance < light < moderate < heavy): drizzle or light rain is never "chucking it down" - save that, "siling it down" and the like for heavy rain. '
+          : '(dry < chance < light < moderate < heavy): drizzle or light rain is never a downpour - save your strongest words for heavy rain. ')
         + 'If a period is dry, say it is dry. A small chance of a shower is a small chance, not a wet day. Temperatures in °C, wind in mph. Never invent weather that is not here. '
         + 'If requested_day is given, answer about that day; when its reliability is "rough guide only" (more than a week off), say it is only a rough guide that far ahead. '
         + 'Pick your words from the matching "language" set (language_today, or the day\'s own): its "use" words or your own of the same strength, never its "avoid" words. '
@@ -572,8 +575,11 @@ export async function getWeather({ location = '', days = 2, hourly = false, days
       payload.sounds_like.requested_day = sayHours(hours.filter((h) => h.date === requested.date && h.hour >= 7 && h.hour <= 21), lead, seedOf(`${requested.date}req`), requested.unusual);
     }
     // Ims: the facts above are plain English for accuracy - he must retell them in dialect, never read them out
-    payload.how_to_speak = 'Do NOT read the description lines out as written - they are plain-English facts. Retell them the way a Yorkshireman would, in broad Yorkshire dialect and your own words, keeping exactly the same strength of weather. '
-      + `Say it something like this (vary the words every time; this is the style, not a script): "${payload.sounds_like.requested_day || [payload.sounds_like.rest_of_today, payload.sounds_like.tomorrow].filter(Boolean).join(' ')}"`;
+    // (the example retelling is written in Yorkshire, so it is only offered to a persona that speaks that way)
+    payload.how_to_speak = usesYorkshireWeatherPhrasing()
+      ? 'Do NOT read the description lines out as written - they are plain-English facts. Retell them the way a Yorkshireman would, in broad Yorkshire dialect and your own words, keeping exactly the same strength of weather. '
+        + `Say it something like this (vary the words every time; this is the style, not a script): "${payload.sounds_like.requested_day || [payload.sounds_like.rest_of_today, payload.sounds_like.tomorrow].filter(Boolean).join(' ')}"`
+      : `Do NOT read the description lines out as written - they are plain-English facts. Retell them ${inYourVoice()}, in ${dialectLabel()} and your own words, keeping exactly the same strength of weather.`;
     if (hourly) {
       payload.hourly = ahead.slice(0, 48).map((h) => ({
         time: h.time, hour: h.hour, date: h.date, icon: hourIcon(h), condition: WMO[h.code] || '', temp_c: Math.round(h.temp),

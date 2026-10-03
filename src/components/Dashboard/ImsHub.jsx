@@ -17,8 +17,8 @@ const LINKS = [
   },
   {
     path: '/ims/persona',
-    title: 'Persona',
-    description: 'Edit the fixed dialect, identity and tool-usage rules.',
+    title: 'Personas',
+    description: 'Create and switch Ims personas - character, accent and voice - edit them as sections or Markdown, and test them.',
     icon: Drama,
     gradient: 'from-purple-500 to-fuchsia-600',
     glow: 'rgba(192,38,211,0.3)'
@@ -204,14 +204,6 @@ const LINKS = [
     glow: 'rgba(6,182,212,0.3)'
   },
   {
-    path: '/ims/spend',
-    title: 'Gemini Spend Budget',
-    description: 'Tokens and cost per service per day, soft monthly budget cap, and expensive prompt optimization.',
-    icon: DatabaseBackup,
-    gradient: 'from-emerald-500 to-green-600',
-    glow: 'rgba(16,185,129,0.3)'
-  },
-  {
     path: '/ims/storage',
     title: 'Storage',
     description: 'Exact megabytes of PDFs and vector embeddings per subject (LOTR, Arkham, Diabetes, Technology, Board Games), and space savers.',
@@ -230,7 +222,7 @@ const LINKS = [
   {
     path: '/ims/costs',
     title: 'Costs',
-    description: 'Gemini API costs for every service, plus subscriptions and the other services IMS relies on.',
+    description: 'Gemini API costs per service and day, monthly budget, costliest calls, plus subscriptions and the other services IMS relies on.',
     icon: PoundSterling,
     gradient: 'from-emerald-600 to-teal-700',
     glow: 'rgba(16,185,129,0.3)'
@@ -262,7 +254,7 @@ const LINKS = [
   {
     path: '/ims/doorbell',
     title: 'Doorbell',
-    description: 'Direct Ring API integration, live dings, motion alerts, snapshots, and Yorkshire voice alerts.',
+    description: 'Direct Ring API integration, live dings, motion alerts, snapshots, and spoken alerts in the persona of Ims.',
     icon: Bell,
     gradient: 'from-amber-500 to-rose-600',
     glow: 'rgba(245,158,11,0.3)'
@@ -281,7 +273,7 @@ const SECTIONS = [
   ['Core functions', ['/ims/weather', '/ims/doorbell', '/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings', '/ims/tasks']],
   ['Personal', ['/ims/code-repo', '/ims/dayreport', '/ims/musicscan', '/ims/boardgames', '/campaigns', '/ims/news']],
   ['Health and fitness', ['/ims/glucose', '/ims/activities', '/ims/runplanner']],
-  ['Customisation and system settings', ['/ims/device-health', '/ims/storage', '/ims/models', '/ims/costs', '/ims/spend', '/ims/facedesigner', '/ims/persona', '/ims/phrases', '/ims/wifi', '/ims/devideas', '/ims/backups', '/ims/architecture']],
+  ['Customisation and system settings', ['/ims/device-health', '/ims/storage', '/ims/models', '/ims/costs', '/ims/facedesigner', '/ims/persona', '/ims/phrases', '/ims/wifi', '/ims/devideas', '/ims/backups', '/ims/architecture']],
   ['Disabled', ['/ims/look', '/ims/faces']],
 ];
 

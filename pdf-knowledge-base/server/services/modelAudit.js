@@ -1,6 +1,6 @@
 // Model Switcher tests (Phase 4):
 //  - sampleModel(): the Test button - a real call that comes back with something to hear or see: a
-//    spoken Yorkshire line from voice models, the reply from language models, a small picture.
+//    spoken line in the active persona's voice from voice models, the reply from language models, a small picture.
 //  - auditModel(): after a switch, every service now using that model is tried with the features it
 //    actually relies on (Google Search, reading images, JSON shapes, audio in/out, tool calls), so a
 //    model that answers "OK" but can't do the job is caught straight away.
@@ -10,7 +10,8 @@ import db from '../db/database.js';
 import { SERVICES, getModelFor, fetchCatalogue, kindOf } from './modelRegistry.js';
 import { recordUsage } from './geminiClient.js';
 import { synthesizeSpeech } from './voiceService.js';
-import { getSpokenStyleDirective, loadPersonaRules, getPersonality, buildPersonalityParagraph, ACCENT_RULE, getHardwareSetupPayload } from './hardwareClientService.js';
+import { getPersonality, buildPersonalityParagraph, getHardwareSetupPayload } from './hardwareClientService.js';
+import { getActivePersona, personaRules, accentRule, voiceName, languageCode } from './personaService.js';
 
 const API = 'https://generativelanguage.googleapis.com/v1beta/models';
 const key = () => process.env.GEMINI_API_KEY || config.gemini.apiKey;
@@ -34,7 +35,7 @@ const audioOut = (b64, mime = '') => {
 // one second of silence, as a WAV - proves a model accepts audio input
 const SILENT_WAV = wav(Buffer.alloc(16000 * 2), 16000).toString('base64');
 
-async function generate(model, body, op = 'modelTest') {
+export async function generate(model, body, op = 'modelTest') {
   const res = await fetch(`${API}/${model}:generateContent`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key() }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000),
   });
@@ -46,9 +47,9 @@ async function generate(model, body, op = 'modelTest') {
 }
 
 // A Live session: setup (optionally with tools), one text turn, collect the spoken audio.
-function liveSay(model, text, { tools = null, system = null } = {}) {
+export function liveSay(model, text, { tools = null, system = null, persona = null } = {}) {
   return new Promise((resolve, reject) => {
-    const { voice } = getSpokenStyleDirective();
+    const voice = voiceName(persona);
     const ws = new WebSocket(`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${key()}`);
     const chunks = [];
     let transcript = '';
@@ -56,8 +57,8 @@ function liveSay(model, text, { tools = null, system = null } = {}) {
     const t = setTimeout(() => (chunks.length ? done() : done(new Error('No reply within 20 s'))), 20000);
     ws.on('open', () => ws.send(JSON.stringify({ setup: {
       model: `models/${model}`,
-      generationConfig: { responseModalities: ['AUDIO'], speechConfig: { languageCode: 'en-GB', voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } },
-      systemInstruction: { parts: [{ text: system || 'You are Ims, a friendly assistant from Yorkshire. Speak English with a broad Yorkshire accent: flat northern vowels, no American r.' }] },
+      generationConfig: { responseModalities: ['AUDIO'], speechConfig: { languageCode: languageCode(persona), voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } },
+      systemInstruction: { parts: [{ text: system || personaPrompt('', persona) }] },
       outputAudioTranscription: {},
       ...(tools ? { tools } : {}),
     } })));
@@ -67,15 +68,19 @@ function liveSay(model, text, { tools = null, system = null } = {}) {
       if (m.usageMetadata) recordUsage(model, m.usageMetadata, 'modelTest');
       for (const p of m.serverContent?.modelTurn?.parts || []) if (p.inlineData?.data) chunks.push(Buffer.from(p.inlineData.data, 'base64'));
       if (m.serverContent?.outputTranscription?.text) transcript += m.serverContent.outputTranscription.text;
-      if (m.serverContent?.turnComplete) done();
+      // with Ims's real tools declared, answer any call (setEmotion etc.) so he carries on speaking
+      for (const fc of m.toolCall?.functionCalls || []) ws.send(JSON.stringify({ toolResponse: { functionResponses: [{ id: fc.id, name: fc.name, response: { result: 'ok' } }] } }));
+      // a turn with only a tool call (setEmotion) completes before the spoken one - wait for speech
+      if (m.serverContent?.turnComplete && chunks.length) done();
     });
     ws.on('close', (code, reason) => { if (!chunks.length) done(new Error(`Closed: ${code} ${reason}`.trim())); });
     ws.on('error', (e) => done(e));
   });
 }
 
-async function tts(model, line) {
-  const { voice, directive } = getSpokenStyleDirective();
+export async function tts(model, line, persona = null) {
+  const voice = voiceName(persona);
+  const directive = 'Read the following text aloud exactly as written, delivered with this personality: ' + buildPersonalityParagraph(getPersonality()) + ' ' + accentRule(persona) + '\nText to read:\n';
   const r = await generate(model, { contents: [{ parts: [{ text: directive + line }] }], generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } } });
   if (!r.media?.data) throw new Error('No audio came back');
   const url = audioOut(r.media.data, r.media.mimeType || '');
@@ -87,35 +92,35 @@ async function tts(model, line) {
 }
 
 // ---- Ims's persona as a pass criterion ----
-// The same persona IMS really uses: ims_persona_rules.md, the personality sliders and the accent rule.
-function personaPrompt(extra = '') {
-  return [loadPersonaRules(), `PERSONALITY: ${buildPersonalityParagraph(getPersonality())}`, ACCENT_RULE, extra].filter(Boolean).join('\n\n');
+// The same persona IMS really uses: the persona file + house rules, the personality sliders and the accent rule.
+export function personaPrompt(extra = '', persona = null) {
+  return [personaRules(persona), `PERSONALITY: ${buildPersonalityParagraph(getPersonality())}`, accentRule(persona), extra].filter(Boolean).join('\n\n');
 }
 
 // A separate, fixed model judges what the model under test produced - text, or the audio itself for voice.
 const JUDGE_MODEL = 'gemini-3.8-flash';
 const RUBRIC = [
   'ENGLISH: English only - no other language at all.',
-  'CHARACTER: sounds like Ims - a warm, plain-spoken friend from West Yorkshire with opinions; not a customer-service script, never says it is an AI or a language model.',
   'BRITISH: British English words and spelling, no Americanisms.',
   'CLEAN DELIVERY: no self-corrections, false starts or restarts ("I mean - sorry -").',
   'DECENT: nothing racist or sexist.',
 ];
-export async function judgePersona({ text = '', audio = null, situation, extraRules = [] }) {
-  const rules = [...RUBRIC, ...extraRules];
-  if (audio) rules.push('ACCENT (listen to the audio): a natural West Yorkshire / Leeds accent all the way through - flat short a, non-rhotic, flat "oh" - never American, never Received Pronunciation or neutral.');
+export async function judgePersona({ text = '', audio = null, situation, extraRules = [], persona = null }) {
+  const p = persona || getActivePersona();
+  const rules = [...RUBRIC, `CHARACTER: sounds like Ims as this persona - ${p.character || p.description}; not a customer-service script, never says it is an AI or a language model.`, ...extraRules];
+  if (audio) rules.push(`ACCENT (listen to the audio): ${p.judgeAccent || `a natural ${p.accent} accent all the way through, never drifting into another accent`}.`);
   const parts = [];
   if (audio) parts.push({ inlineData: { mimeType: 'audio/wav', data: audio.split(',')[1] } });
-  parts.push({ text: `You are checking whether a model can play "Ims", a Yorkshire desk assistant, for this situation: ${situation}.
+  parts.push({ text: `You are checking whether a model can play "Ims", a desk assistant, as the persona "${p.name}" (${p.description}; accent: ${p.accent}), for this situation: ${situation}.
 ${text ? `What it said: <<${text.slice(0, 2000)}>>` : 'Judge the attached audio.'}
-Check every rule. Be fair: a real Yorkshireman speaking plainly passes; fail a rule only when it is clearly broken.
+Check every rule. Be fair: a real person with this accent speaking plainly passes; fail a rule only when it is clearly broken.
 ${rules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
 Return JSON: {"pass": boolean, "failed": [ "short reason for each broken rule" ]}` });
   const r = await generate(JUDGE_MODEL, { contents: [{ parts }], generationConfig: { responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { pass: { type: 'BOOLEAN' }, failed: { type: 'ARRAY', items: { type: 'STRING' } } }, required: ['pass', 'failed'] } } }, 'modelTest');
   const o = JSON.parse(r.text);
   return { pass: !!o.pass && !(o.failed || []).length, failed: o.failed || [] };
 }
-async function personaOrFail(args) {
+export async function personaOrFail(args) {
   const j = await judgePersona(args);
   if (!j.pass) throw new Error(`Persona: ${j.failed.join('; ') || 'did not sound like Ims'}`);
   return 'persona checked';
@@ -204,12 +209,12 @@ export function deskWakeTest(model) {
 export async function sampleModel(model, kind) {
   const started = Date.now();
   if (kind === 'live') {
-    const r = await liveSay(model, 'Say one short, friendly sentence introducing yourself as Ims, in your Yorkshire accent.');
+    const r = await liveSay(model, 'Say one short, friendly sentence introducing yourself as Ims, in your own accent.');
     if (!r.audio) throw new Error('No audio came back');
     return { ok: true, ms: Date.now() - started, sample: { type: 'audio', dataUrl: r.audio, text: r.transcript } };
   }
   if (kind === 'tts') {
-    const line = "Now then! This is Ims, testing this voice. Sounds grand, doesn't it?";
+    const line = getActivePersona().testLine || 'Hello! This is Ims, testing this voice.';
     const dataUrl = await tts(model, line);
     return { ok: true, ms: Date.now() - started, sample: { type: 'audio', dataUrl, text: line } };
   }
@@ -224,7 +229,7 @@ export async function sampleModel(model, kind) {
     if (!res.ok) throw new Error(j?.error?.message || `HTTP ${res.status}`);
     return { ok: true, ms: Date.now() - started, sample: { type: 'text', text: `Turned a phrase into ${j.embedding?.values?.length || 0} numbers.` } };
   }
-  const r = await generate(model, { contents: [{ parts: [{ text: 'In one sentence, as Ims (a friendly Yorkshire assistant), say what kind of jobs you are best at.' }] }] });
+  const r = await generate(model, { systemInstruction: { parts: [{ text: personaPrompt() }] }, contents: [{ parts: [{ text: 'In one sentence, say what kind of jobs you are best at.' }] }] });
   if (!r.text) throw new Error('Empty reply');
   const ms = Date.now() - started;
   const text = r.text.slice(0, 400);
@@ -267,7 +272,7 @@ const CHECKS = {
     // start talking, then gives up - a slower model leaves him deaf on the desk.
     if (r.heardAfterMs > DESK_TRANSCRIPT_MS) throw new Error(`Too slow for the desk: the transcript came ${(r.heardAfterMs / 1000).toFixed(1)} s after you stopped speaking (needs under ${DESK_TRANSCRIPT_MS / 1000} s) - the Box-3 gives up before Ims can answer`);
     if (r.replyAfterMs > DESK_REPLY_MS) throw new Error(`Too slow for the desk: Ims started talking ${(r.replyAfterMs / 1000).toFixed(1)} s after you stopped speaking (needs under ${DESK_REPLY_MS / 1000} s)`);
-    await personaOrFail({ audio: r.audio, text: r.said, situation: 'answering a spoken question about Yorkshire on his desk terminal' });
+    await personaOrFail({ audio: r.audio, text: r.said, situation: 'answering a spoken question on his desk terminal' });
     return { detail: `Desk test: heard "${r.heard}" ${(r.heardAfterMs / 1000).toFixed(1)} s after speaking, answered "${r.said.slice(0, 60)}" starting at ${(r.replyAfterMs / 1000).toFixed(1)} s - fast enough for the Box-3; persona and accent passed`, sample: { type: 'audio', dataUrl: r.audio, text: r.said } };
   },
   browserVoice: async (m) => {

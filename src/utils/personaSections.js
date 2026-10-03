@@ -1,4 +1,4 @@
-// ims_persona_rules.md <-> an editable list of sections.
+// A persona (or the house rules) Markdown body <-> an editable list of sections.
 //
 // The file is one intro (the `#` title and opening lines) followed by
 // numbered `## N. Title` sections separated by `---`. The editor works on
@@ -162,7 +162,7 @@ export const SECTION_TEMPLATES = [
     title: 'Grammar & phrasing',
     opening: 'Sentence structure and preferred phrasing patterns.',
     items: [
-      { id: newId(), title: 'British English only:', description: 'Use British spellings and natural Yorkshire idioms.' },
+      { id: newId(), title: 'British English only:', description: 'Use British spellings and natural idioms from your own dialect.' },
       { id: newId(), title: 'Contractions:', description: 'Use natural spoken contractions like "let\'s" and "give us".' }
     ]
   },
@@ -180,7 +180,7 @@ export const SECTION_TEMPLATES = [
     title: 'Tool use',
     opening: 'Guidelines on when to invoke tools vs replying directly.',
     items: [
-      { id: newId(), title: 'Weather queries:', description: 'Call the weather tool first, then report findings in Yorkshire cadence.' }
+      { id: newId(), title: 'Weather queries:', description: 'Call the weather tool first, then report findings in your own voice.' }
     ]
   }
 ];

@@ -50,7 +50,6 @@ import RunPlannerPortal from './components/Dashboard/RunPlannerPortal';
 import DoorbellPortal from './components/Dashboard/DoorbellPortal';
 import WeatherPortal from './components/Dashboard/WeatherPortal';
 import DeviceHealthPortal from './components/Dashboard/DeviceHealthPortal';
-import SpendBudgetPortal from './components/Dashboard/SpendBudgetPortal';
 import StoragePortal from './components/Dashboard/StoragePortal';
 import ModelSwitcherPortal from './components/Dashboard/ModelSwitcherPortal';
 import CostsPortal from './components/Dashboard/CostsPortal';
@@ -1502,19 +1501,11 @@ export default function App() {
   if (currentPath === '/ims/models' || currentPath.startsWith('/ims/models/')) {
     return <ModelSwitcherPortal theme={state.theme} onThemeToggle={actions.toggleTheme} setCurrentPath={setCurrentPath} />;
   }
-  if (currentPath === '/ims/costs' || currentPath.startsWith('/ims/costs/')) {
+  // Gemini Spend Budget was merged into Costs - old links land there
+  if (currentPath === '/ims/costs' || currentPath.startsWith('/ims/costs/') || currentPath.startsWith('/ims/spend') || currentPath === '/ims/budget') {
     return <CostsPortal theme={state.theme} onThemeToggle={actions.toggleTheme} setCurrentPath={setCurrentPath} />;
   }
 
-  if (currentPath === '/ims/spend' || currentPath.startsWith('/ims/spend') || currentPath === '/ims/budget') {
-    return (
-      <SpendBudgetPortal
-        theme={state.theme}
-        onThemeToggle={actions.toggleTheme}
-        setCurrentPath={setCurrentPath}
-      />
-    );
-  }
 
   if (isCampaignPath(currentPath)) {
     // old /ims/decks addresses (and bare /campaigns) become their /campaigns/<game> ones

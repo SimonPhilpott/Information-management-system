@@ -52,6 +52,7 @@ class WakeDaemonService extends EventEmitter {
     this.lastWakePhrase = null;
     this.lastUserSpeechAt = 0;
     this.lastModelSpeechEndAt = 0;
+    this.lastModelSpeechStartAt = 0;
     this.isModelSpeaking = false;
     this.lastCloseAt = null;
     this.lastCloseReason = 'boot';
@@ -230,6 +231,7 @@ class WakeDaemonService extends EventEmitter {
    */
   notifyModelSpeechStart() {
     this.isModelSpeaking = true;
+    this.lastModelSpeechStartAt = Date.now();
   }
 
   /**
@@ -242,12 +244,14 @@ class WakeDaemonService extends EventEmitter {
   }
 
   /**
-   * Watchdog timer tick: Enforces 15-second inactivity silence auto-close
+   * Watchdog timer tick: Enforces 15-second inactivity silence auto-close and self-heals stuck states
    */
   _watchdogTick() {
+    const now = Date.now();
+
     // 1. Verification timeout check
     if (this.state === DAEMON_STATES.VERIFYING) {
-      if (Date.now() - this.verifyingStartedAt > VERIFY_WINDOW_MS) {
+      if (now - this.verifyingStartedAt > VERIFY_WINDOW_MS) {
         console.log(`[WakeDaemon] ⏱️ Verification window expired without wake phrase -> reverting to STANDBY`);
         this._addLog('verify_timeout', `Verification window (${VERIFY_WINDOW_MS}ms) expired with no wake phrase`);
         this.forceStandby('verify_timeout');
@@ -255,24 +259,51 @@ class WakeDaemonService extends EventEmitter {
       return;
     }
 
-    // 2. 15-second Conversational Inactivity Silence Watchdog
-    if (this.state === DAEMON_STATES.CONVERSATION_ACTIVE) {
-      // If model is actively generating audio or audio playback is in-flight via session check, do not time out
-      if (this.isModelSpeaking) {
+    // 2. Dead Client Socket Check: If registered client socket is closed, return to STANDBY
+    if (this.state !== DAEMON_STATES.STANDBY) {
+      if (typeof this.activeClientSession?.isSocketAlive === 'function' && !this.activeClientSession.isSocketAlive()) {
+        console.log(`[WakeDaemon] 🔌 Active client socket disconnected while in state ${this.state} -> forcing STANDBY`);
+        this._addLog('client_disconnect', `Client socket disconnected -> forcing STANDBY`);
+        this.forceStandby('client_disconnect');
         return;
       }
-      if (typeof this.activeClientSession?.isPlayingOrPacing === 'function' && this.activeClientSession.isPlayingOrPacing()) {
+    }
+
+    // 3. Conversational Inactivity Silence and Hang Watchdogs
+    if (this.state === DAEMON_STATES.CONVERSATION_ACTIVE) {
+      // Safety net: Model speech flag hang guard (e.g. Gemini stopped sending audio chunks without turnComplete)
+      if (this.isModelSpeaking && this.lastModelSpeechStartAt > 0 && (now - this.lastModelSpeechStartAt > 20000)) {
+        console.warn(`[WakeDaemon] ⚠️ Model speech flag stuck true for >20s without turnComplete -> auto-clearing`);
+        this._addLog('watchdog_guard', 'Model speech flag timed out after 20s');
+        this.isModelSpeaking = false;
+        this.lastModelSpeechEndAt = now;
+      }
+
+      // Safety net: Client pacing/playback stuck check
+      const pacingStuck = (this.lastModelSpeechEndAt > 0 && (now - this.lastModelSpeechEndAt > 20000));
+      const clientPlaying = !pacingStuck && (typeof this.activeClientSession?.isPlayingOrPacing === 'function' && this.activeClientSession.isPlayingOrPacing());
+
+      // If model is actively speaking or client is genuinely actively playing, do not silence-close
+      if (this.isModelSpeaking || clientPlaying) {
         return;
       }
 
-      const quietSince = Math.max(this.lastUserSpeechAt, this.lastModelSpeechEndAt);
+      const quietSince = Math.max(this.lastUserSpeechAt, this.lastModelSpeechEndAt, this.lastWakeAt || 0);
       if (!quietSince) return;
 
-      const idleMs = Date.now() - quietSince;
+      const idleMs = now - quietSince;
       if (idleMs >= SILENCE_TIMEOUT_MS) {
         console.log(`[WakeDaemon] ⏱️ 15s of conversational silence reached (${Math.round(idleMs / 1000)}s idle) -> terminating conversation`);
         this._addLog('silence_timeout', `15s inactivity silence reached -> terminating conversation to standby`);
         this.forceStandby('silence_timeout');
+        return;
+      }
+
+      // Absolute safety timeout: No conversation turn should remain unclosed past 45s without activity
+      if (idleMs >= 45000) {
+        console.warn(`[WakeDaemon] ⚠️ Absolute silence timeout reached (45s) -> forcing STANDBY`);
+        this._addLog('watchdog_guard', 'Absolute conversation idle timeout (45s) reached');
+        this.forceStandby('absolute_idle_timeout');
       }
     }
   }
@@ -286,6 +317,8 @@ class WakeDaemonService extends EventEmitter {
     this.lastCloseAt = Date.now();
     this.lastCloseReason = reason;
     this.isModelSpeaking = false;
+    this.lastModelSpeechStartAt = 0;
+    this.candidateTranscriptBuffer = '';
 
     console.log(`[WakeDaemon] 🛑 State transition: ${prevState} -> STANDBY (Reason: ${reason})`);
     this._addLog('state_change', `State changed: ${prevState} -> STANDBY (Reason: ${reason})`, { prevState, reason });
@@ -294,7 +327,7 @@ class WakeDaemonService extends EventEmitter {
     if (this.activeClientSession?.sendControl) {
       try {
         if (this.activeClientType === 'hardware') {
-          this.activeClientSession.sendControl({ cancelConversation: true, readyForWake: true });
+          this.activeClientSession.sendControl({ cancelConversation: true, readyForWake: true, noWakeDetected: true });
         } else if (this.activeClientType === 'web') {
           this.activeClientSession.sendControl({ sessionIdle: true });
         }
@@ -304,7 +337,7 @@ class WakeDaemonService extends EventEmitter {
     }
 
     // Reset upstream session if callback provided (on timeouts or no wake phrase rejection)
-    if (this.activeClientSession?.closeUpstream && (reason === 'silence_timeout' || reason === 'manual' || reason === 'verify_timeout' || reason === 'no_wake_phrase')) {
+    if (this.activeClientSession?.closeUpstream && (reason === 'silence_timeout' || reason === 'manual' || reason === 'verify_timeout' || reason === 'no_wake_phrase' || reason === 'absolute_idle_timeout')) {
       try {
         this.activeClientSession.closeUpstream(reason);
       } catch (err) {
@@ -313,6 +346,29 @@ class WakeDaemonService extends EventEmitter {
     }
 
     this.emit('stateChange', { state: this.state, reason });
+  }
+
+  /**
+   * Self-healing evaluation: clears hung verification or active states
+   */
+  autoRecover() {
+    let recovered = false;
+    const now = Date.now();
+    if (this.state === DAEMON_STATES.VERIFYING && (now - this.verifyingStartedAt > VERIFY_WINDOW_MS)) {
+      this.forceStandby('auto_recover_verifying_timeout');
+      recovered = true;
+    } else if (this.state === DAEMON_STATES.CONVERSATION_ACTIVE) {
+      const quietSince = Math.max(this.lastUserSpeechAt, this.lastModelSpeechEndAt, this.lastWakeAt || 0);
+      if (now - quietSince > SILENCE_TIMEOUT_MS) {
+        this.forceStandby('auto_recover_silence_timeout');
+        recovered = true;
+      }
+    }
+    if (this.isModelSpeaking && (now - this.lastModelSpeechStartAt > 20000)) {
+      this.isModelSpeaking = false;
+      recovered = true;
+    }
+    return { recovered, status: this.getDaemonStatus() };
   }
 
   /**

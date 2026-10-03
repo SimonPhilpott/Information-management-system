@@ -57,6 +57,7 @@ import memoriesRoutes from './routes/memories.js';
 import glucoseHubRoutes from './routes/glucoseHub.js';
 import { describeForIms as describeGlucoseForIms, logCarbs, clearOldNightscout, recentCarbs } from './services/glucoseHubService.js';
 import { askProfileInsightQuestion } from './services/glucoseInsightService.js';
+import { stripMedicalDisclaimers } from './services/disclaimerSanitizer.js';
 import { lookUpFood } from './services/foodService.js';
 import { isApprovedSession, isGuestSession, setGuestCheck } from './middleware/requireSession.js';
 import { isInvited } from './services/decksService.js';
@@ -92,7 +93,8 @@ import { getModelFor } from './services/modelRegistry.js';
 import { setDeviceMicMuted, setDeviceConnected, isDeviceMicMuted } from './services/deviceState.js';
 import { recordUsage } from './services/geminiClient.js';
 import { loadHnswFromDisk } from './services/hnswService.js';
-import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getWebPersonaBlock, getPersonality, setPersonality, getCaptureLogging, setCaptureLogging, recordReplyText, getWebSetupPayload, ACCENT_RULE, refreshLiveContext } from './services/hardwareClientService.js';
+import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getWebPersonaBlock, getPersonality, setPersonality, getCaptureLogging, setCaptureLogging, recordReplyText, getWebSetupPayload, getAccentRule, refreshLiveContext } from './services/hardwareClientService.js';
+import { inYourVoice, languageCode as personaLanguageCode } from './services/personaService.js';
 import { scheduleItem, listScheduledItems, cancelScheduledItem, addToList, readList, removeFromList, clearList, checkDueScheduledItems, stopAllRinging, getActiveScheduledStatus, getItemsDueToday, getHistorySummary } from './services/remindersService.js';
 import { getBirthdayFooterStatus, getUpcomingBirthdays, listBirthdays } from './services/birthdayService.js';
 import { getTodayReleases, getWindowResults, getUpcomingReleases , getWants as getMusicWants } from './services/musicScanService.js';
@@ -277,6 +279,7 @@ app.use('/api/device-health', (await import('./routes/deviceHealth.js')).default
 app.use('/api/models', (await import('./routes/models.js')).default);
 app.use('/api/storage', (await import('./routes/storage.js')).default);
 app.use('/api/costs', (await import('./routes/costs.js')).default);
+app.use('/api/personas', (await import('./routes/personas.js')).default); // Ims's personas (character, accent, voice) + test bench
 app.use('/api/voice-latency', (await import('./routes/voiceLatency.js')).default);
 
 // Live figures for the System Architecture page (/ims/architecture).
@@ -301,12 +304,21 @@ app.get('/api/system/architecture', async (req, res) => {
 app.post('/api/system/trace', async (req, res) => {
   res.setHeader('Content-Type', 'application/x-ndjson');
   res.setHeader('Cache-Control', 'no-cache');
-  const emit = (o) => res.write(`${JSON.stringify(o)}\n`);
+  const emit = (o) => { if (!res.writableEnded) res.write(`${JSON.stringify(o)}\n`); };
+  const started = Date.now();
+  logger.info('Trace', `Test prompt started: "${String(req.body?.prompt || '').slice(0, 60)}"`);
+  // never hang silently: give up after 2 minutes and say so
+  const watchdog = setTimeout(() => { logger.warn('Trace', 'Test prompt timed out after 120 s'); emit({ type: 'error', error: 'The test took over 2 minutes and was stopped.' }); res.end(); }, 120000);
   try {
     const { traceTestPrompt } = await import('./services/traceService.js');
     await traceTestPrompt(req.body?.prompt, emit);
-  } catch (err) { emit({ type: 'error', error: err.message }); }
-  res.end();
+    logger.info('Trace', `Test prompt finished in ${Date.now() - started} ms`);
+  } catch (err) {
+    logger.error('Trace', `Test prompt failed after ${Date.now() - started} ms: ${err.message}`);
+    emit({ type: 'error', error: err.message });
+  }
+  clearTimeout(watchdog);
+  if (!res.writableEnded) res.end();
 });
 
 // Background Jobs telemetry and control (Dev Idea #44 & Phase 2)
@@ -845,8 +857,8 @@ server.on('upgrade', (request, socket, head) => {
 // The accent drifts to American right after Ims looks something up: a tool result is
 // plain neutral English, and the voice follows whatever the text in front of it sounds
 // like. So every result that Ims is about to read out carries a reminder to voice it in
-// the usual British Yorkshire accent.
-const VOICE_REMINDER = () => `DELIVERY REMINDER: ${ACCENT_RULE}`;
+// the active persona's accent.
+const VOICE_REMINDER = () => `DELIVERY REMINDER: ${getAccentRule()}`;
 function withVoiceReminder(output) {
   return output && typeof output === 'object' && !Array.isArray(output) ? { ...output, deliveryReminder: VOICE_REMINDER() } : output;
 }
@@ -888,7 +900,7 @@ function pinSavedVoice(msgStr, tag, resumptionHandle = null) {
     parsed.setup.generationConfig = parsed.setup.generationConfig || {};
     const was = parsed.setup.generationConfig.speechConfig?.voiceConfig?.prebuiltVoiceConfig?.voiceName;
     // languageCode must survive this rebuild - dropping it let Ims drift out of English (UK)
-    parsed.setup.generationConfig.speechConfig = { languageCode: 'en-GB', voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } };
+    parsed.setup.generationConfig.speechConfig = { languageCode: personaLanguageCode(), voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } };
     console.log(`${tag} 🎙️ Gemini setup voice = ${voice}${was && was !== voice ? ` (corrected from ${was})` : ''}`);
     // Fresh date/time and records for this session, not the ones from when the device connected.
     const part = parsed.setup.systemInstruction?.parts?.[0];
@@ -1061,6 +1073,8 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   let resumptionHandle = null; // latest Gemini session-resumption handle for this device connection
   let isClientClosed = false;
   const outboundQueue = [];
+  const outboundAudioQueue = [];
+  let geminiSetupAcknowledged = false;
   let geminiFirstMessageLogged = false;
   let lastModelAudioTime = 0;
   let suppressedMicFrameCount = 0; // see the echo-suppression logging below
@@ -1102,7 +1116,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       lastActivityAt = Date.now();
       try { logCapture(`[${new Date().toISOString()}] ${tag} NO REPLY TO SPEECH (${frames} speech frames, no transcript) - asking Ims to check what was said\n`); } catch (_) { }
       console.log(`${tag} 🤔 Speech went unanswered - asking Ims to check what was said`);
-      currentGeminiWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: '(System: the user just said something to you, but it did not come through clearly - it may have been cut off. Do not stay silent. In one short sentence, in your Yorkshire voice, say you did not quite catch it and ask them to say it again. Do not greet them.)' }] }], turnComplete: true } }));
+      currentGeminiWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: '(System: the user just said something to you, but it did not come through clearly - it may have been cut off. Do not stay silent. In one short sentence, ' + inYourVoice() + ', say you did not quite catch it and ask them to say it again. Do not greet them.)' }] }], turnComplete: true } }));
       return;
     }
     const playingUntil = isHardware ? (paceSentMs ? paceStart + paceSentMs : 0) : webAudioEndAt;
@@ -1372,11 +1386,27 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   };
 
   let geminiConnectedAt = 0; // for "how long was this connection alive" in the close log below
+  let warmReconnectTimer = null;
+  let warmReconnectAttempts = 0;
+
+  const scheduleWarmUpstreamReconnect = (delayMs = 1500) => {
+    if (isClientClosed || ws.readyState !== WebSocket.OPEN) return;
+    if (warmReconnectTimer) clearTimeout(warmReconnectTimer);
+    warmReconnectTimer = setTimeout(() => {
+      warmReconnectTimer = null;
+      if (isClientClosed || ws.readyState !== WebSocket.OPEN) return;
+      if (!currentGeminiWs || currentGeminiWs.readyState === WebSocket.CLOSED || currentGeminiWs.readyState === WebSocket.CLOSING) {
+        console.log(`${tag} 🔥 Proactively re-establishing warm upstream Gemini Live connection in background...`);
+        ensureGeminiSocket();
+      }
+    }, Math.min(delayMs * Math.pow(1.5, warmReconnectAttempts), 30000));
+  };
 
   const createGeminiSocket = () => {
     if (isClientClosed) return null;
     const gWs = new WebSocket(geminiUrl);
     geminiConnectedAt = Date.now();
+    geminiSetupAcknowledged = false;
     lastActivityAt = Date.now(); // a fresh session gets its full 15 s before the silence close
 
     if (isHardware) {
@@ -1795,7 +1825,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               try { logCapture(`[${new Date().toISOString()}] ${tag} NOWAKE OVERRIDDEN: "${heardThisTurn.slice(0, 80)}"\n`); } catch (_) { }
               if (gWs.readyState === WebSocket.OPEN) {
                 gWs.send(JSON.stringify({ toolResponse: { functionResponses: [{ response: { output: withVoiceReminder({ status: 'overruled', note: 'That WAS the wake phrase - speech-to-text just mangled it. Reply to the user now.' }) }, id: call.id }] } }));
-                gWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `(System: the user just said the wake phrase - it was transcribed as "${heardThisTurn.trim()}". Greet them briefly, or answer if they asked something - in your Yorkshire accent.)` }] }], turnComplete: true } }));
+                gWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `(System: the user just said the wake phrase - it was transcribed as "${heardThisTurn.trim()}". Greet them briefly, or answer if they asked something - ${inYourVoice()}.)` }] }], turnComplete: true } }));
                 textTurnSent = true;
               }
             } else if (call.name === 'noWakeDetected' || call.name === 'endConversation') {
@@ -2039,9 +2069,9 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                   console.log(`${tag} 🩸 getBloodGlucose deep insight answered: snapshot reading=${insight.telemetrySnapshot?.currentReading?.mmol} mmol/L`);
                   respondToToolCall(call, {
                     question: insight.question,
-                    insight: insight.answer,
+                    insight: stripMedicalDisclaimers(insight.answer),
                     telemetrySnapshot: insight.telemetrySnapshot,
-                    instruction: 'Summarise the clinical telemetry insight in your authentic Yorkshire voice directly answering the user. Do not prescribe exact medical insulin doses; frame recommendations as things to trial safely or check with their diabetes care team.'
+                    instruction: 'Summarise the clinical telemetry insight ' + inYourVoice() + ', directly answering the user. Do not prescribe exact insulin doses; give observations and ideas straight to consider. CRITICAL NON-NEGOTIABLE: NEVER say "this is not medical advice", NEVER say "please seek advice from a medical professional or team", and NEVER tell or suggest to the user to consult or speak to their diabetes team, doctor, or healthcare professionals (the user manages their care independently and forbids disclaimers).'
                   });
                 }).catch((err) => {
                   console.error(`${tag} getBloodGlucose insight error:`, err.message);
@@ -2100,7 +2130,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             } else if (call.name === 'askGemini') {
               import('./services/imsFallbackService.js').then((m) => m.askGeneral({ question: call.args?.question, context: call.args?.context || '' })).then((answer) => {
                 console.log(`${tag} 💡 askGemini(${String(call.args?.question || '').slice(0, 60)})`);
-                respondToToolCall(call, { answer, say: 'Retell this briefly in your own Yorkshire voice (English only), adding anything you already know that fits. Do not read it word for word or mention Gemini unless asked.' });
+                respondToToolCall(call, { answer, say: 'Retell this briefly ' + inYourVoice() + ', adding anything you already know that fits. Do not read it word for word or mention Gemini unless asked.' });
               }).catch((err) => respondToToolCall(call, { error: err.message, say: 'Answer as best you can yourself, briefly, in your own voice.' }));
             } else if (call.name === 'addRunNote') {
               import('./services/runLearningService.js').then((m) => m.noteOnLatestRun({ text: call.args?.text, minute: call.args?.minute ?? null })).then((r) => {
@@ -2131,7 +2161,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               } catch (err) { respondToToolCall(call, { error: err.message }); }
             } else if (call.name === 'getBoardGames') {
               try {
-                const out = describeCollectionForIms({ query: call.args?.query, players: Number(call.args?.players) || null, maxMinutes: Number(call.args?.maxMinutes) || null, sortBy: call.args?.sortBy || null });
+                const out = describeCollectionForIms({ query: call.args?.query, players: Number(call.args?.players) || null, maxMinutes: Number(call.args?.maxMinutes) || null, sortBy: call.args?.sortBy || null, favourites: call.args?.favourites === true, solo: call.args?.solo === true, theme: call.args?.theme || '' });
                 console.log(`${tag} 🎲 getBoardGames -> ${out.baseGames} games, ${out.expansions} expansions${out.matching !== undefined ? `, ${out.matching} matching` : ''}`);
                 respondToToolCall(call, { ...out, note: out.matching !== undefined ? 'Say how many match and name a few; offer more if there are lots.' : 'Give the counts.' });
               } catch (err) { respondToToolCall(call, { error: err.message }); }
@@ -2149,7 +2179,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                     time: new Date(e.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
                     battery: e.battery_level
                   })),
-                  instruction: 'Summarise the doorbell and visitor status in your authentic Yorkshire voice.'
+                  instruction: 'Summarise the doorbell and visitor status ' + inYourVoice() + '.'
                 });
               } catch (err) { respondToToolCall(call, { error: err.message }); }
             } else if (call.name === 'getCampaigns') {
@@ -2196,13 +2226,29 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             }
           }
           if (parsed?.setupComplete) {
+            geminiSetupAcknowledged = true;
             paceFlush();
             ws.send(JSON.stringify({ setupComplete: {} }));
+            while (outboundAudioQueue.length > 0) {
+              const audioPayload = outboundAudioQueue.shift();
+              if (gWs && gWs.readyState === WebSocket.OPEN) {
+                gWs.send(audioPayload);
+              }
+            }
           }
           if (parsed?.serverContent?.turnComplete && !parsed.toolCall) {
             paceSend({ json: JSON.stringify({ turnComplete: true }) });
           }
         } else {
+          if (parsed?.setupComplete) {
+            geminiSetupAcknowledged = true;
+            while (outboundAudioQueue.length > 0) {
+              const audioPayload = outboundAudioQueue.shift();
+              if (gWs && gWs.readyState === WebSocket.OPEN) {
+                gWs.send(audioPayload);
+              }
+            }
+          }
           // Forward standard text JSON frame to web browser client
           ws.send(msgStr);
         }
@@ -2269,15 +2315,17 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         turnCompleteAt = Date.now();
         console.log(`${tag} Gracefully handling code ${code} from Gemini. Keeping client socket open and preparing seamless upstream reconnect.`);
         if (currentGeminiWs === gWs) currentGeminiWs = null;
+        if (ws.isHardwareClient) scheduleWarmUpstreamReconnect(1500);
         return;
       }
 
       // If upstream closes with 1011 (or other transient codes), for hardware clients keep the
       // raw TCP socket connected to IMS and reset upstream so the next wake or reminder can connect cleanly.
       if (!isClientClosed && ws.isHardwareClient && ws.readyState === ws.OPEN) {
-        console.warn(`${tag} Gemini Live upstream closed (${code}). Keeping hardware TCP link open in STANDBY.`);
+        console.warn(`${tag} Gemini Live upstream closed (${code}). Keeping hardware TCP link open in STANDBY and scheduling warm reconnect.`);
         currentTurnComplete = true;
         if (currentGeminiWs === gWs) currentGeminiWs = null;
+        scheduleWarmUpstreamReconnect(2000);
         return;
       }
 
@@ -2300,8 +2348,11 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         logCapture(
           `[${new Date().toISOString()}] ${tag} GEMINI ERROR: ${err.message}\n`);
       } catch (_) { }
+      warmReconnectAttempts++;
       if (!isClientClosed && ws.isHardwareClient && ws.readyState === ws.OPEN) {
-        console.warn(`${tag} Gemini Live WebSocket error on hardware session - keeping TCP link connected.`);
+        console.warn(`${tag} Gemini Live WebSocket error on hardware session - scheduling warm reconnect.`);
+        if (currentGeminiWs === gWs) currentGeminiWs = null;
+        scheduleWarmUpstreamReconnect(3000);
         return;
       }
       try {
@@ -2318,6 +2369,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
   const clientType = isHardware ? 'hardware' : imsWeb ? 'web' : 'browser';
   wakeDaemonService.registerClient(clientType, {
+    isSocketAlive: () => !isClientClosed && (ws.readyState === WebSocket.OPEN),
     sendControl: (payload) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(payload));
@@ -2328,8 +2380,14 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         try { currentGeminiWs.close(1000, `WakeDaemon: ${reason}`); } catch (_) {}
         currentGeminiWs = null;
       }
+      if (isHardware && !isClientClosed && ws.readyState === WebSocket.OPEN) {
+        scheduleWarmUpstreamReconnect(1000);
+      }
     },
     isPlayingOrPacing: () => {
+      if (!currentTurnComplete && lastModelAudioTime > 0 && (Date.now() - lastModelAudioTime > 8000)) {
+        return false;
+      }
       if (!currentTurnComplete) return true;
       if (isHardware) {
         const playingUntil = paceSentMs ? paceStart + paceSentMs : 0;
@@ -2339,6 +2397,26 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     },
     logCapture
   });
+
+  // Watchdog checking for stalled model turns every second (recovers if Gemini stops audio mid-turn)
+  const turnStallWatchdogInterval = setInterval(() => {
+    if (isClientClosed) {
+      clearInterval(turnStallWatchdogInterval);
+      return;
+    }
+    if (isHardware && !currentTurnComplete && lastModelAudioTime > 0 && (Date.now() - lastModelAudioTime > 8000)) {
+      if (paceQueue.length === 0) {
+        console.warn(`${tag} ⚠️ Model turn stalled (no audio for 8s). Auto-recovering turnComplete.`);
+        try { logCapture(`[${new Date().toISOString()}] ${tag} WATCHDOG RECOVERED STALLED TURN\n`); } catch (_) { }
+        currentTurnComplete = true;
+        turnCompleteAt = Date.now();
+        wakeDaemonService.notifyModelSpeechEnd();
+        if (ws.readyState === WebSocket.OPEN) {
+          try { ws.send(JSON.stringify({ turnComplete: true })); } catch (_) { }
+        }
+      }
+    }
+  }, 1000);
 
   const ensureGeminiSocket = () => {
     if (!currentGeminiWs || currentGeminiWs.readyState === WebSocket.CLOSED || currentGeminiWs.readyState === WebSocket.CLOSING) {
@@ -2490,10 +2568,11 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           }
         }
       });
-      if (gWs && gWs.readyState === WebSocket.OPEN) {
+      if (gWs && gWs.readyState === WebSocket.OPEN && geminiSetupAcknowledged) {
         gWs.send(realtimePayload);
-      } else if (gWs && gWs.readyState === WebSocket.CONNECTING) {
-        outboundQueue.push(realtimePayload);
+      } else {
+        outboundAudioQueue.push(realtimePayload);
+        if (outboundAudioQueue.length > 150) outboundAudioQueue.shift();
       }
       return;
     }
@@ -2577,7 +2656,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           }
           // Browser live sessions ship their own generic assistant prompt and
           // voice. Ims must be the same Ims everywhere, so put the saved voice,
-          // personality sliders and ims_persona_rules.md in front of it and pin
+          // personality sliders and the active persona in front of it and pin
           // the saved voice. The voice-audition connection (no system prompt)
           // is left alone - it exists specifically to try OTHER voices.
           if (!isHardware && !imsWeb && parsed.setup.systemInstruction && !parsed.setup.previewVoice) {
@@ -2587,7 +2666,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               parts: [{ text: persona.text + "\n\nYOUR CURRENT TASK AND TOOLS (keep the identity, dialect, personality and voice above throughout): " + original }]
             };
             parsed.setup.generationConfig = parsed.setup.generationConfig || {};
-            parsed.setup.generationConfig.speechConfig = { languageCode: 'en-GB', voiceConfig: { prebuiltVoiceConfig: { voiceName: persona.voice } } };
+            parsed.setup.generationConfig.speechConfig = { languageCode: persona.languageCode || personaLanguageCode(), voiceConfig: { prebuiltVoiceConfig: { voiceName: persona.voice } } };
             msgStr = JSON.stringify(parsed);
             console.log(`${tag} 🎭 Applied saved Ims voice (${persona.voice}), personality and persona rules to browser live session`);
           }
@@ -2628,6 +2707,8 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
   ws.on('close', (code, reason) => {
     isClientClosed = true;
+    if (turnStallWatchdogInterval) clearInterval(turnStallWatchdogInterval);
+    if (warmReconnectTimer) clearTimeout(warmReconnectTimer);
     wakeDaemonService.unregisterClient(clientType);
     paceFlush();
     if (silenceTimer) clearInterval(silenceTimer);
@@ -2802,6 +2883,12 @@ HardwareTcpClient.CLOSED = HardwareTcpClient.prototype.CLOSED = 3;
 
 const hardwareTcpServer = net.createServer((socket) => {
   socket.setNoDelay(true);
+  socket.setKeepAlive(true, 10000); // 10s TCP keep-alive probe
+  socket.setTimeout(60000); // 60s idle timeout
+  socket.on('timeout', () => {
+    console.warn('[HardwareTCP] Socket idle timeout (60s no activity) — closing stale connection');
+    socket.destroy();
+  });
   const client = new HardwareTcpClient(socket);
   handleLiveProxyConnection(client, true);
 });
@@ -2923,7 +3010,7 @@ doorbellService.on('doorbellEvent', (alert) => {
           cameraName: alert.cameraName,
           locationName: alert.locationName,
           batteryLevel: alert.batteryLevel,
-          phrase: alert.yorkshirePhrase,
+          phrase: alert.phrase,
           timestamp: alert.timestamp
         }
       }));
@@ -2933,19 +3020,19 @@ doorbellService.on('doorbellEvent', (alert) => {
     }
   }
 
-  // 2. If Gemini Live session is open with the hardware device or web client, speak the Yorkshire announcement
+  // 2. If Gemini Live session is open with the hardware device or web client, speak the persona's announcement
   // Speaking it: the ESP32 asks Ims itself when the doorbellAlert frame arrives (firmware - speaker ready, said once);
   // only a browser voice session with no device connected gets the announcement injected from here.
   const targetGeminiWs = activeHardwareSession?.clientWs?.readyState === WebSocket.OPEN ? null : activeBrowserSession?.geminiWs;
   if (targetGeminiWs && targetGeminiWs.readyState === WebSocket.OPEN) {
     try {
-      console.log(`[DoorbellAlert] Triggering spoken announcement via Gemini Live turn: "${alert.yorkshirePhrase}"`);
+      console.log(`[DoorbellAlert] Triggering spoken announcement via Gemini Live turn: "${alert.phrase}"`);
       targetGeminiWs.send(JSON.stringify({
         clientContent: {
           turns: [{
             role: 'user',
             parts: [{
-              text: `(System: The Ring Doorbell just triggered a ${alert.event} event at ${alert.cameraName}. Announce this urgently and naturally in your authentic Yorkshire persona right now: "${alert.yorkshirePhrase}")`
+              text: `(System: The Ring Doorbell just triggered a ${alert.event} event at ${alert.cameraName}. Announce this urgently and naturally ${inYourVoice()} right now, something like: "${alert.phrase}")`
             }]
           }],
           turnComplete: true

@@ -2,9 +2,10 @@
  * IMS Ring Doorbell Direct API Service
  * Integrates ring-client-api to provide real-time Ring doorbell event streaming
  * (SIP/WebSockets), persistent 2FA token storage, snapshot grabbing, and 
- * push notifications to the ESP32-S3-BOX-3 with Yorkshire spoken announcements.
+ * push notifications to the ESP32-S3-BOX-3 with spoken announcements in the active persona's words.
  */
 
+import { doorbellLine } from './personaService.js';
 import { EventEmitter } from "events";
 import { RingApi } from "ring-client-api";
 import db, { getSetting, setSetting } from "../db/database.js";
@@ -72,30 +73,10 @@ class DoorbellService extends EventEmitter {
   }
 
   /**
-   * Yorkshire persona spoken announcement generators
+   * The announcement line in the ACTIVE persona's words (personaService doorbell lines)
    */
-  getYorkshireAnnouncement(eventType, cameraName = "front door") {
-    const isFrontDoor = !cameraName || cameraName.toLowerCase().includes("front") || cameraName.toLowerCase().includes("door");
-    const loc = isFrontDoor ? "front door" : cameraName;
-
-    if (eventType === "ding") {
-      const dingPhrases = [
-        `Hold on Simon, someone's at ${loc}!`,
-        `Doorbell's gone, lad. Someone's outside.`,
-        `Ey up Simon, there's somebody ringing the bell at ${loc}.`,
-        `Right then, visitor at ${loc}! Best see who's knocking.`,
-        `Doorbell's chiming, Simon. Better have a look.`
-      ];
-      return dingPhrases[Math.floor(Math.random() * dingPhrases.length)];
-    } else {
-      const motionPhrases = [
-        `Ey up, there's movement out front by ${loc}.`,
-        `Someone's milling about near ${loc}, Simon.`,
-        `Motion detected at ${loc}.`,
-        `Just a heads up Simon, sensor tripped at ${loc}.`
-      ];
-      return motionPhrases[Math.floor(Math.random() * motionPhrases.length)];
-    }
+  getAnnouncement(eventType, cameraName = "front door") {
+    return doorbellLine(eventType, cameraName);
   }
 
   /**
@@ -246,7 +227,7 @@ class DoorbellService extends EventEmitter {
       console.error("[DoorbellService] Failed to log event to DB:", err.message);
     }
 
-    const yorkshirePhrase = this.getYorkshireAnnouncement(eventType, cameraName);
+    const phrase = this.getAnnouncement(eventType, cameraName);
 
     const alertPayload = {
       event: eventType,
@@ -254,7 +235,8 @@ class DoorbellService extends EventEmitter {
       cameraId,
       locationName,
       batteryLevel,
-      yorkshirePhrase,
+      phrase,
+      yorkshirePhrase: phrase, // older name, kept for anything still reading it
       isTest: !!isTest,
       timestamp: now,
       timeFormatted: new Date(now).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),

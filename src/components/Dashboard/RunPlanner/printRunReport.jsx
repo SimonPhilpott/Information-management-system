@@ -156,7 +156,7 @@ export async function printRunReport({ plan = null, routeId = null, retro = null
   ${plan?.plan ? planSection(plan, units) : ''}
   ${r ? retroSection({ ...r, planPrinted: Boolean(plan?.plan) }, units) : (rid ? '<section><h2>Retrospective</h2><p class="muted">No retrospective has been made for a run on this route yet.</p></section>' : '')}
   ${learningSection(learning, rid, profile?.key, profile?.label)}
-  <footer>Estimates from the IMS planner model and your own glucose data - pattern-spotting, not medical advice. IMS never suggests insulin doses; agree any change with your diabetes team.</footer>`;
+  <footer>Estimates from the IMS planner model and your own glucose data - pattern-spotting. IMS never suggests insulin doses.</footer>`;
 
   // non-ASCII as entities (°, ·, →), so they print right whatever encoding the new window assumes
   const ascii = (html) => html.replace(/[^\x00-\x7F]/gu, (c) => `&#${c.codePointAt(0)};`);

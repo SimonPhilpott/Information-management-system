@@ -1,5 +1,5 @@
 import express from 'express';
-import { getCosts, saveFixedCosts, savePrices } from '../services/costService.js';
+import { getCosts, saveFixedCosts, savePrices, saveBudget } from '../services/costService.js';
 
 // Costs: /api/costs
 const router = express.Router();
@@ -17,6 +17,12 @@ router.put('/fixed', (req, res) => {
 // { prices: { model: { input, output } | null }, usdToGbp }
 router.put('/prices', (req, res) => {
   try { res.json({ success: true, ...savePrices(req.body?.prices, req.body?.usdToGbp) }); }
+  catch (err) { res.status(400).json({ success: false, error: err.message }); }
+});
+
+// { capGBP } - monthly Gemini budget in pounds (0 = none)
+router.put('/budget', (req, res) => {
+  try { res.json({ success: true, capGBP: saveBudget(req.body?.capGBP) }); }
   catch (err) { res.status(400).json({ success: false, error: err.message }); }
 });
 

@@ -66,7 +66,7 @@ function playWebChime(type = 'ding') {
 }
 
 /**
- * Speaks the Yorkshire phrase through browser SpeechSynthesis in en-GB
+ * Speaks the announcement through browser SpeechSynthesis (fallback)
  */
 function speakAnnouncement(phrase) {
   if (!('speechSynthesis' in window) || !phrase) return;
@@ -86,7 +86,7 @@ function speakAnnouncement(phrase) {
 }
 
 /**
- * Speaks the Yorkshire phrase using IMS Gemini TTS (POST /api/voice/tts)
+ * Speaks the announcement in Ims's persona voice using IMS Gemini TTS (POST /api/voice/tts)
  * with graceful fallback to browser SpeechSynthesis
  */
 // One announcement at a time, each alert once: the live event and the Test button's own reply
@@ -110,7 +110,8 @@ function announceAlert(alert, { chime = true } = {}) {
   if (announced.size > 50) announced.delete(announced.values().next().value);
   // the Test button already chimed the moment it was pressed
   if (chime && !(alert.isTest && Date.now() - testChimePlayedAt < 15000)) playWebChime(alert.event);
-  if (alert.yorkshirePhrase) playImsVoice(alert.yorkshirePhrase);
+  const line = alert.phrase || alert.yorkshirePhrase;
+  if (line) playImsVoice(line);
 }
 
 async function playImsVoice(phrase) {
@@ -298,7 +299,7 @@ export default function DoorbellPortal({ theme = 'dark', onThemeToggle, setCurre
       const isMuted = isDing ? !notificationSettings.dingEnabled : !notificationSettings.motionEnabled;
 
       if (!isMuted) announceAlert(alert);
-      showNotification(`🚨 ${alert.event.toUpperCase()}: ${alert.cameraName} (${alert.yorkshirePhrase || ''})`);
+      showNotification(`🚨 ${alert.event.toUpperCase()}: ${alert.cameraName} (${alert.phrase || alert.yorkshirePhrase || ''})`);
 
       // Refresh snapshot of the camera that triggered
       if (alert.cameraId) {
@@ -556,7 +557,7 @@ export default function DoorbellPortal({ theme = 'dark', onThemeToggle, setCurre
                 </div>
                 <div className="text-xs opacity-80 mt-0.5 flex items-center gap-2">
                   <Volume2 className="w-3 h-3 text-amber-400" />
-                  <span>Announcement: &quot;{activeAlert.yorkshirePhrase}&quot; ({activeAlert.timeFormatted})</span>
+                  <span>Announcement: &quot;{activeAlert.phrase || activeAlert.yorkshirePhrase}&quot; ({activeAlert.timeFormatted})</span>
                 </div>
               </div>
             </div>
@@ -649,7 +650,7 @@ export default function DoorbellPortal({ theme = 'dark', onThemeToggle, setCurre
               <Sparkles className="w-4 h-4 text-amber-400" />
             </div>
             <div className="text-xl font-bold tracking-tight text-amber-400">
-              Yorkshire Dialect
+              Ims's persona
             </div>
             <div className="text-xs text-slate-400 mt-1">
               Dual-tone Chime + en-GB Voice Turn
@@ -684,7 +685,7 @@ export default function DoorbellPortal({ theme = 'dark', onThemeToggle, setCurre
                 Direct Alert Audio & Hardware Verification
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Plays an authentic dual-tone chime and genuine Yorkshire voice announcement in your browser, pushes alert frames to the ESP32-S3-BOX-3, and triggers Gemini voice brain.
+                Plays an authentic dual-tone chime and announcement in Ims's persona voice in your browser, pushes alert frames to the ESP32-S3-BOX-3, and triggers Gemini voice brain.
               </p>
             </div>
             <div className="flex items-center gap-2">

@@ -25,6 +25,26 @@ db.exec(`
   );
 `);
 
+try { db.exec('ALTER TABLE boardgame_flags ADD COLUMN favourite INTEGER NOT NULL DEFAULT 0'); } catch { /* already there */ }
+
+// What each game is like, from BoardGameGeek (thing?stats=1): players, play time, complexity, rating, and its
+// categories (the themes - Fantasy, Horror, Wargame...) and mechanics (incl. "Solo / Solitaire Game").
+// Also includes community player count recommendations from BGG poll and collection CSV.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS boardgame_details (
+    bgg_id INTEGER PRIMARY KEY,
+    min_players INTEGER, max_players INTEGER,
+    playing_time INTEGER, min_time INTEGER, max_time INTEGER,
+    weight REAL, rating REAL,
+    categories TEXT NOT NULL DEFAULT '[]', mechanics TEXT NOT NULL DEFAULT '[]',
+    community_min_players INTEGER, community_players TEXT NOT NULL DEFAULT '[]',
+    fetched_at INTEGER NOT NULL
+  );
+`);
+
+try { db.exec('ALTER TABLE boardgame_details ADD COLUMN community_min_players INTEGER'); } catch { }
+try { db.exec("ALTER TABLE boardgame_details ADD COLUMN community_players TEXT NOT NULL DEFAULT '[]'"); } catch { }
+
 // Decode numeric and named HTML entities (e.g. &#039;, &#39;, &apos;, &amp;, &quot;, &lt;, &gt;, &eacute;)
 export function decodeHtmlEntities(str) {
   if (typeof str !== 'string') return str || '';
@@ -334,6 +354,203 @@ function getFlags() {
   return new Set(db.prepare(`SELECT bgg_id FROM boardgame_flags WHERE want_to_sell = 1`).all().map((r) => r.bgg_id));
 }
 
+function getFavourites() {
+  return new Set(db.prepare(`SELECT bgg_id FROM boardgame_flags WHERE favourite = 1`).all().map((r) => r.bgg_id));
+}
+
+export function setFavourite(id, favourite) {
+  db.prepare(
+    `INSERT INTO boardgame_flags (bgg_id, want_to_sell, favourite, updated_at) VALUES (?, 0, ?, ?)
+     ON CONFLICT(bgg_id) DO UPDATE SET favourite = excluded.favourite, updated_at = excluded.updated_at`
+  ).run(id, favourite ? 1 : 0, Date.now());
+}
+
+function getDetailsMap() {
+  const out = new Map();
+  for (const r of db.prepare('SELECT * FROM boardgame_details').all()) {
+    let categories = [], mechanics = [], community_players = [];
+    try { categories = JSON.parse(r.categories); } catch { }
+    try { mechanics = JSON.parse(r.mechanics); } catch { }
+    try { community_players = JSON.parse(r.community_players || '[]'); } catch { }
+    out.set(r.bgg_id, {
+      ...r,
+      categories,
+      mechanics,
+      community_players,
+      community_min_players: r.community_min_players ?? (community_players.length ? Math.min(...community_players) : null)
+    });
+  }
+  return out;
+}
+
+/**
+ * Extracts community recommended player counts from BGG thing?stats=1 <poll name="suggested_numplayers">
+ */
+export function parseCommunityPlayers(item) {
+  const polls = item?.poll || [];
+  const list = Array.isArray(polls) ? polls : [polls];
+  const p = list.find((x) => x && x['@_name'] === 'suggested_numplayers');
+  if (!p || !p.results) return { min: null, rec: [] };
+  const results = Array.isArray(p.results) ? p.results : [p.results];
+  const rec = [];
+  for (const r of results) {
+    if (!r) continue;
+    const num = r['@_numplayers'];
+    const n = parseInt(num, 10);
+    if (!Number.isFinite(n) || n <= 0) continue;
+    const votes = Array.isArray(r.result) ? r.result : [r.result].filter(Boolean);
+    let best = 0, recommended = 0, notRec = 0;
+    for (const v of votes) {
+      if (!v) continue;
+      const val = v['@_value'];
+      const count = Number(v['@_numvotes'] || 0);
+      if (val === 'Best') best = count;
+      else if (val === 'Recommended') recommended = count;
+      else if (val === 'Not Recommended') notRec = count;
+    }
+    if ((best + recommended) > 0 && (best + recommended) >= notRec) {
+      rec.push(n);
+    }
+  }
+  return { min: rec.length ? Math.min(...rec) : null, rec };
+}
+
+/**
+ * Determines whether a game supports solo play.
+ * A solo game satisfies ANY of the following four conditions:
+ * 1. 1 player only (e.g. min_players === 1 && max_players === 1, or players === '1')
+ * 2. 1 marked in the player count as the minimum (e.g. min_players === 1, or player count starts with '1')
+ * 3. 1 listed in the community player count minimum (e.g. community poll or CSV bggrecplayers has min 1 or includes 1)
+ * 4. Marked as solo (mechanics, categories, tags, or game name contains "solo" or "solitaire")
+ */
+export function isSoloGame(g = {}, d = null) {
+  // 1. 1 player only
+  const isOnePlayerOnly =
+    (d?.min_players === 1 && d?.max_players === 1) ||
+    (g?.minPlayers === 1 && g?.maxPlayers === 1) ||
+    String(g?.players || '').trim() === '1' ||
+    String(d?.players || '').trim() === '1';
+
+  // 2. Have 1 marked in the player count as the minimum
+  const hasOneAsMinPlayer =
+    d?.min_players === 1 ||
+    g?.minPlayers === 1 ||
+    (Number.isFinite(d?.min_players) && d.min_players <= 1) ||
+    (Number.isFinite(g?.minPlayers) && g.minPlayers <= 1) ||
+    (() => {
+      const p = String(g?.players || d?.players || '').trim();
+      if (!p) return false;
+      const firstNum = parseInt(p.split('-')[0].trim(), 10);
+      return firstNum === 1;
+    })();
+
+  // 3. With 1 listed in the community player count minimum
+  const communityRec = [].concat(d?.community_players || g?.communityPlayers || []);
+  const commMin = d?.community_min_players ?? g?.communityMinPlayers ?? (communityRec.length ? Math.min(...communityRec) : null);
+  const hasOneAsCommunityMin =
+    commMin === 1 ||
+    communityRec.includes(1) ||
+    (() => {
+      const rec = String(g?.bggRecPlayers || d?.bggRecPlayers || '').trim();
+      const best = String(g?.bggBestPlayers || d?.bggBestPlayers || '').trim();
+      const nums = [...rec.split(','), ...best.split(',')].map((s) => parseInt(s.trim(), 10)).filter((n) => Number.isFinite(n) && n > 0);
+      return nums.includes(1) || (nums.length > 0 && Math.min(...nums) === 1);
+    })();
+
+  // 4. Marked as solo
+  const allMechanics = [].concat(d?.mechanics || [], g?.mechanics || []);
+  const allCategories = [].concat(d?.categories || [], g?.categories || []);
+  const markedAsSolo =
+    allMechanics.some((m) => typeof m === 'string' && /solo|solitaire/i.test(m)) ||
+    allCategories.some((c) => typeof c === 'string' && /solo|solitaire/i.test(c)) ||
+    /\b(solo|solitaire)\b/i.test(g?.name || '') ||
+    /\b(solo|solitaire)\b/i.test(d?.name || '');
+
+  return Boolean(isOnePlayerOnly || hasOneAsMinPlayer || hasOneAsCommunityMin || markedAsSolo);
+}
+
+function withDetails(g, det) {
+  const d = det.get(g.id);
+  const minPlayers = d?.min_players || g.minPlayers || null;
+  const maxPlayers = d?.max_players || g.maxPlayers || null;
+  const players = minPlayers
+    ? `${minPlayers}${maxPlayers && maxPlayers !== minPlayers ? `-${maxPlayers}` : ''}`
+    : g.players;
+  const communityMinPlayers = d?.community_min_players ?? g.communityMinPlayers ?? null;
+  const communityPlayers = d?.community_players || g.communityPlayers || [];
+  const categories = d?.categories || g.categories || [];
+  const mechanics = d?.mechanics || g.mechanics || [];
+
+  const solo = isSoloGame(
+    { ...g, players, minPlayers, maxPlayers, communityMinPlayers, communityPlayers, categories, mechanics },
+    d
+  );
+
+  return {
+    ...g,
+    players,
+    minPlayers,
+    maxPlayers,
+    communityMinPlayers,
+    communityPlayers,
+    playingTime: d?.playing_time || g.playingTime || null,
+    minTime: d?.min_time || g.minTime || null,
+    maxTime: d?.max_time || g.maxTime || null,
+    weight: d?.weight || g.weight || null,
+    bggRating: d?.rating || g.bggRating || null,
+    categories,
+    mechanics,
+    solo,
+  };
+}
+
+let detailsStatus = { running: false, done: 0, total: 0, error: null, lastRunAt: 0 };
+export const getDetailsStatus = () => ({ ...detailsStatus, missing: missingDetailIds().length });
+
+function missingDetailIds() {
+  const have = new Set(db.prepare('SELECT bgg_id FROM boardgame_details').all().map((r) => r.bgg_id));
+  const raw = readCache();
+  const games = applyEdits(raw).games || [];
+  return games.map((g) => g.id).filter((id) => Number.isInteger(id) && id > 0 && !have.has(id));
+}
+
+const asNum = (v) => { const n = Number(v?.['@_value'] ?? v); return Number.isFinite(n) && n > 0 ? n : null; };
+export async function fetchMissingDetails({ force = false } = {}) {
+  if (detailsStatus.running) return getDetailsStatus();
+  if (!getToken()) return getDetailsStatus();
+  const ids = force ? (applyEdits(readCache()).games || []).map((g) => g.id).filter((id) => id > 0) : missingDetailIds();
+  if (!ids.length) return getDetailsStatus();
+  detailsStatus = { running: true, done: 0, total: ids.length, error: null, lastRunAt: Date.now() };
+  const save = db.prepare(`INSERT INTO boardgame_details (bgg_id, min_players, max_players, playing_time, min_time, max_time, weight, rating, categories, mechanics, community_min_players, community_players, fetched_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(bgg_id) DO UPDATE SET min_players = excluded.min_players, max_players = excluded.max_players,
+    playing_time = excluded.playing_time, min_time = excluded.min_time, max_time = excluded.max_time, weight = excluded.weight, rating = excluded.rating,
+    categories = excluded.categories, mechanics = excluded.mechanics, community_min_players = excluded.community_min_players, community_players = excluded.community_players, fetched_at = excluded.fetched_at`);
+  try {
+    for (let i = 0; i < ids.length; i += 20) {
+      const batch = ids.slice(i, i + 20);
+      const doc = parser.parse(await fetchXml(`${BGG}/thing?id=${batch.join(',')}&stats=1`));
+      const items = [].concat(doc?.items?.item || []);
+      for (const item of items) {
+        const links = [].concat(item.link || []);
+        const of = (type) => links.filter((l) => l?.['@_type'] === type).map((l) => decodeHtmlEntities(String(l['@_value'] || '')));
+        const ratings = item.statistics?.ratings || {};
+        const comm = parseCommunityPlayers(item);
+        save.run(Number(item['@_id']), asNum(item.minplayers), asNum(item.maxplayers), asNum(item.playingtime), asNum(item.minplaytime), asNum(item.maxplaytime),
+          asNum(ratings.averageweight) ? +Number(ratings.averageweight['@_value'] ?? ratings.averageweight).toFixed(2) : null,
+          asNum(ratings.average) ? +Number(ratings.average['@_value'] ?? ratings.average).toFixed(2) : null,
+          JSON.stringify(of('boardgamecategory')), JSON.stringify(of('boardgamemechanic')),
+          comm.min, JSON.stringify(comm.rec), Date.now());
+      }
+      detailsStatus.done = Math.min(ids.length, i + batch.length);
+      await sleep(2500); // be gentle with BGG
+    }
+  } catch (err) {
+    detailsStatus.error = err.message;
+    console.warn('[Boardgames] details:', err.message);
+  } finally { detailsStatus.running = false; }
+  return getDetailsStatus();
+}
+
 export function setWantToSell(id, wantToSell) {
   db.prepare(
     `INSERT INTO boardgame_flags (bgg_id, want_to_sell, updated_at) VALUES (?, ?, ?)
@@ -422,11 +639,15 @@ export function getGames() {
   const edited = applyEdits(raw);
   const cache = { ...raw, games: edited.games, orphanExpansions: edited.orphanExpansions };
   const selling = getFlags();
+  const favourites = getFavourites();
+  const det = getDetailsMap();
   return {
     fetchedAt: cache.fetchedAt,
     source: cache.source || 'bgg',
+    details: getDetailsStatus(),
     games: cache.games.map((g) => ({
-      ...g,
+      ...withDetails(g, det),
+      favourite: favourites.has(g.id),
       wantToSell: selling.has(g.id),
       expansions: g.expansions.map((e) => ({ ...e, wantToSell: selling.has(e.id) })),
     })),
@@ -460,12 +681,21 @@ export function importCollectionCsv(text, { source = 'csv' } = {}) {
   const items = parseCsv(String(text || '').replace(/^\uFEFF/, '')).filter((r) => r.objectid && (r.own === undefined || r.own === '1'));
   if (!items.length) throw new Error('No owned games found - is this the CSV from BoardGameGeek\'s "Export collection"?');
   const num = (v) => (v === '' || v === undefined || Number(v) === 0 ? null : Number(v));
-  const toItem = (r) => ({
-    id: Number(r.objectid), name: r.objectname, year: num(r.yearpublished), thumbnail: null,
-    players: r.minplayers ? `${r.minplayers}${r.maxplayers && r.maxplayers !== r.minplayers ? `-${r.maxplayers}` : ''}` : null,
-    playingTime: num(r.playingtime), weight: num(r.avgweight) ? +Number(r.avgweight).toFixed(2) : null,
-    bggRating: num(r.average) ? +Number(r.average).toFixed(2) : null, rank: num(r.rank), myRating: num(r.rating),
-  });
+  const toItem = (r) => {
+    const recNums = String(r.bggrecplayers || '').split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => Number.isFinite(n) && n > 0);
+    const bestNums = String(r.bggbestplayers || '').split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => Number.isFinite(n) && n > 0);
+    const commRec = [...new Set([...recNums, ...bestNums])].sort((a, b) => a - b);
+    const commMin = commRec.length ? commRec[0] : null;
+    return {
+      id: Number(r.objectid), name: r.objectname, year: num(r.yearpublished), thumbnail: null,
+      players: r.minplayers ? `${r.minplayers}${r.maxplayers && r.maxplayers !== r.minplayers ? `-${r.maxplayers}` : ''}` : null,
+      minPlayers: num(r.minplayers), maxPlayers: num(r.maxplayers),
+      communityMinPlayers: commMin, communityPlayers: commRec,
+      bggRecPlayers: r.bggrecplayers || null, bggBestPlayers: r.bggbestplayers || null,
+      playingTime: num(r.playingtime), weight: num(r.avgweight) ? +Number(r.avgweight).toFixed(2) : null,
+      bggRating: num(r.average) ? +Number(r.average).toFixed(2) : null, rank: num(r.rank), myRating: num(r.rating),
+    };
+  };
   const isExp = (r) => (r.itemtype || '').toLowerCase() === 'expansion';
   const base = items.filter((r) => !isExp(r)).map((r) => ({ ...toItem(r), expansions: [] }));
   const orphanExpansions = [];
@@ -479,6 +709,22 @@ export function importCollectionCsv(text, { source = 'csv' } = {}) {
   base.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(CACHE_PATH, JSON.stringify({ fetchedAt: new Date().toISOString(), username: getConfig().username, source, games: base, orphanExpansions }), 'utf8');
+
+  // Backfill community player counts into boardgame_details from this CSV
+  try {
+    const updateComm = db.prepare('UPDATE boardgame_details SET community_min_players = ?, community_players = ? WHERE bgg_id = ?');
+    for (const item of items) {
+      const recNums = String(item.bggrecplayers || '').split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => Number.isFinite(n) && n > 0);
+      const bestNums = String(item.bggbestplayers || '').split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => Number.isFinite(n) && n > 0);
+      const commRec = [...new Set([...recNums, ...bestNums])].sort((a, b) => a - b);
+      if (commRec.length > 0) {
+        updateComm.run(commRec[0], JSON.stringify(commRec), Number(item.objectid));
+      }
+    }
+  } catch (err) {
+    console.warn('[Boardgames] CSV community player count backfill:', err.message);
+  }
+
   return { games: base.length, expansions: items.length - base.length, orphanExpansions: orphanExpansions.length };
 }
 
@@ -705,25 +951,32 @@ export function collectionSummary() {
     expansions: exps.length + d.orphanExpansions.length,
     gamesWithExpansions: d.games.filter((g) => g.expansions.some((e) => e.owned !== false)).length,
     wantToSell: d.games.filter((g) => g.wantToSell).length + exps.filter((e) => e.wantToSell).length + d.orphanExpansions.filter((e) => e.wantToSell).length,
+    favourites: d.games.filter((g) => g.favourite).map((g) => g.name),
     source: d.source === 'csv' ? 'BoardGameGeek collection export' : 'BoardGameGeek',
   };
 }
 
-export function describeCollectionForIms({ query = '', players = null, maxMinutes = null, sortBy = null, limit = 15 } = {}) {
+export function describeCollectionForIms({ query = '', players = null, maxMinutes = null, sortBy = null, favourites = false, solo = false, theme = '', limit = 15 } = {}) {
   const d = getGames();
   const summary = collectionSummary();
   const q = String(query || '').trim().toLowerCase();
   const fitsPlayers = (g) => {
     if (!players) return true;
+    if (players === 1 && g.solo) return true;
     const [lo, hi] = String(g.players || '').split('-').map(Number);
     return Number.isFinite(lo) && players >= lo && players <= (Number.isFinite(hi) ? hi : lo);
   };
+  const th = String(theme || '').trim().toLowerCase();
   let list = d.games.filter((g) => (!q || g.name.toLowerCase().includes(q) || g.expansions.some((e) => e.name.toLowerCase().includes(q)))
-    && fitsPlayers(g) && (!maxMinutes || (g.playingTime && g.playingTime <= maxMinutes)));
+    && fitsPlayers(g) && (!maxMinutes || (g.playingTime && g.playingTime <= maxMinutes))
+    && (!favourites || g.favourite) && (!solo || g.solo)
+    && (!th || (g.categories || []).some((c) => c.toLowerCase().includes(th)) || (g.mechanics || []).some((m) => m.toLowerCase().includes(th))));
+  // favourites first, so Ims leads with the games the user loves
+  list = [...list].sort((a, b) => Number(Boolean(b.favourite)) - Number(Boolean(a.favourite)));
   if (sortBy === 'rating') list = list.sort((a, b) => (b.bggRating || 0) - (a.bggRating || 0));
   else if (sortBy === 'weight') list = list.sort((a, b) => (b.weight || 0) - (a.weight || 0));
   else if (sortBy === 'expansions') list = list.sort((a, b) => b.expansions.length - a.expansions.length);
-  const filtered = Boolean(q || players || maxMinutes || sortBy);
+  const filtered = Boolean(q || players || maxMinutes || sortBy || favourites || solo || th);
   return {
     ...summary,
     ...(filtered ? {
@@ -732,6 +985,7 @@ export function describeCollectionForIms({ query = '', players = null, maxMinute
         name: g.name, year: g.year || null, players: g.players || null, minutes: g.playingTime || null,
         weight: g.weight || null, bggRating: g.bggRating || null, expansionsOwned: g.expansions.filter((e) => e.owned !== false).map((e) => e.name),
         wantToSell: Boolean(g.wantToSell),
+        favourite: Boolean(g.favourite), solo: Boolean(g.solo), themes: (g.categories || []).slice(0, 4),
       })),
     } : {}),
   };

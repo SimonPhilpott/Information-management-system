@@ -2023,7 +2023,7 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
         {summary?.insight ? (
           <>
             <Prose text={summary.insight.text} className="text-sm leading-relaxed" />
-            <p className="text-[10px] text-slate-500 mt-2">Written {new Date(summary.insight.at).toLocaleString('en-GB')} from {summary.insight.days} days. Never gives insulin doses; talk those through with your diabetes team.</p>
+            <p className="text-[10px] text-slate-500 mt-2">Written {new Date(summary.insight.at).toLocaleString('en-GB')} from {summary.insight.days} days. Never gives insulin doses.</p>
           </>
         ) : <p className="text-xs text-slate-500">Press Analyse for a plain-English read of the patterns, lows and what to try. It never gives insulin doses.</p>}
       </div>

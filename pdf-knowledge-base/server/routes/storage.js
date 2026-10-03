@@ -1,5 +1,15 @@
 import express from 'express';
-import { summary, dedupePdfs, quantiseVectors, quantiseStatus, deleteVectorBackup, restoreVectorBackup } from '../services/storageService.js';
+import {
+  summary,
+  dedupePdfs,
+  quantiseVectors,
+  quantiseStatus,
+  deleteVectorBackup,
+  restoreVectorBackup,
+  pruneStaleVectors,
+  deleteStaleVectorBackup,
+  restoreStaleVectors,
+} from '../services/storageService.js';
 import { getHnswStatus } from '../services/hnswService.js';
 
 // Storage: /api/storage
@@ -27,6 +37,21 @@ router.delete('/vector-backup', (req, res) => {
 
 router.post('/vector-backup/restore', (req, res) => {
   try { res.json({ success: true, result: restoreVectorBackup() }); }
+  catch (err) { res.status(400).json({ success: false, error: err.message }); }
+});
+
+router.post('/clean-stale-vectors', (req, res) => {
+  try { res.json({ success: true, result: pruneStaleVectors() }); }
+  catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+router.delete('/stale-vector-backup', (req, res) => {
+  try { res.json({ success: true, result: deleteStaleVectorBackup() }); }
+  catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+router.post('/restore-stale-vectors', (req, res) => {
+  try { res.json({ success: true, result: restoreStaleVectors() }); }
   catch (err) { res.status(400).json({ success: false, error: err.message }); }
 });
 

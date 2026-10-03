@@ -141,10 +141,25 @@
         "pdf-knowledge-base/server/db/database.js"
       ]
     },
-    "pdf-knowledge-base/server/routes/persona.js": {
-      "description": "REST API route handler for dynamic inspection and persistence of ims_persona_rules.md system prompt rules, mounting GET and PUT /api/persona-rules.",
+    "src/components/Dashboard/PersonaPortal.jsx": {
+      "description": "Modular persona management portal organizing persona setup into 8 distinct tabs (Profile & Voice, Accent & Dialect, Rhythm & Vocabulary, Conversation & Style, Alerts & Reports, House Rules, Test Bench, and Raw Output) with real-time preview, creation modals, and history restore.",
       "dependencies": [
-        "pdf-knowledge-base/server/services/hardwareClientService.js"
+        "src/utils/personaSections.js",
+        "src/components/Dashboard/PortalShell.jsx"
+      ]
+    },
+    "pdf-knowledge-base/server/services/personaService.js": {
+      "description": "Unified persona authority providing YAML frontmatter and Markdown body parsing/serialization, persona file lifecycle, version history snapshots, and active persona resolution.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js"
+      ]
+    },
+    "pdf-knowledge-base/server/routes/personas.js": {
+      "description": "REST API route handler for persona listing, creation, parts/raw updating, live preview serialization, activation, deletion, and test scenario execution.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/personaService.js",
+        "pdf-knowledge-base/server/services/personaTestService.js",
+        "pdf-knowledge-base/server/services/morningReportService.js"
       ]
     },
     "pdf-knowledge-base/server/index.js": {
@@ -156,7 +171,7 @@
         "pdf-knowledge-base/server/db/database.js",
         "pdf-knowledge-base/server/routes/memories.js",
         "pdf-knowledge-base/server/routes/settings.js",
-        "pdf-knowledge-base/server/routes/persona.js"
+        "pdf-knowledge-base/server/routes/personas.js"
       ]
     },
     "pdf-knowledge-base/server/services/hardwareClientService.js": {
@@ -388,13 +403,13 @@
       ]
     },
     "pdf-knowledge-base/server/services/wakeDaemonService.js": {
-      "description": "Lightweight local server background wake daemon and conversational lifecycle service managing accurate wake phrase recognition ('Hey IMS', 'Hi IMS', 'Eh up IMS'), active 'Bye' phrase termination, 15-second silence inactivity watchdog, client mic streaming cut-off, and operational telemetry.",
+      "description": "Lightweight local server background wake daemon and conversational lifecycle service managing accurate wake phrase recognition ('Hey IMS', 'Hi IMS', 'Eh up IMS'), auto-recovery self-healing watchdog for socket/pacing stalls, 15-second silence inactivity watchdog, client mic streaming cut-off, and operational telemetry.",
       "dependencies": [
         "pdf-knowledge-base/server/services/phrasesService.js"
       ]
     },
     "pdf-knowledge-base/server/routes/wakeDaemon.js": {
-      "description": "Express router exposing GET /api/wake-daemon/status and POST /api/wake-daemon/reset endpoints for wake daemon operational health monitoring and manual state resets.",
+      "description": "Express router exposing GET /api/wake-daemon/status, POST /api/wake-daemon/reset, and POST /api/wake-daemon/recover endpoints for wake daemon operational health monitoring, manual resets, and automated self-healing.",
       "dependencies": [
         "pdf-knowledge-base/server/services/wakeDaemonService.js"
       ]
@@ -652,8 +667,7 @@
       "dependencies": [
         "pdf-knowledge-base/server/services/glucoseHubService.js"
       ]
-    }
-  },
+    },
     "src/components/Dashboard/WeatherPortal.jsx": {
       "description": "Weather page (/ims/weather) under Core functions: home and saved places, today card, 16-day strip, 48-hour hourly strip with rain chance and wind, what Ims will say, and the weather phrases section.",
       "dependencies": [
@@ -810,6 +824,42 @@
     },
     "src/hooks/useSystemEvents.js": {
       "description": "Shared singleton SSE client hook providing real-time subscriptions, exponential backoff reconnection, and zero-polling data updates across portals.",
+      "dependencies": []
+    },
+    "pdf-knowledge-base/server/services/boardgamesService.js": {
+      "description": "Board game collection manager featuring BGG XML API synchronization, 4-factor solo classification, community player poll ingestion, favourites management, and SQLite persistence.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js"
+      ]
+    },
+    "src/components/Dashboard/BoardgamesPortal.jsx": {
+      "description": "Board games library explorer featuring player count, duration, theme, solo, and favourite filters, qualification tooltips, and sync telemetry.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx"
+      ]
+    },
+    "pdf-knowledge-base/server/scripts/verify_solo_rules.mjs": {
+      "description": "Automated verification test suite validating the 4-factor solo calculation rules, edge cases, and real database collection counts.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/boardgamesService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/storageService.js": {
+      "description": "Disk storage telemetry and optimisation service featuring PDF deduplication, int8 vector quantisation, and stale vector cleanup.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js",
+        "pdf-knowledge-base/server/services/vectorCodec.js"
+      ]
+    },
+    "src/components/Dashboard/StoragePortal.jsx": {
+      "description": "Storage management dashboard displaying library PDF and vector usage by subject, duplicate deduplication controls, and vector archiving.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx",
+        "src/components/Dashboard/RunPlanner/Notice.jsx"
+      ]
+    },
+    "pdf-knowledge-base/server/services/disclaimerSanitizer.js": {
+      "description": "Comprehensive sanitization utility stripping medical advice disclaimers, doctor/GP referrals, and healthcare team warnings from LLM outputs across IMS.",
       "dependencies": []
     }
   }

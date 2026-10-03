@@ -6,6 +6,7 @@ import { getRoute, linkedRouteId } from './routeService.js';
 import { estimatePlan, getTargets, SOURCES } from './runPlanService.js';
 import { textInUnits, clearUnitCache, normaliseUnits } from './aiTextService.js';
 import { getRulebookPromptContext } from './t1dRulebookService.js';
+import { stripMedicalDisclaimers } from './disclaimerSanitizer.js';
 
 // An AI review of one finished activity against the user's targets (start near 9 mmol/L and
 // never below 5 by default), with advice for the next time on the same route from where
@@ -175,11 +176,12 @@ export async function analyseActivity(id, units = 'km', debrief = null) {
     `2. "What went wrong & incident scrutiny" - lows or highs, when they happened, and the likely contributors visible in the data evaluated against the Rulebook (insulin on board at the start vs the <1.0 U gate, recent bolus vs the 2h window, carb timing vs steep hills, pump suspension, gradient and effort, heart rate zone intensity such as high VO2 Max >168 bpm triggering counter-regulatory catecholamine liver glucose dumping, trend into the start, post-run dip). Directly address the runner's notes if they mentioned having to walk, feeling tired, or unexpected glucose dips.\n` +
     `3. "Carb timing retrospective" - evaluate when carbs were taken versus when they were actually needed. (For example, if glucose was elevated early on, clarify whether carbs at the start were redundant and only needed 30 minutes in; or if glucose dropped sharply early, explain why early carbs or waiting for lower IOB was critical; if high heart rate caused an adrenaline surge, explain why rapid carbs might have compounded the post-effort spike).\n` +
     `4. "Next time on this route: adaptive suggestions" - based on where glucose and insulin on board are RIGHT NOW (use planIfYouStartHowYouAreNow if present; if it is null, say the current data is stale and use planIfYouStartAtTarget). Give concrete, adaptive advice: "Before you go" (start glucose, IOB gate, waiting time), "During the run" (precise carb timing, e.g. delay to 30 minutes if starting with low IOB, or carb stops placed before climbs, or pacing adjustment if HR was in VO2 max zone), and "After the finish" (protecting against delayed nocturnal glycogen resynthesis hypoglycemia).\n` +
-    `5. "Insulin - things to discuss with your diabetes team" - only options the published guidance supports (reducing a bolus given within 2 hours of the run: about 20% per Riddell 2017 up to about 50% per ISPAD 2022; raising the exercise/activity target ahead of the run so IOB falls; an overnight basal reduction of about 20% for about 6 hours for pump users after evening runs). NEVER give a specific insulin dose, a specific target value, or a change to pump settings.\n` +
-    `6. "How much to trust this" - sample size (personal fit: ${fromTarget?.basis?.personalRuns ?? 0} matched runs), the assumptions used, and that this is pattern-spotting from their own data, not medical advice.\n` +
+    `5. "Insulin factors to consider" - only options the published guidance supports (reducing a bolus given within 2 hours of the run: about 20% per Riddell 2017 up to about 50% per ISPAD 2022; raising the exercise/activity target ahead of the run so IOB falls; an overnight basal reduction of about 20% for about 6 hours for pump users after evening runs). NEVER give a specific insulin dose, a specific target value, or a change to pump settings. CRITICAL: NEVER tell the runner to discuss this with their diabetes team or healthcare professionals, and NEVER include any disclaimer that this is not medical advice.\n` +
+    `6. "How much to trust this" - sample size (personal fit: ${fromTarget?.basis?.personalRuns ?? 0} matched runs), the assumptions used, and personal pattern-spotting from their own data.\n` +
     `Keep it under about 550 words. Start with one sentence summing up the run. Use short paragraphs or bullet lists.\n\nDATA (JSON):\n${JSON.stringify(facts)}`;
 
-  const text = (await genAI.getGenerativeModel({ model: 'gemini-2.5-flash' }).generateContent(prompt)).response.text().trim();
+  const rawText = (await genAI.getGenerativeModel({ model: 'gemini-2.5-flash' }).generateContent(prompt)).response.text().trim();
+  const text = stripMedicalDisclaimers(rawText);
   const saved = { at: Date.now(), text, sources: SOURCES, debrief: currentDebrief };
   db.prepare('INSERT OR REPLACE INTO activity_insight (activity_id, at, text, inputs, units) VALUES (?, ?, ?, ?, ?)').run(id, saved.at, text, JSON.stringify({ verdict, now, debrief: currentDebrief }), normaliseUnits(units));
   if (currentDebrief) {

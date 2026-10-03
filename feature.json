@@ -1285,6 +1285,55 @@
         "Signed MP4 video URL resolution (GET /api/doorbell/recordings/:dingId/url) and HTTP 206 Range proxy streaming (GET /api/doorbell/recordings/:dingId/video)",
         "Interactive video playback modal with embedded HTML5 video player, duration metrics, person detection badges, and direct MP4 download"
       ]
+    },
+    "Board Game 4-Factor Solo Classification & Community Poll Integration": {
+      "status": "enabled",
+      "description": "Comprehensive solo gameplay classification across 4 distinct criteria: 1 player only, 1 marked as minimum player count, 1 listed in BGG community player count poll, and explicit solo/solitaire tags across mechanics, categories, or names, supported by automatic SQLite schema migration, BGG XML poll parsing, and CSV fallback.",
+      "subFeatures": [
+        "Comprehensive 4-factor solo evaluation engine (isSoloGame) inspecting 1 player only, 1 min player, community min 1, and solo/solitaire tags",
+        "Automatic database schema migration adding community_min_players and community_players to boardgame_details",
+        "XML parser extracting recommended player counts from BGG thing poll (suggested_numplayers)",
+        "BGG collection CSV ingestion extracting bggrecplayers and bggbestplayers for offline community counts",
+        "Dynamic BoardgamesPortal filter alignment matching any solo-capable game on 1-player filter selection with reason tooltip"
+      ]
+    },
+    "Diabetes Advice Disclaimer Suppression": {
+      "status": "enabled",
+      "description": "Suppresses canned medical and healthcare team disclaimers across IMS diabetes and health advice services, allowing direct telemetry observations, pattern analysis, and actionable insights to be delivered straight to the user without repetitive consultation caveats.",
+      "subFeatures": [
+        "Persona house rules (_house_rules.md) explicit negative constraint forbidding 'this is not medical advice' and 'please seek advice from a medical professional or team'",
+        "Hardware client system instruction and web persona block updated with ZERO MEDICAL DISCLAIMERS high-attention priority block in LAST AND MOST IMPORTANT",
+        "Gemini Live getBloodGlucose tool contract and callback response instruction sanitised with strict anti-disclaimer rules",
+        "Runtime disclaimerSanitizer.js utility stripping medical advice boilerplate, doctor referrals, and orphan trailing clauses",
+        "GlucoseHub, GlucoseInsight, RunGlucose, RunInsight, RunLearning, and imsFallback prompt templates and outputs cleaned and filtered",
+        "UI insight card and printable run report footers updated to present clean telemetry observations without referrals"
+      ]
+    },
+    "Wake Phrase Service Resiliency & Auto-Recovery Watchdog": {
+      "status": "enabled",
+      "description": "Multi-tier resilience and auto-recovery architecture for IMS wake phrase detection across backend services and ESP32 Box-3 firmware, eliminating state lockups, dead TCP sockets, hung speech/pacing flags, and cold upstream Gemini Live connection delays.",
+      "subFeatures": [
+        "Verifying state ceiling (verifyingStartMs) in ESP32 firmware preventing ambient noise from indefinitely postponing verify_timeout fallback to STANDBY",
+        "TCP SO_KEEPALIVE socket options (10s probes) and 60-second RX inactivity watchdog on both firmware and Node.js hardware server",
+        "Pre-warmed upstream Gemini Live WebSocket reconnect with backoff keeping upstream session ready in background while device is in STANDBY",
+        "Outbound audio chunk queuing until Gemini Live setupComplete ACK arrives, preventing handshake race discards",
+        "Turn stall watchdog clearing model speech flag if Gemini synthesis halts for >8s without emitting turnComplete",
+        "WakeDaemon auto-recovery watchdog inspecting socket health, pacing queue stalls (>20s), and conversational silence (>15s), with dedicated POST /api/wake-daemon/recover endpoint"
+      ]
+    },
+    "Modular Persona Management Tabs with Unified Raw Output": {
+      "status": "enabled",
+      "description": "Streamlines persona configuration in PersonaPortal.jsx by eliminating overlapping fields and organizing persona setup into dedicated functional tabs (Profile & Voice, Accent & Dialect, Rhythm & Vocabulary, Conversation & Style, Alerts & Reports, House Rules, Test Bench), ending with a live unified raw output tab displaying the fully assembled Markdown and YAML file across all sections for Yorkshire Ims and custom personas.",
+      "subFeatures": [
+        "Profile & Voice tab: Persona name, description, Gemini Live voice model picker (30 voices), speech language code, voice test line, and interactive Section 1 (Identity) card editor",
+        "Accent & Dialect tab: Regional accent and dialect short tags, Live model strict phonetic accentRule prompt, judge criteria, and Section 2 (Voice & Accent) card editor",
+        "Rhythm & Vocabulary tab: Dialect words pool, thinking sounds, tag endings, and Section 3 (Spoken Rhythm) pacing card editor",
+        "Conversation & Style tab: Character traits, clarification phrase, Section 4 (Conversation Style), Section 5 (Examples), and extra sections card editor",
+        "Alerts & Reports tab: Day report sign-offs, weather phrasing mode, and doorbell ding/motion announcements",
+        "House Rules tab: Global cross-persona shared rules (_house_rules.md) editor with history restoration",
+        "Test Bench tab: Scenario evaluations against automated judge model with audio playback",
+        "Raw Output tab: Live, unified raw output across all sections and settings with real-time preview (POST /api/personas/preview-raw), line/character metrics, clipboard copying, and direct raw editing"
+      ]
     }
   }
 }

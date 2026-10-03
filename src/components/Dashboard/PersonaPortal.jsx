@@ -1,545 +1,1319 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Drama, Save, RotateCw, Undo2, ArrowUp, ArrowDown, Trash2, Copy, Plus,
-  ChevronDown, ChevronRight, FileText, History, ListTree, Code2, ChevronsUpDown, Sparkles
+  ChevronDown, ChevronRight, FileText, History, ListTree, Code2, ChevronsUpDown, Sparkles,
+  Check, X, Play, Mic, FlaskConical, Users, BookOpen, SlidersHorizontal, MessageSquare, Bell, Clipboard
 } from 'lucide-react';
 import PortalShell from './PortalShell';
-import { parsePersona, assemblePersona, newId, SECTION_TEMPLATES } from '../../utils/personaSections';
+import { parsePersona, assemblePersona, newId } from '../../utils/personaSections';
 
-// ims_persona_rules.md as editable sections. The file is always what gets
-// saved: the sections are reassembled (renumbered by position) into it, and
-// the previous version is kept in the history list on every save.
-const normalise = (md) => assemblePersona(parsePersona(md));
+// Strip YAML frontmatter
+const stripHeader = (raw) => String(raw || '').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
 
-export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
-  const isDark = theme === 'dark';
+// Helper fetch wrapper
+const api = async (url, opts = {}) => {
+  const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok || d.success === false) throw new Error(d.error || `Request failed (${res.status})`);
+  return d;
+};
 
-  const [model, setModel] = useState({ intro: '', sections: [] });
-  const [rawContent, setRawContent] = useState('');
-  const [mode, setMode] = useState('sections');       // 'sections' | 'raw'
-  const [savedContent, setSavedContent] = useState('');
-  const [filePath, setFilePath] = useState('');
-  const [expanded, setExpanded] = useState(() => new Set());
-  const [showTemplates, setShowTemplates] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
-  const [history, setHistory] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [notification, setNotification] = useState(null);
+const LANGS = [
+  ['en-GB', 'English (UK)'],
+  ['en-US', 'English (US)'],
+  ['en-AU', 'English (Australia)'],
+  ['en-IN', 'English (India)']
+];
 
-  const showToast = useCallback((msg, type = 'success') => {
-    setNotification({ msg, type });
-    setTimeout(() => setNotification((prev) => (prev?.msg === msg ? null : prev)), 4000);
-  }, []);
-
-  const currentContent = mode === 'sections' ? assemblePersona(model) : rawContent;
-  const isDirty = useMemo(() => normalise(currentContent) !== normalise(savedContent), [currentContent, savedContent]);
-
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const res = await fetch('/api/persona-rules');
-      const d = await res.json();
-      if (!res.ok || !d.success) throw new Error(d.error || 'Failed to load persona rules.');
-      setSavedContent(d.content || '');
-      setRawContent(d.content || '');
-      setModel(parsePersona(d.content || ''));
-      setFilePath(d.path || '');
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [showToast]);
-
-  useEffect(() => { load(); }, [load]);
-
-  useEffect(() => {
-    const handler = (e) => { if (isDirty) { e.preventDefault(); e.returnValue = ''; } };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [isDirty]);
-
-  const save = useCallback(async () => {
-    const content = mode === 'sections' ? assemblePersona(model) : rawContent;
-    if (!content.trim()) { showToast('Persona rules cannot be empty.', 'error'); return; }
-    setIsSaving(true);
-    try {
-      const res = await fetch('/api/persona-rules', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content })
-      });
-      const d = await res.json();
-      if (!res.ok || !d.success) throw new Error(d.error || 'Failed to save.');
-      setSavedContent(content);
-      setRawContent(content);
-      showToast("Saved - Ims uses this from the next conversation. The previous version is in History.");
-    } catch (err) {
-      showToast(err.message, 'error');
-    } finally {
-      setIsSaving(false);
-    }
-  }, [mode, model, rawContent, showToast]);
-
-  useEffect(() => {
-    const onKey = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); if (isDirty && !isSaving) save(); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isDirty, isSaving, save]);
-
-  const revert = () => {
-    if (!isDirty || !window.confirm('Discard unsaved changes and go back to the last saved version?')) return;
-    setRawContent(savedContent);
-    setModel(parsePersona(savedContent));
-  };
-
-  const switchMode = (next) => {
-    if (next === mode) return;
-    if (next === 'raw') setRawContent(assemblePersona(model));
-    else setModel(parsePersona(rawContent));
-    setMode(next);
-  };
-
-  // --- section operations ---
-  const updateSection = (id, patch) => setModel((m) => ({ ...m, sections: m.sections.map((s) => (s.id === id ? { ...s, ...patch } : s)) }));
-  const move = (i, delta) => setModel((m) => {
-    const j = i + delta;
-    if (j < 0 || j >= m.sections.length) return m;
-    const next = [...m.sections];
-    [next[i], next[j]] = [next[j], next[i]];
-    return { ...m, sections: next };
-  });
-  const remove = (i) => {
-    const s = model.sections[i];
-    if (!window.confirm(`Remove the section "${s.title}"? (It stays in History once you save.)`)) return;
-    setModel((m) => ({ ...m, sections: m.sections.filter((_, k) => k !== i) }));
-  };
-  const duplicate = (i) => setModel((m) => {
-    const copy = {
-      ...m.sections[i],
-      id: newId(),
-      title: `${m.sections[i].title} (copy)`,
-      items: (m.sections[i].items || []).map((it) => ({ ...it, id: newId() }))
-    };
-    const next = [...m.sections];
-    next.splice(i + 1, 0, copy);
-    return { ...m, sections: next };
-  });
-  const addSection = (tpl) => {
-    const s = {
-      id: newId(),
-      title: tpl.title,
-      opening: tpl.opening || '',
-      items: Array.isArray(tpl.items) ? tpl.items.map((it) => ({ ...it, id: newId() })) : []
-    };
-    setModel((m) => ({ ...m, sections: [...m.sections, s] }));
-    setExpanded((e) => new Set(e).add(s.id));
-    setShowTemplates(false);
-    setTimeout(() => window.scrollTo?.(0, document.body.scrollHeight), 50);
-  };
-  const toggle = (id) => setExpanded((e) => { const n = new Set(e); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const allOpen = model.sections.length > 0 && model.sections.every((s) => expanded.has(s.id));
-  const toggleAll = () => setExpanded(allOpen ? new Set() : new Set(model.sections.map((s) => s.id)));
-
-  // --- item operations within a section ---
-  const addItem = (sectionId) => {
-    setModel((m) => ({
-      ...m,
-      sections: m.sections.map((s) => {
-        if (s.id !== sectionId) return s;
-        const currentItems = Array.isArray(s.items) ? s.items : [];
-        return {
-          ...s,
-          items: [...currentItems, { id: newId(), title: '', description: '' }]
-        };
-      })
-    }));
-  };
-
-  const updateItem = (sectionId, itemId, patch) => {
-    setModel((m) => ({
-      ...m,
-      sections: m.sections.map((s) => {
-        if (s.id !== sectionId) return s;
-        return {
-          ...s,
-          items: (s.items || []).map((it) => (it.id === itemId ? { ...it, ...patch } : it))
-        };
-      })
-    }));
-  };
-
-  const removeItem = (sectionId, itemId) => {
-    setModel((m) => ({
-      ...m,
-      sections: m.sections.map((s) => {
-        if (s.id !== sectionId) return s;
-        return {
-          ...s,
-          items: (s.items || []).filter((it) => it.id !== itemId)
-        };
-      })
-    }));
-  };
-
-  const moveItem = (sectionId, itemIdx, delta) => {
-    setModel((m) => ({
-      ...m,
-      sections: m.sections.map((s) => {
-        if (s.id !== sectionId) return s;
-        const items = [...(s.items || [])];
-        const targetIdx = itemIdx + delta;
-        if (targetIdx < 0 || targetIdx >= items.length) return s;
-        [items[itemIdx], items[targetIdx]] = [items[targetIdx], items[itemIdx]];
-        return { ...s, items };
-      })
-    }));
-  };
-
-  const duplicateItem = (sectionId, itemIdx) => {
-    setModel((m) => ({
-      ...m,
-      sections: m.sections.map((s) => {
-        if (s.id !== sectionId) return s;
-        const items = [...(s.items || [])];
-        const orig = items[itemIdx];
-        const copy = { ...orig, id: newId(), title: orig.title ? `${orig.title} (copy)` : '' };
-        items.splice(itemIdx + 1, 0, copy);
-        return { ...s, items };
-      })
-    }));
-  };
-
-  // --- history ---
-  const openHistory = async () => {
-    setShowHistory(true);
-    try {
-      const d = await (await fetch('/api/persona-rules/history')).json();
-      if (d.success) setHistory(d.versions);
-    } catch (err) { showToast(err.message, 'error'); }
-  };
-  const loadVersion = async (v) => {
-    if (isDirty && !window.confirm('Replace your unsaved edits with this earlier version?')) return;
-    try {
-      const d = await (await fetch(`/api/persona-rules/history/${v.id}`)).json();
-      if (!d.success) throw new Error(d.error || 'Could not load that version.');
-      setRawContent(d.content);
-      setModel(parsePersona(d.content));
-      setShowHistory(false);
-      showToast('Loaded into the editor - press Save to make it live.');
-    } catch (err) { showToast(err.message, 'error'); }
-  };
-
-  const panel = `rounded-2xl border ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/70 border-[#2E2B27]/10 shadow-sm'}`;
-  const field = `w-full px-3 py-2 rounded-lg text-xs outline-none border ${isDark ? 'bg-slate-950/60 border-white/10 text-slate-100' : 'bg-white border-[#2E2B27]/10 text-slate-900'}`;
-  const ghost = `px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all active:scale-95 ${isDark ? 'bg-white/5 hover:bg-white/10 text-slate-300' : 'bg-black/5 hover:bg-black/10 text-slate-700'}`;
-  const iconBtn = `p-1.5 rounded-lg disabled:opacity-30 ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`;
+// ---------------------------------------------------------------------------------------------------------
+// SectionCard: Visual card for an individual persona markdown section (Items + Title + Opening text)
+// ---------------------------------------------------------------------------------------------------------
+function SectionCard({
+  section,
+  index,
+  isDark,
+  sub,
+  panel,
+  field,
+  iconBtn,
+  ghost,
+  onUpdateSection,
+  onAddItem,
+  onUpdateItem,
+  onRemoveItem,
+  onMoveItem,
+  onDuplicateItem
+}) {
+  const [open, setOpen] = useState(true);
+  const itemCount = section.items?.length || 0;
 
   return (
-    <PortalShell title="IMS Persona Editor" subtitle="/ims/persona • ims_persona_rules.md"
-      icon={Drama} gradient="from-purple-500 to-fuchsia-600" glow="rgba(192,38,211,0.3)"
-      isDark={isDark} onThemeToggle={onThemeToggle} setCurrentPath={setCurrentPath} notification={notification} maxWidth="max-w-5xl">
-
-      <div className={`p-3 rounded-xl border flex items-start gap-3 text-xs ${isDark ? 'bg-slate-900/40 border-white/5 text-slate-400' : 'bg-white/70 border-[#2E2B27]/10 text-slate-600'}`}>
-        <FileText size={14} className="shrink-0 mt-0.5 opacity-70" />
-        <span>
-          This document defines Ims's fixed dialect, identity and tool-usage rules - the personality sliders separately control tone within it.
-          Each card below is one section of <code>ims_persona_rules.md</code>: edit the opening context, configure separate <strong>**title**</strong> items and descriptions, add new rules, and reorder them. The file is rebuilt and renumbered cleanly when you save.
+    <div className={panel}>
+      <div className="p-3 flex items-center gap-2">
+        <button onClick={() => setOpen(!open)} className={iconBtn}>
+          {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        </button>
+        <span className="w-7 h-7 rounded-lg bg-purple-600 text-white text-xs font-black flex items-center justify-center shrink-0">
+          {index + 1}
+        </span>
+        <input
+          className={`${field} font-bold flex-1`}
+          value={section.title || ''}
+          placeholder="Section Title"
+          onChange={(e) => onUpdateSection({ title: e.target.value })}
+        />
+        <span className={`hidden sm:inline text-[11px] font-semibold shrink-0 ${sub}`}>
+          {itemCount} {itemCount === 1 ? 'item' : 'items'}
         </span>
       </div>
 
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className={`flex rounded-xl overflow-hidden border ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
-          {[['sections', 'Sections', ListTree], ['raw', 'Raw markdown', Code2]].map(([key, text, Icon]) => (
-            <button key={key} onClick={() => switchMode(key)}
-              className={`px-3 py-2 text-xs font-bold flex items-center gap-2 ${mode === key ? 'bg-gradient-to-r from-purple-500 to-fuchsia-600 text-white' : isDark ? 'text-slate-300 hover:bg-white/5' : 'text-slate-700 hover:bg-black/5'}`}>
-              <Icon size={13} />{text}
-            </button>
-          ))}
-        </div>
-        {mode === 'sections' && (
-          <>
-            <button onClick={toggleAll} className={ghost}><ChevronsUpDown size={13} />{allOpen ? 'Collapse all' : 'Expand all'}</button>
-            <div className="relative">
-              <button onClick={() => setShowTemplates(!showTemplates)} className={ghost}><Plus size={13} />Add section</button>
-              {showTemplates && (
-                <div className={`absolute z-30 mt-2 w-64 rounded-xl border shadow-2xl p-1 ${isDark ? 'bg-slate-900 border-white/10' : 'bg-white border-[#2E2B27]/15'}`}>
-                  {SECTION_TEMPLATES.map((t) => (
-                    <button key={t.label} onClick={() => addSection(t)} className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}>{t.label}</button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </>
-        )}
-        <button onClick={openHistory} className={ghost}><History size={13} />History</button>
-        <div className="ml-auto flex items-center gap-2">
-          {isDirty && <span className="px-2 py-1 rounded-full text-[10px] font-black uppercase bg-amber-500/15 text-amber-400 border border-amber-500/25">Unsaved</span>}
-          {isDirty && <button onClick={revert} className={ghost}><Undo2 size={13} />Revert</button>}
-          <button onClick={save} disabled={!isDirty || isSaving}
-            className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-gradient-to-r from-purple-500 to-fuchsia-600 text-white shadow-[0_0_15px_rgba(192,38,211,0.25)] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
-            {isSaving ? <RotateCw size={14} className="animate-spin" /> : <Save size={14} />}{isSaving ? 'Saving...' : 'Save'}
-          </button>
-        </div>
-      </div>
-
-      {isLoading ? (
-        <div className="py-20 flex justify-center"><RotateCw size={24} className="text-purple-400 animate-spin" /></div>
-      ) : mode === 'raw' ? (
-        <div className={`${panel} overflow-hidden flex flex-col`}>
-          <textarea value={rawContent} onChange={(e) => setRawContent(e.target.value)} spellCheck={false}
-            className={`w-full min-h-[65vh] p-5 text-xs font-mono leading-relaxed outline-none resize-y bg-transparent ${isDark ? 'text-slate-100' : 'text-slate-900'}`} />
-          <div className="px-5 py-2.5 border-t border-white/5 flex justify-between text-[10px] font-semibold text-slate-500">
-            <span>{rawContent.split('\n').length} lines &middot; {rawContent.length} characters</span>
-            <span className="font-mono opacity-60 truncate max-w-[50%]">{filePath}</span>
-          </div>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {/* Top Document Title & Intro */}
-          <div className={`${panel} p-4`}>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[11px] font-black uppercase tracking-wider opacity-70 flex items-center gap-1.5">
-                <FileText size={12} />
-                <span>Document Title &amp; Introduction</span>
-              </label>
-              <span className="text-[10px] text-slate-500">Header lines of ims_persona_rules.md</span>
-            </div>
+      {open ? (
+        <div className="px-4 pb-4 space-y-3">
+          <div>
+            <label className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 mb-1 ${sub}`}>
+              <Sparkles size={12} />Opening instructions / summary
+            </label>
             <textarea
-              className={`${field} font-mono leading-relaxed resize-y`}
-              style={{ minHeight: '90px' }}
-              rows={Math.max(3, (model.intro || '').split('\n').length + 1)}
-              value={model.intro}
-              onChange={(e) => setModel({ ...model, intro: e.target.value })}
+              className={`${field} leading-relaxed resize-y`}
+              rows={Math.max(2, (section.opening || '').split('\n').length + 1)}
+              value={section.opening || ''}
+              placeholder="Optional overview or guidelines for this section"
+              onChange={(e) => onUpdateSection({ opening: e.target.value })}
               spellCheck={false}
             />
           </div>
 
-          {model.sections.map((s, i) => {
-            const open = expanded.has(s.id);
-            const itemCount = s.items?.length || 0;
-            return (
-              <div key={s.id} className={panel}>
-                <div className="p-3 flex items-center gap-2">
-                  <button onClick={() => toggle(s.id)} className={iconBtn} title={open ? 'Collapse section' : 'Expand section'}>
-                    {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                  </button>
-                  <span className="w-7 h-7 rounded-lg bg-purple-500/15 text-purple-400 text-xs font-black flex items-center justify-center shrink-0">{i + 1}</span>
-                  <input className={`${field} font-bold flex-1`} value={s.title} onChange={(e) => updateSection(s.id, { title: e.target.value })} />
-                  <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] text-slate-400 shrink-0 px-2 py-0.5 rounded-md bg-white/5 border border-white/5">
-                    <span>{itemCount} {itemCount === 1 ? 'item' : 'items'}</span>
-                    {s.opening && <span className="text-purple-400 font-semibold">• intro</span>}
-                  </span>
-                  <button onClick={() => move(i, -1)} disabled={i === 0} className={iconBtn} title="Move up"><ArrowUp size={14} /></button>
-                  <button onClick={() => move(i, 1)} disabled={i === model.sections.length - 1} className={iconBtn} title="Move down"><ArrowDown size={14} /></button>
-                  <button onClick={() => duplicate(i)} className={iconBtn} title="Duplicate section"><Copy size={14} /></button>
-                  <button onClick={() => remove(i)} className={`${iconBtn} text-red-400`} title="Remove section"><Trash2 size={14} /></button>
+          {(section.items || []).map((it, idx) => (
+            <div key={it.id} className={`p-3 rounded-xl border ${isDark ? 'bg-slate-950/50 border-white/10' : 'bg-white border-[#2E2B27]/15'}`}>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-5 h-5 rounded-md bg-purple-600 text-white text-[10px] font-black flex items-center justify-center shrink-0">
+                  {idx + 1}
+                </span>
+                <input
+                  className={`${field} font-bold flex-1`}
+                  placeholder="Key rule / topic (e.g. How Ims sounds)"
+                  value={it.title || ''}
+                  onChange={(e) => onUpdateItem(it.id, { title: e.target.value })}
+                />
+                <button onClick={() => onMoveItem(idx, -1)} disabled={idx === 0} className={iconBtn} title="Move up">
+                  <ArrowUp size={13} />
+                </button>
+                <button onClick={() => onMoveItem(idx, 1)} disabled={idx === (section.items?.length || 0) - 1} className={iconBtn} title="Move down">
+                  <ArrowDown size={13} />
+                </button>
+                <button onClick={() => onDuplicateItem(idx)} className={iconBtn} title="Duplicate rule">
+                  <Copy size={13} />
+                </button>
+                <button onClick={() => onRemoveItem(it.id)} className={`${iconBtn} text-red-500`} title="Remove rule">
+                  <Trash2 size={13} />
+                </button>
+              </div>
+              <textarea
+                className={`${field} leading-relaxed resize-y`}
+                rows={Math.max(2, (it.description || '').split('\n').length)}
+                placeholder="What this specific rule or guideline instructs"
+                value={it.description || ''}
+                onChange={(e) => onUpdateItem(it.id, { description: e.target.value })}
+                spellCheck={false}
+              />
+            </div>
+          ))}
+
+          <button
+            onClick={onAddItem}
+            className={`w-full py-2 rounded-xl border border-dashed flex items-center justify-center gap-2 text-xs font-bold transition-all ${isDark ? 'border-purple-400/40 text-purple-200 hover:bg-purple-950/20' : 'border-purple-500/50 text-purple-800 hover:bg-purple-50'}`}
+          >
+            <Plus size={14} />Add rule item
+          </button>
+        </div>
+      ) : (
+        <div className={`px-14 pb-3 -mt-1 text-[11px] truncate ${sub}`}>
+          {section.opening || (section.items?.[0] ? `${section.items[0].title} ${section.items[0].description}` : 'Empty section')}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// PersonaPortal Main Component
+// ---------------------------------------------------------------------------------------------------------
+export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
+  const isDark = theme === 'dark';
+  const [data, setData] = useState(null);               // { personas, activeId, voices, scenarios }
+  const [selected, setSelected] = useState(null);
+  const [persona, setPersona] = useState(null);         // active selected persona object from server
+  const [meta, setMeta] = useState(null);               // frontmatter fields
+  const [bodyModel, setBodyModel] = useState({ intro: '', sections: [] }); // parsed body sections
+  const [rawFile, setRawFile] = useState('');           // raw file text
+  const [savedRaw, setSavedRaw] = useState('');         // saved checkpoint to detect dirty state
+  const [isDirty, setIsDirty] = useState(false);
+  const [houseRaw, setHouseRaw] = useState('');         // house rules text
+  const [houseSavedRaw, setHouseSavedRaw] = useState('');
+  const [isHouseDirty, setIsHouseDirty] = useState(false);
+  const [tab, setTab] = useState('profile');
+  const [notification, setNotification] = useState(null);
+  const [busy, setBusy] = useState('');
+  const [tests, setTests] = useState(null);
+  const [picked, setPicked] = useState(() => new Set());
+  const [history, setHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newPersonaName, setNewPersonaName] = useState('');
+  const [cloneFromId, setCloneFromId] = useState('');
+  const audioRef = useRef(null);
+
+  const showToast = useCallback((msg, type = 'success') => {
+    setNotification({ msg, type });
+    setTimeout(() => setNotification((prev) => (prev?.msg === msg ? null : prev)), 5000);
+  }, []);
+
+  // Styling tokens
+  const panel = `rounded-2xl border ${isDark ? 'bg-slate-900/40 border-white/10' : 'bg-white/80 border-[#2E2B27]/15 shadow-sm'}`;
+  const field = `w-full px-3 py-2 rounded-lg text-xs outline-none border ${isDark ? 'bg-slate-950/60 border-white/10 text-slate-100' : 'bg-white border-[#2E2B27]/15 text-slate-900'}`;
+  const ghost = `px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all active:scale-95 disabled:opacity-40 ${isDark ? 'bg-white/5 hover:bg-white/10 text-slate-200' : 'bg-black/5 hover:bg-black/10 text-slate-800'}`;
+  const primary = 'px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-gradient-to-r from-purple-500 to-fuchsia-600 text-white active:scale-95 disabled:opacity-40 cursor-pointer';
+  const strong = isDark ? 'text-slate-50' : 'text-slate-900';
+  const sub = isDark ? 'text-slate-300' : 'text-slate-700';
+  const label = `text-[11px] font-black uppercase tracking-wider mb-1 ${sub}`;
+  const iconBtn = `p-1.5 rounded-lg disabled:opacity-30 transition-colors ${isDark ? 'hover:bg-white/10 text-slate-300' : 'hover:bg-black/5 text-slate-700'}`;
+
+  // Load persona list
+  const loadList = useCallback(async (keep) => {
+    const d = await api('/api/personas');
+    setData(d);
+    setSelected((cur) => keep || cur || d.activeId);
+    return d;
+  }, []);
+  useEffect(() => { loadList().catch((e) => showToast(e.message, 'error')); }, [loadList, showToast]);
+
+  // Load selected persona
+  const loadPersona = useCallback(async (id) => {
+    if (!id) return;
+    const d = await api(`/api/personas/${id}`);
+    setPersona(d.persona);
+    const { body, raw, id: _id, updatedAt, ...m } = d.persona;
+    setMeta(m);
+    setBodyModel(parsePersona(body));
+    setRawFile(raw);
+    setSavedRaw(raw);
+    setIsDirty(false);
+    setTests(d.tests ? { results: d.tests.results, at: d.tests.at } : null);
+  }, []);
+  useEffect(() => { loadPersona(selected).catch((e) => showToast(e.message, 'error')); }, [selected, loadPersona, showToast]);
+
+  // Load house rules
+  const loadHouseRules = useCallback(async () => {
+    try {
+      const d = await api('/api/personas/house');
+      setHouseRaw(d.raw || '');
+      setHouseSavedRaw(d.raw || '');
+      setIsHouseDirty(false);
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
+  }, [showToast]);
+  useEffect(() => { loadHouseRules(); }, [loadHouseRules]);
+
+  // Sync dirty flag on house rules
+  useEffect(() => {
+    setIsHouseDirty(houseRaw.trim() !== houseSavedRaw.trim());
+  }, [houseRaw, houseSavedRaw]);
+
+  // Warn before unload on unsaved changes
+  useEffect(() => {
+    const handler = (e) => {
+      if (isDirty || isHouseDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty, isHouseDirty]);
+
+  // Meta helper
+  const setM = (k, v) => {
+    setMeta((prev) => ({ ...prev, [k]: v }));
+    setIsDirty(true);
+  };
+
+  // Section manipulation helpers
+  const updateSection = (idx, patch) => {
+    setBodyModel((prev) => {
+      const nextSections = [...prev.sections];
+      if (nextSections[idx]) {
+        nextSections[idx] = { ...nextSections[idx], ...patch };
+      }
+      return { ...prev, sections: nextSections };
+    });
+    setIsDirty(true);
+  };
+
+  const addItemToSection = (sectionIdx) => {
+    setBodyModel((prev) => {
+      const nextSections = [...prev.sections];
+      const target = nextSections[sectionIdx];
+      if (target) {
+        const nextItems = [...(target.items || []), { id: newId(), title: '', description: '' }];
+        nextSections[sectionIdx] = { ...target, items: nextItems };
+      }
+      return { ...prev, sections: nextSections };
+    });
+    setIsDirty(true);
+  };
+
+  const updateItemInSection = (sectionIdx, itemId, patch) => {
+    setBodyModel((prev) => {
+      const nextSections = [...prev.sections];
+      const target = nextSections[sectionIdx];
+      if (target) {
+        const nextItems = (target.items || []).map((it) => (it.id === itemId ? { ...it, ...patch } : it));
+        nextSections[sectionIdx] = { ...target, items: nextItems };
+      }
+      return { ...prev, sections: nextSections };
+    });
+    setIsDirty(true);
+  };
+
+  const removeItemFromSection = (sectionIdx, itemId) => {
+    setBodyModel((prev) => {
+      const nextSections = [...prev.sections];
+      const target = nextSections[sectionIdx];
+      if (target) {
+        const nextItems = (target.items || []).filter((it) => it.id !== itemId);
+        nextSections[sectionIdx] = { ...target, items: nextItems };
+      }
+      return { ...prev, sections: nextSections };
+    });
+    setIsDirty(true);
+  };
+
+  const moveItemInSection = (sectionIdx, itemIdx, delta) => {
+    setBodyModel((prev) => {
+      const nextSections = [...prev.sections];
+      const target = nextSections[sectionIdx];
+      if (target) {
+        const items = [...(target.items || [])];
+        const nextIdx = itemIdx + delta;
+        if (nextIdx < 0 || nextIdx >= items.length) return prev;
+        [items[itemIdx], items[nextIdx]] = [items[nextIdx], items[itemIdx]];
+        nextSections[sectionIdx] = { ...target, items };
+      }
+      return { ...prev, sections: nextSections };
+    });
+    setIsDirty(true);
+  };
+
+  const duplicateItemInSection = (sectionIdx, itemIdx) => {
+    setBodyModel((prev) => {
+      const nextSections = [...prev.sections];
+      const target = nextSections[sectionIdx];
+      if (target) {
+        const items = [...(target.items || [])];
+        const orig = items[itemIdx];
+        items.splice(itemIdx + 1, 0, { ...orig, id: newId(), title: orig.title ? `${orig.title} (copy)` : '' });
+        nextSections[sectionIdx] = { ...target, items };
+      }
+      return { ...prev, sections: nextSections };
+    });
+    setIsDirty(true);
+  };
+
+  // Preview raw generation on switching to raw tab
+  useEffect(() => {
+    if (tab === 'raw' && isDirty && meta) {
+      const currentBody = assemblePersona(bodyModel);
+      api('/api/personas/preview-raw', { method: 'POST', body: JSON.stringify({ meta, body: currentBody }) })
+        .then((res) => { if (res.raw) setRawFile(res.raw); })
+        .catch(() => {});
+    }
+  }, [tab, isDirty, meta, bodyModel]);
+
+  // Operations
+  const run = async (key, fn) => {
+    setBusy(key);
+    try { await fn(); } catch (e) { showToast(e.message, 'error'); }
+    setBusy('');
+  };
+
+  // Save changes
+  const saveAll = () => run('save', async () => {
+    if (tab === 'house') {
+      await api('/api/personas/house', { method: 'PUT', body: JSON.stringify({ raw: houseRaw }) });
+      setHouseSavedRaw(houseRaw);
+      setIsHouseDirty(false);
+      showToast('Saved house rules - applies to all personas from the next turn.');
+      return;
+    }
+
+    if (tab === 'raw') {
+      await api(`/api/personas/${selected}/raw`, { method: 'PUT', body: JSON.stringify({ raw: rawFile }) });
+      await loadPersona(selected);
+      await loadList(selected);
+      showToast(`Saved ${persona.name} from raw output.`);
+      return;
+    }
+
+    const assembledBody = assemblePersona(bodyModel);
+    const d = await api(`/api/personas/${selected}`, {
+      method: 'PUT',
+      body: JSON.stringify({ meta, body: assembledBody })
+    });
+    await loadPersona(selected);
+    await loadList(selected);
+    showToast(`Saved changes to "${d.persona.name}".`);
+  });
+
+  // Revert changes
+  const revert = () => {
+    if (tab === 'house') {
+      setHouseRaw(houseSavedRaw);
+      setIsHouseDirty(false);
+      showToast('Reverted house rules to last saved version.');
+      return;
+    }
+    if (!window.confirm('Discard unsaved edits and reload from disk?')) return;
+    loadPersona(selected);
+    showToast('Reverted to last saved version.');
+  };
+
+  // Keyboard shortcut Ctrl+S
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if ((isDirty || isHouseDirty) && !busy) saveAll();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isDirty, isHouseDirty, busy]);
+
+  // Activate persona
+  const activate = () => run('activate', async () => {
+    if (!window.confirm(`Switch Ims to "${persona.name}" everywhere - desk terminal, web, spoken alerts, day report, weather, doorbell and reminders?`)) return;
+    await api(`/api/personas/${selected}/activate`, { method: 'POST' });
+    await loadList(selected);
+    showToast(`Ims is now "${persona.name}". Every touchpoint is updated.`);
+  });
+
+  // Create or clone persona
+  const handleCreatePersona = () => run('create', async () => {
+    const name = newPersonaName.trim();
+    if (!name) { showToast('Please enter a name for the persona.', 'error'); return; }
+    const d = await api('/api/personas', { method: 'POST', body: JSON.stringify({ name, fromId: cloneFromId || null }) });
+    setShowCreateModal(false);
+    setNewPersonaName('');
+    setCloneFromId('');
+    await loadList(d.persona.id);
+    setSelected(d.persona.id);
+    setTab('profile');
+    showToast(`Created persona "${d.persona.name}". Edit its settings and make it active when ready.`);
+  });
+
+  // Delete persona
+  const remove = () => run('delete', async () => {
+    if (!window.confirm(`Delete persona "${persona.name}"? (A copy is preserved in history).`)) return;
+    await api(`/api/personas/${selected}`, { method: 'DELETE' });
+    const d = await loadList(null);
+    setSelected(d.activeId);
+    showToast('Deleted persona.');
+  });
+
+  // Version History
+  const openHistory = async () => {
+    setShowHistory(true);
+    try {
+      const url = tab === 'house' ? '/api/personas/house' : `/api/personas/${selected}`;
+      const d = await api(url);
+      setHistory(d.history || []);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const loadVersion = async (v) => {
+    if (!window.confirm('Load this earlier version into the editor? Press Save afterwards to apply it.')) return;
+    try {
+      const url = tab === 'house' ? `/api/personas/house/history/${v.id}` : `/api/personas/${selected}/history/${v.id}`;
+      const d = await api(url);
+      if (tab === 'house') {
+        setHouseRaw(d.raw);
+      } else {
+        const { body, raw, id: _id, updatedAt, ...m } = parsePersona(d.raw);
+        setRawFile(d.raw);
+        setSavedRaw(d.raw);
+        setMeta(m);
+        setBodyModel(parsePersona(body));
+        setIsDirty(true);
+      }
+      setShowHistory(false);
+      showToast('Loaded earlier version into editor. Click Save to make it live.');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // Test bench execution
+  const SILENCE = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
+  const play = (url) => {
+    if (!audioRef.current) audioRef.current = new Audio();
+    const a = audioRef.current;
+    a.pause();
+    a.src = url;
+    a.play().catch(() => showToast('Press Play to hear it.', 'error'));
+  };
+
+  const runTests = (ids) => run('test', async () => {
+    if (!audioRef.current) audioRef.current = new Audio();
+    audioRef.current.src = SILENCE;
+    audioRef.current.play().catch(() => {});
+    const d = await api(`/api/personas/${selected}/test`, { method: 'POST', body: JSON.stringify({ scenarios: ids }) });
+    setTests((prev) => {
+      const byId = Object.fromEntries((prev?.results || []).map((r) => [r.id, r]));
+      for (const r of d.results) byId[r.id] = { ...r, at: new Date().toISOString() };
+      return { results: (data.scenarios || []).map((s) => byId[s.id]).filter(Boolean), at: new Date().toISOString() };
+    });
+    const passed = d.results.filter((r) => r.ok).length;
+    showToast(`${passed} of ${d.results.length} tests passed.`, passed === d.results.length ? 'success' : 'error');
+  });
+
+  const isActive = data && selected === data.activeId;
+  const currentDirty = tab === 'house' ? isHouseDirty : isDirty;
+
+  // Tabs definition
+  const TABS = [
+    ['profile', 'Profile & Voice', SlidersHorizontal, 'Persona identity, name, Gemini voice model, and core concept'],
+    ['accent', 'Accent & Dialect', Mic, 'Regional accent labels, pronunciation rules, and judge instructions'],
+    ['rhythm', 'Rhythm & Vocabulary', Sparkles, 'Thinking sounds, dialect words, tag endings, and speech pacing'],
+    ['conversation', 'Conversation & Style', MessageSquare, 'Discussion guidelines, conversation habits, and dialogue examples'],
+    ['alerts', 'Alerts & Reports', Bell, 'Day report sign-offs, weather wording, and doorbell announcements'],
+    ['house', 'House Rules', Users, 'Global shared rules across all personas (safety, jokes, clarifying)'],
+    ['test', 'Test Bench', FlaskConical, 'Live scenario tests with voice judge evaluation'],
+    ['raw', 'Raw Output', Code2, 'Complete unified markup output across all sections and settings'],
+  ];
+
+  return (
+    <PortalShell
+      title="Ims Personas"
+      subtitle="/ims/persona • Who Ims is and how he speaks - modular sections, dialect pools, and unified raw output"
+      icon={Drama}
+      gradient="from-purple-500 to-fuchsia-600"
+      glow="rgba(192,38,211,0.3)"
+      isDark={isDark}
+      onThemeToggle={onThemeToggle}
+      setCurrentPath={setCurrentPath}
+      notification={notification}
+      maxWidth="max-w-5xl"
+    >
+      {/* Persona Bar */}
+      <div className={`${panel} p-4`}>
+        <div className="flex flex-wrap items-center gap-2">
+          {(data?.personas || []).map((p) => (
+            <button
+              key={p.id}
+              onClick={() => {
+                if ((isDirty || isHouseDirty) && !window.confirm('Switching personas will discard unsaved edits. Continue?')) return;
+                setSelected(p.id);
+              }}
+              className={`px-3 py-2 rounded-xl border text-left transition-all ${
+                selected === p.id
+                  ? 'border-purple-500 ring-2 ring-purple-500/40'
+                  : isDark
+                  ? 'border-white/10 hover:border-white/20'
+                  : 'border-[#2E2B27]/15 hover:border-black/20'
+              } ${isDark ? 'bg-slate-950/40' : 'bg-white'}`}
+            >
+              <div className={`text-xs font-black flex items-center gap-1.5 ${strong}`}>
+                {p.name}
+                {p.active && <span className="px-1.5 py-0.5 rounded bg-emerald-700 text-white text-[9px] uppercase">Active</span>}
+              </div>
+              <div className={`text-[11px] ${sub}`}>{p.accent} · voice {p.voice}</div>
+            </button>
+          ))}
+
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => {
+                setCloneFromId('');
+                setNewPersonaName('');
+                setShowCreateModal(true);
+              }}
+              disabled={!!busy}
+              className={`${ghost} text-purple-400 font-bold border border-purple-500/30`}
+            >
+              <Plus size={14} />New Persona
+            </button>
+            {persona && (
+              <button
+                onClick={() => {
+                  setCloneFromId(selected);
+                  setNewPersonaName(`${persona.name} (Copy)`);
+                  setShowCreateModal(true);
+                }}
+                disabled={!!busy}
+                className={ghost}
+              >
+                <Copy size={13} />Clone Persona
+              </button>
+            )}
+          </div>
+        </div>
+
+        {persona && (
+          <div className={`mt-3 pt-3 border-t flex flex-wrap items-center gap-2 ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
+            <div className="flex-1 min-w-[220px]">
+              <div className={`text-sm font-black ${strong}`}>{persona.name}</div>
+              <div className={`text-xs ${sub}`}>{persona.description || 'No description set'}</div>
+            </div>
+            {isActive ? (
+              <span className="px-3 py-2 rounded-xl text-xs font-black bg-emerald-700 text-white flex items-center gap-1.5">
+                <Check size={13} />Ims is actively using this persona
+              </span>
+            ) : (
+              <button onClick={activate} disabled={!!busy} className={primary}>
+                <Mic size={13} />Make Ims use this persona
+              </button>
+            )}
+            {!persona.isDefault && persona.id !== 'yorkshire' && !isActive && (
+              <button onClick={remove} disabled={!!busy} className={`${ghost} text-red-600`}>
+                <Trash2 size={13} />Delete
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Global Actions & Tabs Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-2 mt-1">
+        <div className="flex flex-wrap gap-1.5">
+          {TABS.map(([k, text, Icon]) => (
+            <button
+              key={k}
+              onClick={() => setTab(k)}
+              className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                tab === k
+                  ? 'bg-gradient-to-r from-purple-500 to-fuchsia-600 text-white shadow-md'
+                  : ghost
+              }`}
+            >
+              <Icon size={13} />
+              {text}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 ml-auto">
+          {currentDirty && (
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-amber-400 text-black tracking-wider">
+              Unsaved Changes
+            </span>
+          )}
+          {currentDirty && (
+            <button onClick={revert} className={ghost}>
+              <Undo2 size={13} />Revert
+            </button>
+          )}
+          <button onClick={openHistory} className={ghost} title="View version history">
+            <History size={13} />History
+          </button>
+          <button
+            onClick={saveAll}
+            disabled={!currentDirty || !!busy}
+            className={`${primary} disabled:opacity-40 disabled:cursor-not-allowed`}
+          >
+            {busy === 'save' ? <RotateCw size={14} className="animate-spin" /> : <Save size={14} />}
+            {busy === 'save' ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+
+      {!persona || !meta ? (
+        <div className="py-20 flex justify-center items-center gap-3">
+          <RotateCw size={24} className="text-purple-500 animate-spin" />
+          <span className={`text-xs ${sub}`}>Loading persona configuration...</span>
+        </div>
+      ) : (
+        <>
+          {/* ----------------------------------------------------------------------------------------- */}
+          {/* TAB 1: Profile & Voice                                                                    */}
+          {/* ----------------------------------------------------------------------------------------- */}
+          {tab === 'profile' && (
+            <div className="space-y-4">
+              <p className={`text-xs ${sub}`}>
+                Configure who Ims is, the Gemini Live voice model, speech language, and the core identity prompt.
+              </p>
+
+              <div className={`${panel} p-4 space-y-4`}>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className={label}>Persona Name</label>
+                    <input className={field} value={meta.name || ''} onChange={(e) => setM('name', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={label}>Description</label>
+                    <input className={field} value={meta.description || ''} onChange={(e) => setM('description', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={label}>Gemini Voice Model</label>
+                    <select className={field} value={meta.voice || 'Umbriel'} onChange={(e) => setM('voice', e.target.value)}>
+                      {(data?.voices || []).map((v) => (
+                        <option key={v.name} value={v.name}>{v.name} — {v.desc}</option>
+                      ))}
+                    </select>
+                    <p className={`text-[11px] mt-1 ${sub}`}>
+                      Voice model used for hardware Box-3 terminal, Web Live, and spoken audio synthesis.
+                    </p>
+                  </div>
+                  <div>
+                    <label className={label}>Speech Language Code</label>
+                    <select className={field} value={meta.languageCode || 'en-GB'} onChange={(e) => setM('languageCode', e.target.value)}>
+                      {LANGS.map(([c, n]) => (
+                        <option key={c} value={c}>{n}</option>
+                      ))}
+                    </select>
+                    <p className={`text-[11px] mt-1 ${sub}`}>Always English — tunes speech synthesis acoustic models to the region.</p>
+                  </div>
                 </div>
 
-                {open ? (
-                  <div className="px-4 pb-4 space-y-4">
-                    {/* Opening Sentence / Introductory Text Box */}
-                    <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-[#2E2B27]/10'}`}>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <label className="text-[11px] font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
-                          <Sparkles size={12} />
-                          <span>Opening Sentence / Section Context</span>
-                        </label>
-                        <span className="text-[10px] text-slate-500">
-                          Text displayed above the items • Empty if none
-                        </span>
-                      </div>
-                      <textarea
-                        className={`w-full px-3.5 py-2.5 rounded-xl text-xs leading-relaxed outline-none border resize-y transition-all ${
-                          isDark
-                            ? 'bg-slate-950/80 border-white/10 focus:border-purple-400 text-slate-100 placeholder-slate-600'
-                            : 'bg-white border-[#2E2B27]/15 focus:border-purple-600 text-slate-900 placeholder-slate-400'
-                        }`}
-                        rows={Math.max(3, (s.opening || '').split('\n').length + 1)}
-                        style={{ minHeight: '84px' }}
-                        value={s.opening || ''}
-                        placeholder="Enter opening sentence or introductory context for this section (e.g. The voice model's default accent is American. Yorkshire words are not enough...)"
-                        onChange={(e) => updateSection(s.id, { opening: e.target.value })}
-                        spellCheck={false}
-                      />
-                    </div>
+                <div>
+                  <label className={label}>Voice Sample Line</label>
+                  <input
+                    className={field}
+                    value={meta.testLine || ''}
+                    placeholder="Short line spoken when testing this voice"
+                    onChange={(e) => setM('testLine', e.target.value)}
+                  />
+                </div>
+              </div>
 
-                    {/* Section Items & Rules */}
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between pt-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
-                            Section Rules &amp; Items
-                          </span>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/15 text-purple-400 border border-purple-500/25">
-                            {itemCount} {itemCount === 1 ? 'item' : 'items'}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => addItem(s.id)}
-                          className="px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 transition-all active:scale-95 shadow-xs"
-                        >
-                          <Plus size={13} />
-                          <span>Add Item</span>
-                        </button>
-                      </div>
+              {/* Title & Introduction block */}
+              <div className={`${panel} p-4`}>
+                <label className={`text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 mb-1.5 ${sub}`}>
+                  <FileText size={12} />Persona Intro Header
+                </label>
+                <textarea
+                  className={`${field} font-mono leading-relaxed resize-y`}
+                  rows={Math.max(2, (bodyModel.intro || '').split('\n').length + 1)}
+                  value={bodyModel.intro || ''}
+                  onChange={(e) => {
+                    setBodyModel((prev) => ({ ...prev, intro: e.target.value }));
+                    setIsDirty(true);
+                  }}
+                  spellCheck={false}
+                />
+              </div>
 
-                      {(!s.items || s.items.length === 0) ? (
-                        <div className={`p-4 rounded-xl border border-dashed text-center text-xs ${
-                          isDark ? 'border-white/10 text-slate-500 bg-white/[0.02]' : 'border-[#2E2B27]/15 text-slate-500 bg-black/[0.01]'
-                        }`}>
-                          <span>No bullet items in this section yet. Click below or "Add Item" above to add one.</span>
-                        </div>
-                      ) : (
-                        <div className="space-y-2.5">
-                          {s.items.map((it, itemIdx) => {
-                            const itemLines = (it.description || '').split('\n').length;
-                            return (
-                              <div
-                                key={it.id}
-                                className={`p-3 rounded-xl border transition-all ${
-                                  isDark
-                                    ? 'bg-slate-950/50 border-white/10 hover:border-purple-500/30'
-                                    : 'bg-white border-[#2E2B27]/10 hover:border-purple-500/40 shadow-xs'
+              {/* Section 1: Identity */}
+              {bodyModel.sections[0] && (
+                <SectionCard
+                  section={bodyModel.sections[0]}
+                  index={0}
+                  isDark={isDark}
+                  sub={sub}
+                  panel={panel}
+                  field={field}
+                  iconBtn={iconBtn}
+                  ghost={ghost}
+                  onUpdateSection={(patch) => updateSection(0, patch)}
+                  onAddItem={() => addItemToSection(0)}
+                  onUpdateItem={(iid, patch) => updateItemInSection(0, iid, patch)}
+                  onRemoveItem={(iid) => removeItemFromSection(0, iid)}
+                  onMoveItem={(idx, delta) => moveItemInSection(0, idx, delta)}
+                  onDuplicateItem={(idx) => duplicateItemInSection(0, idx)}
+                />
+              )}
+            </div>
+          )}
+
+          {/* ----------------------------------------------------------------------------------------- */}
+          {/* TAB 2: Accent & Dialect                                                                   */}
+          {/* ----------------------------------------------------------------------------------------- */}
+          {tab === 'accent' && (
+            <div className="space-y-4">
+              <p className={`text-xs ${sub}`}>
+                Phonetic accent instructions given to the voice model, regional dialect tags, and evaluation criteria.
+              </p>
+
+              <div className={`${panel} p-4 space-y-4`}>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className={label}>Accent Label (Short)</label>
+                    <input
+                      className={field}
+                      value={meta.accent || ''}
+                      placeholder="e.g. West Yorkshire (Leeds)"
+                      onChange={(e) => setM('accent', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>Dialect Label (Short)</label>
+                    <input
+                      className={field}
+                      value={meta.dialect || ''}
+                      placeholder="e.g. broad Yorkshire dialect"
+                      onChange={(e) => setM('dialect', e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className={label}>Accent Rule (Injected into Live voice system instructions)</label>
+                  <textarea
+                    className={`${field} font-mono leading-relaxed resize-y`}
+                    rows={6}
+                    value={meta.accentRule || ''}
+                    placeholder="Strict phonetic rule explaining how vowels and consonants must sound, rhoticity, and prohibited accents."
+                    onChange={(e) => setM('accentRule', e.target.value)}
+                    spellCheck={false}
+                  />
+                  <p className={`text-[11px] mt-1 ${sub}`}>
+                    This exact prompt is supplied to the Gemini Live speech model on every conversation turn.
+                  </p>
+                </div>
+
+                <div>
+                  <label className={label}>What the Accent Should Sound Like (For Automated Judge Evaluation)</label>
+                  <textarea
+                    className={field}
+                    rows={2}
+                    value={meta.judgeAccent || ''}
+                    placeholder="Criteria used by the automated judge model when listening to audio in the test bench."
+                    onChange={(e) => setM('judgeAccent', e.target.value)}
+                    spellCheck={false}
+                  />
+                </div>
+              </div>
+
+              {/* Section 2: Voice & accent rules */}
+              {bodyModel.sections[1] && (
+                <SectionCard
+                  section={bodyModel.sections[1]}
+                  index={1}
+                  isDark={isDark}
+                  sub={sub}
+                  panel={panel}
+                  field={field}
+                  iconBtn={iconBtn}
+                  ghost={ghost}
+                  onUpdateSection={(patch) => updateSection(1, patch)}
+                  onAddItem={() => addItemToSection(1)}
+                  onUpdateItem={(iid, patch) => updateItemInSection(1, iid, patch)}
+                  onRemoveItem={(iid) => removeItemFromSection(1, iid)}
+                  onMoveItem={(idx, delta) => moveItemInSection(1, idx, delta)}
+                  onDuplicateItem={(idx) => duplicateItemInSection(1, idx)}
+                />
+              )}
+            </div>
+          )}
+
+          {/* ----------------------------------------------------------------------------------------- */}
+          {/* TAB 3: Rhythm & Vocabulary                                                                */}
+          {/* ----------------------------------------------------------------------------------------- */}
+          {tab === 'rhythm' && (
+            <div className="space-y-4">
+              <p className={`text-xs ${sub}`}>
+                Dialect vocabulary pools, sentence tag endings, thinking openers, and spoken pacing instructions.
+              </p>
+
+              <div className={`${panel} p-4 space-y-4`}>
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className={label}>Thinking Sounds ({meta.thinkingSounds?.length || 0})</label>
+                    <textarea
+                      className={`${field} font-mono`}
+                      rows={6}
+                      value={(meta.thinkingSounds || []).join('\n')}
+                      onChange={(e) => setM('thinkingSounds', e.target.value.split('\n').map((x) => x.trim()).filter(Boolean))}
+                      spellCheck={false}
+                    />
+                    <p className={`text-[11px] mt-1 ${sub}`}>Stretched openers e.g. "Weeell,", "Soooo,". One per line.</p>
+                  </div>
+
+                  <div>
+                    <label className={label}>Dialect Words Pool ({meta.dialectWords?.length || 0})</label>
+                    <textarea
+                      className={`${field} font-mono`}
+                      rows={6}
+                      value={(meta.dialectWords || []).join('\n')}
+                      onChange={(e) => setM('dialectWords', e.target.value.split('\n').map((x) => x.trim()).filter(Boolean))}
+                      spellCheck={false}
+                    />
+                    <p className={`text-[11px] mt-1 ${sub}`}>Words Ims can lean on in conversations. One per line.</p>
+                  </div>
+
+                  <div>
+                    <label className={label}>Sentence Tag Endings ({meta.tagEndings?.length || 0})</label>
+                    <textarea
+                      className={`${field} font-mono`}
+                      rows={6}
+                      value={(meta.tagEndings || []).join('\n')}
+                      onChange={(e) => setM('tagEndings', e.target.value.split('\n').map((x) => x.trim()).filter(Boolean))}
+                      spellCheck={false}
+                    />
+                    <p className={`text-[11px] mt-1 ${sub}`}>Phrases like "...mind", "...like", "...then". One per line.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 3: Spoken rhythm */}
+              {bodyModel.sections[2] && (
+                <SectionCard
+                  section={bodyModel.sections[2]}
+                  index={2}
+                  isDark={isDark}
+                  sub={sub}
+                  panel={panel}
+                  field={field}
+                  iconBtn={iconBtn}
+                  ghost={ghost}
+                  onUpdateSection={(patch) => updateSection(2, patch)}
+                  onAddItem={() => addItemToSection(2)}
+                  onUpdateItem={(iid, patch) => updateItemInSection(2, iid, patch)}
+                  onRemoveItem={(iid) => removeItemFromSection(2, iid)}
+                  onMoveItem={(idx, delta) => moveItemInSection(2, idx, delta)}
+                  onDuplicateItem={(idx) => duplicateItemInSection(2, idx)}
+                />
+              )}
+            </div>
+          )}
+
+          {/* ----------------------------------------------------------------------------------------- */}
+          {/* TAB 4: Conversation & Style                                                               */}
+          {/* ----------------------------------------------------------------------------------------- */}
+          {tab === 'conversation' && (
+            <div className="space-y-4">
+              <p className={`text-xs ${sub}`}>
+                Conversation rules, clarification behavior, character traits for automated checks, and spoken dialogue examples.
+              </p>
+
+              <div className={`${panel} p-4 space-y-4`}>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className={label}>Character Summary (For Persona Checks)</label>
+                    <textarea
+                      className={field}
+                      rows={3}
+                      value={meta.character || ''}
+                      placeholder="Short descriptor of persona nature, personality, warmth, and engineer mindset."
+                      onChange={(e) => setM('character', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>Clarification Example Phrase ("Didn't Catch That")</label>
+                    <textarea
+                      className={field}
+                      rows={3}
+                      value={meta.clarifyExample || ''}
+                      placeholder="Spoken when speech is muffled or unclear (e.g. 'Sorry, didn't catch all of that - what was that last bit?')"
+                      onChange={(e) => setM('clarifyExample', e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 4: Conversation style */}
+              {bodyModel.sections[3] && (
+                <SectionCard
+                  section={bodyModel.sections[3]}
+                  index={3}
+                  isDark={isDark}
+                  sub={sub}
+                  panel={panel}
+                  field={field}
+                  iconBtn={iconBtn}
+                  ghost={ghost}
+                  onUpdateSection={(patch) => updateSection(3, patch)}
+                  onAddItem={() => addItemToSection(3)}
+                  onUpdateItem={(iid, patch) => updateItemInSection(3, iid, patch)}
+                  onRemoveItem={(iid) => removeItemFromSection(3, iid)}
+                  onMoveItem={(idx, delta) => moveItemInSection(3, idx, delta)}
+                  onDuplicateItem={(idx) => duplicateItemInSection(3, idx)}
+                />
+              )}
+
+              {/* Section 5: Dialogue Examples */}
+              {bodyModel.sections[4] && (
+                <SectionCard
+                  section={bodyModel.sections[4]}
+                  index={4}
+                  isDark={isDark}
+                  sub={sub}
+                  panel={panel}
+                  field={field}
+                  iconBtn={iconBtn}
+                  ghost={ghost}
+                  onUpdateSection={(patch) => updateSection(4, patch)}
+                  onAddItem={() => addItemToSection(4)}
+                  onUpdateItem={(iid, patch) => updateItemInSection(4, iid, patch)}
+                  onRemoveItem={(iid) => removeItemFromSection(4, iid)}
+                  onMoveItem={(idx, delta) => moveItemInSection(4, idx, delta)}
+                  onDuplicateItem={(idx) => duplicateItemInSection(4, idx)}
+                />
+              )}
+
+              {/* Additional custom sections beyond the standard 5 */}
+              {bodyModel.sections.slice(5).map((sec, extraIdx) => {
+                const realIdx = extraIdx + 5;
+                return (
+                  <SectionCard
+                    key={sec.id}
+                    section={sec}
+                    index={realIdx}
+                    isDark={isDark}
+                    sub={sub}
+                    panel={panel}
+                    field={field}
+                    iconBtn={iconBtn}
+                    ghost={ghost}
+                    onUpdateSection={(patch) => updateSection(realIdx, patch)}
+                    onAddItem={() => addItemToSection(realIdx)}
+                    onUpdateItem={(iid, patch) => updateItemInSection(realIdx, iid, patch)}
+                    onRemoveItem={(iid) => removeItemFromSection(realIdx, iid)}
+                    onMoveItem={(idx, delta) => moveItemInSection(realIdx, idx, delta)}
+                    onDuplicateItem={(idx) => duplicateItemInSection(realIdx, idx)}
+                  />
+                );
+              })}
+            </div>
+          )}
+
+          {/* ----------------------------------------------------------------------------------------- */}
+          {/* TAB 5: Alerts & Reports                                                                   */}
+          {/* ----------------------------------------------------------------------------------------- */}
+          {tab === 'alerts' && (
+            <div className="space-y-4">
+              <p className={`text-xs ${sub}`}>
+                Specialized announcements: Day Report sign-offs, weather delivery style, and Ring Doorbell spoken chimes.
+              </p>
+
+              <div className={`${panel} p-4 space-y-4`}>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className={label}>Day Report Sign-Offs ({meta.signOffs?.length || 0})</label>
+                    <textarea
+                      className={`${field} font-mono`}
+                      rows={5}
+                      value={(meta.signOffs || []).join('\n')}
+                      onChange={(e) => setM('signOffs', e.target.value.split('\n').map((x) => x.trim()).filter(Boolean))}
+                      spellCheck={false}
+                    />
+                    <p className={`text-[11px] mt-1 ${sub}`}>Examples Ims finishes the morning day report with. One per line.</p>
+                  </div>
+
+                  <div>
+                    <label className={label}>Weather Phrasing Style</label>
+                    <select
+                      className={field}
+                      value={meta.weatherPhrasing || 'plain'}
+                      onChange={(e) => setM('weatherPhrasing', e.target.value)}
+                    >
+                      <option value="plain">In his own words and dialect</option>
+                      <option value="yorkshire">Built-in Yorkshire phrasing examples</option>
+                    </select>
+                    <p className={`text-[11px] mt-1 ${sub}`}>Determines whether built-in regional weather phrases are provided.</p>
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className={label}>Doorbell Chime — Someone Rings the Bell</label>
+                    <textarea
+                      className={`${field} font-mono`}
+                      rows={5}
+                      value={(meta.doorbell?.ding || []).join('\n')}
+                      onChange={(e) =>
+                        setMeta((prev) => ({
+                          ...prev,
+                          doorbell: { ...(prev.doorbell || {}), ding: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean) }
+                        }))
+                      }
+                      spellCheck={false}
+                    />
+                    <p className={`text-[11px] mt-1 ${sub}`}>Spoken when doorbell is pressed. {'{name}'} and {'{place}'} are substituted.</p>
+                  </div>
+
+                  <div>
+                    <label className={label}>Doorbell Chime — Motion Detected</label>
+                    <textarea
+                      className={`${field} font-mono`}
+                      rows={5}
+                      value={(meta.doorbell?.motion || []).join('\n')}
+                      onChange={(e) =>
+                        setMeta((prev) => ({
+                          ...prev,
+                          doorbell: { ...(prev.doorbell || {}), motion: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean) }
+                        }))
+                      }
+                      spellCheck={false}
+                    />
+                    <p className={`text-[11px] mt-1 ${sub}`}>Spoken when camera sensor detects motion.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ----------------------------------------------------------------------------------------- */}
+          {/* TAB 6: House Rules (All Personas)                                                         */}
+          {/* ----------------------------------------------------------------------------------------- */}
+          {tab === 'house' && (
+            <div className="space-y-4">
+              <p className={`text-xs ${sub}`}>
+                System-wide rules that apply to <b>all personas</b>: item creation, clarifying, zero medical disclaimers, joke guidelines, and speech conciseness.
+              </p>
+
+              <div className={`${panel} overflow-hidden flex flex-col`}>
+                <div className={`px-5 py-3 border-b flex items-center justify-between ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
+                  <span className={`text-[11px] font-mono ${sub}`}>personas/_house_rules.md</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => navigator.clipboard.writeText(houseRaw).then(() => showToast('Copied house rules to clipboard.'))}
+                      className={ghost}
+                    >
+                      <Clipboard size={12} />Copy
+                    </button>
+                  </div>
+                </div>
+                <textarea
+                  value={houseRaw}
+                  onChange={(e) => setHouseRaw(e.target.value)}
+                  spellCheck={false}
+                  className={`w-full min-h-[60vh] p-5 text-xs font-mono leading-relaxed outline-none resize-y bg-transparent ${strong}`}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ----------------------------------------------------------------------------------------- */}
+          {/* TAB 7: Test Bench                                                                         */}
+          {/* ----------------------------------------------------------------------------------------- */}
+          {tab === 'test' && (
+            <div className="space-y-4">
+              <div className={`${panel} p-4 flex flex-col gap-3`}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className={`text-xs flex-1 min-w-[240px] ${sub}`}>
+                    Evaluate <b className={strong}>{persona.name}</b> across key scenarios. A dedicated judge model verifies dialect, character, and audio pronunciation.
+                  </p>
+                  <button
+                    onClick={() => runTests(picked.size ? [...picked] : null)}
+                    disabled={!!busy}
+                    className={primary}
+                  >
+                    {busy === 'test' ? <RotateCw size={14} className="animate-spin" /> : <Play size={14} />}
+                    {busy === 'test' ? 'Evaluating Scenarios...' : picked.size ? `Run ${picked.size} Selected` : 'Run All Scenarios'}
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  {(data?.scenarios || []).map((sc) => {
+                    const r = tests?.results?.find((x) => x.id === sc.id);
+                    return (
+                      <div
+                        key={sc.id}
+                        className={`p-3 rounded-xl border ${isDark ? 'border-white/10 bg-slate-950/40' : 'border-[#2E2B27]/15 bg-white'}`}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={picked.has(sc.id)}
+                            onChange={() =>
+                              setPicked((p) => {
+                                const n = new Set(p);
+                                n.has(sc.id) ? n.delete(sc.id) : n.add(sc.id);
+                                return n;
+                              })
+                            }
+                          />
+                          <span className={`text-xs font-black ${strong}`}>{sc.label}</span>
+                          <span
+                            className={`text-[10px] font-black uppercase px-1.5 py-0.5 rounded ${
+                              sc.kind === 'voice'
+                                ? 'bg-sky-700 text-white'
+                                : isDark
+                                ? 'bg-white/10 text-slate-100'
+                                : 'bg-slate-200 text-slate-900'
+                            }`}
+                          >
+                            {sc.kind}
+                          </span>
+                          <span className={`text-[11px] ${sub}`}>{sc.about}</span>
+                          <span className="ml-auto flex items-center gap-2">
+                            {r && (
+                              <span
+                                className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-1.5 py-0.5 rounded ${
+                                  r.ok ? 'bg-emerald-700 text-white' : 'bg-rose-700 text-white'
                                 }`}
                               >
-                                {/* Item Top Row: Bullet/Index, Title input wrapped in **, and Item Actions */}
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="w-5 h-5 rounded-md bg-purple-500/15 text-purple-400 text-[10px] font-black flex items-center justify-center shrink-0">
-                                    {itemIdx + 1}
-                                  </span>
-                                  <div className="flex-1 flex items-center gap-1">
-                                    <span className="text-xs font-black font-mono text-purple-400 select-none">**</span>
-                                    <input
-                                      type="text"
-                                      className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-bold outline-none border transition-all ${
-                                        isDark
-                                          ? 'bg-slate-900 border-white/10 focus:border-purple-400 text-slate-100 placeholder-slate-600'
-                                          : 'bg-slate-50 border-[#2E2B27]/15 focus:border-purple-600 text-slate-900 placeholder-slate-400'
-                                      }`}
-                                      placeholder="Title (e.g. Name: or How Ims sounds:)"
-                                      value={it.title}
-                                      onChange={(e) => updateItem(s.id, it.id, { title: e.target.value })}
-                                    />
-                                    <span className="text-xs font-black font-mono text-purple-400 select-none">**</span>
-                                  </div>
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <button
-                                      type="button"
-                                      onClick={() => moveItem(s.id, itemIdx, -1)}
-                                      disabled={itemIdx === 0}
-                                      className={iconBtn}
-                                      title="Move item up"
-                                    >
-                                      <ArrowUp size={13} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => moveItem(s.id, itemIdx, 1)}
-                                      disabled={itemIdx === s.items.length - 1}
-                                      className={iconBtn}
-                                      title="Move item down"
-                                    >
-                                      <ArrowDown size={13} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => duplicateItem(s.id, itemIdx)}
-                                      className={iconBtn}
-                                      title="Duplicate item"
-                                    >
-                                      <Copy size={13} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => removeItem(s.id, it.id)}
-                                      className={`${iconBtn} text-red-400 hover:text-red-300`}
-                                      title="Remove item"
-                                    >
-                                      <Trash2 size={13} />
-                                    </button>
-                                  </div>
-                                </div>
-
-                                {/* Item Description Textarea */}
-                                <textarea
-                                  className={`w-full px-3 py-2 rounded-lg text-xs leading-relaxed outline-none border transition-all resize-y ${
-                                    isDark
-                                      ? 'bg-slate-950/80 border-white/5 focus:border-purple-400/50 text-slate-200 placeholder-slate-600'
-                                      : 'bg-slate-50/70 border-[#2E2B27]/10 focus:border-purple-600 text-slate-800 placeholder-slate-400'
-                                  }`}
-                                  rows={Math.max(2, itemLines)}
-                                  style={{ minHeight: '52px' }}
-                                  placeholder="Item description / rule details..."
-                                  value={it.description}
-                                  onChange={(e) => updateItem(s.id, it.id, { description: e.target.value })}
-                                  spellCheck={false}
-                                />
-                              </div>
-                            );
-                          })}
+                                {r.ok ? <Check size={10} /> : <X size={10} />}
+                                {r.ok ? 'Pass' : 'Fail'}
+                              </span>
+                            )}
+                            {r?.audio && (
+                              <button onClick={() => play(r.audio)} className={ghost}>
+                                <Play size={12} />Play Audio
+                              </button>
+                            )}
+                            <button onClick={() => runTests([sc.id])} disabled={!!busy} className={ghost}>
+                              Run
+                            </button>
+                          </span>
                         </div>
-                      )}
-
-                      {/* Button to add another item */}
-                      <button
-                        type="button"
-                        onClick={() => addItem(s.id)}
-                        className={`w-full py-2.5 rounded-xl border border-dashed flex items-center justify-center gap-2 text-xs font-bold transition-all active:scale-[0.99] ${
-                          isDark
-                            ? 'border-purple-500/30 hover:border-purple-400 text-purple-300 hover:bg-purple-500/10'
-                            : 'border-purple-400/40 hover:border-purple-600 text-purple-700 hover:bg-purple-50'
-                        }`}
-                      >
-                        <Plus size={14} />
-                        <span>Add another item with title &amp; description</span>
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="px-14 pb-3 -mt-1 text-[11px] text-slate-500 truncate flex items-center gap-2">
-                    {s.opening ? (
-                      <span className="italic truncate">{s.opening}</span>
-                    ) : s.items?.length > 0 ? (
-                      <span className="truncate">
-                        <strong className="text-slate-400 font-semibold">{s.items[0].title}</strong>{' '}
-                        {s.items[0].description}
-                      </span>
-                    ) : (
-                      <span className="opacity-50">Empty section</span>
-                    )}
-                  </div>
-                )}
+                        {r && (
+                          <div className={`mt-2 text-xs ${sub}`}>
+                            {r.text && <p className="italic">“{r.text.slice(0, 500)}”</p>}
+                            <p className={`mt-1 ${r.ok ? '' : isDark ? 'text-rose-300' : 'text-rose-800'}`}>
+                              <b className={r.ok ? strong : ''}>{r.ok ? 'Evaluation: ' : 'Why it failed: '}</b>
+                              {r.reason}
+                              {r.at ? ` · ${new Date(r.at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}` : ''}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            );
-          })}
+            </div>
+          )}
 
-          <button onClick={() => setShowTemplates(true)} className={`${ghost} justify-center border border-dashed ${isDark ? 'border-white/15' : 'border-[#2E2B27]/20'}`}>
-            <Plus size={14} /> Add a section
-          </button>
+          {/* ----------------------------------------------------------------------------------------- */}
+          {/* TAB 8: Raw Output (Unified Across All Tabs)                                               */}
+          {/* ----------------------------------------------------------------------------------------- */}
+          {tab === 'raw' && (
+            <div className="space-y-4">
+              <p className={`text-xs ${sub}`}>
+                Complete unified markup output across all sections and tabs. Changes made in any tab are assembled here in real-time. You can also edit raw markup directly.
+              </p>
+
+              <div className={`${panel} overflow-hidden flex flex-col`}>
+                <div className={`px-5 py-3 border-b flex items-center justify-between ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
+                  <span className={`text-[11px] font-mono ${sub}`}>
+                    personas/{selected}.md · {rawFile.split('\n').length} lines · {rawFile.length} characters
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => navigator.clipboard.writeText(rawFile).then(() => showToast('Copied raw persona to clipboard.'))}
+                      className={ghost}
+                    >
+                      <Clipboard size={12} />Copy Markup
+                    </button>
+                  </div>
+                </div>
+                <textarea
+                  value={rawFile}
+                  onChange={(e) => {
+                    setRawFile(e.target.value);
+                    setIsDirty(true);
+                  }}
+                  spellCheck={false}
+                  className={`w-full min-h-[65vh] p-5 text-xs font-mono leading-relaxed outline-none resize-y bg-transparent ${strong}`}
+                />
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* History Modal */}
+      {showHistory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => setShowHistory(false)}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`max-w-lg w-full max-h-[80vh] flex flex-col rounded-2xl border p-6 shadow-2xl ${
+              isDark ? 'bg-slate-900 border-white/10 text-white' : 'bg-white border-[#2E2B27]/15 text-slate-900'
+            }`}
+          >
+            <h2 className="text-sm font-black uppercase tracking-wider mb-1 flex items-center gap-2">
+              <History size={16} />Previous Versions
+            </h2>
+            <p className={`text-[11px] mb-3 ${sub}`}>
+              Every save stores a snapshot in disk history. Loading one updates the editor; save to apply it.
+            </p>
+            <div className="overflow-y-auto flex flex-col gap-2">
+              {history.length === 0 ? (
+                <p className={`text-xs py-6 text-center ${sub}`}>No earlier versions recorded yet.</p>
+              ) : (
+                history.map((v) => (
+                  <div
+                    key={v.id}
+                    className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-3 ${
+                      isDark ? 'border-white/10 bg-slate-950/40' : 'border-[#2E2B27]/15 bg-slate-50'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-bold">
+                        {new Date(v.savedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
+                      </div>
+                      <div className={`text-[10px] ${sub}`}>{v.bytes} bytes</div>
+                    </div>
+                    <button onClick={() => loadVersion(v)} className={ghost}>
+                      <Undo2 size={12} />Restore
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       )}
 
-      {/* History */}
-      {showHistory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowHistory(false)}>
-          <div onClick={(e) => e.stopPropagation()} className={`max-w-lg w-full max-h-[80vh] flex flex-col rounded-2xl border p-6 shadow-2xl ${isDark ? 'bg-slate-900 border-white/10 text-white' : 'bg-white border-[#2E2B27]/15 text-slate-900'}`}>
-            <h2 className="text-sm font-black uppercase tracking-wider mb-1 flex items-center gap-2"><History size={16} />Previous versions</h2>
-            <p className="text-[11px] text-slate-500 mb-3">A copy of the file is kept every time you save. Loading one puts it in the editor - press Save to make it live.</p>
-            <div className="overflow-y-auto flex flex-col gap-2">
-              {history.length === 0 ? <p className="text-xs text-slate-500 py-6 text-center">No earlier versions yet - one is kept from your next save.</p>
-                : history.map((v) => (
-                  <div key={v.id} className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-3 ${isDark ? 'border-white/5 bg-slate-950/40' : 'border-[#2E2B27]/10 bg-slate-50'}`}>
-                    <div>
-                      <div className="font-bold">{new Date(v.savedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</div>
-                      <div className="text-[10px] text-slate-500">{Math.round(v.bytes / 100) / 10} KB</div>
-                    </div>
-                    <button onClick={() => loadVersion(v)} className={ghost}><Undo2 size={12} />Load</button>
-                  </div>
-                ))}
+      {/* New Persona Creation Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => setShowCreateModal(false)}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`max-w-md w-full rounded-2xl border p-6 shadow-2xl space-y-4 ${
+              isDark ? 'bg-slate-900 border-white/10 text-white' : 'bg-white border-[#2E2B27]/15 text-slate-900'
+            }`}
+          >
+            <h2 className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
+              <Plus size={16} className="text-purple-400" />
+              {cloneFromId ? 'Clone Existing Persona' : 'Create Brand New Persona'}
+            </h2>
+            <p className={`text-xs ${sub}`}>
+              {cloneFromId
+                ? 'Creates a full copy of the selected persona that you can adapt and customize.'
+                : 'Scaffolds a new persona with standard speech guidelines and identity rules.'}
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <label className={label}>Persona Name</label>
+                <input
+                  className={field}
+                  autoFocus
+                  placeholder="e.g. Scottish Ims, Northern Engineer"
+                  value={newPersonaName}
+                  onChange={(e) => setNewPersonaName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleCreatePersona(); }}
+                />
+              </div>
+
+              <div>
+                <label className={label}>Template / Base Persona</label>
+                <select
+                  className={field}
+                  value={cloneFromId}
+                  onChange={(e) => setCloneFromId(e.target.value)}
+                >
+                  <option value="">Start from standard clean template</option>
+                  {(data?.personas || []).map((p) => (
+                    <option key={p.id} value={p.id}>Clone from "{p.name}" ({p.accent})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setShowCreateModal(false)} className={ghost}>
+                Cancel
+              </button>
+              <button onClick={handleCreatePersona} disabled={!newPersonaName.trim() || !!busy} className={primary}>
+                {busy === 'create' ? <RotateCw size={14} className="animate-spin" /> : <Plus size={14} />}
+                Create Persona
+              </button>
             </div>
           </div>
         </div>

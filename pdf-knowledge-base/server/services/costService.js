@@ -16,6 +16,7 @@ import { getPrices } from './usageService.js';
 import { SERVICES } from './modelRegistry.js';
 
 const SERVICE_LABEL = Object.fromEntries(SERVICES.map((s) => [s.key, s.label]));
+SERVICE_LABEL.modelTest = 'Model Switcher tests & assessments';
 // operations logged before the Model Switcher existed
 const LEGACY = { chat: 'chat', embedding: 'embedding', topic_extraction: 'library', 'ims-fallback': 'imsHelpers', image_generation: 'image' };
 
@@ -68,6 +69,32 @@ export function saveFixedCosts(list) {
   }));
   writeJson('fixed_costs', clean);
   return clean;
+}
+
+// Monthly budget (pounds). 0 = no budget set.
+export function getBudgetGBP() { return Math.max(0, Number(readJson('monthly_spend_cap', 0)) || 0); }
+export function saveBudget(capGBP) {
+  const v = Math.max(0, Math.round((Number(capGBP) || 0) * 100) / 100);
+  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run('monthly_spend_cap', String(v));
+  return v;
+}
+
+// The most expensive single calls this month, priced now, with what could be done about each.
+function costliestCalls(prices, fx, limit = 8) {
+  const now = new Date();
+  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const rows = db.prepare('SELECT id, timestamp, model, operation, prompt_tokens AS input, completion_tokens AS output FROM token_usage WHERE timestamp >= ? ORDER BY (prompt_tokens + completion_tokens) DESC LIMIT 200').all(sqlTime(from));
+  return rows.map((r) => {
+    const p = prices[r.model];
+    const usd = p ? (r.input / 1e6) * p.input + (r.output / 1e6) * p.output : 0;
+    const key = LEGACY[r.operation] || r.operation || 'other';
+    let advice = 'Nothing to change - a normal call for this service.';
+    if (r.operation === 'modelTest') advice = 'Testing models on the Model Switcher - after the first full assessment only new models are tested, once a day.';
+    else if (/pro/.test(r.model) && r.input + r.output < 5000) advice = 'A short job on a Pro model - a Flash model would do it for a fraction of the price (Model Switcher).';
+    else if (r.input > 50000) advice = 'A very large prompt - most of the cost is what is sent in; less context (fewer passages or history) would cut it.';
+    else if (r.output > r.input * 2 && r.output > 4000) advice = 'Mostly output and thinking - a model that thinks less, or a shorter answer, would cut it.';
+    return { ...r, service: SERVICE_LABEL[key] || key, usd, gbp: Math.round(usd * fx * 100) / 100, priced: !!p, advice };
+  }).sort((a, b) => b.usd - a.usd || (b.input + b.output) - (a.input + a.output)).slice(0, limit);
 }
 
 export function savePrices(prices, usdToGbp) {
@@ -132,8 +159,25 @@ export function getCosts(period = 'month') {
     projectedApiGBP = gbp((usd / sofar) * daysIn);
   }
 
+  // budget: always this month, whatever period is shown
+  const monthFrom = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+  const monthRows = db.prepare('SELECT model, SUM(prompt_tokens) AS input, SUM(completion_tokens) AS output FROM token_usage WHERE timestamp >= ? GROUP BY model').all(sqlTime(monthFrom));
+  const monthUsd = monthRows.reduce((n, r) => { const p = prices[r.model]; return n + (p ? (r.input / 1e6) * p.input + (r.output / 1e6) * p.output : 0); }, 0);
+  const nowD = new Date();
+  const daysIn = new Date(nowD.getFullYear(), nowD.getMonth() + 1, 0).getDate();
+  const soFar = Math.max(1, nowD.getDate() - 1 + nowD.getHours() / 24);
+  const capGBP = getBudgetGBP();
+  const spentGBP = gbp(monthUsd);
+  const projectedGBP = gbp((monthUsd / soFar) * daysIn);
+  const pct = capGBP > 0 ? (spentGBP / capGBP) * 100 : 0;
+  const budget = {
+    capGBP, spentGBP, projectedGBP, percentage: Math.round(pct * 10) / 10,
+    remainingGBP: capGBP > 0 ? Math.max(0, Math.round((capGBP - spentGBP) * 100) / 100) : null,
+    status: !capGBP ? 'none' : pct >= 95 ? 'critical' : pct >= 80 ? 'near' : projectedGBP > capGBP ? 'on course to go over' : 'fine',
+  };
+
   return {
-    period, label, from: from.toISOString(), to: to.toISOString(), usdToGbp: fx,
+    period, label, from: from.toISOString(), to: to.toISOString(), usdToGbp: fx, budget, costliest: costliestCalls(prices, fx),
     api: {
       usd: Math.round(usd * 10000) / 10000, gbp: gbp(usd), calls, projectedGBP: projectedApiGBP,
       unpricedTokens, unpricedModels: [...unpricedModels],
@@ -148,4 +192,4 @@ export function getCosts(period = 'month') {
   };
 }
 
-export default { getCosts, getFixedCosts, saveFixedCosts, savePrices, getUsdToGbp };
+export default { getCosts, getFixedCosts, saveFixedCosts, savePrices, getUsdToGbp, getBudgetGBP, saveBudget };

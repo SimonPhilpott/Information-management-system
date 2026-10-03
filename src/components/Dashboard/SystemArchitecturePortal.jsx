@@ -66,7 +66,7 @@ const spokes = (live) => [
     key: 'pipeline', title: 'Conversation pipeline', icon: Mic, accent: 'green', count: 6, side: 'right',
     rows: [
       { icon: Hand, main: 'Wake gate', sub: 'Wake phrases and your recorded spellings; 10 s follow-up window' },
-      { icon: Drama, main: 'Persona and context', sub: 'Yorkshire persona rules, accent rule, services, memories' },
+      { icon: Drama, main: 'Persona and context', sub: 'Active persona (character, accent, voice), house rules, services, memories' },
       { icon: Wrench, main: '35 function tools', sub: 'Run on the server - calendar, glucose, carbs, lists, news, campaigns...' },
       { icon: Gauge, main: 'Audio pacing', sub: 'A 15 s lead buffer, so speech never speeds up' },
       { icon: MessageSquareQuote, main: 'Stop phrases', sub: '"Ims stop" halts speech and silences a ringing alarm' },
@@ -115,7 +115,7 @@ const spokes = (live) => [
       { icon: Bell, main: 'Core functions - 10', sub: 'Weather, doorbell, alarms, timers, reminders (1d–2w look-ahead), birthdays, calendar, memories, recordings, tasks' },
       { icon: Heart, main: 'Personal - 6', sub: 'Day report, Code best practices (with dependency watch), music scanner, board games, campaigns, news' },
       { icon: Droplets, main: 'Health and fitness - 3', sub: 'Blood sugar (clinic AGP report), activities (training load), run planner (live run plan, route finder, retrospective) & T1D Rulebook' },
-      { icon: Settings, main: 'Customisation and system - 12', sub: 'Device health, storage, model switcher, costs, Gemini spend budget, face designer, persona, wake phrases, Wi-Fi, dev ideas, backups, this page' },
+      { icon: Settings, main: 'Customisation and system - 11', sub: 'Device health, storage, model switcher, costs and budget, face designer, persona, wake phrases, Wi-Fi, dev ideas, backups, this page' },
       { icon: Eye, main: 'Disabled - 2', sub: 'Look and Faces, until the camera works' },
     ],
   },
@@ -149,7 +149,7 @@ const supporting = [
   {
     key: 'rules', title: 'Guardrails', icon: Scale, accent: 'amber', count: 7,
     rows: [
-      { icon: MessageSquareQuote, main: 'English, Yorkshire accent', sub: 'Never another language, never American' },
+      { icon: MessageSquareQuote, main: 'English, in the persona accent', sub: 'Never another language; accent from the active persona' },
       { icon: Hand, main: 'Never speaks unprompted', sub: 'Only answers when he is addressed' },
       { icon: Mic, main: 'Silent while recording', sub: 'No sound at all until you say stop' },
       { icon: Smile, main: 'Jokes', sub: 'Dark humour is fine; never racist or sexist' },
@@ -292,7 +292,6 @@ function Card({ card, isDark, cardRef, onOpen, onRowAction, hot, showUsedOnly, s
           </span>
         )}
         {countOf(card) != null && <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}>{visibleRows.length}/{countOf(card)}</span>}
-        {onOpen && <ChevronRight size={16} className="text-slate-400 shrink-0" />}
       </button>
       <div className="flex flex-col gap-1">
         {visibleRows.map((r) => {
@@ -959,7 +958,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
                   <div className="mt-4 flex justify-center"><ImsFace status="idle" width={150} /></div>
                   <div className="mt-4 text-xl font-black tracking-tight">Ims</div>
                   <div className={`text-sm ${muted}`}>Information Management System</div>
-                  <div className={`text-xs mt-1 ${muted}`}>Yorkshire voice assistant - desk, web and phone</div>
+                  <div className={`text-xs mt-1 ${muted}`}>Voice assistant with switchable personas - desk, web and phone</div>
                   <div className="mt-3 flex items-center justify-center gap-2 text-[11px] font-bold">
                     <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Server up {formatUptime(live?.uptimeSec)}</span>
                     <span className={`px-2 py-0.5 rounded-full flex items-center gap-1 ${online ? 'bg-emerald-500/15 text-emerald-500' : 'bg-slate-500/15 text-slate-500'}`}>
@@ -1041,12 +1040,12 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
             </div>
           </div>
 
-          <div className={`flex gap-5 px-5 border-b text-[13px] overflow-x-auto ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
+          <TabSlider isDark={isDark} active={tab}>
             {[['overview', 'Overview'], ['jobs', 'Background Jobs'], ['logs', 'Logs Explorer'], ['turn', 'A conversation'], ['latency', 'Voice Latency & Tools'], ['data', 'Data'], ['findings', 'Findings']].map(([k, label]) => (
-              <button key={k} onClick={() => setTab(k)}
+              <button key={k} data-tab={k} onClick={() => setTab(k)}
                 className={`pb-2.5 whitespace-nowrap border-b-2 -mb-px ${tab === k ? 'border-violet-500 text-violet-500 font-bold' : `border-transparent ${muted}`}`}>{label}</button>
             ))}
-          </div>
+          </TabSlider>
 
           <div className="p-5 flex flex-col gap-5">
             {tab === 'overview' && (
@@ -1062,7 +1061,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
                     {[
                       ['Owner', 'Simon Philpott'],
                       ['Assistant', 'Ims - rhymes with rims'],
-                      ['Persona', 'West Yorkshire, dry and friendly'],
+                      ['Persona', 'Switchable - see Personas'],
                       ['Voice model', 'gemini-3.8-live, en-GB'],
                       ['Backend', `Node.js ${live?.node || ''} / Express on :3001`],
                       ['Frontend', 'React 19 + Vite, via ngrok'],
@@ -1829,4 +1828,47 @@ function LogsExplorerSection({ isDark, muted }) {
   );
 }
 
-
+// Tabs that don't fit slide left and right with ‹ › buttons instead of a scrollbar. A button only shows
+// when there are hidden tabs that way; the chosen tab is slid into view.
+function TabSlider({ isDark, active, children }) {
+  const ref = useRef(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+  const measure = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    setEdges({ left: el.scrollLeft > 2, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 2 });
+  }, []);
+  useEffect(() => {
+    measure();
+    const el = ref.current;
+    if (!el) return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    el.addEventListener('scroll', measure, { passive: true });
+    return () => { ro.disconnect(); el.removeEventListener('scroll', measure); };
+  }, [measure]);
+  useEffect(() => {
+    const t = ref.current?.querySelector(`[data-tab="${active}"]`);
+    if (t) t.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+  }, [active]);
+  const slide = (dir) => ref.current?.scrollBy({ left: dir * Math.max(120, ref.current.clientWidth * 0.6), behavior: 'smooth' });
+  const arrow = `absolute top-0 bottom-px z-10 w-9 flex items-center justify-center ${isDark ? 'text-slate-100' : 'text-slate-800'}`;
+  const fade = isDark ? 'from-[#0b1120] via-[#0b1120]' : 'from-white via-white';
+  return (
+    <div className={`relative border-b ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
+      {edges.left && (
+        <button onClick={() => slide(-1)} aria-label="Show earlier tabs" className={`${arrow} left-0 bg-gradient-to-r ${fade} to-transparent`}>
+          <ChevronRight size={16} className="rotate-180" />
+        </button>
+      )}
+      <div ref={ref} className="flex gap-5 px-5 text-[13px] overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {children}
+      </div>
+      {edges.right && (
+        <button onClick={() => slide(1)} aria-label="Show more tabs" className={`${arrow} right-0 bg-gradient-to-l ${fade} to-transparent`}>
+          <ChevronRight size={16} />
+        </button>
+      )}
+    </div>
+  );
+}

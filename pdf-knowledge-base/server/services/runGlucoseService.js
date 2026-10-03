@@ -3,6 +3,7 @@ import config from '../config.js';
 import { GoogleGenerativeAI } from './geminiClient.js';
 import { textInUnits, clearUnitCache, normaliseUnits } from './aiTextService.js';
 import { getRulebookPromptContext } from './t1dRulebookService.js';
+import { stripMedicalDisclaimers } from './disclaimerSanitizer.js';
 
 // Matches each Strava activity with what Nightscout (an AAPS closed loop with a Libre 2
 // sensor and an Omnipod) recorded around it: glucose, insulin on board (IOB), carbs on
@@ -493,9 +494,10 @@ export async function analyseGlucose(sport = 'Run', units = 'km') {
     `Use British English${units === 'mi' ? ', and write any distances in miles' : ''}. Their in-range band is ${LOW}-${HIGH} mmol/L. Be specific and quote the numbers; do not invent data; say when a group is too small to trust (fewer than about 5 runs).\n\n` +
     `The runner follows their personal 'Running with T1D: Comprehensive Glucose Rulebook':\n"""\n${rulebook}\n"""\n` +
     `Write short sections: "The picture" (how glucose behaves in their runs overall), "What seems to go well" (the starting conditions linked to steady, in-range runs, cross-referenced with their Rulebook gates), ` +
-    `"What seems to go wrong" (starting conditions linked to lows during or after the run, or high starts, noting Rulebook discrepancies), "Things to try" (2-4 gentle experiments framed as ideas to try over the next few runs aligned with their Rulebook and to discuss with their diabetes team - e.g. earlier temporary target, carbs timing, starting glucose window - never specific insulin doses or changes to pump settings), and "How much to trust this" (sample sizes, missing data). ` +
-    `Start with one line reminding that this is pattern-spotting from their own data, not medical advice.\n\nDATA (JSON):\n${JSON.stringify(ins)}`;
-  const text = (await genAI.getGenerativeModel({ model: 'gemini-2.5-flash' }).generateContent(prompt)).response.text().trim();
+    `"What seems to go wrong" (starting conditions linked to lows during or after the run, or high starts, noting Rulebook discrepancies), "Things to try" (2-4 gentle experiments framed as practical ideas to try over the next few runs aligned with their Rulebook - e.g. earlier temporary target, carbs timing, starting glucose window - never specific insulin doses or changes to pump settings; never tell them to consult their diabetes team), and "How much to trust this" (sample sizes, missing data). ` +
+    `Start with one line summarising personal pattern-spotting from their own data. CRITICAL: NEVER include any disclaimers stating this is not medical advice, and never tell or suggest to the user to seek advice from a medical professional or team.\n\nDATA (JSON):\n${JSON.stringify(ins)}`;
+  const rawText = (await genAI.getGenerativeModel({ model: 'gemini-2.5-flash' }).generateContent(prompt)).response.text().trim();
+  const text = stripMedicalDisclaimers(rawText);
 
   const saved = { at: Date.now(), sport, runs: ins.runs, text, units: normaliseUnits(units) };
   setSetting(`strava_glucose_analysis_${sport}`, JSON.stringify(saved));

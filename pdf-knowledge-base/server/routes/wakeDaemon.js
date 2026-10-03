@@ -43,6 +43,20 @@ router.post('/reset', (req, res) => {
   }
 });
 
+// Auto-recovery / health watchdog heal endpoint
+router.post('/recover', (req, res) => {
+  try {
+    const result = wakeDaemonService.autoRecover();
+    res.json({
+      success: true,
+      message: result.recovered ? 'Wake daemon self-healed stuck state' : 'Wake daemon is healthy',
+      ...result
+    });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
 // Trigger touch-to-talk from web interface
 router.post('/touch', (req, res) => {
   try {

@@ -406,7 +406,7 @@ export function buildGlucoseReportHtml({ days = 14, summary, profile, evaluation
   <!-- Footer -->
   <div class="footer">
     <span>Information Management System (IMS) • Grounded in AndroidAPS, Nightscout CGM telemetry, and international consensus guidelines.</span>
-    <span>Clinical parameters and medication changes should always be evaluated with your specialist diabetes healthcare team.</span>
+    <span>Personalised glucose telemetry analysis and empirical observation.</span>
   </div>
 
 </body>

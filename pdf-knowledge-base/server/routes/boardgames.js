@@ -3,8 +3,7 @@ import express from 'express';
 import {
   getPublicConfig, saveConfig, getStatus, startRefresh, getGames, setWantToSell,
   importCollectionCsv, addGame, addGameWithExpansions, removeGame, restoreGame,
-  searchBgg, getBggDetails, setExpansionOwned, startThumbnailBackfill, getBackfillStatus
-} from '../services/boardgamesService.js';
+  searchBgg, getBggDetails, setExpansionOwned, startThumbnailBackfill, getBackfillStatus, setFavourite, getDetailsStatus, fetchMissingDetails } from '../services/boardgamesService.js';
 import { deckGameForBgg } from '../services/decksService.js';
 
 const router = Router();
@@ -91,6 +90,20 @@ router.put('/expansions/:id/own', (req, res) => {
 router.post('/games', (req, res) => { try { res.json({ success: true, game: addGame(req.body || {}) }); } catch (err) { res.status(400).json({ error: err.message }); } });
 router.delete('/games/:id', (req, res) => res.json({ success: removeGame(req.params.id) }));
 router.post('/games/:id/restore', (req, res) => res.json({ success: restoreGame(req.params.id) }));
+
+router.put('/favourite', (req, res) => {
+  const { id, favourite } = req.body || {};
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'id (integer BGG id) is required.' });
+  setFavourite(id, Boolean(favourite));
+  res.json({ success: true });
+});
+
+// Players, play time, solo and themes from BoardGameGeek - fetched in the background
+router.get('/details/status', (req, res) => res.json({ success: true, ...getDetailsStatus() }));
+router.post('/details/refresh', (req, res) => {
+  fetchMissingDetails({ force: Boolean(req.body?.force) }).catch(() => {});
+  res.json({ success: true, started: true });
+});
 
 router.put('/sell', (req, res) => {
   const { id, wantToSell } = req.body || {};

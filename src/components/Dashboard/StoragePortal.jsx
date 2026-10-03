@@ -10,6 +10,13 @@ const GROUP_COLOUR = { LOTR: '#b45309', Arkham: '#0f766e', Diabetes: '#be123c', 
 const PDF_COLOUR = '#0284c7';
 const VEC_COLOUR = '#9333ea';
 const mb = (n) => `${Number(n || 0).toLocaleString('en-GB', { maximumFractionDigits: 1, minimumFractionDigits: 1 })} MB`;
+// exact size from bytes: KB under 1 MB, so small files don't show as "0.0 MB"
+const size = (bytes) => {
+  const b = Number(bytes || 0);
+  if (b === 0) return '0 KB';
+  if (b < 1048576) return `${Math.max(1, Math.round(b / 1024)).toLocaleString('en-GB')} KB`;
+  return `${(b / 1048576).toLocaleString('en-GB', { maximumFractionDigits: 1, minimumFractionDigits: 1 })} MB`;
+};
 
 export default function StoragePortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
   const isDark = theme === 'dark';
@@ -84,6 +91,25 @@ export default function StoragePortal({ theme = 'dark', onThemeToggle, setCurren
             </Notice>
           )}
 
+          {data.vectors.staleBackupMB > 0 && (
+            <Notice isDark={isDark} tone="info" title={`${mb(data.vectors.staleBackupMB)} of old reclassified vector files archived`}
+              actions={<>
+                <button className={btn} disabled={!!busy} onClick={() => act('delstale', '/api/storage/stale-vector-backup', 'DELETE', `Delete the ${mb(data.vectors.staleBackupMB)} backup of old vector files permanently?`)}><Trash2 size={13} />Delete backup</button>
+                <button className={btn} disabled={!!busy} onClick={() => act('reststale', '/api/storage/restore-stale-vectors', 'POST', 'Restore old vector files back to the vectors folder?')}><Undo2 size={13} />Restore</button>
+              </>}>
+              These {data.vectors.staleBackupFiles} vector files were from previous subject naming schemes. Active library subjects and documents are already indexed in current vector files.
+            </Notice>
+          )}
+
+          {data.vectors.orphanFiles > 0 && (
+            <Notice isDark={isDark} tone="warn" title={`${data.vectors.orphanFiles} orphaned vector file(s) (${mb(data.vectors.orphanMB)}) detected`}
+              actions={<>
+                <button className={btn} disabled={!!busy} onClick={() => act('prune', '/api/storage/clean-stale-vectors', 'POST', `Clean up ${data.vectors.orphanFiles} orphaned vector files (${mb(data.vectors.orphanMB)})? They will be safely moved to vectors_stale_backup.`)}><Trash2 size={13} />Clean up orphaned vectors</button>
+              </>}>
+              These vector files in server/data/vectors no longer correspond to active document subjects in your library.
+            </Notice>
+          )}
+
           <section className={`rounded-xl border p-4 ${card}`}>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <h2 className={`text-sm font-black uppercase tracking-wide ${strong}`}>Library by subject</h2>
@@ -102,7 +128,7 @@ export default function StoragePortal({ theme = 'dark', onThemeToggle, setCurren
                         {open[g.group] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                         <span className="w-2.5 h-2.5 rounded-full" style={{ background: GROUP_COLOUR[g.group] }} />{g.group}
                       </span>
-                      <span className={`text-xs font-bold tabular-nums ${body}`}>PDFs {mb(g.pdfMB)} ({g.pdfFiles}) · vectors {mb(g.vectorMB)} · <span className={strong}>{mb(g.totalMB)}</span></span>
+                      <span className={`text-xs font-bold tabular-nums ${body}`}>PDFs {size(g.pdfBytes)} ({g.pdfFiles}) · vectors {size(g.vectorBytes)} · <span className={strong}>{size(g.pdfBytes + g.vectorBytes)}</span></span>
                     </div>
                     <div className={`mt-1.5 h-4 rounded-md overflow-hidden flex ${track}`}>
                       <div style={{ width: `${(g.pdfMB / maxGroup) * 100}%`, background: PDF_COLOUR }} title={`PDFs ${mb(g.pdfMB)}`} />
@@ -114,7 +140,13 @@ export default function StoragePortal({ theme = 'dark', onThemeToggle, setCurren
                       {g.subjects.map((s) => (
                         <div key={s.subject} className={`flex flex-wrap items-baseline justify-between gap-2 px-3 py-1.5 text-xs ${body}`}>
                           <span className={`font-semibold ${strong}`}>{s.subject}</span>
-                          <span className="tabular-nums">PDFs {mb(s.pdfMB)}{s.pdfFiles ? ` (${s.pdfFiles})` : ''} · vectors {mb(s.vectorMB)}</span>
+                          <span className="tabular-nums">
+                            {s.pdfFiles > 0 ? (
+                              <>PDFs {size(s.pdfBytes)}{s.pdfFiles ? ` (${s.pdfFiles})` : ''} · vectors {size(s.vectorBytes)}</>
+                            ) : (
+                              <>Vectors {size(s.vectorBytes)} <span className="opacity-60">(vectors only)</span></>
+                            )}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -123,6 +155,7 @@ export default function StoragePortal({ theme = 'dark', onThemeToggle, setCurren
               ))}
             </div>
             {data.pdfs.orphanFiles > 0 && <p className={`text-xs mt-3 ${body}`}>Also {data.pdfs.orphanFiles} cached PDF(s) ({mb(data.pdfs.orphanMB)}) no longer in the library - left in place.</p>}
+            {data.vectors.orphanFiles > 0 && <p className={`text-xs mt-1 ${body}`}>Also {data.vectors.orphanFiles} orphaned vector file(s) ({mb(data.vectors.orphanMB)}) from previous subject names.</p>}
           </section>
 
           <section className={`rounded-xl border p-4 ${card}`}>
@@ -156,7 +189,7 @@ export default function StoragePortal({ theme = 'dark', onThemeToggle, setCurren
                 <div key={o.name} className="grid grid-cols-[minmax(0,12rem)_1fr_auto] items-center gap-3 text-xs">
                   <span className={`font-semibold truncate ${strong}`} title={o.name}>{o.name}</span>
                   <div className={`h-2.5 rounded ${track}`}><div className="h-full rounded bg-slate-500" style={{ width: `${Math.max(0.5, (o.MB / maxOther) * 100)}%` }} /></div>
-                  <span className={`tabular-nums font-bold ${body}`}>{mb(o.MB)}</span>
+                  <span className={`tabular-nums font-bold ${body}`}>{size(o.bytes)}</span>
                 </div>
               ))}
             </div>

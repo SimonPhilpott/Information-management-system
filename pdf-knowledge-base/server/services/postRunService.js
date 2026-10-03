@@ -60,7 +60,7 @@ export async function postRunReview(activityId) {
     hoursSince: r1(since), percentLeft: Math.max(0, Math.min(100, Math.round(100 - (since / 48) * 100))),
     active: since < 48,
     nightRisk: { from: endMs + 7 * HOUR, to: endMs + 11 * HOUR, text: `${dayClock(endMs + 7 * HOUR)} - ${clock(endMs + 11 * HOUR)}` },
-    text: `Insulin sensitivity is raised (${strength}, by the run's effort) for about 24 hours after you finished, tailing off to normal by around ${dayClock(endMs + 48 * HOUR)}. The likeliest time for a low overnight is 7-11 hours after (${dayClock(endMs + 7 * HOUR)} to ${clock(endMs + 11 * HOUR)}). Your rulebook (ISPAD) suggests about a 20% overnight basal reduction for ~6 hours or a higher night-time loop target (6.5-7.0) after evening runs - agree any setting change with your diabetes team first.`,
+    text: `Insulin sensitivity is raised (${strength}, by the run's effort) for about 24 hours after you finished, tailing off to normal by around ${dayClock(endMs + 48 * HOUR)}. The likeliest time for a low overnight is 7-11 hours after (${dayClock(endMs + 7 * HOUR)} to ${clock(endMs + 11 * HOUR)}). Your rulebook (ISPAD) suggests about a 20% overnight basal reduction for ~6 hours or a higher night-time loop target (6.5-7.0) after evening runs.`,
     link: { label: 'Blood sugar', path: '/ims/glucose' },
   };
 

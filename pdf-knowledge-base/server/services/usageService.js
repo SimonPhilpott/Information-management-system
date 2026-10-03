@@ -86,8 +86,10 @@ export function getUsageSummary() {
   const spendCapStr = db.prepare('SELECT value FROM settings WHERE key = ?').get('monthly_spend_cap');
   const spendCap = spendCapStr ? parseFloat(spendCapStr.value) : config.defaults.monthlySpendCap;
 
-  // Calculate percentage and status
-  const percentage = spendCap > 0 ? (monthlySummary.total_cost / spendCap) * 100 : 0;
+  // The cap is in pounds (set on the Costs page); usage is priced in US$, so convert
+  let fx = 0.75;
+  try { const r = db.prepare('SELECT value FROM settings WHERE key = ?').get('usd_to_gbp'); if (r) fx = Number(JSON.parse(r.value)) || 0.75; } catch { }
+  const percentage = spendCap > 0 ? ((monthlySummary.total_cost * fx) / spendCap) * 100 : 0;
   let status = 'green';
   if (percentage >= 95) status = 'critical';
   else if (percentage >= 90) status = 'red';
@@ -136,6 +138,7 @@ export function getUsageSummary() {
       requests: todaySummary.total_requests
     },
     spendCap,
+    fx,
     percentage: Math.round(percentage * 100) / 100,
     status,
     projectedCost: Math.round(projectedCost * 10000) / 10000,
@@ -222,7 +225,7 @@ export function isNearSpendCap() {
     nearCap: summary.percentage >= 80,
     isCritical: summary.percentage >= 95,
     percentage: summary.percentage,
-    remaining: Math.max(0, summary.spendCap - summary.month.cost),
+    remaining: Math.max(0, summary.spendCap - summary.month.cost * (summary.fx || 0.75)),
     status: summary.status,
     spendCap: summary.spendCap,
     currentCost: summary.month.cost,

@@ -134,6 +134,7 @@ enum TerminalState {
 };
 
 volatile TerminalState currentState = STATE_CONNECTING_WIFI;
+volatile unsigned long verifyingStartMs = 0;
 TerminalState lastRenderedState = (TerminalState)-1;
 // i2s_std channel handles (see initAudioHardware()) - separate TX/RX handles
 // even though they share one physical I2S peripheral/clock, matching
@@ -147,9 +148,10 @@ class RawTcpClient {
 private:
   int sock;
   volatile bool _connected;
+  unsigned long _lastRxMs;
 
 public:
-  RawTcpClient() : sock(-1), _connected(false) {}
+  RawTcpClient() : sock(-1), _connected(false), _lastRxMs(0) {}
 
   ~RawTcpClient() {
     stop();
@@ -177,6 +179,10 @@ public:
     // 3. Disable Nagle's algorithm for low-latency streaming
     int nodelay = 1;
     setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+
+    // 3b. Enable TCP Keep-Alive (probes every 10s so half-open TCP links fail fast)
+    int keepalive = 1;
+    setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
 
     // 4. Resolve destination host
     struct sockaddr_in serverAddr;
@@ -212,6 +218,7 @@ public:
     fcntl(sock, F_SETFL, flags | O_NONBLOCK);
 
     _connected = true;
+    _lastRxMs = millis();
     return true;
   }
 
@@ -225,6 +232,10 @@ public:
 
   bool connected() const {
     return _connected && (sock >= 0);
+  }
+
+  unsigned long getLastRxMs() const {
+    return _lastRxMs;
   }
 
   // Returns number of bytes ready to read without blocking
@@ -251,6 +262,7 @@ public:
 
     ssize_t n = recv(sock, buf, len, 0);
     if (n > 0) {
+      _lastRxMs = millis();
       return (int)n;
     }
     if (n == 0) {
@@ -3374,6 +3386,7 @@ void beginVerifying() {
   // the last one before we even know if this candidate is real.
   currentEmotion = EMOTION_NEUTRAL;
   currentState = STATE_VERIFYING;
+  verifyingStartMs = millis();
   micStreamingActive = true;
   lastSpeechTimestamp = millis();
   isSpeakingDetected = true;
@@ -3399,6 +3412,7 @@ void sendTurnComplete() {
   if (!conversationOpen || currentState == STATE_VERIFYING) {
     Serial.println("[IMS] Wake-candidate speech ended -> awaiting Gemini's judgment (still verifying, stay in STANDBY)");
     currentState = STATE_VERIFYING;
+    if (verifyingStartMs == 0) verifyingStartMs = millis();
   } else {
     Serial.println("[IMS] Spoken turn completed in open conversation -> transitioning to THINKING");
     currentState = STATE_THINKING;
@@ -3671,6 +3685,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         xQueueReset(audioOutQueue);
       }
       lastTranscript = "Speaking...";
+      verifyingStartMs = 0;
       renderScreen(true);
     }
     size_t inSamples = len / sizeof(int16_t);
@@ -3749,6 +3764,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       }
       Serial.println("[IMS] noWakeDetected - false trigger, reverting to STANDBY silently");
       currentState = STATE_STANDBY;
+      verifyingStartMs = 0;
       micStreamingActive = false;
       isSpeakingDetected = false;
       conversationOpen = false;
@@ -3771,6 +3787,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       conversationShouldClose = false;
       currentEmotion = EMOTION_NEUTRAL;
       currentState = STATE_STANDBY;
+      verifyingStartMs = 0;
       prerollHead = 0;
       prerollFilled = false;
       lastTranscript = isMicHardwareMuted ? "MIC MUTED (Press top button)" : "Say 'Hey Ims' or tap screen";
@@ -3891,10 +3908,10 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
           char announceMsg[200];
           if (label[0] != '\0') {
             snprintf(announceMsg, sizeof(announceMsg),
-                     "Your %s for \"%s\" just went off - announce this briefly, in character, in your Yorkshire accent (flat northern vowels, no American r).", kind, label);
+                     "Your %s for \"%s\" just went off - announce this briefly, in character, in your own persona's voice and accent.", kind, label);
           } else {
             snprintf(announceMsg, sizeof(announceMsg),
-                     "Your %s just went off - announce this briefly, in character, in your Yorkshire accent (flat northern vowels, no American r).", kind);
+                     "Your %s just went off - announce this briefly, in character, in your own persona's voice and accent.", kind);
           }
           sendTextQuery(announceMsg);
         }
@@ -3946,7 +3963,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         // so it's said once.
         char announceMsg[260];
         snprintf(announceMsg, sizeof(announceMsg),
-                 "The Ring doorbell just reported a %s at the %s. Announce it to the user briefly and naturally, in character, in your Yorkshire accent (flat northern vowels, no American r) - for example: \"%s\"",
+                 "The Ring doorbell just reported a %s at the %s. Announce it to the user briefly and naturally, in character, in your own persona's voice and accent - for example: \"%s\"",
                  strcmp(ev, "ding") == 0 ? "doorbell press" : "motion alert", cam, phrase);
         sendTextQuery(announceMsg);
       }
@@ -4383,6 +4400,7 @@ void audioMicTask(void *param) {
                             (int)currentState, rms);
               micStreamingActive = true;
               isSpeakingDetected = true;
+              verifyingStartMs = millis();
               speechStartTime = millis();
               lastSpeechTimestamp = millis();
 
@@ -4741,6 +4759,13 @@ void loop() {
   }
   wasConnected = nowConnected;
 
+  // TCP RX inactivity watchdog: if connection appears up but has heard nothing for >60s,
+  // the socket is half-open / dead. Stop it so the reconnect timer below will heal it.
+  if (nowConnected && (millis() - tcpClient.getLastRxMs() > 60000)) {
+    Serial.println("[TCP] Inactivity watchdog timeout (>60s with no RX) - resetting half-open connection");
+    tcpClient.stop();
+  }
+
   static unsigned long lastReconnectAttempt = 0;
   if (!nowConnected && (millis() - lastReconnectAttempt > 8000)) {
     lastReconnectAttempt = millis();
@@ -4964,14 +4989,17 @@ void loop() {
 
   // Safety net for STATE_VERIFYING: if Gemini never confirms (real audio) or
   // rejects (noWakeDetected) the candidate - e.g. a dropped frame - don't
-  // leave the mic streaming and the device silently stuck forever. 8000ms
-  // allows Gemini sufficient processing latency to judge the candidate and return
-  // audio without prematurely dropping back to STANDBY.
-  if (currentState == STATE_VERIFYING && (millis() - lastSpeechTimestamp > 8000)) {
+  // leave the mic streaming and the device silently stuck forever.
+  // Ambient noise in audioMicTask can keep updating lastSpeechTimestamp, so
+  // verifyingStartMs provides an absolute ceiling (4500ms) to prevent permanent lockup.
+  if (currentState == STATE_VERIFYING &&
+      ((verifyingStartMs > 0 && (millis() - verifyingStartMs > 4500)) ||
+       (millis() - lastSpeechTimestamp > 4000))) {
     sendDebug("verify_timeout");
     sendAudioStreamEnd(); // this is exactly the case that was never being closed
     sendSessionClosed();
     currentState = STATE_STANDBY;
+    verifyingStartMs = 0;
     micStreamingActive = false;
     isSpeakingDetected = false;
     conversationOpen = false;

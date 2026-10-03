@@ -676,7 +676,7 @@ export function postRunPattern() {
   const hard = summarise(all.filter((x) => x.hard));
   return {
     runs: all.slice(-12).reverse(), overall, hard: hard && hard.runs >= 3 ? hard : null, isf, needRuns: 3,
-    caveat: 'An estimate from your own past runs and your AAPS ISF - not medical advice, and not checked by your diabetes team. Your insulin sensitivity stays raised for hours after a run, so: only correct once the rise is clearly happening (not at the finish, and never if you are falling or about to eat); take off any insulin still on board (your AAPS bolus wizard does this); remember the loop is already adding its own corrections, so a manual bolus on top can stack; and watch for a low 2-8 hours later and overnight. Agree the approach with your diabetes team before relying on it.',
+    caveat: 'An estimate from your own past runs and your AAPS ISF. Your insulin sensitivity stays raised for hours after a run, so: only correct once the rise is clearly happening (not at the finish, and never if you are falling or about to eat); take off any insulin still on board (your AAPS bolus wizard does this); remember the loop is already adding its own corrections, so a manual bolus on top can stack; and watch for a low 2-8 hours later and overnight.',
   };
 }
 
@@ -729,7 +729,7 @@ function proposeRulebookFinding(l) {
   try {
     db.prepare(`INSERT INTO t1d_rulebook_findings (id, book_id, book_title, type, section_target, title, current_rule, book_recommendation, citation, explanation, suggested_action, proposed_text, status)
       VALUES (?, NULL, 'Your own runs (IMS learning)', 'refinement', ?, ?, NULL, ?, 'IMS run retrospectives', ?, 'add', ?, 'pending')`)
-      .run(id, l.kind === 'uptake' ? '4. In-Run Fueling Strategy & Elevation Adaptation' : '5. Post-Run Recovery & Late-Onset Nocturnal Hypo Defense', title, l.text, `Accepted in the Run Planner's Learning tab, from ${l.runs} runs with matched glucose data. Personal pattern-spotting, not medical advice.`, proposed);
+      .run(id, l.kind === 'uptake' ? '4. In-Run Fueling Strategy & Elevation Adaptation' : '5. Post-Run Recovery & Late-Onset Nocturnal Hypo Defense', title, l.text, `Accepted in the Run Planner's Learning tab, from ${l.runs} runs with matched glucose data. Personal pattern-spotting from logged run data.`, proposed);
   } catch { /* rulebook not set up */ }
 }
 

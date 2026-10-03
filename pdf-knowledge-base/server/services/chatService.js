@@ -188,7 +188,7 @@ export async function processMessage(message, sessionId, subjects = [], modelCho
   const capStatus = isNearSpendCap();
   if (capStatus.nearCap) {
     return {
-      response: `⚠️ **Spending limit warning**: You've used ${capStatus.percentage.toFixed(1)}% of your monthly spend cap ($${capStatus.remaining.toFixed(4)} remaining).`,
+      response: `⚠️ **Spending limit warning**: You've used ${capStatus.percentage.toFixed(1)}% of your monthly Gemini budget (£${capStatus.remaining.toFixed(2)} left) - see Costs in IMS.`,
       citations: [], sessionId, model: null, usage: null, capWarning: true,
       groundedSubjects: null,
       groundedBooks: null

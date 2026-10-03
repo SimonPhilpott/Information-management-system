@@ -20,6 +20,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA = path.join(__dirname, '..', 'data');
 const VECTORS = path.join(DATA, 'vectors');
 const VECTOR_BACKUP = path.join(DATA, 'vectors_float32_backup');
+const VECTORS_STALE_BACKUP = path.join(DATA, 'vectors_stale_backup');
 const HASH_CACHE = path.join(DATA, 'pdf_hashes.json');
 // Files with their own format, read by their own service - left as they are.
 const NOT_LIBRARY_VECTORS = new Set(['code_snippets.json']);
@@ -102,27 +103,49 @@ export function summary({ fresh = false } = {}) {
   // Vector embeddings - one file per subject
   const subjectByVectorFile = new Map(db.prepare('SELECT DISTINCT subject FROM documents').all().map((r) => [`${subjectToFilename(r.subject)}.json`, r.subject]));
   let vectorBytes = 0, packedFiles = 0, floatFiles = 0;
+  let orphanVectorBytes = 0, orphanVectorFiles = 0;
+  let codeSnippetsBytes = 0;
+
   for (const f of walk(VECTORS).filter((x) => x.endsWith('.json'))) {
     const name = path.basename(f);
     const size = Number(statOf(f).size);
     seen.add(inodeKey(statOf(f)));
     vectorBytes += size;
-    const subject = name === 'code_snippets.json' ? 'Code best practices (code snippets)' : (subjectByVectorFile.get(name) || name.replace(/\.json$/, '').replace(/___/g, ' / ').replace(/_/g, ' '));
-    const g = groupOf(subject);
-    groups[g].vectorBytes += size; groups[g].vectorFiles++;
-    addSubject(g, subject, 'vectorBytes', size);
-    if (!NOT_LIBRARY_VECTORS.has(name)) {
-      // the format is in the first few bytes: '[{"documentId"...' either way, so peek for the int8 field
-      const head = Buffer.alloc(8192);
-      const fd = fs.openSync(f, 'r'); fs.readSync(fd, head, 0, 8192, 0); fs.closeSync(fd);
-      if (head.toString('utf8').includes('"q":"')) packedFiles++; else floatFiles++;
+
+    if (name === 'code_snippets.json') {
+      codeSnippetsBytes += size;
+      continue;
     }
+
+    const liveSubject = subjectByVectorFile.get(name);
+    if (!liveSubject) {
+      orphanVectorBytes += size;
+      orphanVectorFiles++;
+      continue;
+    }
+
+    const g = groupOf(liveSubject);
+    groups[g].vectorBytes += size;
+    groups[g].vectorFiles++;
+    addSubject(g, liveSubject, 'vectorBytes', size);
+
+    // format check
+    const head = Buffer.alloc(8192);
+    const fd = fs.openSync(f, 'r');
+    fs.readSync(fd, head, 0, 8192, 0);
+    fs.closeSync(fd);
+    if (head.toString('utf8').includes('"q":"')) packedFiles++;
+    else floatFiles++;
   }
   const backup = dirBytes(VECTOR_BACKUP, seen);
+  const staleBackup = dirBytes(VECTORS_STALE_BACKUP, seen);
 
   // Everything else in server/data
   const other = [];
-  const covered = new Set(['pdfs', 'vectors', 'vectors_float32_backup', 't1d_books', 'decks']);
+  const covered = new Set(['pdfs', 'vectors', 'vectors_float32_backup', 'vectors_stale_backup', 't1d_books', 'decks']);
+  if (codeSnippetsBytes > 0) {
+    other.push({ name: 'vectors/code_snippets.json (code repos)', bytes: codeSnippetsBytes, files: 1, isDir: false });
+  }
   for (const e of fs.readdirSync(DATA, { withFileTypes: true })) {
     if (covered.has(e.name)) continue;
     const p = path.join(DATA, e.name);
@@ -144,9 +167,19 @@ export function summary({ fresh = false } = {}) {
       subjects: Object.values(groups[g].subjects).map((s) => ({ ...s, pdfMB: MB(s.pdfBytes), vectorMB: MB(s.vectorBytes) })).sort((a, b) => (b.pdfBytes + b.vectorBytes) - (a.pdfBytes + a.vectorBytes)),
     })),
     pdfs: { logicalMB: MB(pdfLogical), physicalMB: MB(pdfPhysical), savedByLinksMB: MB(pdfLogical - pdfPhysical), orphanMB: MB(orphanBytes), orphanFiles },
-    vectors: { MB: MB(vectorBytes), packedFiles, floatFiles, backupMB: MB(backup.physical), backupFiles: backup.files },
+    vectors: {
+      MB: MB(vectorBytes),
+      packedFiles,
+      floatFiles,
+      orphanMB: MB(orphanVectorBytes),
+      orphanFiles: orphanVectorFiles,
+      backupMB: MB(backup.physical),
+      backupFiles: backup.files,
+      staleBackupMB: MB(staleBackup.physical),
+      staleBackupFiles: staleBackup.files,
+    },
     other: other.map((o) => ({ ...o, MB: MB(o.bytes) })),
-    totalMB: MB(pdfPhysical + vectorBytes + backup.physical + other.reduce((n, o) => n + o.bytes, 0)),
+    totalMB: MB(pdfPhysical + vectorBytes + backup.physical + staleBackup.physical + other.reduce((n, o) => n + o.bytes, 0)),
     lastDedupe: readJsonSetting('storage_last_dedupe'),
     lastQuantise: readJsonSetting('storage_last_quantise'),
   };
@@ -293,4 +326,71 @@ export function restoreVectorBackup() {
   return { restored: n };
 }
 
-export default { summary, dedupePdfs, quantiseVectors, quantiseStatus, deleteVectorBackup, restoreVectorBackup, groupOf, GROUPS };
+// ---------------- stale vector cleanup ----------------
+// Cleans up orphaned vector files from earlier subject re-classifications and moves them to vectors_stale_backup.
+export function pruneStaleVectors() {
+  const activeSubjectFilenames = new Set(
+    db.prepare('SELECT DISTINCT subject FROM documents').all().map((r) => `${subjectToFilename(r.subject)}.json`)
+  );
+  fs.mkdirSync(VECTORS_STALE_BACKUP, { recursive: true });
+
+  let prunedCount = 0;
+  let prunedBytes = 0;
+  const prunedFiles = [];
+
+  for (const f of fs.readdirSync(VECTORS).filter((x) => x.endsWith('.json') && !NOT_LIBRARY_VECTORS.has(x))) {
+    if (!activeSubjectFilenames.has(f)) {
+      const src = path.join(VECTORS, f);
+      const dest = path.join(VECTORS_STALE_BACKUP, f);
+      const size = fs.statSync(src).size;
+      fs.copyFileSync(src, dest);
+      fs.unlinkSync(src);
+      prunedCount++;
+      prunedBytes += size;
+      prunedFiles.push(f);
+    }
+  }
+
+  summaryCache.at = 0;
+  console.log(`[Storage] Pruned ${prunedCount} stale vector files (${MB(prunedBytes)} MB moved to vectors_stale_backup)`);
+  return {
+    prunedCount,
+    prunedMB: MB(prunedBytes),
+    prunedFiles,
+  };
+}
+
+// Delete the stale vectors backup to permanently reclaim disk space.
+export function deleteStaleVectorBackup() {
+  if (!fs.existsSync(VECTORS_STALE_BACKUP)) return { deletedMB: 0, files: 0 };
+  const b = dirBytes(VECTORS_STALE_BACKUP, new Set());
+  fs.rmSync(VECTORS_STALE_BACKUP, { recursive: true, force: true });
+  summaryCache.at = 0;
+  return { deletedMB: MB(b.physical), files: b.files };
+}
+
+// Restore stale vector files from backup if ever needed.
+export function restoreStaleVectors() {
+  if (!fs.existsSync(VECTORS_STALE_BACKUP)) throw new Error('There is no stale vector backup to restore.');
+  let n = 0;
+  for (const name of fs.readdirSync(VECTORS_STALE_BACKUP)) {
+    fs.copyFileSync(path.join(VECTORS_STALE_BACKUP, name), path.join(VECTORS, name));
+    n++;
+  }
+  summaryCache.at = 0;
+  return { restored: n };
+}
+
+export default {
+  summary,
+  dedupePdfs,
+  quantiseVectors,
+  quantiseStatus,
+  deleteVectorBackup,
+  restoreVectorBackup,
+  pruneStaleVectors,
+  deleteStaleVectorBackup,
+  restoreStaleVectors,
+  groupOf,
+  GROUPS,
+};

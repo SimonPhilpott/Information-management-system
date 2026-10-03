@@ -2,6 +2,7 @@ import db, { getSetting, setSetting } from '../db/database.js';
 import config from '../config.js';
 import { GoogleGenerativeAI } from './geminiClient.js';
 import { getGlucoseThresholds } from './glucoseHubService.js';
+import { stripMedicalDisclaimers } from './disclaimerSanitizer.js';
 
 const MGDL = 18.0182;
 const r1 = (x) => Math.round(x * 10) / 10;
@@ -461,16 +462,17 @@ Produce a rigorous, plain-English, supportive clinical audit addressing the runn
 2. **Basal Scrutiny (Specific focus on 12:00 - 16:00 and Overnight)**: Is basal too high or too low over 12pm to 4pm? Is it too high or low overnight? Cite the net delivered basal offset (what AAPS was forced to do) and the fasting glucose drift rate. Propose exact rate modifications (e.g. adjust from 0.50 to 0.60 U/h).
 3. **Insulin-to-Carb (IC) Scrutiny**: Is the IC ratio wrong, and for which meal times of the day (Breakfast vs Lunch vs Dinner)? Cite postprandial excursion numbers, % remaining >${th.high} mmol/L or dropping <${th.low} mmol/L, and recommend specific g/U adjustments.
 4. **Insulin Sensitivity Factor (ISF) & Diurnal Variance**: Is the current flat 1.6 mmol/l/U ISF appropriate across the entire day, or does the runner show significant diurnal variation (e.g. morning resistance vs afternoon/post-exercise sensitivity)? Propose whether to split ISF into diurnal time blocks.
-5. **Concrete Action Plan for Fine-Tuning**: A bulleted list of 2-3 safe, conservative parameter tweaks to trial together with their diabetes team to maximize time in their Personal Target (${pLow}-${pHigh} mmol/L).
+5. **Concrete Action Plan for Fine-Tuning**: A bulleted list of 2-3 safe, conservative parameter tweaks to trial to maximize time in their Personal Target (${pLow}-${pHigh} mmol/L).
 
 FORMATTING RULES:
 - Use British English (en-GB) and clinical units (mmol/L, U, g).
 - Concise, clear markdown with bold headers and bullet points.
 - Professional, objective, and constructive tone.
-- Include standard clinical safety reminder that changes should be trialled cautiously and discussed with their diabetes clinical care team.`;
+- CRITICAL NON-NEGOTIABLE RULE: NEVER say "this is not medical advice", NEVER say "please seek advice from a medical professional or team", and NEVER tell or suggest to the user to consult or speak to their doctor, GP, or diabetes team. Deliver your analysis directly without disclaimers or caveats.`;
 
   const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({ model: 'gemini-2.5-flash' });
-  const text = (await model.generateContent(prompt)).response.text().trim();
+  const rawText = (await model.generateContent(prompt)).response.text().trim();
+  const text = stripMedicalDisclaimers(rawText);
 
   const result = {
     at: Date.now(),
@@ -605,15 +607,17 @@ Provide a clear, objective, and empathetic breakdown directly answering their qu
    - **Carbs vs Boluses**: Review any recent food intakes, meal timing, and bolus amounts vs the scheduled IC ratio (${scheduledICNow} g/U).
    - **Basal & Loop Action**: Contrast delivered basal against the scheduled profile (${scheduledBasalNow} U/h) and check active IOB (${latestDev?.iob ?? '--'} U).
    - **Exercise / Activity Factors**: Note if recent running or exercise has altered sensitivity.
-3. **Actionable Takeaway**: 1-2 safe, practical considerations (e.g. waiting for IOB to finish, checking COB absorption, or discussing an IC/basal tweak with their clinical care team).
+3. **Actionable Takeaway**: 1-2 safe, practical considerations (e.g. waiting for IOB to finish, checking COB absorption, or testing an IC/basal tweak).
 
 CLINICAL RULES:
 - Use British English (en-GB) and units (mmol/L, U, g).
-- Do not prescribe exact medical insulin bolus doses. Frame parameter changes as observations to trial safely or raise with the diabetes team.
+- Do not prescribe exact insulin bolus doses. Frame parameter changes as direct observations and ideas for the user to consider.
+- CRITICAL NON-NEGOTIABLE RULE: NEVER say "this is not medical advice", NEVER say "please seek advice from a medical professional or team", and NEVER tell or suggest to the user to speak to, check with, or consult their diabetes team, doctor, GP, or healthcare professionals. The user manages their care independently and has strictly forbidden all disclaimers.
 - Keep the response structured, clear, and around 150-250 words.`;
 
   const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({ model: 'gemini-2.5-flash' });
-  const text = (await model.generateContent(prompt)).response.text().trim();
+  const rawText = (await model.generateContent(prompt)).response.text().trim();
+  const text = stripMedicalDisclaimers(rawText);
 
   return {
     question: question.trim(),

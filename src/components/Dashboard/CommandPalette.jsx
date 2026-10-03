@@ -8,7 +8,7 @@ import {
 
 const PORTALS = [
   { id: 'memories', name: 'IMS Memories Database', path: '/ims/memories', category: 'Intelligence & Memory', icon: Brain, description: 'Manage persistent long-term memories, facts, and recall entries' },
-  { id: 'persona', name: 'IMS Persona & Rulebook', path: '/ims/persona', category: 'Intelligence & Memory', icon: User, description: 'Customise Yorkshire dialect, comedic tone, and system prompt directives' },
+  { id: 'persona', name: 'Ims Personas', path: '/ims/persona', category: 'Intelligence & Memory', icon: User, description: 'Create and switch personas (character, accent, voice), edit them as sections or Markdown, and test them' },
   { id: 'dayreport', name: 'Day & Morning Report', path: '/ims/dayreport', category: 'Intelligence & Memory', icon: FileText, description: 'Morning briefing subjects, custom focus notes, and execution order' },
   { id: 'glucose', name: 'Blood Sugar & CGM Analytics', path: '/ims/glucose', category: 'Health & Fitness', icon: Activity, description: 'Real-time Nightscout CGM telemetry, time-in-range, and trends' },
   { id: 'activities', name: 'Training & Strava Activities', path: '/ims/activities', category: 'Health & Fitness', icon: TrendingUp, description: 'Strava runs, workouts, pace analysis, and training milestones' },
@@ -32,12 +32,11 @@ const PORTALS = [
   { id: 'recordings', name: 'Voice Captures & Audio Logs', path: '/ims/recordings', category: 'Terminal & Hardware', icon: Mic, description: 'Listen to recorded speech turns and verify transcript text' },
   { id: 'phrases', name: 'Wake & Stop Phrases', path: '/ims/phrases', category: 'Terminal & Hardware', icon: MessageSquare, description: 'Approved wake phrases, room chatter rejection, and closing phrases' },
   { id: 'weather', name: 'Weather', path: '/ims/weather', category: 'Intelligence & Memory', icon: CloudSun, description: 'Forecasts for home and saved places, hour by hour and 16 days ahead, and the weather phrases Ims uses' },
-  { id: 'doorbell', name: 'Ring Doorbell Service', path: '/ims/doorbell', category: 'Terminal & Hardware', icon: Bell, description: 'Direct Ring API integration, live dings, motion alerts, snapshots, and Yorkshire voice alerts' },
+  { id: 'doorbell', name: 'Ring Doorbell Service', path: '/ims/doorbell', category: 'Terminal & Hardware', icon: Bell, description: 'Direct Ring API integration, live dings, motion alerts, snapshots, and spoken alerts in the persona of Ims' },
   { id: 'devicehealth', name: 'Device Health & Observability', path: '/ims/device-health', category: 'Terminal & Hardware', icon: Activity, description: 'Minute-by-minute Box-3 Wi-Fi RSSI, free heap, uptime, underruns and reconnect sparklines' },
   { id: 'storage', name: 'Storage', path: '/ims/storage', category: 'Development & Engineering', icon: Database, description: 'Megabytes of PDFs and vector embeddings per subject, duplicate PDFs, compact vectors' },
   { id: 'models', name: 'Model Switcher', path: '/ims/models', category: 'Development & Engineering', icon: Database, description: 'Language and voice model for each service, with roll back' },
-  { id: 'costs', name: 'Costs', path: '/ims/costs', category: 'Development & Engineering', icon: Database, description: 'Gemini API costs per service plus subscriptions and other services' },
-  { id: 'spend', name: 'Gemini Spend & Budget Breakdown', path: '/ims/spend', category: 'Development & Engineering', icon: Database, description: 'Tokens & estimated cost per service per day, soft monthly budget warning, and prompt optimization' },
+  { id: 'costs', name: 'Costs', path: '/ims/costs', category: 'Development & Engineering', icon: Database, description: 'Gemini API costs per service, monthly budget, costliest calls, subscriptions and other services' },
   { id: 'news', name: 'News Feed Sources', path: '/ims/news', category: 'Intelligence & Memory', icon: Newspaper, description: 'RSS news subscriptions and daily morning briefing headlines' },
   { id: 'backups', name: 'System Backups & Maintenance', path: '/ims/backups', category: 'Development & Engineering', icon: Shield, description: 'Nightly SQLite database backups, schema snapshots, and vector store integrity' },
 ];

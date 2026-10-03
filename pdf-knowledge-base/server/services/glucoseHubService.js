@@ -2,6 +2,7 @@ import db, { getSetting, setSetting } from '../db/database.js';
 import config from '../config.js';
 import { GoogleGenerativeAI, readGeminiJson } from './geminiClient.js';
 import { getModelFor } from './modelRegistry.js';
+import { stripMedicalDisclaimers } from './disclaimerSanitizer.js';
 import crypto from 'crypto';
 import { encryptSecret, decryptSecret } from './wifiService.js';
 import { getDeviceIcons } from './calendarService.js';
@@ -10,8 +11,7 @@ import { getDeviceIcons } from './calendarService.js';
 // (ns_entries / ns_treatments / ns_devicestatus, filled every minute by glucoseService and
 // every 5 minutes by runGlucoseService), so Ims and the page never need to ask Nightscout.
 // Ranges follow the international consensus on CGM time in range (Battelino et al., 2019).
-// It never gives insulin doses - anything about insulin is framed as "worth discussing with
-// your diabetes team".
+// It never gives insulin doses - observations and pattern ideas are given directly without disclaimers.
 
 const MGDL = 18.0182;
 export const DEFAULT_GLUCOSE_THRESHOLDS = {
@@ -393,7 +393,7 @@ export function describeForIms(period = 'today') {
     lows: s.lows.slice(0, 5).map((l) => `${l.when}, lowest ${l.lowest}, ${l.minutes} min${l.afterExercise ? `, after ${l.afterExercise}` : ''}`),
     overnight: s.overnight ? `last night ${s.overnight.inRangePct}% in range, lowest ${s.overnight.min}, woke at ${s.overnight.endValue}` : undefined,
     targets: `In range is ${th.low}-${th.high} mmol/L; the usual goals are over 70% in range, under 4% below ${th.low}, under 1% below ${th.veryLow}. For runs the user likes to start near 9 and never drop below 5.`,
-    safety: `Never suggest insulin doses or changes to insulin settings - say it is worth discussing with the diabetes team. Carbs and timing ideas are fine. If the reading is under ${th.low}, the first thing to say is to treat the low.`,
+    safety: `Never suggest insulin doses or changes to insulin settings. NEVER say "this is not medical advice", NEVER say "please seek advice from a medical professional or team", and NEVER tell or suggest to the user to speak to, check with, or consult their diabetes team or doctor (they manage their medical care independently and strictly forbid disclaimers); give your observations, carbs and timing ideas straight to consider without any disclaimers or caveats. If the reading is under ${th.low}, the first thing to say is to treat the low.`,
     thresholds: th,
   };
   return out;
@@ -423,10 +423,11 @@ Target Bands:
 - High cutoffs: High >${th.high} (${s.stats?.highPct ?? '--'}%), Very high >${th.veryHigh} (${s.stats?.veryHighPct ?? '--'}%)
 
 Give: 1) the headline (time in medical range [${th.low}-${th.high}] vs 70% goal, time in personal target [${pLow}-${pHigh}], and lows vs under-4% goal) 2) the clearest pattern by time of day 3) anything linked to exercise or overnight 4) two or three practical things to try (timing, carbs, pre-run routine, when to check).
-Hard rules: never suggest insulin doses, ratios, basal rates or loop setting changes - if they look relevant, say it would be worth raising with the diabetes team. If there is little data, say the patterns are early. Under 220 words.
+Hard rules: never suggest insulin doses, ratios, basal rates or loop setting changes. CRITICAL: NEVER say "this is not medical advice", NEVER say "please seek advice from a medical professional or team", and NEVER tell or suggest to the user to consult or speak to their diabetes team or healthcare professionals (the user will do that independently); give your practical observations and ideas straight to consider without disclaimers. If there is little data, say the patterns are early. Under 220 words.
 DATA: ${JSON.stringify(facts)}`;
   const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({ model: 'gemini-2.5-flash' });
-  const text = (await model.generateContent(prompt)).response.text().trim();
+  const rawText = (await model.generateContent(prompt)).response.text().trim();
+  const text = stripMedicalDisclaimers(rawText);
   const saved = { text, at: Date.now(), days: s.days, thresholds: th };
   setSetting(INSIGHT_KEY, JSON.stringify(saved));
   return saved;

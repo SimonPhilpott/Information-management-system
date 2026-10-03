@@ -89,7 +89,7 @@ const SECTION_NOTE_PLACEHOLDERS = {
   training: 'e.g. Compare mileage against weekly target; highlight scheduled recovery or rest days...',
   last_run: 'e.g. Note pace consistency and glucose stability during the workout...',
   goals: 'e.g. Highlight progress towards active running distance milestones; encourage momentum...',
-  news: 'e.g. Emphasise UK tech, science, and local Yorkshire news; skip sensationalist headlines...',
+  news: 'e.g. Emphasise UK tech, science, and local Leeds news; skip sensationalist headlines...',
   tasks: 'e.g. Summarise key findings from background research tasks; highlight pending actions...',
   nightscout_db: 'e.g. Warn if MongoDB usage exceeds 85%; suggest clearing older records...'
 };

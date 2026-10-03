@@ -2,7 +2,7 @@ import AccountChip from './AccountChip';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Dices, ArrowLeft, RotateCw, Check, AlertCircle, Sun, Moon, ChevronRight, ChevronDown,
-  Search, Save, ExternalLink, KeyRound, Plus, Trash2, Undo2, ClipboardList, X, Image
+  Search, Save, ExternalLink, KeyRound, Plus, Trash2, Undo2, ClipboardList, X, Image, Star, Users, Clock, User
 } from 'lucide-react';
 
 // Decode numeric and named HTML entities (e.g. &#039;, &#39;, &apos;, &amp;, &quot;, &lt;, &gt;, &eacute;)
@@ -141,8 +141,10 @@ function ThumbnailHoverPreview({ src, alt = '', name = '', year = null, isDark, 
   );
 }
 
-function GameRow({ game, isDark, onSell, onToggleExpansion, defaultOpen, onDecks, onRemove }) {
+function GameRow({ game, isDark, onSell, onFavourite, onToggleExpansion, defaultOpen, onDecks, onRemove }) {
   const [open, setOpen] = useState(defaultOpen);
+  const detail = isDark ? 'text-slate-300' : 'text-slate-700';
+  const time = game.minTime && game.maxTime && game.minTime !== game.maxTime ? `${game.minTime}-${game.maxTime} min` : game.playingTime ? `${game.playingTime} min` : null;
   const ownedCount = (game.expansions || []).filter((e) => e.owned).length;
   const hasExp = (game.expansions || []).length > 0;
   const muted = isDark ? 'text-slate-500' : 'text-slate-400';
@@ -171,6 +173,29 @@ function GameRow({ game, isDark, onSell, onToggleExpansion, defaultOpen, onDecks
           <div className="font-bold text-[13px] truncate">
             {gameName} {game.year ? <span className={`font-normal ${muted}`}>({game.year})</span> : null}{game.manual && <ManualTag />}
           </div>
+          {(game.players || time || game.categories?.length) && (
+            <div className={`flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] ${detail}`}>
+              {game.players && <span className="inline-flex items-center gap-1"><Users size={11} />{game.players} player{game.players === '1' ? '' : 's'}</span>}
+              {time && <span className="inline-flex items-center gap-1"><Clock size={11} />{time}</span>}
+              {game.solo && (
+                <span
+                  className={`inline-flex items-center gap-1 font-bold ${isDark ? 'text-sky-300' : 'text-sky-800'}`}
+                  title={
+                    game.minPlayers === 1 && game.maxPlayers === 1
+                      ? '1 player only'
+                      : game.minPlayers === 1
+                      ? '1 player minimum'
+                      : game.communityMinPlayers === 1
+                      ? 'Community player count minimum: 1'
+                      : 'Solo-capable (solo mode or mechanic)'
+                  }
+                >
+                  <User size={11} />Solo
+                </span>
+              )}
+              {(game.categories || []).filter((c) => c !== 'Print & Play').slice(0, 3).map((c) => <span key={c} className={`px-1.5 rounded ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}>{c}</span>)}
+            </div>
+          )}
           {hasExp && (
             <div className={`text-[11px] ${muted}`}>
               {game.expansions.length} expansion{game.expansions.length === 1 ? '' : 's'} &middot;{' '}
@@ -182,6 +207,11 @@ function GameRow({ game, isDark, onSell, onToggleExpansion, defaultOpen, onDecks
           <button onClick={(e) => { e.stopPropagation(); onDecks(game.deckGame); }} title="Build and test decks for this game"
             className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-gradient-to-r from-emerald-600 to-teal-700 text-white shrink-0">Campaign manager</button>
         )}
+        <button onClick={(e) => { e.stopPropagation(); onFavourite(game.id, !game.favourite); }}
+          title={game.favourite ? 'Remove from favourite games' : 'Add to favourite games'}
+          className={`p-1 rounded transition-colors shrink-0 ${game.favourite ? 'text-amber-500' : `${muted} hover:text-amber-500`}`}>
+          <Star size={15} fill={game.favourite ? 'currentColor' : 'none'} />
+        </button>
         {game.wantToSell && <EbaySold name={gameName} isDark={isDark} />}
         <SellTick checked={game.wantToSell} isDark={isDark} onToggle={(v) => onSell(game.id, v)} />
         <RemoveBtn name={gameName} onRemove={() => onRemove(game.id)} />
@@ -251,6 +281,11 @@ export default function BoardgamesPortal({ theme = 'dark', onThemeToggle, setCur
   const [draftToken, setDraftToken] = useState('');
   const [search, setSearch] = useState('');
   const [sellOnly, setSellOnly] = useState(false);
+  const [favOnly, setFavOnly] = useState(false);
+  const [soloOnly, setSoloOnly] = useState(false);
+  const [playerCount, setPlayerCount] = useState(0);   // 0 = any
+  const [maxTime, setMaxTime] = useState(0);           // 0 = any, else minutes (999 = over 3 hours)
+  const [gameTheme, setGameTheme] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
   const [notification, setNotification] = useState(null);
@@ -283,7 +318,7 @@ export default function BoardgamesPortal({ theme = 'dark', onThemeToggle, setCur
       const res = await fetch('/api/boardgames');
       const d = await res.json();
       if (!d.success) throw new Error(d.error || 'Failed to load.');
-      setData({ games: d.games, orphanExpansions: d.orphanExpansions, fetchedAt: d.fetchedAt, updates: d.updates || [] });
+      setData({ games: d.games, orphanExpansions: d.orphanExpansions, fetchedAt: d.fetchedAt, updates: d.updates || [], details: d.details || null });
       setConfig(d.config);
       setStatus(d.status);
       if (d.backfillStatus) setBackfillStatus(d.backfillStatus);
@@ -481,6 +516,35 @@ export default function BoardgamesPortal({ theme = 'dark', onThemeToggle, setCur
     } catch (err) { showToast(err.message, 'error'); }
   };
 
+  const setFavourite = async (id, favourite) => {
+    const apply = (val) => setData((prev) => ({ ...prev, games: prev.games.map((g) => (g.id === id ? { ...g, favourite: val } : g)) }));
+    apply(favourite);
+    try {
+      const res = await fetch('/api/boardgames/favourite', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, favourite }) });
+      if (!res.ok) throw new Error('Save failed');
+      const g = data.games.find((x) => x.id === id);
+      showToast(favourite ? `Added "${decodeHtmlEntities(g?.name || '')}" to favourites.` : `Removed "${decodeHtmlEntities(g?.name || '')}" from favourites.`);
+    } catch (err) {
+      apply(!favourite);
+      showToast(err.message, 'error');
+    }
+  };
+
+  // games without players / play time / themes yet: fetch them from BGG in the background, then reload
+  const detailsKick = useRef(false);
+  useEffect(() => {
+    if (detailsKick.current || !data.details?.missing || !config.hasToken) return;
+    detailsKick.current = true;
+    fetch('/api/boardgames/details/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {});
+    const t = setInterval(async () => {
+      try {
+        const st = await (await fetch('/api/boardgames/details/status')).json();
+        if (!st.running) { clearInterval(t); load(); }
+      } catch { clearInterval(t); }
+    }, 4000);
+    return () => clearInterval(t);
+  }, [data.details?.missing, config.hasToken]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const setSell = async (id, wantToSell) => {
     const apply = (val) => setData((prev) => {
       const flag = (x) => (x.id === id ? { ...x, wantToSell: val } : x);
@@ -506,11 +570,32 @@ export default function BoardgamesPortal({ theme = 'dark', onThemeToggle, setCur
   const q = search.trim().toLowerCase();
   const matches = (g) => {
     if (sellOnly && !(g.wantToSell || g.expansions.some((e) => e.wantToSell))) return false;
+    if (favOnly && !g.favourite) return false;
+    if (soloOnly && !g.solo) return false;
+    if (playerCount) {
+      if (playerCount === 1) {
+        if (!g.solo && g.minPlayers !== 1 && g.communityMinPlayers !== 1) return false;
+      } else {
+        if (!g.minPlayers) return false;
+        const hi = g.maxPlayers || g.minPlayers;
+        if (playerCount === 6 ? hi < 6 : (playerCount < g.minPlayers || playerCount > hi)) return false;
+      }
+    }
+    if (maxTime) {
+      const t = g.playingTime || g.maxTime;
+      if (!t) return false;
+      if (maxTime === 999 ? t <= 180 : t > maxTime) return false;
+    }
+    if (gameTheme && !(g.categories || []).includes(gameTheme)) return false;
     if (!q) return true;
     const gName = decodeHtmlEntities(g.name).toLowerCase();
     return gName.includes(q) || (g.expansions || []).some((e) => decodeHtmlEntities(e.name).toLowerCase().includes(q));
   };
   const visible = data.games.filter(matches);
+  const favCount = data.games.filter((g) => g.favourite).length;
+  const themes = Object.entries(data.games.reduce((acc, g) => { for (const c of g.categories || []) if (c !== 'Print & Play') acc[c] = (acc[c] || 0) + 1; return acc; }, {}))
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const filtersOn = favOnly || soloOnly || playerCount || maxTime || gameTheme;
   const sellCount = data.games.filter((g) => g.wantToSell).length
     + data.games.reduce((n, g) => n + (g.expansions || []).filter((e) => e.wantToSell).length, 0);
   const progressPct = status.total > 0 ? Math.round((status.done / status.total) * 100) : 0;
@@ -928,6 +1013,35 @@ export default function BoardgamesPortal({ theme = 'dark', onThemeToggle, setCur
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 opacity-50" />
             <input className={`${fieldClass} pl-8`} placeholder="Search games and expansions..." value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
+          <div className="flex flex-wrap items-center gap-2 mb-4 text-[11px] font-semibold">
+            <button onClick={() => setFavOnly(!favOnly)} title={favOnly ? 'Showing favourite games only - click to show all' : 'Show favourite games only'}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border ${favOnly ? 'bg-amber-500 border-amber-500 text-black' : isDark ? 'border-white/15' : 'border-slate-300'}`}>
+              <Star size={12} fill={favOnly ? 'currentColor' : 'none'} />Favourites ({favCount})
+            </button>
+            <select className={`${fieldClass} !w-auto !py-1.5`} value={playerCount} onChange={(e) => setPlayerCount(Number(e.target.value))} aria-label="Players">
+              <option value={0}>Any number of players</option>
+              {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} player{n === 1 ? '' : 's'}</option>)}
+              <option value={6}>6+ players</option>
+            </select>
+            <select className={`${fieldClass} !w-auto !py-1.5`} value={maxTime} onChange={(e) => setMaxTime(Number(e.target.value))} aria-label="Play time">
+              <option value={0}>Any play time</option>
+              {[30, 45, 60, 90, 120, 180].map((m) => <option key={m} value={m}>Up to {m >= 60 ? `${m / 60} hour${m === 60 ? '' : 's'}` : `${m} min`}</option>)}
+              <option value={999}>Over 3 hours</option>
+            </select>
+            <button onClick={() => setSoloOnly(!soloOnly)} title="Games that can be played on your own"
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border ${soloOnly ? 'bg-sky-600 border-sky-600 text-white' : isDark ? 'border-white/15' : 'border-slate-300'}`}>
+              <User size={12} />Solo
+            </button>
+            <select className={`${fieldClass} !w-auto !py-1.5`} value={gameTheme} onChange={(e) => setGameTheme(e.target.value)} aria-label="Theme">
+              <option value="">Any theme</option>
+              {themes.map(([t, n]) => <option key={t} value={t}>{t} ({n})</option>)}
+            </select>
+            {filtersOn ? <button onClick={() => { setFavOnly(false); setSoloOnly(false); setPlayerCount(0); setMaxTime(0); setGameTheme(''); }} className="underline underline-offset-2">Clear filters</button> : null}
+            <span className="ml-auto">{visible.length} of {data.games.length} shown</span>
+          </div>
+          {data.details?.running || (data.details?.missing > 0 && config.hasToken) ? (
+            <p className="text-[11px] mb-3">Fetching players, play times and themes from BoardGameGeek{data.details?.total ? ` (${data.details.done} of ${data.details.total})` : ''}...</p>
+          ) : null}
 
           {isLoading ? (
             <div className="py-8 flex justify-center"><RotateCw size={18} className="animate-spin opacity-50" /></div>
@@ -940,7 +1054,7 @@ export default function BoardgamesPortal({ theme = 'dark', onThemeToggle, setCur
           ) : (
             <div className="flex flex-col gap-2">
               {visible.map((g) => (
-                <GameRow key={g.id} game={g} isDark={isDark} onSell={setSell} onToggleExpansion={toggleExpansionOwned} onRemove={removeGame} onDecks={() => { window.history.pushState(null, '', '/campaigns/lotr'); if (setCurrentPath) setCurrentPath('/campaigns/lotr'); }}
+                <GameRow key={g.id} game={g} isDark={isDark} onSell={setSell} onFavourite={setFavourite} onToggleExpansion={toggleExpansionOwned} onRemove={removeGame} onDecks={() => { window.history.pushState(null, '', '/campaigns/lotr'); if (setCurrentPath) setCurrentPath('/campaigns/lotr'); }}
                   defaultOpen={Boolean(q) && (g.expansions || []).some((e) => decodeHtmlEntities(e.name).toLowerCase().includes(q))} />
               ))}
             </div>

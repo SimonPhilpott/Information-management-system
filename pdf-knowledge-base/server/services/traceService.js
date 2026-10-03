@@ -172,7 +172,7 @@ const READ_TOOLS = {
   getTrainingSummary: async (a) => { const st = getStravaStatus(); if (!st.connected) return { error: 'Strava is not connected.' }; return describeTraining(a.period === 'week' ? 7 : a.period === 'year' ? 365 : 28); },
   lookUpFood: async (a) => lookUpFood(a.food),
   getNews: async (a) => getNews({ topic: a.topic, source: a.source, about: a.about, tours: a.tours }),
-  getBoardGames: async (a) => describeCollectionForIms({ query: a.query, players: Number(a.players) || null, maxMinutes: Number(a.maxMinutes) || null, sortBy: a.sortBy || null }),
+  getBoardGames: async (a) => describeCollectionForIms({ query: a.query, players: Number(a.players) || null, maxMinutes: Number(a.maxMinutes) || null, sortBy: a.sortBy || null, favourites: a.favourites === true, solo: a.solo === true, theme: a.theme || '' }),
   getCampaigns: async (a) => ({ campaigns: campaignsForIms({ name: a.name, chronicle: false }) }),
   getBackgroundTasks: async (a) => ({ tasks: describeTasksForIms({ id: a.id, about: a.about }) }),
   getDayReport: async () => { const r = await buildReportParts({ markNews: false }); return { report: r.parts }; },
@@ -241,6 +241,6 @@ TEST MODE (System Architecture page): the user has TYPED this request to you ins
     }
     contents.push({ role: 'user', parts: responses });
   }
-  step('Reply spoken in the Yorkshire voice', [['pipeline', 'Audio pacing'], ['ai', 'gemini-3.8-live'], ['clients', 'Web app - Ims panel']]);
+  step('Reply spoken in the voice of the active persona', [['pipeline', 'Audio pacing'], ['ai', 'gemini-3.8-live'], ['clients', 'Web app - Ims panel']]);
   emit({ type: 'done', at: Date.now() - t0, answer: answer || '(no reply)' });
 }

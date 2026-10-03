@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { PoundSterling, Plus, Trash2, Save, ArrowRight } from 'lucide-react';
+import { PoundSterling, Plus, Trash2, Save, Target } from 'lucide-react';
 import PortalShell from './PortalShell';
 import Notice from './RunPlanner/Notice';
 
@@ -18,6 +18,7 @@ export default function CostsPortal({ theme = 'dark', onThemeToggle, setCurrentP
   const [fx, setFx] = useState(0.75);
   const [dirty, setDirty] = useState({ fixed: false, prices: false });
   const [note, setNote] = useState(null);
+  const [capInput, setCapInput] = useState('');
 
   const card = isDark ? 'bg-slate-900/60 border-white/10' : 'bg-white border-[#2E2B27]/15 shadow-sm';
   const strong = isDark ? 'text-slate-50' : 'text-slate-900';
@@ -32,7 +33,7 @@ export default function CostsPortal({ theme = 'dark', onThemeToggle, setCurrentP
     try {
       const j = await (await fetch(`/api/costs?period=${p}`)).json();
       if (!j.success) throw new Error(j.error);
-      setData(j); setFixed(j.fixed); setPrices(j.prices); setFx(j.usdToGbp);
+      setData(j); setFixed(j.fixed); setPrices(j.prices); setFx(j.usdToGbp); setCapInput(j.budget?.capGBP ? String(j.budget.capGBP) : '');
       setDirty({ fixed: false, prices: false });
     } catch (e) { setNote({ type: 'error', msg: e.message }); }
   };
@@ -85,7 +86,7 @@ export default function CostsPortal({ theme = 'dark', onThemeToggle, setCurrentP
   );
 
   return (
-    <PortalShell title="Costs" subtitle="/ims/costs • what IMS costs to run: Gemini API use, subscriptions and services" icon={PoundSterling}
+    <PortalShell title="Costs" subtitle="/ims/costs • what IMS costs to run: Gemini API use and budget, subscriptions and services" icon={PoundSterling}
       gradient="from-emerald-600 to-teal-700" glow="rgba(16,185,129,0.3)" isDark={isDark} onThemeToggle={onThemeToggle} setCurrentPath={setCurrentPath} notification={note}>
       {!data ? <div className={`p-8 ${body}`}>Adding it up...</div> : (
         <div className="space-y-5">
@@ -101,6 +102,38 @@ export default function CostsPortal({ theme = 'dark', onThemeToggle, setCurrentP
             <Tile label="Subscriptions & services" value={`${gbp(data.fixedMonthlyGBP)}/month`} sub={`${paid.filter((c) => c.estimated && c.amount > 0).length} amount(s) still estimates`} />
             <Tile label="Estimated monthly total" value={data.monthlyTotalGBP != null ? gbp(data.monthlyTotalGBP) : '-'} sub="Projected API + subscriptions" />
           </div>
+
+          {(() => {
+            const b = data.budget;
+            const pct = Math.min(100, b.percentage || 0);
+            const projPct = b.capGBP ? Math.min(100, (b.projectedGBP / b.capGBP) * 100) : 0;
+            const bar = b.status === 'critical' ? 'bg-rose-600' : b.status === 'near' || b.status === 'on course to go over' ? 'bg-amber-500' : 'bg-emerald-600';
+            return (
+              <section className={`rounded-xl border p-4 ${card}`}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className={`inline-flex items-center gap-2 text-sm font-black uppercase tracking-wide ${strong}`}><Target size={15} />Monthly Gemini budget</h2>
+                  <div className="flex items-center gap-2">
+                    <label className={`text-xs font-bold ${body}`}>Budget £<input className={`${input} w-24 ml-1`} type="number" min="0" step="1" value={capInput} placeholder="none" onChange={(e) => setCapInput(e.target.value)} /></label>
+                    <button className={primary} disabled={String(b.capGBP || '') === String(capInput)} onClick={() => put('/api/costs/budget', { capGBP: Number(capInput) || 0 }, 'Budget')}><Save size={13} />Save</button>
+                  </div>
+                </div>
+                {b.capGBP ? (
+                  <>
+                    <div className={`relative mt-3 h-4 rounded-md overflow-hidden ${track}`}>
+                      <div className={`h-full ${bar}`} style={{ width: `${pct}%` }} />
+                      <div className="absolute top-0 h-full border-r-2 border-dashed border-slate-500" style={{ left: `${projPct}%` }} title={`Projected by month end: ${gbp(b.projectedGBP)}`} />
+                    </div>
+                    <p className={`text-xs mt-2 ${body}`}>
+                      <b className={strong}>{gbp(b.spentGBP)}</b> of {gbp(b.capGBP)} used this month ({b.percentage}%) · {gbp(b.remainingGBP)} left · projected {gbp(b.projectedGBP)} by the month end (dashed line).
+                      {b.status === 'critical' && <b className={isDark ? ' text-rose-300' : ' text-rose-800'}> Over 95% - library chat will warn before each answer.</b>}
+                      {b.status === 'near' && <b className={isDark ? ' text-amber-300' : ' text-amber-800'}> Over 80% - library chat now warns before answering.</b>}
+                      {b.status === 'on course to go over' && <b className={isDark ? ' text-amber-300' : ' text-amber-800'}> On course to go over by the month end.</b>}
+                    </p>
+                  </>
+                ) : <p className={`text-xs mt-2 ${body}`}>No budget set. Set one and library chat warns you once 80% of it is used; this month so far: {gbp(b.spentGBP)}, projected {gbp(b.projectedGBP)}.</p>}
+              </section>
+            );
+          })()}
 
           <Notice isDark={isDark} tone="info" title="Where these numbers come from">
             Gemini API costs are measured: every call's real token counts (thinking tokens included, and Live voice per turn) priced at the rates below. Before {data.trackingSince ? new Date(data.trackingSince).toLocaleDateString('en-GB', { dateStyle: 'medium' }) : 'today'} only library chat, search and indexing were recorded, so earlier periods understate it. Your Google AI Pro subscription pays for the Gemini app, not API calls - those are billed to the Google Cloud project behind IMS's API key (free within limits on the API's free tier, in which case the API figures are what it would cost). Subscription amounts start as typical list prices marked "Estimate" until you confirm them against a bill.
@@ -133,6 +166,29 @@ export default function CostsPortal({ theme = 'dark', onThemeToggle, setCurrentP
                   ))}
                 </div>
                 <div className={`flex justify-between text-[11px] mt-1 ${body}`}><span>{api.byDay[0].day}</span><span>{api.byDay[api.byDay.length - 1].day}</span></div>
+              </div>
+            )}
+          </section>
+
+          <section className={`rounded-xl border p-4 ${card}`}>
+            <h2 className={`text-sm font-black uppercase tracking-wide mb-3 ${strong}`}>Costliest calls this month</h2>
+            {!data.costliest?.length ? <p className={`text-xs ${body}`}>None yet this month.</p> : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead><tr className={`text-left ${body}`}><th className="pb-1 font-bold">When</th><th className="pb-1 font-bold">Service</th><th className="pb-1 font-bold">Model</th><th className="pb-1 font-bold text-right">Tokens in / out</th><th className="pb-1 font-bold text-right">Cost</th><th className="pb-1 font-bold pl-3">What would cut it</th></tr></thead>
+                  <tbody>
+                    {data.costliest.map((c) => (
+                      <tr key={c.id} className={`border-t align-top ${line}`}>
+                        <td className={`py-1.5 pr-2 whitespace-nowrap ${body}`}>{new Date(c.timestamp.replace(' ', 'T') + 'Z').toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                        <td className={`py-1.5 pr-2 font-semibold ${strong}`}>{c.service}</td>
+                        <td className={`py-1.5 pr-2 ${body}`}><code>{c.model}</code></td>
+                        <td className={`py-1.5 pr-2 text-right tabular-nums ${body}`}>{tokens(c.input)} / {tokens(c.output)}</td>
+                        <td className={`py-1.5 pr-2 text-right font-black tabular-nums ${strong}`}>{c.priced ? gbp(c.gbp) : 'no price'}</td>
+                        <td className={`py-1.5 pl-3 ${body}`}>{c.advice}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </section>
@@ -185,7 +241,6 @@ export default function CostsPortal({ theme = 'dark', onThemeToggle, setCurrentP
             <p className={`text-[11px] mt-2 ${body}`}>Output includes thinking tokens. Live voice models are billed mostly for audio, at higher rates than text - check Google's pricing page for the Live model you use.</p>
           </section>
 
-          <button className={btn} onClick={() => { window.history.pushState(null, '', '/ims/spend'); setCurrentPath?.('/ims/spend'); }}>Monthly budget cap and costly prompts: Gemini Spend Budget <ArrowRight size={13} /></button>
         </div>
       )}
     </PortalShell>

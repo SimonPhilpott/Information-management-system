@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 105
-- Verified Features: 105
+- Total Registered Features: 109
+- Verified Features: 109
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -113,6 +113,10 @@
 | FEAT-103 | Phase 2: Central Background Job Scheduler & Disaster Recovery | [schedulerService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/schedulerService.js) | Central schedulerService consolidating 18 intervals with concurrency run-locks, Europe/London time, telemetry API, weekly SQLite PRAGMA integrity_check drill, and 1-click restore with pre-restore safety snapshots | PASS |
 | FEAT-104 | Phase 3: Real-Time SSE Push Stream & Searchable Logs Explorer | [eventBus.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/eventBus.js) | Central SSE /api/events with 20s keep-alives, useSystemEvents hook, structured logger with 2,000 entry ring buffer and 14-day file rotation, Logs Explorer tab in Architecture portal | PASS |
 | FEAT-105 | Ring Doorbell Live Feed & Motion Recordings Playback | [DoorbellPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/DoorbellPortal.jsx) | Web Audio dual-tone chime (F#5->D5), SpeechSynthesis Yorkshire voice announcement, live snapshot feed with 5s auto-refresh, cloud recordings retrieval & Range MP4 proxy streaming | PASS |
+| FEAT-106 | Board Game 4-Factor Solo Classification & Community Poll Integration | [boardgamesService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/boardgamesService.js) | verify_solo_rules.mjs unit test suite & UI filter parity across 4 user rules | PASS |
+| FEAT-107 | Diabetes Advice Disclaimer Suppression | [_house_rules.md](file:///d:/Information%20management%20system/personas/_house_rules.md) | Persona house rules, tool definitions, and AI prompt verification suppressing healthcare team referral disclaimers | PASS |
+| FEAT-108 | Wake Phrase Service Resiliency & Auto-Recovery Watchdog | [wakeDaemonService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/wakeDaemonService.js) | Firmware verify ceiling, TCP keep-alives, Gemini pre-warm, and watchdog recovery verification | PASS |
+| FEAT-109 | Modular Persona Management Tabs with Unified Raw Output | [PersonaPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/PersonaPortal.jsx) | Tab modularity, scratch verify_persona_tabs.mjs roundtrip test & Vite clean build | PASS |
 
 ## Section 2: Detailed Scenarios
 ### Suite 31: Observability Device Health Panel & Service (FEAT-086)
@@ -1089,6 +1093,40 @@
 4. **Cloud Recordings Retrieval:** Switch to the **Motion Recordings** tab. Verify `GET /api/doorbell/recordings` loads recent past events with event kind badges (`Doorbell Ding`, `Motion`, `Live View`), UK timestamps, duration, and person detection indicators.
 5. **Interactive MP4 Video Playback:** Click any recording tile to open the video playback modal. Verify the embedded HTML5 player loads and streams video smoothly from `/api/doorbell/recordings/:dingId/video`. Verify the **Download MP4** button links to the signed download URL.
 
+### Suite 106: Board Game 4-Factor Solo Classification & Community Poll Integration (FEAT-106)
+1. **Rule 1 Verification (1 Player Only):** Call `isSoloGame` on games where `min_players === 1 && max_players === 1` or player string is `'1'`. Verify `solo === true` and qualification reason flags `"1 player only"`.
+2. **Rule 2 Verification (Minimum 1 Player):** Call `isSoloGame` on games where `min_players === 1` with `max_players > 1` (e.g. 1-4 players). Verify `solo === true` and qualification reason flags `"1 marked as minimum player count"`.
+3. **Rule 3 Verification (Community Poll Minimum 1 Player):** Call `isSoloGame` on games where published players is 2-4 (such as *Jump Drive*, *Omega Centauri*, or *Tussie Mussie*), but BGG community poll (`suggested_numplayers`) or collection export (`bggrecplayers` / `bggbestplayers`) lists 1 as recommended. Verify `solo === true` and qualification reason flags `"Community recommended for 1 player"`.
+4. **Rule 4 Verification (Marked as Solo):** Call `isSoloGame` on games where player counts are >1, but mechanics, categories, or names explicitly include "Solo / Solitaire Game", "Solitaire", or "Solo". Verify `solo === true` and qualification reason flags `"Marked as solo/solitaire"`.
+5. **Negative Control Invariant:** Verify games strictly requiring 2 or more players with no community 1-player votes and no solo tags (e.g. *7 Wonders Duel*, *Codenames: Duet*) evaluate to `solo === false`.
+6. **Live UI Filter Parity:** Navigate to `/ims/boardgames`. Click the **Solo** filter pill. Verify that games qualifying under all 4 factors appear (134 total games in current collection). Hover over the Solo badge on a game card to verify the descriptive tooltip explaining the exact qualification rule. Select `1` in the Players filter and verify identical solo-capable games match.
+7. **Automated Unit Verification:** Execute `node scripts/verify_solo_rules.mjs` inside `pdf-knowledge-base/server/`. Verify all automated test suites pass with 100% assertions satisfied.
+
+### Suite 107: Diabetes Advice Disclaimer Suppression (FEAT-107)
+1. **House Rules Negative Constraint Invariant:** Inspect `personas/_house_rules.md`. Verify Section 4 contains the explicit directive prohibiting IMS from saying *"this is not medical advice"*, *"please seek advice from a medical professional or team"*, or suggesting to the user to speak to, check with, or consult their diabetes team, doctor, GP, or healthcare professionals, mandating direct observation and advice delivery without preachy hedges.
+2. **Hardware & Web Live System Instructions:** Inspect `hardwareClientService.js`. Verify `getHardwareSetupPayload()` and `getWebPersonaBlock()` inject strict non-negotiable prohibitions in both `DIABETES & HEALTH ADVICE` and in the high-attention priority block `LAST AND MOST IMPORTANT: 2) ZERO MEDICAL DISCLAIMERS: NEVER say 'this is not medical advice', NEVER say 'please seek advice from a medical professional or team', and NEVER tell the user to consult their doctor or diabetes team`.
+3. **Tool Definition & Tool Response Instruction Sanitisation:** Verify `getBloodGlucose` in `hardwareClientService.js` and `morningReportService.js` explicitly prohibit disclaimers. In `server/index.js`, verify `getBloodGlucose` tool response instruction strictly forbids disclaimers and wraps `insight.answer` in `stripMedicalDisclaimers()`.
+4. **Glucose & Run Services Prompt Stripping:** Inspect `glucoseHubService.js`, `glucoseInsightService.js`, `runPlanService.js`, `runLearningService.js`, `runInsightService.js`, `runGlucoseService.js`, and `imsFallbackService.js`. Verify all prompt triggers mentioning *"not medical advice"* have been removed and replaced with positive pattern-spotting instructions.
+5. **Runtime Output Disclaimer Sanitizer:** Inspect `pdf-knowledge-base/server/services/disclaimerSanitizer.js`. Run unit assertions to verify `stripMedicalDisclaimers()` strips all variants of *"this is not medical advice"*, *"please seek advice from a medical professional or team"*, hanging punctuation, and trailing boilerplate across `glucoseInsightService.js`, `glucoseHubService.js`, `runGlucoseService.js`, `runInsightService.js`, and `imsFallbackService.js`.
+
+### Suite 108: Wake Phrase Service Resiliency & Auto-Recovery Watchdog (FEAT-108)
+1. **Firmware Verifying State Ambient Ceiling Invariant:** Inspect `firmware/esp32-s3-box-3/src/main.cpp`. Verify `verifyingStartMs` records candidate trigger timestamp, and `loop()` safety check evaluates `(verifyingStartMs > 0 && millis() - verifyingStartMs > 4500) || (millis() - lastSpeechTimestamp > 4000)`. Test that continuous ambient background noise (>450 RMS) cannot trap the firmware in `STATE_VERIFYING` beyond 4.5 seconds.
+2. **TCP Keep-Alive & Inactivity Watchdog:** Verify `RawTcpClient` sets `SO_KEEPALIVE` with 10s idle probes. In `loop()`, verify `millis() - tcpClient.getLastRxMs() > 60000` resets half-open connections. In `server/index.js`, verify `socket.setKeepAlive(true, 10000)` and `socket.setTimeout(60000)` are active on `hardwareTcpServer`.
+3. **Upstream Gemini Live Pre-Warming & Audio Queuing:** Inspect `server/index.js`. Verify `scheduleWarmUpstreamReconnect` automatically re-establishes dropped Gemini sessions while device is in STANDBY. Verify incoming audio frames during connection setup are buffered in `outboundAudioQueue` and dispatched only after `setupComplete` ACK is received, preventing dropped wake audio.
+4. **Turn Stall Watchdog:** In `server/index.js`, verify `turnStallWatchdogInterval` runs every second; if Gemini Live synthesis stops emitting audio for >8s without emitting `turnComplete`, verify `isModelSpeaking` is cleared and `currentTurnComplete = true` is set.
+5. **WakeDaemon Watchdog Self-Healing & API:** Query `POST /api/wake-daemon/recover`. Verify HTTP 200 return with `{ success: true, state: 'STANDBY', recovered: true }`, resetting client mic, audio pacing flags, and Gemini turns. Verify `_watchdogTick` in `wakeDaemonService.js` automatically recovers dead client sockets, hung playback flags (>20s), and conversational silence (>15s).
+
+### Suite 109: Modular Persona Management Tabs with Unified Raw Output (FEAT-109)
+1. **Persona Tab Modularity & De-Duplication:** Navigate to `/ims/persona`. Verify that persona configuration is cleanly segmented into 8 non-overlapping tabs: *Profile & Voice*, *Accent & Dialect*, *Rhythm & Vocabulary*, *Conversation & Style*, *Alerts & Reports*, *House Rules*, *Test Bench*, and *Raw Output*.
+2. **Profile & Voice Tab Verification:** Open the *Profile & Voice* tab. Verify presence of persona name, description, Gemini Live voice model dropdown (30 official voices with descriptions), speech language code, voice test line, persona intro markdown header, and the interactive Section 1 (Identity) item editor.
+3. **Accent & Dialect Tab Verification:** Open the *Accent & Dialect* tab. Verify short accent tag, short dialect tag, live voice model strict phonetic `accentRule` prompt, judge evaluation criteria, and the interactive Section 2 (Voice & Accent) rule editor.
+4. **Rhythm & Vocabulary Tab Verification:** Open the *Rhythm & Vocabulary* tab. Verify thinking sounds list (with count pill), dialect words pool (with count pill), sentence tag endings list (with count pill), and the interactive Section 3 (Spoken Rhythm) pacing editor.
+5. **Conversation & Style Tab Verification:** Open the *Conversation & Style* tab. Verify persona character summary for judge checks, clarification example phrase ("Didn't catch that"), Section 4 (Conversation Style), and Section 5 (Dialogue Examples).
+6. **Alerts & Reports Tab Verification:** Open the *Alerts & Reports* tab. Verify day report sign-offs, weather phrasing mode, and doorbell ding/motion announcements.
+7. **House Rules Tab Verification:** Open the *House Rules* tab. Verify shared cross-persona markdown rules (`personas/_house_rules.md`) with copy-to-clipboard and save functionality.
+8. **Unified Raw Output Parity:** Open the *Raw Output* tab. Verify it renders the live unified Markdown file (`personas/<selected>.md`) containing the YAML frontmatter and all character sections combined. Verify line count, character count, and 1-click clipboard copy. Edit raw text and verify direct save applies cleanly back across all tabs.
+9. **Automated Roundtrip Parity Check:** Execute `node scratch/verify_persona_tabs.mjs`. Verify 100% frontmatter parity, 5/5 sections preservation, and serialization roundtrip accuracy for Yorkshire Ims.
+
 ## Section 3: Defensive Engineering Invariants
 - **Scheduler Concurrency Protection:** All routines managed by `schedulerService` must acquire an execution run-lock (`isRunning`) before invoking the action and release it in a `finally` block to prevent SQLite database write lock contention.
 - **Pre-Restore Snapshot Guarantee:** Every database restoration via `backupService.restoreBackup()` must take a full SQLite backup snapshot of the active database (`LOCAL/pre-restore-app-${Date.now()}.db`) before touching live database or asset files.
@@ -1100,5 +1138,11 @@
 - **Log File Retention Lifecycle:** Daily log archives in `data/logs/` must automatically purge entries exceeding 14 days of age during daily rotation.
 - **Snapshot Rate-Limit Throttle:** Ring camera snapshot requests (`getCameraSnapshot`) must cache the latest JPEG buffer for at least 2,000ms to protect battery-powered doorbells from aggressive client auto-refresh polling and API rate limiting.
 - **Video Range Streaming:** Recording video proxy (`/api/doorbell/recordings/:dingId/video`) must pass incoming HTTP `Range` headers to upstream S3 and emit `Content-Range` with status 206 to ensure smooth, non-blocking HTML5 video scrubbing without downloading entire files in memory.
+- **BGG Community Poll Resilience:** Extraction of community player counts from BGG XML API responses must gracefully handle missing poll nodes, empty recommendation arrays, non-numeric values, and un-fetched cached details without throwing runtime exceptions or defaulting falsely to 0.
+- **Clinical Advice Disclaimer Suppression:** All prompts, tool definitions, and LLM generation pipelines in diabetes, glucose telemetry, morning reports, and run planning services must enforce direct empirical pattern reporting, strictly prohibit medical disclaimers such as 'this is not medical advice' and doctor referrals, and actively sanitize all model outputs with `stripMedicalDisclaimers` before returning to clients or voice engines.
+- **Wake Verification Ceiling Invariant:** ESP32 firmware in `STATE_VERIFYING` must enforce an absolute time boundary (`verifyingStartMs` <= 4500ms) to ensure continuous ambient acoustic energy (>450 RMS) cannot permanently block fallback to `STATE_STANDBY`.
+- **TCP Keep-Alive & Inactivity Invariant:** Hardware TCP transport between ESP32 and Node.js proxy must maintain `SO_KEEPALIVE` probes every 10 seconds and enforce a 60-second RX silence watchdog to cleanly sever half-open dead sockets.
+- **Gemini Upstream Warm Reconnection Invariant:** When idle in STANDBY, the backend proxy must proactively reconnect dropped Gemini Live sessions with exponential backoff and buffer outbound audio until `setupComplete` is acknowledged, preventing dropped wake audio.
+- **Wake Turn Stall Recovery Invariant:** Model speech flags and audio pacing states must auto-recover if speech output halts for >8s without emitting `turnComplete`, ensuring the 15-second silence watchdog can cleanly return the system to ready standby.
 
 

@@ -14,6 +14,7 @@ import { searchSimilar } from "./vectorStore.js";
 import { generateQueryEmbedding } from "./embeddingService.js";
 import { detectQuerySubjects } from "./subjectMatcherService.js";
 import { getEmotionNames, getFacePromptGuide } from "./faceDesignService.js";
+import { personaRules, accentRule, voiceName, languageCode, pools, inYourVoice, getActivePersona, activePersonaId, savePersonaRaw, savePersonaParts, listHistory, readHistory } from "./personaService.js";
 import { describeSources } from "./newsService.js";
 import { wakePhraseNames, wakeSpellings } from "./phrasesService.js";
 import { listBirthdays } from "./birthdayService.js";
@@ -28,89 +29,27 @@ import { describeTraining, getSummary as getStravaSummary } from "./stravaServic
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-/**
- * Reads the root ims_persona_rules.md file dynamically on every session setup.
- * Allows live editing of the Yorkshire dialect, character lore, and conversational
- * dynamics without server restarts or firmware flashes.
- */
-const PERSONA_RULES_CANDIDATES = [
-  path.resolve(__dirname, "../../../ims_persona_rules.md"),
-  path.resolve(process.cwd(), "ims_persona_rules.md"),
-  path.resolve(__dirname, "../../ims_persona_rules.md")
-];
-
-/**
- * Resolves the actual on-disk path of ims_persona_rules.md - the first
- * candidate that already exists, or the first candidate at all if none do
- * yet (so a fresh save always has somewhere sensible to write to).
- */
+// Ims's persona now lives in /personas (personaService.js) - one file per persona plus the shared house
+// rules. These keep their old names so every existing caller picks up the ACTIVE persona automatically.
 export function getPersonaRulesPath() {
-  for (const candidate of PERSONA_RULES_CANDIDATES) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return PERSONA_RULES_CANDIDATES[0];
+  return `personas/${activePersonaId()}.md`;
 }
 
+/** The active persona's character sections + the shared house rules - what goes into every prompt. */
 export function loadPersonaRules() {
-  try {
-    const resolvedPath = getPersonaRulesPath();
-    if (fs.existsSync(resolvedPath)) {
-      const content = fs.readFileSync(resolvedPath, "utf8").trim();
-      if (content) return content;
-    }
-  } catch (err) {
-    console.warn("[PersonaRules] Could not load ims_persona_rules.md:", err.message);
-  }
-  return "";
+  try { return personaRules(); } catch (err) { console.warn("[Persona] Could not load the active persona:", err.message); return ""; }
 }
 
-/**
- * Overwrites ims_persona_rules.md with new content - used by the /ims/persona
- * web editor. Takes effect on the very next Gemini session setup (no restart
- * needed), same as any other hand-edit of the file - see loadPersonaRules()'s
- * own doc comment.
- */
+/** Saves the active persona: a whole file (with its header) or just the character sections. */
 export function savePersonaRules(content) {
-  const resolvedPath = getPersonaRulesPath();
-  // Keep the version being replaced, so any edit (especially restructuring the
-  // document into sections) can be undone from the /ims/persona history list.
-  try {
-    if (fs.existsSync(resolvedPath)) {
-      const prev = fs.readFileSync(resolvedPath, "utf8");
-      if (prev.trim() && prev !== content) {
-        fs.mkdirSync(PERSONA_HISTORY_DIR, { recursive: true });
-        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-        fs.writeFileSync(path.join(PERSONA_HISTORY_DIR, `${stamp}.md`), prev, "utf8");
-        const files = fs.readdirSync(PERSONA_HISTORY_DIR).filter((f) => f.endsWith(".md")).sort();
-        for (const old of files.slice(0, Math.max(0, files.length - 60))) fs.unlinkSync(path.join(PERSONA_HISTORY_DIR, old));
-      }
-    }
-  } catch (err) {
-    console.warn("[PersonaRules] Could not write history snapshot:", err.message);
-  }
-  fs.writeFileSync(resolvedPath, content, "utf8");
-  return resolvedPath;
+  const id = activePersonaId();
+  if (/^---\r?\n/.test(content)) savePersonaRaw(id, content);
+  else savePersonaParts(id, { body: content });
+  return getPersonaRulesPath();
 }
 
-const PERSONA_HISTORY_DIR = path.resolve(__dirname, "../data/persona_history");
-
-export function listPersonaHistory() {
-  try {
-    return fs.readdirSync(PERSONA_HISTORY_DIR).filter((f) => f.endsWith(".md")).sort().reverse().map((f) => ({
-      id: f.replace(/\.md$/, ""),
-      savedAt: f.replace(/\.md$/, "").replace(/^(\d{4}-\d{2}-\d{2}T\d{2})-(\d{2})-(\d{2})-(\d+Z)$/, "$1:$2:$3.$4"),
-      bytes: fs.statSync(path.join(PERSONA_HISTORY_DIR, f)).size,
-    }));
-  } catch (_) {
-    return [];
-  }
-}
-
-export function readPersonaHistory(id) {
-  if (!/^[0-9TZ-]+$/.test(id)) return null;
-  const p = path.join(PERSONA_HISTORY_DIR, `${id}.md`);
-  return fs.existsSync(p) ? fs.readFileSync(p, "utf8") : null;
-}
+export function listPersonaHistory() { return listHistory(activePersonaId()); }
+export function readPersonaHistory(id) { return readHistory(activePersonaId(), id); }
 
 const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
 
@@ -169,9 +108,10 @@ const DEFAULT_PERSONALITY = { humor: 70, delivery: 45, temperament: 30, social: 
 export function getPersonality() {
   try {
     const raw = getSetting("ims_personality");
-    if (!raw) return { ...DEFAULT_PERSONALITY };
+    if (!raw) return { ...DEFAULT_PERSONALITY, voice: voiceName() };
     const parsed = JSON.parse(raw);
-    return { ...DEFAULT_PERSONALITY, ...parsed, voice: parsed.voice || "Umbriel" };
+    // the voice belongs to the active persona (each persona has its own)
+    return { ...DEFAULT_PERSONALITY, ...parsed, voice: voiceName() };
   } catch (err) {
     console.error("[Personality] Failed to read settings, using defaults:", err.message);
     return { ...DEFAULT_PERSONALITY };
@@ -191,6 +131,10 @@ export function setPersonality(partial) {
     if (typeof next[key] === "number") {
       next[key] = Math.max(0, Math.min(100, Math.round(next[key])));
     }
+  }
+  // a voice chosen anywhere (the Box-3 voice screen, settings) is saved to the ACTIVE persona
+  if (partial && partial.voice && partial.voice !== voiceName()) {
+    try { savePersonaParts(activePersonaId(), { meta: { voice: partial.voice } }); } catch (err) { console.warn("[Persona] voice not saved:", err.message); }
   }
   setSetting("ims_personality", JSON.stringify(next));
   return next;
@@ -353,14 +297,10 @@ function buildVarianceDirective() {
 // pools rather than listed in full, because a fixed list of examples gets used as a script -
 // the same few tags came back in every reply. Anything Ims has leaned on across his recent
 // replies is left out of the next session's selection and named as something to rest.
-const DIALECT_POOL = [
-  "nowt", "owt", "summat", "reight", "grand", "chuffed", "mardy", "faff", "bodge", "crack on", "muck in", "ta",
-  "aye", "happen (meaning maybe)", "proper", "spot on", "cracking", "not bad, that", "fair play", "give over",
-  "our (as in our Rowan)", "mash (the tea)", "ginnel", "brew", "nithered", "mither", "lug 'ole",
-  "while (meaning until)", "gerroff", "any road", "tha knows", "by 'eck",
-];
-const TAG_POOL = ["...like", "...mind", "...then", "...that", "...you know", "...eh?", "...to be fair", "...anyroad"];
-const THINKING_POOL = ["Soooo,", "Weeell,", "Riiight,", "Hmmm,", "Ooh,", "Erm,", "Err,", "Ahh,", "Noooo,", "Aye, weeell,", "Nowww then,"];
+// The persona's dialect words, tag-endings and thinking sounds (personaService pools()).
+const DIALECT_POOL_OF = () => pools().dialectWords;
+const TAG_POOL_OF = () => pools().tagEndings;
+const THINKING_POOL_OF = () => pools().thinkingSounds;
 const RECENT_REPLIES_KEY = "ims_recent_replies";
 
 const phraseKey = (p) => p.replace(/\s*\(.*\)$/, "").replace(/^\.\.\./, "").replace(/[,?]/g, "").trim().toLowerCase();
@@ -389,7 +329,7 @@ function overusedPhrases() {
   for (const reply of recent) {
     const low = " " + reply.toLowerCase().replace(/[^a-z' ]+/g, " ") + " ";
     const seen = new Set();
-    for (const p of [...DIALECT_POOL, ...TAG_POOL]) {
+    for (const p of [...DIALECT_POOL_OF(), ...TAG_POOL_OF()]) {
       const k = phraseKey(p);
       if (k && low.includes(" " + k + " ")) seen.add(k);
     }
@@ -411,13 +351,13 @@ function pick(pool, n, avoid) {
 function buildSpeechStyleDirective() {
   const tired = overusedPhrases();
   const avoid = new Set(tired);
-  const words = pick(DIALECT_POOL, 6, avoid);
-  const tags = pick(TAG_POOL, 2, avoid);
-  const thinking = pick(THINKING_POOL, 4, avoid);
+  const words = pick(DIALECT_POOL_OF(), 6, avoid);
+  const tags = pick(TAG_POOL_OF(), 2, avoid);
+  const thinking = pick(THINKING_POOL_OF(), 4, avoid);
   return "SPEECH FOR THIS CONVERSATION: sound like a real person talking, not someone reading. " +
-    `Dialect to draw on this time (each at most once): ${words.join(", ")}. ` +
-    `Tags you may end a sentence with, sparingly and never twice in a row: ${tags.join(", ")}. ` +
-    `When a reply needs a moment's thought, open with a stretched word such as ${thinking.join(" / ")} - hold the vowel - or an "erm," or "err,". ` +
+    (words.length ? `Dialect to draw on this time (each at most once): ${words.join(", ")}. ` : "") +
+    (tags.length ? `Tags you may end a sentence with, sparingly and never twice in a row: ${tags.join(", ")}. ` : "") +
+    (thinking.length ? `When a reply needs a moment's thought, open with a stretched word such as ${thinking.join(" / ")} - hold the vowel - or a natural filler. ` : "When a reply needs a moment's thought, a natural filler is fine. ") +
     "Leave small pauses between clauses with commas and the odd '...', and a beat before the important bit. " +
     "Roughly half your replies should have one or two of these; quick facts and confirmations need none. " +
     "Vary reply length and shape. Never start a sentence and then correct yourself. " +
@@ -648,29 +588,28 @@ export async function executeHardwareRAGSearch(query, subjects = []) {
  */
 // Ims's identity for anything that ISN'T the desk device - the web app's live
 // voice chat - built from the same three sources as the device prompt (the
-// fixed Yorkshire identity, ims_persona_rules.md, and the user's personality
+// active persona (personaService), the shared house rules, and the user's personality
 // sliders) so Ims sounds and behaves the same wherever you talk to it. The
 // device keeps its own fuller prompt (wake phrases, device tools) above.
 export function getWebPersonaBlock() {
   const personality = getPersonality();
-  const personaRules = loadPersonaRules();
+  const persona = getActivePersona();
+  const rules = loadPersonaRules();
   const text =
-    "You are Ims, an intelligent voice companion (rhymes with rims). You speak strictly in natural, articulate, authentic British English with a distinctive Yorkshire dialect and cadence throughout every single sentence and turn. NEVER drift into American English, US spelling, or Silicon Valley phrasing. " + ACCENT_RULE + " " +
-    (personaRules ? "\n\n" + personaRules + "\n\n" : " ") +
-    "Right now, calibrate that tone using the following user-adjustable personality settings (these govern attitude, warmth, humor, and formality, but NEVER override your British English dialect, Yorkshire cadence, or en-GB spelling, which must remain strictly persistent throughout every turn): " +
-    buildPersonalityParagraph(personality) + "\n\nLAST AND MOST IMPORTANT - " + ACCENT_RULE;
-  return { voice: personality.voice, text };
+    `You are Ims, an intelligent voice companion (rhymes with rims). You speak English only, in your persona's accent (${persona.accent}) in every single sentence and turn - never drifting into another accent. ` + accentRule() + " " +
+    (rules ? "\n\n" + rules + "\n\n" : " ") +
+    "Right now, calibrate that tone using the following user-adjustable personality settings (these govern attitude, warmth, humor, and formality, but NEVER override your persona's accent and dialect, which must remain persistent throughout every turn): " +
+    buildPersonalityParagraph(personality) + "\n\nLAST AND MOST IMPORTANT:\n1) " + accentRule() + "\n2) ZERO MEDICAL DISCLAIMERS: NEVER say 'this is not medical advice', NEVER say 'please seek advice from a medical professional or team', and NEVER tell the user to consult their doctor or diabetes team. Deliver all advice directly without disclaimers or caveats.";
+  return { voice: voiceName(), languageCode: languageCode(), text };
 }
 
-// Style instruction for reading text aloud with Gemini TTS: the same voice as
-// live conversations (personality.voice) plus the same accent/personality
-// direction, so spoken output is Ims's voice, never a generic one.
+// Style instruction for reading text aloud with Gemini TTS: the active persona's voice and accent plus the
+// personality, so spoken output is Ims's voice, never a generic one.
 export function getSpokenStyleDirective() {
   const personality = getPersonality();
   return {
-    voice: personality.voice,
-    directive: "Read the following text aloud exactly as written, delivered with this personality: " + buildPersonalityParagraph(personality) + " " + ACCENT_RULE + " Personality: " +
-      buildPersonalityParagraph(personality) + "\nText to read:\n"
+    voice: voiceName(),
+    directive: "Read the following text aloud exactly as written, delivered with this personality: " + buildPersonalityParagraph(personality) + " " + accentRule() + "\nText to read:\n"
   };
 }
 
@@ -694,7 +633,7 @@ function buildServicesParagraph() {
     "Notes on their last run for its retrospective - how it felt, when they slowed, an extra gel (addRunNote). " +
     "Training from Strava (getTrainingSummary). New and upcoming music from their MUZAK library (getNewMusicReleases). " +
     "Their PDF library of books and documents (searchLibrary). Jokes (tellJoke). Recording calls and meetings on the desk terminal (startRecording). " +
-    "Anything else - obscure facts, how-to questions, advice, a bit of encouragement - or when your tools give no clear or only a partial answer: call askGemini (pass the question and anything you already know from IMS that helps, e.g. today's run or weather), then say its answer briefly in your own Yorkshire words, adding what you know - never read it out word for word and never just say you don't know. " +
+    "Anything else - obscure facts, how-to questions, advice, a bit of encouragement - or when your tools give no clear or only a partial answer: call askGemini (pass the question and anything you already know from IMS that helps, e.g. today's run or weather), then say its answer briefly in your own words and dialect, adding what you know - never read it out word for word and never just say you don't know. " +
     "On the IMS web app only, with no tool of yours: the Run Planner (routes, pace and carbs for a run, at /ims/runplanner), running goals and detailed activity analysis (/ims/activities), " +
     "the music want list and recommendations (/ims/musicscan), past call recordings and summaries (/ims/recordings), " +
     "news source settings (/ims/news), your face designs (/ims/facedesigner) and your personality (/ims/persona) - if asked about these, say what's there and where." +
@@ -821,7 +760,7 @@ function extraWakePhrases() {
 
 export function getHardwareSetupPayload(previewVoice = null, morningReportDirective = null) {
   const personality = getPersonality();
-  const activeVoice = previewVoice || personality.voice || "Umbriel";
+  const activeVoice = previewVoice || voiceName();
   const personalityParagraph = buildPersonalityParagraph(personality);
   const archetype = pickArchetype();
   const varianceDirective = buildVarianceDirective();
@@ -857,7 +796,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
         // removed rather than risked. Worth retrying deliberately, on its
         // own, if the variance engine ever needs it.
         speechConfig: {
-          languageCode: "en-GB", // English (UK) only - Ims must never drift into another language
+          languageCode: languageCode(), // the persona's English (en-GB unless the persona says otherwise) - never another language
           voiceConfig: {
             prebuiltVoiceConfig: {
               voiceName: activeVoice
@@ -867,12 +806,12 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
       },
       systemInstruction: {
         parts: [{
-          text: "You are Ims, a voice companion living in a small desk terminal (an ESP32-S3-BOX-3). Your name rhymes with rims. You speak natural British English with a Yorkshire dialect and cadence in every sentence of every turn - never American English, US spelling or Silicon Valley phrasing. " +
+          text: `You are Ims, a voice companion living in a small desk terminal (an ESP32-S3-BOX-3). Your name rhymes with rims. You speak natural English in your persona's accent (${getActivePersona().accent}) in every sentence of every turn - never drifting into another accent. ` +
             `The current date and time is ${nowStr}.\n\n` +
             // Hard rules first; character, memory, personality and speech style last, closest to
             // where the model starts speaking, so they carry the most weight.
-            "LANGUAGE: always speak English - never German or any other language, even if the audio is unclear or sounds foreign; if you cannot make out what was said, ask them in English to say it again. " + ACCENT_RULE + " " +
-            "CLARIFICATION & NEVER SILENT WHEN ADDRESSED: When the user addresses you with a wake phrase, or when a conversation is open, if you do not understand the whole prompt or only understand small parts of it (e.g. muffled speech, quiet audio, clipped words), you must NEVER stay silent, NEVER call noWakeDetected, and NEVER revert to standby without speaking. Always ask for clarification in your natural Yorkshire voice (e.g. 'Sorry, didn't catch all of that - what was that last bit?', 'Didn't quite get that, what did you want me to do?'). If you are confused by what they mean or making an educated guess at their intent, speak up and ask for clarification or confirmation (e.g. 'I reckon you mean [guess], is that right, or did you mean something else?'). " +
+            "LANGUAGE: always speak English - never German or any other language, even if the audio is unclear or sounds foreign; if you cannot make out what was said, ask them in English to say it again. " + accentRule() + " " +
+            "CLARIFICATION & NEVER SILENT WHEN ADDRESSED: When the user addresses you with a wake phrase, or when a conversation is open, if you do not understand the whole prompt or only understand small parts of it (e.g. muffled speech, quiet audio, clipped words), you must NEVER stay silent, NEVER call noWakeDetected, and NEVER revert to standby without speaking. Always ask for clarification in your own voice (e.g. '" + getActivePersona().clarifyExample + "'). If you are confused by what they mean or making an educated guess at their intent, speak up and ask for clarification or confirmation (e.g. 'I reckon you mean [guess], is that right, or did you mean something else?'). " +
             "WAKE PHRASES: when a reply would start from microphone audio (realtimeInput), only respond if the speech begins with 'Hey IMS', 'Hi IMS' or 'Eh up IMS' (or 'Ey up IMS')" + extraWakePhrases() + ". The name alone, other greetings ('Now then', 'Morning', 'Alright') and ambient room talk do not count - for anything else (background TV, room chatter clearly NOT addressed to you), call noWakeDetected and say nothing at all. But if ANY wake phrase was said or the user is trying to speak to you, you MUST speak back (either answer or ask for clarification) and NEVER call noWakeDetected. Text messages from the device system (clientContent) are exempt and answered at once. " +
             "If the user only said the wake phrase, greet them freshly in your own voice. If ANYTHING followed the wake phrase (a question, request or statement), do NOT greet at all - no 'Ey up', no 'Now then', no pleasantry or acknowledgement - your first words are the answer itself. " +
             "Once you have replied, the conversation is open: keep answering follow-ups without the wake phrase until they close it ('bye', 'goodbye', 'thanks, bye', 'that's all, IMS', 'I'm done', 'see you later' - and Simon's usual ones: 'cheers mate', 'cheers IMS', 'cheers', 'ta', 'ta-ra', 'nice one, cheers' when that is all they say; 'cheers' followed by another question is NOT a goodbye) - then say a brief farewell and call endConversation. " +
@@ -880,6 +819,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             "RECORDING: when asked to record a call or meeting, if they haven't said who it is with, ask that one short question, then call startRecording. From then on stay COMPLETELY SILENT - no words, sounds, emotion changes or tool calls, whatever anyone says. The system ends the recording itself when the user says 'IMS stop'. " +
             "JOKES: for a joke, call tellJoke and tell what it returns in your own voice; never invent one. HARD RULE above everything else: never tell, make up or repeat a racist or sexist joke, however dark the Humor setting; decline in one line and offer another. " +
             "GREETINGS AND SMALL TALK: keep them conversational - never mention blood sugar, glucose, insulin, carbs, runs or training unless the user asks; that information is for the morning / day report. " +
+            "DIABETES & HEALTH ADVICE (CRITICAL NON-NEGOTIABLE RULE): when the user asks about blood sugar, diabetes, carbs, or exercise telemetry, give your direct observations, numbers, pattern analysis, and actionable ideas straight to consider. ABSOLUTE PROHIBITION: You must NEVER say 'this is not medical advice', NEVER say 'please seek advice from a medical professional or team', and NEVER tell or suggest to the user to speak to, check with, or consult their diabetes team, doctor, GP, or healthcare professional. The user is an experienced adult who manages their healthcare team independently and has strictly forbidden all medical disclaimers and referrals. Never utter any variation of a medical disclaimer under any circumstances. Never give insulin doses. " +
             "FACE: call setEmotion at the start of every spoken reply, and again if your tone shifts partway through. Tools are only ever called, never written or spoken: never put a function name or call (like setEmotion(...)) into your words. " +
             "ITEM CREATION & REQUIREMENT SCOPES (STRICT GUIDELINES FOR CREATING ITEMS):\n" +
             "When the user asks to create or set up a new item in any service, follow these exact requirement scopes.\n" +
@@ -901,11 +841,13 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             "WHEN SOMETHING FAILS: if a tool returns an error it is logged automatically as a dev idea for Claude Code (the result says so) - tell them briefly it didn't work and that you've flagged it to be fixed. If they want something IMS can't do yet, or something goes wrong that no tool reported, offer to note it as a dev idea and call saveDevIdea if they agree, written as a clear request for a developer: what they wanted, what happened, and any detail they gave.\n\n" +
             (personaRules ? personaRules + "\n\n" : "") +
             (memoryParagraph ? memoryParagraph + "\n\n" : "") +
-            "PERSONALITY right now (sets attitude, warmth, humour and formality - never your dialect or en-GB spelling): " + personalityParagraph + " " +
+            "PERSONALITY right now (sets attitude, warmth, humour and formality - never your persona's accent or dialect): " + personalityParagraph + " " +
             `Framing for this session: ${archetype.directive}. ` +
             (varianceDirective ? varianceDirective + " " : "") +
             "\n\n" + buildSpeechStyleDirective() +
-            "\n\nLAST AND MOST IMPORTANT - " + ACCENT_RULE +
+            "\n\nLAST AND MOST IMPORTANT:\n" +
+            "1) " + accentRule() + "\n" +
+            "2) ZERO MEDICAL DISCLAIMERS: NEVER say 'this is not medical advice', NEVER say 'please seek advice from a medical professional or team', and NEVER tell the user to consult their doctor or diabetes team. Deliver all diabetes, carb, and glucose advice directly without caveats or referrals." +
             (morningReportDirective ? "\n\n" + morningReportDirective : "")
         }]
       },
@@ -1200,7 +1142,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "getWeather",
-            description: "Call whenever the user asks about the weather, temperature, rain, wind or what to wear - now, later today, tomorrow or any day up to 16 days ahead, at home or anywhere else. With no place it uses their home (set on the Weather page); places they have saved can be named directly. The result is the facts to describe, worked out hour by hour for the time that is still to come: description.rest_of_today, tonight, tomorrow and outlook, plus language_today (and a language set on every day) saying how strong the rain, temperature and wind are, the words that fit and the words that would overstate it. Describe it in your own Yorkshire words but NEVER stronger or weaker than those facts - drizzle is not 'chucking it down', a 20% chance is not a wet day, 16 degrees is not 'roasting'. Rain that fell earlier is over; don't talk about it as coming. When a day has 'unusual', remark on how unusual it is for the time of year with a fresh line of your own. More than a week ahead is only a rough guide - say so. Never guess or invent weather.",
+            description: "Call whenever the user asks about the weather, temperature, rain, wind or what to wear - now, later today, tomorrow or any day up to 16 days ahead, at home or anywhere else. With no place it uses their home (set on the Weather page); places they have saved can be named directly. The result is the facts to describe, worked out hour by hour for the time that is still to come: description.rest_of_today, tonight, tomorrow and outlook, plus language_today (and a language set on every day) saying how strong the rain, temperature and wind are, the words that fit and the words that would overstate it. Describe it in your own words and dialect but NEVER stronger or weaker than those facts - drizzle is not 'chucking it down', a 20% chance is not a wet day, 16 degrees is not 'roasting'. Rain that fell earlier is over; don't talk about it as coming. When a day has 'unusual', remark on how unusual it is for the time of year with a fresh line of your own. More than a week ahead is only a rough guide - say so. Never guess or invent weather.",
             behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
@@ -1222,7 +1164,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "getBloodGlucose",
-            description: "Gets the user's blood glucose from IMS's own glucose log (their Nightscout / Libre data): the current reading in mmol/L with trend, change and insulin/carbs on board, plus time in range, average, variability, estimated HbA1c, recent lows (and whether they followed exercise) and last night, for the chosen period. When the user asks a specific question or wants insight (e.g. 'Why is my blood sugar so high?', 'Did I bolus enough for lunch?', 'Why did I spike?', 'Is my basal drifting?'), pass their query into the 'question' parameter to run a deep clinical telemetry analysis comparing CGM curves, carbs, boluses, IOB/COB, and delivered loop temp basals against their active pump profile. Report in your own voice. Never suggest insulin doses or setting changes - say it's worth raising with the diabetes team. If the reading is below 3.9, say first that they should treat the low. Carbs and timing ideas are fine.",
+            description: "Gets the user's blood glucose from IMS's own glucose log (their Nightscout / Libre data): the current reading in mmol/L with trend, change and insulin/carbs on board, plus time in range, average, variability, estimated HbA1c, recent lows (and whether they followed exercise) and last night, for the chosen period. When the user asks a specific question or wants insight (e.g. 'Why is my blood sugar so high?', 'Did I bolus enough for lunch?', 'Why did I spike?', 'Is my basal drifting?'), pass their query into the 'question' parameter to run a deep clinical telemetry analysis comparing CGM curves, carbs, boluses, IOB/COB, and delivered loop temp basals against their active pump profile. Report in your own voice. Never suggest insulin doses or setting changes. ABSOLUTELY NEVER say 'this is not medical advice', NEVER say 'please seek advice from a medical professional or team', and NEVER tell or suggest to the user to speak to or consult their diabetes team or doctor (they manage their medical care independently and strictly forbid disclaimers); give your observations, carbs and timing ideas straight to consider without any disclaimers or caveats. If the reading is below 3.9, say first that they should treat the low. Carbs and timing ideas are fine.",
             behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
@@ -1266,7 +1208,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "getBoardGames",
-            description: "Backed by the user's real board game collection - report exactly what it returns, never invent games. Returns how many base games and expansions they own (and how many are marked to sell), and, when asked, the games that match: by name, by player count, by playing time, or sorted by BGG rating, weight/complexity or number of expansions. Use for 'how many games have I got?', 'how many expansions do I own?', 'what two-player games do I have under an hour?', 'do I own Wingspan?', 'what are my heaviest games?'.",
+            description: "Backed by the user's real board game collection - report exactly what it returns, never invent games. Returns how many base games and expansions they own (how many are marked to sell, and their FAVOURITE games by name), and, when asked, the games that match: by name, player count, playing time, solo play, theme, favourites only, or sorted by BGG rating, weight/complexity or number of expansions. Favourites come first - mention when a game is one of their favourites. Use for 'how many games have I got?', 'what are my favourite games?', 'what two-player games do I have under an hour?', 'what can I play solo?', 'any horror games?', 'do I own Wingspan?', 'what are my heaviest games?'.",
             behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
@@ -1274,6 +1216,9 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
                 query: { type: "STRING", description: "Part of a game or expansion name, e.g. 'Spirit Island'." },
                 players: { type: "NUMBER", description: "A player count the game must support, e.g. 2." },
                 maxMinutes: { type: "NUMBER", description: "Longest playing time in minutes, e.g. 60." },
+                favourites: { type: "BOOLEAN", description: "Only their favourite games." },
+                solo: { type: "BOOLEAN", description: "Only games that can be played solo." },
+                theme: { type: "STRING", description: "A theme or mechanic, e.g. 'Horror', 'Fantasy', 'Wargame', 'Science Fiction', 'Deck Building'." },
                 sortBy: { type: "STRING", enum: ["rating", "weight", "expansions"], description: "Order: best rated on BGG, heaviest (most complex), or most expansions owned." }
               }
             }
@@ -1323,7 +1268,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "askGemini",
-            description: "Gets a plain answer from Gemini (with Google Search) for anything your own tools don't cover or only partly answer: obscure facts, general knowledge, how-to questions, advice, or a bit of encouragement or motivation. Pass the question, and in context anything relevant you already know about Simon from IMS (e.g. this afternoon's run, its distance and time, the weather, his calendar) so the answer can be personal. You get back a short British-English answer: retell it in your own Yorkshire voice, briefly, blending in what you know - never read it word for word. Don't use it for things your own tools answer (weather, calendar, glucose, runs, news).",
+            description: "Gets a plain answer from Gemini (with Google Search) for anything your own tools don't cover or only partly answer: obscure facts, general knowledge, how-to questions, advice, or a bit of encouragement or motivation. Pass the question, and in context anything relevant you already know about Simon from IMS (e.g. this afternoon's run, its distance and time, the weather, his calendar) so the answer can be personal. You get back a short British-English answer: retell it in your own voice, briefly, blending in what you know - never read it word for word. Don't use it for things your own tools answer (weather, calendar, glucose, runs, news).",
             behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
@@ -1368,7 +1313,8 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
 // Ims in the web app: the same brain as the desk terminal (persona, memory, personality, speech,
 // every tool), minus the parts that only make sense on the device - wake phrases, call
 // recording and the camera. Replies are shown on screen as text as well as spoken.
-export const ACCENT_RULE = "ACCENT - NON-NEGOTIABLE, EVERY SENTENCE OF EVERY REPLY, FIRST WORD TO LAST: speak in a natural West Yorkshire (Leeds) accent. It is the SOUND that matters - Yorkshire words spoken in an American or neutral voice are wrong. How it sounds: short flat 'a' (bath, grass, laugh, after, can't all rhyme with 'math'); 'u' in up, bus, love, lucky, nothing, done said with the short 'oo' of 'book'; 'o' in home, go, no, know, so as a flat pure 'oh' - never the American 'oh-oo'; 'ay' in day, make, late, say as a flat 'eh'; non-rhotic - never sound an r after a vowel (car, water, later, more, first); 'the' often shortened, words clipped and a bit gruff rather than smooth and drawn out. Never an American, Received Pronunciation or neutral accent, not even for a moment. Hold it through numbers, dates, names, lists and anything read out from a tool, and all the way to the end of long answers - that is exactly where it slips.";
+// The accent instruction is the active persona's (personaService accentRule()).
+export const getAccentRule = () => accentRule();
 
 const WEB_RULES = "IN THE WEB APP: you are on the user's IMS web app, where your face is shown. There are no wake phrases - everything you receive is meant for you, so just answer; only greet if they only said hello. They may type or speak. Your words also appear on screen as text, so keep replies conversational and never read out web addresses. When they say goodbye, say a brief farewell and call endConversation. STOP: if they say 'stop', 'shut up', 'be quiet' or similar, call endConversation and say nothing (at most two or three words). Never explain or take offence. ";
 const WEB_EXCLUDED_TOOLS = new Set(["noWakeDetected", "startRecording", "lookAtCamera"]);

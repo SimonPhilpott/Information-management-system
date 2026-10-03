@@ -5,7 +5,7 @@ const router = Router();
 
 /**
  * GET /api/persona-rules
- * Returns the raw current contents of ims_persona_rules.md, exactly as
+ * (Older endpoint) Returns the ACTIVE persona (character + house rules), exactly as
  * Gemini receives it in every session's system prompt.
  */
 router.get('/', (req, res) => {
@@ -20,7 +20,7 @@ router.get('/', (req, res) => {
 
 /**
  * PUT /api/persona-rules
- * Overwrites ims_persona_rules.md. Takes effect on the next Gemini session
+ * (Older endpoint) Saves the active persona. Takes effect on the next Gemini session
  * setup - no server restart or firmware flash needed, same as a direct
  * hand-edit of the file.
  */

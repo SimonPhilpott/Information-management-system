@@ -18,14 +18,14 @@ export default function TokenUsageMeter({ usage }) {
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
       onClick={() => {
-        if (window.location.pathname !== '/ims/spend') {
-          window.history.pushState(null, '', '/ims/spend');
+        if (window.location.pathname !== '/ims/costs') {
+          window.history.pushState(null, '', '/ims/costs');
           window.dispatchEvent(new PopStateEvent('popstate'));
         }
       }}
       id="token-usage-meter"
       style={{ cursor: 'pointer' }}
-      title="Click to view full Gemini Spend & Budget Breakdown (/ims/spend)"
+      title="Click to view full Costs (/ims/costs)"
     >
       <span style={{ fontSize: '12px' }}>
         {percentage >= 95 ? '🚨' : percentage >= 80 ? '⚠️' : '📊'}
