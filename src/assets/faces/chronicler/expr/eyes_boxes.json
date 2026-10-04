@@ -1,0 +1,302 @@
+{
+ "neutral": {
+  "left": {
+   "box": [
+    404,
+    377,
+    439,
+    456
+   ],
+   "closed": false
+  },
+  "right": {
+   "box": [
+    403,
+    539,
+    439,
+    618
+   ],
+   "closed": false
+  }
+ },
+ "anger": {
+  "left": {
+   "box": [
+    406,
+    377,
+    441,
+    458
+   ],
+   "closed": false
+  },
+  "right": {
+   "box": [
+    407,
+    546,
+    441,
+    627
+   ],
+   "closed": false
+  }
+ },
+ "amazement": {
+  "left": {
+   "box": [
+    399,
+    376,
+    449,
+    458
+   ],
+   "closed": false
+  },
+  "right": {
+   "box": [
+    399,
+    538,
+    447,
+    624
+   ],
+   "closed": false
+  }
+ },
+ "bored": {
+  "left": {
+   "box": [
+    408,
+    371,
+    439,
+    458
+   ],
+   "closed": false
+  },
+  "right": {
+   "box": [
+    407,
+    538,
+    438,
+    627
+   ],
+   "closed": false
+  }
+ },
+ "confused": {
+  "left": {
+   "box": [
+    405,
+    375,
+    439,
+    452
+   ],
+   "closed": false
+  },
+  "right": {
+   "box": [
+    403,
+    542,
+    439,
+    626
+   ],
+   "closed": false
+  }
+ },
+ "devastated": {
+  "left": {
+   "box": [
+    408,
+    378,
+    440,
+    456
+   ],
+   "closed": false
+  },
+  "right": {
+   "box": [
+    407,
+    544,
+    440,
+    626
+   ],
+   "closed": false
+  }
+ },
+ "cocky": {
+  "left": {
+   "box": [
+    408,
+    373,
+    437,
+    456
+   ],
+   "closed": false
+  },
+  "right": {
+   "box": [
+    409,
+    540,
+    438,
+    627
+   ],
+   "closed": false
+  }
+ },
+ "disgusted": {
+  "left": {
+   "box": [
+    409,
+    373,
+    440,
+    451
+   ],
+   "closed": false
+  },
+  "right": {
+   "box": [
+    409,
+    547,
+    439,
+    624
+   ],
+   "closed": false
+  }
+ },
+ "joy": {
+  "left": {
+   "box": [
+    404,
+    378,
+    431,
+    456
+   ],
+   "closed": false
+  },
+  "right": {
+   "box": [
+    406,
+    539,
+    438,
+    622
+   ],
+   "closed": false
+  }
+ },
+ "love": {
+  "left": {
+   "box": [
+    403,
+    374,
+    437,
+    461
+   ],
+   "closed": false
+  },
+  "right": {
+   "box": [
+    405,
+    540,
+    438,
+    629
+   ],
+   "closed": false
+  }
+ },
+ "fear": {
+  "left": {
+   "box": [
+    402,
+    370,
+    449,
+    457
+   ],
+   "closed": false
+  },
+  "right": {
+   "box": [
+    400,
+    540,
+    448,
+    629
+   ],
+   "closed": false
+  }
+ },
+ "rage": {
+  "left": {
+   "box": [
+    407,
+    373,
+    438,
+    454
+   ],
+   "closed": false
+  },
+  "right": {
+   "box": [
+    405,
+    544,
+    437,
+    627
+   ],
+   "closed": false
+  }
+ },
+ "sad": {
+  "left": {
+   "box": [
+    403,
+    374,
+    442,
+    457
+   ],
+   "closed": false
+  },
+  "right": {
+   "box": [
+    405,
+    540,
+    444,
+    626
+   ],
+   "closed": false
+  }
+ },
+ "suspicious": {
+  "left": {
+   "box": [
+    408,
+    373,
+    438,
+    458
+   ],
+   "closed": false
+  },
+  "right": {
+   "box": [
+    407,
+    542,
+    436,
+    630
+   ],
+   "closed": false
+  }
+ },
+ "sleepy": {
+  "left": {
+   "box": [
+    412,
+    377,
+    438,
+    451
+   ],
+   "closed": false
+  },
+  "right": {
+   "box": [
+    413,
+    541,
+    438,
+    620
+   ],
+   "closed": false
+  }
+ }
+}

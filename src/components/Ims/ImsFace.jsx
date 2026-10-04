@@ -1,4 +1,11 @@
 import React, { useEffect, useRef } from 'react';
+import VectorFace from './VectorFace';
+import OscilloscopeFace from './OscilloscopeFace';
+import GeometricFace from './GeometricFace';
+import OrcFace from './OrcFace';
+import ChroniclerFace from './ChroniclerFace';
+import SteampunkFace from './SteampunkFace';
+import FaceAccessories from './FaceAccessories';
 
 // Ims's face for the web: the same 12x8 dot grid, designs and behaviour as the desk terminal -
 // breathing background, random blinks and glances, eye timelines from the Face Designer, the
@@ -10,6 +17,25 @@ const DEFAULT_FACE = {
   // eyes rows 1-3, smile on rows 5-6 - the firmware's built-in idle face
   grid: '000000000000' + '00fff00fff00' + '00fff00fff00' + '00fff00fff00' + '000000000000' + '00f000000f00' + '000ffffff000' + '000000000000',
   openGrid: null, color: '4CFF7A', eyes: null,
+};
+
+// Faces chosen by style + emotion (Persona page, Face Designer cards) arrive without a grid: draw the
+// dot design saved for that emotion in the Face Designer, loaded once and shared by every dot face.
+let designs = null, designsLoading = null;
+const loadDesigns = () => {
+  if (designs || designsLoading) return designsLoading;
+  designsLoading = fetch('/api/face-designs').then((r) => r.json()).then((d) => {
+    designs = Object.fromEntries((d.faces || []).map((x) => [x.name, x]));
+  }).catch(() => { designs = {}; });
+  return designsLoading;
+};
+const resolveFace = (f0) => {
+  if (!f0) return DEFAULT_FACE;
+  if (f0.grid) return f0;
+  const name = f0.emotion || f0.faceEmotion || 'neutral';
+  const d = designs?.[name] || designs?.neutral;
+  const color = f0.color || f0.faceColor || d?.color || DEFAULT_FACE.color;
+  return d ? { grid: d.grid, openGrid: /[1-9a-f]/i.test(d.openGrid || '') ? d.openGrid : null, color, eyes: null } : { ...DEFAULT_FACE, color };
 };
 
 const levels = (hex) => {
@@ -26,12 +52,14 @@ function breath(t) {
   return 0.5 + 0.5 * Math.cos(Math.PI * ((c - 2) / 2.5));
 }
 
-export default function ImsFace({ face, status = 'idle', levelRef, width = 180, className = '' }) {
+// Classic 12x8 Dot Matrix Canvas Component (Box-3 Hardware Baseline)
+function ClassicDotFace({ face, status = 'idle', levelRef, width = 180, className = '' }) {
   const canvasRef = useRef(null);
   const stateRef = useRef({ face, status });
   stateRef.current = { face, status };
   const faceStartRef = useRef(performance.now());
   useEffect(() => { faceStartRef.current = performance.now(); }, [face]);
+  useEffect(() => { if (!face?.grid) loadDesigns(); }, [face?.grid]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -43,7 +71,7 @@ export default function ImsFace({ face, status = 'idle', levelRef, width = 180, 
 
     const draw = (now) => {
       const { face: f0, status: st } = stateRef.current;
-      const f = f0 || DEFAULT_FACE;
+      const f = resolveFace(f0);
       const dpr = window.devicePixelRatio || 1;
       const w = canvas.clientWidth, h = canvas.clientHeight;
       if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
@@ -121,8 +149,51 @@ export default function ImsFace({ face, status = 'idle', levelRef, width = 180, 
   }, [levelRef]);
 
   return (
-    <div className={`rounded-2xl bg-[#0b0e15] p-2 ${className}`} style={{ width }}>
+    <div className={`rounded-2xl bg-[#0b0e15] p-2 relative overflow-hidden flex items-center justify-center ${className}`} style={{ width }}>
       <canvas ref={canvasRef} style={{ width: '100%', aspectRatio: `${COLS} / ${ROWS}`, display: 'block' }} />
+      {/* Accessories Overlay (Glasses, Hair, Facial Hair) */}
+      {face?.accessories && (
+        <svg
+          viewBox="0 0 200 133.33"
+          className="absolute inset-0 w-full h-full pointer-events-none p-2"
+          style={{ aspectRatio: '12 / 8' }}
+        >
+          <FaceAccessories
+            accessories={face.accessories}
+            audioLevel={levelRef?.current ?? 0}
+            isSpeaking={status === 'speaking'}
+          />
+        </svg>
+      )}
     </div>
   );
+}
+
+// Master Dispatcher for IMS Face: Defaults to Classic 12x8 Dot Matrix for Yorkshire Ims
+// and renders advanced models (Vector, Oscilloscope, Geometric, Orc, Steampunk)
+// alongside the modular accessories system (Glasses, Hair, Facial Hair).
+export default function ImsFace({ face, status = 'idle', levelRef, width = 180, className = '' }) {
+  const style = face?.faceStyle || 'dots';
+
+  if (style === 'vector') {
+    return <VectorFace face={face} status={status} levelRef={levelRef} width={width} className={className} />;
+  }
+  if (style === 'oscilloscope') {
+    return <OscilloscopeFace face={face} status={status} levelRef={levelRef} width={width} className={className} />;
+  }
+  if (style === 'geometric') {
+    return <GeometricFace face={face} status={status} levelRef={levelRef} width={width} className={className} />;
+  }
+  if (style === 'orc') {
+    return <OrcFace face={face} status={status} levelRef={levelRef} width={width} className={className} />;
+  }
+  if (style === 'chronicler') {
+    return <ChroniclerFace face={face} status={status} levelRef={levelRef} width={width} className={className} />;
+  }
+  if (style === 'steampunk') {
+    return <SteampunkFace face={face} status={status} levelRef={levelRef} width={width} className={className} />;
+  }
+
+  // Baseline Dot Matrix (zero interference with IMS's current face)
+  return <ClassicDotFace face={face} status={status} levelRef={levelRef} width={width} className={className} />;
 }

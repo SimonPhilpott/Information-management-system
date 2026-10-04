@@ -25,6 +25,8 @@ const ACTIVE_KEY = 'active_persona';
 const DEFAULTS = {
   name: 'New persona', description: '', voice: 'Umbriel', languageCode: 'en-GB',
   accent: 'a natural British', accentRule: '', dialect: 'your own dialect', judgeAccent: '', character: 'a warm, plain-spoken friend with opinions',
+  faceStyle: 'dots', faceColor: '4CFF7A', faceEmotion: 'neutral',
+  accessories: { glasses: 'none', hair: 'none', facialHair: 'none', hairColor: '#16161a', glassesColor: '#d4af37', facialHairColor: '#16161a' },
   weatherPhrasing: 'plain', testLine: "Hello! This is Ims, testing this voice.", clarifyExample: "Sorry, I didn't catch all of that - what was that last bit?",
   signOffs: [], dialectWords: [], tagEndings: [], thinkingSounds: [], doorbell: { ding: [], motion: [] },
 };
@@ -36,7 +38,15 @@ export function parsePersona(raw) {
   if (!m) return { meta: { ...DEFAULTS }, body: String(raw || '').trim() };
   let meta = {};
   try { meta = YAML.parse(m[1]) || {}; } catch (err) { throw new Error(`The persona header isn't valid YAML: ${err.message}`); }
-  return { meta: { ...DEFAULTS, ...meta, doorbell: { ...DEFAULTS.doorbell, ...(meta.doorbell || {}) } }, body: m[2].trim() };
+  return {
+    meta: {
+      ...DEFAULTS,
+      ...meta,
+      doorbell: { ...DEFAULTS.doorbell, ...(meta.doorbell || {}) },
+      accessories: { ...DEFAULTS.accessories, ...(meta.accessories || {}) },
+    },
+    body: m[2].trim()
+  };
 }
 
 export function serializePersona(meta, body) {
@@ -67,7 +77,7 @@ export function listPersonas() {
   const active = activePersonaId();
   return fs.readdirSync(DIR).filter((f) => f.endsWith('.md') && !f.startsWith('_')).map((f) => f.replace(/\.md$/, ''))
     .map((id) => getPersona(id)).filter(Boolean)
-    .map((p) => ({ id: p.id, name: p.name, description: p.description, voice: p.voice, accent: p.accent, updatedAt: p.updatedAt, active: p.id === active, isDefault: p.id === DEFAULT_PERSONA }))
+    .map((p) => ({ id: p.id, name: p.name, description: p.description, voice: p.voice, accent: p.accent, faceStyle: p.faceStyle, updatedAt: p.updatedAt, active: p.id === active, isDefault: p.id === DEFAULT_PERSONA }))
     .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name));
 }
 

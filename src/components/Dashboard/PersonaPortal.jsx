@@ -2,10 +2,14 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Drama, Save, RotateCw, Undo2, ArrowUp, ArrowDown, Trash2, Copy, Plus,
   ChevronDown, ChevronRight, FileText, History, ListTree, Code2, ChevronsUpDown, Sparkles,
-  Check, X, Play, Mic, FlaskConical, Users, BookOpen, SlidersHorizontal, MessageSquare, Bell, Clipboard
+  Check, X, Play, Mic, FlaskConical, Users, BookOpen, SlidersHorizontal, MessageSquare, Bell, Clipboard,
+  Smile, Volume2, Glasses, Sliders
 } from 'lucide-react';
 import PortalShell from './PortalShell';
 import { parsePersona, assemblePersona, newId } from '../../utils/personaSections';
+import ImsFace from '../Ims/ImsFace';
+import usePersonaVoice from '../../hooks/usePersonaVoice';
+import { EMOTIONS, EMOTION_KEYS, FACE_STYLES, COLOR_PRESETS, ACCESSORY_OPTIONS, HAIR_COLORS, GLASSES_COLORS } from '../Ims/faceEmotions';
 
 // Strip YAML frontmatter
 const stripHeader = (raw) => String(raw || '').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
@@ -24,6 +28,49 @@ const LANGS = [
   ['en-AU', 'English (Australia)'],
   ['en-IN', 'English (India)']
 ];
+
+// Ported from ESP32 IMS Personality Screen & hardwareClientService.js
+const PERSONALITY_AXES_CONFIG = {
+  humor: {
+    label: "Humor",
+    low: { name: "Cheerful", val: 15, text: "upbeat, sunny, and lighthearted - playful banter, wholesome wit, and positive observations" },
+    mid: { name: "Dry", val: 50, text: "deadpan, understated, and ironic - subtle, laconic observations delivered with a straight face" },
+    high: { name: "Dark", val: 85, text: "cynical, macabre, and sardonic - gallows humour, existential absurdity, and biting satire" }
+  },
+  delivery: {
+    label: "Delivery",
+    low: { name: "Tactful", val: 15, text: "diplomatic, gentle, and cushioned - polite phrasing and softened language to minimise friction" },
+    mid: { name: "Candid", val: 50, text: "plainspoken, straightforward, and fair - clear and transparent without excessive softening or harshness" },
+    high: { name: "Blunt", val: 85, text: "terse, unvarnished, and razor-sharp - straight to the point, zero pleasantries or euphemisms" }
+  },
+  temperament: {
+    label: "Temperament",
+    low: { name: "Pragmatic", val: 15, text: "grounded, literal, and functional - real-world utility, concrete actions, direct problem-solving" },
+    mid: { name: "Systematic", val: 50, text: "structured, rational, and methodical - weighing variables logically into clear frameworks" },
+    high: { name: "Philosophical", val: 85, text: "abstract, reflective, and speculative - foundational theories, meta-questions, existential implications" }
+  },
+  social: {
+    label: "Social",
+    low: { name: "Clinical", val: 15, text: "detached, objective, and transactional - minimal emotional colouring or rapport" },
+    mid: { name: "Professional", val: 50, text: "cordial, cooperative, and approachable - respectful, constructive rapport without becoming overly personal" },
+    high: { name: "Empathic", val: 85, text: "warm, validating, and emotionally attuned - actively engaging with feelings and offering reassurance" }
+  },
+  formality: {
+    label: "Formality",
+    low: { name: "Casual", val: 15, text: "conversational, relaxed, and idiomatic - loose sentence structures and an easygoing peer-to-peer tone" },
+    mid: { name: "Articulate", val: 50, text: "clean, standard, and balanced - clear, modern, accessible prose, neither sloppy nor stuffy" },
+    high: { name: "Academic", val: 85, text: "erudite, precise, and elevated - advanced vocabulary, rigorous syntax, formal rhetorical conventions" }
+  }
+};
+
+const DEFAULT_PERSONALITY = { humor: 70, delivery: 45, temperament: 30, social: 55, formality: 35 };
+
+function describeSliderAxis(val, axis) {
+  const v = Math.round(Number(val) || 0);
+  if (v <= 33) return { name: axis.low.name, tier: 'low', text: axis.low.text };
+  if (v <= 66) return { name: axis.mid.name, tier: 'mid', text: axis.mid.text };
+  return { name: axis.high.name, tier: 'high', text: axis.high.text };
+}
 
 // ---------------------------------------------------------------------------------------------------------
 // SectionCard: Visual card for an individual persona markdown section (Items + Title + Opening text)
@@ -162,6 +209,38 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
   const [newPersonaName, setNewPersonaName] = useState('');
   const [cloneFromId, setCloneFromId] = useState('');
   const audioRef = useRef(null);
+  const [voiceScenarios, setVoiceScenarios] = useState([]);   // real things Ims says, to hear in this persona
+  const [sampleLine, setSampleLine] = useState('');
+  const [voiceScenario, setVoiceScenario] = useState('');
+  const [voiceEngine, setVoiceEngine] = useState('live');
+  const [heard, setHeard] = useState(null);                   // { said, ms, engine, label }
+  const [voicePlaying, setVoicePlaying] = useState(false);
+  const voiceLevelRef = useRef(0);                            // loudness of the voice playing, drives the face
+  const analyserRef = useRef(null);
+  const [auditionEmotion, setAuditionEmotion] = useState('neutral');
+  const [isSimulatingSpeech, setIsSimulatingSpeech] = useState(false);
+  const simLevelRef = useRef(0);
+  // Simulate Voice: the persona says a line that fits the emotion on show, in its Gemini voice; faces lip-sync to it
+  const voice = usePersonaVoice();
+  useEffect(() => { setIsSimulatingSpeech(voice.playing); }, [voice.playing]);
+  useEffect(() => { if (voice.error) showToast(voice.error, 'error'); }, [voice.error]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toggleVoice = () => ((voice.busy || voice.playing) ? voice.stop() : voice.say(selected, { emotion: auditionEmotion || 'neutral' }));
+  const voiceLabel = voice.busy ? 'Writing a line...' : voice.playing ? 'Speaking - stop' : 'Simulate Voice';
+
+  useEffect(() => {
+    let raf = 0;
+    if (isSimulatingSpeech) {
+      const loop = (now) => {
+        // the real voice when one is playing, otherwise a speaking rhythm (hover previews)
+        simLevelRef.current = voice.playing ? voice.levelRef.current : (Math.sin(now / 130) * 0.4 + 0.5) * (0.3 + Math.random() * 0.6);
+        raf = requestAnimationFrame(loop);
+      };
+      raf = requestAnimationFrame(loop);
+    } else {
+      simLevelRef.current = 0;
+    }
+    return () => cancelAnimationFrame(raf);
+  }, [isSimulatingSpeech]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const showToast = useCallback((msg, type = 'success') => {
     setNotification({ msg, type });
@@ -177,6 +256,50 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
   const sub = isDark ? 'text-slate-300' : 'text-slate-700';
   const label = `text-[11px] font-black uppercase tracking-wider mb-1 ${sub}`;
   const iconBtn = `p-1.5 rounded-lg disabled:opacity-30 transition-colors ${isDark ? 'hover:bg-white/10 text-slate-300' : 'hover:bg-black/5 text-slate-700'}`;
+
+  // Personality Sliders state (Ported from ESP32 Personality screen)
+  const [personality, setPersonality] = useState(DEFAULT_PERSONALITY);
+  const [personalityDirty, setPersonalityDirty] = useState(false);
+
+  const loadPersonality = useCallback(async () => {
+    try {
+      const d = await api('/api/settings/personality');
+      if (d) {
+        setPersonality({
+          humor: typeof d.humor === 'number' ? d.humor : DEFAULT_PERSONALITY.humor,
+          delivery: typeof d.delivery === 'number' ? d.delivery : DEFAULT_PERSONALITY.delivery,
+          temperament: typeof d.temperament === 'number' ? d.temperament : DEFAULT_PERSONALITY.temperament,
+          social: typeof d.social === 'number' ? d.social : DEFAULT_PERSONALITY.social,
+          formality: typeof d.formality === 'number' ? d.formality : DEFAULT_PERSONALITY.formality,
+        });
+        setPersonalityDirty(false);
+      }
+    } catch (e) {
+      console.warn('Could not load personality settings:', e.message);
+    }
+  }, []);
+  useEffect(() => { loadPersonality(); }, [loadPersonality]);
+
+  const savePersonalitySliders = async (override) => {
+    const toSave = override || personality;
+    try {
+      const res = await api('/api/settings/personality', {
+        method: 'POST',
+        body: JSON.stringify(toSave)
+      });
+      setPersonality({
+        humor: res.humor,
+        delivery: res.delivery,
+        temperament: res.temperament,
+        social: res.social,
+        formality: res.formality,
+      });
+      setPersonalityDirty(false);
+      showToast('Saved personality sliders. Live prompt updated.', 'success');
+    } catch (err) {
+      showToast(`Failed to save personality: ${err.message}`, 'error');
+    }
+  };
 
   // Load persona list
   const loadList = useCallback(async (keep) => {
@@ -194,6 +317,7 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
     setPersona(d.persona);
     const { body, raw, id: _id, updatedAt, ...m } = d.persona;
     setMeta(m);
+    setAuditionEmotion(m.faceEmotion || 'neutral');
     setBodyModel(parsePersona(body));
     setRawFile(raw);
     setSavedRaw(raw);
@@ -235,6 +359,15 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
   // Meta helper
   const setM = (k, v) => {
     setMeta((prev) => ({ ...prev, [k]: v }));
+    setIsDirty(true);
+  };
+
+  // Accessories helper
+  const setAcc = (k, v) => {
+    setMeta((prev) => ({
+      ...prev,
+      accessories: { ...(prev?.accessories || {}), [k]: v }
+    }));
     setIsDirty(true);
   };
 
@@ -457,13 +590,45 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
 
   // Test bench execution
   const SILENCE = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
-  const play = (url) => {
+  const hookVoice = () => {
     if (!audioRef.current) audioRef.current = new Audio();
     const a = audioRef.current;
+    if (analyserRef.current) { analyserRef.current.ctx.resume().catch(() => {}); return a; }
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const an = ctx.createAnalyser();
+      an.fftSize = 512;
+      ctx.createMediaElementSource(a).connect(an);
+      an.connect(ctx.destination);
+      analyserRef.current = { ctx, an, buf: new Uint8Array(an.fftSize) };
+      a.addEventListener('playing', () => { if (a.src !== SILENCE) setVoicePlaying(true); });
+      a.addEventListener('pause', () => setVoicePlaying(false));
+      a.addEventListener('ended', () => setVoicePlaying(false));
+    } catch { /* no Web Audio: the face falls back to its own speaking rhythm */ }
+    return a;
+  };
+  const play = (url) => {
+    const a = hookVoice();
     a.pause();
     a.src = url;
     a.play().catch(() => showToast('Press Play to hear it.', 'error'));
   };
+  useEffect(() => {
+    if (!voicePlaying) { voiceLevelRef.current = 0; return undefined; }
+    let raf = 0;
+    const loop = () => {
+      const h = analyserRef.current;
+      if (h) {
+        h.an.getByteTimeDomainData(h.buf);
+        let sum = 0;
+        for (let i = 0; i < h.buf.length; i++) { const v = (h.buf[i] - 128) / 128; sum += v * v; }
+        voiceLevelRef.current = Math.min(1, Math.sqrt(sum / h.buf.length) * 2.5);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [voicePlaying]);
 
   const runTests = (ids) => run('test', async () => {
     if (!audioRef.current) audioRef.current = new Audio();
@@ -479,6 +644,35 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
     showToast(`${passed} of ${d.results.length} tests passed.`, passed === d.results.length ? 'success' : 'error');
   });
 
+  // Voice tester: hear this persona say a line, or a real scenario built from today's data
+  useEffect(() => {
+    if (tab !== 'test' || voiceScenarios.length) return;
+    api('/api/personas/voice-scenarios').then((d) => {
+      setVoiceScenarios(d.scenarios || []);
+      if (!voiceScenario && d.scenarios?.length) setVoiceScenario(d.scenarios[0].id);
+    }).catch((e) => showToast(e.message, 'error'));
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const speak = (body, label, key) => run(key, async () => {
+    hookVoice();
+    audioRef.current.src = SILENCE; // unlock playback inside the click, before the wait
+    audioRef.current.play().catch(() => {});
+    setHeard(null);
+    const d = await api(`/api/personas/${selected}/speak`, { method: 'POST', body: JSON.stringify(body) });
+    setHeard({ said: d.said, ms: d.ms, engine: d.engine, label, audio: d.audio });
+    play(d.audio);
+  });
+  const speakLine = (engine) => {
+    const text = (sampleLine || meta?.testLine || '').trim();
+    if (!text) return showToast('Type a line for Ims to say first.', 'error');
+    speak({ text, engine }, 'Voice sample line', engine === 'live' ? 'speak-live' : 'speak-line');
+  };
+  const speakScenario = () => {
+    const sc = voiceScenarios.find((x) => x.id === voiceScenario);
+    if (!sc) return;
+    speak({ scenario: sc.id, engine: voiceEngine }, sc.label, 'speak-scenario');
+  };
+
   const isActive = data && selected === data.activeId;
   const currentDirty = tab === 'house' ? isHouseDirty : isDirty;
 
@@ -489,6 +683,7 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
     ['rhythm', 'Rhythm & Vocabulary', Sparkles, 'Thinking sounds, dialect words, tag endings, and speech pacing'],
     ['conversation', 'Conversation & Style', MessageSquare, 'Discussion guidelines, conversation habits, and dialogue examples'],
     ['alerts', 'Alerts & Reports', Bell, 'Day report sign-offs, weather wording, and doorbell announcements'],
+    ['sliders', 'Personality Sliders', Sliders, '5 behavioral axes: Humor, Delivery, Temperament, Social, Formality'],
     ['house', 'House Rules', Users, 'Global shared rules across all personas (safety, jokes, clarifying)'],
     ['test', 'Test Bench', FlaskConical, 'Live scenario tests with voice judge evaluation'],
     ['raw', 'Raw Output', Code2, 'Complete unified markup output across all sections and settings'],
@@ -685,6 +880,383 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
                     placeholder="Short line spoken when testing this voice"
                     onChange={(e) => setM('testLine', e.target.value)}
                   />
+                </div>
+              </div>
+
+              {/* Face Animation Model & Expressive Persona Style */}
+              <div className={`${panel} p-4 space-y-4`}>
+                <div className={`flex flex-wrap items-center justify-between gap-2 border-b pb-3 ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
+                  <div>
+                    <h3 className={`text-sm font-black flex items-center gap-2 ${strong}`}>
+                      <Smile size={16} className="text-purple-400" />
+                      Face Animation Model & Character
+                    </h3>
+                    <p className={`text-xs ${sub}`}>
+                      Visual expression engine for this persona across the hardware Box-3 screen, Web Live, and dashboard.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      16 Universal Emotions
+                    </span>
+                  </div>
+                </div>
+
+                {/* 1. Style Selection Cards */}
+                <div>
+                  <label className={label}>Face Animation Style</label>
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2.5 mt-1.5">
+                    {FACE_STYLES.map((st) => {
+                      const isSel = (meta.faceStyle || 'dots') === st.id;
+                      return (
+                        <button
+                          key={st.id}
+                          type="button"
+                          onClick={() => setM('faceStyle', st.id)}
+                          className={`p-3 rounded-xl border text-left transition-all relative ${
+                            isSel
+                              ? 'border-purple-500 ring-2 ring-purple-500/40 bg-purple-950/20'
+                              : isDark
+                              ? 'border-white/10 hover:border-white/20 bg-slate-900/40'
+                              : 'border-[#2E2B27]/15 hover:border-black/20 bg-white'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-1 mb-1">
+                            <span className={`text-xs font-black ${strong}`}>{st.name}</span>
+                            {isSel && <Check size={14} className="text-purple-400 shrink-0" />}
+                          </div>
+                          <p className={`text-[11px] leading-snug ${sub}`}>{st.desc}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 2. Color Preset & Resting Emotion Row */}
+                <div className={`grid sm:grid-cols-2 gap-4 pt-2 border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/10'}`}>
+                  <div>
+                    <label className={label}>Accent Color Preset</label>
+                    <div className="flex flex-wrap items-center gap-1.5 mb-2 mt-1">
+                      {COLOR_PRESETS.map((p) => {
+                        const active = (meta.faceColor || '4CFF7A').toUpperCase() === p.hex.toUpperCase();
+                        return (
+                          <button
+                            key={p.hex}
+                            type="button"
+                            onClick={() => setM('faceColor', p.hex)}
+                            title={`${p.name} (#${p.hex})`}
+                            className={`w-6 h-6 rounded-lg transition-transform flex items-center justify-center ${
+                              active ? 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-black' : 'hover:scale-105'
+                            }`}
+                            style={{ backgroundColor: `#${p.hex}` }}
+                          >
+                            {active && <Check size={12} className="text-black drop-shadow" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono text-slate-400">#</span>
+                      <input
+                        className={`${field} font-mono uppercase text-xs max-w-[140px]`}
+                        value={meta.faceColor || '4CFF7A'}
+                        maxLength={6}
+                        onChange={(e) => setM('faceColor', e.target.value.replace('#', ''))}
+                        placeholder="4CFF7A"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={label}>Default Resting Emotion</label>
+                    <select
+                      className={`${field} mt-1`}
+                      value={meta.faceEmotion || 'neutral'}
+                      onChange={(e) => {
+                        setM('faceEmotion', e.target.value);
+                        setAuditionEmotion(e.target.value);
+                      }}
+                    >
+                      {EMOTION_KEYS.map((k) => (
+                        <option key={k} value={k}>
+                          {EMOTIONS[k].label} — {EMOTIONS[k].hint}
+                        </option>
+                      ))}
+                    </select>
+                    <p className={`text-[11px] mt-1 ${sub}`}>
+                      Initial face emotion when Ims is in standby or awaiting user query.
+                    </p>
+                  </div>
+                </div>
+
+                {/* 3. Live Interactive Expression Audition Stage */}
+                <div className={`p-4 rounded-xl border ${isDark ? 'bg-black/30 border-white/10' : 'bg-slate-50 border-[#2E2B27]/10'} space-y-3`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Sparkles size={14} className="text-purple-400" />
+                      <span className={`text-xs font-black uppercase tracking-wider ${strong}`}>
+                        Interactive Expression Audition Stage
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={toggleVoice}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                          isSimulatingSpeech
+                            ? 'bg-amber-500 text-black shadow-md'
+                            : ghost
+                        }`}
+                      >
+                        <Volume2 size={13} className={isSimulatingSpeech ? 'animate-pulse' : ''} />
+                        {voiceLabel}
+                      </button>
+                      {voice.said && (voice.playing || voice.busy) && <span className={`text-xs italic max-w-[26rem] ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>"{voice.said}"</span>}
+
+                      {auditionEmotion !== (meta.faceEmotion || 'neutral') && (
+                        <button
+                          type="button"
+                          onClick={() => setM('faceEmotion', auditionEmotion)}
+                          className={`${ghost} text-purple-400 text-xs font-bold`}
+                          title="Save this auditioned emotion as the persona's resting face"
+                        >
+                          Set as Resting Emotion
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Audition Face Renderer */}
+                  <div className="py-2 flex flex-col items-center justify-center">
+                    <ImsFace
+                      face={{
+                        faceStyle: meta.faceStyle || 'dots',
+                        color: meta.faceColor || '4CFF7A',
+                        faceColor: meta.faceColor || '4CFF7A',
+                        emotion: auditionEmotion,
+                        faceEmotion: auditionEmotion,
+                        accessories: meta?.accessories,
+                      }}
+                      status={isSimulatingSpeech ? 'speaking' : 'idle'}
+                      levelRef={simLevelRef}
+                      width={220}
+                      className="shadow-2xl mx-auto border border-white/10"
+                    />
+
+                    <div className="mt-2.5 text-center">
+                      <span className="text-xs font-bold text-white px-2 py-0.5 rounded bg-purple-900/60 border border-purple-500/40">
+                        {EMOTIONS[auditionEmotion]?.label || auditionEmotion}
+                      </span>
+                      <p className={`text-[11px] mt-1 max-w-md mx-auto ${sub}`}>
+                        {EMOTIONS[auditionEmotion]?.hint}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 16 1-Click Emotion Audition Pills */}
+                  <div>
+                    <label className={`text-[10px] font-black uppercase tracking-wider block mb-1.5 ${sub}`}>
+                      1-Click Expression Audition (All 16 Standard IMS Emotions)
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-1.5">
+                      {EMOTION_KEYS.map((k) => {
+                        const em = EMOTIONS[k];
+                        const isPicked = auditionEmotion === k;
+                        return (
+                          <button
+                            key={k}
+                            type="button"
+                            onClick={() => setAuditionEmotion(k)}
+                            className={`px-2 py-1.5 rounded-lg text-[11px] font-bold text-center truncate transition-all border ${
+                              isPicked
+                                ? 'bg-purple-500 text-white border-purple-400 shadow-md ring-1 ring-white/30'
+                                : isDark
+                                ? 'bg-slate-900/50 hover:bg-slate-800 text-slate-300 border-white/5'
+                                : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                            }`}
+                            title={`${em.label}: ${em.hint}`}
+                          >
+                            {em.label.split(' / ')[0]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Modular Accessories Customizer (Glasses, Hair, Facial Hair) */}
+                <div className={`p-4 rounded-xl border ${isDark ? 'bg-black/20 border-white/10' : 'bg-slate-50 border-[#2E2B27]/10'} space-y-4`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Glasses size={16} className="text-purple-400" />
+                      <div>
+                        <h4 className={`text-xs font-black uppercase tracking-wider ${strong}`}>
+                          Face Accessories: Glasses, Hair & Facial Hair
+                        </h4>
+                        <p className={`text-[11px] ${sub}`}>
+                          Equip eyewear, hairstyles, and moustaches/beards that adapt across all 8 face models.
+                        </p>
+                      </div>
+                    </div>
+
+                    {(meta?.accessories?.glasses !== 'none' || meta?.accessories?.hair !== 'none' || meta?.accessories?.facialHair !== 'none') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setM('accessories', {
+                            glasses: 'none',
+                            hair: 'none',
+                            facialHair: 'none',
+                            hairColor: meta?.accessories?.hairColor || '#16161a',
+                            glassesColor: meta?.accessories?.glassesColor || '#d4af37',
+                            facialHairColor: meta?.accessories?.facialHairColor || '#16161a',
+                          });
+                        }}
+                        className={`${ghost} text-red-400 text-xs`}
+                      >
+                        Reset Accessories
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Eyewear / Glasses Selection */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className={label}>Glasses & Eyewear ({ACCESSORY_OPTIONS.glasses.length})</label>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[10px] ${sub}`}>Frame:</span>
+                        {GLASSES_COLORS.slice(0, 6).map((gc) => {
+                          const active = (meta?.accessories?.glassesColor || '#d4af37') === gc.hex;
+                          return (
+                            <button
+                              key={gc.id}
+                              type="button"
+                              onClick={() => setAcc('glassesColor', gc.hex)}
+                              title={gc.name}
+                              className={`w-4 h-4 rounded-full border border-white/20 transition-transform ${active ? 'scale-125 ring-2 ring-purple-400' : 'hover:scale-110'}`}
+                              style={{ backgroundColor: gc.hex }}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5">
+                      {ACCESSORY_OPTIONS.glasses.map((g) => {
+                        const isSel = (meta?.accessories?.glasses || 'none') === g.id;
+                        return (
+                          <button
+                            key={g.id}
+                            type="button"
+                            onClick={() => setAcc('glasses', g.id)}
+                            className={`p-2 rounded-lg border text-left transition-all ${
+                              isSel
+                                ? 'bg-purple-600 text-white border-purple-400 shadow-sm'
+                                : isDark
+                                ? 'bg-slate-900/60 hover:bg-slate-800 text-slate-300 border-white/5'
+                                : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            <div className="text-[11px] font-bold truncate">{g.name}</div>
+                            <div className={`text-[9px] truncate opacity-75`}>{g.hint}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Hairstyles Selection */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className={label}>Hairstyle ({ACCESSORY_OPTIONS.hair.length})</label>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[10px] ${sub}`}>Hair Color:</span>
+                        {HAIR_COLORS.slice(0, 8).map((hc) => {
+                          const active = (meta?.accessories?.hairColor || '#16161a') === hc.hex;
+                          return (
+                            <button
+                              key={hc.id}
+                              type="button"
+                              onClick={() => {
+                                setAcc('hairColor', hc.hex);
+                                if (!meta?.accessories?.facialHairColor) setAcc('facialHairColor', hc.hex);
+                              }}
+                              title={hc.name}
+                              className={`w-4 h-4 rounded-full border border-white/20 transition-transform ${active ? 'scale-125 ring-2 ring-purple-400' : 'hover:scale-110'}`}
+                              style={{ backgroundColor: hc.hex }}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5">
+                      {ACCESSORY_OPTIONS.hair.map((h) => {
+                        const isSel = (meta?.accessories?.hair || 'none') === h.id;
+                        return (
+                          <button
+                            key={h.id}
+                            type="button"
+                            onClick={() => setAcc('hair', h.id)}
+                            className={`p-2 rounded-lg border text-left transition-all ${
+                              isSel
+                                ? 'bg-purple-600 text-white border-purple-400 shadow-sm'
+                                : isDark
+                                ? 'bg-slate-900/60 hover:bg-slate-800 text-slate-300 border-white/5'
+                                : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            <div className="text-[11px] font-bold truncate">{h.name}</div>
+                            <div className={`text-[9px] truncate opacity-75`}>{h.hint}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Facial Hair (Moustaches & Beards) Selection */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className={label}>Facial Hair: Moustaches & Beards ({ACCESSORY_OPTIONS.facialHair.length})</label>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[10px] ${sub}`}>Beard Color:</span>
+                        {HAIR_COLORS.slice(0, 8).map((hc) => {
+                          const active = (meta?.accessories?.facialHairColor || meta?.accessories?.hairColor || '#16161a') === hc.hex;
+                          return (
+                            <button
+                              key={hc.id}
+                              type="button"
+                              onClick={() => setAcc('facialHairColor', hc.hex)}
+                              title={hc.name}
+                              className={`w-4 h-4 rounded-full border border-white/20 transition-transform ${active ? 'scale-125 ring-2 ring-purple-400' : 'hover:scale-110'}`}
+                              style={{ backgroundColor: hc.hex }}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5">
+                      {ACCESSORY_OPTIONS.facialHair.map((fh) => {
+                        const isSel = (meta?.accessories?.facialHair || 'none') === fh.id;
+                        return (
+                          <button
+                            key={fh.id}
+                            type="button"
+                            onClick={() => setAcc('facialHair', fh.id)}
+                            className={`p-2 rounded-lg border text-left transition-all ${
+                              isSel
+                                ? 'bg-purple-600 text-white border-purple-400 shadow-sm'
+                                : isDark
+                                ? 'bg-slate-900/60 hover:bg-slate-800 text-slate-300 border-white/5'
+                                : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            <div className="text-[11px] font-bold truncate">{fh.name}</div>
+                            <div className={`text-[9px] truncate opacity-75`}>{fh.hint}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1056,6 +1628,146 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
           )}
 
           {/* ----------------------------------------------------------------------------------------- */}
+          {/* TAB: Personality Sliders (Ported from ESP32 IMS Personality Screen)                         */}
+          {/* ----------------------------------------------------------------------------------------- */}
+          {tab === 'sliders' && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className={`text-sm font-black flex items-center gap-2 ${strong}`}>
+                    <Sliders size={16} className="text-purple-400" />
+                    Personality Behavior Sliders
+                  </h3>
+                  <p className={`text-xs ${sub}`}>
+                    Ported from the ESP32 desk terminal. 5 continuous 0-100 axes controlling Ims's humor, delivery, temperament, social engagement, and formality.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPersonality(DEFAULT_PERSONALITY);
+                      savePersonalitySliders(DEFAULT_PERSONALITY);
+                    }}
+                    className={ghost}
+                  >
+                    <RotateCw size={12} />
+                    Reset to Defaults
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => savePersonalitySliders()}
+                    disabled={!personalityDirty}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                      personalityDirty
+                        ? 'bg-purple-600 text-white shadow-md active:scale-95'
+                        : 'opacity-50 cursor-not-allowed bg-purple-900/30 text-purple-300'
+                    }`}
+                  >
+                    <Save size={13} />
+                    Save Sliders
+                  </button>
+                </div>
+              </div>
+
+              {/* 5 Slider Cards */}
+              <div className="space-y-3">
+                {Object.entries(PERSONALITY_AXES_CONFIG).map(([key, axis]) => {
+                  const val = Math.round(Number(personality[key] ?? 50));
+                  const desc = describeSliderAxis(val, axis);
+
+                  return (
+                    <div
+                      key={key}
+                      className={`p-4 rounded-2xl border transition-all ${
+                        isDark ? 'bg-slate-900/50 border-white/10' : 'bg-white border-[#2E2B27]/15'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-black uppercase tracking-wider ${strong}`}>
+                            {axis.label}
+                          </span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-bold">
+                            {desc.name} ({val}%)
+                          </span>
+                        </div>
+
+                        {/* 3 Tier Anchor Buttons for Quick Snapping */}
+                        <div className="flex items-center gap-1">
+                          {[axis.low, axis.mid, axis.high].map((tier) => (
+                            <button
+                              key={tier.name}
+                              type="button"
+                              onClick={() => {
+                                const next = { ...personality, [key]: tier.val };
+                                setPersonality(next);
+                                setPersonalityDirty(true);
+                              }}
+                              className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${
+                                desc.name === tier.name
+                                  ? 'bg-purple-600 text-white shadow-sm'
+                                  : isDark
+                                  ? 'bg-white/5 text-slate-400 hover:text-white'
+                                  : 'bg-black/5 text-slate-600 hover:text-black'
+                              }`}
+                            >
+                              {tier.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Range Input Slider */}
+                      <div className="py-2">
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value={val}
+                          onChange={(e) => {
+                            const next = { ...personality, [key]: Number(e.target.value) };
+                            setPersonality(next);
+                            setPersonalityDirty(true);
+                          }}
+                          className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-purple-500 bg-slate-800"
+                        />
+                      </div>
+
+                      {/* Continuous Description */}
+                      <p className={`text-[11px] leading-relaxed italic ${sub}`}>
+                        {desc.text}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Synthesized Live Prompt Preview */}
+              <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-950/60 border-purple-500/20' : 'bg-purple-50/50 border-purple-200'}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-black uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
+                    <Sparkles size={13} />
+                    Synthesized Hardware Personality Prompt Directive
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    Auto-injected into Gemini Live session
+                  </span>
+                </div>
+                <p className={`text-xs font-mono leading-relaxed p-3 rounded-xl border ${isDark ? 'bg-slate-900 border-white/5 text-slate-300' : 'bg-white border-[#2E2B27]/10 text-slate-700'}`}>
+                  {`PERSONALITY PROFILE: Your responses should be shaped by these calibrated behavioral traits: ` +
+                    `Humor: ${describeSliderAxis(personality.humor, PERSONALITY_AXES_CONFIG.humor).name} (${describeSliderAxis(personality.humor, PERSONALITY_AXES_CONFIG.humor).text}). ` +
+                    `Delivery: ${describeSliderAxis(personality.delivery, PERSONALITY_AXES_CONFIG.delivery).name} (${describeSliderAxis(personality.delivery, PERSONALITY_AXES_CONFIG.delivery).text}). ` +
+                    `Temperament: ${describeSliderAxis(personality.temperament, PERSONALITY_AXES_CONFIG.temperament).name} (${describeSliderAxis(personality.temperament, PERSONALITY_AXES_CONFIG.temperament).text}). ` +
+                    `Social: ${describeSliderAxis(personality.social, PERSONALITY_AXES_CONFIG.social).name} (${describeSliderAxis(personality.social, PERSONALITY_AXES_CONFIG.social).text}). ` +
+                    `Formality: ${describeSliderAxis(personality.formality, PERSONALITY_AXES_CONFIG.formality).name} (${describeSliderAxis(personality.formality, PERSONALITY_AXES_CONFIG.formality).text}).`}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ----------------------------------------------------------------------------------------- */}
           {/* TAB 6: House Rules (All Personas)                                                         */}
           {/* ----------------------------------------------------------------------------------------- */}
           {tab === 'house' && (
@@ -1091,6 +1803,89 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
           {/* ----------------------------------------------------------------------------------------- */}
           {tab === 'test' && (
             <div className="space-y-4">
+              {/* Voice tester, with the persona's face animating to the voice */}
+              <div className={`${panel} p-4 flex flex-col lg:flex-row gap-4`}>
+              <div className="flex flex-col items-center gap-2 shrink-0">
+                <ImsFace
+                  face={{
+                    faceStyle: meta?.faceStyle || 'dots',
+                    color: meta?.faceColor || '4CFF7A',
+                    faceColor: meta?.faceColor || '4CFF7A',
+                    emotion: auditionEmotion,
+                    faceEmotion: auditionEmotion,
+                    accessories: meta?.accessories,
+                  }}
+                  status={voicePlaying ? 'speaking' : (busy || '').startsWith('speak') ? 'thinking' : 'idle'}
+                  levelRef={voiceLevelRef}
+                  width={260}
+                  className="shadow-xl border border-white/10"
+                />
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs ${sub}`}>{FACE_STYLES.find((s) => s.id === (meta?.faceStyle || 'dots'))?.name || meta?.faceStyle}</span>
+                  <select className={`${field} w-auto py-1`} value={auditionEmotion} onChange={(e) => setAuditionEmotion(e.target.value)} title="The expression he speaks with">
+                    {EMOTION_KEYS.map((k) => <option key={k} value={k}>{EMOTIONS[k].label}</option>)}
+                  </select>
+                </div>
+                <p className={`text-[11px] ${sub}`}>Face set in Profile, or with Use for in the Face Designer.</p>
+              </div>
+              <div className="flex-1 min-w-0 flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <Volume2 size={16} className={strong} />
+                  <h3 className={`text-sm font-bold ${strong}`}>Hear {persona.name}</h3>
+                  <span className={`text-xs ${sub}`}>Voice: {meta?.voice || 'default'}{isDirty ? ' (save first to hear unsaved changes)' : ''}</span>
+                </div>
+
+                <label className={`text-xs font-bold ${sub}`}>Voice Sample Line</label>
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    className={`${field} flex-1 min-w-[240px]`}
+                    value={sampleLine}
+                    placeholder={meta?.testLine || 'Type anything for Ims to say...'}
+                    onChange={(e) => setSampleLine(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !busy) speakLine('tts'); }}
+                  />
+                  <button onClick={() => speakLine('tts')} disabled={!!busy} className={primary} title="Speaks exactly this line with the persona's Gemini voice and accent">
+                    {busy === 'speak-line' ? <RotateCw size={14} className="animate-spin" /> : <Play size={14} />} Play
+                  </button>
+                  <button onClick={() => speakLine('live')} disabled={!!busy} className={ghost} title="Sends the line to the live voice model Ims uses on the desk, so you hear exactly how he'd answer">
+                    {busy === 'speak-live' ? <RotateCw size={14} className="animate-spin" /> : <Mic size={14} />} Say it live
+                  </button>
+                </div>
+
+                <label className={`text-xs font-bold ${sub}`}>Or a real scenario</label>
+                <div className="flex flex-wrap gap-2">
+                  <select className={`${field} flex-1 min-w-[240px]`} value={voiceScenario} onChange={(e) => setVoiceScenario(e.target.value)}>
+                    {!voiceScenarios.length && <option value="">Loading scenarios...</option>}
+                    {[...new Set(voiceScenarios.map((x) => x.group))].map((g) => (
+                      <optgroup key={g} label={g}>
+                        {voiceScenarios.filter((x) => x.group === g).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <select className={`${field} w-auto`} value={voiceEngine} onChange={(e) => setVoiceEngine(e.target.value)} title="Live is the desk voice model; Read aloud is the text-to-speech used for announcements">
+                    <option value="live">Live voice (desk)</option>
+                    <option value="tts">Read aloud (TTS)</option>
+                  </select>
+                  <button onClick={speakScenario} disabled={!!busy || !voiceScenario} className={primary}>
+                    {busy === 'speak-scenario' ? <RotateCw size={14} className="animate-spin" /> : <Play size={14} />}
+                    {busy === 'speak-scenario' ? 'Preparing...' : 'Play scenario'}
+                  </button>
+                </div>
+                {busy === 'speak-scenario' && <p className={`text-xs ${sub}`}>Gathering today's real data and voicing it - this can take up to a minute.</p>}
+
+                {heard && (
+                  <div className={`p-3 rounded-xl border flex flex-col gap-2 ${isDark ? 'border-white/10 bg-slate-950/40' : 'border-[#2E2B27]/15 bg-white'}`}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`text-xs font-bold ${strong}`}>{heard.label}</span>
+                      <span className={`text-xs ${sub}`}>{heard.engine === 'live' ? 'Live voice' : 'Read aloud'}{heard.ms ? ` - ready in ${(heard.ms / 1000).toFixed(1)} s` : ''}</span>
+                      <button onClick={() => play(heard.audio)} className={`${ghost} ml-auto`}><Play size={14} /> Replay</button>
+                    </div>
+                    {heard.said && <p className={`text-xs leading-relaxed ${strong}`}>"{heard.said}"</p>}
+                  </div>
+                )}
+              </div>
+              </div>
+
               <div className={`${panel} p-4 flex flex-col gap-3`}>
                 <div className="flex flex-wrap items-center gap-2">
                   <p className={`text-xs flex-1 min-w-[240px] ${sub}`}>

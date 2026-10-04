@@ -3,7 +3,7 @@ import {
   listPersonas, getPersona, activePersonaId, setActivePersona, savePersonaRaw, savePersonaParts, createPersona, deletePersona,
   getHouseRules, saveHouseRules, listHistory, readHistory, serializePersona,
 } from '../services/personaService.js';
-import { runPersonaTests, lastResults, listScenarios } from '../services/personaTestService.js';
+import { runPersonaTests, lastResults, listScenarios, listVoiceScenarios, speakAsPersona } from '../services/personaTestService.js';
 import { invalidateDayReportCache } from '../services/morningReportService.js';
 
 // Personas: /api/personas
@@ -35,6 +35,13 @@ router.post('/preview-raw', (req, res) => {
     const { meta, body } = req.body || {};
     ok(res, { raw: serializePersona(meta || {}, body || '') });
   } catch (err) { bad(res, err); }
+});
+
+// voice tester: what can be played, and play it as a persona ({ text } or { scenario }, engine 'live' | 'tts')
+router.get('/voice-scenarios', (req, res) => ok(res, { scenarios: listVoiceScenarios() }));
+router.post('/:id/speak', async (req, res) => {
+  try { ok(res, await speakAsPersona(req.params.id, { text: req.body?.text || '', scenario: req.body?.scenario || '', engine: req.body?.engine === 'tts' ? 'tts' : 'live', emotion: String(req.body?.emotion || '').slice(0, 30) })); }
+  catch (err) { bad(res, err, 500); }
 });
 
 router.get('/:id', (req, res) => {

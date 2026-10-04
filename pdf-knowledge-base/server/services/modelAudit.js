@@ -47,14 +47,14 @@ export async function generate(model, body, op = 'modelTest') {
 }
 
 // A Live session: setup (optionally with tools), one text turn, collect the spoken audio.
-export function liveSay(model, text, { tools = null, system = null, persona = null } = {}) {
+export function liveSay(model, text, { tools = null, system = null, persona = null, timeoutMs = 20000 } = {}) {
   return new Promise((resolve, reject) => {
     const voice = voiceName(persona);
     const ws = new WebSocket(`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${key()}`);
     const chunks = [];
     let transcript = '';
     const done = (err) => { clearTimeout(t); try { ws.close(); } catch { } if (err) reject(err); else resolve({ audio: chunks.length ? `data:audio/wav;base64,${wav(Buffer.concat(chunks)).toString('base64')}` : null, transcript: transcript.trim(), seconds: Buffer.concat(chunks).length / 48000 }); };
-    const t = setTimeout(() => (chunks.length ? done() : done(new Error('No reply within 20 s'))), 20000);
+    const t = setTimeout(() => (chunks.length ? done() : done(new Error(`No reply within ${Math.round(timeoutMs / 1000)} s`))), timeoutMs);
     ws.on('open', () => ws.send(JSON.stringify({ setup: {
       model: `models/${model}`,
       generationConfig: { responseModalities: ['AUDIO'], speechConfig: { languageCode: languageCode(persona), voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } },
@@ -78,9 +78,9 @@ export function liveSay(model, text, { tools = null, system = null, persona = nu
   });
 }
 
-export async function tts(model, line, persona = null) {
+export async function tts(model, line, persona = null, mood = '') {
   const voice = voiceName(persona);
-  const directive = 'Read the following text aloud exactly as written, delivered with this personality: ' + buildPersonalityParagraph(getPersonality()) + ' ' + accentRule(persona) + '\nText to read:\n';
+  const directive = 'Read the following text aloud exactly as written, delivered with this personality: ' + buildPersonalityParagraph(getPersonality()) + ' ' + accentRule(persona) + (mood ? ` Your emotion while saying it: ${mood} - let it come through clearly in your tone, pace and energy.` : '') + '\nText to read:\n';
   const r = await generate(model, { contents: [{ parts: [{ text: directive + line }] }], generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } } });
   if (!r.media?.data) throw new Error('No audio came back');
   const url = audioOut(r.media.data, r.media.mimeType || '');

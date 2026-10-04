@@ -67,7 +67,40 @@
       "dependencies": []
     },
     "src/components/Dashboard/PersonaPortal.jsx": {
-      "description": "Dedicated web editor for IMS dialect, identity, and system prompt rules at /ims/persona with live persistence to ims_persona_rules.md.",
+      "description": "Modular persona editor for IMS character, voice models, dialect pools, face animation models, and raw output at /ims/persona.",
+      "dependencies": [
+        "src/components/Ims/ImsFace.jsx",
+        "src/components/Ims/faceEmotions.js"
+      ]
+    },
+    "src/components/Ims/ImsFace.jsx": {
+      "description": "Master face dispatcher rendering classic 12x8 dot grid for Yorkshire Ims and routing to vector, oscilloscope, or geometric faces for custom personas.",
+      "dependencies": [
+        "src/components/Ims/VectorFace.jsx",
+        "src/components/Ims/OscilloscopeFace.jsx",
+        "src/components/Ims/GeometricFace.jsx"
+      ]
+    },
+    "src/components/Ims/VectorFace.jsx": {
+      "description": "Dynamic Bezier SVG face renderer with smooth organic curves, eyelid easing, gaze saccades, and speech volume mouth morphing.",
+      "dependencies": [
+        "src/components/Ims/faceEmotions.js"
+      ]
+    },
+    "src/components/Ims/OscilloscopeFace.jsx": {
+      "description": "Neon CRT oscilloscope Lissajous face renderer with phosphor decay bloom, harmonic eye orbits, and real-time frequency ripple mouth.",
+      "dependencies": [
+        "src/components/Ims/faceEmotions.js"
+      ]
+    },
+    "src/components/Ims/GeometricFace.jsx": {
+      "description": "Low-poly angular faceted cyber-mesh face renderer with articulated brow plates, aperture eyes, and volume-articulated lower jaw prism.",
+      "dependencies": [
+        "src/components/Ims/faceEmotions.js"
+      ]
+    },
+    "src/components/Ims/faceEmotions.js": {
+      "description": "Universal parametric dictionary for all 16 IMS emotional archetypes across vector, oscilloscope, and geometric models.",
       "dependencies": []
     },
     "src/components/Dashboard/HnswIndexModal.jsx": {
@@ -861,6 +894,69 @@
     "pdf-knowledge-base/server/services/disclaimerSanitizer.js": {
       "description": "Comprehensive sanitization utility stripping medical advice disclaimers, doctor/GP referrals, and healthcare team warnings from LLM outputs across IMS.",
       "dependencies": []
+    },
+    "src/components/Ims/FaceAccessories.jsx": {
+      "description": "Modular SVG accessories rendering system offering 9 glasses models, 10 hairstyles, and 10 facial hair styles with tinting and speech jaw articulation.",
+      "dependencies": []
+    },
+    "src/components/Ims/OrcFace.jsx": {
+      "description": "Procedural Savage Orc War-Chief animation renderer featuring articulating jaw tusks, furrowed brow ridges, slit reptilian eyes, and tribal warpaint.",
+      "dependencies": [
+        "src/components/Ims/FaceAccessories.jsx"
+      ]
+    },
+    "src/components/Ims/SteampunkFace.jsx": {
+      "description": "Procedural Victorian Clockwork Automaton animation renderer featuring rotating brass gears, oscillating pressure gauges, iris shutters, and steam wisps.",
+      "dependencies": [
+        "src/components/Ims/FaceAccessories.jsx"
+      ]
+    },
+    "src/components/Ims/CartoonFace.jsx": {
+      "description": "Procedural Classic Cartoon Eyes animation renderer featuring touching white googly eyeballs, bold black ink borders, solid black pupils, and rubber-hose cartoon mouth.",
+      "dependencies": [
+        "src/components/Ims/AnimeFace.jsx"
+      ]
+    },
+    "src/components/Ims/AnimeFace.jsx": {
+      "description": "Procedural Classic Cartoon Eyes (formerly Cel Anime Manga) animation renderer featuring touching white googly eyeballs, bold ink borders, solid black pupils with glance tracking, and rubber-hose cartoon mouth.",
+      "dependencies": [
+        "src/components/Ims/FaceAccessories.jsx"
+      ]
+    },
+    "src/components/Ims/PixelFace.jsx": {
+      "description": "Procedural 16-Bit Retro Arcade pixel sprite animation renderer with CRT scanline simulation, pixelated mouth frames, and retro emote icons.",
+      "dependencies": [
+        "src/components/Ims/FaceAccessories.jsx"
+      ]
+    },
+    "src/components/Ims/ImsFace.jsx": {
+      "description": "Master face dispatcher rendering 8 distinct animation models (dots, vector, oscilloscope, geometric, orc, steampunk, cartoon/anime, pixel) with accessories overlay.",
+      "dependencies": [
+        "src/components/Ims/FaceAccessories.jsx",
+        "src/components/Ims/OrcFace.jsx",
+        "src/components/Ims/SteampunkFace.jsx",
+        "src/components/Ims/AnimeFace.jsx",
+        "src/components/Ims/CartoonFace.jsx",
+        "src/components/Ims/PixelFace.jsx"
+      ]
+    },
+    "src/components/Ims/faceEmotions.js": {
+      "description": "Universal emotion taxonomy defining 16 emotional archetypes with parametric styling across all 8 procedural animation models and accessory options.",
+      "dependencies": []
+    },
+    "src/components/Ims/PixelFace.jsx": {
+      "description": "16-Bit Retro Pixel Arcade face renderer featuring CRT cabinet bezel, stepped pixel hero character sprite, reactive spriteEye/spriteMouth geometry, and floating emote badges.",
+      "dependencies": [
+        "src/components/Ims/faceEmotions.js",
+        "src/components/Ims/FaceAccessories.jsx"
+      ]
+    },
+    "src/components/Dashboard/FaceDesignerPortal.jsx": {
+      "description": "Full face design and animation studio supporting 12x8 dot matrix LED painting, multi-style Octa view comparison across all 8 engines, dedicated parametric breakdown inspectors with quick colour pickers, and synchronized 16-card emotion gallery.",
+      "dependencies": [
+        "src/components/Ims/ImsFace.jsx",
+        "src/components/Ims/faceEmotions.js"
+      ]
     }
   }
 }

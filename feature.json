@@ -1334,6 +1334,61 @@
         "Test Bench tab: Scenario evaluations against automated judge model with audio playback",
         "Raw Output tab: Live, unified raw output across all sections and settings with real-time preview (POST /api/personas/preview-raw), line/character metrics, clipboard copying, and direct raw editing"
       ]
+    },
+    "Multi-Style Expressive Face Animation Subsystem": {
+      "status": "enabled",
+      "description": "Introduces 3 distinct non-dot face animation rendering models (Dynamic Bezier Vector, Neon Oscilloscope Lissajous, and Geometric Low-Poly Facets) supporting all 16 built-in IMS emotional archetypes, seamless speech audio modulation, interactive 1-click expression pickers, and persona YAML configuration while preserving the classic 12x8 dot matrix face as the default for Yorkshire Ims.",
+      "subFeatures": [
+        "16 universal emotional archetypes across all face models: standby, neutral, joy, cocky, love, amazement, suspicious, confused, sad, devastated, anger, rage, fear, disgusted, bored, sleepy",
+        "Dynamic Bezier Vector face renderer (vector) with organic SVG curves, natural eyelid blink easing, pupil gaze tracking, and continuous speech mouth morphing",
+        "Neon Oscilloscope Lissajous renderer (oscilloscope) with glowing phosphor bloom, harmonic eye orbits, live audio frequency wave mouth, and cyberpunk HUD status accents",
+        "Geometric Low-Poly Facets renderer (geometric) with angular faceted wireframe mesh, pivoting brow plates, aperture eyes, and volume-articulated lower jaw prisms",
+        "Interactive 1-click expression audition picker and parametric expression customizer in PersonaPortal",
+        "Persona YAML frontmatter binding (faceStyle, faceColor, defaultExpression) with instant live rendering across web ImsPanel and persona preview cards",
+        "Zero-regression fallback preserving the 12x8 dot matrix canvas renderer unconditionally for Yorkshire Ims and legacy dot profiles",
+        "Face Designer Portal integration (/ims/facedesigner) with 4-engine switcher banner, list style filter pills (LED Dots, Vector, Scope, Geo), Quad 2x2 comparison view with speech simulation, and parametric breakdown inspector"
+      ]
+    },
+    "Extended Face Styles with Orc & Modular Accessories Subsystem": {
+      "status": "enabled",
+      "description": "Extends the IMS facial animation suite with 4 new procedural models (Savage Orc War-Chief, Clockwork Steampunk Automaton, Cel Anime Manga, 16-Bit Retro Arcade Pixel) and introduces a cross-engine modular accessories system (glasses, hairstyles, facial hair) supporting real-time jaw articulation during speech, custom color palettes, and deep Persona and Face Designer integration.",
+      "subFeatures": [
+        "Savage Orc War-Chief model (orc) featuring dynamic articulating jaw tusks that drop with speech volume, heavy furrowed brow ridge, reptilian slit eyes, and tribal warpaint markings",
+        "Clockwork Steampunk Automaton model (steampunk) featuring rotating brass cogs and gears, pressure dial needle vibrating with vocal amplitude, mechanical iris shutters, and steam exhaust plumes",
+        "Cel-Shaded Anime Manga model (anime) featuring large expressive eyes with specular highlights, manga blush lines, dynamic comic emote overlays (anger vein, sweatdrop, tears, sparkle stars), and morphing anime mouths",
+        "16-Bit Retro Arcade Pixel model (pixel) featuring chunky stepped pixel sprites, CRT scanline overlay, arcade 8-bit mouth animation, and retro emote icons (heart, question, exclamation, skull, sleep Zs)",
+        "Modular glasses & eyewear system with 9 variants (none, round, square, aviator, monocle, steampunk_goggles, cyber_visor, shades_cool, half_moon) and color tinting",
+        "Modular hairstyles system with 10 variants (none, short_crop, anime_spikes, messy_curly, parted_side, long_flow, mohawk, samurai_topknot, orc_crest, afro) and dye options",
+        "Modular facial hair system with 10 styles (none, stubble, handlebar, chevron, pencil, horseshoe, goatee, full_beard, braided_dwarf, wizard) with speech jaw-shift articulation",
+        "PersonaPortal customizer panel with tabbed accessory pickers, color swatches, YAML frontmatter persistence, and live audition preview",
+        "FaceDesignerPortal upgrade with 8 active engines switcher, collapsible audition accessories drawer, list filter pills across all 8 models, and Octa 8-way multi-engine comparative grid"
+      ]
+    },
+    "Classic Cartoon Eyes Face Engine & Touching Sclera Redesign": {
+      "status": "enabled",
+      "description": "Transforms the anime/cartoon facial animation engine into iconic classic animated cartoon eyes featuring large touching googly white eyeballs with bold ink borders, solid black pupils with dynamic glance tracking, emotion eyelids, and an animated rubber-hose cartoon mouth with bouncy pink tongue.",
+      "renderingEngine": "SVG / React",
+      "subFeatures": [
+        "Touching googly eyeballs: Two large circular/oval white eyeballs meeting and kissing seamlessly at x=100 with bold 7.5px black ink outlines",
+        "Solid jet black pupils: Pure black circular/oval pupils without iris gradients or reflections, resting slightly up and to the right and dynamically tracking gaze glance",
+        "Emotion eyelid morphing: Lower cheek squint curves on joy/love, sharp slanted brow cuts on anger/rage, drooping outward brows on sad/devastated, and curved shut-eye arcs on blink and sleep",
+        "Rubber-hose cartoon mouth: Animated open black mouth with vocal-responsive bouncy pink tongue (#ff4d6d) during speech, and classic cheeky curved smile with corner dimples when idle",
+        "App-wide renaming: Labeled 'Cartoon Eyes' / 'Cartoon' across engine switcher banners, Octa view cards, list filter pills, and parametric inspectors with full backward compatibility"
+      ]
+    },
+    "16-Bit Retro Pixel Arcade Engine Overhaul & Parametric Exception Guard": {
+      "status": "enabled",
+      "description": "Overhauls the 16-Bit Retro Pixel Arcade face engine into an authentic stepped pixel hero sprite housed in a retro CRT arcade monitor cabinet, adds dynamic eye/mouth archetype reactivity and floating emote badges, resolves the ParametricBreakdown emotionKey ReferenceError, and brings Name & Colour controls into the dedicated engine inspector.",
+      "renderingEngine": "SVG / React",
+      "subFeatures": [
+        "ParametricBreakdown emotionKey resolution: Eliminates ReferenceError: emotion is not defined when inspecting Cartoon Eyes or switching emotional archetypes",
+        "Arcade CRT Cabinet Presentation: Bezel chassis with 4 corner mounting screws, top marquee status header ('1P READY / IMS-16'), and scoped CRT scanlines",
+        "16-Bit Stepped Pixel Character Hero: Dynamic palette shading derived from active character color (highlight, body, shadow, deep shadow), stepped hair crest, ears, center nose, and rosy cheek blush blocks",
+        "Dynamic Eye Archetype Reactivity: Sprite eye variants for happy (inverted-V arches), heart (beating pink hearts), wide (shocked sclera), angry (red angled slits), smirk/narrow (half-lidded), and open arcade eyes with specular highlights",
+        "Dynamic Mouth Reactivity & Speech Stages: 3-stage animated speech mouth (closed notch, mid-mouth, wide shout with teeth and tongue) and expressive idle mouth shapes",
+        "Floating 8-Bit Emote Badges: Bobbing arcade badges for heart, question block, exclamation, skull, and sleep ZZZs",
+        "Dedicated Inspector Metadata Controls: Name input, hex colour picker, and palette swatches directly embedded inside the single-engine inspector"
+      ]
     }
   }
 }

@@ -7,6 +7,7 @@
 // spoken alert the TTS model - the same models those services use.
 import db from '../db/database.js';
 import { getPersona, doorbellLine, signOffs, withPersona } from './personaService.js';
+import { getReportConfig, buildSectionLine } from './morningReportService.js';
 import { getHardwareSetupPayload } from './hardwareClientService.js';
 import { getModelFor } from './modelRegistry.js';
 import { generate, liveSay, tts, personaPrompt, judgePersona } from './modelAudit.js';
@@ -123,3 +124,93 @@ export async function runPersonaTests(personaId, only = null) {
 }
 
 export const listScenarios = () => SCENARIOS.map(({ id, label, kind, about }) => ({ id, label, kind, about }));
+
+
+// ---- voice tester: hear a persona say a line, or any real situation, in the browser ----
+// Situations are built from TODAY's real data - every day report section (weather, UK tour news, news,
+// reminders, birthdays...) - plus the announcements Ims makes (reminder, doorbell) and a greeting.
+// engine 'live' = Ims's real-time desk voice (full desk setup, as this persona); 'tts' = the spoken-alerts
+// voice. Nothing is judged or saved - it's for listening.
+
+const londonHour = () => Number(new Date().toLocaleString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hour12: false }));
+
+export function listVoiceScenarios() {
+  const sections = (() => { try { const c = getReportConfig(); return Array.isArray(c) ? c : (c?.sections || []); } catch { return []; } })();
+  return [
+    ...sections.map((s) => ({ id: `report:${s.id}`, label: s.title || s.id, group: 'Day report (today\'s real data)' })),
+    { id: 'announce:reminder', label: 'A reminder going off', group: 'Announcements' },
+    { id: 'announce:doorbell', label: 'Someone at the front door', group: 'Announcements' },
+    { id: 'announce:motion', label: 'Motion at the front door', group: 'Announcements' },
+    { id: 'chat:greeting', label: 'Greeting ("Morning, Ims!")', group: 'Conversation' },
+    { id: 'chat:fact', label: 'A quick question', group: 'Conversation' },
+  ];
+}
+
+async function scenarioPrompt(id, persona) {
+  if (id.startsWith('report:')) {
+    const sid = id.slice(7);
+    const cfg = (() => { const c = getReportConfig(); return Array.isArray(c) ? c : (c?.sections || []); })();
+    const section = cfg.find((x) => x.id === sid);
+    if (!section) throw new Error('That day report section no longer exists.');
+    const line = await buildSectionLine({ ...section, enabled: true }, { hour: londonHour(), weatherRain: null, markNews: false });
+    if (!line || !String(line).trim()) throw new Error(`Nothing to say for "${section.title}" today.`);
+    return {
+      prompt: `(System: the user asked for just this part of their day report. Say ONLY this section now, as you would in the morning report, in your own words - no greeting, no sign-off.)\n\nSECTION: ${section.title}\n${line}`,
+      ttsText: null,
+    };
+  }
+  if (id === 'announce:reminder') return { prompt: 'Your reminder for "Switch AAPS profile to Activity" just went off - announce this briefly, in character, in your own persona\'s voice and accent.', ttsText: 'Reminder: switch your AAPS profile to Activity.' };
+  if (id === 'announce:doorbell') { const l = doorbellLine('ding', 'Front Door', persona); return { prompt: `The Ring doorbell just reported a doorbell press at the Front Door. Announce it briefly, in character - for example: "${l}"`, ttsText: l }; }
+  if (id === 'announce:motion') { const l = doorbellLine('motion', 'Front Door', persona); return { prompt: `The Ring doorbell just reported motion at the Front Door. Announce it briefly, in character - for example: "${l}"`, ttsText: l }; }
+  if (id === 'chat:greeting') return { prompt: 'Morning, Ims!', ttsText: null };
+  if (id === 'chat:fact') return { prompt: "Hey Ims, what's the tallest mountain in England?", ttsText: null };
+  throw new Error('Unknown scenario.');
+}
+
+/** { text } (a line to read) or { scenario } ; engine 'live' | 'tts' -> { audio, said, prompt } */
+// How each face emotion sounds, for a spoken line that matches the face
+const EMOTION_MOODS = {
+  standby: 'calm and relaxed', neutral: 'calm and matter-of-fact', joy: 'delighted and happy', cocky: 'cocky, smug and full of yourself',
+  love: 'warm and affectionate', amazement: 'amazed and astonished', suspicious: 'suspicious and wary', confused: 'puzzled and confused',
+  sad: 'sad and downcast', devastated: 'devastated and heartbroken', anger: 'annoyed and angry', rage: 'furious, raging',
+  fear: 'scared and nervous', disgusted: 'disgusted and repulsed', bored: 'bored and fed up', sleepy: 'sleepy, yawning and drowsy',
+};
+
+export async function speakAsPersona(personaId, { text = '', scenario = '', engine = 'live', emotion = '' } = {}) {
+  const persona = getPersona(personaId);
+  if (!persona) throw new Error('No such persona.');
+  const started = Date.now();
+  if (emotion && !text && !scenario) {
+    // a short everyday line in this persona that shows the emotion, read aloud in that mood
+    const mood = EMOTION_MOODS[emotion] || emotion;
+    const r = await generate(getModelFor('dayReport'), {
+      systemInstruction: { parts: [{ text: personaPrompt('Write only the words you would say aloud - no stage directions, no sound effects in brackets, no quotation marks.', persona) }] },
+      contents: [{ parts: [{ text: `Say one or two short sentences (under 30 words) that you might say to Simon while feeling ${mood}, about something everyday (the house, the weather, a game, the news, the day ahead) - not about his health, glucose or running. Make the feeling obvious from the words alone. Something fresh each time (${Math.random().toString(36).slice(2, 6)}).` }] }],
+      generationConfig: { temperature: 1.1 },
+    }, 'personaTest');
+    const line = (r.text || '').replace(/["\u201c\u201d]/g, '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    if (!line) throw new Error('No line came back.');
+    const audio = await tts(getModelFor('tts'), line, persona, mood);
+    return { audio, said: line, ms: Date.now() - started, engine: 'tts', emotion };
+  }
+  if (text && engine === 'tts') {
+    const audio = await tts(getModelFor('tts'), String(text).slice(0, 600), persona);
+    return { audio, said: text, ms: Date.now() - started, engine };
+  }
+  const { prompt, ttsText } = text
+    ? { prompt: `Say exactly this, in your own voice and accent, and nothing else: "${String(text).slice(0, 600)}"`, ttsText: text }
+    : await scenarioPrompt(scenario, persona);
+  if (engine === 'tts') {
+    // the spoken-alerts voice reads text: write it in the persona first, then read it
+    let line = ttsText;
+    if (!line) {
+      const r = await generate(getModelFor('dayReport'), { systemInstruction: { parts: [{ text: personaPrompt('Write only the words you would say aloud - no stage directions.', persona) }] }, contents: [{ parts: [{ text: prompt }] }] }, 'personaTest');
+      line = (r.text || '').slice(0, 900);
+    }
+    const audio = await tts(getModelFor('tts'), line, persona);
+    return { audio, said: line, ms: Date.now() - started, engine };
+  }
+  const r = await liveSay(getModelFor('imsVoice'), prompt, { persona, ...deskSetup(persona), timeoutMs: 90000 });
+  if (!r.audio) throw new Error('No speech came back.');
+  return { audio: r.audio, said: r.transcript, ms: Date.now() - started, engine };
+}

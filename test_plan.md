@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 109
-- Verified Features: 109
+- Total Registered Features: 113
+- Verified Features: 113
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -117,6 +117,10 @@
 | FEAT-107 | Diabetes Advice Disclaimer Suppression | [_house_rules.md](file:///d:/Information%20management%20system/personas/_house_rules.md) | Persona house rules, tool definitions, and AI prompt verification suppressing healthcare team referral disclaimers | PASS |
 | FEAT-108 | Wake Phrase Service Resiliency & Auto-Recovery Watchdog | [wakeDaemonService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/wakeDaemonService.js) | Firmware verify ceiling, TCP keep-alives, Gemini pre-warm, and watchdog recovery verification | PASS |
 | FEAT-109 | Modular Persona Management Tabs with Unified Raw Output | [PersonaPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/PersonaPortal.jsx) | Tab modularity, scratch verify_persona_tabs.mjs roundtrip test & Vite clean build | PASS |
+| FEAT-110 | Multi-Style Expressive Face Animation Subsystem | [ImsFace.jsx](file:///d:/Information%20management%20system/src/components/Ims/ImsFace.jsx) | Vector, Oscilloscope, Geometric face renderers & 16 emotional archetypes verification | PASS |
+| FEAT-111 | Extended Face Styles with Orc & Modular Accessories Subsystem | [OrcFace.jsx](file:///d:/Information%20management%20system/src/components/Ims/OrcFace.jsx) | Procedural 8-engine rendering, accessories overlay & Octa view | PASS |
+| FEAT-112 | Classic Cartoon Eyes Face Engine & Touching Sclera Redesign | [CartoonFace.jsx](file:///d:/Information%20management%20system/src/components/Ims/CartoonFace.jsx) | Touching white googly eyes, bold ink outlines, solid black pupils with glance tracking, and rubber-hose cartoon mouth | PASS |
+| FEAT-113 | 16-Bit Retro Pixel Arcade Engine Overhaul & Parametric Exception Guard | [PixelFace.jsx](file:///d:/Information%20management%20system/src/components/Ims/PixelFace.jsx) | 16-bit stepped pixel hero sprite, CRT cabinet bezel, reactive spriteEye/spriteMouth, floating emote badges & ParametricBreakdown null safety | PASS |
 
 ## Section 2: Detailed Scenarios
 ### Suite 31: Observability Device Health Panel & Service (FEAT-086)
@@ -1127,6 +1131,54 @@
 8. **Unified Raw Output Parity:** Open the *Raw Output* tab. Verify it renders the live unified Markdown file (`personas/<selected>.md`) containing the YAML frontmatter and all character sections combined. Verify line count, character count, and 1-click clipboard copy. Edit raw text and verify direct save applies cleanly back across all tabs.
 9. **Automated Roundtrip Parity Check:** Execute `node scratch/verify_persona_tabs.mjs`. Verify 100% frontmatter parity, 5/5 sections preservation, and serialization roundtrip accuracy for Yorkshire Ims.
 
+### Suite 110: Multi-Style Expressive Face Animation Subsystem (FEAT-110)
+1. **Classic Dot Matrix Fallback Guarantee:** Verify that when `faceStyle` is `'dots'`, undefined, or when using Yorkshire Ims, `ImsFace` uses the original 12x8 dot grid canvas with zero behavioral changes or regressions on desk hardware or web.
+2. **Dynamic Bezier Vector Face Verification:** Switch face style to `'vector'`. Verify smooth SVG rendering of expressive curved eyelids, pupils with gaze tracking and blink collapse, and continuous Bezier curve mouth morphing dynamically with audio volume (`smoothLevel`).
+3. **Neon Oscilloscope Lissajous Face Verification:** Switch face style to `'oscilloscope'`. Verify glowing phosphor bloom wireframe, dual harmonic Lissajous eye nodes pulsing with breath, and live audio frequency waveform mouth responding to speech frequencies.
+4. **Geometric Low-Poly Facets Face Verification:** Switch face style to `'geometric'`. Verify 3D-feeling angular polygonal mesh, pivoting brow plates, aperture eyes, and volume-articulated lower jaw prism cluster opening with voice volume.
+5. **16 Universal Emotions Parity across All 3 Styles:** Cycle through all 16 built-in emotions (`standby`, `neutral`, `joy`, `cocky`, `love`, `amazement`, `suspicious`, `confused`, `sad`, `devastated`, `anger`, `rage`, `fear`, `disgusted`, `bored`, `sleepy`). Verify that each of the 3 face styles displays a distinct, emotionally resonant expression geometry for every single emotion.
+6. **Persona Portal Expression Audition Picker:** Navigate to `/ims/persona`. In the Profile & Voice tab, verify the Face & Animation panel provides 1-click pills for all 16 emotions, interactive face preview, style dropdown, and color picker.
+7. **Face Designer Portal Multi-Style & Quad View Integration:** Navigate to `/ims/facedesigner`. Verify the top engine switcher banner displays the 4 active rendering engines (LED Dots, Bezier Vector, Oscilloscope, Geometric). Toggle between engines to verify the central design preview swaps immediately. In the left Face list, toggle the style filter pill bar (`LED Dots`, `Vector`, `Scope`, `Geo`) to verify real-time thumbnail rendering across styles. Select `Quad View` (`viewStyle === 'all'`) to verify simultaneous 2x2 comparison across all 4 animation styles with speech simulation. In the right-hand Talking Preview, toggle style pills and click `Test Voice` to verify synchronized audio volume mouth morphing. Verify classic 12x8 dot matrix canvas painting and eye cell timeline remain 100% active and preserved in `dots` mode.
+
+### Suite 111: Extended Face Styles with Orc & Modular Accessories Subsystem (FEAT-111)
+1. **Savage Orc War-Chief Renderer Verification:** Set `faceStyle: 'orc'`. Verify rendering of dynamic upward jaw tusks, brow ridge, and slit pupils. In speaking mode, verify that tusks and jaw drop proportionately with voice volume (`levelRef`). Verify warpaint overlay changes with emotion (e.g. intensified red warpaint on rage).
+2. **Clockwork Steampunk Automaton Renderer Verification:** Set `faceStyle: 'steampunk'`. Verify animated rotating brass gears, mechanical iris shutters, central steam pressure needle oscillating with vocal volume, and steam exhaust wisps.
+3. **Cel-Shaded Anime Manga Renderer Verification:** Set `faceStyle: 'anime'`. Verify oversized expressive manga eyes with multi-layer specular glints, soft cheek blush lines, emote icons (anger `💢`, sweatdrop `💧`, tears, stars `✨`), and expressive mouth shapes (`cat_w`, `open_o`, `fang`, `shout_triangle`, `wide_grin`).
+4. **16-Bit Retro Arcade Pixel Renderer Verification:** Set `faceStyle: 'pixel'`. Verify stepped pixel grid rendering, CRT scanline overlay, 8-bit stepped speech mouth frames, and retro emote badges (`💖`, `❓`, `❗`, `💀`, `💤`).
+5. **Modular Eyewear System Verification:** Test all 9 glasses styles (`none`, `round`, `square`, `aviator`, `monocle`, `steampunk_goggles`, `cyber_visor`, `shades_cool`, `half_moon`) across all 8 face models. Verify proper SVG positioning centered across left/right eyes (`y=52`) and correct color tint application.
+6. **Modular Hairstyle System Verification:** Test all 10 hairstyles (`none`, `short_crop`, `anime_spikes`, `messy_curly`, `parted_side`, `long_flow`, `mohawk`, `samurai_topknot`, `orc_crest`, `afro`) across all 8 face models. Verify proper cranial framing and color dye application.
+7. **Modular Facial Hair System & Articulation Verification:** Test all 10 facial hair styles (`none`, `stubble`, `handlebar`, `chevron`, `pencil`, `horseshoe`, `goatee`, `full_beard`, `braided_dwarf`, `wizard`). In speaking mode, verify beard elements (`goatee`, `full_beard`, `braided_dwarf`, `wizard`) shift vertically downward in real-time with jaw movements (`jawShift = level * 10`).
+8. **Persona Portal Integration & YAML Frontmatter:** Navigate to `/ims/persona`. Open the Accessories customizer in the Profile & Voice tab. Select accessories and colors, save persona, and verify `accessories` dictionary is preserved in YAML frontmatter and reloaded correctly.
+9. **Face Designer Portal 8-Engine Octa View:** Navigate to `/ims/facedesigner`. Verify engine switcher lists all 8 models + Octa View. Click `Octa View (All 8)` to verify all 8 models render simultaneously in a 4x2 responsive grid with synchronized voice volume simulation. Toggle the Accessories drawer to test eyewear, hairstyles, and facial hair across all 8 models live.
+10. **16 Face Emotion Cards Model Synchronisation:** In `/ims/facedesigner`, click any animation model in the top banner (`Orc Chief`, `Steampunk`, `Anime Manga`, `16-Bit Pixel`, `Bezier Vector`, `Oscilloscope`, `Geometric`, `Dot Matrix`) or inspect buttons in Octa View. Verify the 16 emotion cards lower down immediately switch rendering engines to display all 16 expressions in that selected model in real time. Hover over individual emotion cards to verify talking speech simulation and accessories rendering. Verify the pill filter bar above the 16 cards allows manual per-style inspection.
+
+### Suite 112: Classic Cartoon Eyes Face Engine & Touching Sclera Redesign (FEAT-112)
+1. **Touching Googly Eyeballs Geometry:** Set `faceStyle: 'anime'` or `'cartoon'`. Verify that the left eyeball (`cx=69, cy=52, rx=31, ry=36`) and right eyeball (`cx=131, cy=52, rx=31, ry=36`) meet and touch seamlessly at `x=100` with thick bold black ink borders (`strokeWidth=7.5`), replicating classic 1930s-1990s animated cartoon eyes.
+2. **Solid Jet Black Pupils:** Verify that the pupils render as pure solid black ovals (`fill="#000000"`) without anime specular glints or multi-color gradients, resting slightly up and to the right and actively darting with `glance` tracking.
+3. **Emotion Eyelids:** Test emotion expressions:
+   - Joy / Love: Smiling lower cheek eyelids rise up from below (`Q 69 50 96 66`) with soft cheek blush.
+   - Anger / Rage: Bold slanted upper cartoon eyelids (`strokeWidth=7`) angling inward `\ /`.
+   - Sad / Devastated: Drooping upper cartoon eyelids angling outward `/ \`.
+   - Amazement / Fear: Contracted tiny scared pupils (`pupilRadius=7`).
+   - Sleep / Blink: Bold curved closed cartoon arcs (`M 40 54 Q 69 70 98 54`).
+4. **Animated Rubber-Hose Mouth:** In speaking mode, verify open black cartoon mouth with bouncing pink tongue (`#ff4d6d`) modulating with vocal audio level (`levelRef`). When idle, verify classic cheeky curved smile with corner cheek crease dimples.
+5. **App-Wide Renaming & Filter Parity:** In `FaceDesignerPortal.jsx` and `faceEmotions.js`, verify the engine is labeled 'Cartoon Eyes' / 'Cartoon', filter pill is 'Cartoon', and the Octa View card displays 'Cartoon Eyes' with updated parametric breakdown inspector.
+
+### Suite 113: 16-Bit Retro Arcade Pixel Sprite Engine & Parametric Exception Guard (FEAT-113)
+1. **Parametric Exception Guard:** Verify that selecting Cartoon Eyes ('anime') or any of the 16 emotional archetypes (e.g. amazement, fear, joy) in FaceDesignerPortal renders `ParametricBreakdown` cleanly without runtime `ReferenceError: emotion is not defined` (resolving via `emotionKey` prop).
+2. **Arcade Hero Sprite Presentation:** Inspect `PixelFace` across all 16 emotional archetypes in FaceDesignerPortal and ImsPanel. Verify the sprite renders with vibrant stepped 16-bit pixel shading based on the active character `color`, hair crown bangs, side ears, center nose, and rosy pixel cheek blushes against an arcade CRT cabinet bezel with corner screws and top marquee (`1P READY / IMS-16`).
+3. **Dynamic Eye Archetype Reactivity:** Verify `p.spriteEye` variants dynamically render authentic pixel geometry:
+   - `happy` (joy/love): Inverted-V stepped arcade squints (`^ ^`).
+   - `heart` (love): Animated beating 8-bit pink pixel hearts (`💖 💖`).
+   - `wide` (amazement/fear): Shocked white sclera blocks with contracted center pupils.
+   - `angry` (anger/rage): Angled red pixel slits with sharp stepped angry brows.
+   - `smirk` / `narrow` (cocky/suspicious): Half-lidded cocky pixel slits.
+   - `open` (neutral/standby): Full arcade eyes with white sclera, color-tinted iris, black pupil, and specular white glint.
+   - `sleepy` / blink: Stepped horizontal resting pixel lines.
+4. **Dynamic Mouth Reactivity & Speech Stages:** Verify `p.spriteMouth` switches resting mouth geometry (smile, smirk, gasp, frown, clenched teeth) and dynamically modulates across 3 speech stages (closed pixel line, mid-open notch, wide shouting mouth with white teeth and pink tongue) when `audioLevel` is active.
+5. **Floating 8-Bit Emote Badges:** Verify floating 8-bit badges (beating heart, yellow question block, cyan exclamation mark, red skull, purple ZZZs) render in the top-right corner with bobbing animation.
+6. **Dedicated Inspector Controls:** In `FaceDesignerPortal.jsx`, verify Name input, Colour picker, and palette swatches render directly inside the dedicated engine inspector card, ensuring full editability across all preview modes.
+
 ## Section 3: Defensive Engineering Invariants
 - **Scheduler Concurrency Protection:** All routines managed by `schedulerService` must acquire an execution run-lock (`isRunning`) before invoking the action and release it in a `finally` block to prevent SQLite database write lock contention.
 - **Pre-Restore Snapshot Guarantee:** Every database restoration via `backupService.restoreBackup()` must take a full SQLite backup snapshot of the active database (`LOCAL/pre-restore-app-${Date.now()}.db`) before touching live database or asset files.
@@ -1144,5 +1196,7 @@
 - **TCP Keep-Alive & Inactivity Invariant:** Hardware TCP transport between ESP32 and Node.js proxy must maintain `SO_KEEPALIVE` probes every 10 seconds and enforce a 60-second RX silence watchdog to cleanly sever half-open dead sockets.
 - **Gemini Upstream Warm Reconnection Invariant:** When idle in STANDBY, the backend proxy must proactively reconnect dropped Gemini Live sessions with exponential backoff and buffer outbound audio until `setupComplete` is acknowledged, preventing dropped wake audio.
 - **Wake Turn Stall Recovery Invariant:** Model speech flags and audio pacing states must auto-recover if speech output halts for >8s without emitting `turnComplete`, ensuring the 15-second silence watchdog can cleanly return the system to ready standby.
+- **Face Accessories Articulation & Bounds Invariant:** All accessory overlays rendered by FaceAccessories.jsx must normalize coordinate spaces within the standard 200x133.33 (12:8 aspect ratio) coordinate system and clamp jaw-shift articulation offsets to prevent beard clipping beyond the bottom bezel during high-volume audio bursts.
+- **SVG Instance ID Scoping & Parametric Coalescing Invariant:** SVG definitions (patterns, clipPaths) inside multi-instance components like `PixelFace.jsx` must generate cryptographically or component-scoped unique IDs (`useId()`) to prevent pattern collisions across thumbnail grids. All parametric property readers in `ParametricBreakdown` must coalesce against null/undefined configuration keys to prevent startup exceptions.
 
 

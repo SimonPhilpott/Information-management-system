@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Smile, Save, Trash2, Copy, Play, Plus, Eraser, RotateCcw, Undo2, Rewind, Mic, ChevronLeft, ChevronRight, Film } from 'lucide-react';
+import {
+  Smile, Save, Trash2, Copy, Play, Plus, Eraser, RotateCcw, Undo2, Rewind, Mic,
+  ChevronLeft, ChevronRight, Film, Volume2, Sparkles, LayoutGrid, Eye, Check, Sliders, Glasses
+} from 'lucide-react';
 import PortalShell from './PortalShell';
+import ImsFace from '../Ims/ImsFace';
+import usePersonaVoice from '../../hooks/usePersonaVoice';
+import { EMOTIONS, EMOTION_KEYS, FACE_STYLES, ACCESSORY_OPTIONS, HAIR_COLORS, GLASSES_COLORS } from '../Ims/faceEmotions';
 
 const COLS = 12, ROWS = 8;
 const EMPTY_GRID = '0'.repeat(COLS * ROWS);
@@ -176,10 +182,80 @@ function FaceBackups({ face, isDark, showToast, onRestored }) {
   );
 }
 
-function FaceThumb({ face, hovering }) {
+function FaceThumb({ face, hovering, style = 'dots', levelRef, isSpeaking = false, accessories = null }) {
+  if (style !== 'dots') {
+    return (
+      <div className="w-full aspect-[12/8] flex items-center justify-center p-0.5 bg-[#080c14] rounded-lg overflow-hidden border border-white/5 relative">
+        <ImsFace
+          face={{ faceStyle: style, color: face.color, emotion: face.name, faceEmotion: face.name, accessories }}
+          status={hovering || isSpeaking ? 'speaking' : 'idle'}
+          levelRef={levelRef}
+          width="100%"
+          className="!rounded-lg !p-1 !border-0"
+        />
+      </div>
+    );
+  }
   return hovering
     ? <TalkingPreview face={face} size={8} gap={2} fluid />
     : <DotGrid grid={face.grid} color={face.color} size={8} gap={2} fluid />;
+}
+
+function ParametricBreakdown({ emotionKey, style, isDark }) {
+  const em = EMOTIONS[emotionKey] || EMOTIONS.neutral;
+  const p = em ? (em[style] || {}) : {};
+  if (!p || Object.keys(p).length === 0) return null;
+
+  return (
+    <div className={`p-3 rounded-xl border text-[11px] ${isDark ? 'bg-slate-950/40 border-white/10' : 'bg-slate-50 border-[#2E2B27]/10'}`}>
+      <div className="font-bold uppercase tracking-wider text-[10px] text-amber-400 mb-2 flex items-center gap-1.5">
+        <Sliders size={12} />
+        {em?.label || 'Emotion'} Parametric Geometry ({(style || '').toUpperCase()})
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono">
+        {style === 'vector' && (
+          <>
+            <div><span className="text-slate-500">Brows:</span> L:{p.browLeft ?? 0} / R:{p.browRight ?? 0}</div>
+            <div><span className="text-slate-500">Eyes:</span> L:{(((p.eyeLeftOpen ?? 1)) * 100).toFixed(0)}% / R:{(((p.eyeRightOpen ?? 1)) * 100).toFixed(0)}%</div>
+            <div><span className="text-slate-500">Pupils:</span> X:{p.pupilX ?? 0} / Y:{p.pupilY ?? 0}</div>
+            <div><span className="text-slate-500">Smile:</span> {p.mouthSmile ?? 0} (W:{p.mouthWidth ?? 40})</div>
+          </>
+        )}
+        {style === 'oscilloscope' && (
+          <>
+            <div><span className="text-slate-500">Frequency:</span> {p.freq ?? 1.5} Hz</div>
+            <div><span className="text-slate-500">Harmonics:</span> {p.harmonics ?? 2}</div>
+            <div><span className="text-slate-500">Jitter:</span> {(((p.jitter ?? 0.02)) * 100).toFixed(0)}%</div>
+            <div><span className="text-slate-500">Waveform:</span> {p.waveType ?? 'sine'}</div>
+          </>
+        )}
+        {style === 'geometric' && (
+          <>
+            <div><span className="text-slate-500">Brow Pitch:</span> {p.browPitch ?? 0}°</div>
+            <div><span className="text-slate-500">Eye Aperture:</span> {(((p.eyeAperture ?? 1)) * 100).toFixed(0)}%</div>
+            <div><span className="text-slate-500">Jaw Drop:</span> {p.jawDrop ?? 0}</div>
+            <div><span className="text-slate-500">Facet Angle:</span> {p.facetAngle ?? 0}°</div>
+          </>
+        )}
+        {style === 'orc' && (
+          <>
+            <div><span className="text-slate-500">Brow Angle:</span> {p.browAngle ?? 0}°</div>
+            <div><span className="text-slate-500">Tusk Size:</span> {p.tuskHeight ?? 18}px (Tilt: {p.tuskAngle ?? 0}°)</div>
+            <div><span className="text-slate-500">Jaw Drop:</span> {p.jawDrop ?? 0}</div>
+            <div><span className="text-slate-500">Warpaint:</span> {(((p.warpaintIntensity ?? 0.5)) * 100).toFixed(0)}%</div>
+          </>
+        )}
+        {style === 'steampunk' && (
+          <>
+            <div><span className="text-slate-500">Gear Speed:</span> {p.gearSpeed ?? 1}x</div>
+            <div><span className="text-slate-500">Pressure Dial:</span> {p.dialAngle ?? 30}°</div>
+            <div><span className="text-slate-500">Iris Shutter:</span> {(((p.shutterOpen ?? 0.9)) * 100).toFixed(0)}%</div>
+            <div><span className="text-slate-500">Steam Exhaust:</span> {(((p.steamPuff ?? 0.2)) * 100).toFixed(0)}%</div>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
@@ -195,6 +271,75 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
   const [brush, setBrush] = useState('f');
   const [busy, setBusy] = useState(false);
   const [notification, setNotification] = useState(null);
+
+  // Multi-Style Face Animation States
+  const [viewStyle, setViewStyle] = useState('dots'); // 'dots' | 'vector' | 'oscilloscope' | 'geometric' | 'orc' | 'steampunk' | 'anime' | 'pixel' | 'all'
+  const [listStyle, setListStyle] = useState('dots');
+  const [previewStyle, setPreviewStyle] = useState('dots');
+  const [isSimulatingSpeech, setIsSimulatingSpeech] = useState(false);
+  const [accessories, setAccessories] = useState({
+    glasses: 'none',
+    hair: 'none',
+    facialHair: 'none',
+    hairColor: '#16161a',
+    glassesColor: '#d4af37',
+    facialHairColor: '#16161a',
+  });
+  const [showAccessories, setShowAccessories] = useState(false);
+  const [personas, setPersonas] = useState([]);       // to give the face on show to a persona
+  const [facePersona, setFacePersona] = useState('');
+  const simLevelRef = useRef(0);
+
+  useEffect(() => {
+    let raf = 0;
+    if (isSimulatingSpeech || hoverId !== null) {
+      const loop = (now) => {
+        // the real voice when one is playing, otherwise a speaking rhythm (hover previews)
+        simLevelRef.current = voice.playing ? voice.levelRef.current : (Math.sin(now / 130) * 0.4 + 0.5) * (0.3 + Math.random() * 0.6);
+        raf = requestAnimationFrame(loop);
+      };
+      raf = requestAnimationFrame(loop);
+    } else {
+      simLevelRef.current = 0;
+    }
+    return () => cancelAnimationFrame(raf);
+  }, [isSimulatingSpeech, hoverId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    fetch('/api/personas').then((r) => r.json()).then((d) => {
+      if (!d.personas) return;
+      setPersonas(d.personas);
+      setFacePersona((cur) => cur || d.activeId || d.personas[0]?.id || '');
+    }).catch(() => {});
+  }, []);
+
+  // the face style on show (with the accessories being auditioned) becomes that persona's face
+  const useFaceForPersona = async () => {
+    const p = personas.find((x) => x.id === facePersona);
+    if (!p || viewStyle === 'all') return;
+    try {
+      const res = await fetch(`/api/personas/${p.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ meta: { faceStyle: viewStyle, accessories } }) });
+      const d = await res.json();
+      if (!res.ok || d.success === false) throw new Error(d.error || 'Could not save the face.');
+      setPersonas((list) => list.map((x) => (x.id === p.id ? { ...x, faceStyle: viewStyle } : x)));
+      showToast(`${p.name} now uses this face - see it on the Persona page.`);
+    } catch (err) { showToast(err.message, 'error'); }
+  };
+
+  // Simulate Voice: the persona says a line that fits the emotion on show, in its Gemini voice; faces lip-sync to it
+  const voice = usePersonaVoice();
+  useEffect(() => { setIsSimulatingSpeech(voice.playing); }, [voice.playing]);
+  useEffect(() => { if (voice.error) showToast(voice.error, 'error'); }, [voice.error]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toggleVoice = () => ((voice.busy || voice.playing) ? voice.stop() : voice.say(facePersona, { emotion: draft.name || 'neutral' }));
+  const voiceLabel = voice.busy ? 'Writing a line...' : voice.playing ? 'Speaking - stop' : 'Simulate Voice';
+
+  const switchEngineModel = useCallback((modelId) => {
+    setViewStyle(modelId);
+    if (modelId !== 'all') {
+      setPreviewStyle(modelId);
+      setListStyle(modelId);
+    }
+  }, []);
 
   const showToast = useCallback((msg, type = 'success') => {
     setNotification({ msg, type });
@@ -373,19 +518,286 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
   const gradient = 'from-yellow-400 to-amber-500';
 
   return (
-    <PortalShell title="Face Designer" subtitle="/ims/facedesigner • every face Ims can pull, and when to use it"
+    <PortalShell title="Face Designer" subtitle="/ims/facedesigner • 6 expressive animation models (Dot Matrix, Bezier Vector, Oscilloscope, Geometric, Orc War-Chief, Clockwork Steampunk) & 16 emotional archetypes"
       icon={Smile} gradient={gradient} glow="rgba(250,204,21,0.3)"
       isDark={isDark} onThemeToggle={onThemeToggle} setCurrentPath={setCurrentPath} notification={notification} maxWidth="max-w-7xl">
+
+      {/* Animation Models Switcher Banner */}
+      <div className={`flex flex-wrap items-center justify-between gap-3 mb-4 p-3 rounded-2xl border ${isDark ? 'bg-slate-900/40 border-white/10' : 'bg-white/80 border-[#2E2B27]/15 shadow-sm'}`}>
+        <div className="flex items-center gap-2.5">
+          <Sparkles size={18} className="text-amber-400" />
+          <div>
+            <div className="text-xs font-black uppercase tracking-wider flex items-center gap-2">
+              Face Animation Models
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                6 Active Engines
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Preview and design faces across 6 procedural engines: Dot Matrix, Bezier Vector, Oscilloscope, Geometric Mesh, Orc War-Chief, and Steampunk Automaton.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-slate-950/60 border border-white/10">
+            {[
+              { id: 'dots', label: 'Dot Matrix' },
+              { id: 'vector', label: 'Bezier Vector' },
+              { id: 'oscilloscope', label: 'Oscilloscope' },
+              { id: 'geometric', label: 'Geometric' },
+              { id: 'orc', label: 'Orc Chief' },
+              { id: 'steampunk', label: 'Steampunk' },
+              { id: 'chronicler', label: 'Chronicler' },
+              { id: 'all', label: 'All faces' },
+            ].map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => switchEngineModel(m.id)}
+                className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
+                  viewStyle === m.id
+                    ? 'bg-amber-400 text-slate-900 shadow-sm'
+                    : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-black'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+
+          {personas.length > 0 && (
+            <div className={`flex items-center gap-1.5 px-2 py-1 rounded-xl border ${isDark ? 'bg-slate-950/60 border-white/10' : 'bg-white border-[#2E2B27]/15'}`}>
+              <span className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Use for</span>
+              <select
+                value={facePersona}
+                onChange={(e) => setFacePersona(e.target.value)}
+                className={`text-xs font-bold rounded-lg px-1.5 py-1 outline-none ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-slate-100 text-slate-900'}`}
+              >
+                {personas.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}{p.faceStyle ? ` (now: ${FACE_STYLES.find((s) => s.id === p.faceStyle)?.name || p.faceStyle})` : ''}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={useFaceForPersona}
+                disabled={viewStyle === 'all' || personas.find((p) => p.id === facePersona)?.faceStyle === viewStyle}
+                title={viewStyle === 'all' ? 'Pick one face above first' : 'Make the face on show (and the accessories) this persona\'s face'}
+                className="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-400 text-slate-900 disabled:opacity-40"
+              >
+                {personas.find((p) => p.id === facePersona)?.faceStyle === viewStyle ? 'In use' : 'Use this face'}
+              </button>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setShowAccessories((v) => !v)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+              showAccessories
+                ? 'bg-amber-400 text-slate-900 shadow-sm'
+                : isDark ? 'text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10' : 'text-slate-700 bg-black/5 hover:bg-black/10 border border-[#2E2B27]/10'
+            }`}
+          >
+            <Glasses size={14} />
+            Accessories {showAccessories ? '(Active)' : ''}
+          </button>
+        </div>
+      </div>
+
+      {/* Accessories Customizer Drawer */}
+      {showAccessories && (
+        <div className={`mb-5 p-4 rounded-2xl border ${isDark ? 'bg-slate-900/60 border-amber-400/30' : 'bg-amber-50/50 border-amber-300'} shadow-md space-y-4`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Glasses size={16} className="text-amber-400" />
+              <span className="text-xs font-black uppercase tracking-wider text-amber-400">Audition Modular Accessories</span>
+              <span className="text-[10px] text-slate-400">Live overlay across all 6 models with jaw-shift speech articulation</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAccessories({
+                glasses: 'none',
+                hair: 'none',
+                facialHair: 'none',
+                hairColor: '#16161a',
+                glassesColor: '#d4af37',
+                facialHairColor: '#16161a',
+              })}
+              className="text-[10px] font-bold text-slate-400 hover:text-red-400 transition-colors"
+            >
+              Reset Accessories
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            {/* Glasses */}
+            <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-950/40 border-white/10' : 'bg-white border-[#2E2B27]/10'}`}>
+              <div className="font-bold mb-2 flex items-center justify-between text-slate-300">
+                <span>Glasses & Eyewear</span>
+                <span className="text-[10px] text-amber-400 font-mono">{accessories.glasses}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-1 mb-2">
+                {ACCESSORY_OPTIONS.glasses.map((g) => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    onClick={() => setAccessories((prev) => ({ ...prev, glasses: g.id }))}
+                    className={`px-2 py-1 text-[10px] font-medium rounded-lg text-center truncate transition-all ${
+                      accessories.glasses === g.id
+                        ? 'bg-amber-400 text-slate-900 font-bold'
+                        : isDark ? 'bg-white/5 text-slate-400 hover:text-white' : 'bg-black/5 text-slate-600 hover:text-black'
+                    }`}
+                  >
+                    {g.name || g.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2 pt-1 border-t border-white/5">
+                <span className="text-[10px] text-slate-400">Frame Tint:</span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {GLASSES_COLORS.map((c) => (
+                    <button
+                      key={c.hex}
+                      type="button"
+                      onClick={() => setAccessories((prev) => ({ ...prev, glassesColor: c.hex }))}
+                      title={c.name || c.label}
+                      className={`w-4 h-4 rounded-full border ${accessories.glassesColor === c.hex ? 'ring-2 ring-amber-400' : 'border-white/20'}`}
+                      style={{ background: c.hex }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Hair */}
+            <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-950/40 border-white/10' : 'bg-white border-[#2E2B27]/10'}`}>
+              <div className="font-bold mb-2 flex items-center justify-between text-slate-300">
+                <span>Hairstyle</span>
+                <span className="text-[10px] text-amber-400 font-mono">{accessories.hair}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-1 mb-2">
+                {ACCESSORY_OPTIONS.hair.map((h) => (
+                  <button
+                    key={h.id}
+                    type="button"
+                    onClick={() => setAccessories((prev) => ({ ...prev, hair: h.id }))}
+                    className={`px-2 py-1 text-[10px] font-medium rounded-lg text-center truncate transition-all ${
+                      accessories.hair === h.id
+                        ? 'bg-amber-400 text-slate-900 font-bold'
+                        : isDark ? 'bg-white/5 text-slate-400 hover:text-white' : 'bg-black/5 text-slate-600 hover:text-black'
+                    }`}
+                  >
+                    {h.name || h.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2 pt-1 border-t border-white/5">
+                <span className="text-[10px] text-slate-400">Hair Dye:</span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {HAIR_COLORS.map((c) => (
+                    <button
+                      key={c.hex}
+                      type="button"
+                      onClick={() => setAccessories((prev) => ({ ...prev, hairColor: c.hex }))}
+                      title={c.name || c.label}
+                      className={`w-4 h-4 rounded-full border ${accessories.hairColor === c.hex ? 'ring-2 ring-amber-400' : 'border-white/20'}`}
+                      style={{ background: c.hex }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Facial Hair */}
+            <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-950/40 border-white/10' : 'bg-white border-[#2E2B27]/10'}`}>
+              <div className="font-bold mb-2 flex items-center justify-between text-slate-300">
+                <span>Facial Hair (Beards & Staches)</span>
+                <span className="text-[10px] text-amber-400 font-mono">{accessories.facialHair}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-1 mb-2">
+                {ACCESSORY_OPTIONS.facialHair.map((b) => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => setAccessories((prev) => ({ ...prev, facialHair: b.id }))}
+                    className={`px-2 py-1 text-[10px] font-medium rounded-lg text-center truncate transition-all ${
+                      accessories.facialHair === b.id
+                        ? 'bg-amber-400 text-slate-900 font-bold'
+                        : isDark ? 'bg-white/5 text-slate-400 hover:text-white' : 'bg-black/5 text-slate-600 hover:text-black'
+                    }`}
+                  >
+                    {b.name || b.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2 pt-1 border-t border-white/5">
+                <span className="text-[10px] text-slate-400">Beard Tint:</span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {HAIR_COLORS.map((c) => (
+                    <button
+                      key={c.hex}
+                      type="button"
+                      onClick={() => setAccessories((prev) => ({ ...prev, facialHairColor: c.hex }))}
+                      title={c.name || c.label}
+                      className={`w-4 h-4 rounded-full border ${accessories.facialHairColor === c.hex ? 'ring-2 ring-amber-400' : 'border-white/20'}`}
+                      style={{ background: c.hex }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         {/* Face list */}
         <div className={`${panel} lg:col-span-2`}>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-black uppercase tracking-wider">Faces ({faces.length})</h2>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xs font-black uppercase tracking-wider flex items-center gap-2">
+              Faces ({faces.length})
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30 font-bold uppercase">
+                {listStyle}
+              </span>
+            </h2>
             <button onClick={() => startNew()} className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-gradient-to-r ${gradient} text-slate-900 active:scale-95`}>
               <Plus size={14} /> New face
             </button>
           </div>
+
+          {/* Face List Style Filter */}
+          <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-slate-950/40 border border-white/10 mb-3">
+            {[
+              { id: 'dots', label: 'LED' },
+              { id: 'vector', label: 'Vec' },
+              { id: 'oscilloscope', label: 'Scope' },
+              { id: 'geometric', label: 'Geo' },
+              { id: 'orc', label: 'Orc' },
+              { id: 'steampunk', label: 'Steam' },
+              { id: 'chronicler', label: 'Chron' },
+            ].map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => {
+                  setListStyle(s.id);
+                  if (viewStyle !== 'all') {
+                    setViewStyle(s.id);
+                    setPreviewStyle(s.id);
+                  }
+                }}
+                className={`flex-1 min-w-[2.5rem] py-1 text-[10px] font-bold rounded-lg transition-all text-center ${
+                  listStyle === s.id
+                    ? 'bg-amber-400 text-slate-900 shadow-sm'
+                    : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-black'
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-3">
             {faces.map((f) => (
               <button key={f.id} onClick={() => select(f)}
@@ -393,7 +805,7 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
                 className={`p-2 rounded-xl border text-left transition-all hover:scale-[1.02] ${
                   selectedId === f.id && !isNew ? 'border-amber-400 ring-1 ring-amber-400/40' : isDark ? 'border-white/10' : 'border-[#2E2B27]/10'
                 } ${isDark ? 'bg-slate-950/40' : 'bg-white'}`}>
-                <FaceThumb face={f} hovering={hoverId === f.id} />
+                <FaceThumb face={f} hovering={hoverId === f.id} style={listStyle} levelRef={simLevelRef} isSpeaking={isSimulatingSpeech} accessories={showAccessories ? accessories : null} />
                 <div className="mt-2 text-xs font-bold flex items-center gap-1.5">
                   {f.name}{f.selectable === false && <span className="ml-1 text-[9px] font-black uppercase tracking-wider text-emerald-500">auto</span>}
                 </div>
@@ -431,7 +843,347 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
                 </p>
               )}
 
-              <div className="flex flex-wrap items-start gap-5">
+              {/* 1. HEXA VIEW: Compare All 6 Face Animation Models */}
+              {viewStyle === 'all' && (
+                <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-950/40 border-white/10' : 'bg-slate-50 border-[#2E2B27]/10'} space-y-4`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5 text-amber-400">
+                        <LayoutGrid size={14} />
+                        Multi-Style Hexa View: "{draft.name || 'Current Face'}"
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        Real-time comparative view across all 6 face animation models with color #{draft.color} {showAccessories ? 'and active accessories' : ''}.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={toggleVoice}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                          isSimulatingSpeech
+                            ? 'bg-amber-400 text-slate-900 shadow-md'
+                            : ghost
+                        }`}
+                      >
+                        <Volume2 size={13} className={isSimulatingSpeech ? 'animate-pulse' : ''} />
+                        {voiceLabel}
+                      </button>
+                      {voice.said && (voice.playing || voice.busy) && <span className={`text-xs italic max-w-[26rem] ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>"{voice.said}"</span>}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {/* 1. Dot Matrix */}
+                    <div className={`p-3 rounded-xl border flex flex-col gap-2 ${isDark ? 'bg-slate-900/60 border-white/10' : 'bg-white border-[#2E2B27]/15'}`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold flex items-center gap-1 text-slate-200">
+                          Dot Matrix (Classic)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => switchEngineModel('dots')}
+                          className="text-[10px] text-amber-400 hover:underline font-bold"
+                        >
+                          Edit Dots &rarr;
+                        </button>
+                      </div>
+                      <ImsFace
+                        face={{
+                          faceStyle: 'dots',
+                          grid: draft.grid,
+                          openGrid: draft.openGrid,
+                          color: draft.color,
+                          eyeAnim: draft.eyeAnim,
+                          accessories: showAccessories ? accessories : null,
+                        }}
+                        status={isSimulatingSpeech ? 'speaking' : 'idle'}
+                        levelRef={simLevelRef}
+                        width="100%"
+                        className="shadow-lg mx-auto"
+                      />
+                      <p className="text-[10px] text-slate-500 text-center">12x8 LED hardware matrix with ambient breathing</p>
+                    </div>
+
+                    {/* 2. Dynamic Bezier Vector */}
+                    <div className={`p-3 rounded-xl border flex flex-col gap-2 ${isDark ? 'bg-slate-900/60 border-white/10' : 'bg-white border-[#2E2B27]/15'}`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold flex items-center gap-1 text-slate-200">
+                          Bezier Vector
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => switchEngineModel('vector')}
+                          className="text-[10px] text-amber-400 hover:underline font-bold"
+                        >
+                          Inspect &rarr;
+                        </button>
+                      </div>
+                      <ImsFace
+                        face={{
+                          faceStyle: 'vector',
+                          color: draft.color,
+                          emotion: draft.name,
+                          faceEmotion: draft.name,
+                          accessories: showAccessories ? accessories : null,
+                        }}
+                        status={isSimulatingSpeech ? 'speaking' : 'idle'}
+                        levelRef={simLevelRef}
+                        width="100%"
+                        className="shadow-lg mx-auto"
+                      />
+                      <p className="text-[10px] text-slate-500 text-center">Curved SVG eyelids, gaze saccades & morphing mouth</p>
+                    </div>
+
+                    {/* 3. Neon Oscilloscope Lissajous */}
+                    <div className={`p-3 rounded-xl border flex flex-col gap-2 ${isDark ? 'bg-slate-900/60 border-white/10' : 'bg-white border-[#2E2B27]/15'}`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold flex items-center gap-1 text-slate-200">
+                          Oscilloscope Lissajous
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => switchEngineModel('oscilloscope')}
+                          className="text-[10px] text-amber-400 hover:underline font-bold"
+                        >
+                          Inspect &rarr;
+                        </button>
+                      </div>
+                      <ImsFace
+                        face={{
+                          faceStyle: 'oscilloscope',
+                          color: draft.color,
+                          emotion: draft.name,
+                          faceEmotion: draft.name,
+                          accessories: showAccessories ? accessories : null,
+                        }}
+                        status={isSimulatingSpeech ? 'speaking' : 'idle'}
+                        levelRef={simLevelRef}
+                        width="100%"
+                        className="shadow-lg mx-auto"
+                      />
+                      <p className="text-[10px] text-slate-500 text-center">Dual Lissajous eye loops & ripple mouth</p>
+                    </div>
+
+                    {/* 4. Geometric Low-Poly Facets */}
+                    <div className={`p-3 rounded-xl border flex flex-col gap-2 ${isDark ? 'bg-slate-900/60 border-white/10' : 'bg-white border-[#2E2B27]/15'}`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold flex items-center gap-1 text-slate-200">
+                          Geometric Low-Poly
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => switchEngineModel('geometric')}
+                          className="text-[10px] text-amber-400 hover:underline font-bold"
+                        >
+                          Inspect &rarr;
+                        </button>
+                      </div>
+                      <ImsFace
+                        face={{
+                          faceStyle: 'geometric',
+                          color: draft.color,
+                          emotion: draft.name,
+                          faceEmotion: draft.name,
+                          accessories: showAccessories ? accessories : null,
+                        }}
+                        status={isSimulatingSpeech ? 'speaking' : 'idle'}
+                        levelRef={simLevelRef}
+                        width="100%"
+                        className="shadow-lg mx-auto"
+                      />
+                      <p className="text-[10px] text-slate-500 text-center">Articulated brow plates & volume-responsive jaw prism</p>
+                    </div>
+
+                    {/* 5. Savage Orc War-Chief */}
+                    <div className={`p-3 rounded-xl border flex flex-col gap-2 ${isDark ? 'bg-slate-900/60 border-white/10' : 'bg-white border-[#2E2B27]/15'}`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold flex items-center gap-1 text-slate-200">
+                          Orc War-Chief
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => switchEngineModel('orc')}
+                          className="text-[10px] text-amber-400 hover:underline font-bold"
+                        >
+                          Inspect &rarr;
+                        </button>
+                      </div>
+                      <ImsFace
+                        face={{
+                          faceStyle: 'orc',
+                          color: draft.color,
+                          emotion: draft.name,
+                          faceEmotion: draft.name,
+                          accessories: showAccessories ? accessories : null,
+                        }}
+                        status={isSimulatingSpeech ? 'speaking' : 'idle'}
+                        levelRef={simLevelRef}
+                        width="100%"
+                        className="shadow-lg mx-auto"
+                      />
+                      <p className={`text-[10px] text-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Painted portrait: lip-sync mouth shapes, blinking, breathing and head movement</p>
+                    </div>
+
+                    {/* 6. Clockwork Steampunk Automaton */}
+                    <div className={`p-3 rounded-xl border flex flex-col gap-2 ${isDark ? 'bg-slate-900/60 border-white/10' : 'bg-white border-[#2E2B27]/15'}`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold flex items-center gap-1 text-slate-200">
+                          Steampunk Automaton
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => switchEngineModel('steampunk')}
+                          className="text-[10px] text-amber-400 hover:underline font-bold"
+                        >
+                          Inspect &rarr;
+                        </button>
+                      </div>
+                      <ImsFace
+                        face={{
+                          faceStyle: 'steampunk',
+                          color: draft.color,
+                          emotion: draft.name,
+                          faceEmotion: draft.name,
+                          accessories: showAccessories ? accessories : null,
+                        }}
+                        status={isSimulatingSpeech ? 'speaking' : 'idle'}
+                        levelRef={simLevelRef}
+                        width="100%"
+                        className="shadow-lg mx-auto"
+                      />
+                      <p className="text-[10px] text-slate-500 text-center">Rotating brass gears, pressure gauge & steam puffs</p>
+                    </div>
+
+                    {/* 7. The Chronicler (animated painted portrait) */}
+                    <div className={`p-3 rounded-xl border flex flex-col gap-2 ${isDark ? 'bg-slate-900/60 border-white/10' : 'bg-white border-[#2E2B27]/15'}`}>
+                      <div className="flex items-center justify-between">
+                        <span className={`text-xs font-bold flex items-center gap-1 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                          The Chronicler
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => switchEngineModel('chronicler')}
+                          className="text-[10px] text-amber-600 hover:underline font-bold"
+                        >
+                          Inspect &rarr;
+                        </button>
+                      </div>
+                      <ImsFace
+                        face={{ faceStyle: 'chronicler', emotion: draft.name, faceEmotion: draft.name }}
+                        status={isSimulatingSpeech ? 'speaking' : 'idle'}
+                        levelRef={simLevelRef}
+                        width="100%"
+                        className="shadow-lg mx-auto"
+                      />
+                      <p className={`text-[10px] text-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Painted portrait: lip-sync mouth shapes, blinking, breathing and head movement</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 2. SINGLE-STYLE DEDICATED INSPECTOR */}
+              {viewStyle !== 'dots' && viewStyle !== 'all' && (
+                <div className={`p-5 rounded-2xl border ${isDark ? 'bg-slate-950/40 border-white/10' : 'bg-slate-50 border-[#2E2B27]/10'} flex flex-col items-center gap-4`}>
+                  <div className="w-full flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5 text-amber-400">
+                        <Sparkles size={14} />
+                        {viewStyle.toUpperCase()} Engine Preview: "{draft.name || 'Current Face'}"
+                      </h3>
+                      <p className="text-[11px] text-slate-500">Live animated display for this emotion archetype with accessories.</p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={toggleVoice}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                          isSimulatingSpeech ? 'bg-amber-400 text-slate-900 shadow-md' : ghost
+                        }`}
+                      >
+                        <Volume2 size={13} className={isSimulatingSpeech ? 'animate-pulse' : ''} />
+                        {voiceLabel}
+                      </button>
+                      {voice.said && (voice.playing || voice.busy) && <span className={`text-xs italic max-w-[26rem] ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>"{voice.said}"</span>}
+                      <button
+                        type="button"
+                        onClick={() => switchEngineModel('dots')}
+                        className={`${ghost} text-amber-400 font-bold`}
+                      >
+                        Back to Dot Matrix Painter
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="py-2">
+                    <ImsFace
+                      face={{
+                        faceStyle: viewStyle,
+                        color: draft.color,
+                        emotion: draft.name,
+                        faceEmotion: draft.name,
+                        accessories: showAccessories ? accessories : null,
+                      }}
+                      status={isSimulatingSpeech ? 'speaking' : 'idle'}
+                      levelRef={simLevelRef}
+                      width={280}
+                      className="shadow-2xl mx-auto border border-white/10"
+                    />
+                  </div>
+
+                  <div className="w-full">
+                    <ParametricBreakdown emotionKey={draft.name} style={viewStyle} isDark={isDark} />
+                  </div>
+
+                  {/* Dedicated Engine Inspector Metadata Controls */}
+                  <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-white/10 text-left">
+                    <div>
+                      <label className={label}>Name</label>
+                      <input
+                        className={field}
+                        value={draft.name}
+                        disabled={!isNew && selected?.builtin}
+                        placeholder="e.g. smug"
+                        onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1">Letters, numbers and underscores.</p>
+                    </div>
+
+                    <div>
+                      <label className={label}>Colour</label>
+                      <div className="flex items-center gap-3 mb-2">
+                        <input
+                          type="color"
+                          value={`#${draft.color}`}
+                          onChange={(e) => setDraft({ ...draft, color: e.target.value.slice(1).toUpperCase() })}
+                          className="w-10 h-9 rounded cursor-pointer bg-transparent"
+                          title="Open the colour picker"
+                        />
+                        <span className="text-xs font-mono font-bold text-amber-400">#{draft.color}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {['4CFF7A', 'FFD700', '00E5FF', 'FF3385', 'FFB84D', '33FFB8', '99FF33', '4D94FF', 'FF7733', 'FF2222', 'BA68C8', 'FFFFFF'].map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => setDraft({ ...draft, color: c })}
+                            title={`#${c}`}
+                            className={`w-5 h-5 rounded-md border transition-transform hover:scale-110 ${
+                              draft.color === c ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-slate-900' : 'border-white/20'
+                            }`}
+                            style={{ background: `#${c}` }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 3. CLASSIC 12x8 DOT MATRIX PAINTER (When in dots mode) */}
+              <div className={`flex flex-wrap items-start gap-5 ${viewStyle !== 'dots' ? 'hidden' : ''}`}>
                 <div>
                   {/* Which frame is being painted */}
                   <div className="flex flex-wrap gap-2 mb-2">
@@ -481,8 +1233,69 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
 
                 <div className="flex-1 min-w-[14rem] flex flex-col gap-3">
                   <div>
-                    <label className={label}><Mic size={10} className="inline mr-1" />Talking preview</label>
-                    <TalkingPreview face={{ grid: draft.grid, openGrid: draft.openGrid, color: draft.color, eyeAnim: draft.eyeAnim }} />
+                    <div className="flex items-center justify-between mb-1">
+                      <label className={label}><Mic size={10} className="inline mr-1" />Talking preview</label>
+                      <button
+                        type="button"
+                        onClick={toggleVoice}
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 transition-all ${
+                          isSimulatingSpeech ? 'bg-amber-400 text-slate-900' : 'bg-white/10 text-slate-300 hover:bg-white/20'
+                        }`}
+                      >
+                        <Volume2 size={11} className={isSimulatingSpeech ? 'animate-pulse' : ''} />
+                        {voice.busy ? 'Writing...' : voice.playing ? 'Stop' : 'Test Voice'}
+                      </button>
+                    </div>
+
+                    <div className="rounded-xl overflow-hidden border border-white/10 bg-[#080c14] p-1 mb-2">
+                      <ImsFace
+                        face={{
+                          faceStyle: previewStyle,
+                          grid: draft.grid,
+                          openGrid: draft.openGrid,
+                          color: draft.color,
+                          eyeAnim: draft.eyeAnim,
+                          emotion: draft.name,
+                          faceEmotion: draft.name,
+                          accessories: showAccessories ? accessories : null,
+                        }}
+                        status={isSimulatingSpeech ? 'speaking' : 'idle'}
+                        levelRef={simLevelRef}
+                        width="100%"
+                      />
+                    </div>
+
+                    {/* Preview Style Selector Pills */}
+                    <div className="flex flex-wrap items-center gap-1 p-0.5 rounded-lg bg-slate-950/40 border border-white/10">
+                      {[
+                        { id: 'dots', label: 'Dots' },
+                        { id: 'vector', label: 'Vec' },
+                        { id: 'oscilloscope', label: 'Scope' },
+                        { id: 'geometric', label: 'Geo' },
+                        { id: 'orc', label: 'Orc' },
+                        { id: 'steampunk', label: 'Steam' },
+                        { id: 'chronicler', label: 'Chron' },
+                      ].map((ps) => (
+                        <button
+                          key={ps.id}
+                          type="button"
+                          onClick={() => {
+                            setPreviewStyle(ps.id);
+                            if (viewStyle !== 'all') {
+                              setViewStyle(ps.id);
+                              setListStyle(ps.id);
+                            }
+                          }}
+                          className={`flex-1 min-w-[2.2rem] py-0.5 text-[9px] font-bold rounded transition-all text-center ${
+                            previewStyle === ps.id
+                              ? 'bg-amber-400 text-slate-900'
+                              : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-black'
+                          }`}
+                        >
+                          {ps.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   <div>
                     <label className={label}>Name</label>
@@ -510,55 +1323,57 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
                 </div>
               </div>
 
-              {/* Eye animation timeline */}
-              <div className={`rounded-xl border p-4 ${isDark ? 'border-white/10 bg-slate-950/30' : 'border-[#2E2B27]/10 bg-white/60'}`}>
-                <div className="flex flex-wrap items-center gap-3 mb-2">
-                  <label className="flex items-center gap-2 text-xs font-bold cursor-pointer">
-                    <input type="checkbox" checked={animated} onChange={(e) => setAnimated(e.target.checked)} />
-                    <Film size={13} /> Animate the eyes
-                  </label>
-                  {animated && <span className="text-[11px] text-slate-500">Loop: {(totalMs(cells) / 1000).toFixed(2)} s - {cells.length} cell{cells.length === 1 ? '' : 's'}</span>}
+              {/* Eye animation timeline (only applicable to Box-3 Dot Matrix) */}
+              {viewStyle === 'dots' && (
+                <div className={`rounded-xl border p-4 ${isDark ? 'border-white/10 bg-slate-950/30' : 'border-[#2E2B27]/10 bg-white/60'}`}>
+                  <div className="flex flex-wrap items-center gap-3 mb-2">
+                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer">
+                      <input type="checkbox" checked={animated} onChange={(e) => setAnimated(e.target.checked)} />
+                      <Film size={13} /> Animate the eyes
+                    </label>
+                    {animated && <span className="text-[11px] text-slate-500">Loop: {(totalMs(cells) / 1000).toFixed(2)} s - {cells.length} cell{cells.length === 1 ? '' : 's'}</span>}
+                  </div>
+                  {!animated ? (
+                    <p className="text-[10px] text-slate-500">Tick this to give the face moving eyes: a timeline of eye pictures, each with its own duration, that loops. It starts with four cells - eyes open, blink, look left, look right - built from the eyes you have drawn.</p>
+                  ) : (
+                    <>
+                      {/* proportional timeline bar */}
+                      <div className="flex h-7 rounded-lg overflow-hidden mb-3 border border-white/10">
+                        {cells.map((c, i) => (
+                          <button key={i} onClick={() => selectCell(i)} title={`${c.name} - ${c.ms} ms`} style={{ flexGrow: Math.max(1, c.ms), flexBasis: 0, minWidth: 14 }}
+                            className={`text-[9px] font-bold truncate px-1 border-r border-black/30 ${i === Math.min(cellIdx, cells.length - 1) ? 'bg-amber-400 text-slate-900' : isDark ? 'bg-white/10 hover:bg-white/20' : 'bg-black/10 hover:bg-black/20'}`}>
+                            {c.name}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        {cells.map((c, i) => (
+                          <div key={i} className={`rounded-lg border p-2 flex flex-col gap-1.5 w-[10.5rem] ${i === Math.min(cellIdx, cells.length - 1) ? 'border-amber-400 ring-1 ring-amber-400/40' : isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
+                            <button onClick={() => selectCell(i)} title="Edit this cell's eyes"><DotGrid grid={c.grid + draft.grid.slice(EYE_LEN)} color={draft.color} size={6} gap={1} /></button>
+                            <input className={`${field} !py-1`} value={c.name} maxLength={24} onChange={(e) => patchCell(i, { name: e.target.value })} title="Cell name" />
+                            <div className="flex items-center gap-1.5">
+                              <input type="number" min="40" max="60000" step="10" className={`${field} !py-1`} value={c.ms}
+                                onChange={(e) => patchCell(i, { ms: e.target.value === '' ? '' : Number(e.target.value) })} title="How long this cell stays up, in milliseconds" />
+                              <span className="text-[10px] text-slate-500">ms</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => moveCell(i, -1)} disabled={i === 0} className={`${ghost} !px-1.5 disabled:opacity-30`} title="Earlier"><ChevronLeft size={12} /></button>
+                              <button onClick={() => moveCell(i, 1)} disabled={i === cells.length - 1} className={`${ghost} !px-1.5 disabled:opacity-30`} title="Later"><ChevronRight size={12} /></button>
+                              <button onClick={() => { setCellIdx(i); addCell(); }} disabled={cells.length >= MAX_CELLS} className={`${ghost} !px-1.5 disabled:opacity-30`} title="Duplicate this cell"><Copy size={12} /></button>
+                              <button onClick={() => removeCell(i)} disabled={cells.length <= 1} className={`${ghost} !px-1.5 text-red-400 disabled:opacity-30`} title="Delete this cell"><Trash2 size={12} /></button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        <button onClick={addCell} disabled={cells.length >= MAX_CELLS} className={`${ghost} disabled:opacity-40`}><Plus size={12} /> Add cell (copy of selected)</button>
+                        <button onClick={rebuildCells} className={ghost}><RotateCcw size={12} /> Rebuild the four default cells</button>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-2">Click a cell (or the timeline bar) to paint its eyes in the big grid. Cells play in order, each for its duration, then the loop repeats - the preview on the right shows it in real time. Up to {MAX_CELLS} cells, 40 ms to 60 s each.</p>
+                    </>
+                  )}
                 </div>
-                {!animated ? (
-                  <p className="text-[10px] text-slate-500">Tick this to give the face moving eyes: a timeline of eye pictures, each with its own duration, that loops. It starts with four cells - eyes open, blink, look left, look right - built from the eyes you have drawn.</p>
-                ) : (
-                  <>
-                    {/* proportional timeline bar */}
-                    <div className="flex h-7 rounded-lg overflow-hidden mb-3 border border-white/10">
-                      {cells.map((c, i) => (
-                        <button key={i} onClick={() => selectCell(i)} title={`${c.name} - ${c.ms} ms`} style={{ flexGrow: Math.max(1, c.ms), flexBasis: 0, minWidth: 14 }}
-                          className={`text-[9px] font-bold truncate px-1 border-r border-black/30 ${i === Math.min(cellIdx, cells.length - 1) ? 'bg-amber-400 text-slate-900' : isDark ? 'bg-white/10 hover:bg-white/20' : 'bg-black/10 hover:bg-black/20'}`}>
-                          {c.name}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap gap-3">
-                      {cells.map((c, i) => (
-                        <div key={i} className={`rounded-lg border p-2 flex flex-col gap-1.5 w-[10.5rem] ${i === Math.min(cellIdx, cells.length - 1) ? 'border-amber-400 ring-1 ring-amber-400/40' : isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
-                          <button onClick={() => selectCell(i)} title="Edit this cell's eyes"><DotGrid grid={c.grid + draft.grid.slice(EYE_LEN)} color={draft.color} size={6} gap={1} /></button>
-                          <input className={`${field} !py-1`} value={c.name} maxLength={24} onChange={(e) => patchCell(i, { name: e.target.value })} title="Cell name" />
-                          <div className="flex items-center gap-1.5">
-                            <input type="number" min="40" max="60000" step="10" className={`${field} !py-1`} value={c.ms}
-                              onChange={(e) => patchCell(i, { ms: e.target.value === '' ? '' : Number(e.target.value) })} title="How long this cell stays up, in milliseconds" />
-                            <span className="text-[10px] text-slate-500">ms</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => moveCell(i, -1)} disabled={i === 0} className={`${ghost} !px-1.5 disabled:opacity-30`} title="Earlier"><ChevronLeft size={12} /></button>
-                            <button onClick={() => moveCell(i, 1)} disabled={i === cells.length - 1} className={`${ghost} !px-1.5 disabled:opacity-30`} title="Later"><ChevronRight size={12} /></button>
-                            <button onClick={() => { setCellIdx(i); addCell(); }} disabled={cells.length >= MAX_CELLS} className={`${ghost} !px-1.5 disabled:opacity-30`} title="Duplicate this cell"><Copy size={12} /></button>
-                            <button onClick={() => removeCell(i)} disabled={cells.length <= 1} className={`${ghost} !px-1.5 text-red-400 disabled:opacity-30`} title="Delete this cell"><Trash2 size={12} /></button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      <button onClick={addCell} disabled={cells.length >= MAX_CELLS} className={`${ghost} disabled:opacity-40`}><Plus size={12} /> Add cell (copy of selected)</button>
-                      <button onClick={rebuildCells} className={ghost}><RotateCcw size={12} /> Rebuild the four default cells</button>
-                    </div>
-                    <p className="text-[10px] text-slate-500 mt-2">Click a cell (or the timeline bar) to paint its eyes in the big grid. Cells play in order, each for its duration, then the loop repeats - the preview on the right shows it in real time. Up to {MAX_CELLS} cells, 40 ms to 60 s each.</p>
-                  </>
-                )}
-              </div>
+              )}
 
               <div className={selected?.selectable === false && !isNew ? 'hidden' : ''}>
                 <label className={label}>When Ims should use this face (scenarios)</label>
