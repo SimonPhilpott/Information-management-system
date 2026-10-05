@@ -8,7 +8,6 @@ import {
 import PortalShell from './PortalShell';
 import { parsePersona, assemblePersona, newId } from '../../utils/personaSections';
 import ImsFace from '../Ims/ImsFace';
-import usePersonaVoice from '../../hooks/usePersonaVoice';
 import { EMOTIONS, EMOTION_KEYS, FACE_STYLES, COLOR_PRESETS, ACCESSORY_OPTIONS, HAIR_COLORS, GLASSES_COLORS } from '../Ims/faceEmotions';
 
 // Strip YAML frontmatter
@@ -220,19 +219,12 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
   const [auditionEmotion, setAuditionEmotion] = useState('neutral');
   const [isSimulatingSpeech, setIsSimulatingSpeech] = useState(false);
   const simLevelRef = useRef(0);
-  // Simulate Voice: the persona says a line that fits the emotion on show, in its Gemini voice; faces lip-sync to it
-  const voice = usePersonaVoice();
-  useEffect(() => { setIsSimulatingSpeech(voice.playing); }, [voice.playing]);
-  useEffect(() => { if (voice.error) showToast(voice.error, 'error'); }, [voice.error]); // eslint-disable-line react-hooks/exhaustive-deps
-  const toggleVoice = () => ((voice.busy || voice.playing) ? voice.stop() : voice.say(selected, { emotion: auditionEmotion || 'neutral' }));
-  const voiceLabel = voice.busy ? 'Writing a line...' : voice.playing ? 'Speaking - stop' : 'Simulate Voice';
 
   useEffect(() => {
     let raf = 0;
     if (isSimulatingSpeech) {
       const loop = (now) => {
-        // the real voice when one is playing, otherwise a speaking rhythm (hover previews)
-        simLevelRef.current = voice.playing ? voice.levelRef.current : (Math.sin(now / 130) * 0.4 + 0.5) * (0.3 + Math.random() * 0.6);
+        simLevelRef.current = (Math.sin(now / 130) * 0.4 + 0.5) * (0.3 + Math.random() * 0.6);
         raf = requestAnimationFrame(loop);
       };
       raf = requestAnimationFrame(loop);
@@ -872,393 +864,30 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
                   </div>
                 </div>
 
-                <div>
-                  <label className={label}>Voice Sample Line</label>
-                  <input
-                    className={field}
-                    value={meta.testLine || ''}
-                    placeholder="Short line spoken when testing this voice"
-                    onChange={(e) => setM('testLine', e.target.value)}
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex-1 min-w-[200px]">
+                    <label className={label}>Face</label>
+                    <select className={field} value={meta.faceStyle || 'dots'} onChange={(e) => setM('faceStyle', e.target.value)}>
+                      {FACE_STYLES.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
+                    </select>
+                    <p className={`text-[11px] mt-1 ${sub}`}>Shown on the Box-3, in Web Live and on the dashboard while this persona is active. Designs are made in the Face Designer.</p>
+                  </div>
+                  <ImsFace
+                    face={{
+                      faceStyle: meta.faceStyle || 'dots',
+                      color: meta.faceColor || '4CFF7A',
+                      faceColor: meta.faceColor || '4CFF7A',
+                      emotion: meta.faceEmotion || 'neutral',
+                      faceEmotion: meta.faceEmotion || 'neutral',
+                      accessories: meta?.accessories,
+                    }}
+                    status="idle"
+                    width={220}
+                    className="shadow-xl border border-white/10"
                   />
                 </div>
               </div>
 
-              {/* Face Animation Model & Expressive Persona Style */}
-              <div className={`${panel} p-4 space-y-4`}>
-                <div className={`flex flex-wrap items-center justify-between gap-2 border-b pb-3 ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
-                  <div>
-                    <h3 className={`text-sm font-black flex items-center gap-2 ${strong}`}>
-                      <Smile size={16} className="text-purple-400" />
-                      Face Animation Model & Character
-                    </h3>
-                    <p className={`text-xs ${sub}`}>
-                      Visual expression engine for this persona across the hardware Box-3 screen, Web Live, and dashboard.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                      16 Universal Emotions
-                    </span>
-                  </div>
-                </div>
-
-                {/* 1. Style Selection Cards */}
-                <div>
-                  <label className={label}>Face Animation Style</label>
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2.5 mt-1.5">
-                    {FACE_STYLES.map((st) => {
-                      const isSel = (meta.faceStyle || 'dots') === st.id;
-                      return (
-                        <button
-                          key={st.id}
-                          type="button"
-                          onClick={() => setM('faceStyle', st.id)}
-                          className={`p-3 rounded-xl border text-left transition-all relative ${
-                            isSel
-                              ? 'border-purple-500 ring-2 ring-purple-500/40 bg-purple-950/20'
-                              : isDark
-                              ? 'border-white/10 hover:border-white/20 bg-slate-900/40'
-                              : 'border-[#2E2B27]/15 hover:border-black/20 bg-white'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-1 mb-1">
-                            <span className={`text-xs font-black ${strong}`}>{st.name}</span>
-                            {isSel && <Check size={14} className="text-purple-400 shrink-0" />}
-                          </div>
-                          <p className={`text-[11px] leading-snug ${sub}`}>{st.desc}</p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* 2. Color Preset & Resting Emotion Row */}
-                <div className={`grid sm:grid-cols-2 gap-4 pt-2 border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/10'}`}>
-                  <div>
-                    <label className={label}>Accent Color Preset</label>
-                    <div className="flex flex-wrap items-center gap-1.5 mb-2 mt-1">
-                      {COLOR_PRESETS.map((p) => {
-                        const active = (meta.faceColor || '4CFF7A').toUpperCase() === p.hex.toUpperCase();
-                        return (
-                          <button
-                            key={p.hex}
-                            type="button"
-                            onClick={() => setM('faceColor', p.hex)}
-                            title={`${p.name} (#${p.hex})`}
-                            className={`w-6 h-6 rounded-lg transition-transform flex items-center justify-center ${
-                              active ? 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-black' : 'hover:scale-105'
-                            }`}
-                            style={{ backgroundColor: `#${p.hex}` }}
-                          >
-                            {active && <Check size={12} className="text-black drop-shadow" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-slate-400">#</span>
-                      <input
-                        className={`${field} font-mono uppercase text-xs max-w-[140px]`}
-                        value={meta.faceColor || '4CFF7A'}
-                        maxLength={6}
-                        onChange={(e) => setM('faceColor', e.target.value.replace('#', ''))}
-                        placeholder="4CFF7A"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className={label}>Default Resting Emotion</label>
-                    <select
-                      className={`${field} mt-1`}
-                      value={meta.faceEmotion || 'neutral'}
-                      onChange={(e) => {
-                        setM('faceEmotion', e.target.value);
-                        setAuditionEmotion(e.target.value);
-                      }}
-                    >
-                      {EMOTION_KEYS.map((k) => (
-                        <option key={k} value={k}>
-                          {EMOTIONS[k].label} — {EMOTIONS[k].hint}
-                        </option>
-                      ))}
-                    </select>
-                    <p className={`text-[11px] mt-1 ${sub}`}>
-                      Initial face emotion when Ims is in standby or awaiting user query.
-                    </p>
-                  </div>
-                </div>
-
-                {/* 3. Live Interactive Expression Audition Stage */}
-                <div className={`p-4 rounded-xl border ${isDark ? 'bg-black/30 border-white/10' : 'bg-slate-50 border-[#2E2B27]/10'} space-y-3`}>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Sparkles size={14} className="text-purple-400" />
-                      <span className={`text-xs font-black uppercase tracking-wider ${strong}`}>
-                        Interactive Expression Audition Stage
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={toggleVoice}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
-                          isSimulatingSpeech
-                            ? 'bg-amber-500 text-black shadow-md'
-                            : ghost
-                        }`}
-                      >
-                        <Volume2 size={13} className={isSimulatingSpeech ? 'animate-pulse' : ''} />
-                        {voiceLabel}
-                      </button>
-                      {voice.said && (voice.playing || voice.busy) && <span className={`text-xs italic max-w-[26rem] ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>"{voice.said}"</span>}
-
-                      {auditionEmotion !== (meta.faceEmotion || 'neutral') && (
-                        <button
-                          type="button"
-                          onClick={() => setM('faceEmotion', auditionEmotion)}
-                          className={`${ghost} text-purple-400 text-xs font-bold`}
-                          title="Save this auditioned emotion as the persona's resting face"
-                        >
-                          Set as Resting Emotion
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Audition Face Renderer */}
-                  <div className="py-2 flex flex-col items-center justify-center">
-                    <ImsFace
-                      face={{
-                        faceStyle: meta.faceStyle || 'dots',
-                        color: meta.faceColor || '4CFF7A',
-                        faceColor: meta.faceColor || '4CFF7A',
-                        emotion: auditionEmotion,
-                        faceEmotion: auditionEmotion,
-                        accessories: meta?.accessories,
-                      }}
-                      status={isSimulatingSpeech ? 'speaking' : 'idle'}
-                      levelRef={simLevelRef}
-                      width={220}
-                      className="shadow-2xl mx-auto border border-white/10"
-                    />
-
-                    <div className="mt-2.5 text-center">
-                      <span className="text-xs font-bold text-white px-2 py-0.5 rounded bg-purple-900/60 border border-purple-500/40">
-                        {EMOTIONS[auditionEmotion]?.label || auditionEmotion}
-                      </span>
-                      <p className={`text-[11px] mt-1 max-w-md mx-auto ${sub}`}>
-                        {EMOTIONS[auditionEmotion]?.hint}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* 16 1-Click Emotion Audition Pills */}
-                  <div>
-                    <label className={`text-[10px] font-black uppercase tracking-wider block mb-1.5 ${sub}`}>
-                      1-Click Expression Audition (All 16 Standard IMS Emotions)
-                    </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-1.5">
-                      {EMOTION_KEYS.map((k) => {
-                        const em = EMOTIONS[k];
-                        const isPicked = auditionEmotion === k;
-                        return (
-                          <button
-                            key={k}
-                            type="button"
-                            onClick={() => setAuditionEmotion(k)}
-                            className={`px-2 py-1.5 rounded-lg text-[11px] font-bold text-center truncate transition-all border ${
-                              isPicked
-                                ? 'bg-purple-500 text-white border-purple-400 shadow-md ring-1 ring-white/30'
-                                : isDark
-                                ? 'bg-slate-900/50 hover:bg-slate-800 text-slate-300 border-white/5'
-                                : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
-                            }`}
-                            title={`${em.label}: ${em.hint}`}
-                          >
-                            {em.label.split(' / ')[0]}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                {/* 4. Modular Accessories Customizer (Glasses, Hair, Facial Hair) */}
-                <div className={`p-4 rounded-xl border ${isDark ? 'bg-black/20 border-white/10' : 'bg-slate-50 border-[#2E2B27]/10'} space-y-4`}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Glasses size={16} className="text-purple-400" />
-                      <div>
-                        <h4 className={`text-xs font-black uppercase tracking-wider ${strong}`}>
-                          Face Accessories: Glasses, Hair & Facial Hair
-                        </h4>
-                        <p className={`text-[11px] ${sub}`}>
-                          Equip eyewear, hairstyles, and moustaches/beards that adapt across all 8 face models.
-                        </p>
-                      </div>
-                    </div>
-
-                    {(meta?.accessories?.glasses !== 'none' || meta?.accessories?.hair !== 'none' || meta?.accessories?.facialHair !== 'none') && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setM('accessories', {
-                            glasses: 'none',
-                            hair: 'none',
-                            facialHair: 'none',
-                            hairColor: meta?.accessories?.hairColor || '#16161a',
-                            glassesColor: meta?.accessories?.glassesColor || '#d4af37',
-                            facialHairColor: meta?.accessories?.facialHairColor || '#16161a',
-                          });
-                        }}
-                        className={`${ghost} text-red-400 text-xs`}
-                      >
-                        Reset Accessories
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Eyewear / Glasses Selection */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className={label}>Glasses & Eyewear ({ACCESSORY_OPTIONS.glasses.length})</label>
-                      <div className="flex items-center gap-1.5">
-                        <span className={`text-[10px] ${sub}`}>Frame:</span>
-                        {GLASSES_COLORS.slice(0, 6).map((gc) => {
-                          const active = (meta?.accessories?.glassesColor || '#d4af37') === gc.hex;
-                          return (
-                            <button
-                              key={gc.id}
-                              type="button"
-                              onClick={() => setAcc('glassesColor', gc.hex)}
-                              title={gc.name}
-                              className={`w-4 h-4 rounded-full border border-white/20 transition-transform ${active ? 'scale-125 ring-2 ring-purple-400' : 'hover:scale-110'}`}
-                              style={{ backgroundColor: gc.hex }}
-                            />
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5">
-                      {ACCESSORY_OPTIONS.glasses.map((g) => {
-                        const isSel = (meta?.accessories?.glasses || 'none') === g.id;
-                        return (
-                          <button
-                            key={g.id}
-                            type="button"
-                            onClick={() => setAcc('glasses', g.id)}
-                            className={`p-2 rounded-lg border text-left transition-all ${
-                              isSel
-                                ? 'bg-purple-600 text-white border-purple-400 shadow-sm'
-                                : isDark
-                                ? 'bg-slate-900/60 hover:bg-slate-800 text-slate-300 border-white/5'
-                                : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
-                            }`}
-                          >
-                            <div className="text-[11px] font-bold truncate">{g.name}</div>
-                            <div className={`text-[9px] truncate opacity-75`}>{g.hint}</div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Hairstyles Selection */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className={label}>Hairstyle ({ACCESSORY_OPTIONS.hair.length})</label>
-                      <div className="flex items-center gap-1.5">
-                        <span className={`text-[10px] ${sub}`}>Hair Color:</span>
-                        {HAIR_COLORS.slice(0, 8).map((hc) => {
-                          const active = (meta?.accessories?.hairColor || '#16161a') === hc.hex;
-                          return (
-                            <button
-                              key={hc.id}
-                              type="button"
-                              onClick={() => {
-                                setAcc('hairColor', hc.hex);
-                                if (!meta?.accessories?.facialHairColor) setAcc('facialHairColor', hc.hex);
-                              }}
-                              title={hc.name}
-                              className={`w-4 h-4 rounded-full border border-white/20 transition-transform ${active ? 'scale-125 ring-2 ring-purple-400' : 'hover:scale-110'}`}
-                              style={{ backgroundColor: hc.hex }}
-                            />
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5">
-                      {ACCESSORY_OPTIONS.hair.map((h) => {
-                        const isSel = (meta?.accessories?.hair || 'none') === h.id;
-                        return (
-                          <button
-                            key={h.id}
-                            type="button"
-                            onClick={() => setAcc('hair', h.id)}
-                            className={`p-2 rounded-lg border text-left transition-all ${
-                              isSel
-                                ? 'bg-purple-600 text-white border-purple-400 shadow-sm'
-                                : isDark
-                                ? 'bg-slate-900/60 hover:bg-slate-800 text-slate-300 border-white/5'
-                                : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
-                            }`}
-                          >
-                            <div className="text-[11px] font-bold truncate">{h.name}</div>
-                            <div className={`text-[9px] truncate opacity-75`}>{h.hint}</div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Facial Hair (Moustaches & Beards) Selection */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className={label}>Facial Hair: Moustaches & Beards ({ACCESSORY_OPTIONS.facialHair.length})</label>
-                      <div className="flex items-center gap-1.5">
-                        <span className={`text-[10px] ${sub}`}>Beard Color:</span>
-                        {HAIR_COLORS.slice(0, 8).map((hc) => {
-                          const active = (meta?.accessories?.facialHairColor || meta?.accessories?.hairColor || '#16161a') === hc.hex;
-                          return (
-                            <button
-                              key={hc.id}
-                              type="button"
-                              onClick={() => setAcc('facialHairColor', hc.hex)}
-                              title={hc.name}
-                              className={`w-4 h-4 rounded-full border border-white/20 transition-transform ${active ? 'scale-125 ring-2 ring-purple-400' : 'hover:scale-110'}`}
-                              style={{ backgroundColor: hc.hex }}
-                            />
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5">
-                      {ACCESSORY_OPTIONS.facialHair.map((fh) => {
-                        const isSel = (meta?.accessories?.facialHair || 'none') === fh.id;
-                        return (
-                          <button
-                            key={fh.id}
-                            type="button"
-                            onClick={() => setAcc('facialHair', fh.id)}
-                            className={`p-2 rounded-lg border text-left transition-all ${
-                              isSel
-                                ? 'bg-purple-600 text-white border-purple-400 shadow-sm'
-                                : isDark
-                                ? 'bg-slate-900/60 hover:bg-slate-800 text-slate-300 border-white/5'
-                                : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
-                            }`}
-                          >
-                            <div className="text-[11px] font-bold truncate">{fh.name}</div>
-                            <div className={`text-[9px] truncate opacity-75`}>{fh.hint}</div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </div>
 
               {/* Title & Introduction block */}
               <div className={`${panel} p-4`}>

@@ -93,8 +93,9 @@ import { getModelFor } from './services/modelRegistry.js';
 import { setDeviceMicMuted, setDeviceConnected, isDeviceMicMuted } from './services/deviceState.js';
 import { recordUsage } from './services/geminiClient.js';
 import { loadHnswFromDisk } from './services/hnswService.js';
+import { getDeviceFace, ensurePack, onFacePackReady, packPath } from './services/faceDeviceService.js';
 import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getWebPersonaBlock, getPersonality, setPersonality, getCaptureLogging, setCaptureLogging, recordReplyText, getWebSetupPayload, getAccentRule, refreshLiveContext } from './services/hardwareClientService.js';
-import { inYourVoice, languageCode as personaLanguageCode } from './services/personaService.js';
+import { inYourVoice, languageCode as personaLanguageCode, onPersonaChange } from './services/personaService.js';
 import { scheduleItem, listScheduledItems, cancelScheduledItem, addToList, readList, removeFromList, clearList, checkDueScheduledItems, stopAllRinging, getActiveScheduledStatus, getItemsDueToday, getHistorySummary } from './services/remindersService.js';
 import { getBirthdayFooterStatus, getUpcomingBirthdays, listBirthdays } from './services/birthdayService.js';
 import { getTodayReleases, getWindowResults, getUpcomingReleases , getWants as getMusicWants } from './services/musicScanService.js';
@@ -819,6 +820,7 @@ export function pushScheduleStatus(targetWs = null) {
         recording: { active: isRecordingActive() },
         calendar: { icons: getDeviceIcons() },
         standbyFace: getStandbyOverride(),
+        face: (() => { try { return getDeviceFace(); } catch (err) { console.error('[FaceDevice]', err.message); return { style: 'dots' }; } })(),
         info: deviceInfo()
       };
       ws.send(JSON.stringify({
@@ -830,6 +832,11 @@ export function pushScheduleStatus(targetWs = null) {
     }
   }
 }
+
+// The Box-3 shows the active persona's face: push the change at once, and again once its face pack is built.
+onPersonaChange(() => { try { pushScheduleStatus(); } catch (_) { } });
+onFacePackReady(() => { try { pushScheduleStatus(); } catch (_) { } });
+setTimeout(() => { ensurePack().catch((err) => console.error('[FaceDevice] Pack build failed:', err.message)); }, 20000);
 
 server.on('upgrade', (request, socket, head) => {
   const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
@@ -3106,6 +3113,18 @@ const debugMicServer = http.createServer((req, res) => {
         res.writeHead(404).end();
       }
     });
+    return;
+  }
+
+  // Box-3 face packs (faceDeviceService.js): one file of JPEG frames for the active persona's face
+  if (req.method === 'GET' && req.url.startsWith('/device/face-pack/')) {
+    const id = req.url.slice('/device/face-pack/'.length).replace(/\.bin$/, '');
+    const f = packPath(id);
+    if (!fs.existsSync(f)) { res.writeHead(404).end('no such face pack'); return; }
+    const size = fs.statSync(f).size;
+    console.log(`[FaceDevice] Sending face pack ${id} (${Math.round(size / 1024)} KB) to the Box-3`);
+    res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': size });
+    fs.createReadStream(f).pipe(res);
     return;
   }
 

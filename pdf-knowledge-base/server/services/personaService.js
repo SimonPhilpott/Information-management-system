@@ -98,10 +98,16 @@ export function getActivePersona() {
   if (override) return override;
   return getPersona(activePersonaId()) || { id: DEFAULT_PERSONA, ...DEFAULTS, body: '', raw: '' };
 }
+// Things that follow the persona elsewhere (the Box-3's face) listen here.
+const changeListeners = new Set();
+export function onPersonaChange(fn) { changeListeners.add(fn); return () => changeListeners.delete(fn); }
+function personaChanged(id) { for (const fn of changeListeners) { try { fn(id); } catch (err) { console.error('[Persona] change listener failed:', err.message); } } }
+
 export function setActivePersona(id) {
   if (!getPersona(id)) throw new Error('No such persona.');
   setSetting(ACTIVE_KEY, id);
   console.log(`[Persona] Active persona: ${id}`);
+  personaChanged(id);
   return getPersona(id);
 }
 
@@ -142,6 +148,7 @@ export function savePersonaRaw(id, raw) {
   fs.mkdirSync(DIR, { recursive: true });
   fs.writeFileSync(f, raw.endsWith('\n') ? raw : `${raw}\n`, 'utf8');
   cache.delete(id);
+  personaChanged(id);
   return getPersona(id);
 }
 

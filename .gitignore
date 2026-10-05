@@ -78,3 +78,7 @@ frodo.jpg
 ~$*
 scratch_*
 *.tmp
+
+# Box-3 face renderer bundle and generated face packs (built on demand by faceDeviceService.js)
+pdf-knowledge-base/server/face_render/
+pdf-knowledge-base/server/data/face_packs/

@@ -1297,6 +1297,272 @@ static void computeFaceLevels(uint8_t want[FACE_COLS * FACE_ROWS]) {
 // (forceFull draws all 96, used once after a full-screen repaint). Colour is
 // picked to match the same palette renderScreen() already uses for the
 // status pill/text, so the face and the status word never disagree.
+// ---------------------------------------------------------------------------
+// Face packs: the active persona's face when it isn't the dot face (Orc Chief, Chronicler, Vector,
+// Oscilloscope, Geometric, Steampunk). The backend renders the face frame by frame as JPEGs sized to this
+// face area (faceDeviceService.js) and names the pack in every schedule push; a background task downloads
+// it into PSRAM and loop() draws it here instead of the dots - the expression for each emotion (painted
+// faces morph between them through in-between frames), the mouth following Ims's voice, blinks, and a thin
+// frame in the state colour (listening / thinking / speaking / muted...). Until a pack is ready, or if one
+// fails to load, the dot face carries on as before.
+// Pack file: "IMSF" | uint32 LE index length | index JSON | JPEG frames.
+// ---------------------------------------------------------------------------
+#define PF_W 204
+#define PF_H 136
+#define PF_X0 (FACE_CENTER_X - PF_W / 2)
+#define PF_Y0 (FACE_CENTER_Y - PF_H / 2)
+#define PACK_EMOTIONS 15 // EMOTION_NEUTRAL .. EMOTION_SLEEPY
+enum { PS_CLOSED, PS_SMALL, PS_MID, PS_WIDE, PS_ROUND, PS_M1, PS_M2, PS_M3, PS_M4, PS_COUNT };
+static const char *const PS_NAMES[PS_COUNT] = { "closed", "small", "mid", "wide", "round", "m1", "m2", "m3", "m4" };
+struct PackFrame { const uint8_t *p; uint32_t n; };
+struct PackEye { int16_t x, y, w, h; uint16_t top, bot; bool open; };
+static uint8_t *packBuf = nullptr;
+static PackFrame packFrames[PACK_EMOTIONS][PS_COUNT];
+static PackEye packEyes[PACK_EMOTIONS][2];
+static uint8_t packEyeCount[PACK_EMOTIONS];
+static uint16_t packBg565 = 0;
+static bool packReady = false;              // drawing from the pack (loop() only)
+static char packWantId[48] = "";            // the pack the backend says to show ("" = dot face)
+static char packLoadedId[48] = "";
+static volatile bool packLoading = false;   // download task running
+static volatile bool packResultReady = false;
+static uint8_t *packNewBuf = nullptr;
+static size_t packNewLen = 0;
+static char packNewId[48] = "";
+static unsigned long packFailedAt = 0;
+
+static uint16_t hex565(const char *h) {
+  uint32_t v = (uint32_t)strtoul(h ? h : "000000", nullptr, 16);
+  return tft.color565((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF);
+}
+
+// Background download (its own task, never touches tft or the Gemini socket).
+static void facePackTask(void *) {
+  char id[48];
+  strlcpy(id, packWantId, sizeof(id));
+  uint8_t *buf = nullptr;
+  int len = 0;
+  bool ok = false;
+  HTTPClient http;
+  String url = String("http://") + IMS_PRIMARY_HOST + ":3003/device/face-pack/" + id + ".bin";
+  http.setTimeout(15000);
+  if (http.begin(url)) {
+    int code = http.GET();
+    len = http.getSize();
+    if (code == 200 && len > 8 && len < 4 * 1024 * 1024) {
+      buf = (uint8_t *)heap_caps_malloc(len, MALLOC_CAP_SPIRAM);
+      if (buf) {
+        WiFiClient *st = http.getStreamPtr();
+        int got = 0;
+        unsigned long lastData = millis();
+        while (got < len && millis() - lastData < 10000) {
+          int a = st->available();
+          if (a > 0) {
+            int r = st->readBytes(buf + got, (size_t)min(a, len - got));
+            if (r > 0) { got += r; lastData = millis(); }
+          } else if (!http.connected()) {
+            break;
+          } else {
+            vTaskDelay(pdMS_TO_TICKS(2));
+          }
+        }
+        ok = (got == len) && memcmp(buf, "IMSF", 4) == 0;
+      }
+    }
+    Serial.printf("[FacePack] %s: HTTP %d, %d bytes, %s\n", id, code, len, ok ? "ok" : "failed");
+    http.end();
+  }
+  if (ok) {
+    packNewBuf = buf; packNewLen = (size_t)len;
+    strlcpy(packNewId, id, sizeof(packNewId));
+    packResultReady = true;
+  } else {
+    if (buf) heap_caps_free(buf);
+    packFailedAt = millis();
+  }
+  packLoading = false;
+  vTaskDelete(NULL);
+}
+
+// Reads a downloaded pack's index into the frame / eye tables (loop() only).
+static bool parseFacePack(uint8_t *buf, size_t len) {
+  if (len < 8 || memcmp(buf, "IMSF", 4) != 0) return false;
+  uint32_t jl = buf[4] | (buf[5] << 8) | (buf[6] << 16) | ((uint32_t)buf[7] << 24);
+  if (8 + jl > len) return false;
+  JsonDocument doc;
+  if (deserializeJson(doc, (const char *)(buf + 8), jl)) return false;
+  const uint8_t *base = buf + 8 + jl;
+  size_t dataLen = len - 8 - jl;
+  memset(packFrames, 0, sizeof(packFrames));
+  memset(packEyeCount, 0, sizeof(packEyeCount));
+  for (JsonArrayConst f : doc["frames"].as<JsonArrayConst>()) {
+    const char *name = f[0] | "";
+    uint32_t off = f[1] | 0, n = f[2] | 0;
+    const char *dot = strchr(name, '.');
+    if (!dot || off + n > dataLen || n == 0) continue;
+    char emo[24];
+    size_t el = (size_t)(dot - name);
+    if (el >= sizeof(emo)) continue;
+    memcpy(emo, name, el); emo[el] = 0;
+    int e = strcmp(emo, "neutral") == 0 ? EMOTION_NEUTRAL : emotionFromName(emo);
+    if (e == EMOTION_NEUTRAL && strcmp(emo, "neutral") != 0) continue;
+    if (e < 0 || e >= PACK_EMOTIONS) continue;
+    for (int k = 0; k < PS_COUNT; k++)
+      if (strcmp(dot + 1, PS_NAMES[k]) == 0) { packFrames[e][k] = { base + off, n }; break; }
+  }
+  if (!packFrames[EMOTION_NEUTRAL][PS_CLOSED].p) return false;
+  for (JsonPairConst kv : doc["eyes"].as<JsonObjectConst>()) {
+    const char *emo = kv.key().c_str();
+    int e = strcmp(emo, "neutral") == 0 ? EMOTION_NEUTRAL : emotionFromName(emo);
+    if ((e == EMOTION_NEUTRAL && strcmp(emo, "neutral") != 0) || e >= PACK_EMOTIONS) continue;
+    uint8_t c = 0;
+    for (JsonArrayConst a : kv.value().as<JsonArrayConst>()) {
+      if (c >= 2) break;
+      packEyes[e][c++] = { (int16_t)(a[0] | 0), (int16_t)(a[1] | 0), (int16_t)(a[2] | 4), (int16_t)(a[3] | 2),
+                           hex565(a[4] | "000000"), hex565(a[5] | "000000"), (a[6] | 1) != 0 };
+    }
+    packEyeCount[e] = c;
+  }
+  packBg565 = hex565(doc["bg"] | "0b0e15");
+  return true;
+}
+
+// Schedule push: { style, pack } - an empty pack means the dot face. Returns true if the screen needs a repaint.
+static bool applyDeviceFace(JsonVariantConst f) {
+  const char *pack = f["pack"] | "";
+  if (!pack[0]) {
+    packWantId[0] = 0;
+    if (packReady) {
+      packReady = false; packLoadedId[0] = 0;
+      if (packBuf) { heap_caps_free(packBuf); packBuf = nullptr; }
+      Serial.println("[FacePack] Back to the dot face");
+      return true;
+    }
+    return false;
+  }
+  if (strcmp(pack, packWantId) != 0) { strlcpy(packWantId, pack, sizeof(packWantId)); packFailedAt = 0; }
+  return false;
+}
+
+static int pfExpr = -1, pfTarget = 0, pfShape = PS_CLOSED;
+static uint8_t pfQueue[12][2];
+static int pfQLen = 0;
+static unsigned long pfQAt = 0, pfShapeAt = 0;
+static const uint8_t *pfShownPtr = nullptr;
+static bool pfLidsDrawn = false;
+static int pfBorder = -2;
+
+// Starts a download when the backend names a pack we don't have, and swaps a finished one in.
+// Returns true when the face area needs a full repaint (loop() then calls renderScreen(true)).
+static bool facePackPoll() {
+  bool repaint = false;
+  if (packResultReady) {
+    packResultReady = false;
+    uint8_t *nb = packNewBuf; packNewBuf = nullptr;
+    if (strcmp(packNewId, packWantId) == 0 && parseFacePack(nb, packNewLen)) {
+      if (packBuf) heap_caps_free(packBuf);
+      packBuf = nb;
+      strlcpy(packLoadedId, packNewId, sizeof(packLoadedId));
+      packReady = true;
+      pfExpr = -1; pfQLen = 0; pfShownPtr = nullptr; pfBorder = -2;
+      Serial.printf("[FacePack] Showing %s (%u KB)\n", packLoadedId, (unsigned)(packNewLen / 1024));
+      repaint = true;
+    } else {
+      // parse failed or a newer pack was asked for meanwhile; the old tables still point into packBuf
+      if (strcmp(packNewId, packWantId) == 0) { packFailedAt = millis(); Serial.println("[FacePack] Bad pack - keeping the current face"); }
+      heap_caps_free(nb);
+    }
+  }
+  if (!packLoading && packWantId[0] && strcmp(packWantId, packLoadedId) != 0 &&
+      (packFailedAt == 0 || millis() - packFailedAt > 60000) && WiFi.status() == WL_CONNECTED) {
+    packLoading = true;
+    if (xTaskCreatePinnedToCore(facePackTask, "FacePack", 8192, NULL, 1, NULL, 1) != pdPASS) { packLoading = false; packFailedAt = millis(); }
+  }
+  return repaint;
+}
+
+static const PackFrame *pfFrame(int e, int shape) {
+  if (e < 0 || e >= PACK_EMOTIONS) e = EMOTION_NEUTRAL;
+  const PackFrame *f = &packFrames[e][shape];
+  if (f->p) return f;
+  if (shape == PS_SMALL || shape == PS_ROUND) { f = &packFrames[e][PS_MID]; if (f->p) return f; }
+  f = &packFrames[e][PS_CLOSED];
+  return f->p ? f : &packFrames[EMOTION_NEUTRAL][PS_CLOSED];
+}
+
+// Draws the face pack in place of the dots. Repaints only when the frame, the lids or the frame colour change.
+static void drawPortraitFace(bool forceFull, int onR, int onG, int onB, bool stateColoured) {
+  unsigned long now = millis();
+  // which expression: the emotion Ims set (a designed face's name too), sleepy while asleep
+  int want = imsAsleep() ? EMOTION_SLEEPY : emotionFromName(emotionName(currentEmotion));
+  if (want < 0 || want >= PACK_EMOTIONS || !packFrames[want][PS_CLOSED].p) want = EMOTION_NEUTRAL;
+  if (pfExpr < 0) { pfExpr = want; pfTarget = want; }
+  if (want != pfTarget && pfQLen == 0) {
+    // morph: back out of the current expression to neutral, then into the new one (painted faces have the in-betweens)
+    pfQLen = 0;
+    if (pfExpr != EMOTION_NEUTRAL) {
+      for (int k = PS_M4; k >= PS_M1; k--) if (packFrames[pfExpr][k].p && pfQLen < 12) { pfQueue[pfQLen][0] = pfExpr; pfQueue[pfQLen++][1] = k; }
+      if (pfQLen && pfQLen < 12) { pfQueue[pfQLen][0] = EMOTION_NEUTRAL; pfQueue[pfQLen++][1] = PS_CLOSED; }
+    }
+    if (want != EMOTION_NEUTRAL)
+      for (int k = PS_M1; k <= PS_M4; k++) if (packFrames[want][k].p && pfQLen < 12) { pfQueue[pfQLen][0] = want; pfQueue[pfQLen++][1] = k; }
+    pfTarget = want;
+    pfQAt = now;
+    if (pfQLen == 0) pfExpr = want; // no in-betweens (rendered faces): switch straight over
+  }
+  const PackFrame *fr;
+  bool morphing = false;
+  if (pfQLen) {
+    int i = (int)((now - pfQAt) / 45);
+    if (i < pfQLen) { fr = pfFrame(pfQueue[i][0], pfQueue[i][1]); morphing = true; }
+    else { pfQLen = 0; pfExpr = pfTarget; }
+  }
+  if (!morphing) {
+    // the mouth follows his voice: closed / small / "ah" / wide, each held at least 75 ms
+    bool speaking = (currentState == STATE_SPEAKING || isSpeakerActive()) && !imsAsleep();
+    int amp = speaking ? voiceAmp(esp_random()) : 0;
+    int shape = amp < 45 ? PS_CLOSED : amp < 100 ? PS_SMALL : amp < 175 ? PS_MID : PS_WIDE;
+    if (shape != pfShape && now - pfShapeAt > 75) { pfShape = shape; pfShapeAt = now; }
+    fr = pfFrame(pfExpr, pfShape);
+  }
+  bool drew = false;
+  if (forceFull) {
+    tft.fillRect(PF_X0, PF_Y0, PF_W, PF_H, packBg565);
+    pfShownPtr = nullptr; pfBorder = -2;
+  }
+  if (fr->p != pfShownPtr) {
+    tft.drawJpg(fr->p, fr->n, PF_X0, PF_Y0);
+    pfShownPtr = fr->p; pfLidsDrawn = false; drew = true;
+  }
+  // blinks: lids over the eye openings of this expression (shut while asleep)
+  int ee = pfExpr;
+  bool lids = !morphing && packEyeCount[ee] && (imsAsleep() || blinkingNow());
+  if (lids && !pfLidsDrawn) {
+    for (int k = 0; k < packEyeCount[ee]; k++) {
+      const PackEye &e = packEyes[ee][k];
+      if (!e.open) continue;
+      tft.fillEllipse(PF_X0 + e.x, PF_Y0 + e.y, e.w / 2 + 1, e.h / 2 + 1, e.top);
+      tft.drawFastHLine(PF_X0 + e.x - e.w / 2, PF_Y0 + e.y + e.h / 2, e.w, e.bot);
+    }
+    pfLidsDrawn = true; drew = true;
+  } else if (!lids && pfLidsDrawn) {
+    tft.drawJpg(fr->p, fr->n, PF_X0, PF_Y0);
+    pfLidsDrawn = false; drew = true;
+  }
+  // thin frame in the state colour (none at rest), redrawn over a new frame
+  int border = stateColoured ? (int)tft.color565(onR, onG, onB) : -1;
+  if (drew || border != pfBorder) {
+    if (border >= 0) {
+      tft.drawRoundRect(PF_X0, PF_Y0, PF_W, PF_H, 6, (uint16_t)border);
+      tft.drawRoundRect(PF_X0 + 1, PF_Y0 + 1, PF_W - 2, PF_H - 2, 5, (uint16_t)border);
+    } else if (pfBorder >= 0 && !drew) {
+      tft.drawJpg(fr->p, fr->n, PF_X0, PF_Y0); // take the old frame off
+      if (pfLidsDrawn) pfLidsDrawn = false;
+    }
+    pfBorder = border;
+  }
+}
+
 static void drawFaceInternal(bool forceFull) {
   uint8_t want[FACE_COLS * FACE_ROWS];
   computeFaceLevels(want);
@@ -1338,6 +1604,19 @@ static void drawFaceInternal(bool forceFull) {
       currentState != STATE_CONNECTING_WIFI && currentState != STATE_CONNECTING_SERVER &&
       currentState != STATE_LISTENING && currentState != STATE_THINKING) {
     onR = (standbyFaceRGB >> 16) & 0xFF; onG = (standbyFaceRGB >> 8) & 0xFF; onB = standbyFaceRGB & 0xFF;
+  }
+  if (packReady) {
+    // state colours show as a frame round the face; at rest (and in an emotion) there's no frame
+    bool stateColoured = isMicHardwareMuted || recordingActive || currentState == STATE_CONNECTING_WIFI ||
+                         currentState == STATE_CONNECTING_SERVER || currentState == STATE_LISTENING || currentState == STATE_THINKING;
+    int r = onR, g = onG, b = onB;
+    if (isMicHardwareMuted) { r = 255; g = 71; b = 87; }
+    else if (recordingActive) { r = 200; g = 30; b = 30; }
+    else if (currentState == STATE_CONNECTING_WIFI || currentState == STATE_CONNECTING_SERVER) { r = 255; g = 165; b = 2; }
+    else if (currentState == STATE_LISTENING) { r = 46; g = 213; b = 115; }
+    else if (currentState == STATE_THINKING) { r = 112; g = 161; b = 255; }
+    drawPortraitFace(forceFull, r, g, b, stateColoured);
+    return;
   }
   const int offR = 12, offG = 20, offB = 16;
 
@@ -1678,13 +1957,10 @@ void drawGlucoseWidget() {
 #define PREFS_ROW2_TOUCH_Y0 (PREFS_ROW2_LABEL_Y - 4)
 #define PREFS_ROW2_TOUCH_Y1 (PREFS_ROW2_HINT_Y + 14)
 
-#define PREFS_ALERT_COL_CX 80
-#define PREFS_ALERT_CHEVRON_LEFT_CX 25
-#define PREFS_ALERT_CHEVRON_RIGHT_CX 135
 
-#define PREFS_VOL_COL_CX 240
-#define PREFS_VOL_CHEVRON_LEFT_CX 185
-#define PREFS_VOL_CHEVRON_RIGHT_CX 295
+#define PREFS_VOL_COL_CX 80
+#define PREFS_VOL_CHEVRON_LEFT_CX 25
+#define PREFS_VOL_CHEVRON_RIGHT_CX 135
 
 // Voice screen: left/right arrow tap zones flanking the voice name.
 #define VOICE_LEFT_ARROW_X0 10
@@ -1749,167 +2025,9 @@ void drawChevron(int cx, int cy, bool pointRight, uint32_t col) {
   }
 }
 
-#define SETTINGS_TRACK_X0 15
-#define SETTINGS_TRACK_X1 300
-#define SETTINGS_ROW_Y0 HEADER_H
-#define SETTINGS_ROW_H 28 // 5 axis rows = 140px, fits in 34-174; the Play button fills 174-240
-
-int settingsTrackXForValue(int value) {
-  return SETTINGS_TRACK_X0 + (int)((value / 100.0f) * (SETTINGS_TRACK_X1 - SETTINGS_TRACK_X0));
-}
-
-// Which axis row (0-4, -1 = none/below the sliders) a touch Y falls into.
-// Shared between rendering and touch handling so the two can never disagree
-// about where a row actually is. Anything below row 4 (the Play button
-// area) is handled by an explicit PLAY_BUTTON_* rect check instead, since
-// that button isn't part of this uniform row grid.
-int settingsRowForY(int y) {
-  if (y < SETTINGS_ROW_Y0) return -1;
-  int row = (y - SETTINGS_ROW_Y0) / SETTINGS_ROW_H;
-  if (row < 0 || row >= PERSONALITY_AXIS_COUNT) return -1;
-  return row;
-}
-
-// Redraws just one axis row's label/tier-name/track/handle. Used both by the
-// full drawSettingsScreen() below and, on its own, while dragging a slider -
-// repainting only the ~28px row that actually changed (instead of a full
-// fillScreen + full redraw on every touch sample) is what stops the visible
-// flash/flicker during a drag, since this display has no back buffer.
-void drawSettingsRow(int i) {
-  int rowY = SETTINGS_ROW_Y0 + i * SETTINGS_ROW_H;
-  tft.fillRect(0, rowY, 320, SETTINGS_ROW_H, tft.color565(11, 14, 21));
-  tft.setTextColor(tft.color565(140, 150, 175));
-  tft.setTextSize(1);
-  tft.drawString(PERSONALITY_AXIS_LABELS[i], 15, rowY + 2);
-  tft.setTextColor(tft.color565(76, 255, 122));
-  tft.setTextDatum(top_right);
-  tft.drawString(tierNameFor(i, personalityValues[i]), 305, rowY + 2);
-  tft.setTextDatum(top_left);
-
-  // Track
-  tft.fillRoundRect(SETTINGS_TRACK_X0, rowY + 16, SETTINGS_TRACK_X1 - SETTINGS_TRACK_X0, 5, 2, tft.color565(40, 50, 70));
-  // Handle
-  int hx = settingsTrackXForValue(personalityValues[i]);
-  tft.fillCircle(hx, rowY + 18, 7, tft.color565(76, 255, 122));
-}
-
-// Redraws just the big Play button (previewFlow declared near
-// connectToBackend() - defined later in the file, but this only reads it,
-// so no forward declaration is needed). Icon-only by design - greys out
-// while a preview is in flight, same flicker-avoidance reasoning as
-// drawSettingsRow() above (called on its own, without a full-screen redraw,
-// every time previewFlow changes).
-void drawPlayButton() {
-  int freeY0 = SETTINGS_ROW_Y0 + PERSONALITY_AXIS_COUNT * SETTINGS_ROW_H; // 174 - bottom of the last slider row
-  tft.fillRect(0, freeY0, 320, 240 - freeY0, tft.color565(11, 14, 21));
-  bool playing = (previewFlow != PREVIEW_IDLE);
-  uint32_t fill = playing ? tft.color565(45, 50, 62) : tft.color565(76, 255, 122);
-  uint32_t icon = playing ? tft.color565(90, 100, 115) : tft.color565(11, 14, 21);
-  tft.fillRoundRect(PLAY_BUTTON_X0, PLAY_BUTTON_Y0, PLAY_BUTTON_X1 - PLAY_BUTTON_X0, PLAY_BUTTON_Y1 - PLAY_BUTTON_Y0, 12, fill);
-  drawTriangleArrow(PLAY_BUTTON_CX, PLAY_BUTTON_CY, true, icon);
-}
-
-void drawSettingsScreen() {
-  tft.startWrite();
-  tft.fillScreen(tft.color565(11, 14, 21));
-
-  // Header - same gear icon as the main screen's, in the same spot (tapping
-  // it here goes back instead of opening settings). Title centred, "VOICE"
-  // link (chevron - see drawChevron(), deliberately not the Play button's
-  // filled-triangle style) right-aligned in the header's free space.
-  tft.fillRect(0, 0, 320, HEADER_H, tft.color565(20, 24, 34));
-  tft.setTextColor(tft.color565(140, 150, 175));
-  tft.setTextSize(1);
-  tft.setTextDatum(middle_center);
-  tft.drawString("IMS PERSONALITY", 160, HEADER_CY);
-  tft.setTextDatum(middle_right);
-  tft.drawString("VOICE", HEADER_RIGHT_LABEL_X, HEADER_CY);
-  tft.setTextDatum(top_left);
-  drawGearIcon(HEADER_ICON_CX, HEADER_ICON_CY);
-  drawChevron(HEADER_RIGHT_CHEVRON_CX, HEADER_RIGHT_CHEVRON_CY, true, tft.color565(140, 150, 175));
-
-  for (int i = 0; i < PERSONALITY_AXIS_COUNT; i++) {
-    drawSettingsRow(i);
-  }
-
-  // One large Play button fills the rest of the screen - see drawPlayButton().
-  drawPlayButton();
-
-  tft.endWrite();
-}
-
-// Phase 5.1: voice picker sub-screen, reached via the right arrow on the
-// personality screen. Left/right arrows cycle personalityVoiceIndex and
-// (once the debounced save lands, see loop()) trigger startPreview() so the
-// device actually speaks "Hi, I'm <voice>" in the newly-selected voice.
-void drawVoiceScreen() {
-  tft.startWrite();
-  tft.fillScreen(tft.color565(11, 14, 21));
-
-  // Header - "< PERSONALITY" chevron+label goes back up one level, to the
-  // personality screen (not the gear icon - that's specifically the "open
-  // settings" affordance on the main screen, and reusing its shape here as
-  // a generic back button would be confusing). Title centred.
-  tft.fillRect(0, 0, 320, HEADER_H, tft.color565(20, 24, 34));
-  tft.setTextColor(tft.color565(140, 150, 175));
-  tft.setTextSize(1);
-  tft.setTextDatum(middle_center);
-  tft.drawString("IMS VOICE", 160, HEADER_CY);
-  tft.setTextDatum(middle_left);
-  tft.drawString("PERSONALITY", VOICE_BACK_LABEL_X, HEADER_CY);
-  tft.setTextDatum(middle_right);
-  tft.drawString("PREFERENCES", VOICE_NEXT_LABEL_X, HEADER_CY);
-  tft.setTextDatum(top_left);
-  drawChevron(VOICE_BACK_CHEVRON_CX, VOICE_BACK_CHEVRON_CY, false, tft.color565(140, 150, 175));
-  drawChevron(VOICE_NEXT_CHEVRON_CX, VOICE_BACK_CHEVRON_CY, true, tft.color565(140, 150, 175));
-
-  bool busy = (previewFlow != PREVIEW_IDLE || voicePreviewPending);
-  uint32_t arrowCol = tft.color565(140, 150, 175);
-  uint32_t nameCol = tft.color565(76, 255, 122);
-  drawTriangleArrow(45, VOICE_ARROW_CY, false, arrowCol);
-  drawTriangleArrow(275, VOICE_ARROW_CY, true, arrowCol);
-
-  // Text size 2 for voice name, centered slightly above arrow center
-  tft.setTextDatum(middle_center);
-  tft.setTextSize(2);
-  tft.setTextColor(nameCol);
-  tft.drawString(PERSONALITY_VOICES[previewVoiceIndex], 160, VOICE_ARROW_CY - 22);
-
-  // Voice description directly beneath the voice name in accent sky-blue
-  tft.setTextSize(1);
-  tft.setTextColor(tft.color565(120, 210, 255));
-  char descStr[48];
-  snprintf(descStr, sizeof(descStr), "(%s)", PERSONALITY_VOICE_DESCRIPTIONS[previewVoiceIndex]);
-  tft.drawString(descStr, 160, VOICE_ARROW_CY - 2);
-
-  // Voice index counter e.g. "13 of 30"
-  tft.setTextColor(tft.color565(100, 110, 130));
-  char idxStr[16];
-  snprintf(idxStr, sizeof(idxStr), "%d of %d", previewVoiceIndex + 1, PERSONALITY_VOICE_COUNT);
-  tft.drawString(idxStr, 160, VOICE_ARROW_CY + 14);
-
-  // Active status or tap-to-set prompt
-  if (previewVoiceIndex == personalityVoiceIndex) {
-    tft.setTextColor(tft.color565(76, 255, 122));
-    tft.drawString("[ ACTIVE DEFAULT VOICE ]", 160, VOICE_ARROW_CY + 32);
-  } else {
-    tft.setTextColor(tft.color565(255, 195, 76));
-    tft.drawString("[ TAP HERE TO SET AS DEFAULT ]", 160, VOICE_ARROW_CY + 32);
-  }
-  tft.setTextDatum(top_left);
-
-  // Footer - dynamic status hint
-  tft.fillRect(0, 204, 320, 36, tft.color565(15, 18, 26));
-  tft.setTextColor(busy ? tft.color565(120, 210, 255) : tft.color565(100, 110, 130));
-  tft.setTextDatum(top_center);
-  tft.drawString(busy ? "Speaking audition..." : "Arrows preview | Tap center to set default", 160, 214);
-  tft.setTextDatum(top_left);
-
-  tft.endWrite();
-}
-
-// Preferences sub-screen, one step further right than the voice picker.
-// Controls capture logging, alert sound selection, and hardware speaker volume.
+// Preferences screen, opened from the gear icon. Capture logging and speaker volume. The personality
+// sliders and the voice are set per persona on the web Persona page now, so the Box-3 no longer has
+// screens for them; the alert sound stays whatever was last chosen.
 void drawPreferencesScreen() {
   tft.startWrite();
   tft.fillScreen(tft.color565(11, 14, 21));
@@ -1921,7 +2039,7 @@ void drawPreferencesScreen() {
   tft.setTextDatum(middle_center);
   tft.drawString("IMS PREFERENCES", 160, HEADER_CY);
   tft.setTextDatum(middle_left);
-  tft.drawString("VOICE", VOICE_BACK_LABEL_X, HEADER_CY);
+  tft.drawString("HOME", VOICE_BACK_LABEL_X, HEADER_CY);
   tft.setTextDatum(top_left);
   drawChevron(VOICE_BACK_CHEVRON_CX, VOICE_BACK_CHEVRON_CY, false, tft.color565(140, 150, 175));
 
@@ -1949,23 +2067,10 @@ void drawPreferencesScreen() {
   tft.drawString("D:\\Information management system\\", 15, PREFS_PATH_LINE1_Y);
   tft.drawString("pdf-knowledge-base\\server\\audio_captures", 15, PREFS_PATH_LINE2_Y);
 
-  // Row 2: ALERT SOUND and VOLUME side by side
-  // Left Column: Alert Sound
-  tft.setTextColor(tft.color565(140, 150, 175));
-  tft.drawString("ALERT SOUND", 15, PREFS_ROW2_LABEL_Y);
-  drawChevron(PREFS_ALERT_CHEVRON_LEFT_CX, PREFS_ROW2_CY, false, tft.color565(140, 150, 175));
-  drawChevron(PREFS_ALERT_CHEVRON_RIGHT_CX, PREFS_ROW2_CY, true, tft.color565(140, 150, 175));
-  tft.setTextDatum(middle_center);
-  tft.setTextColor(tft.color565(76, 255, 122));
-  tft.drawString(ALERT_SOUND_NAMES[alertSoundIndex], PREFS_ALERT_COL_CX, PREFS_ROW2_CY);
-  tft.setTextDatum(top_center);
-  tft.setTextColor(tft.color565(100, 110, 130));
-  tft.drawString("(tap to preview)", PREFS_ALERT_COL_CX, PREFS_ROW2_HINT_Y);
-
-  // Right Column: Speaker Volume
+  // Row 2: speaker volume
   tft.setTextDatum(top_left);
   tft.setTextColor(tft.color565(140, 150, 175));
-  tft.drawString("VOLUME", 175, PREFS_ROW2_LABEL_Y);
+  tft.drawString("VOLUME", 15, PREFS_ROW2_LABEL_Y);
   drawChevron(PREFS_VOL_CHEVRON_LEFT_CX, PREFS_ROW2_CY, false, tft.color565(140, 150, 175));
   drawChevron(PREFS_VOL_CHEVRON_RIGHT_CX, PREFS_ROW2_CY, true, tft.color565(140, 150, 175));
   tft.setTextDatum(middle_center);
@@ -3498,13 +3603,6 @@ void startPreview(const String &text) {
   previewPendingText = text;
   previewFlow = PREVIEW_RECONNECT;
   previewFlowStartMs = millis();
-  if (onVoiceScreen) {
-    drawVoiceScreen();
-  } else if (onSettingsScreen && !onPrefsScreen) {
-    tft.startWrite();
-    drawPlayButton();
-    tft.endWrite();
-  }
 }
 
 // Shared by the periodic debounce check in loop() and every place that used
@@ -3759,8 +3857,6 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         Serial.println("[Preview] noWakeDetected received during preview - aborting preview");
         previewFlow = PREVIEW_IDLE;
         previewPendingText = "";
-        if (onVoiceScreen) drawVoiceScreen();
-        else if (onSettingsScreen && !onPrefsScreen) { tft.startWrite(); drawPlayButton(); tft.endWrite(); }
       }
       Serial.println("[IMS] noWakeDetected - false trigger, reverting to STANDBY silently");
       currentState = STATE_STANDBY;
@@ -4015,6 +4111,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       cameraSetAwake(cameraAwake);
       setRecordingMode(s["recording"]["active"] | false);
       if (s.containsKey("standbyFace")) applyStandbyFace(s["standbyFace"]);
+      if (s["face"].is<JsonObject>() && applyDeviceFace(s["face"]) && !onSettingsScreen) renderScreen(true);
       if (s["info"].is<JsonObject>()) {
         JsonObject inf = s["info"];
         infoTempC = inf["tempC"].is<int>() ? inf["tempC"].as<int>() : -999;
@@ -4753,8 +4850,6 @@ void loop() {
       Serial.println("[Preview] Connection dropped mid-preview - aborting");
       previewFlow = PREVIEW_IDLE;
       previewPendingText = "";
-      if (onVoiceScreen) drawVoiceScreen();
-      else if (onSettingsScreen && !onPrefsScreen) { tft.startWrite(); drawPlayButton(); tft.endWrite(); }
     }
   }
   wasConnected = nowConnected;
@@ -5024,6 +5119,7 @@ void loop() {
   // isSpeakerActive() reports it - see playChime()).
   // Animate the face on a smooth 30ms cadence (~33 FPS) - repaints changed dots via
   // delta-rendering so the background dots breathe smoothly with high step fidelity.
+  if (facePackPoll() && !onSettingsScreen) renderScreen(true);
   {
     static unsigned long lastFaceRedraw = 0;
     if (millis() - lastFaceRedraw >= 30) {
@@ -5113,16 +5209,12 @@ void loop() {
       Serial.println("[Preview] Gave up waiting for Gemini setup - aborting preview");
       previewFlow = PREVIEW_IDLE;
       activePreviewVoice = "";
-      if (onVoiceScreen) drawVoiceScreen();
-      else if (onSettingsScreen && !onPrefsScreen) { tft.startWrite(); drawPlayButton(); tft.endWrite(); }
     }
   } else if (previewFlow == PREVIEW_SPEAKING) {
     bool stillActive = (currentState == STATE_THINKING || currentState == STATE_SPEAKING || isSpeakerActive());
     if (!stillActive || (millis() - previewFlowStartMs > 20000)) {
       previewFlow = PREVIEW_IDLE;
       activePreviewVoice = "";
-      if (onVoiceScreen) drawVoiceScreen();
-      else if (onSettingsScreen && !onPrefsScreen) { tft.startWrite(); drawPlayButton(); tft.endWrite(); }
     }
   }
 
@@ -5131,10 +5223,11 @@ void loop() {
   if (tft.getTouch(&touchX, &touchY)) {
     if (onPrefsScreen) {
       if (touchX >= VOICE_BACK_ZONE_X0 && touchX <= VOICE_BACK_ZONE_X1 && touchY >= VOICE_BACK_ZONE_Y0 && touchY <= VOICE_BACK_ZONE_Y1) {
-        // "< VOICE": back one level to the voice picker.
+        // "< HOME": back to the main screen
+        flushSettingsSave();
         onPrefsScreen = false;
-        onVoiceScreen = true;
-        drawVoiceScreen();
+        onSettingsScreen = false;
+        renderScreen(true);
         delay(200);
       } else if (touchX >= PREFS_TOGGLE_X0 - 5 && touchX <= PREFS_TOGGLE_X1 + 10 &&
                  touchY >= PREFS_TOGGLE_Y0 - 5 && touchY <= PREFS_TOGGLE_Y1 + 5) {
@@ -5145,27 +5238,11 @@ void loop() {
         drawPreferencesScreen();
         delay(200);
       } else if (touchY >= PREFS_ROW2_TOUCH_Y0 && touchY <= PREFS_ROW2_TOUCH_Y1) {
-        if (touchX < 160) {
-          // Left side: Alert Sound
+        {
+          // Right side: Volume
           int delta = 0;
           if (touchX >= 10 && touchX <= 55) delta = -1;
           else if (touchX >= 105 && touchX <= 155) delta = 1;
-          if (delta != 0) {
-            alertSoundIndex = (alertSoundIndex + delta + ALERT_SOUND_COUNT) % ALERT_SOUND_COUNT;
-            settingsDirty = true;
-            settingsLastChangeMs = millis();
-            drawPreferencesScreen();
-            playAlertSound(alertSoundIndex);
-            delay(150);
-          } else if (touchX > 55 && touchX < 105) {
-            playAlertSound(alertSoundIndex);
-            delay(150);
-          }
-        } else {
-          // Right side: Volume
-          int delta = 0;
-          if (touchX >= 165 && touchX <= 210) delta = -1;
-          else if (touchX >= 270 && touchX <= 315) delta = 1;
           if (delta != 0) {
             int newIdx = currentVolumeIndex + delta;
             if (newIdx < 0) newIdx = 0;
@@ -5183,7 +5260,7 @@ void loop() {
               setSpeakerMute(true);
               delay(120);
             }
-          } else if (touchX > 210 && touchX < 270) {
+          } else if (touchX > 55 && touchX < 105) {
             // Center tap tests current volume
             setSpeakerMute(false);
             playTone(660.0f, 150);
@@ -5193,113 +5270,13 @@ void loop() {
           }
         }
       }
-    } else if (onVoiceScreen) {
-      if (touchX >= VOICE_BACK_ZONE_X0 && touchX <= VOICE_BACK_ZONE_X1 && touchY >= VOICE_BACK_ZONE_Y0 && touchY <= VOICE_BACK_ZONE_Y1) {
-        // "< PERSONALITY": back up one level without saving uncommitted preview voice
-        voicePreviewPending = false;
-        activePreviewVoice = "";
-        previewVoiceIndex = personalityVoiceIndex;
-        flushSettingsSave();
-        onVoiceScreen = false;
-        drawSettingsScreen();
-      } else if (touchX >= VOICE_NEXT_ZONE_X0 && touchX <= VOICE_NEXT_ZONE_X1 &&
-                 touchY >= VOICE_BACK_ZONE_Y0 && touchY <= VOICE_BACK_ZONE_Y1) {
-        // "PREFERENCES >": forward one level without saving uncommitted preview voice
-        voicePreviewPending = false;
-        activePreviewVoice = "";
-        previewVoiceIndex = personalityVoiceIndex;
-        flushSettingsSave();
-        onVoiceScreen = false;
-        onPrefsScreen = true;
-        drawPreferencesScreen();
-        delay(200);
-      } else if (touchY >= VOICE_ARROW_Y0 && touchY <= VOICE_ARROW_Y1) {
-        // Check if tapping center area to commit active default voice
-        if (touchX > VOICE_LEFT_ARROW_X1 && touchX < VOICE_RIGHT_ARROW_X0) {
-          if (previewVoiceIndex != personalityVoiceIndex) {
-            personalityVoiceIndex = previewVoiceIndex;
-            savePersonalityToNVS();
-            postPersonalityToBackend();
-            drawVoiceScreen();
-            delay(150);
-          }
-        } else {
-          // Left/right arrows cycle auditioning voice only (does NOT alter default voice)
-          int delta = 0;
-          if (touchX >= VOICE_LEFT_ARROW_X0 && touchX <= VOICE_LEFT_ARROW_X1) delta = -1;
-          else if (touchX >= VOICE_RIGHT_ARROW_X0 && touchX <= VOICE_RIGHT_ARROW_X1) delta = 1;
-          if (delta != 0) {
-            // Immediately terminate any active audio playback & queue
-            setSpeakerMute(true);
-            digitalWrite(PA_ENABLE_PIN, LOW);
-            if (audioPlaybackQueue) {
-              xQueueReset(audioPlaybackQueue);
-            }
-            if (audioOutQueue) {
-              xQueueReset(audioOutQueue);
-            }
-            modelTurnActive = false;
-            if (previewFlow != PREVIEW_IDLE) {
-              previewFlow = PREVIEW_IDLE;
-              previewPendingText = "";
-            }
-
-            previewVoiceIndex =
-                (previewVoiceIndex + delta + PERSONALITY_VOICE_COUNT) % PERSONALITY_VOICE_COUNT;
-            drawVoiceScreen();
-
-            // Settle debounce: schedules startPreview() for 350ms after the last tap,
-            // instantly auditioning the voice without changing or persisting the default voice.
-            voicePreviewPending = true;
-            voicePreviewTriggerMs = millis() + VOICE_PREVIEW_DEBOUNCE_MS;
-            delay(120);
-          }
-        }
-      }
-    } else if (onSettingsScreen) {
-      if (touchX >= HEADER_ICON_X0 && touchX <= HEADER_ICON_X1 && touchY >= HEADER_ICON_Y0 && touchY <= HEADER_ICON_Y1) {
-        // Gear icon: back to the main screen. Any pending debounced save
-        // above already ran before this touch is even processed next loop,
-        // but flush one now too so leaving mid-drag never loses a change.
-        flushSettingsSave();
-        onSettingsScreen = false;
-        settingsDraggingAxis = -1;
-        renderScreen(true);
-      } else if (touchX >= HEADER_RIGHT_ZONE_X0 && touchX <= HEADER_RIGHT_ZONE_X1 &&
-                 touchY >= HEADER_RIGHT_ZONE_Y0 && touchY <= HEADER_RIGHT_ZONE_Y1) {
-        // "VOICE >": open the voice picker sub-screen. Flush any pending
-        // change first, same reasoning as the back arrow.
-        flushSettingsSave();
-        onVoiceScreen = true;
-        drawVoiceScreen();
-        delay(200);
-      } else if (touchX >= PLAY_BUTTON_X0 && touchX <= PLAY_BUTTON_X1 && touchY >= PLAY_BUTTON_Y0 && touchY <= PLAY_BUTTON_Y1) {
-        // Play button: speak a fresh sentence showcasing the CURRENT slider
-        // settings. Ignored (no-op) while a preview is already in flight -
-        // the button is greyed out during that window.
-        if (previewFlow == PREVIEW_IDLE) {
-          startPreview("In one short, vivid sentence, say something that really shows off exactly how you talk and think right now - make it distinctly characterful, not generic.");
-        }
-      } else {
-        int row = settingsRowForY(touchY);
-        if (row >= 0 && row < PERSONALITY_AXIS_COUNT) {
-          int clamped = touchX < SETTINGS_TRACK_X0 ? 0 : (touchX > SETTINGS_TRACK_X1 ? 100 :
-                        (int)(((touchX - SETTINGS_TRACK_X0) / (float)(SETTINGS_TRACK_X1 - SETTINGS_TRACK_X0)) * 100));
-          personalityValues[row] = clamped;
-          settingsDraggingAxis = row;
-          settingsDirty = true;
-          settingsLastChangeMs = millis();
-          tft.startWrite();
-          drawSettingsRow(row);
-          tft.endWrite();
-        }
-      }
     } else if (touchX >= HEADER_ICON_X0 && touchX <= HEADER_ICON_X1 && touchY >= HEADER_ICON_Y0 && touchY <= HEADER_ICON_Y1 &&
                currentState == STATE_STANDBY && !isMicHardwareMuted) {
       // Gear icon: only from a genuinely idle STANDBY, so opening settings
       // never interrupts an actual conversation.
       onSettingsScreen = true;
-      drawSettingsScreen();
+      onPrefsScreen = true;
+      drawPreferencesScreen();
       delay(200);
     } else if (recordingActive) {
       // Recording: taps do nothing at all.

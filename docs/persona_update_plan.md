@@ -94,7 +94,7 @@ You'd notice: nothing directly. It's the yardstick for A1, A2 and C2.
 
 **B1. Think for himself first: own knowledge before askGemini.**
 - Opinions, philosophy, hypotheticals, explanations and banter come from Ims himself.
-- askGemini is kept for facts that need search, fresh information, or a second opinion he explicitly wants.
+- askGemini is kept for facts that need search, fresh information, or a second opinion he explicitly wants. The full answer given will be a blend of what ims knows as a priority, but with additional information added to the response if needed. 
 - Update the askGemini tool description and the "Anything else" rule to match.
 
 | Impact | Difficulty | Deliverability | Priority | Noticeability |
@@ -410,7 +410,6 @@ You'd notice: he's a step ahead, without nagging.
 
 **K2. Creative ownership.**
 - When asked to write, name, plan or design something, he delivers a finished piece: one strong option, stated with conviction.
-- Anything too long to speak is offered to the web panel or IMS notes ("I'll put the full version on your screen").
 
 | Impact | Difficulty | Deliverability | Priority | Noticeability |
 |---|---|---|---|---|
