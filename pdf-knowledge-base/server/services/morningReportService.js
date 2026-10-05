@@ -744,6 +744,10 @@ async function buildCalendarSection(section, context) {
     const nowHm = new Date().toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' });
 
     let today = getEventsOn(todayStr).filter((e) => hour < 11 || !e.time || e.time >= nowHm);
+    const cfg = (() => { try { const c = getReportConfig(); return Array.isArray(c) ? c : (c?.sections || []); } catch { return []; } })();
+    if (cfg.some((s) => s.id === 'device_changes' && s.enabled !== false)) {
+      today = today.filter((e) => !/\b(omnipod|pod|sensor|libre|cgm)\b/i.test(`${e.title || ''} ${e.summary || ''}`));
+    }
 
     if (filters.includeAllDay === false) {
       today = today.filter(e => Boolean(e.time));
@@ -787,9 +791,9 @@ async function buildBirthdaysSection(section, context) {
   }
 
   if (birthdays.length > 0) {
-    const who = (b) => (b.relationship ? `${b.name} (their ${b.relationship.toLowerCase()})` : b.name);
+    const who = (b) => (b.relationship ? `${b.name} - Simon's ${b.relationship.toLowerCase()} -` : b.name);
     const ageStr = (b) => (filters.includeTurningAge !== false && b.turningAge ? ` (turning ${b.turningAge})` : '');
-    const desc = birthdays.map((b) => b.isToday ? `${who(b)}'s birthday is TODAY${ageStr(b)}` : `${who(b)}'s birthday is in ${b.daysUntil} day(s)${filters.includeTurningAge !== false && b.turningAge ? `, turning ${b.turningAge}` : ''}`);
+    const desc = birthdays.map((b) => b.isToday ? `${who(b)} has a birthday TODAY${ageStr(b)}` : `${who(b)} has a birthday in ${b.daysUntil} day(s)${filters.includeTurningAge !== false && b.turningAge ? `, turning ${b.turningAge}` : ''}`);
     let line = `Birthdays: ${desc.join('; ')}.`;
     if (section.customNote?.trim()) line += ` Note: ${section.customNote.trim()}.`;
     return line;
@@ -943,7 +947,14 @@ async function buildDeviceChangesSection(section, context) {
     const devBits = [];
     if (filters.includePod !== false) {
       if (podIcon) {
-        devBits.push('an Omnipod change is due today');
+        // the calendar entry's time goes here, since the calendar section leaves pod changes to this one
+        let at = '';
+        try {
+          await getUpcomingEvents(2);
+          const ev = getEventsOn(londonNow().dateStr).find((e) => e.time && /\b(omnipod|pod)\b/i.test(e.title || ''));
+          if (ev) at = `, at ${ev.time}`;
+        } catch (_) { /* no time then */ }
+        devBits.push(`an Omnipod change is due today${at}`);
       } else {
         devBits.push('no Omnipod change due today');
       }
@@ -1314,14 +1325,16 @@ export async function buildReportParts({ markNews = true, sections = null } = {}
   return { whoLine, parts, titles, hour };
 }
 
-const DELIVERY = "HOW TO DELIVER IT - IN YOUR YORKSHIRE ACCENT FROM THE FIRST WORD TO THE LAST (long reports are where it slips; hold the flat northern vowels and never sound an r after a vowel): this report is the one exception to your usual length limit - they ALWAYS want it IN FULL, however long that makes it. Cover EVERY section below and EVERY item within it, in the exact sequential order presented below. STRICT NON-REPETITION RULE: deliver each section and each topic ONCE only in its designated slot. For example, once Omnipod & Sensor Device Status has been stated, NEVER repeat device status or pod/sensor dates later in the briefing or in other sections. Link items where they connect naturally (rain and a run, an overnight low and a planned run, a busy afternoon and a pod change). Understand the metrics: 3.9-10.0 mmol/L is IN RANGE and 5.0 mmol/L is perfectly spot-on, not low. Under 3.0 is very low, 3.0-3.9 is low, 10.0-13.9 is high, and over 13.9 is very high. Tell each news story once in your own words, saying which source it's from - a story, not a list of headlines; never repeat a story. Follow each section's HOW MUCH TO SAY exactly - brief means a passing mention, and something mentioned once is not mentioned again. Never give insulin doses. ZERO MEDICAL DISCLAIMERS: NEVER say 'this is not medical advice', NEVER say 'please seek advice from a medical professional or team', and NEVER tell or suggest to the user to consult their doctor or diabetes team. FINISH PROPERLY: after the last item, wrap the whole report up with a short warm sign-off in your own Yorkshire words - something like \"and that's your lot\", \"that's your day sorted\", \"have a grand day\" - different each time; never just stop after the last item. If the last item asks them a question (like clearing the Nightscout database), sign off just before asking it, so the question is the last thing they hear. ";
+// How the report is delivered: in the active persona's accent and sign-offs (never a fixed accent).
+const signOffExamples = () => { const s = signOffs(); return (s.length ? s : ["and that's your lot", "that's your day sorted"]).slice(0, 3).map((x) => `\"${x}\"`).join(", "); };
+const DELIVERY = () => "HOW TO DELIVER IT - IN YOUR " + String(accentLabel() || "own").toUpperCase() + " ACCENT FROM THE FIRST WORD TO THE LAST (long reports are where it slips - hold it right to the end): ONE CONTINUOUS REPORT: go straight into the first section - no preview, headline summary or list of what is coming first, and no pause partway asking whether to go on. this report is the one exception to your usual length limit - they ALWAYS want it IN FULL, however long that makes it. Cover EVERY section below and EVERY item within it, in the exact sequential order presented below. STRICT NON-REPETITION RULE: deliver each section and each topic ONCE only in its designated slot. For example, once Omnipod & Sensor Device Status has been stated, NEVER repeat device status or pod/sensor dates later in the briefing or in other sections. Link items where they connect naturally (rain and a run, an overnight low and a planned run, a busy afternoon and a pod change). Understand the metrics: 3.9-10.0 mmol/L is IN RANGE and 5.0 mmol/L is perfectly spot-on, not low. Under 3.0 is very low, 3.0-3.9 is low, 10.0-13.9 is high, and over 13.9 is very high. Tell each news story once in your own words, saying which source it's from - a story, not a list of headlines; never repeat a story. Follow each section's HOW MUCH TO SAY exactly - brief means a passing mention, and something mentioned once is not mentioned again. Never give insulin doses. No medical disclaimers or referrals. FINISH PROPERLY: after the last item, wrap the whole report up with a short warm sign-off in your own words - something like " + signOffExamples() + " - different each time; never just stop after the last item. If the last item asks them a question (like clearing the Nightscout database), sign off just before asking it, so the question is the last thing they hear. ";
 
 // The first conversation of the day: offer the report, with its contents ready.
 export async function buildMorningReportDirective() {
   const cached = await getOrBuildReportCache({ markNews: false });
   const hour = cached.hour || londonNow().hour;
   const name = hour < 12 ? 'morning report' : 'day report';
-  return (cached.whoLine || '') + `This is the user's first conversation with you today. If the user asked for their ${name} or daily briefing directly in their opening turn, DELIVER IT IMMEDIATELY using the contents below without asking first. If they only greeted you, briefly offer their ${name} in one short sentence as part of your greeting, and deliver it when they say yes. ` + DELIVERY + 'CONTENTS: ' + cached.parts.join(' ');
+  return (cached.whoLine || '') + `This is the user's first conversation with you today. If the user asked for their ${name} or daily briefing directly in their opening turn, DELIVER IT IMMEDIATELY using the contents below without asking first. If they only greeted you, briefly offer their ${name} in one short sentence as part of your greeting, and deliver it when they say yes. ` + DELIVERY() + 'CONTENTS: ' + cached.parts.join(' ');
 }
 
 // For the getDayReport tool, any time of day.
@@ -1334,11 +1347,11 @@ export async function getDayReport() {
   // fire a turnComplete, so training/goals/news/tasks were never spoken.
   const reportText = cached.reportText || cached.parts.join('  ');
   const sectionCount = cached.sectionCount || cached.parts.length;
-  const countReminder = `CRITICAL: this report has ${sectionCount} sections. You MUST speak ALL ${sectionCount} sections in exact sequential order without stopping, pausing between turns, or deciding you have covered enough. STRICT NON-REPETITION: each topic (e.g. Omnipod & Sensor Device Status) must only be read once in its place and never repeated later. Do not stop after health or device status - continue straight into training, goals, tours, news, and tasks without any break. `;
+  const countReminder = `START: your very first words are the first section of the report - say nothing about any later item (birthdays, pod or sensor changes, reminders) before its own section, and speak it as one unbroken reply. CRITICAL: this report has ${sectionCount} sections. You MUST speak ALL ${sectionCount} sections in exact sequential order without stopping, pausing between turns, or deciding you have covered enough. STRICT NON-REPETITION: each topic (e.g. Omnipod & Sensor Device Status) must only be read once in its place and never repeated later. Do not stop after health or device status - continue straight into training, goals, tours, news, and tasks without any break. `;
   return {
     report: reportText,
     sectionCount,
-    instructions: (cached.whoLine || '') + countReminder + DELIVERY + (hour >= 16 ? 'It is later in the day, so frame it as a day report / evening round-up and include tomorrow where given.' : '')
+    instructions: (cached.whoLine || '') + countReminder + DELIVERY() + (hour >= 16 ? 'It is later in the day, so frame it as a day report / evening round-up and include tomorrow where given.' : '')
   };
 }
 
@@ -1347,6 +1360,7 @@ export async function getDayReport() {
 import { GoogleGenerativeAI as _GenAI } from './geminiClient.js';
 import _config from '../config.js';
 import { loadPersonaRules as _persona } from './hardwareClientService.js';
+import { accentLabel, signOffs } from './personaService.js';
 export async function sampleSection(section) {
   let line = await buildSectionLine(section, { hour: londonNow().hour, weatherRain: null, markNews: false });
   // Nothing real to say today (no birthdays coming, no new releases...): make up realistic example data so the

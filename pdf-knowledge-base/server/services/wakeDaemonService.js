@@ -229,6 +229,9 @@ class WakeDaemonService extends EventEmitter {
   /**
    * Called when model starts delivering speech or generating audio
    */
+  // F1: after a question or a long answer the conversation stays open longer (set per reply by index.js)
+  setSilenceTimeout(ms) { this.silenceTimeoutMs = Math.max(SILENCE_TIMEOUT_MS, Math.min(40000, Number(ms) || SILENCE_TIMEOUT_MS)); }
+
   notifyModelSpeechStart() {
     this.isModelSpeaking = true;
     this.lastModelSpeechStartAt = Date.now();
@@ -280,7 +283,8 @@ class WakeDaemonService extends EventEmitter {
       }
 
       // Safety net: Client pacing/playback stuck check
-      const pacingStuck = (this.lastModelSpeechEndAt > 0 && (now - this.lastModelSpeechEndAt > 20000));
+      // a long day report plays for well over a minute after Gemini has finished generating it
+      const pacingStuck = (this.lastModelSpeechEndAt > 0 && (now - this.lastModelSpeechEndAt > 180000));
       const clientPlaying = !pacingStuck && (typeof this.activeClientSession?.isPlayingOrPacing === 'function' && this.activeClientSession.isPlayingOrPacing());
 
       // If model is actively speaking or client is genuinely actively playing, do not silence-close
@@ -292,7 +296,7 @@ class WakeDaemonService extends EventEmitter {
       if (!quietSince) return;
 
       const idleMs = now - quietSince;
-      if (idleMs >= SILENCE_TIMEOUT_MS) {
+      if (idleMs >= (this.silenceTimeoutMs || SILENCE_TIMEOUT_MS)) {
         console.log(`[WakeDaemon] ⏱️ 15s of conversational silence reached (${Math.round(idleMs / 1000)}s idle) -> terminating conversation`);
         this._addLog('silence_timeout', `15s inactivity silence reached -> terminating conversation to standby`);
         this.forceStandby('silence_timeout');

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import PortalShell from './PortalShell';
 import { parsePersona, assemblePersona, newId } from '../../utils/personaSections';
+import PersonaConversations from './PersonaConversations';
 import ImsFace from '../Ims/ImsFace';
 import { EMOTIONS, EMOTION_KEYS, FACE_STYLES, COLOR_PRESETS, ACCESSORY_OPTIONS, HAIR_COLORS, GLASSES_COLORS } from '../Ims/faceEmotions';
 
@@ -201,6 +202,8 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
   const [notification, setNotification] = useState(null);
   const [busy, setBusy] = useState('');
   const [tests, setTests] = useState(null);
+  const [testHistory, setTestHistory] = useState([]); // pass/fail per scenario for each run, oldest first
+  const [numbersCheck, setNumbersCheck] = useState(null); // B3: numbers he said vs the data
   const [picked, setPicked] = useState(() => new Set());
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -315,8 +318,10 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
     setSavedRaw(raw);
     setIsDirty(false);
     setTests(d.tests ? { results: d.tests.results, at: d.tests.at } : null);
+    setTestHistory(d.testHistory || []);
   }, []);
   useEffect(() => { loadPersona(selected).catch((e) => showToast(e.message, 'error')); }, [selected, loadPersona, showToast]);
+  useEffect(() => { api('/api/personas/numbers-check').then((d) => setNumbersCheck(d.check)).catch(() => {}); }, []);
 
   // Load house rules
   const loadHouseRules = useCallback(async () => {
@@ -632,6 +637,7 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
       for (const r of d.results) byId[r.id] = { ...r, at: new Date().toISOString() };
       return { results: (data.scenarios || []).map((s) => byId[s.id]).filter(Boolean), at: new Date().toISOString() };
     });
+    setTestHistory((h) => [...h, { at: new Date().toISOString(), results: Object.fromEntries(d.results.map((r) => [r.id, r.ok])) }].slice(-30));
     const passed = d.results.filter((r) => r.ok).length;
     showToast(`${passed} of ${d.results.length} tests passed.`, passed === d.results.length ? 'success' : 'error');
   });
@@ -678,6 +684,7 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
     ['sliders', 'Personality Sliders', Sliders, '5 behavioral axes: Humor, Delivery, Temperament, Social, Formality'],
     ['house', 'House Rules', Users, 'Global shared rules across all personas (safety, jokes, clarifying)'],
     ['test', 'Test Bench', FlaskConical, 'Live scenario tests with voice judge evaluation'],
+    ['conversations', 'Conversations', History, 'Every conversation with Ims: transcripts, faces, tools and answer times'],
     ['raw', 'Raw Output', Code2, 'Complete unified markup output across all sections and settings'],
   ];
 
@@ -1112,6 +1119,17 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
                     />
                   </div>
                 </div>
+                <div>
+                  <label className={label}>Tastes ({meta.tastes?.length || 0}) - what this persona likes and can't stand</label>
+                  <textarea
+                    className={field}
+                    rows={6}
+                    value={(meta.tastes || []).join('\n')}
+                    placeholder={"One per line, e.g.\nFavourite board game: Wingspan, for the calm of it\nCan't stand: microwaved tea"}
+                    onChange={(e) => setM('tastes', e.target.value.split('\n').map((x) => x.trim()).filter(Boolean))}
+                  />
+                  <p className={`text-[11px] mt-1 ${sub}`}>Where his opinions come from - he holds to these when you ask what he'd pick.</p>
+                </div>
               </div>
 
               {/* Section 4: Conversation style */}
@@ -1530,9 +1548,40 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
                   </button>
                 </div>
 
-                <div className="flex flex-col gap-2">
-                  {(data?.scenarios || []).map((sc) => {
+                <div className={`p-3 rounded-xl border flex flex-col gap-2 ${isDark ? 'border-white/10 bg-slate-950/40' : 'border-[#2E2B27]/15 bg-white'}`}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className={`text-xs font-black uppercase tracking-wider ${strong}`}>Numbers he said vs the data</h4>
+                    <span className={`text-[11px] ${sub}`}>{numbersCheck ? `${numbersCheck.checked} replies checked, ${numbersCheck.mismatches} with a mismatch · ${new Date(numbersCheck.at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}` : 'Checks recent replies where he read out weather, reminders, calendar, glucose or the day report.'}</span>
+                    <button type="button" disabled={!!busy} className={`${ghost} ml-auto`} onClick={() => run('numbers', async () => {
+                      const d = await api('/api/personas/numbers-check', { method: 'POST', body: JSON.stringify({ days: 7 }) });
+                      setNumbersCheck(d.check);
+                      showToast(d.check.checked ? `${d.check.mismatches} of ${d.check.checked} replies had a number that didn't match.` : 'No replies with data to check yet.', d.check.mismatches ? 'error' : 'success');
+                    })}>
+                      {busy === 'numbers' ? <RotateCw size={14} className="animate-spin" /> : <Check size={14} />} Check last 7 days
+                    </button>
+                  </div>
+                  {numbersCheck?.results?.filter((x) => !x.ok).map((x) => (
+                    <div key={x.turnId} className={`text-xs ${isDark ? 'text-rose-300' : 'text-rose-800'}`}>
+                      <b>{new Date(x.at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</b> ({x.tools.join(', ')}): {x.problems.join('; ')}
+                      <span className={`block italic ${sub}`}>"{x.said}"</span>
+                    </div>
+                  ))}
+                </div>
+
+                {[['core', 'Voice & character'], ['aliveness', 'Aliveness - does he feel like someone?']].map(([g, title]) => {
+                  const groupList = (data?.scenarios || []).filter((sc) => (sc.group || 'core') === g);
+                  if (!groupList.length) return null;
+                  const latest = groupList.map((sc) => tests?.results?.find((x) => x.id === sc.id)).filter(Boolean);
+                  return (
+                <div key={g} className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2 mt-1">
+                    <h4 className={`text-xs font-black uppercase tracking-wider ${strong}`}>{title}</h4>
+                    {latest.length > 0 && <span className={`text-[11px] ${sub}`}>{latest.filter((x) => x.ok).length} of {groupList.length} passing</span>}
+                    <button type="button" onClick={() => runTests(groupList.map((x) => x.id))} disabled={!!busy} className={`${ghost} ml-auto`}>Run this group</button>
+                  </div>
+                  {groupList.map((sc) => {
                     const r = tests?.results?.find((x) => x.id === sc.id);
+                    const trend = testHistory.filter((h) => h.results && sc.id in h.results).slice(-12);
                     return (
                       <div
                         key={sc.id}
@@ -1564,6 +1613,13 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
                           </span>
                           <span className={`text-[11px] ${sub}`}>{sc.about}</span>
                           <span className="ml-auto flex items-center gap-2">
+                            {trend.length > 1 && (
+                              <span className="flex items-center gap-0.5" title={`Last ${trend.length} runs, oldest first`}>
+                                {trend.map((h, i) => (
+                                  <span key={i} className={`w-1.5 h-3 rounded-sm ${h.results[sc.id] ? 'bg-emerald-500' : 'bg-rose-500'}`} title={`${new Date(h.at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}: ${h.results[sc.id] ? 'pass' : 'fail'}`} />
+                                ))}
+                              </span>
+                            )}
                             {r && (
                               <span
                                 className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-1.5 py-0.5 rounded ${
@@ -1598,6 +1654,8 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
                     );
                   })}
                 </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1605,6 +1663,10 @@ export default function PersonaPortal({ theme = 'dark', onThemeToggle, setCurren
           {/* ----------------------------------------------------------------------------------------- */}
           {/* TAB 8: Raw Output (Unified Across All Tabs)                                               */}
           {/* ----------------------------------------------------------------------------------------- */}
+          {tab === 'conversations' && (
+            <PersonaConversations isDark={isDark} panel={panel} ghost={ghost} field={field} strong={strong} sub={sub} showToast={showToast} />
+          )}
+
           {tab === 'raw' && (
             <div className="space-y-4">
               <p className={`text-xs ${sub}`}>

@@ -303,9 +303,16 @@ export function restoreFace(id) {
 
 export const getEmotionNames = () => listFaces().filter((f) => f.selectable).map((f) => f.name);
 
-export function getFacePromptGuide() {
-  const lines = listFaces().filter((f) => f.selectable).map((f) => `- ${f.name}: ${f.scenarios || '(no scenarios written yet - use your judgement)'}`);
-  return 'FACES AVAILABLE (choose the one that best fits, by exact name): \n' + lines.join('\n');
+export function getFacePromptGuide({ compact = false } = {}) {
+  // compact (the setEmotion tool): each face's when-to-use cut to its first few cues
+  const short = (t) => {
+    const parts = String(t || '').split(/[,.;:]/).map((p) => p.trim()).filter(Boolean);
+    let out = '';
+    for (const p of parts) { if ((out + ', ' + p).length > 70) break; out = out ? `${out}, ${p}` : p; }
+    return out || parts[0] || 'use your judgement';
+  };
+  const lines = listFaces().filter((f) => f.selectable).map((f) => `- ${f.name}: ${compact ? short(f.scenarios) : (f.scenarios || '(no scenarios written yet - use your judgement)')}`);
+  return compact ? lines.join('\n') : 'FACES AVAILABLE (choose the one that best fits, by exact name): \n' + lines.join('\n');
 }
 
 // What to send the device for a chosen face. Every face except neutral goes as

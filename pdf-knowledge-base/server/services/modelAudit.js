@@ -46,14 +46,16 @@ export async function generate(model, body, op = 'modelTest') {
   return { j, text: parts.map((p) => p.text || '').join('').trim(), media: parts.find((p) => p.inlineData)?.inlineData || null };
 }
 
-// A Live session: setup (optionally with tools), one text turn, collect the spoken audio.
-export function liveSay(model, text, { tools = null, system = null, persona = null, timeoutMs = 20000 } = {}) {
+// A Live session: setup (optionally with tools), one text turn, collect the spoken audio. Reports the tools
+// it called (name + args); toolResults gives a canned answer per tool name (anything else just gets 'ok').
+export function liveSay(model, text, { tools = null, system = null, persona = null, timeoutMs = 20000, toolResults = {} } = {}) {
   return new Promise((resolve, reject) => {
     const voice = voiceName(persona);
     const ws = new WebSocket(`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${key()}`);
     const chunks = [];
     let transcript = '';
-    const done = (err) => { clearTimeout(t); try { ws.close(); } catch { } if (err) reject(err); else resolve({ audio: chunks.length ? `data:audio/wav;base64,${wav(Buffer.concat(chunks)).toString('base64')}` : null, transcript: transcript.trim(), seconds: Buffer.concat(chunks).length / 48000 }); };
+    const called = [];
+    const done = (err) => { clearTimeout(t); try { ws.close(); } catch { } if (err) reject(err); else resolve({ audio: chunks.length ? `data:audio/wav;base64,${wav(Buffer.concat(chunks)).toString('base64')}` : null, transcript: transcript.trim(), seconds: Buffer.concat(chunks).length / 48000, tools: called }); };
     const t = setTimeout(() => (chunks.length ? done() : done(new Error(`No reply within ${Math.round(timeoutMs / 1000)} s`))), timeoutMs);
     ws.on('open', () => ws.send(JSON.stringify({ setup: {
       model: `models/${model}`,
@@ -69,7 +71,10 @@ export function liveSay(model, text, { tools = null, system = null, persona = nu
       for (const p of m.serverContent?.modelTurn?.parts || []) if (p.inlineData?.data) chunks.push(Buffer.from(p.inlineData.data, 'base64'));
       if (m.serverContent?.outputTranscription?.text) transcript += m.serverContent.outputTranscription.text;
       // with Ims's real tools declared, answer any call (setEmotion etc.) so he carries on speaking
-      for (const fc of m.toolCall?.functionCalls || []) ws.send(JSON.stringify({ toolResponse: { functionResponses: [{ id: fc.id, name: fc.name, response: { result: 'ok' } }] } }));
+      for (const fc of m.toolCall?.functionCalls || []) {
+        called.push({ name: fc.name, args: fc.args || {} });
+        ws.send(JSON.stringify({ toolResponse: { functionResponses: [{ id: fc.id, name: fc.name, response: toolResults[fc.name] ?? { result: 'ok' } }] } }));
+      }
       // a turn with only a tool call (setEmotion) completes before the spoken one - wait for speech
       if (m.serverContent?.turnComplete && chunks.length) done();
     });
@@ -103,6 +108,7 @@ const RUBRIC = [
   'ENGLISH: English only - no other language at all.',
   'BRITISH: British English words and spelling, no Americanisms.',
   'CLEAN DELIVERY: no self-corrections, false starts or restarts ("I mean - sorry -").',
+  'NO FILLER: none of the stock customer-service phrases ("great question", "I completely understand", "I hope this helps", "let me know if...").',
   'DECENT: nothing racist or sexist.',
 ];
 export async function judgePersona({ text = '', audio = null, situation, extraRules = [], persona = null }) {

@@ -692,7 +692,8 @@ const unsigned long SESSION_IDLE_TIMEOUT_MS = 25000;
 // wake phrase. (Saying goodbye - "thanks, bye", "stop IMS" - ends it sooner via
 // endConversation.) Deliberately short: a device left listening after a chat is
 // how Ims ends up talking over a conversation with someone else.
-const unsigned long CONVERSATION_IDLE_TIMEOUT_MS = 15000UL;
+// The server sets this per reply (followUpMs): longer after Ims asks something or gives a long answer.
+unsigned long conversationIdleTimeoutMs = 15000UL;
 bool textQuerySentOnce = false; // Mic-free "Hi, how are you" diagnostic, once per boot
 
 // Live mic RMS level, written every buffer by audioMicTask (Core 0) and read
@@ -3298,6 +3299,40 @@ void sendMicMuted(bool muted) {
   sendFrame(0x00, (const uint8_t *)msg, strlen(msg));
 }
 
+// Tap while Ims is speaking or thinking: stop him there and then. The speaker is silenced and its queue
+// cleared, the device goes back to STANDBY (where the wake phrase is listened for again, and any of the
+// reply still arriving is dropped as unsolicited), and the server is told to cancel the rest of the reply.
+void interruptToStandby() {
+  Serial.println("[Touch] Tap interrupt - stopping Ims and returning to standby");
+  setSpeakerMute(true);
+  if (audioPlaybackQueue) xQueueReset(audioPlaybackQueue);
+  if (audioOutQueue) xQueueReset(audioOutQueue);
+  modelTurnActive = false;
+  micStreamingActive = false;
+  isSpeakingDetected = false;
+  conversationOpen = false;
+  conversationShouldClose = false;
+  currentState = STATE_STANDBY;
+  verifyingStartMs = 0;
+  prerollHead = 0;
+  prerollFilled = false;
+  if (tcpClient.connected()) {
+    const char *msg = "{\"interrupt\":true}";
+    sendFrame(0x00, (const uint8_t *)msg, strlen(msg));
+  }
+  lastTranscript = "Say 'Hey Ims' or tap screen";
+  renderScreen(true);
+}
+
+// The server keeps a conversation open while Ims is actually talking. It can only estimate playback, so
+// the device tells it: playbackStart when a reply starts coming out of the speaker, playbackDone when the
+// last of it has played.
+void sendPlaybackEvent(bool started) {
+  if (!tcpClient.connected()) return;
+  const char *msg = started ? "{\"playbackStart\":true}" : "{\"playbackDone\":true}";
+  sendFrame(0x00, (const uint8_t *)msg, strlen(msg));
+}
+
 void sendTouchToTalk() {
   if (!tcpClient.connected()) return;
   const char *msg = "{\"touchToTalk\":true}";
@@ -3769,6 +3804,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       digitalWrite(PA_ENABLE_PIN, HIGH);
       unmuteDacOnly();
       currentState = STATE_SPEAKING;
+      sendPlaybackEvent(true);
       micStreamingActive = false;
       isSpeakingDetected = false;
       // Real audio arriving is the definitive "this was actually a wake
@@ -3893,6 +3929,13 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
     // "goodbye"/etc.) - don't cut the farewell reply short. Just mark that
     // the conversation should close once STATE_SPEAKING naturally finishes
     // (see the auto-transition in loop()), same as any other reply.
+    // How long to keep listening for a reply without the wake phrase (sent after each of Ims's replies)
+    if (doc["followUpMs"].is<int>()) {
+      long f = doc["followUpMs"].as<long>() + 3000; // a little longer than the server's own window
+      if (f < 12000) f = 12000;
+      if (f > 32000) f = 32000;
+      conversationIdleTimeoutMs = (unsigned long)f;
+    }
     if (doc["endConversation"].as<bool>()) {
       Serial.println("[IMS] endConversation - closing conversation after this reply finishes");
       conversationShouldClose = true;
@@ -4986,6 +5029,7 @@ void loop() {
   // (which sets conversationShouldClose via the endConversation tool call in
   // handleFrame()) actually closes it.
   if (currentState == STATE_SPEAKING && !isSpeakerActive()) {
+    sendPlaybackEvent(false); // the last of the reply has played
     // Diagnostic for the playback-cutoff investigation: this is the ONLY
     // place SPEAKING ends and (when a conversation is open) actively
     // re-mutes the speaker via setSpeakerMute(true) below - if that mute is
@@ -5067,7 +5111,7 @@ void loop() {
   // never spoke) and THINKING (Gemini never responded at all, e.g. its VAD
   // never fired) so the mic doesn't stream indefinitely in either case.
   const unsigned long idleLimitMs =
-      (currentState == STATE_LISTENING && conversationOpen) ? CONVERSATION_IDLE_TIMEOUT_MS : SESSION_IDLE_TIMEOUT_MS;
+      (currentState == STATE_LISTENING && conversationOpen) ? conversationIdleTimeoutMs : SESSION_IDLE_TIMEOUT_MS;
   if ((currentState == STATE_LISTENING || currentState == STATE_THINKING) &&
       (millis() - lastSpeechTimestamp > idleLimitMs)) {
     sendDebug("session_idle_timeout");
@@ -5284,9 +5328,9 @@ void loop() {
       Serial.println("[Touch] Tap while mic is hardware muted");
       lastTranscript = "Mic is muted (top button lit)";
       renderScreen(true);
-    } else if (currentState == STATE_SPEAKING) {
-      // User interrupted Gemini: switch to listening
-      beginListening("touch_interrupt");
+    } else if (currentState == STATE_SPEAKING || isSpeakerActive()) {
+      // Tap to stop him talking: back to standby, wake phrase listened for again
+      interruptToStandby();
     } else if (currentState == STATE_STANDBY || currentState == STATE_VERIFYING) {
       // Touch-to-talk: a deliberate tap confirms intent immediately, whether
       // or not Gemini would have judged an in-flight VERIFYING candidate as
@@ -5298,13 +5342,7 @@ void loop() {
     } else if (currentState == STATE_THINKING) {
       // Tap screen while thinking: cancel thinking state and reset to ready standby
       Serial.println("[Touch] Tapped during THINKING -> resetting to STANDBY");
-      currentState = STATE_STANDBY;
-      micStreamingActive = false;
-      conversationOpen = false;
-      conversationShouldClose = false;
-      sendSessionClosed();
-      lastTranscript = "Say 'Hey Ims' or tap screen";
-      renderScreen(true);
+      interruptToStandby(); // also stops a reply that's about to start
     }
     if (!onSettingsScreen || settingsDraggingAxis < 0) delay(200);
     settingsDraggingAxis = -1; // one touch sample = one drag step, not a held state

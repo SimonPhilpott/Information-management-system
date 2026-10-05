@@ -29,6 +29,8 @@ const DEFAULTS = {
   accessories: { glasses: 'none', hair: 'none', facialHair: 'none', hairColor: '#16161a', glassesColor: '#d4af37', facialHairColor: '#16161a' },
   weatherPhrasing: 'plain', testLine: "Hello! This is Ims, testing this voice.", clarifyExample: "Sorry, I didn't catch all of that - what was that last bit?",
   signOffs: [], dialectWords: [], tagEndings: [], thinkingSounds: [], doorbell: { ding: [], motion: [] },
+  tastes: [], // what this persona likes and can't stand - gives it opinions of its own (persona plan D3)
+  holdingLines: [], // short "hang on, let me look" lines, recorded in this persona's voice for slow lookups (A2)
 };
 
 // ---- files ----
@@ -236,7 +238,8 @@ export function saveHouseRules(raw) {
 // ---- what everything else asks for (active persona unless one is passed in) ----
 const P = (p) => p || getActivePersona();
 /** The persona's character sections plus the shared house rules - what goes into every prompt. */
-export const personaRules = (p) => [P(p).body, getHouseRules()].filter(Boolean).join('\n\n');
+const tastesBlock = (p) => { const t = (P(p).tastes || []).filter(Boolean); return t.length ? `YOUR TASTES (yours - hold to them, they're where your opinions come from):\n${t.map((x) => `- ${x}`).join('\n')}` : ''; };
+export const personaRules = (p) => [P(p).body, tastesBlock(p), getHouseRules()].filter(Boolean).join('\n\n');
 /** The non-negotiable accent instruction. */
 export const accentRule = (p) => P(p).accentRule || `ACCENT - EVERY SENTENCE OF EVERY REPLY: speak in ${P(p).accent} accent, from the first word to the last, including numbers, names and anything read out from a tool. Never drift into another accent.`;
 export const accentLabel = (p) => P(p).accent;
@@ -251,7 +254,8 @@ export const usesYorkshireWeatherPhrasing = (p) => P(p).weatherPhrasing === 'yor
 
 /** A doorbell / motion announcement line in the persona's words. */
 export function doorbellLine(event, cameraName = 'front door', p = null, userName = 'Simon') {
-  const lines = (P(p).doorbell || {})[event === 'ding' ? 'ding' : 'motion'] || [];
+  // text lines only - a YAML line with an unquoted ': ' becomes an object and used to crash the announcement
+  const lines = ((P(p).doorbell || {})[event === 'ding' ? 'ding' : 'motion'] || []).filter((l) => typeof l === 'string' && l.trim());
   const place = !cameraName || /front|door/i.test(cameraName) ? 'front door' : cameraName;
   const pick = lines.length ? lines[Math.floor(Math.random() * lines.length)] : (event === 'ding' ? `Someone's at the ${place}, ${userName}.` : `There's movement by the ${place}.`);
   return pick.replace(/\{place\}/g, place).replace(/\{name\}/g, userName).replace(/\bthe the\b/gi, 'the');

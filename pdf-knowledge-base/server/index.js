@@ -94,8 +94,12 @@ import { setDeviceMicMuted, setDeviceConnected, isDeviceMicMuted } from './servi
 import { recordUsage } from './services/geminiClient.js';
 import { loadHnswFromDisk } from './services/hnswService.js';
 import { getDeviceFace, ensurePack, onFacePackReady, packPath } from './services/faceDeviceService.js';
+import { startConversation, addTurn, endConversation as endConversationLog, recentTurns } from './services/conversationLog.js';
+import { summariseConversation, recallMemories, embedMemory } from './services/memoryService.js';
+import { pickClip, ensureClips, ensureAllClips } from './services/holdingClips.js';
+import { onTaskDone, markReported, owedThinkTasks } from './services/tasksService.js';
 import { executeHardwareRAGSearch, getHardwareSetupPayload, recordReplyOpener, recordConversationMemory, getWebPersonaBlock, getPersonality, setPersonality, getCaptureLogging, setCaptureLogging, recordReplyText, getWebSetupPayload, getAccentRule, refreshLiveContext } from './services/hardwareClientService.js';
-import { inYourVoice, languageCode as personaLanguageCode, onPersonaChange } from './services/personaService.js';
+import { inYourVoice, languageCode as personaLanguageCode, onPersonaChange, activePersonaId } from './services/personaService.js';
 import { scheduleItem, listScheduledItems, cancelScheduledItem, addToList, readList, removeFromList, clearList, checkDueScheduledItems, stopAllRinging, getActiveScheduledStatus, getItemsDueToday, getHistorySummary } from './services/remindersService.js';
 import { getBirthdayFooterStatus, getUpcomingBirthdays, listBirthdays } from './services/birthdayService.js';
 import { getTodayReleases, getWindowResults, getUpcomingReleases , getWants as getMusicWants } from './services/musicScanService.js';
@@ -280,6 +284,7 @@ app.use('/api/device-health', (await import('./routes/deviceHealth.js')).default
 app.use('/api/models', (await import('./routes/models.js')).default);
 app.use('/api/storage', (await import('./routes/storage.js')).default);
 app.use('/api/costs', (await import('./routes/costs.js')).default);
+app.use('/api/conversations', (await import('./routes/conversations.js')).default); // transcripts + Ims's answer times
 app.use('/api/personas', (await import('./routes/personas.js')).default); // Ims's personas (character, accent, voice) + test bench
 app.use('/api/voice-latency', (await import('./routes/voiceLatency.js')).default);
 
@@ -560,6 +565,51 @@ schedulerService.registerJob({
   intervalMs: 30 * 60 * 1000,
   initialDelayMs: 20000,
   action: refreshDeviceWeather
+});
+
+schedulerService.registerJob({
+  name: 'speech_stats',
+  description: "Weekly: Ims's speech habits from the transcripts (faces, reply lengths, questions, repeated openers) - the worst becomes next week's 'vary this'",
+  category: 'maintenance',
+  intervalMs: 7 * 24 * 60 * 60 * 1000,
+  initialDelayMs: 15 * 60 * 1000,
+  action: async () => { const { computeSpeechStats } = await import('./services/moodService.js'); const s = computeSpeechStats({ days: 7 }); return { replies: s.replies }; }
+});
+
+schedulerService.registerJob({
+  name: 'memory_vectors',
+  description: 'Embed saved memories and conversation notes so Ims can recall them by meaning',
+  category: 'maintenance',
+  intervalMs: 6 * 60 * 60 * 1000,
+  initialDelayMs: 2 * 60 * 1000,
+  action: async () => { const { backfillMemoryVectors } = await import('./services/memoryService.js'); return { embedded: await backfillMemoryVectors() }; }
+});
+
+schedulerService.registerJob({
+  name: 'persona_profiles',
+  description: "Nightly: update what Ims knows about Simon and about himself from the day's conversations",
+  category: 'maintenance',
+  intervalMs: 60 * 60 * 1000,
+  initialDelayMs: 10 * 60 * 1000,
+  londonHourWindow: { minHour: 3, maxHour: 3 },
+  action: async () => {
+    const { getSetting, setSetting } = await import('./db/database.js');
+    const day = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+    if (getSetting('ims_profiles_last_day') === day) return { skipped: 'already done today' };
+    const { updateProfiles } = await import('./services/memoryService.js');
+    const r = await updateProfiles();
+    setSetting('ims_profiles_last_day', day);
+    return { conversations: r.conversations, updated: r.updated };
+  }
+});
+
+schedulerService.registerJob({
+  name: 'conversation_prune',
+  description: 'Remove conversation transcripts older than the retention period',
+  category: 'maintenance',
+  intervalMs: 24 * 60 * 60 * 1000,
+  initialDelayMs: 5 * 60 * 1000,
+  action: async () => { const { pruneConversations } = await import('./services/conversationLog.js'); return { removed: pruneConversations() }; }
 });
 
 schedulerService.registerJob({
@@ -951,6 +1001,33 @@ const ehUpSounding = (t) => {
   if (!text || text.split(/\s+/).length > 3) return false;
   return EHUP_SHAPE.test(text.toLowerCase().replace(/[^a-z]/g, ''));
 };
+// After a Gemini error (outage, quota) NO new Live session opens anywhere until this passes - mic audio and
+// wake checks used to open a fresh session on every frame, hundreds a minute, which is what tripped the quota.
+let geminiCooldownUntil = 0;
+// E5: when the last desk conversation ended and why - a new session soon after a silence close or a dropped
+// connection is handed the last few exchanges, so "and what about tomorrow?" still makes sense
+let lastConversationEnd = { at: 0, reason: null };
+// C2: a 'proper think' answer is given in the conversation it came from if that's still open; otherwise it waits
+// for the next conversation Simon starts (it's in the session prompt until then)
+const thinkDeliverers = new Set();
+onTaskDone((t) => { if (t?.kind !== 'think') return; for (const deliver of thinkDeliverers) { try { if (deliver(t)) return; } catch (_) { } } });
+// A2: each persona's holding lines are recorded once (and again when its voice or lines change)
+setTimeout(() => { ensureAllClips().catch((err) => console.warn('[Holding]', err.message)); }, 3 * 60 * 1000);
+onPersonaChange((id) => { ensureClips(id).catch(() => {}); });
+// I4: the face follows the words. A reply he starts without setting a face gets one from its opening words,
+// and a reply can change face partway when the words take a turn (once per reply). First match wins.
+const FACE_CUES = [
+  ['disgusted', /\b(yuck|gross|grim|disgusting|revolting|minging|vile)\b/i],
+  ['amazement', /\b(wow|blimey|by 'eck|ee by gum|incredible|unbelievable|can you believe|would you believe|amazing|astonishing)\b/i],
+  ['sad', /\b(sadly|unfortunately|sorry to hear|bad news|what a shame|gutted|i'm sorry|that's a pity)\b/i],
+  ['suspicious', /\b(hmm+|are you sure|pull the other one|i doubt|sounds fishy|likely story|i'm not convinced)\b|\breally\?/i],
+  ['confused', /\b(not sure what you mean|you've lost me|come again|baffled|confused|doesn't add up)\b|\beh\?/i],
+  ['cocky', /\b(ha+|heh|told you|course i did|obviously|cheeky|you would|nice try|daft (?:beggar|ha'porth))\b/i],
+  ['love', /\b(proud of you|love that|bless|i'm touched|you're a good|means a lot)\b/i],
+  ['bored', /\b(yawn|tedious|boring|same again|dull as)\b/i],
+  ['joy', /\b(great news|good news|brilliant|cracking|fantastic|wonderful|lovely|grand|smashing|champion|well done|congratulations|morning|hello|ey up|now then)\b/i],
+];
+const faceFromWords = (text, used = []) => (FACE_CUES.find(([emo, rx]) => !used.includes(emo) && rx.test(text)) || [])[0] || null;
 const FOLLOW_UP_MS = 10000; // after Ims stops talking, a reply within this long needs no wake phrase
 
 function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
@@ -1101,6 +1178,13 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // playing, and no reply or tool call in progress. The desk goes back to standby; the web app
   // is told the session went to sleep. Room noise doesn't count - only transcribed words do.
   const SILENCE_CLOSE_MS = 15000;
+  // The desk keeps one warm Gemini session ready so a wake is answered quickly. An untouched warm session
+  // is NOT closed by the silence timer (that used to close and reopen it every ~17 s, ~210 sessions an hour,
+  // all day, which ate into the Live API's session rate limit). It's recycled every WARM_RECYCLE_MS instead,
+  // or straight away when the persona changes, so its date/time, records and persona stay fresh.
+  const WARM_RECYCLE_MS = 10 * 60 * 1000;
+  let sessionUsed = false;       // anything said or sent in this Gemini session yet
+  let sessionPersonaId = null;   // the persona the session was set up with
   let lastActivityAt = Date.now();
   let silenceClosedAt = 0; // mic frames still in flight when the session closed are dropped
   let webAudioEndAt = 0;
@@ -1126,12 +1210,23 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       currentGeminiWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: '(System: the user just said something to you, but it did not come through clearly - it may have been cut off. Do not stay silent. In one short sentence, ' + inYourVoice() + ', say you did not quite catch it and ask them to say it again. Do not greet them.)' }] }], turnComplete: true } }));
       return;
     }
-    const playingUntil = isHardware ? (paceSentMs ? paceStart + paceSentMs : 0) : webAudioEndAt;
+    if (isHardware && !sessionUsed) {
+      let personaNow = sessionPersonaId;
+      try { personaNow = activePersonaId(); } catch (_) { }
+      if (Date.now() - geminiConnectedAt < WARM_RECYCLE_MS && personaNow === sessionPersonaId) return; // warm and waiting: keep it
+      try { logCapture(`[${new Date().toISOString()}] ${tag} WARM SESSION RECYCLED (${personaNow !== sessionPersonaId ? 'persona changed' : 'age'})\n`); } catch (_) { }
+      try { currentGeminiWs.close(1000, 'Warm session recycle'); } catch (_) { } // the close handler reconnects
+      return;
+    }
+    if (isHardware && deviceStillPlaying()) return; // he's still talking on the desk
+    if (isHardware && Date.now() - lastMicFrameAt < 3000) return; // someone may be mid-sentence - never close under them
+    const playingUntil = isHardware ? Math.max(paceSentMs ? paceStart + paceSentMs : 0, lastDeviceSpeakingAt) : webAudioEndAt;
     const quietSince = Math.max(lastActivityAt, playingUntil, turnCompleteAt || 0);
-    if (Date.now() - quietSince < SILENCE_CLOSE_MS) return;
+    if (Date.now() - quietSince < Math.max(SILENCE_CLOSE_MS, followUpMs + 5000)) return;
     console.log(`${tag} 💤 15 s of silence - closing the Gemini session`);
     silenceClosedAt = Date.now();
     try { logCapture(`[${new Date().toISOString()}] ${tag} SILENCE CLOSE (15s)\n`); } catch (_) { }
+    convEnd('silence');
     isConversationActive = false;
     touchToTalkActive = false;
     wakeDaemonService.forceStandby('silence_timeout');
@@ -1159,7 +1254,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       if (judgePendingUntil && now < judgePendingUntil) break; // waiting to confirm he was addressed
       paceQueue.shift();
       if (ws.readyState !== WebSocket.OPEN) continue;
-      if (item.bin) { ws.send(item.bin, { binary: true }); paceSentMs += item.bin.length / PCM_BYTES_PER_MS; }
+      if (item.bin) { ws.send(item.bin, { binary: true }); paceSentMs += item.bin.length / PCM_BYTES_PER_MS; lastAudioSentAt = Date.now(); }
       else ws.send(item.json);
     }
     if (!paceQueue.length && paceTimer) { clearInterval(paceTimer); paceTimer = null; }
@@ -1169,9 +1264,23 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     pacePump();
     if (paceQueue.length && !paceTimer) paceTimer = setInterval(pacePump, 40);
   };
+  // What the Box-3 reports about its own speaker (playbackStart / playbackDone and "state=6" heartbeats).
+  // From playbackStart until playbackDone Ims is talking, whatever the estimate says - capped at 3 minutes
+  // after the last audio was sent, so a lost message can't hold a session open. If the device never started
+  // playing a reply, the estimate below is all there is.
+  let devicePlaying = false, lastAudioSentAt = 0, lastDeviceSpeakingAt = 0;
+  const deviceStillPlaying = () => {
+    if (!isHardware) return false;
+    const now = Date.now();
+    if (paceQueue.length > 0) return true;
+    if (devicePlaying && now - lastAudioSentAt < 180000) return true;
+    if (now - lastDeviceSpeakingAt < 6000) return true;
+    return Boolean(paceSentMs && now < paceStart + paceSentMs);
+  };
   const paceFlush = () => {
     paceQueue.length = 0;
     paceSentMs = 0;
+    devicePlaying = false;
     if (paceTimer) { clearInterval(paceTimer); paceTimer = null; }
   };
   // Tracks whether Gemini sent a turnComplete for the current generation turn.
@@ -1216,6 +1325,55 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   let lastUserInputAt = 0;
   let heardStartAt = 0;
   let followUpUntil = 0;
+
+  // ---- Conversation transcripts and time-to-first-word (conversationLog.js, persona plan Phase 0) ----
+  // A turn is recorded once Gemini completes a reply that was actually heard (dropped / unsolicited replies
+  // never reach here). Latency: from the end of the user's transcribed words (or a device text turn) to the
+  // first audio of the reply. Nothing is recorded while a call or meeting is being recorded.
+  let convId = null, convLastTurnAt = 0, convEndPending = null;
+  let followUpMs = FOLLOW_UP_MS; // F1: 25 s after a question or a long answer, 10 s otherwise
+  let sessionOwedIds = []; // C2: 'think' answers this session's prompt told him to give
+  const deliverThink = (t) => {
+    if (!imsBrain || !isConversationActive || !currentGeminiWs || currentGeminiWs.readyState !== WebSocket.OPEN || (isHardware && isRecordingActive())) return false;
+    textTurnSent = true; sessionUsed = true; lastActivityAt = Date.now();
+    currentGeminiWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `(System: your considered answer to "${t.request}" is ready. Give it to him now, in your own words, conclusion first and briefly: ${t.summary})` }] }], turnComplete: true } }));
+    markReported([t.id]);
+    try { logCapture(`[${new Date().toISOString()}] ${tag} PROPER THINK DELIVERED #${t.id}\n`); } catch (_) { }
+    return true;
+  };
+  thinkDeliverers.add(deliverThink);
+  const newTurnLog = () => ({ user: '', ims: '', system: '', emotions: [], tools: [], userEndAt: 0, firstAudioAt: 0, cueSent: false });
+  let turnLog = newTurnLog();
+  const convEnd = (reason) => {
+    if (!convId) return;
+    try { endConversationLog(convId, reason); } catch (err) { console.error(`${tag} [Conversation] end failed:`, err.message); }
+    const ended = convId;
+    convId = null;
+    if (sessionOwedIds.length) { try { markReported(sessionOwedIds); } catch (_) { } sessionOwedIds = []; } // he's had the chance to give them
+    if (isHardware) lastConversationEnd = { at: Date.now(), reason };
+    summariseConversation(ended).catch((err) => console.error(`${tag} [Memory] note failed:`, err.message)); // in the background
+  };
+  const convRecordTurn = () => {
+    const t = turnLog;
+    if (!imsBrain || (isHardware && isRecordingActive())) { turnLog = newTurnLog(); return; }
+    const ims = stripToolText(t.ims).trim();
+    if (!ims) return; // nothing said yet (e.g. a step that only set his face) - keep collecting this turn
+    turnLog = newTurnLog();
+    try {
+      if (convId && Date.now() - convLastTurnAt > 10 * 60000) convEnd('stale');
+      if (!convId) {
+        let personaId = null;
+        try { personaId = activePersonaId(); } catch (_) { }
+        convId = startConversation({ personaId, device: isHardware ? 'desk' : 'web' });
+      }
+      if (t.system.trim()) addTurn(convId, { role: 'system', text: t.system });
+      if (t.user.trim()) addTurn(convId, { role: 'user', text: t.user });
+      const latencyMs = t.userEndAt && t.firstAudioAt && t.firstAudioAt >= t.userEndAt ? t.firstAudioAt - t.userEndAt : null;
+      addTurn(convId, { role: 'ims', text: ims, emotion: [...new Set(t.emotions)].join(',') || null, tools: t.tools, latencyMs });
+      convLastTurnAt = Date.now();
+      if (convEndPending) { convEnd(convEndPending); convEndPending = null; }
+    } catch (err) { console.error(`${tag} [Conversation] record failed:`, err.message); }
+  };
   let judgePendingUntil = 0; // Gemini started replying before the transcript arrived: hold his voice until we can check
   let stopWindow = ''; // the last few words the user said, for the "IMS stop" command
 
@@ -1223,6 +1381,8 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // the whole conversation: nothing more is said, Gemini's work is abandoned (its
   // connection is closed) and the device goes back to plain standby. Silent.
   const cancelConversation = (reason = 'user_cancel') => {
+    convRecordTurn(); // whatever he'd said of the cut-off reply
+    convEnd(reason === 'tap_interrupt' ? 'tap_interrupt' : 'cancel');
     console.log(`${tag} ✋ Stop command / farewell heard - cancelling conversation, back to standby (${reason})`);
     try { logCapture(`[${new Date().toISOString()}] ${tag} STOP/FAREWELL - CONVERSATION CANCELLED (${reason})\n`); } catch (_) { }
     isConversationActive = false;
@@ -1239,7 +1399,10 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     wakeDaemonService.forceStandby(reason);
     restartUpstream();
   };
-  let turnCompleteAt = 0; // when currentTurnComplete last flipped true - see isModelSpeakingNow's POST_TURN_ECHO_GRACE_MS
+  let turnCompleteAt = 0; // when currentTurnComplete last flipped true
+  let audibleTurnEndAt = 0; // when a reply that was actually played last ended - the echo guard keys off this, not dropped replies
+  let lastMicFrameAt = 0;   // the Box-3 streams the mic only while checking a wake phrase or listening
+  let lastLoudMicAt = 0;    // last mic frame with real speech in it - the end of what the user said
 
   // Strict session lifecycle state for hardware clients
   let isConversationActive = false;
@@ -1393,12 +1556,24 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   };
 
   let geminiConnectedAt = 0; // for "how long was this connection alive" in the close log below
+  // Google answers a session opened within ~1 s of the last one closing with "Internal error" (seen on every
+  // such failure on 5 Oct 2026), so a new one waits until SESSION_GAP_MS after the last close. Mic audio is
+  // queued meanwhile (outboundAudioQueue) and sent once the new session is ready, so nothing said is lost.
+  const SESSION_GAP_MS = 1500;
+  let lastGeminiCloseAt = 0;
+  let deferredOpenTimer = null;
   let warmReconnectTimer = null;
   let warmReconnectAttempts = 0;
 
+  // After Gemini errors the wait grows 2 -> 5 -> 15 -> 30 -> 60 s (it used to retry every 2-3 s, which turned
+  // a Google outage into hundreds of session starts a minute and then quota errors). It resets once a
+  // session has stayed up for 10 s.
+  const RETRY_LADDER_MS = [2000, 5000, 15000, 30000, 60000];
   const scheduleWarmUpstreamReconnect = (delayMs = 1500) => {
     if (isClientClosed || ws.readyState !== WebSocket.OPEN) return;
     if (warmReconnectTimer) clearTimeout(warmReconnectTimer);
+    const waitMs = warmReconnectAttempts > 0 ? RETRY_LADDER_MS[Math.min(warmReconnectAttempts - 1, RETRY_LADDER_MS.length - 1)] : delayMs;
+    if (warmReconnectAttempts > 0) console.log(`${tag} ⏳ Gemini reconnect in ${Math.round(waitMs / 1000)} s (attempt ${warmReconnectAttempts})`);
     warmReconnectTimer = setTimeout(() => {
       warmReconnectTimer = null;
       if (isClientClosed || ws.readyState !== WebSocket.OPEN) return;
@@ -1406,15 +1581,24 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         console.log(`${tag} 🔥 Proactively re-establishing warm upstream Gemini Live connection in background...`);
         ensureGeminiSocket();
       }
-    }, Math.min(delayMs * Math.pow(1.5, warmReconnectAttempts), 30000));
+    }, waitMs);
   };
 
   const createGeminiSocket = () => {
     if (isClientClosed) return null;
+    if (Date.now() < geminiCooldownUntil) {
+      if (!createGeminiSocket.lastNote || Date.now() - createGeminiSocket.lastNote > 10000) {
+        createGeminiSocket.lastNote = Date.now();
+        try { logCapture(`[${new Date().toISOString()}] ${tag} GEMINI COOLDOWN - not opening a session for ${Math.ceil((geminiCooldownUntil - Date.now()) / 1000)} s\n`); } catch (_) { }
+      }
+      return null;
+    }
     const gWs = new WebSocket(geminiUrl);
     geminiConnectedAt = Date.now();
     geminiSetupAcknowledged = false;
     lastActivityAt = Date.now(); // a fresh session gets its full 15 s before the silence close
+    sessionUsed = false;
+    try { sessionPersonaId = activePersonaId(); } catch (_) { sessionPersonaId = null; }
 
     if (isHardware) {
       if (activeHardwareSession && activeHardwareSession.clientWs === ws) {
@@ -1597,6 +1781,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               currentTurnComplete = true;
               turnCompleteAt = Date.now();
               resetTurnTriggers();
+              turnLog = newTurnLog(); // what was heard wasn't for Ims
             }
             return;
           }
@@ -1609,6 +1794,10 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             if (part.inlineData?.mimeType?.startsWith('audio/') && part.inlineData.data) {
               lastModelAudioTime = Date.now();
               turnHadAudio = true;
+              if (!turnLog.firstAudioAt) {
+                turnLog.firstAudioAt = Date.now();
+                if (lastLoudMicAt && lastLoudMicAt < turnLog.firstAudioAt && turnLog.firstAudioAt - lastLoudMicAt < 20000 && !turnLog.system) turnLog.userEndAt = lastLoudMicAt;
+              }
               clearPendingSpeech(); clarifyNudged = false;
               // currentTurnComplete was true -> this chunk starts a NEW turn,
               // so reset the opener-fingerprint tracker (see the
@@ -1661,6 +1850,26 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           spokenTranscript = stripToolText(spokenTranscript + spokenText);
           if (isHardware && morningOfferPending) { morningOfferPending = false; markMorningReportOffered(); }
           turnReplyText = stripToolText(turnReplyText + spokenText);
+          turnLog.ims += spokenText;
+          // I4: the face follows a turn in a long reply - timed to when those words are actually heard
+          // (no face set yet: from the first ~8 words; already set: on a later turn in a reply past 12 words)
+          const wordsSoFar = turnLog.ims.split(/\s+/).filter(Boolean).length;
+          const noFaceYet = !turnLog.emotions.length && !turnLog.autoFaceChecked && wordsSoFar >= 8;
+          if (imsBrain && !(isHardware && isRecordingActive()) && (noFaceYet || (!turnLog.cueSent && turnLog.emotions.length && wordsSoFar > 12))) {
+            if (noFaceYet) turnLog.autoFaceChecked = true;
+            const emo = faceFromWords(noFaceYet ? turnLog.ims : turnLog.ims.slice(-160), turnLog.emotions);
+            const cue = emo && [emo];
+            if (cue) {
+              if (!noFaceYet) turnLog.cueSent = true;
+              turnLog.emotions.push(cue[0]);
+              console.log(`${tag} 🎭 face from his words: ${cue[0]}${noFaceYet ? ' (he set none)' : ''}`);
+              const queuedMs = paceQueue.reduce((n, it) => n + (it.bin ? it.bin.length / PCM_BYTES_PER_MS : 0), 0);
+              const playsAt = isHardware ? (paceSentMs ? paceStart + paceSentMs : Date.now()) + queuedMs : Math.max(Date.now(), webAudioEndAt);
+              setTimeout(() => {
+                if (ws.readyState === WebSocket.OPEN && !(isHardware && isRecordingActive())) ws.send(JSON.stringify(getDevicePayload(cue[0])));
+              }, Math.max(0, Math.min(20000, playsAt - Date.now())));
+            }
+          }
           console.log(`${tag} [SpokenTranscript] "${spokenText}"`);
           try {
             logCapture(
@@ -1685,9 +1894,10 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         // what the user actually said, not just what Ims replied).
         if (parsed.serverContent?.inputTranscription?.text) {
           const heardText = parsed.serverContent.inputTranscription.text;
-          if (/[a-z0-9]/i.test(heardText)) lastUserInputAt = Date.now();
-          if (/[a-z0-9]/i.test(heardText) && (!isHardware || looksAddressed(heardThisTurn) || Date.now() <= followUpUntil || touchToTalkActive)) lastActivityAt = Date.now();
+          if (/[a-z0-9]/i.test(heardText)) { lastUserInputAt = Date.now(); sessionUsed = true; }
+          if (/[a-z0-9]/i.test(heardText) && (!isHardware || looksAddressed(heardThisTurn) || Date.now() <= followUpUntil || touchToTalkActive)) { lastActivityAt = Date.now(); sessionUsed = true; }
           userSpokenTranscript += heardText;
+          turnLog.user += heardText;
           try {
             logCapture(
               `[${new Date().toISOString()}] ${tag} USER SPOKEN TEXT: ${heardText}\n`);
@@ -1726,8 +1936,13 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             currentTurnComplete = true; // Gemini confirmed the turn ended cleanly
             turnCompleteAt = Date.now();
             if (turnHadAudio) {
+              audibleTurnEndAt = Date.now();
               resetTurnTriggers(); turnHadAudio = false;
-              followUpUntil = playEnd + FOLLOW_UP_MS;
+              const said = stripToolText(turnLog.ims).trim();
+              followUpMs = (/\?["')\s]*$/.test(said) || said.split(/\s+/).length > 60) ? 25000 : FOLLOW_UP_MS;
+              followUpUntil = playEnd + followUpMs;
+              wakeDaemonService.setSilenceTimeout(followUpMs + 5000);
+              if (isHardware) paceSend({ json: JSON.stringify({ followUpMs }) }); // the Box-3 keeps listening that long too
             }
           }
           console.log(`${tag} ✅ Gemini reported TURN COMPLETE (hasToolCall=${!!parsed.toolCall})`);
@@ -1744,6 +1959,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             turnOpenerSaved = true;
           }
           if (imsBrain && turnReplyText.trim()) { recordReplyText(turnReplyText); turnReplyText = ''; }
+          if (!parsed.toolCall) convRecordTurn();
         }
 
         // DIAGNOSTIC: the thinking-trace text repeatedly says "I'm calling
@@ -1769,11 +1985,31 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         // call.id, degrading library answers and destabilizing the turn-taking/interrupt state.
         if (imsBrain && parsed.toolCall?.functionCalls) {
           lastActivityAt = Date.now();
+          sessionUsed = true;
+          const toolStartedAt = Date.now();
+          const lookups = parsed.toolCall.functionCalls.filter((c) => !['setEmotion', 'endConversation', 'noWakeDetected', 'startRecording', 'noteWake'].includes(c.name));
+          if (isHardware && lookups.length && !turnLog.firstAudioAt && !turnLog.holdingPlayed) {
+            const tl = turnLog;
+            setTimeout(() => {
+              if (isClientClosed || tl !== turnLog || tl.firstAudioAt || tl.holdingPlayed || isRecordingActive() || isDeviceMicMuted()) return;
+              let personaNow = null;
+              try { personaNow = activePersonaId(); } catch (_) { }
+              const clip = personaNow && pickClip(personaNow);
+              if (!clip) return;
+              tl.holdingPlayed = clip.line; tl.firstAudioAt = Date.now();
+              tl.ims = `${clip.line} ${tl.ims}`;
+              tl.tools.push({ name: 'holdingLine', ms: Date.now() - toolStartedAt, ok: true });
+              for (let o = 0; o < clip.pcm.length; o += 4800) paceSend({ bin: clip.pcm.subarray(o, o + 4800) });
+              try { logCapture(`[${new Date().toISOString()}] ${tag} HOLDING LINE "${clip.line}" (${lookups.map((c) => c.name).join(', ')} still running)\n`); } catch (_) { }
+            }, 2500);
+          }
           // Shared by every new reminders/lists branch below, all of which
           // are synchronous - reduces 7 near-identical toolResponse blocks to
           // one call each, so a copy-paste slip can't silently mismatch a
           // call.id or skip the OPEN check.
           const respondToToolCall = (call, output) => {
+            if (call.name !== 'setEmotion') turnLog.tools.push({ name: call.name, ms: Date.now() - toolStartedAt, ok: !(output && output.error),
+              ...(/^(getWeather|getBloodGlucose|listScheduledItems|getCalendarEvents|getDayReport|getUpcomingBirthdays|getTrainingSummary|getScheduleHistory|getNewMusicReleases)$/.test(call.name) ? { out: JSON.stringify(output).slice(0, 2500) } : {}) });
             // Anything that fails is logged to the dev ideas queue as a prompt for Claude Code.
             if (output && output.error) {
               try {
@@ -1850,12 +2086,9 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               if (imsBrain && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ [call.name]: true }));
               }
+              if (call.name === 'endConversation') convEndPending = 'farewell'; // ends once the farewell turn is recorded
               if (call.name === 'endConversation' && imsBrain) {
-                // Phase 3 memory: fire-and-forget, never blocks the tool ack
-                // above - a slow/failed summarisation call must not delay
-                // the farewell reply reaching the device.
-                recordConversationMemory(userSpokenTranscript, spokenTranscript)
-                  .catch((err) => console.error(`${tag} [Memory] recordConversationMemory failed:`, err.message));
+                // the conversation's note is written when it ends (convEnd -> summariseConversation)
                 // Every goodbye also dismisses any currently-ringing
                 // timer/alarm/reminder - harmless no-op if nothing's ringing,
                 // so this doesn't need to know whether THIS particular
@@ -1882,6 +2115,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               // the chosen emotion string straight through, no RAG/state logic
               // needed. main.cpp maps the string to its emotion index.
               const emotion = call.args?.emotion || 'neutral';
+              turnLog.emotions.push(emotion);
               console.log(`${tag} 🎭 setEmotion(${emotion}) - forwarding to hardware client`);
               if (imsBrain && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify(getDevicePayload(emotion)));
@@ -1987,6 +2221,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                   respondToToolCall(call, { error: 'No fact provided' });
                 } else {
                   const saved = addMemory(fact, category);
+                  embedMemory('memory', saved.id, saved.fact).catch(() => {});
                   console.log(`${tag} 🧠 rememberFact saved: "${saved.fact}" (${saved.category})`);
                   respondToToolCall(call, { status: 'remembered', fact: saved.fact, id: saved.id });
                 }
@@ -1997,9 +2232,10 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             } else if (call.name === 'recallMemory') {
               try {
                 const query = call.args?.query || '';
-                const results = searchMemories(query);
-                console.log(`${tag} 🔍 recallMemory("${query}") -> found ${results.length} memories`);
-                respondToToolCall(call, { query, memories: results.map((m) => m.fact) });
+                recallMemories(query).then((results) => {
+                  console.log(`${tag} 🔍 recallMemory("${query}") -> found ${results.length} (facts and conversation notes)`);
+                  respondToToolCall(call, { query, memories: results.map((m) => (m.kind === 'note' ? `(from a past conversation) ${m.text}` : m.text)) });
+                }).catch((err) => respondToToolCall(call, { error: err.message }));
               } catch (err) {
                 console.error(`${tag} recallMemory failed:`, err.message);
                 respondToToolCall(call, { error: err.message });
@@ -2103,7 +2339,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               getDayReport().then((r) => {
                 console.log(`${tag} 📰 getDayReport -> ${r.sectionCount} sections, ${r.report.length} chars`);
                 dayReportSentAt = Date.now();
-                respondToToolCall(call, r);
+                respondToToolCall(call, { instructions: r.instructions, sectionCount: r.sectionCount, report: r.report });
               }).catch((err) => respondToToolCall(call, { error: err.message }));
             } else if (call.name === 'getNews') {
               getNews({ topic: call.args?.topic, source: call.args?.source, about: call.args?.about, tours: call.args?.tours }).then((d) => {
@@ -2156,7 +2392,12 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 });
               }).catch((err) => respondToToolCall(call, { error: err.message }));
             } else if (call.name === 'startBackgroundTask') {
-              createTask({ request: call.args?.task, origin: isHardware ? 'desk' : 'web' }).then((t) => {
+              const thinkIt = call.args?.kind === 'think';
+              createTask({ request: call.args?.task, origin: isHardware ? 'desk' : 'web', kind: thinkIt ? 'think' : 'research' }).then((t) => {
+                if (thinkIt) {
+                  console.log(`${tag} 🤔 proper think #${t.id}: ${t.title}`);
+                  return respondToToolCall(call, { status: 'thinking', id: t.id, note: "Tell him in a few words you'll have a proper think and come back to him. If it's ready while you're still talking you'll be told; otherwise you'll bring it up next time he talks to you. Don't guess the answer now." });
+                }
                 console.log(`${tag} 🧵 startBackgroundTask #${t.id}: ${t.title}`);
                 respondToToolCall(call, { status: 'started', id: t.id, title: t.title, note: 'Tell them briefly you are on it and they can ask how it went later (or it will be in their next day report). Do not guess the answer now.' });
               }).catch((err) => respondToToolCall(call, { error: err.message }));
@@ -2236,6 +2477,18 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             geminiSetupAcknowledged = true;
             paceFlush();
             ws.send(JSON.stringify({ setupComplete: {} }));
+            if (isHardware && !resumptionHandle && lastConversationEnd.at && Date.now() - lastConversationEnd.at < 10 * 60000
+              && ['silence', 'disconnect', 'device_closed', 'stale'].includes(lastConversationEnd.reason) && !isRecordingActive()) {
+              try {
+                const turns = recentTurns({ withinMinutes: 15, limit: 6 }).filter((t) => t.role !== 'system')
+                  .map((t) => ({ role: t.role === 'ims' ? 'model' : 'user', parts: [{ text: t.text }] }));
+                if (turns.length && gWs && gWs.readyState === WebSocket.OPEN) {
+                  gWs.send(JSON.stringify({ clientContent: { turns, turnComplete: false } }));
+                  try { logCapture(`[${new Date().toISOString()}] ${tag} CONTEXT RESTORED - ${turns.length} recent turns from the last conversation (${lastConversationEnd.reason})\n`); } catch (_) { }
+                }
+              } catch (err) { console.error(`${tag} [Conversation] restore failed:`, err.message); }
+              lastConversationEnd = { at: 0, reason: null }; // once
+            }
             while (outboundAudioQueue.length > 0) {
               const audioPayload = outboundAudioQueue.shift();
               if (gWs && gWs.readyState === WebSocket.OPEN) {
@@ -2271,9 +2524,23 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       flushWavToDisk();
       flushMicWavToDisk();
       const reasonStr = reason ? reason.toString() : '';
+      lastGeminiCloseAt = Date.now();
       const connectionAliveMs = geminiConnectedAt > 0 ? (Date.now() - geminiConnectedAt) : -1;
       const msSinceOwnAudioAtClose = lastModelAudioTime > 0 ? (Date.now() - lastModelAudioTime) : -1;
       console.log(`${tag} Gemini Live closed connection: ${code} - ${reasonStr} (alive ${connectionAliveMs}ms, ${msSinceOwnAudioAtClose}ms since last audio chunk)`);
+      if (connectionAliveMs > 10000) warmReconnectAttempts = 0; // that session was healthy
+      if (code !== 1000 && code !== 1005) {
+        warmReconnectAttempts++;
+        if (/quota|rate/i.test(reasonStr)) warmReconnectAttempts = Math.max(warmReconnectAttempts, 4); // 30 s, then 60 s
+        // quota / rate limits get the long ladder; Google's transient "Internal error" only a short pause (at most 5 s),
+        // so a flaky spell doesn't leave Ims deaf for a minute - the pause alone stops the per-frame reconnect storm
+        const quota = /quota|rate/i.test(reasonStr);
+        // a session that failed may have left a bad resume token - presenting it again got 'Internal error' every time
+        if (!quota && resumptionHandle) { resumptionHandle = null; try { logCapture(`[${new Date().toISOString()}] ${tag} RESUME TOKEN DROPPED after ${code}
+`); } catch (_) { } }
+        const wait = quota ? RETRY_LADDER_MS[Math.min(warmReconnectAttempts - 1, RETRY_LADDER_MS.length - 1)] : Math.min(5000, RETRY_LADDER_MS[Math.min(warmReconnectAttempts - 1, 1)]);
+        geminiCooldownUntil = Math.max(geminiCooldownUntil, Date.now() + wait);
+      }
       try {
         // connectionAliveMs distinguishes a Gemini-side idle/session-length
         // limit (would cluster around some roughly-fixed duration every
@@ -2310,8 +2577,8 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           setTimeout(() => {
             try {
               if (!isClientClosed && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ turnComplete: true }));
-                console.log(`${tag} ✅ Sent synthetic turnComplete to hardware client.`);
+                paceSend({ json: JSON.stringify({ turnComplete: true }) }); // after any audio still queued for the device
+                console.log(`${tag} ✅ Queued synthetic turnComplete for the hardware client (after remaining audio).`);
               }
             } catch (e) {
               console.error(`${tag} Error sending synthetic turnComplete:`, e.message);
@@ -2392,6 +2659,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       }
     },
     isPlayingOrPacing: () => {
+      if (isHardware && deviceStillPlaying()) return true; // still playing on the desk
       if (!currentTurnComplete && lastModelAudioTime > 0 && (Date.now() - lastModelAudioTime > 8000)) {
         return false;
       }
@@ -2427,6 +2695,12 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
   const ensureGeminiSocket = () => {
     if (!currentGeminiWs || currentGeminiWs.readyState === WebSocket.CLOSED || currentGeminiWs.readyState === WebSocket.CLOSING) {
+      const wait = lastGeminiCloseAt + SESSION_GAP_MS - Date.now();
+      if (wait > 0) {
+        // too soon after the last session closed - open it a moment later (audio is queued until then)
+        if (!deferredOpenTimer) deferredOpenTimer = setTimeout(() => { deferredOpenTimer = null; if (!isClientClosed) ensureGeminiSocket(); }, wait);
+        return null;
+      }
       console.log(`${tag} Re-establishing upstream Gemini Live connection on demand...`);
       currentGeminiWs = createGeminiSocket();
     }
@@ -2459,7 +2733,20 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     if (!isBinary) {
       try {
         const maybeJson = JSON.parse(message.toString());
+        if (isHardware && maybeJson.playbackStart) { devicePlaying = true; lastDeviceSpeakingAt = Date.now(); try { logCapture(`[${new Date().toISOString()}] ${tag} DEVICE PLAYBACK START
+`); } catch (_) { } return; }
+        if (isHardware && maybeJson.playbackDone) {
+          devicePlaying = false;
+          lastDeviceSpeakingAt = Date.now();
+          try { logCapture(`[${new Date().toISOString()}] ${tag} DEVICE PLAYBACK DONE (${paceQueue.length} chunks still queued)
+`); } catch (_) { }
+          lastActivityAt = Math.max(lastActivityAt, Date.now()); // the silence count starts when he actually stops
+          if (followUpUntil) followUpUntil = Math.max(followUpUntil, Date.now() + followUpMs); // so does the reply window
+          wakeDaemonService.notifyModelSpeechEnd(Date.now()); // the daemon's silence count too
+          return;
+        }
         if (typeof maybeJson.debug === 'string') {
+          if (isHardware && /^heartbeat state=6\b/.test(maybeJson.debug)) lastDeviceSpeakingAt = Date.now();
           console.log(`${tag} [DEBUG] ${maybeJson.debug}`);
           try {
             logCapture(
@@ -2479,6 +2766,8 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         if (isHardware && isRecordingActive() && (maybeJson.sessionClosed || maybeJson.touchToTalk)) return;
         if (maybeJson.sessionClosed) {
           console.log(`${tag} 🔒 Hardware session closed by device. Resetting conversation state.`);
+          convEnd('device_closed');
+          turnLog = newTurnLog(); // a wake check that came to nothing
           isConversationActive = false;
           touchToTalkActive = false;
           wakeDaemonService.forceStandby('device_session_closed');
@@ -2489,6 +2778,12 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             currentGeminiWs.close(1000, "Device session closed");
             currentGeminiWs = null;
           }
+          return;
+        }
+        // A tap on the Box-3 while Ims was speaking or thinking: stop him - the rest of the reply is
+        // dropped, the conversation ends and the wake listener is reset (same as saying "IMS stop").
+        if (isHardware && maybeJson.interrupt) {
+          cancelConversation('tap_interrupt');
           return;
         }
         if (maybeJson.touchToTalk) {
@@ -2526,7 +2821,9 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       // fresh input (RMS spikes in the thousands right after - self-echo, not the room), and Gemini,
       // receiving that as a new turn, answered with the exact same sentence it had just finished saying.
       const POST_TURN_ECHO_GRACE_MS = 900;
-      const msSinceTurnComplete = currentTurnComplete ? (Date.now() - turnCompleteAt) : Infinity;
+      lastMicFrameAt = Date.now();
+      // only after a reply that was actually played - a dropped reply made no sound, so there's no echo to guard against
+      const msSinceTurnComplete = currentTurnComplete && audibleTurnEndAt ? (Date.now() - audibleTurnEndAt) : Infinity;
       const isModelSpeakingNow =
         (!currentTurnComplete && (Date.now() - lastModelAudioTime < 800)) ||
         (currentTurnComplete && msSinceTurnComplete < POST_TURN_ECHO_GRACE_MS);
@@ -2557,6 +2854,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         // Ignore the first 3 s after a turn ends: the speaker's own tail and room echo are
         // loud enough on the mic to look like speech. A quick follow-up from the user is
         // still recognised through its transcription instead.
+        if (samples > 0 && Math.sqrt(sumSq / samples) > 400) lastLoudMicAt = Date.now();
         if (samples > 0 && Math.sqrt(sumSq / samples) > 300 && Date.now() - turnCompleteAt > 3000 && ++energeticMicFrames >= 8) unsolicitedTurn = false; // the user is talking: stop dropping
         // speech after Ims's turn, in an open conversation - watched so a reply that never comes is noticed
         if (samples > 0 && currentTurnComplete && turnCompleteAt && Math.sqrt(sumSq / samples) > 400) {
@@ -2575,6 +2873,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           }
         }
       });
+      sessionUsed = true; // mic audio went into this session (a wake check or a conversation)
       if (gWs && gWs.readyState === WebSocket.OPEN && geminiSetupAcknowledged) {
         gWs.send(realtimePayload);
       } else {
@@ -2594,7 +2893,11 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       // which Gemini rejects with 1007 "Request contains an invalid argument."
       try {
         const parsedCtrl = JSON.parse(msgStr);
-        if (parsedCtrl.clientContent?.turns?.length) { textTurnSent = true; lastActivityAt = Date.now(); lastUserInputAt = Date.now(); }
+        if (parsedCtrl.clientContent?.turns?.length) {
+          textTurnSent = true; sessionUsed = true; lastActivityAt = Date.now(); lastUserInputAt = Date.now();
+          const said = parsedCtrl.clientContent.turns.flatMap((t) => (t.parts || []).map((p) => p.text || '')).join(' ').trim();
+          if (said) { turnLog.system = said.slice(0, 600); turnLog.userEndAt = Date.now(); }
+        }
         if (parsedCtrl.clientContent && Array.isArray(parsedCtrl.clientContent.turns) && parsedCtrl.clientContent.turns.length === 0) {
           console.warn(`${tag} ⚠️ Suppressed empty clientContent turns to prevent Gemini 1007 rejection.`);
           return;
@@ -2616,6 +2919,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             const previewVoice = parsed.setup.previewVoice || null;
             const recordingNow = isRecordingActive();
             const hardwareDefaults = getHardwareSetupPayload(previewVoice, morningReportReady && !recordingNow ? morningReportDirective : null);
+            try { sessionOwedIds = owedThinkTasks().map((t) => t.id); } catch (_) { sessionOwedIds = []; } // C2: answers this session will give
             if (morningReportReady && !recordingNow) {
               // Only counts as offered once Ims actually speaks in this session (see the
               // spoken-transcript handler) - a connection nobody talks to doesn't use it up.
@@ -2714,6 +3018,9 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
   ws.on('close', (code, reason) => {
     isClientClosed = true;
+    thinkDeliverers.delete(deliverThink);
+    convRecordTurn();
+    convEnd('disconnect');
     if (turnStallWatchdogInterval) clearInterval(turnStallWatchdogInterval);
     if (warmReconnectTimer) clearTimeout(warmReconnectTimer);
     wakeDaemonService.unregisterClient(clientType);

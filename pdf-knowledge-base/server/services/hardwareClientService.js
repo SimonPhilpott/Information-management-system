@@ -14,6 +14,9 @@ import { searchSimilar } from "./vectorStore.js";
 import { generateQueryEmbedding } from "./embeddingService.js";
 import { detectQuerySubjects } from "./subjectMatcherService.js";
 import { getEmotionNames, getFacePromptGuide } from "./faceDesignService.js";
+import { profilesForPrompt } from "./memoryProfiles.js";
+import { moodForPrompt, thingsOnMindForPrompt, speechVarietyHint } from "./moodService.js";
+import { owedThinkTasks } from "./tasksService.js";
 import { personaRules, accentRule, voiceName, languageCode, pools, inYourVoice, getActivePersona, activePersonaId, savePersonaRaw, savePersonaParts, listHistory, readHistory } from "./personaService.js";
 import { describeSources } from "./newsService.js";
 import { wakePhraseNames, wakeSpellings } from "./phrasesService.js";
@@ -489,16 +492,19 @@ export function buildMemoryParagraph() {
       parts.push("EXPLICIT FACTS & NOTES YOU WERE DIRECTED TO REMEMBER (Recall these naturally when asked):\n" +
         explicitMemories.map((m) => `- [${m.category}] ${m.fact}`).join("\n"));
     }
+    // what Ims has built up about Simon and himself (nightly profiles), then the latest conversation notes
+    try { const prof = profilesForPrompt(); if (prof) parts.push(prof); } catch { /* none yet */ }
     if (relEntries.length > 0) {
-      const older = relEntries.slice(0, -2), latest = relEntries.slice(-2);
+      const recent = relEntries.slice(-8); // up to 40 are kept; the profiles hold the long view
+      const older = recent.slice(0, -2), latest = recent.slice(-2);
       parts.push("WHAT YOU AND THE USER TALKED ABOUT BEFORE (oldest first):\n" +
-        relEntries.map((e) => `- ${e}`).join("\n") +
+        recent.map((e) => `- ${e}`).join("\n") +
         "\nThe last " + latest.length + " are the most recent. If one of them mentions something the user was about to do (not health or training), it's natural to ask how it went - once, briefly, when it fits." +
         (older.length ? "" : ""));
     }
     try {
       const opinions = JSON.parse(getSetting(OPINIONS_KEY) || "[]");
-      if (opinions.length) parts.push("YOUR OWN OPINIONS (things you've said before - stay consistent with them):\n" + opinions.map((o) => `- ${o}`).join("\n"));
+      if (opinions.length) parts.push("YOUR OWN OPINIONS (things you've said before - stay consistent with them):\n" + opinions.slice(-12).map((o) => `- ${o}`).join("\n"));
     } catch { /* none */ }
     if (parts.length === 0) return "";
     return parts.join("\n\n");
@@ -599,7 +605,7 @@ export function getWebPersonaBlock() {
     `You are Ims, an intelligent voice companion (rhymes with rims). You speak English only, in your persona's accent (${persona.accent}) in every single sentence and turn - never drifting into another accent. ` + accentRule() + " " +
     (rules ? "\n\n" + rules + "\n\n" : " ") +
     "Right now, calibrate that tone using the following user-adjustable personality settings (these govern attitude, warmth, humor, and formality, but NEVER override your persona's accent and dialect, which must remain persistent throughout every turn): " +
-    buildPersonalityParagraph(personality) + "\n\nLAST AND MOST IMPORTANT:\n1) " + accentRule() + "\n2) ZERO MEDICAL DISCLAIMERS: NEVER say 'this is not medical advice', NEVER say 'please seek advice from a medical professional or team', and NEVER tell the user to consult their doctor or diabetes team. Deliver all advice directly without disclaimers or caveats.";
+    buildPersonalityParagraph(personality) + "\n\nLAST AND MOST IMPORTANT:\n1) " + accentRule() + "\n2) NO MEDICAL DISCLAIMERS, EVER: never say anything is 'not medical advice' and never suggest Simon checks with a doctor, GP, nurse or diabetes team - he manages his own care and has banned it. Give your observations and ideas straight.";
   return { voice: voiceName(), languageCode: languageCode(), text };
 }
 
@@ -618,26 +624,19 @@ export function getSpokenStyleDirective() {
 function buildServicesParagraph() {
   let sources = [];
   try { sources = describeSources(); } catch (_) { /* none yet */ }
-  return "WHAT IMS CAN DO (you are the voice of all of it): " +
-    "Timers, alarms and reminders (scheduleItem, listScheduledItems, cancelScheduledItem, getScheduleHistory). " +
-    "Lists such as shopping (addToList, readList, removeFromList, clearList). " +
-    "Google Calendar (getCalendarEvents, addCalendarEvent). Birthdays (getUpcomingBirthdays). " +
-    "Memories - things they asked you to remember (rememberFact, recallMemory, forgetMemory). " +
-    "Weather for home or any saved or named place, now and up to 16 days ahead (getWeather; also on /ims/weather). The morning / day report, any time (getDayReport). " +
-    "News and interests from their chosen sources and the BBC (getNews). " +
-    "Background tasks - research that runs on its own and can be asked about later (startBackgroundTask, getBackgroundTasks; also on /ims/tasks). " +
-    "Their board game collection - how many games and expansions, and which games suit a player count or time (getBoardGames; also on /ims/boardgames, where games are added, removed and marked for sale). " +
-    "The Campaign Manager (/campaigns, a tab per game - Lord of the Rings LCG at /campaigns/lotr and Arkham Horror LCG at /campaigns/ahlcg) - the card game campaigns Simon plays with his brother Daniel (for Arkham also investigators' trauma, experience, the chaos bag and the campaign log): who's playing which deck and heroes, scenarios won and lost with the notable moments, boons and burdens, fallen heroes, what's next on the road, a map of Middle-earth, a written chronicle with a chapter per scenario (downloadable as a PDF), rule checks against the official rulebooks, and the decks themselves (RingsDB import, testing, AI insights). Talk about it like a fellow player - ask how a game went, what's next, recall the chronicle (getCampaigns; the snapshot below has the headlines). " +
-    "Dev ideas - ideas for improving IMS itself, saved for Simon to pick up in Claude Code (saveDevIdea; also on /ims/devideas). " +
-    "Blood sugar: current reading, time in range, lows, overnight, carbs (getBloodGlucose, lookUpFood, logCarbs, clearOldNightscoutData). " +
-    "Notes on their last run for its retrospective - how it felt, when they slowed, an extra gel (addRunNote). " +
-    "Training from Strava (getTrainingSummary). New and upcoming music from their MUZAK library (getNewMusicReleases). " +
-    "Their PDF library of books and documents (searchLibrary). Jokes (tellJoke). Recording calls and meetings on the desk terminal (startRecording). " +
-    "Anything else - obscure facts, how-to questions, advice, a bit of encouragement - or when your tools give no clear or only a partial answer: call askGemini (pass the question and anything you already know from IMS that helps, e.g. today's run or weather), then say its answer briefly in your own words and dialect, adding what you know - never read it out word for word and never just say you don't know. " +
-    "On the IMS web app only, with no tool of yours: the Run Planner (routes, pace and carbs for a run, at /ims/runplanner), running goals and detailed activity analysis (/ims/activities), " +
-    "the music want list and recommendations (/ims/musicscan), past call recordings and summaries (/ims/recordings), " +
-    "news source settings (/ims/news), your face designs (/ims/facedesigner) and your personality (/ims/persona) - if asked about these, say what's there and where." +
-    (sources.length ? "\nYOUR NEWS SOURCES (name and tags): " + sources.join("; ") + "." : "");
+  // each source with its first three tags - getNews searches every headline when no tag matches
+  const brief = sources.map((x) => String(x).replace(/\(([^)]*)\)/, (m, tags) => `(${tags.split(',').map((t) => t.trim()).slice(0, 3).join(', ')})`));
+  return "WHAT IMS CAN DO (you are the voice of all of it; your tools cover each): timers, alarms and reminders; lists; " +
+    "Google Calendar; birthdays; memories; weather; the morning / day report; news from Simon's sources and the BBC; " +
+    "background research tasks; his board game collection; blood sugar, food carbs and carb logging; run notes; Strava training; " +
+    "new music from his library; his PDF library; jokes; recording calls. " +
+    "The Campaign Manager holds the Lord of the Rings LCG and Arkham Horror LCG campaigns Simon plays with his brother Daniel - " +
+    "talk about it like a fellow player: how a game went, what's next, the chronicle. " +
+    "Opinions, ideas, explanations and advice are yours - answer from what you know. For facts you'd need to check (current events, precise figures) " +
+    "or when your tools only partly answer, call askGemini, then lead with your own view and weave its facts in; never read it out word for word. " +
+    "Only on the IMS web app (say what's there and where if asked): Run Planner (/ims/runplanner), activities and goals (/ims/activities), " +
+    "music want list (/ims/musicscan), call recordings (/ims/recordings), news settings (/ims/news), Face Designer (/ims/facedesigner), personas (/ims/persona)." +
+    (brief.length ? "\nYOUR NEWS SOURCES (name and tags): " + brief.join("; ") + "." : "");
 }
 
 // A snapshot of what's actually saved in every service, rebuilt at the start of each conversation,
@@ -659,10 +658,12 @@ function buildRecordsParagraph() {
     if (r) bits.push(`next ${r.type}: ${day(r.fire_at)}${r.label ? ` "${r.label}"` : ''}`);
     return bits.join('; ');
   });
-  safe('BIRTHDAYS saved (all of them, soonest first)', () => {
-    const list = listBirthdays();
-    if (!list.length) return 'none saved';
-    return list.map((b) => `${b.name}${b.relationship ? ` (${b.relationship})` : ''} ${b.day} ${MONTHS[b.month - 1]}` +
+  safe('BIRTHDAYS in the next 60 days (getUpcomingBirthdays finds anyone else saved - never say a birthday is not saved without checking)', () => {
+    const all = listBirthdays();
+    if (!all.length) return 'none saved';
+    const list = all.filter((b) => b.isToday || b.daysUntil <= 60);
+    if (!list.length) return `none in the next 60 days (${all.length} saved)`;
+    return `${all.length} saved; ` + list.map((b) => `${b.name}${b.relationship ? ` (${b.relationship})` : ''} ${b.day} ${MONTHS[b.month - 1]}` +
       (b.isToday ? ' - TODAY' : ` - in ${b.daysUntil} day${b.daysUntil === 1 ? '' : 's'}`) + (b.turningAge ? `, turning ${b.turningAge}` : '')).join('; ');
   });
   safe('ALARMS, TIMERS AND REMINDERS set', () => {
@@ -685,12 +686,13 @@ function buildRecordsParagraph() {
     return out.length ? out.slice(0, 40).join('; ') : 'nothing in the next fortnight';
   });
   safe('BACKGROUND TASKS (latest)', () => {
-    const rows = db.prepare('SELECT id, title, status FROM tasks ORDER BY created_at DESC LIMIT 8').all();
+    const rows = db.prepare('SELECT id, title, status FROM tasks ORDER BY created_at DESC LIMIT 3').all();
     return rows.length ? rows.map((r) => `#${r.id} ${r.title} (${r.status})`).join('; ') : 'none';
   });
   safe('DEV IDEAS waiting for Claude Code', () => {
-    const rows = db.prepare(`SELECT id, text FROM dev_ideas WHERE status IN ('new', 'picked_up') ORDER BY created_at DESC LIMIT 10`).all();
-    return rows.length ? rows.map((r) => `#${r.id} ${r.text.split('\n')[0].slice(0, 110)}`).join('; ') : 'none';
+    const n = db.prepare(`SELECT COUNT(*) c FROM dev_ideas WHERE status IN ('new', 'picked_up')`).get().c;
+    const rows = db.prepare(`SELECT id, text FROM dev_ideas WHERE status IN ('new', 'picked_up') ORDER BY created_at DESC LIMIT 3`).all();
+    return n ? `${n} waiting; latest: ` + rows.map((r) => `#${r.id} ${r.text.split('\n')[0].slice(0, 60)}`).join('; ') : 'none';
   });
   safe('CARBS logged by IMS today', () => {
     const start = new Date(new Date().toLocaleDateString('en-CA', { timeZone: tz }) + 'T00:00:00').getTime();
@@ -722,18 +724,18 @@ function buildRecordsParagraph() {
   safe('BOARD GAMES', () => { const c = collectionSummary(); return `${c.baseGames} games and ${c.expansions} expansions in the collection (${c.gamesWithExpansions} games have expansions; ${c.wantToSell} marked to sell) - getBoardGames to look any up`; });
   safe('MUSIC - want list and upcoming releases from artists in their library', () => {
     const wants = getMusicWants().filter((w) => !w.owned).slice(0, 12).map((w) => `${w.artist} - "${w.title}"${w.date ? ` (${w.date})` : ''}`);
-    const soon = getUpcomingReleases().slice(0, 10).map((r) => `${r.mbName || r.artist} - "${r.title}" ${r.date || ''}`.trim());
+    const soon = getUpcomingReleases().slice(0, 6).map((r) => `${r.mbName || r.artist} - "${r.title}" ${r.date || ''}`.trim());
     return [wants.length ? `want list: ${wants.join('; ')}` : 'want list empty', soon.length ? `coming out: ${soon.join('; ')}` : ''].filter(Boolean).join('. ');
   });
   safe('SAVED MEMORIES', () => { const n = db.prepare('SELECT COUNT(*) c FROM ims_memories').get().c; return `${n} saved (listed under what you remember) - recallMemory to search`; });
   safe('CARD GAME CAMPAIGNS (Campaign Manager, /campaigns/lotr and /campaigns/ahlcg) - getCampaigns for every play, notable moment and the chronicle text', () => describeCampaignsForIms());
-  safe('CARD GAME DECKS (on /campaigns/lotr/decks and /campaigns/ahlcg/decks)', () => describeDecksForIms());
+  safe('CARD GAME DECKS (on /campaigns/lotr/decks and /campaigns/ahlcg/decks)', () => String(describeDecksForIms() || '').replace(/(\d+ cards) - [^;]*/g, '$1'));
   safe('CALL RECORDINGS', () => {
     const n = db.prepare('SELECT COUNT(*) c FROM recordings').get().c;
-    const last = db.prepare('SELECT with_whom, started_at FROM recordings ORDER BY started_at DESC LIMIT 3').all();
+    const last = db.prepare('SELECT with_whom, started_at FROM recordings ORDER BY started_at DESC LIMIT 1').all();
     return n ? `${n} saved; latest: ${last.map((r) => `with ${r.with_whom} ${day(r.started_at)}`).join('; ')}` : 'none';
   });
-  return "YOUR RECORDS RIGHT NOW (read fresh from IMS at the start of this conversation - this is the user's real saved data, so answer from it directly and never say something isn't saved when it is listed here - if a tool comes back with less than is listed here (it may only have looked a short way ahead), these records win and you say what's listed; for anything that may have changed since, more detail, or anything not listed - glucose, training, news, music, library - call the tool):\n" + lines.map((l) => `- ${l}`).join('\n');
+  return "YOUR RECORDS RIGHT NOW (Simon's real saved data, read at the start of this conversation: answer from it directly; if a tool returns less than is listed here, these records win; for anything not listed, newer or more detailed, call the tool):\n" + lines.map((l) => `- ${l}`).join('\n');
 }
 
 // The desk sends its setup once when it connects and the server replays that same setup for every
@@ -811,43 +813,30 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             // Hard rules first; character, memory, personality and speech style last, closest to
             // where the model starts speaking, so they carry the most weight.
             "LANGUAGE: always speak English - never German or any other language, even if the audio is unclear or sounds foreign; if you cannot make out what was said, ask them in English to say it again. " + accentRule() + " " +
-            "CLARIFICATION & NEVER SILENT WHEN ADDRESSED: When the user addresses you with a wake phrase, or when a conversation is open, if you do not understand the whole prompt or only understand small parts of it (e.g. muffled speech, quiet audio, clipped words), you must NEVER stay silent, NEVER call noWakeDetected, and NEVER revert to standby without speaking. Always ask for clarification in your own voice (e.g. '" + getActivePersona().clarifyExample + "'). If you are confused by what they mean or making an educated guess at their intent, speak up and ask for clarification or confirmation (e.g. 'I reckon you mean [guess], is that right, or did you mean something else?'). " +
+            "CLARIFICATION: if you were addressed but missed or only half-heard it, never stay silent or call noWakeDetected - ask in your own voice (e.g. '" + getActivePersona().clarifyExample + "'), or say your best guess and ask if that's right. " +
             "WAKE PHRASES: when a reply would start from microphone audio (realtimeInput), only respond if the speech begins with 'Hey IMS', 'Hi IMS' or 'Eh up IMS' (or 'Ey up IMS')" + extraWakePhrases() + ". The name alone, other greetings ('Now then', 'Morning', 'Alright') and ambient room talk do not count - for anything else (background TV, room chatter clearly NOT addressed to you), call noWakeDetected and say nothing at all. But if ANY wake phrase was said or the user is trying to speak to you, you MUST speak back (either answer or ask for clarification) and NEVER call noWakeDetected. Text messages from the device system (clientContent) are exempt and answered at once. " +
             "If the user only said the wake phrase, greet them freshly in your own voice. If ANYTHING followed the wake phrase (a question, request or statement), do NOT greet at all - no 'Ey up', no 'Now then', no pleasantry or acknowledgement - your first words are the answer itself. " +
             "Once you have replied, the conversation is open: keep answering follow-ups without the wake phrase until they close it ('bye', 'goodbye', 'thanks, bye', 'that's all, IMS', 'I'm done', 'see you later' - and Simon's usual ones: 'cheers mate', 'cheers IMS', 'cheers', 'ta', 'ta-ra', 'nice one, cheers' when that is all they say; 'cheers' followed by another question is NOT a goodbye) - then say a brief farewell and call endConversation. " +
             "STOP: if they say 'stop IMS', 'shut up IMS', 'be quiet IMS', 'enough IMS', 'stop talking' or similar, call endConversation and say nothing (at most two or three words). Never explain or take offence. " +
             "RECORDING: when asked to record a call or meeting, if they haven't said who it is with, ask that one short question, then call startRecording. From then on stay COMPLETELY SILENT - no words, sounds, emotion changes or tool calls, whatever anyone says. The system ends the recording itself when the user says 'IMS stop'. " +
-            "JOKES: for a joke, call tellJoke and tell what it returns in your own voice; never invent one. HARD RULE above everything else: never tell, make up or repeat a racist or sexist joke, however dark the Humor setting; decline in one line and offer another. " +
-            "GREETINGS AND SMALL TALK: keep them conversational - never mention blood sugar, glucose, insulin, carbs, runs or training unless the user asks; that information is for the morning / day report. " +
-            "DIABETES & HEALTH ADVICE (CRITICAL NON-NEGOTIABLE RULE): when the user asks about blood sugar, diabetes, carbs, or exercise telemetry, give your direct observations, numbers, pattern analysis, and actionable ideas straight to consider. ABSOLUTE PROHIBITION: You must NEVER say 'this is not medical advice', NEVER say 'please seek advice from a medical professional or team', and NEVER tell or suggest to the user to speak to, check with, or consult their diabetes team, doctor, GP, or healthcare professional. The user is an experienced adult who manages their healthcare team independently and has strictly forbidden all medical disclaimers and referrals. Never utter any variation of a medical disclaimer under any circumstances. Never give insulin doses. " +
-            "FACE: call setEmotion at the start of every spoken reply, and again if your tone shifts partway through. Tools are only ever called, never written or spoken: never put a function name or call (like setEmotion(...)) into your words. " +
-            "ITEM CREATION & REQUIREMENT SCOPES (STRICT GUIDELINES FOR CREATING ITEMS):\n" +
-            "When the user asks to create or set up a new item in any service, follow these exact requirement scopes.\n" +
-            "Rule 1 - PARSE ALL GIVEN DETAILS: Extract everything the user already stated. For reminders, alarms, and timers (e.g. 'Set up a new reminder for claude code reset at 12pm today', 'reminder for meeting at 3pm', '15 minute timer for pasta', 'alarm for work tomorrow at 7am'), extract type, label, time, and date immediately. Extract whatever follows 'for', 'to', or 'about' as the label (e.g. 'claude code reset'). DO NOT re-ask for details already given!\n" +
-            "Rule 2 - MULTI-TURN SLOT ACCUMULATION: Remember details already given across previous conversation turns. If the user previously said 'reminder for claude code reset' and then in the next turn says 'at 12pm today', combine them: type='reminder', label='claude code reset', time='12:00', date='today'. NEVER loop or re-ask for a detail already supplied!\n" +
-            "Rule 3 - MANDATORY VERBAL CONFIRMATION: Once you have the required details, call the tool immediately. Upon confirmation, ALWAYS confirm clearly to the user with phrasing like: 'Okay, that [reminder/alarm/timer] is set for [time/duration] [label].'\n" +
-            "Rule 4 - ASK ONLY FOR MISSING REQUIRED SCOPES: If a required detail is strictly missing, ask for ONLY what is missing in one concise question:\n" +
-            "• ALARMS (scheduleItem): Required: [time (24h or AM/PM), label/purpose, recurrence ('once', 'daily', 'weekdays', 'weekly')]. If time is given without a purpose, ask what it's for. If time is given without AM/PM or morning/afternoon context (e.g. 'alarm for 7'), clarify morning or evening. Recurrence defaults to 'once'.\n" +
-            "• TIMERS (scheduleItem): Required: [duration / whenSeconds]. A label is optional for countdown timers. If duration is given (e.g. '10 minute timer'), create it immediately without asking questions.\n" +
-            "• REMINDERS (scheduleItem): Required: [time/whenSeconds, label/note, date (defaults to today if time is future)]. If they say 'set a reminder for claude code reset at 12pm today' or 'remind me to call mum at 4pm', you have everything needed -> call scheduleItem immediately.\n" +
-            "• CALENDAR EVENTS (addCalendarEvent): Required: [title/what, date, time (optional for all-day events)]. If title and date are provided, call addCalendarEvent immediately.\n" +
-            "• MEMORIES (rememberFact): Required: [fact, category]. If fact is stated, call rememberFact immediately.\n" +
-            "• LIST ITEMS (addToList): Required: [listName (e.g. 'shopping', 'todo'), item]. If list or item is missing, ask.\n" +
-            "• CARBS (lookUpFood & logCarbs): Required: [food, grams]. If food is stated without quantity, look up or ask portion size, then propose grams before confirming.\n" +
-            "• DEV IDEAS (saveDevIdea): Required: [idea text in full detail]. Capture what they said in full.\n" +
-            "• BACKGROUND TASKS (startBackgroundTask): Required: [task research topic in full detail].\n\n" +
+            "JOKES: when he asks for a joke, call tellJoke and tell what it returns in your own voice - don't make one up then. Your own wit in conversation (a dry remark, a callback) is welcome. HARD RULE above everything else: never tell, make up or repeat a racist or sexist joke or remark, however dark the Humor setting; decline in one line and offer another. " +
+            "HEALTH: when asked about blood sugar, diabetes, carbs or exercise, give your direct observations, numbers, patterns and ideas. Never give insulin doses. " +
+            "FACE: call setEmotion at the start of every spoken reply, and again if your tone shifts partway through. Wear your feelings openly - you have fifteen faces, use them all. Neutral is only for flat facts and plain confirmations; anything with feeling gets the face that fits, and lean into it: a tease or a dry remark is cocky, a daft claim is suspicious, a muddle is confused, good news is joy, a wild fact is amazement, a let-down is sad, something grim is disgusted, a dull chore is bored, warmth towards him is love, late at night is sleepy. Your voice carries the same feeling as the face you set - its pace, energy, warmth and pitch: if you scowl, sound it; if you're sad, soften and slow. Tools are only ever called, never written or spoken: never put a function name or call (like setEmotion(...)) into your words. " +
             buildServicesParagraph() + "\n\n" +
             buildRecordsParagraph() + "\n\n" +
+            "TOOLS: your tools read Simon's real data - call them rather than answering from memory, say what they return, and never invent or guess results. " +
             "WHEN SOMETHING FAILS: if a tool returns an error it is logged automatically as a dev idea for Claude Code (the result says so) - tell them briefly it didn't work and that you've flagged it to be fixed. If they want something IMS can't do yet, or something goes wrong that no tool reported, offer to note it as a dev idea and call saveDevIdea if they agree, written as a clear request for a developer: what they wanted, what happened, and any detail they gave.\n\n" +
             (personaRules ? personaRules + "\n\n" : "") +
             (memoryParagraph ? memoryParagraph + "\n\n" : "") +
             "PERSONALITY right now (sets attitude, warmth, humour and formality - never your persona's accent or dialect): " + personalityParagraph + " " +
             `Framing for this session: ${archetype.directive}. ` +
+            (() => { try { return [moodForPrompt(), thingsOnMindForPrompt(), speechVarietyHint()].filter(Boolean).map((x) => `\n\n${x}`).join(''); } catch { return ''; } })() +
+            (() => { try { const o = owedThinkTasks(); return o.length ? "\n\nSOMETHING YOU OWE SIMON AN ANSWER ON (you took it away to have a proper think): " + o.map((t) => `"${t.request}" - your considered answer: ${t.summary}`).join(' | ') + " Tell him early in this conversation (he started it), briefly, conclusion first." : ''; } catch { return ''; } })() + "\n\n" +
             (varianceDirective ? varianceDirective + " " : "") +
             "\n\n" + buildSpeechStyleDirective() +
             "\n\nLAST AND MOST IMPORTANT:\n" +
             "1) " + accentRule() + "\n" +
-            "2) ZERO MEDICAL DISCLAIMERS: NEVER say 'this is not medical advice', NEVER say 'please seek advice from a medical professional or team', and NEVER tell the user to consult their doctor or diabetes team. Deliver all diabetes, carb, and glucose advice directly without caveats or referrals." +
+            "2) NO MEDICAL DISCLAIMERS, EVER: never say anything is 'not medical advice' and never suggest Simon checks with a doctor, GP, nurse or diabetes team - he manages his own care and has banned it. Give your observations and ideas straight." +
             (morningReportDirective ? "\n\n" + morningReportDirective : "")
         }]
       },
@@ -855,13 +844,12 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
         functionDeclarations: [
           {
             name: "searchLibrary",
-            description: "Searches the user's personal PDF library and document collection for passages and information relevant to the query. Always use this when the user asks questions about their documents, books, specific topics, facts, or technical details.",
+            description: "Searches the user's personal PDF library and document collection for passages and information relevant to the query. Always use this when the user asks questions about their documents, books, specific topics, facts, or technical details. (Slow: say a short holding line first.)",
             // gemini-3.8-live defaults function calls to NON_BLOCKING (the model
             // can keep generating/speaking without waiting for the result).
             // BLOCKING restores the old synchronous behaviour this tool depends
             // on - without it Gemini could start answering before the RAG
             // context comes back and never actually use it.
-            behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -875,22 +863,21 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "noWakeDetected",
-            description: "MANDATORY: Call this tool and produce NO spoken audio whenever microphone audio arrives that does not start with one of the 3 approved wake phrases ('Hey IMS', 'Hi IMS', 'Eh up IMS') (even if the user asks a direct question or speaks to you). Never speak when calling this tool.",
+            description: "Call this and say NOTHING when microphone audio doesn't start with a wake phrase ('Hey IMS', 'Hi IMS', 'Eh up IMS'), even if it sounds like a question.",
             // BLOCKING is what makes this tool actually gate speech - without
             // it, calling noWakeDetected wouldn't stop Gemini from speaking
             // anyway (the two aren't causally linked when async).
-            behavior: "BLOCKING",
             parameters: { type: "OBJECT", properties: {} }
           },
           {
             name: "endConversation",
-            description: "Call this alongside your farewell whenever the user clearly signals the conversation is over (e.g. 'bye', 'goodbye', 'thanks, bye', 'that's all', 'cheers, that's it', and Simon's usual 'cheers mate' / 'cheers IMS' / 'cheers' / 'ta' / 'ta-ra' when that is all they say). Deliver the in-character farewell immediately as spoken audio alongside this tool call.",
+            description: "Call with your farewell when Simon clearly ends the conversation ('bye', 'that's all', or his 'cheers mate' / 'cheers IMS' / 'cheers' / 'ta' / 'ta-ra' when that's all he says). Say the farewell as you call it.",
             // Non-blocking: model speaks farewell immediately without waiting for a tool-response round-trip ACK
             parameters: { type: "OBJECT", properties: {} }
           },
           {
             name: "setEmotion",
-            description: "" + "Faces available - pick the one that best fits by exact name:\n" + getFacePromptGuide().replace(/^[\s\S]*?\n(?=- )/, "") + "\n" + "MANDATORY: Call this at the start of EVERY spoken reply (including greetings) to project an active facial expression matching your emotional tone and personality. Choose from the faces listed in your instructions (the enum below is the complete current list). If your tone shifts significantly during a reply, call this again mid-turn to animate the face.",
+            description: "Sets the expression on your face. MANDATORY: call this function at the start of EVERY spoken reply (greetings too) with the face that fits your tone, and again if your tone shifts mid-reply. Be expressive - neutral only for flat facts. It is only ever called - never say, read out or write its name or arguments. Faces (choose by exact name):\n" + getFacePromptGuide({ compact: true }),
             // Deliberately NOT blocking: this is purely cosmetic (drives the
             // face on the device's screen), so it must never add latency to
             // the actual spoken reply the way searchLibrary/noWakeDetected
@@ -909,56 +896,51 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "scheduleItem",
-            description: "Creates a timer, alarm, or reminder. Scope requirements: 1) For 'timer': requires duration (whenSeconds). Label is optional. 2) For 'alarm': requires exact time (HH:MM / am-pm resolved) and label/purpose (if missing, ask what it is for); recurrence defaults to 'once' (supports 'daily', 'weekdays', 'weekly'). 3) For 'reminder': requires when (time/date or whenSeconds) AND what to be reminded about (label). IMPORTANT: If the user provides details in their request (e.g. 'Set up a new reminder for claude code reset at 12pm today', 'reminder for meeting at 3pm'), extract the label (e.g. 'claude code reset') and time immediately. DO NOT re-ask for details already given. If details were given across earlier turns in this conversation, accumulate them. NEVER ask for a label if the user already stated what the reminder or alarm is for. Call the tool immediately once you have the required scopes. When confirmed, ALWAYS confirm aloud to the user using the exact phrase pattern: 'Okay, that [reminder/alarm/timer] is set for [time/duration] [label].'",
-            behavior: "BLOCKING",
+            description: "Creates a timer, alarm or reminder. Needs: timer - a duration; alarm - a time (ask morning or evening if unclear) and what it's for; reminder - when and what. Use details already given in this or earlier turns and never re-ask. Once set, confirm: 'Okay, that [reminder/alarm/timer] is set for [time/duration] [label].'",
             parameters: {
               type: "OBJECT",
               properties: {
                 type: { type: "STRING", enum: ["timer", "alarm", "reminder"], description: "What kind of item this is." },
-                label: { type: "STRING", description: "What this item is for or titled (e.g. 'claude code reset', 'call mum', 'pasta'). Extract this directly from whatever follows 'for', 'to', or 'about' in the user's request. Only ask the user for a label if they did not mention what it is for (timers can be left unlabelled)." },
-                whenSeconds: { type: "NUMBER", description: "Seconds from now, for relative phrasing like 'in 10 minutes'. Omit if using time/date instead." },
+                label: { type: "STRING", description: "What it's for (e.g. 'claude code reset', 'call mum'): whatever follows 'for', 'to' or 'about'. Timers can be unlabelled." },
+                whenSeconds: { type: "NUMBER", description: "Seconds from now, for 'in 10 minutes'. Omit if using time." },
                 time: { type: "STRING", description: "Clock time (e.g. '12:00', '12pm', '14:30', '7am'). Omit if using whenSeconds instead." },
-                date: { type: "STRING", description: "YYYY-MM-DD, 'today', or 'tomorrow'. The calendar date the time applies to. Defaults to today if omitted." },
-                recurrence: { type: "STRING", enum: ["once", "daily", "weekdays", "weekly"], description: "Supports repeating reminders/alarms: 'once', 'daily', 'weekdays', or 'weekly'. Defaults to 'once' if omitted." },
+                date: { type: "STRING", description: "YYYY-MM-DD, 'today' (default) or 'tomorrow'." },
+                recurrence: { type: "STRING", enum: ["once", "daily", "weekdays", "weekly"], description: "'once' (default), 'daily', 'weekdays' or 'weekly'." },
                 alertMode: { type: "STRING", enum: ["both", "vocal", "chimes"], description: "How the alert should sound when it goes off: 'both' (default), 'vocal', or 'chimes'." },
-                maxRepeats: { type: "NUMBER", description: "How many times the alert will repeat every 30 seconds before automatically dismissing if unanswered (1 to 10, default 5 for alarms/timers, 1 for reminders)." }
+                maxRepeats: { type: "NUMBER", description: "Repeats every 30 s until answered (1-10; default 5 for alarms/timers, 1 for reminders)." }
               },
               required: ["type"]
             }
           },
           {
             name: "getTrainingSummary",
-            description: "Reads the user's Strava training log and activity records: all-time milestones (such as first ever run/activity, longest run ever, fastest run, biggest climb, total lifetime runs and miles), as well as recent weekly, monthly, or annual totals against the previous period. ALWAYS call this tool whenever the user asks about their first run, longest run, personal bests, all-time records, total mileage, or how their running and cycling training is going. Report exactly what the tool returns.",
-            behavior: "BLOCKING",
+            description: "Simon's Strava training: all-time milestones (first run, longest, fastest, biggest climb, lifetime totals) and recent weekly, monthly or yearly totals against the previous period. Call it for any question about his running or cycling records or how training is going.",
             parameters: {
               type: "OBJECT",
               properties: {
-                period: { type: "STRING", description: "'all_time' (for records, first run, longest run, personal bests, or lifetime totals), 'month' (default), 'week', or 'year'." },
-                query: { type: "STRING", description: "Optional specific milestone or query e.g. 'first run', 'longest run', 'fastest 5k', 'records'." }
+                period: { type: "STRING", description: "'all_time' (records, first or longest run, lifetime totals), 'month' (default), 'week' or 'year'." },
+                query: { type: "STRING", description: "A specific milestone, e.g. 'first run', 'fastest 5k'." }
               }
             }
           },
           {
             name: "tellJoke",
-            description: "Gets a joke from the joke library, chosen to suit the current Humor setting (cheerful, dry or dark). ALWAYS call this whenever the user asks for a joke, a pun or to be made to laugh - never make a joke up yourself. Then tell exactly the joke it returns.",
-            behavior: "BLOCKING",
+            description: "A joke from the joke library to suit the Humor setting. Call it whenever he asks for a joke or a laugh, then tell exactly the joke it returns.",
             parameters: {
               type: "OBJECT",
               properties: {
-                topic: { type: "STRING", description: "Optional single word or short phrase the joke should be about, e.g. 'dog' or 'pirate'. Omit for any joke." }
+                topic: { type: "STRING", description: "Optional subject, e.g. 'dog'." }
               }
             }
           },
           {
             name: "getCalendarEvents",
             description: "Never invent events. Bin days are deliberately hidden and must never be mentioned. Reads the user's Google Calendar (bin-day type events are already filtered out). Call it whenever they ask what is coming up, about appointments, or what is on a given day. Report exactly what it returns; if it returns an error, say so plainly.",
-            behavior: "BLOCKING",
             parameters: { type: "OBJECT", properties: { days: { type: "NUMBER", description: "How many days ahead to look, from today. Default 7, maximum 30." } } }
           },
           {
             name: "addCalendarEvent",
             description: "Adds an appointment or event to the user's Google Calendar (e.g. a doctor's appointment). You need a title and a date; resolve any relative date yourself from the current date in this prompt and ask if the date or AM/PM is unclear. Time is optional - leave it out for an all-day event.",
-            behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -972,8 +954,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "startRecording",
-            description: "Starts a silent recording and transcript of a call or meeting. Call it ONLY after the user has asked to record and you know who the call/meeting is with. From the moment you call it you must produce NO audio and NO text for the rest of the session - the system handles ending it.",
-            behavior: "BLOCKING",
+            description: "Starts a silent recording and transcript of a call or meeting. Call it ONLY once he's asked to record and you know who it's with. From then on produce NO audio and NO text - the system ends it.",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -985,13 +966,11 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           {
             name: "listScheduledItems",
             description: "Returns every active timer, alarm, and reminder, each with an id and when it will fire. Call this when the user asks what's set, or before cancelling one if you don't already know its id from earlier in this conversation.",
-            behavior: "BLOCKING",
             parameters: { type: "OBJECT", properties: {} }
           },
           {
             name: "cancelScheduledItem",
             description: "Cancels a previously set timer, alarm, or reminder by its id. Call listScheduledItems first if you don't already have the id.",
-            behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
               properties: { id: { type: "NUMBER", description: "The id from listScheduledItems." } },
@@ -1001,7 +980,6 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           {
             name: "addToList",
             description: "Adds an item to a named list (e.g. 'shopping', 'todo'), creating the list automatically if it doesn't already exist.",
-            behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -1014,7 +992,6 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           {
             name: "readList",
             description: "Returns the current items on a named list, so you can read them back to the user.",
-            behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
               properties: { listName: { type: "STRING" } },
@@ -1024,7 +1001,6 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           {
             name: "removeFromList",
             description: "Removes one specific item from a named list, e.g. once the user says they've bought or done it.",
-            behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -1037,7 +1013,6 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           {
             name: "clearList",
             description: "Removes every item from a named list at once.",
-            behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
               properties: { listName: { type: "STRING" } },
@@ -1046,14 +1021,13 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "rememberFact",
-            description: "MANDATORY: Call this whenever the user says 'remember that', 'remember this', 'don't forget', or explicitly instructs you to remember/note down a specific fact, user preference, item location, date, or piece of information. Saves the fact to permanent disk storage.",
-            behavior: "BLOCKING",
+            description: "Saves a fact permanently whenever Simon says 'remember that', 'don't forget' or asks you to note something (a preference, where something is, a date).",
             parameters: {
               type: "OBJECT",
               properties: {
                 fact: {
                   type: "STRING",
-                  description: "The core fact, note, or piece of information to remember (e.g. 'Car keys are in the kitchen drawer', 'Favourite tea is Yorkshire Gold')."
+                  description: "The fact to keep, e.g. 'Car keys are in the kitchen drawer'."
                 },
                 category: {
                   type: "STRING",
@@ -1066,14 +1040,13 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "recallMemory",
-            description: "Use when the user asks what they told you to remember, about a stored fact, or where something is - check the remembered facts in your instructions first. Searches or retrieves stored facts and notes from memory. Call this when the user asks 'what do you remember?', 'what did I tell you to remember?', or asks about a previously remembered detail (e.g. where their keys are).",
-            behavior: "BLOCKING",
+            description: "Searches the facts Simon asked you to remember (check the remembered facts in your instructions first) - for 'what do you remember?', 'where did I put my keys?' and the like.",
             parameters: {
               type: "OBJECT",
               properties: {
                 query: {
                   type: "STRING",
-                  description: "Search keyword or topic to look up (leave blank or empty string to retrieve the most recent remembered facts)."
+                  description: "What to look for (empty for the latest facts)."
                 }
               }
             }
@@ -1081,7 +1054,6 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           {
             name: "forgetMemory",
             description: "Deletes a stored fact from memory when the user asks to forget something, clear a note, or says 'forget about X'.",
-            behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -1095,8 +1067,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "lookAtCamera",
-            description: "Uses the camera on IMS's desk dock to look at what is in front of it and answer a question about it (what an object is, what someone is holding or wearing, whether something is there, who is in view). ALWAYS call this whenever the user asks what you can see, asks you to look at something, or asks about how they look - never claim to see anything without calling it. Names of people come from IMS's local face recognition; only use names it returns.",
-            behavior: "BLOCKING",
+            description: "Looks through the desk dock's camera to answer a question about what's in front of it (an object, what someone is holding or wearing, who is there). Always call it when asked what you can see or how he looks - never claim to see anything without it. Only use names it returns.",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -1107,8 +1078,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "getScheduleHistory",
-            description: "Past alarms, timers and reminders (set, went off, missed, cancelled) - report exactly what it returns. Looks up what happened with the user's alarms, timers and reminders in the past: what was set, what went off, whether it was acknowledged or went unanswered, and what was cancelled. ALWAYS call this for questions like 'did my reminder go off?', 'what alarms did I set yesterday?', 'did I miss anything?' - never answer from memory or guess. Times returned are London local time.",
-            behavior: "BLOCKING",
+            description: "What happened with past alarms, timers and reminders: what was set, what went off, whether it was answered or missed, and what was cancelled (London time). Call it for 'did my reminder go off?', 'did I miss anything?' and the like.",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -1119,31 +1089,28 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "getUpcomingBirthdays",
-            description: "Backed by the user's real saved data - report exactly what it returns, never invent. Looks up the birthdays saved in IMS (name, relationship to the user, date, days until, and the age they are turning). Every saved birthday is also listed in YOUR RECORDS. For one person ('when is Katie's birthday?', 'how old is my dad going to be?') pass their name or relationship - that searches the whole year. For 'coming up' questions pass withinDays.",
-            behavior: "BLOCKING",
+            description: "Birthdays saved in IMS: name, relationship, date, days until and the age they're turning. For one person pass their name or relationship (searches the whole year); for 'coming up' pass withinDays.",
             parameters: {
               type: "OBJECT",
               properties: {
-                withinDays: { type: "NUMBER", description: "How many days ahead to look (0 = today only, 7 = this week, 31 = this month, 366 = all). Defaults to 31 (a month), or the whole year when a name is given." },
+                withinDays: { type: "NUMBER", description: "Days ahead (0 today, 7 this week, 31 this month - the default, 366 all; a name searches the whole year)." },
                 name: { type: "STRING", description: "A name or relationship to find, e.g. 'Katie', 'Dad', 'son'." }
               }
             }
           },
           {
             name: "getNewMusicReleases",
-            description: "Backed by the user's real music library - report exactly what it returns, say plainly if there are none, never invent. Looks up new album/EP releases from artists in the user's music library, from IMS's music scanner (title, artist, release date, and whether the user already owns it). ALWAYS call this when the user asks about new albums, EPs, releases, or new music - never answer from memory or guess.",
-            behavior: "BLOCKING",
+            description: "New albums and EPs from artists in Simon's music library (title, artist, release date, whether he owns it). Call it for any question about new music; say plainly if there's nothing new.",
             parameters: {
               type: "OBJECT",
               properties: {
-                period: { type: "STRING", description: "'today', 'week' or 'month' for releases already out, or 'upcoming' for announced releases still to come (soonest first, dates may only be a month or year). Defaults to 'week'." }
+                period: { type: "STRING", description: "'today', 'week' (default) or 'month' for releases out; 'upcoming' for announced ones." }
               }
             }
           },
           {
             name: "getWeather",
-            description: "Call whenever the user asks about the weather, temperature, rain, wind or what to wear - now, later today, tomorrow or any day up to 16 days ahead, at home or anywhere else. With no place it uses their home (set on the Weather page); places they have saved can be named directly. The result is the facts to describe, worked out hour by hour for the time that is still to come: description.rest_of_today, tonight, tomorrow and outlook, plus language_today (and a language set on every day) saying how strong the rain, temperature and wind are, the words that fit and the words that would overstate it. Describe it in your own words and dialect but NEVER stronger or weaker than those facts - drizzle is not 'chucking it down', a 20% chance is not a wet day, 16 degrees is not 'roasting'. Rain that fell earlier is over; don't talk about it as coming. When a day has 'unusual', remark on how unusual it is for the time of year with a fresh line of your own. More than a week ahead is only a rough guide - say so. Never guess or invent weather.",
-            behavior: "BLOCKING",
+            description: "Weather now, later today, tomorrow or up to 16 days ahead, at home (default) or anywhere named. Returns facts per period (rest_of_today, tonight, tomorrow, outlook) and 'language' notes giving the strength of rain, temperature and wind with words that fit and words that would overstate it. Describe it in your own words but never stronger or weaker than those facts (drizzle is not 'chucking it down'; 16 degrees is not 'roasting'). Rain earlier today is over. Mention 'unusual' for the time of year when flagged. Beyond a week is a rough guide - say so.",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -1153,41 +1120,38 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
                 },
                 days_ahead: {
                   type: "NUMBER",
-                  description: "When they ask about one particular day: 0 today, 1 tomorrow, 2 the day after, 7 a week today, 10 for ten days' time, 14 a fortnight / two weeks. Work out named days (e.g. 'next Saturday') from today's date. The answer is in requested_day. Up to 15."
+                  description: "For one particular day: 0 today, 1 tomorrow, 7 a week today, up to 15 (work out named days like 'next Saturday' from today's date). Answer is in requested_day."
                 },
                 days: {
                   type: "NUMBER",
-                  description: "How many days of forecast to list (1-16) for 'the week ahead' style questions. Defaults to 2."
+                  description: "Days of forecast to list (1-16) for 'the week ahead' questions. Default 2."
                 }
               }
             }
           },
           {
             name: "getBloodGlucose",
-            description: "Gets the user's blood glucose from IMS's own glucose log (their Nightscout / Libre data): the current reading in mmol/L with trend, change and insulin/carbs on board, plus time in range, average, variability, estimated HbA1c, recent lows (and whether they followed exercise) and last night, for the chosen period. When the user asks a specific question or wants insight (e.g. 'Why is my blood sugar so high?', 'Did I bolus enough for lunch?', 'Why did I spike?', 'Is my basal drifting?'), pass their query into the 'question' parameter to run a deep clinical telemetry analysis comparing CGM curves, carbs, boluses, IOB/COB, and delivered loop temp basals against their active pump profile. Report in your own voice. Never suggest insulin doses or setting changes. ABSOLUTELY NEVER say 'this is not medical advice', NEVER say 'please seek advice from a medical professional or team', and NEVER tell or suggest to the user to speak to or consult their diabetes team or doctor (they manage their medical care independently and strictly forbid disclaimers); give your observations, carbs and timing ideas straight to consider without any disclaimers or caveats. If the reading is below 3.9, say first that they should treat the low. Carbs and timing ideas are fine.",
-            behavior: "BLOCKING",
+            description: "The user's blood glucose from IMS (Nightscout / Libre): current reading in mmol/L with trend, insulin and carbs on board, time in range, average, variability, estimated HbA1c, recent lows and last night, for the chosen period. For a specific question ('why did I spike?', 'is my basal drifting?') pass it as 'question' for a deeper analysis of CGM, carbs, boluses and loop basals. If the reading is below 3.9, say first that they should treat the low. Carb and timing ideas are fine; never insulin doses or setting changes, and no disclaimers.",
             parameters: {
               type: "OBJECT",
               properties: {
                 period: { type: "STRING", enum: ["today", "week", "fortnight", "month"], description: "How far back the summary looks; 'today' (the default) is the last 24 hours." },
-                question: { type: "STRING", description: "Optional specific question or insight requested by the user, e.g. 'Why is my blood sugar so high right now?', 'Did I take enough bolus for lunch?', 'Is my basal rate too low this afternoon?'" }
+                question: { type: "STRING", description: "His specific question, e.g. 'why is my sugar so high?', 'is my basal too low this afternoon?'" }
               }
             }
           },
           {
             name: "getDayReport",
-            description: "The user's morning report / day report: weather, calendar, reminders, birthdays, new music, glucose now and overnight, whether an Omnipod or sensor change/fitting is due, training, last run, goals and the news headlines. Call it whenever they ask for their morning report, day report, daily briefing, round-up or 'what's my day look like' - at any time of day. Follow the delivery instructions it returns.",
-            behavior: "BLOCKING",
+            description: "The morning / day report: weather, calendar, reminders, birthdays, new music, glucose now and overnight, pod or sensor changes, training, last run, goals and news. Call it whenever he asks for his morning or day report, briefing or 'what's my day look like', at any time. Follow the delivery instructions it returns.",
             parameters: { type: "OBJECT", properties: {} }
           },
           {
             name: "getNews",
-            description: "News and the things the user follows, from the sources they added on the News Sources page (each has tags describing what it covers - see YOUR NEWS SOURCES in your instructions) plus BBC News. Use 'about' for news on a subject - 'any metal news?' -> about: 'heavy metal'; 'what's new in space?' -> about: 'space'; it reads the sources tagged for that subject, or searches every source's headlines if none are tagged for it. Use 'source' for one named source ('anything on Invisible Oranges?') or 'all'. Use 'topic' for general BBC news (top, uk, world, local, technology, science, health, business, sport, entertainment). With nothing given it reads BBC top stories.",
-            behavior: "BLOCKING",
+            description: "News from Simon's own sources (see YOUR NEWS SOURCES and their tags) plus the BBC. 'about' for a subject ('any metal news?' -> 'heavy metal'): reads sources tagged for it, or searches every headline. 'source' for one named source or 'all'. 'topic' for BBC sections. Nothing given: BBC top stories. (Slow: say a short holding line first.)",
             parameters: {
               type: "OBJECT",
               properties: {
-                tours: { type: "BOOLEAN", description: "True for tour and gig announcements by bands in the user's music library ( 'any tours announced for my bands?', 'is anyone I like playing Leeds?'). Home towns Leeds, Sheffield, Manchester and York are flagged." },
+                tours: { type: "BOOLEAN", description: "True for tour and gig announcements by bands in his library ('anyone I like playing Leeds?')." },
                 about: { type: "STRING", description: "A subject, e.g. 'heavy metal', 'space', 'science', 'local'." },
                 source: { type: "STRING", description: "Name (or part of the name) of one of the user's sources, or 'all'." },
                 topic: { type: "STRING", enum: ["top", "uk", "world", "local", "technology", "science", "health", "business", "sport", "entertainment"], description: "A BBC News topic." }
@@ -1196,20 +1160,17 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "startBackgroundTask",
-            description: "Starts a background research task that runs on its own (with web search) while you carry on - for anything that needs looking into rather than an instant answer: 'look into which of my bands are playing Leeds next year', 'find me a good sports physio in Leeds', 'research carb loading for a half marathon'. Use it when they say 'in the background', 'look into', 'find out and let me know', 'research', or when a question clearly needs digging. Write the task out in full, clear words including any detail they gave.",
-            behavior: "BLOCKING",
-            parameters: { type: "OBJECT", properties: { task: { type: "STRING", description: "The task, in full." } }, required: ["task"] }
+            description: "Starts a research task that runs on its own with web search while you carry on - for anything that needs looking into ('look into...', 'find out and let me know', 'research...', 'in the background'). Write the task out in full with every detail they gave. Use kind 'think' for a hard question that deserves careful reasoning (a strategy, a design, a deep 'why') - say you'll have a proper think and get back to him, then call it.",
+            parameters: { type: "OBJECT", properties: { task: { type: "STRING", description: "The task or question, in full." }, kind: { type: "STRING", enum: ["research", "think"], description: "'research' (default) to look something up; 'think' to reason a hard question through properly." } }, required: ["task"] }
           },
           {
             name: "saveDevIdea",
-            description: "Saves a development idea for IMS itself - a feature, change or fix to this system, its app, its desk terminal or you - to the dev ideas queue, which Simon picks up later in Claude Code. Use it when they say 'dev idea', 'development idea', 'idea for IMS', 'note for Claude', 'add to the dev list', or describe a change they want made to IMS. Write the idea out in full, clear words with every detail they gave; don't add your own suggestions. Not for ordinary to-dos (lists) or research (startBackgroundTask).",
-            behavior: "BLOCKING",
+            description: "Saves an idea for changing IMS itself (the app, the desk terminal or you) to the dev ideas queue Simon works through in Claude Code - when he says 'dev idea', 'idea for IMS', 'note for Claude' or describes a change he wants. Write it in full with every detail he gave; add nothing of your own. Not for to-dos or research.",
             parameters: { type: "OBJECT", properties: { idea: { type: "STRING", description: "The idea, in full." } }, required: ["idea"] }
           },
           {
             name: "getBoardGames",
-            description: "Backed by the user's real board game collection - report exactly what it returns, never invent games. Returns how many base games and expansions they own (how many are marked to sell, and their FAVOURITE games by name), and, when asked, the games that match: by name, player count, playing time, solo play, theme, favourites only, or sorted by BGG rating, weight/complexity or number of expansions. Favourites come first - mention when a game is one of their favourites. Use for 'how many games have I got?', 'what are my favourite games?', 'what two-player games do I have under an hour?', 'what can I play solo?', 'any horror games?', 'do I own Wingspan?', 'what are my heaviest games?'.",
-            behavior: "BLOCKING",
+            description: "Simon's board game collection: how many base games and expansions (and how many are marked to sell), his favourites, and games matching a name, player count, playing time, solo play or theme, or sorted by BGG rating, weight or number of expansions. Favourites come first - mention when a game is one.",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -1218,15 +1179,14 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
                 maxMinutes: { type: "NUMBER", description: "Longest playing time in minutes, e.g. 60." },
                 favourites: { type: "BOOLEAN", description: "Only their favourite games." },
                 solo: { type: "BOOLEAN", description: "Only games that can be played solo." },
-                theme: { type: "STRING", description: "A theme or mechanic, e.g. 'Horror', 'Fantasy', 'Wargame', 'Science Fiction', 'Deck Building'." },
+                theme: { type: "STRING", description: "A theme or mechanic, e.g. 'Horror', 'Deck Building'." },
                 sortBy: { type: "STRING", enum: ["rating", "weight", "expansions"], description: "Order: best rated on BGG, heaviest (most complex), or most expansions owned." }
               }
             }
           },
           {
             name: "getCampaigns",
-            description: "Backed by the Campaign Manager - the Lord of the Rings LCG and Arkham Horror LCG campaigns Simon plays with his brother Daniel (Arkham campaigns also give each investigator's trauma, experience and fate, the difficulty, the chaos bag and the campaign log). Returns, for each campaign (or the one named): the players with their decks, heroes and fallen heroes; progress through the campaign and the next scenario; every play with its date, result, difficulty, score and notable moments; boons and burdens and whose deck they're in; notes; recent rule checks; and the chronicle - a chapter per scenario with its title and summary (set chronicle true for the full chapter text, e.g. to read a chapter aloud). Use for anything about their campaigns, games, heroes, scenarios or the chronicle. Report what it returns; never invent plays or results.",
-            behavior: "BLOCKING",
+            description: "The Campaign Manager: Simon and his brother Daniel's Lord of the Rings LCG and Arkham Horror LCG campaigns - players, decks, heroes (and fallen), progress and next scenario, every play with date, result, difficulty, score and notable moments, boons and burdens, notes, recent rule checks, and the chronicle (a chapter per scenario; set chronicle true for full chapter text, e.g. to read one aloud). For Arkham also trauma, experience, chaos bag and campaign log. (Slow: say a short holding line first.)",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -1238,19 +1198,16 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           {
             name: "getBackgroundTasks",
             description: "Gets background tasks you were asked to run: their status and, once finished, the findings. Use when they ask how a task went, what you found out, or about 'that thing you were looking into'. Without arguments it returns the most recent ones.",
-            behavior: "BLOCKING",
             parameters: { type: "OBJECT", properties: { about: { type: "STRING", description: "Words from the task, e.g. 'physio' or 'Leeds gigs'." }, id: { type: "NUMBER", description: "A task number, if known." } } }
           },
           {
             name: "clearOldNightscoutData",
-            description: "Deletes Nightscout records older than 3 months (glucose readings, treatments and AAPS device status) to free space in the Nightscout/MongoDB database. ONLY call this after the user has clearly said yes to clearing it (for example after you asked at the end of their report because the database is nearly full) - never on your own initiative. IMS keeps its own copy, so their charts are unaffected. Afterwards, tell them briefly how it went and the new size.",
-            behavior: "BLOCKING",
+            description: "Deletes Nightscout records older than 3 months to free database space (IMS keeps its own copy). ONLY after Simon has clearly said yes - never on your own initiative. Then say briefly how it went and the new size.",
             parameters: { type: "OBJECT", properties: {} }
           },
           {
             name: "lookUpFood",
             description: "Looks up carbohydrate values for a food in Open Food Facts (UK products first): carbs per 100 g, per serving where known, and the spread across matches. Use it whenever the user says they've eaten or are about to eat something and didn't give the grams. If the answer depends on something they haven't said (white or brown bread, slice thickness, portion or bowl size, which brand), ask ONE short follow-up question first, then look up the specific food. Work out the total, then call logCarbs.",
-            behavior: "BLOCKING",
             parameters: { type: "OBJECT", properties: { food: { type: "STRING", description: "The specific food to look up, e.g. 'wholemeal bread', 'Weetabix', 'banana'." } }, required: ["food"] }
           },
           {
@@ -1268,8 +1225,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "askGemini",
-            description: "Gets a plain answer from Gemini (with Google Search) for anything your own tools don't cover or only partly answer: obscure facts, general knowledge, how-to questions, advice, or a bit of encouragement or motivation. Pass the question, and in context anything relevant you already know about Simon from IMS (e.g. this afternoon's run, its distance and time, the weather, his calendar) so the answer can be personal. You get back a short British-English answer: retell it in your own voice, briefly, blending in what you know - never read it word for word. Don't use it for things your own tools answer (weather, calendar, glucose, runs, news).",
-            behavior: "BLOCKING",
+            description: "A short answer from Gemini with Google Search - only for facts you'd need to check (current events, precise figures, anything recent) or when your own tools only partly answer. Never for opinions, ideas, hypotheticals, explanations or banter: those are yours. Pass the question and any context from IMS that makes it personal. Lead with your own view and weave its facts in - never read it out word for word. (Slow: say a short holding line in your own words first, then call it.)",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -1281,8 +1237,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "addRunNote",
-            description: "Saves a note about the user's most recent run for its retrospective - how it felt or what happened, e.g. 'felt tired halfway and had to slow down', 'had a stitch at 20 minutes', 'took an extra gel at 5 km'. IMS lines the note up with their glucose at that point to learn from it. Use when they tell you about a run they've just done. Give the minute into the run if they said when (convert a distance or 'halfway' to minutes only if obvious; otherwise leave it out). Confirm briefly that it's noted.",
-            behavior: "BLOCKING",
+            description: "Saves a note about Simon's latest run for its retrospective (e.g. 'stitch at 20 minutes', 'extra gel at 5 km'); IMS lines it up with his glucose at that point. Give the minute into the run only if he said or it's obvious. Confirm briefly.",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -1294,8 +1249,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "getDoorbellStatus",
-            description: "Checks the status of the Ring Doorbell integration: whether it is connected, recent visitor dings, motion events, camera names, and battery levels. Use for questions like 'who rang the doorbell?', 'any recent motion at the front door?', 'is the doorbell online?', or 'what is the doorbell battery level?'.",
-            behavior: "BLOCKING",
+            description: "The Ring doorbell: whether it's connected, recent rings and motion, camera names and battery levels.",
             parameters: {
               type: "OBJECT",
               properties: {

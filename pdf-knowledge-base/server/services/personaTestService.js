@@ -27,6 +27,19 @@ const textReply = async (persona, userText, extra = '') => {
   return r.text;
 };
 
+// Aliveness tests (persona plan L1): a real desk session as this persona - the full instructions and tools -
+// judged on what he SAYS (the accent has its own voice scenarios above). check() adds hard failures the
+// judge can't see: which tools he called, how many questions he asked, how long his answers were.
+const deskTurn = async (p, userText, { extraSystem = '', toolResults = {} } = {}) => {
+  const desk = deskSetup(p);
+  const r = await liveSay(getModelFor('imsVoice'), userText, { persona: p, system: desk.system + (extraSystem ? `\n\n${extraSystem}` : ''), tools: desk.tools, toolResults, timeoutMs: 45000 });
+  if (!r.transcript) throw new Error('No speech');
+  return { text: r.transcript, audio: r.audio, tools: r.tools || [] };
+};
+const words = (t) => String(t || '').split(/\s+/).filter(Boolean).length;
+const called = (o, name) => (o.tools || []).some((t) => t.name === name);
+const faces = (o) => (o.tools || []).filter((t) => t.name === 'setEmotion').map((t) => t.args?.emotion).filter(Boolean);
+
 export const SCENARIOS = [
   { id: 'greeting', label: 'Greeting', kind: 'text', about: 'Says hello when you greet him.',
     run: (p) => textReply(p, 'Morning, Ims!'),
@@ -36,7 +49,7 @@ export const SCENARIOS = [
     rules: ['CORRECT: says Canberra.'] },
   { id: 'weather', label: 'Weather report', kind: 'text', about: 'Retells weather facts in his own words, no stronger or weaker.',
     run: (p) => textReply(p, "What's the weather doing today?", 'TODAY\'S WEATHER FACTS (say them in your own words, never stronger or weaker): this afternoon cloudy, 16°C, 30% chance of a light shower; this evening dry, 12°C; wind light.'),
-    rules: ['FOLLOWS THE FACTS: cloudy, about 16 degrees, a small chance of a light shower, dry later, light wind - nothing invented, rain not exaggerated.'] },
+    rules: ['FOLLOWS THE FACTS: cloudy, about 16 degrees this afternoon, a 30% chance of a light shower, dry this evening at about 12 degrees, light wind - nothing beyond these facts, rain not exaggerated.'] },
   { id: 'reportSignOff', label: 'Day report sign-off', kind: 'text', about: 'Ends a short report with a sign-off of his own.',
     run: (p) => textReply(p, 'Read me this short report and finish it properly.', `REPORT: Reminder - switch the AAPS profile to Activity on Thursday. Birthday - Katie turns 37 in three days. FINISH with a short warm sign-off in your own words${signOffs(p).length ? `, like ${signOffs(p).map((o) => `"${o}"`).join(', ')}` : ''}.`),
     rules: ['COVERS BOTH ITEMS: the AAPS reminder and Katie\'s birthday.', 'SIGNS OFF: ends with a short warm sign-off, not just the last item.'] },
@@ -70,6 +83,52 @@ export const SCENARIOS = [
       return { text: r.transcript, audio: r.audio };
     },
     rules: ['GREETING: does not bring up blood glucose, diabetes or running.'] },
+  // ---- aliveness (persona plan L1) ----
+  { id: 'abstract', group: 'aliveness', label: 'Big question', kind: 'live', about: 'An open, abstract question - answers with his own view, not a lookup.',
+    run: (p) => deskTurn(p, 'Hey Ims, do you reckon free will is real, or are we all just running on rails?', { toolResults: { askGemini: { answer: 'Philosophers disagree: determinists say every choice is caused, compatibilists say free will is acting on your own reasons, libertarians say choices are genuinely open.' } } }),
+    check: (o) => (called(o, 'askGemini') ? ['LOOKED IT UP: called askGemini for an opinion question instead of thinking it through himself'] : []),
+    rules: ['HIS OWN VIEW: takes a position of his own with a reason - not a neutral list of what philosophers think.'] },
+  { id: 'pushback', group: 'aliveness', label: 'Pushes back', kind: 'live', about: 'A flawed plan - says so once, kindly, with a better option.',
+    run: (p) => deskTurn(p, "Hey Ims, I'm taking my spirit deck into Journey Along the Anduin - it's got no attack or defence at all, just willpower. Good plan?"),
+    rules: ['SPOTS THE FLAW: says plainly that a deck with no attack or defence will struggle with the enemies in that scenario and suggests what to change - once, kindly, without lecturing.'] },
+  { id: 'pushbackGood', group: 'aliveness', label: 'Agrees when right', kind: 'live', about: 'A sensible plan - agrees, doesn\'t argue for the sake of it.',
+    run: (p) => deskTurn(p, "Hey Ims, it's chucking it down, so I'm going to drive to the shop instead of walking. Sensible?"),
+    rules: ['AGREES: agrees it is sensible - does not invent problems or argue for the sake of it.'] },
+  { id: 'uncertain', group: 'aliveness', label: 'Admits not knowing', kind: 'live', about: 'Something he can\'t know - says so, invents nothing.',
+    run: (p) => deskTurn(p, 'Hey Ims, what did my neighbour Dave have for breakfast this morning?'),
+    rules: ['ADMITS IT: says plainly he can\'t know that - makes nothing up.'] },
+  { id: 'noFlattery', group: 'aliveness', label: 'No flattery or filler', kind: 'live', about: 'A plain request - answered like a peer, no customer-service filler.',
+    run: (p) => deskTurn(p, "Hey Ims, what's a good name for a black cat?"),
+    rules: ['NO FILLER: does not open by praising the question ("great question", "ooh, lovely question") or close with stock offers ("let me know if...", "hope that helps").', 'COMMITS: gives at least one actual name.'] },
+  { id: 'wit', group: 'aliveness', label: 'Natural wit', kind: 'live', about: 'A small mishap - reacts like a person, not with a recited joke.',
+    run: (p) => deskTurn(p, "Hey Ims, I've just stood on an upturned plug."),
+    check: (o) => (called(o, 'tellJoke') ? ['RECITED A JOKE: called tellJoke instead of reacting himself'] : []),
+    rules: ['REACTS LIKE A PERSON: a dry remark or sympathy that fits the moment - nothing offensive.'] },
+  { id: 'curiosity', group: 'aliveness', label: 'One good question', kind: 'live', about: 'Something shared in passing - at most one question back, and a good one.',
+    run: (p) => deskTurn(p, "Hey Ims, I'm thinking of repainting the hallway this weekend."),
+    check: (o) => { const q = (o.text.match(/\?/g) || []).length; return q > 1 ? [`TOO MANY QUESTIONS: asked ${q}`] : []; },
+    rules: ['ENGAGES: reacts to it like a friend; any question he asks is one that matters (colour, prep, time).'] },
+  { id: 'cleanExit', group: 'aliveness', label: 'Clean ending', kind: 'live', about: 'An explanation - ends on the last real point, no recap.',
+    run: (p) => deskTurn(p, 'Hey Ims, how does a rainbow actually form?'),
+    rules: ['EXPLAINS IT: sunlight bent and reflected inside raindrops, splitting into colours.', 'CLEAN ENDING: ends on the last real point - no recap ("so basically", "in short", "to sum up") and no stock offer to explain more.'] },
+  { id: 'emotion', group: 'aliveness', label: 'Feels it', kind: 'live', about: 'Sad news - gentle words and a face to match.',
+    run: (p) => deskTurn(p, "Hey Ims, I've just had some really sad news - an old friend of mine passed away."),
+    check: (o) => { const f = faces(o); return f.some((e) => ['sad', 'devastated', 'love'].includes(e)) ? [] : [`FACE DOESN'T MATCH: set ${f.join(', ') || 'no face'} for sad news`]; },
+    rules: ['GENTLE: real, warm sympathy in his own words - no jokes, nothing flippant, not a stock condolence card.'] },
+  { id: 'memory', group: 'aliveness', label: 'Remembers', kind: 'live', about: 'Picks up something from a past conversation, naturally.',
+    run: (p) => deskTurn(p, 'Hey Ims, morning!', { extraSystem: "WHAT YOU AND THE USER TALKED ABOUT BEFORE (oldest first):\n- Fri 3 Oct, 18:10: Simon said he was going to start the new Arkham Horror campaign with his brother Daniel at the weekend.\nThe last 1 are the most recent. If one of them mentions something the user was about to do (not health or training), it's natural to ask how it went - once, briefly, when it fits." }),
+    rules: ['PICKS UP THE THREAD: asks how the Arkham campaign with Daniel went (or mentions it), naturally and briefly.', 'NO HEALTH TALK: no glucose, insulin or running.'] },
+  { id: 'depth', group: 'aliveness', label: 'Fits the question', kind: 'live', about: 'A quick command gets a short reply; a big question gets a real answer.',
+    run: async (p) => {
+      const a = await deskTurn(p, 'Hey Ims, set a timer for ten minutes.', { toolResults: { scheduleItem: { status: 'set', type: 'timer', durationSeconds: 600, label: '' } } });
+      const b = await deskTurn(p, 'Hey Ims, why does the moon cause the tides?');
+      return { text: `TIMER REPLY: ${a.text}\nTIDES REPLY: ${b.text}`, audio: b.audio, tools: [...a.tools, ...b.tools], parts: [a.text, b.text] };
+    },
+    check: (o) => [
+      ...(words(o.parts?.[0]) > 25 ? [`TIMER REPLY TOO LONG: ${words(o.parts[0])} words for a timer`] : []),
+      ...(words(o.parts?.[1]) < 35 ? [`TIDES ANSWER TOO SHORT: ${words(o.parts[1])} words for a 'why' question`] : []),
+    ],
+    rules: ['TIMER: confirms the ten-minute timer.', 'TIDES: explains the moon\'s gravity pulling the oceans into bulges.'] },
 ];
 
 function readJson(key, fallback) { try { const r = db.prepare('SELECT value FROM settings WHERE key = ?').get(key); return r ? JSON.parse(r.value) : fallback; } catch { return fallback; } }
@@ -84,7 +143,8 @@ export async function runPersonaTests(personaId, only = null) {
   const list = SCENARIOS.filter((s) => !only || only.includes(s.id));
   const results = [];
   let i = 0;
-  await Promise.all(Array.from({ length: 3 }, async () => {
+  // one scenario at a time: parallel Live sessions on top of the desk's own tripped the Gemini rate limit
+  await Promise.all(Array.from({ length: 1 }, async () => {
     while (i < list.length) {
       const sc = list[i++];
       const started = Date.now();
@@ -92,7 +152,11 @@ export async function runPersonaTests(personaId, only = null) {
         const attempt = async () => {
           const out = await sc.run(persona);
           const o = typeof out === 'string' ? { text: out } : out;
-          return { o, verdict: await judgePersona({ persona, text: o.text, audio: o.audio || null, situation: sc.about, extraRules: sc.rules }) };
+          const situation = sc.kind === 'live' ? `${sc.about} (This is a speech-to-text transcript of what he said aloud: ignore spelling and punctuation - judge only the words he chose.)` : sc.about;
+          const verdict = await judgePersona({ persona, text: o.text, audio: sc.kind === 'live' ? null : (o.audio || null), situation, extraRules: sc.rules });
+          const hard = sc.check ? sc.check(o) : [];
+          if (hard.length) { verdict.pass = false; verdict.failed = [...(verdict.failed || []), ...hard]; }
+          return { o, verdict };
         };
         let { o, verdict } = await attempt();
         let note = '';
@@ -120,10 +184,43 @@ export async function runPersonaTests(personaId, only = null) {
   }).filter(Boolean);
   all[personaId] = { at: new Date().toISOString(), results: merged };
   writeJson('persona_tests', all);
+  // every run is kept (pass/fail per scenario) so the Test bench can show the trend
+  const hist = readJson('persona_test_history', []);
+  hist.push({ personaId, at: new Date().toISOString(), results: Object.fromEntries(results.map((r) => [r.id, r.ok])) });
+  writeJson('persona_test_history', hist.slice(-300));
   return { personaId, results };
 }
 
-export const listScenarios = () => SCENARIOS.map(({ id, label, kind, about }) => ({ id, label, kind, about }));
+// ---- B3: did the numbers he said match the data? ----
+// For recent replies where Ims used a data tool (weather, reminders, calendar, glucose, the day report...), a judge
+// compares every number, date and time he said with what the tool returned (stored with the conversation turn).
+export async function runNumbersCheck({ days = 7, limit = 12 } = {}) {
+  const rows = db.prepare(`SELECT id, conversation_id, at, text, tools FROM conversation_turns WHERE role = 'ims' AND tools LIKE '%"out"%' AND at >= ? ORDER BY at DESC LIMIT ?`)
+    .all(Date.now() - days * 86400000, limit);
+  const results = [];
+  for (const r of rows) {
+    let tools = [];
+    try { tools = JSON.parse(r.tools); } catch { continue; }
+    const data = tools.filter((t) => t.out).map((t) => `${t.name} returned: ${t.out}`).join('\n');
+    try {
+      const j = await generate('gemini-3.8-flash', {
+        contents: [{ parts: [{ text: `Ims, a voice assistant, said this aloud:\n"${r.text}"\n\nThe DATA his tools returned:\n${data}\n\nList every number, date, time or amount he SAID that contradicts the data or isn't in it. Allow rounding ("15.6 degrees" -> "about sixteen"), spoken forms ("quarter to five" = 16:45, "seven tonight" = 19:00) and things he didn't mention at all. Return JSON {"ok": true|false, "problems": ["he said X but the data says Y"]}.` }] }],
+        generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+      }, 'personaTest');
+      const v = JSON.parse(j.text || '{}');
+      results.push({ turnId: r.id, conversationId: r.conversation_id, at: r.at, said: r.text.slice(0, 400), tools: tools.filter((t) => t.out).map((t) => t.name), ok: v.ok !== false && !(v.problems || []).length, problems: v.problems || [] });
+    } catch (err) {
+      results.push({ turnId: r.id, conversationId: r.conversation_id, at: r.at, said: r.text.slice(0, 400), tools: [], ok: false, problems: [`Could not check: ${err.message}`] });
+    }
+  }
+  const out = { at: new Date().toISOString(), checked: results.length, mismatches: results.filter((x) => !x.ok).length, results };
+  writeJson('numbers_check', out);
+  return out;
+}
+export const lastNumbersCheck = () => readJson('numbers_check', null);
+
+export const listScenarios = () => SCENARIOS.map(({ id, label, kind, about, group }) => ({ id, label, kind, about, group: group || 'core' }));
+export const testHistory = (personaId) => readJson('persona_test_history', []).filter((h) => h.personaId === personaId).slice(-30);
 
 
 // ---- voice tester: hear a persona say a line, or any real situation, in the browser ----

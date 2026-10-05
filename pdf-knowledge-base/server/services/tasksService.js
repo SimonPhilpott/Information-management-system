@@ -2,6 +2,7 @@ import db from '../db/database.js';
 import config from '../config.js';
 import { GoogleGenerativeAI } from './geminiClient.js';
 import { getArtistList } from './musicScanService.js';
+import { getModelFor } from './modelRegistry.js';
 
 // Background tasks: the user asks Ims to look into something ("find out which of my bands are
 // playing Leeds next year"), IMS researches it in the background with Gemini and Google Search,
@@ -14,6 +15,11 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   origin TEXT, created_at INTEGER NOT NULL, started_at INTEGER, finished_at INTEGER, reported_at INTEGER
 )`);
 
+// kind: 'research' (web search) or 'think' (Ims taking a hard question away to reason it through properly)
+try { db.exec("ALTER TABLE tasks ADD COLUMN kind TEXT DEFAULT 'research'"); } catch (_) { /* already there */ }
+const doneListeners = new Set();
+export function onTaskDone(fn) { doneListeners.add(fn); }
+
 const MAX_RUNNING = 2;
 const TASK_TIMEOUT_MS = 4 * 60000;
 let running = 0;
@@ -21,7 +27,7 @@ let running = 0;
 const present = (r) => r && ({
   id: r.id, title: r.title, request: r.request, status: r.status, summary: r.summary, result: r.result,
   sources: (() => { try { return JSON.parse(r.sources || '[]'); } catch { return []; } })(),
-  error: r.error, origin: r.origin, createdAt: r.created_at, startedAt: r.started_at, finishedAt: r.finished_at, reportedAt: r.reported_at,
+  error: r.error, origin: r.origin, kind: r.kind || 'research', createdAt: r.created_at, startedAt: r.started_at, finishedAt: r.finished_at, reportedAt: r.reported_at,
 });
 
 function context() {
@@ -42,8 +48,19 @@ async function run(id) {
   running++;
   db.prepare("UPDATE tasks SET status = 'running', started_at = ?, error = NULL WHERE id = ?").run(Date.now(), id);
   try {
-    const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({ model: 'gemini-2.5-flash', tools: [{ googleSearch: {} }] });
-    const prompt = `You are doing a background research task for the user of IMS, their personal assistant. Search the web as much as you need and be accurate - never invent facts, dates or prices; say plainly if something couldn't be found.
+    const think = row.kind === 'think';
+    const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({ model: think ? getModelFor('deepThink') : 'gemini-2.5-flash', tools: [{ googleSearch: {} }] });
+    const prompt = think
+      ? `You are thinking a hard question through properly for Ims, a voice companion, who promised the user a considered answer. Reason carefully; use search only for facts you need to check. Take a clear position where the question calls for one, and say why.
+${context()}
+
+THE QUESTION: ${row.request}
+
+Reply in British English in exactly this shape:
+SUMMARY: the considered answer in four to six plain sentences, written to be said aloud - the conclusion first, then the reasoning that matters.
+DETAILS:
+the fuller reasoning - short paragraphs or "- " bullet points.`
+      : `You are doing a background research task for the user of IMS, their personal assistant. Search the web as much as you need and be accurate - never invent facts, dates or prices; say plainly if something couldn't be found.
 ${context()}
 
 THE TASK: ${row.request}
@@ -64,6 +81,7 @@ the full findings - short paragraphs or "- " bullet points, with dates, places a
     db.prepare("UPDATE tasks SET status = 'done', summary = ?, result = ?, sources = ?, finished_at = ? WHERE id = ?")
       .run(summary.slice(0, 1500), details, JSON.stringify(sources), Date.now(), id);
     console.log(`[Tasks] #${id} done: ${row.title}`);
+    for (const fn of doneListeners) { try { fn(present(db.prepare('SELECT * FROM tasks WHERE id = ?').get(id))); } catch (_) { } }
   } catch (err) {
     db.prepare("UPDATE tasks SET status = 'failed', error = ?, finished_at = ? WHERE id = ?").run(err.message, Date.now(), id);
     console.warn(`[Tasks] #${id} failed:`, err.message);
@@ -94,11 +112,11 @@ async function titleFor(request) {
   } catch { return request.slice(0, 60); }
 }
 
-export async function createTask({ request, title, origin = 'page' }) {
+export async function createTask({ request, title, origin = 'page', kind = 'research' }) {
   const req = String(request || '').trim();
   if (req.length < 5) throw new Error('Say what the task is.');
   const t = String(title || '').trim() || await titleFor(req);
-  const info = db.prepare('INSERT INTO tasks (title, request, status, origin, created_at) VALUES (?, ?, ?, ?, ?)').run(t, req.slice(0, 2000), 'queued', origin, Date.now());
+  const info = db.prepare('INSERT INTO tasks (title, request, status, origin, created_at, kind) VALUES (?, ?, ?, ?, ?, ?)').run(t, req.slice(0, 2000), 'queued', origin, Date.now(), kind === 'think' ? 'think' : 'research');
   setImmediate(pump);
   return present(db.prepare('SELECT * FROM tasks WHERE id = ?').get(info.lastInsertRowid));
 }
@@ -132,6 +150,10 @@ export function describeTasksForIms({ id, about } = {}) {
 }
 
 // For the day report: finished tasks the user hasn't heard about yet.
+// 'think' answers that are ready and haven't been given to Simon yet (C2)
+export const owedThinkTasks = () => db.prepare("SELECT * FROM tasks WHERE kind = 'think' AND status = 'done' AND reported_at IS NULL ORDER BY finished_at").all().map(present).slice(0, 2);
+export function markReported(ids = []) { for (const id of ids) db.prepare('UPDATE tasks SET reported_at = ? WHERE id = ? AND reported_at IS NULL').run(Date.now(), id); }
+
 export function unreportedTasks() {
   const rows = db.prepare("SELECT * FROM tasks WHERE status = 'done' AND reported_at IS NULL ORDER BY finished_at").all().map(present);
   const now = Date.now();

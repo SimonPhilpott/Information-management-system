@@ -1194,126 +1194,84 @@ function Findings({ list, muted }) {
   );
 }
 
+// How long Ims takes to start answering: from the end of what was said (or a desk announcement being sent)
+// to the first audio of his reply, measured on every real turn (conversationLog.js). No data, no numbers.
 function VoiceLatencySection({ isDark, muted }) {
-  const [metrics, setMetrics] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  const fetchLatency = async () => {
-    try {
-      const res = await fetch('/api/voice-latency/metrics');
-      if (res.ok) {
-        const d = await res.json();
-        setMetrics(d);
-      }
-    } catch (e) {
-      console.error('Failed to load voice latency telemetry:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [stats, setStats] = useState(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchLatency();
+    fetch('/api/conversations/latency').then((r) => r.json()).then((d) => {
+      if (d.success) setStats(d); else setError(d.error || 'Could not load the answer times.');
+    }).catch((e) => setError(e.message));
   }, []);
 
-  if (loading) {
+  if (error) return <div className="py-6 text-center text-xs text-rose-400">{error}</div>;
+  if (!stats) return <div className={`py-8 text-center text-xs ${muted}`}>Loading answer times...</div>;
+
+  const s1 = (ms) => (ms == null ? '-' : `${(ms / 1000).toFixed(1)} s`);
+  const tone = (ms) => (ms == null ? muted : ms <= 2500 ? 'text-emerald-400' : ms <= 4000 ? 'text-amber-400' : 'text-rose-400');
+  const box = `p-3 rounded-xl border ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-slate-200'}`;
+  const Row = ({ label, g }) => (
+    <div className="flex items-baseline gap-2 text-xs">
+      <span className={`flex-1 ${muted}`}>{label} <span className="opacity-70">({g.count})</span></span>
+      <span className={`font-mono font-bold ${tone(g.median)}`} title="Typical (median)">{s1(g.median)}</span>
+      <span className={`font-mono ${tone(g.p90)}`} title="Slow end (90th percentile)">{s1(g.p90)}</span>
+    </div>
+  );
+
+  if (!stats.week.turns) {
     return (
-      <div className="py-8 text-center text-xs text-slate-400">
-        Loading voice latency &amp; tool execution benchmarks...
+      <div className={`${box} text-center`}>
+        <p className={`text-xs font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>No answer times yet</p>
+        <p className={`text-[11px] mt-1 ${muted}`}>They're measured on every reply Ims gives from now on - talk to him and they'll appear here.</p>
       </div>
     );
   }
 
-  const targetBudgetMs = metrics?.targetBudgetMs || 1800;
-  const avgTotalMs = metrics?.averages?.totalLatencyMs || 1450;
-  const avgWakeConnect = metrics?.averages?.wakeToConnectMs || 220;
-  const avgConnectAudio = metrics?.averages?.connectToFirstAudioMs || 580;
-  const avgAudioDone = metrics?.averages?.firstAudioToDoneMs || 650;
-  const toolExecs = metrics?.toolAverages || [
-    { toolName: 'getBloodGlucose', avgMs: 240, calls: 42 },
-    { toolName: 'getWeather', avgMs: 310, calls: 18 },
-    { toolName: 'searchLibrary', avgMs: 780, calls: 14 },
-    { toolName: 'getUpcomingSchedule', avgMs: 190, calls: 27 },
-    { toolName: 'getDayReport', avgMs: 820, calls: 8 }
-  ];
-
-  const compliancePct = Math.min(Math.round((targetBudgetMs / (avgTotalMs || 1)) * 100), 100);
-
   return (
     <div className="flex flex-col gap-4">
-      {/* Target Budget Header */}
-      <div className={`p-4 rounded-xl border flex flex-col gap-2 ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-wider text-violet-400">
-            Voice Latency Budget Target: {targetBudgetMs}ms
-          </span>
-          <span className={`text-xs font-black font-mono ${avgTotalMs <= targetBudgetMs ? 'text-emerald-400' : 'text-amber-400'}`}>
-            Avg: {avgTotalMs}ms
-          </span>
-        </div>
-
-        {/* Waterfall Progression Bar */}
-        <div className="w-full bg-slate-800 rounded-full h-3 flex overflow-hidden">
-          <div
-            className="bg-cyan-500 h-full"
-            style={{ width: `${(avgWakeConnect / (avgTotalMs || 1)) * 100}%` }}
-            title={`Wake → Gemini Connect: ${avgWakeConnect}ms`}
-          />
-          <div
-            className="bg-violet-500 h-full"
-            style={{ width: `${(avgConnectAudio / (avgTotalMs || 1)) * 100}%` }}
-            title={`Connect → First Audio: ${avgConnectAudio}ms`}
-          />
-          <div
-            className="bg-emerald-500 h-full"
-            style={{ width: `${(avgAudioDone / (avgTotalMs || 1)) * 100}%` }}
-            title={`First Audio → Turn Done: ${avgAudioDone}ms`}
-          />
-        </div>
-
-        {/* Legend */}
-        <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] pt-1">
-          <span className="flex items-center gap-1 text-cyan-400"><span className="w-2 h-2 rounded-full bg-cyan-500" /> Wake → Connect ({avgWakeConnect}ms)</span>
-          <span className="flex items-center gap-1 text-violet-400"><span className="w-2 h-2 rounded-full bg-violet-500" /> Connect → Audio ({avgConnectAudio}ms)</span>
-          <span className="flex items-center gap-1 text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Audio Stream ({avgAudioDone}ms)</span>
-        </div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {[['Today', stats.today], ['Last 7 days', stats.week]].map(([title, g]) => (
+          <div key={title} className={box}>
+            <div className="flex items-baseline gap-2 mb-1.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-violet-400 flex-1">{title}</span>
+              <span className={`text-[10px] ${muted}`}>typical</span>
+              <span className={`text-[10px] ${muted}`}>slow end</span>
+            </div>
+            <Row label="Straight answers" g={g.noTool} />
+            <Row label="After a lookup" g={g.withTool} />
+          </div>
+        ))}
       </div>
 
-      {/* Tool Call Duration Table */}
-      <div className="flex flex-col gap-2">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-          Tool Execution Duration Benchmarks
-        </h4>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs font-mono">
-            <thead>
-              <tr className={`border-b border-inherit text-[10px] uppercase font-bold tracking-wider ${muted}`}>
-                <th className="py-2">Tool Call</th>
-                <th className="py-2">Avg Duration</th>
-                <th className="py-2">Calls</th>
-                <th className="py-2">Budget Health</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-inherit">
-              {toolExecs.map((t, i) => (
-                <tr key={i} className="hover:bg-white/5">
-                  <td className="py-2 font-sans font-semibold text-slate-200">{t.toolName}</td>
-                  <td className="py-2 text-violet-300">{t.avgMs}ms</td>
-                  <td className="py-2 text-slate-400">{t.calls}</td>
-                  <td className="py-2">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${t.avgMs <= 400 ? 'bg-emerald-500/10 text-emerald-400' : t.avgMs <= 800 ? 'bg-amber-500/10 text-amber-400' : 'bg-rose-500/10 text-rose-400'}`}>
-                      {t.avgMs <= 400 ? 'Optimal' : t.avgMs <= 800 ? 'Fair' : 'Slow (Investigate)'}
-                    </span>
-                  </td>
+      {stats.slowestTools.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <h4 className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Slowest lookups this week</h4>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className={`text-[10px] uppercase font-bold tracking-wider ${muted}`}>
+                  <th className="py-1.5">Tool</th><th className="py-1.5">Typical</th><th className="py-1.5">Slow end</th><th className="py-1.5">Calls</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {stats.slowestTools.map((t) => (
+                  <tr key={t.name}>
+                    <td className={`py-1.5 font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{t.name}</td>
+                    <td className={`py-1.5 font-mono ${tone(t.median)}`}>{s1(t.median)}</td>
+                    <td className={`py-1.5 font-mono ${tone(t.p90)}`}>{s1(t.p90)}</td>
+                    <td className={`py-1.5 ${muted}`}>{t.calls}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       <p className={`text-[11px] leading-relaxed ${muted}`}>
-        Tools exceeding 1,000ms risk timing out Gemini Live speech synthesis and causing the "thinks, stays silent, returns to standby" symptom.
+        Measured from the end of what was said (or a desk announcement being sent) to the first sound of his reply. Under 2.5 s feels natural; over 4 s feels like he's not listening.
       </p>
     </div>
   );

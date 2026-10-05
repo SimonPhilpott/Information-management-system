@@ -3,7 +3,7 @@ import {
   listPersonas, getPersona, activePersonaId, setActivePersona, savePersonaRaw, savePersonaParts, createPersona, deletePersona,
   getHouseRules, saveHouseRules, listHistory, readHistory, serializePersona,
 } from '../services/personaService.js';
-import { runPersonaTests, lastResults, listScenarios, listVoiceScenarios, speakAsPersona } from '../services/personaTestService.js';
+import { runPersonaTests, lastResults, listScenarios, listVoiceScenarios, speakAsPersona, testHistory, runNumbersCheck, lastNumbersCheck } from '../services/personaTestService.js';
 import { invalidateDayReportCache } from '../services/morningReportService.js';
 
 // Personas: /api/personas
@@ -39,6 +39,12 @@ router.post('/preview-raw', (req, res) => {
 
 // voice tester: what can be played, and play it as a persona ({ text } or { scenario }, engine 'live' | 'tts')
 router.get('/voice-scenarios', (req, res) => ok(res, { scenarios: listVoiceScenarios() }));
+// B3: the numbers Ims said in recent conversations against what his tools returned
+router.get('/numbers-check', (req, res) => ok(res, { check: lastNumbersCheck() }));
+router.post('/numbers-check', async (req, res) => {
+  try { ok(res, { check: await runNumbersCheck({ days: Number(req.body?.days) || 7 }) }); } catch (err) { bad(res, err, 500); }
+});
+
 router.post('/:id/speak', async (req, res) => {
   try { ok(res, await speakAsPersona(req.params.id, { text: req.body?.text || '', scenario: req.body?.scenario || '', engine: req.body?.engine === 'tts' ? 'tts' : 'live', emotion: String(req.body?.emotion || '').slice(0, 30) })); }
   catch (err) { bad(res, err, 500); }
@@ -47,7 +53,7 @@ router.post('/:id/speak', async (req, res) => {
 router.get('/:id', (req, res) => {
   const p = getPersona(req.params.id);
   if (!p) return bad(res, new Error('No such persona.'), 404);
-  ok(res, { persona: p, active: p.id === activePersonaId(), history: listHistory(p.id), tests: lastResults(p.id) });
+  ok(res, { persona: p, active: p.id === activePersonaId(), history: listHistory(p.id), tests: lastResults(p.id), testHistory: testHistory(p.id) });
 });
 
 // whole file as Markdown (header + sections)
