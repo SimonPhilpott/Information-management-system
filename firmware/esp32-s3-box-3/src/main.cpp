@@ -5131,9 +5131,12 @@ void loop() {
   // leave the mic streaming and the device silently stuck forever.
   // Ambient noise in audioMicTask can keep updating lastSpeechTimestamp, so
   // verifyingStartMs provides an absolute ceiling (4500ms) to prevent permanent lockup.
+  // Once the server has verified the wake phrase (the green dot) the reply is on its way - Gemini can take
+  // a second or more to start, and the 4.5 s ceiling used to close the session just before it arrived.
+  const unsigned long verifyCeilingMs = voiceWakeVerified ? 12000 : 4500;
   if (currentState == STATE_VERIFYING &&
-      ((verifyingStartMs > 0 && (millis() - verifyingStartMs > 4500)) ||
-       (millis() - lastSpeechTimestamp > 4000))) {
+      ((verifyingStartMs > 0 && (millis() - verifyingStartMs > verifyCeilingMs)) ||
+       (!voiceWakeVerified && millis() - lastSpeechTimestamp > 4000))) {
     sendDebug("verify_timeout");
     sendAudioStreamEnd(); // this is exactly the case that was never being closed
     sendSessionClosed();

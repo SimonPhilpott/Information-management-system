@@ -235,6 +235,23 @@ class WakeDaemonService extends EventEmitter {
   notifyModelSpeechStart() {
     this.isModelSpeaking = true;
     this.lastModelSpeechStartAt = Date.now();
+    // index.js only lets a reply through once it has judged the words addressed to Ims (its wake check
+    // is broader than isWakePhrase - "Hi, I'm Hi, I'm" passes there, not here). If he's answering, the wake
+    // was accepted: without this the verify window ran out 3.5 s in and closed the session mid-sentence.
+    if (this.state === DAEMON_STATES.VERIFYING) {
+      const heard = this.candidateTranscriptBuffer || '';
+      this.state = DAEMON_STATES.CONVERSATION_ACTIVE;
+      this.lastWakeAt = Date.now();
+      this.lastWakePhrase = heard.trim().slice(0, 40) || 'reply';
+      this.lastUserSpeechAt = Date.now();
+      this.lastModelSpeechEndAt = 0;
+      this.conversationsCount++;
+      this.candidateTranscriptBuffer = '';
+      console.log(`[WakeDaemon] 🎯 Ims is answering - wake accepted ("${heard.trim().slice(0, 40)}") -> CONVERSATION_ACTIVE`);
+      this._addLog('wake_verified', `Wake accepted because Ims is answering (transcript: "${heard}")`, { phrase: this.lastWakePhrase, transcript: heard, source: 'reply' });
+      this.emit('wakeVerified', { phrase: this.lastWakePhrase, source: 'reply' });
+      this.emit('stateChange', { state: this.state, reason: 'wake_verified' });
+    }
   }
 
   /**

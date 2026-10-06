@@ -55,7 +55,7 @@ import graphRoutes from './routes/graph.js';
 import voiceRoutes from './routes/voice.js';
 import memoriesRoutes from './routes/memories.js';
 import glucoseHubRoutes from './routes/glucoseHub.js';
-import { describeForIms as describeGlucoseForIms, logCarbs, clearOldNightscout, recentCarbs } from './services/glucoseHubService.js';
+import { describeForIms as describeGlucoseForIms, logCarbs, clearOldNightscout, recentCarbs, dosingContext } from './services/glucoseHubService.js';
 import { askProfileInsightQuestion } from './services/glucoseInsightService.js';
 import { stripMedicalDisclaimers } from './services/disclaimerSanitizer.js';
 import { lookUpFood } from './services/foodService.js';
@@ -1309,12 +1309,20 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // 120-second grace window after dispatching the report tool-response so the
   // continuation is not dropped.
   let dayReportSentAt = 0;
+  // Gemini sometimes speaks a few items of the report and stops (6 Oct: three calendar items, no weather,
+  // health or news). Words spoken since the report went out are counted; a reply that ends far short of a
+  // full report gets one "carry on" note, so he finishes it without being asked twice.
+  let dayReportWords = 0, dayReportSections = 0, dayReportNudged = false;
   // Triggers are only cleared once a turn that actually SPOKE has finished. Gemini
   // reports a tool call (e.g. the wake-phrase check) as its own finished turn, and
   // its real answer follows it a moment later - that answer is still a reply to
   // the same user speech and must not be dropped.
   let turnHadAudio = false;
-  const turnHasTrigger = () => energeticMicFrames >= 8 || userTranscriptSeen || textTurnSent;
+  // A quick answer ("lunchtime") can start his reply before its transcript arrives, and mic energy in the first
+  // 3 s after Gemini's turnComplete is ignored (echo) - so also count loud mic after the reply finished
+  // playing, inside the follow-up window. (followUpUntil - followUpMs is when playback ended.)
+  const answeredAloud = () => followUpUntil > 0 && Date.now() <= followUpUntil && lastLoudMicAt > followUpUntil - followUpMs + 700;
+  const turnHasTrigger = () => energeticMicFrames >= 8 || userTranscriptSeen || textTurnSent || answeredAloud();
   const resetTurnTriggers = () => { energeticMicFrames = 0; userTranscriptSeen = false; textTurnSent = false; stopWindow = ''; heardThisTurn = ''; heardStartAt = 0; };
   // Wake gate (desk only): Ims may only speak when what was just heard contains a wake phrase,
   // or it is a follow-up that started within FOLLOW_UP_MS of him finishing - or a tap / device text.
@@ -1324,6 +1332,16 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   let pendingCarbs = null;
   let lastUserInputAt = 0;
   let heardStartAt = 0;
+  // Wake kick: Gemini sometimes transcribes "Hi Ims" but never ends the user's turn, so no reply starts before
+  // the Box-3 gives up (4.5 s). Once a wake phrase is heard and the speech has stopped, the server ends the
+  // audio turn itself, and if that still gets nothing, tells him in text to answer.
+  let lastModelOutputAt = 0;
+  // An answer is owed once a tool's result has gone back to Gemini. His holding line ("let's have a look")
+  // finishes as its own turn and clears the turn triggers, so the real answer that follows used to look
+  // unsolicited and was dropped (6 Oct: glucose and pre-bolus answers lost) - the next turn is that answer.
+  let toolAnswerOwedAt = 0;
+  let toolAnswerWords = 0; // words spoken since the result went back - a real answer (not the tail of the holding line) settles it
+  let wakeKickTimer = null;
   let followUpUntil = 0;
 
   // ---- Conversation transcripts and time-to-first-word (conversationLog.js, persona plan Phase 0) ----
@@ -1595,6 +1613,12 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     }
     const gWs = new WebSocket(geminiUrl);
     geminiConnectedAt = Date.now();
+    gWs.openedAt = geminiConnectedAt; // this session's own start (geminiConnectedAt moves on to the next one)
+    // The gap before the next session counts from when a close STARTS: the server drops its handle straight
+    // after close(), so the next mic frame used to open a new session while this one was still closing -
+    // Google answered those with "Internal error" (46 of 50 on 6 Oct 2026).
+    const closeNow = gWs.close.bind(gWs);
+    gWs.close = (...args) => { lastGeminiCloseAt = Date.now(); return closeNow(...args); };
     geminiSetupAcknowledged = false;
     lastActivityAt = Date.now(); // a fresh session gets its full 15 s before the silence close
     sessionUsed = false;
@@ -1710,6 +1734,28 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             if (!heardStartAt) heardStartAt = Date.now();
             const incomingTranscript = parsed.serverContent.inputTranscription.text;
             heardThisTurn = (heardThisTurn + incomingTranscript).slice(-400);
+            if (currentTurnComplete && looksAddressed(heardThisTurn) && !isRecordingActive()) {
+              // restarted on every new piece of transcript, so a longer request isn't cut short
+              if (wakeKickTimer) clearTimeout(wakeKickTimer);
+              const heardAt = Date.now();
+              const kick = (step) => {
+                wakeKickTimer = null;
+                if (lastModelOutputAt >= heardAt || gWs.readyState !== WebSocket.OPEN || isRecordingActive()) return;
+                if (step === 1 && Date.now() - lastLoudMicAt < 500) { wakeKickTimer = setTimeout(() => kick(1), 300); return; } // still talking
+                if (step === 1) {
+                  gWs.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
+                  try { logCapture(`[${new Date().toISOString()}] ${tag} WAKE KICK 1: ended the audio turn (heard "${heardThisTurn.trim().slice(0, 60)}", no reply yet)
+`); } catch (_) { }
+                  wakeKickTimer = setTimeout(() => kick(2), 500);
+                } else {
+                  textTurnSent = true; sessionUsed = true; lastActivityAt = Date.now();
+                  gWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `(System: Simon just said "${heardThisTurn.trim().slice(0, 200)}" to you - that is your wake phrase, misheard by speech recognition. Answer him now: if he only said the wake phrase, greet him; otherwise answer what he said.)` }] }], turnComplete: true } }));
+                  try { logCapture(`[${new Date().toISOString()}] ${tag} WAKE KICK 2: asked him to answer in text
+`); } catch (_) { }
+                }
+              };
+              wakeKickTimer = setTimeout(() => kick(1), 400);
+            }
 
             // Wake Daemon user speech assessment
             const speechEval = wakeDaemonService.processUserSpeech(incomingTranscript, 'hardware');
@@ -1737,7 +1783,10 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             }
           }
           const startsModelOutput = parsed.serverContent?.modelTurn || parsed.serverContent?.outputTranscription || parsed.toolCall;
-          if (startsModelOutput && currentTurnComplete && !unsolicitedTurn && !turnHasTrigger()) {
+          const answersTool = Boolean(startsModelOutput && currentTurnComplete && toolAnswerOwedAt && Date.now() - toolAnswerOwedAt < 90000);
+          if (answersTool) { toolAnswerOwedAt = 0; unsolicitedTurn = false; }
+          if (startsModelOutput) { lastModelOutputAt = Date.now(); if (wakeKickTimer) { clearTimeout(wakeKickTimer); wakeKickTimer = null; } }
+          if (startsModelOutput && currentTurnComplete && !unsolicitedTurn && !turnHasTrigger() && !answersTool) {
             // Allow a continuation turn within 120 s of a getDayReport tool response:
             // Gemini sometimes fires turnComplete after the first batch of audio
             // (e.g. after device-changes) then starts a new turn to continue the
@@ -1756,8 +1805,8 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             }
           }
           if (startsModelOutput && currentTurnComplete && !unsolicitedTurn) {
-            const followUp = heardStartAt ? heardStartAt <= followUpUntil : (energeticMicFrames >= 8 && Date.now() <= followUpUntil);
-            const addressed = textTurnSent || touchToTalkActive || looksAddressed(heardThisTurn) || followUp;
+            const followUp = heardStartAt ? heardStartAt <= followUpUntil : ((energeticMicFrames >= 8 || answeredAloud()) && Date.now() <= followUpUntil);
+            const addressed = answersTool || textTurnSent || touchToTalkActive || looksAddressed(heardThisTurn) || followUp;
             if (!addressed && !heardThisTurn.trim()) {
               // No transcript yet - hold his voice for up to 1.5 s until it arrives (see above).
               judgePendingUntil = Date.now() + 1500;
@@ -1769,6 +1818,15 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               paceFlush();
               if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ noWakeDetected: true }));
             }
+          }
+          const realAction = (parsed.toolCall?.functionCalls || []).find((c) => !['setEmotion', 'noWakeDetected', 'noteWake', 'endConversation'].includes(c.name));
+          if (unsolicitedTurn && realAction && (isConversationActive || Date.now() <= followUpUntil + 5000) && !isRecordingActive()) {
+            // Gemini only sets alarms, looks things up etc. when asked - this was a reply after all. Dropping it
+            // used to answer the call "acknowledged" without running it (6 Oct: an alarm he said he'd set, never set).
+            unsolicitedTurn = false;
+            console.log(`${tag} ✅ Reply un-dropped - it carries ${realAction.name}`);
+            try { logCapture(`[${new Date().toISOString()}] ${tag} REPLY UN-DROPPED - carries ${realAction.name}
+`); } catch (_) { }
           }
           if (unsolicitedTurn) {
             for (const call of parsed.toolCall?.functionCalls || []) {
@@ -1851,6 +1909,8 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           if (isHardware && morningOfferPending) { morningOfferPending = false; markMorningReportOffered(); }
           turnReplyText = stripToolText(turnReplyText + spokenText);
           turnLog.ims += spokenText;
+          if (toolAnswerOwedAt) toolAnswerWords += spokenText.split(/\s+/).filter(Boolean).length;
+          if (dayReportSentAt && Date.now() - dayReportSentAt < 180000) dayReportWords += spokenText.split(/\s+/).filter(Boolean).length;
           // I4: the face follows a turn in a long reply - timed to when those words are actually heard
           // (no face set yet: from the first ~8 words; already set: on a later turn in a reply past 12 words)
           const wordsSoFar = turnLog.ims.split(/\s+/).filter(Boolean).length;
@@ -1937,12 +1997,24 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             turnCompleteAt = Date.now();
             if (turnHadAudio) {
               audibleTurnEndAt = Date.now();
+              if (toolAnswerOwedAt && toolAnswerWords >= 10) toolAnswerOwedAt = 0; // he gave the answer in this same turn
               resetTurnTriggers(); turnHadAudio = false;
               const said = stripToolText(turnLog.ims).trim();
               followUpMs = (/\?["')\s]*$/.test(said) || said.split(/\s+/).length > 60) ? 25000 : FOLLOW_UP_MS;
               followUpUntil = playEnd + followUpMs;
               wakeDaemonService.setSilenceTimeout(followUpMs + 5000);
               if (isHardware) paceSend({ json: JSON.stringify({ followUpMs }) }); // the Box-3 keeps listening that long too
+              // a day report that stopped well short of all its sections: tell him once to finish it
+              const reportFloor = Math.max(120, dayReportSections * 20);
+              if (imsBrain && dayReportSentAt && Date.now() - dayReportSentAt < 180000 && !dayReportNudged && dayReportWords < reportFloor
+                && isConversationActive && gWs.readyState === WebSocket.OPEN && !(isHardware && isRecordingActive())) {
+                dayReportNudged = true;
+                textTurnSent = true; sessionUsed = true; lastActivityAt = Date.now();
+                gWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `(System: you stopped partway through the day report - only ${dayReportWords} words of its ${dayReportSections} sections. Carry straight on now with every section you have not spoken yet, in the report's order, including any you skipped such as the weather - no greeting, no recap of what you already said, full detail as the report's instructions ask - then sign off.)` }] }], turnComplete: true } }));
+                console.log(`${tag} 📰 Day report stopped short (${dayReportWords} words) - asked him to carry on`);
+                try { logCapture(`[${new Date().toISOString()}] ${tag} DAY REPORT CONTINUE NUDGE (${dayReportWords} words of ${dayReportSections} sections)
+`); } catch (_) { }
+              }
             }
           }
           console.log(`${tag} ✅ Gemini reported TURN COMPLETE (hasToolCall=${!!parsed.toolCall})`);
@@ -2008,6 +2080,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           // one call each, so a copy-paste slip can't silently mismatch a
           // call.id or skip the OPEN check.
           const respondToToolCall = (call, output) => {
+            if (!['setEmotion', 'endConversation', 'noWakeDetected', 'noteWake'].includes(call.name)) { toolAnswerOwedAt = Date.now(); toolAnswerWords = 0; }
             if (call.name !== 'setEmotion') turnLog.tools.push({ name: call.name, ms: Date.now() - toolStartedAt, ok: !(output && output.error),
               ...(/^(getWeather|getBloodGlucose|listScheduledItems|getCalendarEvents|getDayReport|getUpcomingBirthdays|getTrainingSummary|getScheduleHistory|getNewMusicReleases)$/.test(call.name) ? { out: JSON.stringify(output).slice(0, 2500) } : {}) });
             // Anything that fails is logged to the dev ideas queue as a prompt for Claude Code.
@@ -2314,7 +2387,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                     question: insight.question,
                     insight: stripMedicalDisclaimers(insight.answer),
                     telemetrySnapshot: insight.telemetrySnapshot,
-                    instruction: 'Summarise the clinical telemetry insight ' + inYourVoice() + ', directly answering the user. Do not prescribe exact insulin doses; give observations and ideas straight to consider. CRITICAL NON-NEGOTIABLE: NEVER say "this is not medical advice", NEVER say "please seek advice from a medical professional or team", and NEVER tell or suggest to the user to consult or speak to their diabetes team, doctor, or healthcare professionals (the user manages their care independently and forbids disclaimers).'
+                    dosing: dosingContext(), instruction: 'Summarise the clinical telemetry insight ' + inYourVoice() + ', directly answering the user. If he asked how much insulin to take, take the amount from dosing.wizard (the server bolus-wizard sums - use them over any number in insight, and never add insulin when correctionAfterInsulinOnBoard is zero or negative) and give it with the working - he makes the final call; otherwise give observations and ideas straight to consider. CRITICAL NON-NEGOTIABLE: NEVER say "this is not medical advice", NEVER say "please seek advice from a medical professional or team", and NEVER tell or suggest to the user to consult or speak to their diabetes team, doctor, or healthcare professionals (the user manages their care independently and forbids disclaimers).'
                   });
                 }).catch((err) => {
                   console.error(`${tag} getBloodGlucose insight error:`, err.message);
@@ -2327,7 +2400,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 });
               } else {
                 try {
-                  const g = describeGlucoseForIms(call.args?.period || 'today');
+                  const g = { ...describeGlucoseForIms(call.args?.period || 'today'), dosing: dosingContext() };
                   console.log(`${tag} 🩸 getBloodGlucose(${call.args?.period || 'today'}) -> ${JSON.stringify(g.now).slice(0, 120)}`);
                   respondToToolCall(call, g);
                 } catch (err) {
@@ -2339,6 +2412,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               getDayReport().then((r) => {
                 console.log(`${tag} 📰 getDayReport -> ${r.sectionCount} sections, ${r.report.length} chars`);
                 dayReportSentAt = Date.now();
+                dayReportWords = 0; dayReportSections = r.sectionCount || 0; dayReportNudged = false;
                 respondToToolCall(call, { instructions: r.instructions, sectionCount: r.sectionCount, report: r.report });
               }).catch((err) => respondToToolCall(call, { error: err.message }));
             } else if (call.name === 'getNews') {
@@ -2525,7 +2599,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       flushMicWavToDisk();
       const reasonStr = reason ? reason.toString() : '';
       lastGeminiCloseAt = Date.now();
-      const connectionAliveMs = geminiConnectedAt > 0 ? (Date.now() - geminiConnectedAt) : -1;
+      const connectionAliveMs = gWs.openedAt > 0 ? (Date.now() - gWs.openedAt) : -1;
       const msSinceOwnAudioAtClose = lastModelAudioTime > 0 ? (Date.now() - lastModelAudioTime) : -1;
       console.log(`${tag} Gemini Live closed connection: ${code} - ${reasonStr} (alive ${connectionAliveMs}ms, ${msSinceOwnAudioAtClose}ms since last audio chunk)`);
       if (connectionAliveMs > 10000) warmReconnectAttempts = 0; // that session was healthy

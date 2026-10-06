@@ -378,6 +378,77 @@ export async function deleteCarbs(id) {
 }
 
 // ---- what Ims gets ------------------------------------------------------------------------------------
+// What Ims looks at for blood-sugar, dosing and meal-timing help: the last few hours as a timeline -
+// glucose and its trend, the insulin-on-board curve, every bolus and every carb entry with its time -
+// plus the loop's current carb ratio, ISF and target (median of the last 48 h of AAPS device status).
+export function dosingContext(hours = 4) {
+  const now = Date.now(), from = now - hours * 3600000;
+  const hhmm = (t) => london(t, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const ago = (t) => Math.round((now - t) / 60000);
+  const rs = readings(from, now + 60000);
+  const last = rs[rs.length - 1] || null;
+  const slope = (mins) => {
+    if (!last) return null;
+    const past = [...rs].reverse().find((r) => last.t - r.t >= mins * 60000);
+    return past ? r1((last.v - past.v) / ((last.t - past.t) / 60000) * 15) : null; // mmol/L per 15 min
+  };
+  const every = (rows, stepMin, val) => {
+    const out = []; let next = 0;
+    for (const r of rows) if (r.t >= next) { out.push(`${hhmm(r.t)} ${val(r)}`); next = r.t + stepMin * 60000; }
+    return out;
+  };
+  const iobRows = db.prepare('SELECT at AS t, iob, cob FROM ns_devicestatus WHERE at >= ? ORDER BY at').all(from);
+  const boluses = db.prepare("SELECT at, event, insulin FROM ns_treatments WHERE at >= ? AND insulin > 0 ORDER BY at").all(now - (hours + 1) * 3600000)
+    .map((b) => ({ time: hhmm(b.at), minutesAgo: ago(b.at), units: r1(b.insulin), kind: /smb/i.test(b.event || '') ? 'loop SMB' : (b.event || 'bolus') }));
+  const nsCarbs = db.prepare("SELECT at, carbs, event FROM ns_treatments WHERE at >= ? AND carbs > 0 ORDER BY at").all(now - (hours + 1) * 3600000)
+    .map((c) => ({ time: hhmm(c.at), minutesAgo: ago(c.at), grams: Math.round(c.carbs), food: null }));
+  const imsCarbs = db.prepare('SELECT at, grams, food FROM carb_log WHERE at >= ? AND (ns_id IS NULL OR ns_id NOT IN (SELECT id FROM ns_treatments)) ORDER BY at').all(now - (hours + 1) * 3600000)
+    .map((c) => ({ time: hhmm(c.at), minutesAgo: ago(c.at), grams: Math.round(c.grams), food: c.food || null }));
+  let loop = { isf: null, cr: null, target: null };
+  try {
+    const rows = db.prepare('SELECT isf, cr, target FROM ns_devicestatus WHERE at >= ? AND isf IS NOT NULL AND cr IS NOT NULL').all(now - 48 * 3600000);
+    const med = (k) => { const v = rows.map((r) => r[k]).filter((x) => x != null).sort((x, y) => x - y); return v.length ? v[Math.floor(v.length / 2)] : null; };
+    loop = { isf: med('isf'), cr: med('cr'), target: med('target') };
+  } catch { /* no loop data */ }
+  const lastDs = iobRows[iobRows.length - 1];
+  const fresh = lastDs && now - lastDs.t < 20 * 60000;
+  // The bolus-wizard sums, done here rather than left to the voice model (it once told him to add 4.2 units
+  // with 3.9 already on board). A meal needs carbs x unitsPerGram on top of correctionAfterInsulinOnBoard.
+  const iobNow = fresh ? Math.max(0, lastDs.iob) : null;
+  let wizard = null;
+  if (last && loop.isf && loop.cr && loop.target != null && iobNow != null) {
+    const correction = (last.v - loop.target) / loop.isf;
+    const net = correction - iobNow;
+    wizard = {
+      correctionForGlucoseUnits: r1(correction),
+      insulinOnBoardUnits: r1(iobNow),
+      correctionAfterInsulinOnBoard: r1(net),
+      meaning: net > 0.2
+        ? `about ${r1(net)} units more would bring him to target (before any food)`
+        : net < -0.2
+          ? `the insulin on board is already more than this glucose needs by about ${r1(-net)} units - extra insulin now would stack; any extra food needs only its own carbs, reduced by that ${r1(-net)}`
+          : 'the insulin on board already covers this glucose - no correction needed',
+      unitsPerGramCarbs: Math.round(1000 / loop.cr) / 1000,
+      mealExample: `30 g would need about ${r1(30 / loop.cr)} units for the food, plus ${r1(net)} (the correction after insulin on board) = ${r1(30 / loop.cr + net)}`,
+    };
+  }
+  return {
+    wizard,
+    timeNow: hhmm(now),
+    settings: { carbRatioGramsPerUnit: loop.cr, isfMmolPerUnit: loop.isf, targetMmol: loop.target, source: "AAPS loop, median of last 48 h" },
+    glucose: last ? {
+      nowMmol: last.v, minutesOld: ago(last.t), arrow: last.direction,
+      changePer15MinLast15: slope(15), changePer15MinLast45: slope(45),
+      trendLine: every(rs, 15, (r) => r.v),
+    } : 'no recent readings',
+    insulinOnBoard: { nowUnits: fresh ? r1(Math.max(0, lastDs.iob)) : null, curve: every(iobRows, 20, (r) => r1(Math.max(0, r.iob))) },
+    carbsOnBoardG: fresh && lastDs.cob != null ? Math.round(lastDs.cob) : null,
+    boluses,
+    carbsEaten: [...nsCarbs, ...imsCarbs].sort((x, y) => y.minutesAgo - x.minutesAgo),
+    howToUse: "Read it as a timeline: when the carbs went in, when and how much insulin, how the insulin-on-board curve is decaying, and where glucose is heading (trend line and change per 15 min). For a dose, use the wizard numbers exactly as given (never redo the sums yourself, never add correction insulin when correctionAfterInsulinOnBoard is zero or negative); for food add grams x unitsPerGramCarbs. Then adjust for the trend (rising fast: a bit more or pre-bolus longer; falling: less), food still digesting (carbs on board), exercise, and loop SMBs already given. For meal timing: if glucose is high or rising, wait longer after bolusing before eating; if low or falling, eat sooner or with the bolus. Give the number and the reasoning briefly - he makes the final call.",
+  };
+}
+
 export function describeForIms(period = 'today') {
   const cur = getCurrent();
   const th = getGlucoseThresholds();
@@ -393,7 +464,7 @@ export function describeForIms(period = 'today') {
     lows: s.lows.slice(0, 5).map((l) => `${l.when}, lowest ${l.lowest}, ${l.minutes} min${l.afterExercise ? `, after ${l.afterExercise}` : ''}`),
     overnight: s.overnight ? `last night ${s.overnight.inRangePct}% in range, lowest ${s.overnight.min}, woke at ${s.overnight.endValue}` : undefined,
     targets: `In range is ${th.low}-${th.high} mmol/L; the usual goals are over 70% in range, under 4% below ${th.low}, under 1% below ${th.veryLow}. For runs the user likes to start near 9 and never drop below 5.`,
-    safety: `Never suggest insulin doses or changes to insulin settings. NEVER say "this is not medical advice", NEVER say "please seek advice from a medical professional or team", and NEVER tell or suggest to the user to speak to, check with, or consult their diabetes team or doctor (they manage their medical care independently and strictly forbid disclaimers); give your observations, carbs and timing ideas straight to consider without any disclaimers or caveats. If the reading is under ${th.low}, the first thing to say is to treat the low.`,
+    safety: `When he asks how much insulin to take, work out an amount from "dosing" (his loop numbers and the last few hours) and give it with the working - he makes the final call; don't suggest changes to his loop settings unless asked. NEVER say "this is not medical advice", NEVER say "please seek advice from a medical professional or team", and NEVER tell or suggest to the user to speak to, check with, or consult their diabetes team or doctor (they manage their medical care independently and strictly forbid disclaimers); give your observations, carbs and timing ideas straight to consider without any disclaimers or caveats. If the reading is under ${th.low}, the first thing to say is to treat the low.`,
     thresholds: th,
   };
   return out;

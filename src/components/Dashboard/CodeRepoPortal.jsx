@@ -1203,17 +1203,17 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
       <div className={`rounded-2xl border p-5 sm:p-6 mb-6 backdrop-blur-xl transition-all ${
         isDark ? 'bg-slate-900/80 border-white/10' : 'bg-white border-slate-200/80 shadow-[0_6px_24px_rgba(15,23,42,0.06)]'
       }`}>
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
+        <div className="flex flex-col 2xl:flex-row 2xl:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5 min-w-0">
             <span className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-blue-500/10 text-blue-500">
               <GitBranch size={20} />
             </span>
-            <div>
-              <div className="flex items-center gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h2 className={`text-base font-extrabold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                   Connected GitHub Repositories
                 </h2>
-                <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${isDark ? 'bg-white/10 text-slate-200' : 'bg-slate-100 text-slate-700'}`}>
+                <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold whitespace-nowrap shrink-0 ${isDark ? 'bg-white/10 text-slate-200' : 'bg-slate-100 text-slate-700'}`}>
                   {repositories.length} Total
                 </span>
               </div>
@@ -1223,7 +1223,7 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+          <div className="flex items-center gap-2.5 flex-wrap 2xl:justify-end">
             {/* PR Quality, TypeScript Lint & Triple Registry Audit */}
             <button
               onClick={handleRunAudit}
