@@ -132,6 +132,18 @@ export function getTrainingLoad({ now = Date.now() } = {}) {
     const g = [...logged, ...aapsOnly].filter((x) => london(x.at) === dd.day).reduce((n, x) => n + x.grams, 0);
     dd.carbsG = Number.isFinite(firstLog) && Date.parse(`${dd.day}T23:59:59Z`) >= firstLog ? Math.round(g) : null;
   }
+  // Muscle glycogen refill - a tank, not a running total: each run empties it by the glycogen it burned
+  // (usedG); about half of the carbs eaten after it go back into the muscles (the rest fuels the brain and
+  // everyday living) until it's full, then it stays full. Each run starts its own gap (runs on the same day add
+  // together, up to what muscles hold - about 6 g per kg). Day-level estimate from logged carbs (IMS + AAPS).
+  const REFILL_SHARE = 0.5, capG = Math.round(6 * kg);
+  let owedG = 0, refilledG = 0;
+  for (const dd of days) {
+    if (dd.future) continue;
+    if (dd.usedG > 0) { owedG = Math.min(capG, dd.usedG); refilledG = 0; }
+    if (owedG > 0 && dd.carbsG != null) refilledG = Math.min(owedG, Math.round(refilledG + REFILL_SHARE * dd.carbsG));
+    dd.glycogen = owedG > 0 ? { owedG, refilledG, pct: Math.round((refilledG / owedG) * 100) } : null;
+  }
 
   // the last 42 days, day by day, for the chart
   const history = [];

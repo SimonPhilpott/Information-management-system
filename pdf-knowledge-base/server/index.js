@@ -1323,7 +1323,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // playing, inside the follow-up window. (followUpUntil - followUpMs is when playback ended.)
   const answeredAloud = () => followUpUntil > 0 && Date.now() <= followUpUntil && lastLoudMicAt > followUpUntil - followUpMs + 700;
   const turnHasTrigger = () => energeticMicFrames >= 8 || userTranscriptSeen || textTurnSent || answeredAloud();
-  const resetTurnTriggers = () => { energeticMicFrames = 0; userTranscriptSeen = false; textTurnSent = false; stopWindow = ''; heardThisTurn = ''; heardStartAt = 0; };
+  const resetTurnTriggers = () => { speechStartAt = 0; energeticMicFrames = 0; userTranscriptSeen = false; textTurnSent = false; stopWindow = ''; heardThisTurn = ''; heardStartAt = 0; };
   // Wake gate (desk only): Ims may only speak when what was just heard contains a wake phrase,
   // or it is a follow-up that started within FOLLOW_UP_MS of him finishing - or a tap / device text.
   let heardThisTurn = '';
@@ -1340,7 +1340,8 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // finishes as its own turn and clears the turn triggers, so the real answer that follows used to look
   // unsolicited and was dropped (6 Oct: glucose and pre-bolus answers lost) - the next turn is that answer.
   let toolAnswerOwedAt = 0;
-  let toolAnswerWords = 0; // words spoken since the result went back - a real answer (not the tail of the holding line) settles it
+  let toolAnswerWords = 0;
+  let wordsSpoken = 0; // every word he has said this connection - to tell whether he already answered after a tool call // words spoken since the result went back - a real answer (not the tail of the holding line) settles it
   let wakeKickTimer = null;
   let followUpUntil = 0;
 
@@ -1420,6 +1421,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   let turnCompleteAt = 0; // when currentTurnComplete last flipped true
   let audibleTurnEndAt = 0; // when a reply that was actually played last ended - the echo guard keys off this, not dropped replies
   let lastMicFrameAt = 0;   // the Box-3 streams the mic only while checking a wake phrase or listening
+  let speechStartAt = 0;    // first loud mic frame after his last reply - when the user STARTED talking
   let lastLoudMicAt = 0;    // last mic frame with real speech in it - the end of what the user said
 
   // Strict session lifecycle state for hardware clients
@@ -1731,7 +1733,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           if (parsed.serverContent?.inputTranscription?.text) {
             clearPendingSpeech();
             userTranscriptSeen = true; unsolicitedTurn = false;
-            if (!heardStartAt) heardStartAt = Date.now();
+            if (!heardStartAt) heardStartAt = speechStartAt && Date.now() - speechStartAt < 60000 ? speechStartAt : Date.now();
             const incomingTranscript = parsed.serverContent.inputTranscription.text;
             heardThisTurn = (heardThisTurn + incomingTranscript).slice(-400);
             if (currentTurnComplete && looksAddressed(heardThisTurn) && !isRecordingActive()) {
@@ -1770,7 +1772,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
             if (judgePendingUntil) {
               judgePendingUntil = 0;
-              if (!looksAddressed(heardThisTurn)) {
+              if (!isConversationActive && !looksAddressed(heardThisTurn)) {
                 unsolicitedTurn = true;
                 console.warn(`${tag} 🔇 Not addressed to Ims (late transcript) - dropping the held reply. Heard: "${heardThisTurn.slice(0, 80)}"`);
                 try { logCapture(`[${new Date().toISOString()}] ${tag} REPLY DROPPED - NOT ADDRESSED (late): "${heardThisTurn.slice(0, 120)}"\n`); } catch (_) { }
@@ -1806,7 +1808,9 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           }
           if (startsModelOutput && currentTurnComplete && !unsolicitedTurn) {
             const followUp = heardStartAt ? heardStartAt <= followUpUntil : ((energeticMicFrames >= 8 || answeredAloud()) && Date.now() <= followUpUntil);
-            const addressed = answersTool || textTurnSent || touchToTalkActive || looksAddressed(heardThisTurn) || followUp;
+            // an open conversation is a to and fro: anything said in it is for Ims - no timing test. It only ends
+            // when he's told goodbye or nobody speaks for the silence timeout (device idle / SILENCE_CLOSE_MS).
+            const addressed = isConversationActive || answersTool || textTurnSent || touchToTalkActive || looksAddressed(heardThisTurn) || followUp;
             if (!addressed && !heardThisTurn.trim()) {
               // No transcript yet - hold his voice for up to 1.5 s until it arrives (see above).
               judgePendingUntil = Date.now() + 1500;
@@ -1848,6 +1852,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         // Check for incoming audio parts
         if (parsed.serverContent?.modelTurn?.parts) {
           wakeDaemonService.notifyModelSpeechStart();
+          if (imsBrain && !(isHardware && isRecordingActive())) isConversationActive = true; // he's answering: the conversation is open
           for (const part of parsed.serverContent.modelTurn.parts) {
             if (part.inlineData?.mimeType?.startsWith('audio/') && part.inlineData.data) {
               lastModelAudioTime = Date.now();
@@ -1909,7 +1914,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           if (isHardware && morningOfferPending) { morningOfferPending = false; markMorningReportOffered(); }
           turnReplyText = stripToolText(turnReplyText + spokenText);
           turnLog.ims += spokenText;
-          if (toolAnswerOwedAt) toolAnswerWords += spokenText.split(/\s+/).filter(Boolean).length;
+          { const n = spokenText.split(/\s+/).filter(Boolean).length; wordsSpoken += n; if (toolAnswerOwedAt) toolAnswerWords += n; }
           if (dayReportSentAt && Date.now() - dayReportSentAt < 180000) dayReportWords += spokenText.split(/\s+/).filter(Boolean).length;
           // I4: the face follows a turn in a long reply - timed to when those words are actually heard
           // (no face set yet: from the first ~8 words; already set: on a later turn in a reply past 12 words)
@@ -2059,6 +2064,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           lastActivityAt = Date.now();
           sessionUsed = true;
           const toolStartedAt = Date.now();
+          const wordMark = wordsSpoken; // words he'd said when he made these calls
           const lookups = parsed.toolCall.functionCalls.filter((c) => !['setEmotion', 'endConversation', 'noWakeDetected', 'startRecording', 'noteWake'].includes(c.name));
           if (isHardware && lookups.length && !turnLog.firstAudioAt && !turnLog.holdingPlayed) {
             const tl = turnLog;
@@ -2080,7 +2086,9 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           // one call each, so a copy-paste slip can't silently mismatch a
           // call.id or skip the OPEN check.
           const respondToToolCall = (call, output) => {
-            if (!['setEmotion', 'endConversation', 'noWakeDetected', 'noteWake'].includes(call.name)) { toolAnswerOwedAt = Date.now(); toolAnswerWords = 0; }
+            // an answer is only owed if he hasn't already given one while the tool ran (a slow save like
+            // rememberFact finishing after "Aye, I'll remember that" let the same line through twice)
+            if (!['setEmotion', 'endConversation', 'noWakeDetected', 'noteWake'].includes(call.name) && wordsSpoken - wordMark < 10) { toolAnswerOwedAt = Date.now(); toolAnswerWords = 0; }
             if (call.name !== 'setEmotion') turnLog.tools.push({ name: call.name, ms: Date.now() - toolStartedAt, ok: !(output && output.error),
               ...(/^(getWeather|getBloodGlucose|listScheduledItems|getCalendarEvents|getDayReport|getUpcomingBirthdays|getTrainingSummary|getScheduleHistory|getNewMusicReleases)$/.test(call.name) ? { out: JSON.stringify(output).slice(0, 2500) } : {}) });
             // Anything that fails is logged to the dev ideas queue as a prompt for Claude Code.
@@ -2928,7 +2936,11 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         // Ignore the first 3 s after a turn ends: the speaker's own tail and room echo are
         // loud enough on the mic to look like speech. A quick follow-up from the user is
         // still recognised through its transcription instead.
-        if (samples > 0 && Math.sqrt(sumSq / samples) > 400) lastLoudMicAt = Date.now();
+        if (samples > 0 && Math.sqrt(sumSq / samples) > 400) {
+          lastLoudMicAt = Date.now();
+          // a transcript only arrives once a long sentence is finished, so judge "did he answer in time" from here
+          if (!speechStartAt && currentTurnComplete && Date.now() > followUpUntil - followUpMs + 700) speechStartAt = Date.now();
+        }
         if (samples > 0 && Math.sqrt(sumSq / samples) > 300 && Date.now() - turnCompleteAt > 3000 && ++energeticMicFrames >= 8) unsolicitedTurn = false; // the user is talking: stop dropping
         // speech after Ims's turn, in an open conversation - watched so a reply that never comes is noticed
         if (samples > 0 && currentTurnComplete && turnCompleteAt && Math.sqrt(sumSq / samples) > 400) {

@@ -82,3 +82,6 @@ scratch_*
 # Box-3 face renderer bundle and generated face packs (built on demand by faceDeviceService.js)
 pdf-knowledge-base/server/face_render/
 pdf-knowledge-base/server/data/face_packs/
+
+# Garmin Connect login tokens (services/garminService.js) - never commit
+pdf-knowledge-base/data/garmin/

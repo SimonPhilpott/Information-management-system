@@ -41,15 +41,12 @@ export default function TrainingLoadChart({ days, isDark }) {
     const rMax = Math.max(1.65, Math.ceil(Math.max(...days.map((x) => x.acwr || 0)) * 10) / 10 + 0.05);
     const Yr = (v) => rows.ratio[0] + 4 + (1 - (Math.max(rMin, Math.min(rMax, v)) - rMin) / (rMax - rMin)) * (rows.ratio[1] - 8);
     const loadMax = Math.max(50, ...days.map((x) => x.load));
-    // refuelling: running totals since each run (that run's day onwards), eaten vs needed
+    // muscle glycogen: what the last run(s) took out (need) and how much of it the carbs since have put back
+    // (eaten) - it fills up and then stays full, rather than adding up every day's carbs
     const fuel = [];
-    let eaten = 0, need = 0, started = false;
     days.forEach((x, i) => {
-      if (x.future) return;
-      if (x.run) { eaten = 0; need = 0; started = true; }
-      if (!started || x.needG == null || x.carbsG == null) return;
-      need += x.needG; eaten += x.carbsG || 0;
-      fuel.push({ i, eaten, need, logged: x.carbsG != null, run: x.run });
+      if (x.future || !x.glycogen) return;
+      fuel.push({ i, eaten: x.glycogen.refilledG, need: x.glycogen.owedG, pct: x.glycogen.pct, run: x.run });
     });
     const fMax = Math.max(200, ...fuel.map((f) => f.need)) * 1.08;
     const Yfu = (v) => rows.fuel[0] + 14 + (1 - v / fMax) * (rows.fuel[1] - 14);
@@ -88,10 +85,20 @@ export default function TrainingLoadChart({ days, isDark }) {
     return `${k ? jump + 'L' : 'M'}${X(f.i).toFixed(1)},${Yfu(f[key]).toFixed(1)}`;
   }).join(' ');
   const lastFuel = d.fuel.at(-1);
+  // hover box: each line named, its value, and what it means in a few words
+  const tipRows = [
+    ['#0ea5e9', 'Fitness', h.ctl, 'your training base - average load over 6 weeks; slow to build, slow to lose'],
+    ['#f97316', 'Fatigue', h.atl, 'how tired the last week has made you - average load over 7 days; jumps after a run, eases with rest'],
+    [formZone(h.tsb)[1], 'Form', `${h.tsb > 0 ? '+' : ''}${h.tsb} (${formZone(h.tsb)[0]})`, 'fitness minus fatigue - the mirror of fatigue; below -20 very tired, above -5 fresh'],
+    ...(h.acwr != null ? [[ratioZone(h.acwr)[1], 'Load ratio', `${h.acwr} (${ratioZone(h.acwr)[0]})`, 'fatigue divided by fitness; 0.8-1.3 builds safely, over 1.5 risks injury']] : []),
+    ...(h.load > 0 ? [['#c2410c', 'Session load', h.load, h.sessions.map((x) => `${x.name}${x.km ? ` ${x.km} km` : ''}`).join(', ')]] : []),
+    ...(!h.future && hf ? [['#06b6d4', 'Glycogen refill', `${hf.eaten} of ${hf.need} g (${hf.pct}%)`, hf.pct >= 100 ? 'your muscles are topped back up after the last run' : 'how much of the glycogen the last run used you have eaten back - about half of the carbs you eat go to your muscles']] : []),
+  ];
+  const tipLeftPct = (X(hi) / W) * 100;
 
   return (
     <div>
-      <div className="overflow-x-auto">
+      <div className="relative overflow-x-auto">
         <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[640px] select-none" onMouseMove={onMove} onMouseLeave={() => setHover(null)} role="img" aria-label="Training load: fitness, fatigue and form overlaid, load ratio and refuelling">
           <defs>
             {band('tl-form', Yt, d.top, d.top + d.hgt, [[d.tMax, '#16a34a'], [-5, '#d97706'], [-20, '#dc2626']])}
@@ -148,12 +155,12 @@ export default function TrainingLoadChart({ days, isDark }) {
           <path d={line('acwr', Yr, 'future')} fill="none" stroke="url(#tl-ratio)" strokeWidth="2" strokeDasharray="5 4" />
 
           {/* refuelling: eaten climbing towards what you need, from each run */}
-          {label(W - R - 4, rows.fuel[0] + 10, 'REFUELLING SINCE EACH RUN', '#0891b2')}
+          {label(W - R - 4, rows.fuel[0] + 10, 'MUSCLE GLYCOGEN REFILL', '#0891b2')}
           <line x1={L} x2={W - R} y1={Yfu(0)} y2={Yfu(0)} stroke={grid} />
           {d.fuel.length > 0 && <>
             <path d={fuelPath('need')} fill="none" stroke="#0891b2" strokeWidth="1.6" strokeDasharray="5 3" strokeOpacity="0.8" />
             <path d={fuelPath('eaten')} fill="none" stroke="#06b6d4" strokeWidth="2.8" strokeLinejoin="round" />
-            {lastFuel && <text x={X(lastFuel.i) + 6} y={Math.min(Yfu(lastFuel.eaten), Yfu(lastFuel.need)) + 10} fontSize="10" fontWeight="900" textAnchor="start" fill="#0891b2">{`${lastFuel.eaten} of ${lastFuel.need} g`}</text>}
+            {lastFuel && <text x={X(lastFuel.i) + 6} y={Math.min(Yfu(lastFuel.eaten), Yfu(lastFuel.need)) + 10} fontSize="10" fontWeight="900" textAnchor="start" fill="#0891b2">{lastFuel.pct >= 100 ? 'refilled' : `${lastFuel.pct}% refilled`}</text>}
           </>}
 
           {d.ticks.map(([i, x]) => <text key={`x${i}`} x={X(i)} y={H - 2} fontSize="9" fontWeight={x.today ? 800 : 600} textAnchor={i === days.length - 1 ? 'end' : 'middle'} fill={ink} opacity={x.today ? 0.95 : 0.75}>{x.today ? 'today' : i === days.length - 1 ? '+7 days' : dm(x.day)}</text>)}
@@ -169,6 +176,19 @@ export default function TrainingLoadChart({ days, isDark }) {
             </g>
           )}
         </svg>
+        {hover != null && (
+          <div className={`pointer-events-none absolute top-10 z-10 w-72 rounded-lg border px-3 py-2 text-[11px] shadow-lg ${isDark ? 'bg-slate-900/95 border-white/10 text-slate-200' : 'bg-white/95 border-stone-200 text-[#2E2B27]'}`}
+            style={tipLeftPct > 55 ? { right: `calc(${100 - tipLeftPct}% + 12px)` } : { left: `calc(${tipLeftPct}% + 12px)` }}>
+            <div className="font-black mb-1">{h.today ? 'Today' : dm(h.day)}{h.future ? ' (if you rest)' : ''}</div>
+            {tipRows.map(([c, name, v, why]) => (
+              <div key={name} className="mb-1 last:mb-0">
+                <span className="inline-block w-2.5 h-2.5 rounded-full align-middle mr-1.5" style={{ background: c }} />
+                <b>{name}</b> <span className="font-black" style={{ color: c }}>{v}</span>
+                <div className="opacity-70 leading-snug pl-4">{why}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       <div className={`mt-1 min-h-[34px] text-[11px] rounded-lg px-3 py-1.5 ${isDark ? 'bg-white/5 text-slate-300' : 'bg-[#2E2B27]/5 text-[#2E2B27]'}`}>
         <span className="flex flex-wrap gap-x-4 gap-y-0.5">
@@ -178,16 +198,16 @@ export default function TrainingLoadChart({ days, isDark }) {
           <span style={{ color: formZone(h.tsb)[1] }}>form {h.tsb > 0 ? '+' : ''}{h.tsb} - {formZone(h.tsb)[0]}</span>
           {h.acwr != null && <span style={{ color: ratioZone(h.acwr)[1] }}>load ratio {h.acwr} - {ratioZone(h.acwr)[0]}</span>}
           {h.load > 0 && <span>load {h.load}: {h.sessions.map((s) => `${s.name}${s.km ? ` ${s.km} km` : ''}`).join(', ')}</span>}
-          {!h.future && hf && <span className="text-cyan-600">since the run: {hf.eaten} of {hf.need} g eaten</span>}
+          {!h.future && hf && <span className="text-cyan-600">glycogen refill: {hf.eaten} of {hf.need} g ({hf.pct}%)</span>}
         </span>
       </div>
       <div className={`mt-1 text-[11px] rounded-lg px-3 py-1.5 ${isDark ? 'bg-white/5 text-slate-300' : 'bg-[#2E2B27]/5 text-[#2E2B27]'}`}>
         <span className="flex flex-wrap gap-x-4 gap-y-0.5 opacity-80">
           <span><span className="inline-block w-3 h-2 bg-sky-500/40 align-middle mr-1" />fitness (42-day load)</span>
           <span><span className="inline-block w-3 h-1 bg-orange-500 align-middle mr-1 rounded" />fatigue (7-day load)</span>
-          <span><span className="inline-block w-3 h-1 bg-green-600 align-middle mr-1 rounded" />form = fitness - fatigue, right-hand scale - <span className="text-red-500 font-bold">red</span> below -20, <span className="text-amber-600 font-bold">amber</span> recovering, green above -5</span>
+          <span><span className="inline-block w-3 h-1 bg-green-600 align-middle mr-1 rounded" />form = fitness - fatigue, right-hand scale - it mirrors the fatigue line because fitness barely moves day to day - <span className="text-red-500 font-bold">red</span> below -20, <span className="text-amber-600 font-bold">amber</span> recovering, green above -5</span>
           <span>load ratio - <span className="font-bold text-green-700">0.8-1.3 sweet spot</span>, <span className="font-bold text-red-600">over 1.5 injury risk</span></span>
-          <span><span className="inline-block w-3 h-1 bg-cyan-500 align-middle mr-1 rounded" />carbs eaten since each run (dashed: what you need) - logged in IMS or AAPS</span>
+          <span><span className="inline-block w-3 h-1 bg-cyan-500 align-middle mr-1 rounded" />muscle glycogen put back since each run (dashed: what the run used) - about half the carbs you log in IMS or AAPS</span>
           <span><span className="inline-block px-1 rounded bg-orange-500 text-[9px] font-black text-stone-900 mr-1">195</span>a session and its load</span>
           <span>dashed: the next week if you rest</span>
         </span>
