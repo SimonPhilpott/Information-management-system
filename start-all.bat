@@ -40,11 +40,10 @@ cd pdf-knowledge-base
 call node enable-ngrok.js
 cd ..
 
-:: 5. Read NGROK_AUTHTOKEN from .env for the main tunnel
+:: 5. Read NGROK_AUTHTOKEN from .env for the main tunnel (.env is encrypted with dotenvx; it decrypts
+::    with the private key kept on this PC)
 if exist ".env" (
-    for /f "usebackq tokens=1,2 delims==" %%I in (".env") do (
-        if "%%I"=="NGROK_AUTHTOKEN" set "NGROK_AUTHTOKEN=%%J"
-    )
+    for /f "delims=" %%T in ('npx dotenvx get NGROK_AUTHTOKEN -f .env 2^>nul') do set "NGROK_AUTHTOKEN=%%T"
 )
 
 :: 6. Launch Services (Prefer Windows Terminal Tabs)

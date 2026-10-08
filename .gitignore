@@ -93,3 +93,6 @@ firmware/esp32-s3-box-3/pio/
 firmware/esp32-s3-box-3/build_trace.txt
 firmware/esp32-s3-box-3/hcd_dwc_disasm.txt
 firmware/esp32-s3-box-3/*.o
+
+# dotenvx private keys - never commit (the encrypted .env is safe to commit; this decrypts it)
+.env.keys

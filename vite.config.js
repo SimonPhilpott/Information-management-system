@@ -5,6 +5,7 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import http from 'http'
+import { config as decryptEnv } from '@dotenvx/dotenvx'
 
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -96,6 +97,44 @@ const findNodeInTreeByUrl = (nodes, siteUrl) => {
   }
   return null;
 };
+
+// Security guard (review of 8 Oct 2026). This dev server is published to the internet through ngrok, and
+// only /api calls reach the backend's login - so, before anything else runs:
+//  1. It serves the app and nothing else: src/, public/, node_modules/ and index.html. Any other real file or
+//     folder in the project (the database, server code, logs, backups, firmware...) and any dot-file is "not found".
+//  2. Its own tool routes (backups, mesh backups, tunnel control, SharePoint fetch, port status) answer only
+//     requests made on this PC - never ones arriving through the tunnel.
+const SERVED_DIRS = ['src', 'public', 'node_modules']
+const LOCAL_ONLY = [/^\/api\/(backup|mesh-backups|tunnel|sharepoint-nav)(\/|\?|$)/, /^\/ims\/port-status(\?|$)/]
+const isThisPc = (req) => {
+  const host = String(req.headers.host || '').replace(/:\d+$/, '').toLowerCase()
+  const addr = String(req.socket?.remoteAddress || '')
+  return ['localhost', '127.0.0.1', '[::1]'].includes(host) && /^(::1$|127\.|::ffff:127\.)/.test(addr) &&
+    !req.headers['x-forwarded-for'] && !req.headers['x-forwarded-host']
+}
+const notFound = (res) => { res.statusCode = 404; res.setHeader('Content-Type', 'text/plain'); res.end('Not found') }
+const securityGuardPlugin = () => ({
+  name: 'security-guard',
+  configureServer(server) {
+    server.middlewares.use((req, res, next) => {
+      let p
+      try { p = decodeURIComponent(new URL(req.url, 'http://x').pathname).replace(/\\/g, '/') } catch { return notFound(res) }
+      if (LOCAL_ONLY.some((re) => re.test(req.url)) && !isThisPc(req)) {
+        res.statusCode = 403
+        res.setHeader('Content-Type', 'text/plain')
+        return res.end('Only available on this PC.')
+      }
+      if (p.split('/').some((seg) => seg === '..' || (seg.startsWith('.') && seg.length > 1))) return notFound(res)
+      if (p.startsWith('/@fs/')) return /\/node_modules\//.test(p) ? next() : notFound(res)
+      if (p === '/' || p.startsWith('/@') || p.startsWith('/api/') || p.startsWith('/__')) return next()
+      const rel = path.posix.normalize(p).replace(/^\/+/, '')
+      if (rel === 'index.html' || SERVED_DIRS.includes(rel.split('/')[0])) return next()
+      // a real file or folder in the project that isn't the app: private
+      if (fs.existsSync(path.join(__dirname, rel))) return notFound(res)
+      next() // app routes (/ims/...) and public/ assets
+    })
+  }
+})
 
 const backupPlugin = () => ({
   name: 'backup-plugin',
@@ -193,6 +232,13 @@ const backupPlugin = () => ({
       } else if (req.url.startsWith('/api/mesh-backups/restore') && req.method === 'POST') {
         const urlObj = new URL(req.url, 'http://localhost');
         const filename = urlObj.searchParams.get('filename');
+
+        // a plain backup file name only - never a path (../ could read any file on the PC)
+        if (filename && (filename !== path.basename(filename) || !/^[\w.-]+\.json$/.test(filename))) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ error: 'Invalid backup file name' }));
+          return;
+        }
 
         if (!filename) {
           res.statusCode = 400;
@@ -406,15 +452,15 @@ const tunnelPlugin = () => {
   let tunnelError = '';
   let tunnelLogs = [];
 
+  // .env is encrypted with dotenvx (safe to commit); the private key stays on this PC (Windows Credential
+  // Manager, or a git-ignored .env.keys), and dotenvx decrypts with it here.
   const getNgrokAuthToken = () => {
     try {
       const envPath = path.join(__dirname, '.env');
       if (fs.existsSync(envPath)) {
-        const envContent = fs.readFileSync(envPath, 'utf8');
-        const match = envContent.match(/NGROK_AUTHTOKEN\s*=\s*(.*)/);
-        if (match) {
-          return match[1].trim().replace(/^["']|["']$/g, '');
-        }
+        const values = {};
+        decryptEnv({ path: envPath, processEnv: values, quiet: true });
+        return String(values.NGROK_AUTHTOKEN || '').trim();
       }
     } catch (e) {
       console.error('Error reading NGROK_AUTHTOKEN from .env:', e);
@@ -604,8 +650,12 @@ const tunnelPlugin = () => {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), backupPlugin(), portStatusPlugin(), tunnelPlugin()],
+  plugins: [securityGuardPlugin(), react(), backupPlugin(), portStatusPlugin(), tunnelPlugin()],
   server: {
+    fs: {
+      // second line of defence for Vite's own file serving
+      deny: ['.env', '.env.*', '*.{crt,pem,key}', '**/*.db', '**/*.sqlite', '**/pdf-knowledge-base/**', '**/firmware/**', '**/backups/**']
+    },
     host: true,
     port: ports.ims.port,
     strictPort: false,
