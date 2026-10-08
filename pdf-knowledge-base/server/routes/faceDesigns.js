@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { listFaces, createFace, updateFace, deleteFace, restoreFace, resetFace, getFaceByName, getDevicePayload, listFaceBackups, backupFace, restoreFaceBackup, deleteFaceBackup } from '../services/faceDesignService.js';
+import { listFaces, createFace, updateFace, deleteFace, restoreFace, resetFace, getFaceByName, getDevicePayload, listFaceBackups, backupFace, restoreFaceBackup, deleteFaceBackup, followEyes, lookForDevice } from '../services/faceDesignService.js';
 import { pushToDevice, pushScheduleNow } from '../services/deviceBus.js';
 
 const router = Router();
@@ -72,10 +72,11 @@ router.post('/:id/restore', (req, res) => {
 // Show a face on the device right now (it fades back to neutral after ~20s,
 // like any face Ims picks). Works for built-in and designed faces alike.
 router.post('/preview', (req, res) => {
-  const { name, grid, openGrid, color, eyeAnim } = req.body || {};
+  const { name, grid, openGrid, color, eyeAnim, eyeLook } = req.body || {};
   // Unsaved designs can be previewed too: the frames are sent straight through.
   const isStandby = String(name || '').toLowerCase() === 'standby';
   const draft = { grid, openGrid: openGrid || grid, color: color || '4CFF7A', eyes: eyeAnim?.enabled && Array.isArray(eyeAnim.cells) && eyeAnim.cells.length ? { cells: eyeAnim.cells.slice(0, 24).map((c) => ({ g: String(c.grid || ''), ms: Number(c.ms) || 1000 })) } : null };
+  draft.look = lookForDevice(followEyes({ eyeLook: eyeLook || null, eyeAnim: { enabled: Boolean(eyeAnim?.enabled), cells: Array.isArray(eyeAnim?.cells) ? eyeAnim.cells : [] } }));
   const payload = grid === undefined
     ? getDevicePayload(getFaceByName(name)?.name || name)
     : isStandby
@@ -86,6 +87,7 @@ router.post('/preview', (req, res) => {
     const ok = (g) => /^[0-9a-f]{96}$/.test(String(g || ''));
     if (!ok(shown.grid) || !ok(shown.openGrid)) return res.status(400).json({ error: 'The face grid is invalid.' });
     if ((shown.eyes?.cells || []).some((c) => !/^[0-9a-f]{60}$/.test(c.g))) return res.status(400).json({ error: 'An eye cell is invalid.' });
+    if (shown.look && ['a', 'l', 'r'].some((k) => !/^[0-9a-f]{60}$/.test(String(shown.look[k] || '')))) return res.status(400).json({ error: 'The "Following you" eyes are invalid.' });
   }
   pushToDevice(payload);
   res.json({ success: true });

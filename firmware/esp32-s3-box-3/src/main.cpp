@@ -355,6 +355,41 @@ static int standbyEyeCount = 0;
 static unsigned long standbyEyeStartMs = 0;
 static uint32_t standbyFaceHash = 0;
 static char customFaceName[24] = "custom";
+// Eyes that follow you: the backend's desk presence (presenceService.js) sends {"gaze":{"x":-1..1,"y":-1..1}}
+// for the person in front of the camera (x: + = the right of the screen as you look at it, y: + = down), or
+// {"gaze":null} when nobody's there. It's repeated every few seconds, so a gaze not heard of for 8 s is
+// dropped and the eyes go back to their own glances.
+static int trackedGazeX = 0, trackedGazeY = 0;
+static unsigned long trackedGazeAt = 0;
+static bool trackedGaze(int &gx, int &gy) {
+  if (!trackedGazeAt || millis() - trackedGazeAt > 8000) return false;
+  gx = trackedGazeX > 0 ? 1 : trackedGazeX < 0 ? -1 : 0;
+  gy = trackedGazeY > 0 ? 1 : trackedGazeY < 0 ? -1 : 0;
+  return true;
+}
+// A pupil is a dim dot (level 1-3 in the Face Designer, 30 in the built-in faces) in the eye rows (0-4).
+static inline bool isPupilLevel(uint8_t v) { return v > 0 && v <= 60; }
+// Looks towards (gx, gy): every pupil slides one dot into the lit eye dot beside it, the same way the Face
+// Designer's own "look left / right" cells are made. A pupil with no lit dot that way stays put, and eyes
+// with no pupil (happy arcs, hearts, closed eyes) don't move at all.
+static void gazePupils(uint8_t want[], int gx, int gy) {
+  if (!gx && !gy) return;
+  uint8_t src[60];
+  memcpy(src, want, 60);
+  const int tries[3][2] = {{gx, gy}, {gx, 0}, {0, gy}};
+  for (int i = 0; i < 60; i++) {
+    if (!isPupilLevel(src[i])) continue;
+    int r = i / 12, c = i % 12;
+    for (auto &t : tries) {
+      if (!t[0] && !t[1]) continue;
+      int nr = r + t[1], nc = c + t[0];
+      if (nr < 0 || nr >= 5 || nc < 0 || nc >= 12 || src[nr * 12 + nc] < 200) continue;
+      want[nr * 12 + nc] = src[i];
+      want[i] = src[nr * 12 + nc];
+      break;
+    }
+  }
+}
 enum FaceEmotion {
   EMOTION_NEUTRAL = 0,
   EMOTION_JOY,
@@ -873,6 +908,44 @@ static void applyBlinkOverlay(uint8_t want[]) {
   for (int c : {2, 3, 4, 7, 8, 9}) want[3 * 12 + c] = 255;
 }
 
+// Face Designer "Following you" eyes: rows 0-4 looking left [0], ahead [1] and right [2], used instead of
+// sliding the pupils while someone is at the desk ({"look":{"a","l","r"}} in a face or the standby face).
+struct LookEyes { bool set; uint8_t g[3][60]; };
+static LookEyes customLook = {}, standbyLook = {};
+static void parseLookEyes(JsonVariantConst v, LookEyes &out) {
+  out.set = false;
+  if (!v.is<JsonObjectConst>()) return;
+  const char *keys[3] = {"l", "a", "r"};
+  for (int k = 0; k < 3; k++) {
+    const char *s = v[keys[k]] | "";
+    if (strlen(s) < 60) return;
+    for (int i = 0; i < 60; i++) {
+      char ch = s[i];
+      int x = (ch >= '0' && ch <= '9') ? ch - '0' : (ch >= 'a' && ch <= 'f') ? ch - 'a' + 10 : (ch >= 'A' && ch <= 'F') ? ch - 'A' + 10 : 0;
+      out.g[k][i] = (uint8_t)(x * 17);
+    }
+  }
+  out.set = true;
+}
+// A blink for any designed eyes, as the Face Designer makes its "Blink" cell: each column's lit dots drop
+// to its lowest lit dot.
+static void collapseEyeRows(uint8_t want[]) {
+  for (int c = 0; c < 12; c++) {
+    int bottom = -1; uint8_t peak = 0;
+    for (int r = 0; r < 5; r++) if (want[r * 12 + c]) { bottom = r; if (want[r * 12 + c] > peak) peak = want[r * 12 + c]; }
+    if (bottom < 0) continue;
+    for (int r = 0; r < 5; r++) want[r * 12 + c] = 0;
+    want[bottom * 12 + c] = peak;
+  }
+}
+// Puts the designed eyes for this gaze (gx -1 / 0 / 1) in rows 0-4, blinking now and then. False if none designed.
+static bool applyLookEyes(uint8_t want[], const LookEyes &le, int gx) {
+  if (!le.set) return false;
+  memcpy(want, le.g[gx < 0 ? 0 : gx > 0 ? 2 : 1], 60);
+  if (blinkingNow()) collapseEyeRows(want);
+  return true;
+}
+
 // Night mode: 23:00-06:30, when nothing is going on, Ims sleeps - eyes shut, dim screen.
 static bool nightCached = false;
 static void refreshNight() {
@@ -937,7 +1010,10 @@ static void applyBreathBackground(uint8_t want[FACE_COLS * FACE_ROWS]) {
 
 // Plays the eye timeline: finds the cell for the current moment in the loop and
 // replaces the top five rows of the face with it. The mouth rows are untouched.
-static void applyEyeTimeline(uint8_t want[FACE_COLS * FACE_ROWS], const EyeCell *cells, int count, unsigned long startMs) {
+// holdLooks (someone is at the desk and the eyes are following them): a cell whose pupils sit somewhere else
+// than in the first cell is the design's own "look left / right", so the first cell is shown instead and the
+// pupils follow the person rather than wandering off. Blinks (no pupils) still play.
+static void applyEyeTimeline(uint8_t want[FACE_COLS * FACE_ROWS], const EyeCell *cells, int count, unsigned long startMs, bool holdLooks = false) {
   if (count <= 0) return;
   uint32_t total = 0;
   for (int i = 0; i < count; i++) total += cells[i].ms;
@@ -947,6 +1023,15 @@ static void applyEyeTimeline(uint8_t want[FACE_COLS * FACE_ROWS], const EyeCell 
   for (; idx < count - 1; idx++) {
     if (t < cells[idx].ms) break;
     t -= cells[idx].ms;
+  }
+  if (holdLooks && idx > 0) {
+    bool hasPupil = false, moved = false;
+    for (int i = 0; i < 60; i++) {
+      bool p = isPupilLevel(cells[idx].g[i]);
+      hasPupil |= p;
+      if (p != isPupilLevel(cells[0].g[i])) moved = true;
+    }
+    if (hasPupil && moved) idx = 0;
   }
   memcpy(want, cells[idx].g, 60);
 }
@@ -1010,6 +1095,8 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
     uint32_t n = (uint32_t)(f * 73 + 151);
     n = (n ^ (n >> 5)) * 2654435761u;
     int amp = speaking ? voiceAmp(n) : (int)((n >> 16) & 0xFF);
+    int egx = 0, egy = 0;
+    const bool eTracking = trackedGaze(egx, egy); // every emotion's pupils follow whoever is at the desk too
 
     if (currentEmotion == EMOTION_CUSTOM) {
       // Every designed/edited face carries two frames: while speaking, flap
@@ -1018,8 +1105,10 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
       const uint8_t *frame = (speaking && amp > 100) ? customFaceOpenGrid : customFaceGrid;
       for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
         if (frame[i]) facePut(want, i / FACE_COLS, i % FACE_COLS, frame[i]);
-      if (customEyeCount > 0) applyEyeTimeline(want, customEyeCells, customEyeCount, customEyeStartMs);
+      if (eTracking && applyLookEyes(want, customLook, egx)) return; // the designed "Following you" eyes
+      if (customEyeCount > 0) applyEyeTimeline(want, customEyeCells, customEyeCount, customEyeStartMs, eTracking);
       else if (blinkingNow()) applyBlinkOverlay(want);
+      if (eTracking) gazePupils(want, egx, egy);
       return;
     }
 
@@ -1103,6 +1192,7 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
         for (int c = 7; c <= 9; c++) facePut(want, 3, c, 255);
         break;
     }
+    if (eTracking) gazePupils(want, egx, egy);
     if (currentEmotion != EMOTION_SLEEPY && blinkingNow()) applyBlinkOverlay(want);
 
     if (speaking) {
@@ -1223,12 +1313,15 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
   }
 
   bool blink = false;
-  int gaze = 0;
+  int gaze = 0, gazeY = 0;
+  int tgx = 0, tgy = 0;
+  const bool tracking = !thinking && trackedGaze(tgx, tgy);
   if (thinking) {
     gaze = ((f % 40) < 20) ? -1 : 1;
   } else {
     blink = blinkingNow();
-    if (!listening && !speaking) gaze = glanceNow();
+    if (tracking) { gaze = tgx; gazeY = tgy; } // looking at whoever is at the desk
+    else if (!listening && !speaking) gaze = glanceNow();
   }
 
   const bool useStandbyDesign = standbyCustomActive && !listening && !thinking;
@@ -1240,7 +1333,7 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
     int r0 = thinking ? 2 : 1;
     for (int r = r0; r <= 3; r++)
       for (int k = 0; k < 3; k++) { facePut(want, r, eyeL[k], 255); facePut(want, r, eyeR[k], 255); }
-    int pr = thinking ? 3 : 2;
+    int pr = thinking ? 3 : 2 + gazeY;
     want[pr * FACE_COLS + (3 + gaze)] = 30;
     want[pr * FACE_COLS + (8 + gaze)] = 30;
   }
@@ -1268,7 +1361,9 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
       const uint8_t *nf = (amp > 100) ? standbyFaceOpenGrid : standbyFaceGrid;
       for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
         if (nf[i]) facePut(want, i / FACE_COLS, i % FACE_COLS, nf[i]);
-      if (standbyEyeCount > 0) applyEyeTimeline(want, standbyEyeCells, standbyEyeCount, standbyEyeStartMs);
+      if (tracking && applyLookEyes(want, standbyLook, gaze)) return;
+      if (standbyEyeCount > 0) applyEyeTimeline(want, standbyEyeCells, standbyEyeCount, standbyEyeStartMs, tracking);
+      if (tracking) gazePupils(want, gaze, gazeY);
       return;
     }
     int rowsOpen = 1 + amp * 3 / 256;
@@ -1280,8 +1375,13 @@ static void computeFaceLevelsShape(uint8_t want[FACE_COLS * FACE_ROWS]) {
     if (standbyCustomActive) {
       for (int i = 0; i < FACE_COLS * FACE_ROWS; i++)
         if (standbyFaceGrid[i]) facePut(want, i / FACE_COLS, i % FACE_COLS, standbyFaceGrid[i]);
-      if (standbyEyeCount > 0) applyEyeTimeline(want, standbyEyeCells, standbyEyeCount, standbyEyeStartMs);
-      else if (blink) applyBlinkOverlay(want);
+      if (tracking && applyLookEyes(want, standbyLook, gaze)) {
+        // the designed "Following you" eyes
+      } else {
+        if (standbyEyeCount > 0) applyEyeTimeline(want, standbyEyeCells, standbyEyeCount, standbyEyeStartMs, tracking);
+        else if (blink) applyBlinkOverlay(want);
+        if (tracking) gazePupils(want, gaze, gazeY);
+      }
     } else {
       for (int c = 3; c <= 8; c++) facePut(want, 6, c, 255);
       facePut(want, 5, 2, 255);
@@ -1323,6 +1423,9 @@ static uint8_t *packBuf = nullptr;
 static PackFrame packFrames[PACK_EMOTIONS][PS_COUNT];
 static PackEye packEyes[PACK_EMOTIONS][2];
 static uint8_t packEyeCount[PACK_EMOTIONS];
+// Eyes that follow you on a pack face: each mouth frame again with the eyes looking left [0] / right [1]
+// ('<emotion>.<shape>.L' / '.R' in the pack), shown instead of the plain frame while someone is at the desk.
+static PackFrame packLook[PACK_EMOTIONS][2][PS_COUNT];
 static uint16_t packBg565 = 0;
 static bool packReady = false;              // drawing from the pack (loop() only)
 static char packWantId[48] = "";            // the pack the backend says to show ("" = dot face)
@@ -1398,6 +1501,7 @@ static bool parseFacePack(uint8_t *buf, size_t len) {
   size_t dataLen = len - 8 - jl;
   memset(packFrames, 0, sizeof(packFrames));
   memset(packEyeCount, 0, sizeof(packEyeCount));
+  memset(packLook, 0, sizeof(packLook));
   for (JsonArrayConst f : doc["frames"].as<JsonArrayConst>()) {
     const char *name = f[0] | "";
     uint32_t off = f[1] | 0, n = f[2] | 0;
@@ -1410,8 +1514,19 @@ static bool parseFacePack(uint8_t *buf, size_t len) {
     int e = strcmp(emo, "neutral") == 0 ? EMOTION_NEUTRAL : emotionFromName(emo);
     if (e == EMOTION_NEUTRAL && strcmp(emo, "neutral") != 0) continue;
     if (e < 0 || e >= PACK_EMOTIONS) continue;
+    char shape[12];
+    const char *dot2 = strchr(dot + 1, '.');
+    size_t sl = dot2 ? (size_t)(dot2 - dot - 1) : strlen(dot + 1);
+    if (sl >= sizeof(shape)) continue;
+    memcpy(shape, dot + 1, sl); shape[sl] = 0;
+    int side = !dot2 ? -1 : strcmp(dot2 + 1, "L") == 0 ? 0 : strcmp(dot2 + 1, "R") == 0 ? 1 : -2;
+    if (side == -2) continue;
     for (int k = 0; k < PS_COUNT; k++)
-      if (strcmp(dot + 1, PS_NAMES[k]) == 0) { packFrames[e][k] = { base + off, n }; break; }
+      if (strcmp(shape, PS_NAMES[k]) == 0) {
+        if (side < 0) packFrames[e][k] = { base + off, n };
+        else packLook[e][side][k] = { base + off, n };
+        break;
+      }
   }
   if (!packFrames[EMOTION_NEUTRAL][PS_CLOSED].p) return false;
   for (JsonPairConst kv : doc["eyes"].as<JsonObjectConst>()) {
@@ -1492,6 +1607,15 @@ static const PackFrame *pfFrame(int e, int shape) {
   f = &packFrames[e][PS_CLOSED];
   return f->p ? f : &packFrames[EMOTION_NEUTRAL][PS_CLOSED];
 }
+// The same frame looking left (look < 0) or right, falling back the same way, else the plain frame.
+static const PackFrame *pfLookFrame(int e, int shape, int look) {
+  if (e < 0 || e >= PACK_EMOTIONS) e = EMOTION_NEUTRAL;
+  const PackFrame *row = packLook[e][look > 0];
+  if (row[shape].p) return &row[shape];
+  if ((shape == PS_SMALL || shape == PS_ROUND) && row[PS_MID].p) return &row[PS_MID];
+  if (row[PS_CLOSED].p && !packFrames[e][shape].p) return &row[PS_CLOSED];
+  return pfFrame(e, shape);
+}
 
 // Draws the face pack in place of the dots. Repaints only when the frame, the lids or the frame colour change.
 static void drawPortraitFace(bool forceFull, int onR, int onG, int onB, bool stateColoured) {
@@ -1526,15 +1650,19 @@ static void drawPortraitFace(bool forceFull, int onR, int onG, int onB, bool sta
     int amp = speaking ? voiceAmp(esp_random()) : 0;
     int shape = amp < 45 ? PS_CLOSED : amp < 100 ? PS_SMALL : amp < 175 ? PS_MID : PS_WIDE;
     if (shape != pfShape && now - pfShapeAt > 75) { pfShape = shape; pfShapeAt = now; }
-    fr = pfFrame(pfExpr, pfShape);
+    // eyes that follow you: the same mouth frame with the eyes looking towards whoever is at the desk
+    int tgx = 0, tgy = 0;
+    if (!imsAsleep() && trackedGaze(tgx, tgy) && tgx) fr = pfLookFrame(pfExpr, pfShape, tgx);
+    else fr = pfFrame(pfExpr, pfShape);
   }
+  auto pfDraw = [](const PackFrame *f) { tft.drawJpg(f->p, f->n, PF_X0, PF_Y0); };
   bool drew = false;
   if (forceFull) {
     tft.fillRect(PF_X0, PF_Y0, PF_W, PF_H, packBg565);
     pfShownPtr = nullptr; pfBorder = -2;
   }
   if (fr->p != pfShownPtr) {
-    tft.drawJpg(fr->p, fr->n, PF_X0, PF_Y0);
+    pfDraw(fr);
     pfShownPtr = fr->p; pfLidsDrawn = false; drew = true;
   }
   // blinks: lids over the eye openings of this expression (shut while asleep)
@@ -1549,7 +1677,7 @@ static void drawPortraitFace(bool forceFull, int onR, int onG, int onB, bool sta
     }
     pfLidsDrawn = true; drew = true;
   } else if (!lids && pfLidsDrawn) {
-    tft.drawJpg(fr->p, fr->n, PF_X0, PF_Y0);
+    pfDraw(fr);
     pfLidsDrawn = false; drew = true;
   }
   // thin frame in the state colour (none at rest), redrawn over a new frame
@@ -1559,7 +1687,7 @@ static void drawPortraitFace(bool forceFull, int onR, int onG, int onB, bool sta
       tft.drawRoundRect(PF_X0, PF_Y0, PF_W, PF_H, 6, (uint16_t)border);
       tft.drawRoundRect(PF_X0 + 1, PF_Y0 + 1, PF_W - 2, PF_H - 2, 5, (uint16_t)border);
     } else if (pfBorder >= 0 && !drew) {
-      tft.drawJpg(fr->p, fr->n, PF_X0, PF_Y0); // take the old frame off
+      pfDraw(fr); // take the old frame off
       if (pfLidsDrawn) pfLidsDrawn = false;
     }
     pfBorder = border;
@@ -2307,7 +2435,7 @@ static void scale2x(const uint8_t *src, int n, uint8_t *dst) {
       dst[(2 * r + 1) * m + 2 * c + 1] = (B == D && B != A && D != C) ? D : P;
     }
 }
-static void smoothIcon(const uint8_t *bmp, int x0, int y0, uint16_t color) {
+static void smoothIcon(LovyanGFX &g, const uint8_t *bmp, int x0, int y0, uint16_t color) {
   // Which way the 2x2 cells are aligned (the source art isn't always on even pixels).
   int offX = 0, offY = 0;
   for (int o = 0; o < 2; o++) {
@@ -2335,13 +2463,13 @@ static void smoothIcon(const uint8_t *bmp, int x0, int y0, uint16_t color) {
       for (int sy = 0; sy < 4; sy++)
         for (int sx = 0; sx < 4; sx++) hits += g3[(gy + sy) * 104 + gx + sx];
       if (!hits) continue;
-      tft.drawPixel(x0 + px, y0 + py, tft.color565(bgR + (fR - bgR) * hits / 16, bgG + (fG - bgG) * hits / 16, bgB + (fB - bgB) * hits / 16));
+      g.drawPixel(x0 + px, y0 + py, g.color565(bgR + (fR - bgR) * hits / 16, bgG + (fG - bgG) * hits / 16, bgB + (fB - bgB) * hits / 16));
     }
 }
 
-static void drawCameraIcon(int x, int y, uint16_t color) { smoothIcon(camera_icon_24x24, x, y, color); }
-static void drawAlarmIcon(int x, int y, uint16_t color) { smoothIcon(alarm_icon_24x24, x, y, color); }
-static void drawTimerIcon(int x, int y, uint16_t color) { smoothIcon(timer_icon_24x24, x, y, color); }
+static void drawCameraIcon(LovyanGFX &g, int x, int y, uint16_t color) { smoothIcon(g, camera_icon_24x24, x, y, color); }
+static void drawAlarmIcon(LovyanGFX &g, int x, int y, uint16_t color) { smoothIcon(g, alarm_icon_24x24, x, y, color); }
+static void drawTimerIcon(LovyanGFX &g, int x, int y, uint16_t color) { smoothIcon(g, timer_icon_24x24, x, y, color); }
 // The reminder pencil is drawn from vector geometry (pointed tip, body, rounded eraser) straight
 // to 4-bit coverage, two pixels a byte, low nibble first - pixel art couldn't give it a clear tip.
 static const uint8_t PROGMEM pencil_alpha_24x24[] = {
@@ -2370,72 +2498,125 @@ static const uint8_t PROGMEM pencil_alpha_24x24[] = {
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
-static void drawReminderIcon(int x, int y, uint16_t color) {
+static void drawReminderIcon(LovyanGFX &g, int x, int y, uint16_t color) {
   const int fR = ((color >> 11) & 31) * 255 / 31, fG = ((color >> 5) & 63) * 255 / 63, fB = (color & 31) * 255 / 31;
   for (int i = 0; i < 576; i++) {
     const uint8_t b = pgm_read_byte(&pencil_alpha_24x24[i >> 1]);
     const int a = (i & 1) ? (b >> 4) : (b & 15);
     if (!a) continue;
-    tft.drawPixel(x + (i % 24), y + (i / 24), tft.color565(11 + (fR - 11) * a / 15, 14 + (fG - 14) * a / 15, 21 + (fB - 21) * a / 15));
+    g.drawPixel(x + (i % 24), y + (i / 24), g.color565(11 + (fR - 11) * a / 15, 14 + (fG - 14) * a / 15, 21 + (fB - 21) * a / 15));
   }
 }
-static void drawBirthdayIcon(int x, int y, uint16_t color) { smoothIcon(birthday_icon_24x24, x, y, color); }
-static void drawMusicIcon(int x, int y, uint16_t color) { smoothIcon(music_icon_24x24, x, y, color); }
+static void drawBirthdayIcon(LovyanGFX &g, int x, int y, uint16_t color) { smoothIcon(g, birthday_icon_24x24, x, y, color); }
+static void drawMusicIcon(LovyanGFX &g, int x, int y, uint16_t color) { smoothIcon(g, music_icon_24x24, x, y, color); }
 
 // Count drawn as plain text to the RIGHT of its icon (never over it), in the
 // icon's own colour. Above 9 is clipped to "9+" so it can't run into the face.
-static void drawIconCount(int iconX, int iconY, int count, uint16_t color) {
+static void drawIconCount(LovyanGFX &g, int iconX, int iconY, int count, uint16_t color) {
   if (count <= 0) return;
   // Placed by the baseline so the digits (about 13px tall, no descenders) sit centred on the
   // icon's middle - the font's "middle" datum counts descender space and left them riding high.
-  tft.setTextDatum(baseline_left);
-  tft.setTextColor(color);
-  tft.setFont(&fonts::DejaVu18); // anti-aliased, not the blocky bitmap Font0
-  tft.drawString(count > 9 ? "9+" : String(count), iconX + 24 + 4, iconY + 12 + 7);
-  tft.setFont(&fonts::Font0);
-  tft.setTextSize(1);
-  tft.setTextDatum(top_left);
+  g.setTextDatum(baseline_left);
+  g.setTextColor(color);
+  g.setFont(&fonts::DejaVu18); // anti-aliased, not the blocky bitmap Font0
+  g.drawString(count > 9 ? "9+" : String(count), iconX + 24 + 4, iconY + 12 + 7);
+  g.setFont(&fonts::Font0);
+  g.setTextSize(1);
+  g.setTextDatum(top_left);
 }
 
 // Left-of-face icon stack: alarms/timers/reminders/birthdays/new music
 // releases, one fixed vertical slot each (so a given icon type always lands in
 // the same place). Lives entirely in the margin left of the face grid (face
 // starts at FACE_CENTER_X - 100 = 64), so it repaints independently of the
-// face's diffed rendering. Only called when counts change or on a forced
-// redraw - nothing here needs the footer clock's once-a-second cadence.
-void drawStatusIconStack() {
-  if (onSettingsScreen) return;
-  tft.startWrite();
-  tft.fillRect(0, HEADER_H + 1, 62, 204 - HEADER_H - 1, tft.color565(11, 14, 21));
+// face's diffed rendering.
+// Rendered into an offscreen PSRAM sprite to eliminate flicker completely,
+// and guarded by dirty checking so unchanged 15s status pushes never wipe the display.
+static LGFX_Sprite iconStackSprite(&tft);
+static bool iconStackSpriteReady = false;
 
-  const uint16_t ICON_ORANGE = tft.color565(255, 140, 0);
-  const uint16_t COL_GREEN = tft.color565(70, 220, 120);
-  const uint16_t COL_YELLOW = tft.color565(255, 210, 60);
+static int lastDrawnAlarm = -1;
+static int lastDrawnTimer = -1;
+static int lastDrawnReminder = -1;
+static int lastDrawnBirthday = -1;
+static int lastDrawnBirthdayColor = -1;
+static int lastDrawnRelease = -1;
+static int lastDrawnCamActive = -1;
+static int lastDrawnCamAwake = -1;
+
+void drawStatusIconStack(bool force = false) {
+  if (onSettingsScreen) return;
+
+  const bool camActive = cameraAttached || cameraPresent();
+  if (!force &&
+      alarmCount == lastDrawnAlarm &&
+      timerCount == lastDrawnTimer &&
+      reminderCount == lastDrawnReminder &&
+      birthdayCount == lastDrawnBirthday &&
+      birthdayColor == lastDrawnBirthdayColor &&
+      newReleaseCount == lastDrawnRelease &&
+      (int)camActive == lastDrawnCamActive &&
+      (int)cameraAwake == lastDrawnCamAwake) {
+    return; // State unchanged - avoid wiping/redrawing over SPI
+  }
+
+  const int stackW = 62;
+  const int stackH = 204 - HEADER_H - 1;
+
+  if (!iconStackSpriteReady) {
+    iconStackSprite.setColorDepth(16);
+    iconStackSprite.setPsram(true);
+    iconStackSpriteReady = iconStackSprite.createSprite(stackW, stackH) != nullptr;
+  }
+
+  LovyanGFX &g = iconStackSpriteReady ? (LovyanGFX &)iconStackSprite : (LovyanGFX &)tft;
+  const int oy = iconStackSpriteReady ? 0 : (HEADER_H + 1);
+
+  if (!iconStackSpriteReady) tft.startWrite();
+
+  g.fillRect(0, oy, stackW, stackH, g.color565(11, 14, 21));
+
+  const uint16_t ICON_ORANGE = g.color565(255, 140, 0);
+  const uint16_t COL_GREEN = g.color565(70, 220, 120);
+  const uint16_t COL_YELLOW = g.color565(255, 210, 60);
   const int iconX = 12;
   const int PITCH = 26; // six 24px slots must fit between the header and footer
-  int y = HEADER_H + 3;
+  int y = oy + 2;
 
-  if (alarmCount > 0) { drawAlarmIcon(iconX, y, ICON_ORANGE); drawIconCount(iconX, y, alarmCount, ICON_ORANGE); }
+  if (alarmCount > 0) { drawAlarmIcon(g, iconX, y, ICON_ORANGE); drawIconCount(g, iconX, y, alarmCount, ICON_ORANGE); }
   y += PITCH;
-  if (timerCount > 0) { drawTimerIcon(iconX, y, ICON_ORANGE); drawIconCount(iconX, y, timerCount, ICON_ORANGE); }
+  if (timerCount > 0) { drawTimerIcon(g, iconX, y, ICON_ORANGE); drawIconCount(g, iconX, y, timerCount, ICON_ORANGE); }
   y += PITCH;
-  if (reminderCount > 0) { drawReminderIcon(iconX, y, ICON_ORANGE); drawIconCount(iconX, y, reminderCount, ICON_ORANGE); }
+  if (reminderCount > 0) { drawReminderIcon(g, iconX, y, ICON_ORANGE); drawIconCount(g, iconX, y, reminderCount, ICON_ORANGE); }
   y += PITCH;
   if (birthdayCount > 0) {
-    uint16_t cakeColor = birthdayColor == 2 ? COL_GREEN : birthdayColor == 1 ? tft.color565(255, 140, 0) : tft.color565(255, 255, 255);
-    drawBirthdayIcon(iconX, y, cakeColor);
-    drawIconCount(iconX, y, birthdayCount, cakeColor);
+    uint16_t cakeColor = birthdayColor == 2 ? COL_GREEN : birthdayColor == 1 ? g.color565(255, 140, 0) : g.color565(255, 255, 255);
+    drawBirthdayIcon(g, iconX, y, cakeColor);
+    drawIconCount(g, iconX, y, birthdayCount, cakeColor);
   }
   y += PITCH;
   if (newReleaseCount > 0) {
-    drawMusicIcon(iconX, y, ICON_ORANGE);
-    if (newReleaseCount > 1) drawIconCount(iconX, y, newReleaseCount, ICON_ORANGE);
+    drawMusicIcon(g, iconX, y, ICON_ORANGE);
+    if (newReleaseCount > 1) drawIconCount(g, iconX, y, newReleaseCount, ICON_ORANGE);
   }
   y += PITCH;
   // yellow = camera attached but asleep, green = awake and ready
-  if (cameraAttached || cameraPresent()) drawCameraIcon(iconX, y, cameraAwake ? COL_GREEN : COL_YELLOW);
+  if (camActive) drawCameraIcon(g, iconX, y, cameraAwake ? COL_GREEN : COL_YELLOW);
 
-  tft.endWrite();
+  if (iconStackSpriteReady) {
+    iconStackSprite.pushSprite(0, HEADER_H + 1);
+  } else {
+    tft.endWrite();
+  }
+
+  lastDrawnAlarm = alarmCount;
+  lastDrawnTimer = timerCount;
+  lastDrawnReminder = reminderCount;
+  lastDrawnBirthday = birthdayCount;
+  lastDrawnBirthdayColor = birthdayColor;
+  lastDrawnRelease = newReleaseCount;
+  lastDrawnCamActive = (int)camActive;
+  lastDrawnCamAwake = (int)cameraAwake;
 }
 
 // Footer info from the backend (see pushScheduleStatus in index.js): weather now, the next
@@ -2779,7 +2960,7 @@ void renderScreen(bool forceRedraw = false) {
   // its own comment. Redrawn here too (not just on schedule-WS-push) so a
   // full-screen redraw (state transitions, leaving settings, etc.) doesn't
   // leave this region blank until the next 15s poll happens to land.
-  drawStatusIconStack();
+  drawStatusIconStack(true);
 
   // Footer Bar - bottom-left is the live clock normally, replaced by the
   // mute warning when it's actually relevant (higher priority information).
@@ -3775,10 +3956,12 @@ static void applyStandbyFace(JsonVariantConst nf) {
     for (int i = 0; i < 96; i++) { standbyFaceGrid[i] = hexLevel(g[i]); standbyFaceOpenGrid[i] = hexLevel(og[i]); }
     standbyFaceRGB = (uint32_t)strtoul(nf["color"] | "4CFF7A", nullptr, 16);
     parseEyeCells(nf["eyes"]["cells"], standbyEyeCells, standbyEyeCount);
+    parseLookEyes(nf["look"], standbyLook);
     standbyCustomActive = true;
   } else {
     standbyCustomActive = false;
     standbyEyeCount = 0;
+    standbyLook.set = false;
   }
 }
 
@@ -3787,6 +3970,9 @@ static void applyStandbyFace(JsonVariantConst nf) {
 void setRecordingMode(bool on) {
   if (on == recordingActive) return;
   recordingActive = on;
+  // Recording a call or meeting: no camera activity at all (the backend stops it too), and the eyes stop following.
+  cameraSetSuspended(on);
+  trackedGazeAt = 0;
   Serial.printf("[IMS] Recording mode %s\n", on ? "ON (silent)" : "OFF");
   setSpeakerMute(true);
   if (audioPlaybackQueue) xQueueReset(audioPlaybackQueue);
@@ -4019,6 +4205,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
           const char *col = doc["face"]["color"] | "4CFF7A";
           customFaceRGB = (uint32_t)strtoul(col, nullptr, 16);
           parseEyeCells(doc["face"]["eyes"]["cells"], customEyeCells, customEyeCount);
+          parseLookEyes(doc["face"]["look"], customLook);
           customEyeStartMs = millis();
           strlcpy(customFaceName, doc["setEmotion"].as<const char *>(), sizeof(customFaceName));
           currentEmotion = EMOTION_CUSTOM;
@@ -4132,6 +4319,45 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
           }
           sendTextQuery(announceMsg);
         }
+      }
+    }
+    // Desk presence: where the person in front of the camera is, so the eyes can follow them.
+    if (doc.as<JsonObject>().containsKey("gaze")) {
+      if (doc["gaze"].is<JsonObject>()) {
+        int gx = doc["gaze"]["x"] | 0, gy = doc["gaze"]["y"] | 0;
+        trackedGazeX = gx < -2 ? -2 : gx > 2 ? 2 : gx;
+        trackedGazeY = gy < -1 ? -1 : gy > 1 ? 1 : gy;
+        trackedGazeAt = millis();
+        if (!trackedGazeAt) trackedGazeAt = 1;
+      } else {
+        trackedGazeAt = 0;
+      }
+    }
+    // Desk presence: someone the Faces service knows has just sat down after being away - Ims says hello.
+    // Only from standby: never mid-conversation, while recording, muted, asleep at night or in settings. Sitting
+    // down makes noise, so the box is often just checking a sound for the wake phrase (VERIFYING) at that moment:
+    // that check is dropped and the hello goes ahead, as the doorbell does.
+    if (doc["greet"].is<JsonObject>()) {
+      const char *names = doc["greet"]["names"] | "";
+      if (names[0] && currentState == STATE_VERIFYING && !recordingActive && !isMicHardwareMuted && !onSettingsScreen) {
+        sendAudioStreamEnd();
+        micStreamingActive = false;
+        isSpeakingDetected = false;
+        currentState = STATE_STANDBY;
+      }
+      if (names[0] && !recordingActive && !isMicHardwareMuted && currentState == STATE_STANDBY && !imsAsleep() && !onSettingsScreen) {
+        char greetMsg[420];
+        snprintf(greetMsg, sizeof(greetMsg),
+                 "%s has just sat down at the desk in front of you. Say a short, natural hello to %s by name, in character, in your own persona's voice and accent - just a greeting of a few words, like \"Hello %s\". Don't mention the camera, health, blood sugar or running, and don't ask anything.",
+                 names, names, names);
+        sendTextQuery(greetMsg);
+        if (currentState == STATE_THINKING) {
+          lastTranscript = String("Hello ") + names;
+          renderScreen();
+        }
+      } else {
+        logf("[IMS] Greeting for %s skipped (state=%d rec=%d muted=%d asleep=%d settings=%d)", names, (int)currentState,
+             recordingActive ? 1 : 0, isMicHardwareMuted ? 1 : 0, imsAsleep() ? 1 : 0, onSettingsScreen ? 1 : 0);
       }
     }
     // Ring Doorbell Direct API Alert (Ding / Motion)

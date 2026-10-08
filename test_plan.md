@@ -1,8 +1,9 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 121
-- Verified Features: 121
+- Total Registered Features: 124
+- Verified Features: 122
+- Awaiting On-Device Check: 3
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -129,6 +130,10 @@
 | FEAT-119 | Logitech C270 UVC Camera Streaming & Look/Faces Portals | [camera.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/camera.cpp) | USB host enumeration (VID 046D PID 0825), 640x480 MJPEG streaming, on-screen camera icon, /api/look visual QA, and Look & Faces portal routing verification | PASS |
 | FEAT-120 | Camera Feed Stability & Deletion Operations in Look and Faces Portals | [LookPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/LookPortal.jsx) | Camera feed frame retention, gallery thumbnail deletion, snapshot Q&A deletion, person deletion, face sample management, and bulk clear all | PASS |
 | FEAT-121 | Camera Frame Rate Acceleration: ESP32 Cadence Optimization & Live MJPEG Multipart Stream | [camera.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/camera.cpp) | ESP32 upload cadence tuning (160ms/40ms), GET /api/camera/stream multipart MJPEG broadcast, and zero-polling browser rendering | PASS |
+| FEAT-122 | Desk Presence, Eyes That Follow You & Sit-Down Greeting | [presenceService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/presenceService.js) | Presence state machine, gaze to Box-3 (dot/designed/pack faces), one greeting per sit-down from standby only, desk_presence log | PENDING (device) |
+| FEAT-123 | Camera Off During Call & Meeting Recording | [cameraService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/cameraService.js) | No frames, no stream, no presence/gaze/greeting and UVC suspended while recording | PENDING (device) |
+| FEAT-124 | Look / See Requests Always Use the Camera | [index.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/index.js) | Vision phrases trigger the camera; reply without lookAtCamera gets a follow-up with what the camera shows | PENDING (device) |
+| FEAT-124 | Camera Vision QA & Face Enrolment Tooling, Anti-Flicker Sprite Buffering, Architecture Representation & Interactive Face Gaze | [ImsFace.jsx](file:///d:/Information%20management%20system/src/components/Ims/ImsFace.jsx) | Look/Faces tool execution, double-buffered LGFX_Sprite compilation, and interactive pointer edge tracking | PASS |
 
 ## Section 2: Detailed Scenarios
 ### Suite 31: Observability Device Health Panel & Service (FEAT-086)
@@ -504,6 +509,27 @@
 3. **ESP32 Verify-Timeout Protection:** Trigger a morning or day report request on the ESP32-S3-BOX-3 hardware terminal ("Hey IMS, give me my morning report"); verify Gemini Live receives the pre-assembled contents immediately and begins vocal delivery in under 1 second without hitting the 8.5-second `STATE_VERIFYING` safety timeout (`verify_timeout`).
 4. **Reactive Cache Invalidation on Config Updates:** Send `PUT /api/day-report/config` with modified section order or `POST /api/day-report/reset`; verify `invalidateDayReportCache()` purges the stale memory cache and asynchronously pre-warms a fresh cache.
 5. **Periodic Background Refresh Daemon:** Allow the server to run continuously; verify the 5-minute background interval periodically re-assembles the report cache in memory and writes updated telemetry to disk without dropping client requests or blocking other services.
+
+### Suite 122: Desk Presence, Eyes That Follow You & Sit-Down Greeting (FEAT-122)
+1. **Eyes follow:** Sit in front of the camera and move left and right. The dot face's pupils (or a designed face's eyes, or a face pack) should move towards you. If they move away from you, set `GAZE_MIRROR_X = false` in `presenceService.js`.
+2. **Nobody there:** Leave the desk; within ~2 s the eyes return to their own random glances.
+3. **Sit-down hello:** Stay away (in camera view of an empty desk) for 5+ minutes, then sit down. Ims says a short hello by name once, with no health or running talk. Walk off for under 5 minutes and return - no second hello.
+4. **Unknown person:** Someone not enrolled sits down - no greeting; CameraPanel shows "someone not recognised".
+5. **Quiet states:** With the mic muted, mid-conversation, at night (23:00-06:30) or on the settings screen, a sit-down produces no speech (serial log: "Greeting ... skipped").
+6. **Presence API:** `GET /api/camera/presence` returns present/names/since, the current gaze, and recent sessions.
+
+7. **Every face follows:** with each built-in emotion, a Face Designer design and each persona face pack (Vector, Steampunk, Geometric, Oscilloscope, Orc, Chronicler), only the pupils / iris / core move towards you; happy-arc, heart and closed eyes stay still.
+8. **Hello after a noise:** sit down noisily after 5+ minutes away - the hello still comes (the wake-word check is dropped for it).
+
+### Suite 124: Look / See Requests Always Use the Camera (FEAT-124)
+1. Ask "What can you see?", "Have a look at this", "What am I holding?", "Watch for the postman". Ims describes what the camera shows (either via lookAtCamera or the follow-up; log line "VISION FALLBACK DELIVERED" when the follow-up was needed).
+2. Say "Look up the train times", "Let's see the weather", "See you later" - no camera use.
+3. During a recording nothing is looked at or said.
+
+### Suite 123: Camera Off During Call & Meeting Recording (FEAT-123)
+1. Start a recording ("Ims, record this call"). The C270's LED goes off, `/api/camera/status` shows `recording: true` and `awake: false`, and CameraPanel says the camera is off.
+2. During the recording: no frames reach `/api/camera/stream`, Look snapshots fail with "The camera is off while a call or meeting is being recorded.", the eyes stop following and no greeting is ever spoken.
+3. Stop the recording: the camera starts again; being at the desk afterwards does NOT trigger a hello (presence restarts as unknown).
 
 ## Section 3: Defensive Engineering Invariants
 
@@ -1238,7 +1264,13 @@
 2. **Server Multipart Stream Endpoint:** In `cameraService.js` and `routes/camera.js`, issue a request to `GET /api/camera/stream`. Verify response sets `multipart/x-mixed-replace; boundary=frame` and begins streaming incoming JPEG frames wrapped in multipart boundaries.
 3. **Multi-Client Broadcast Hygiene:** Connect multiple clients or curl listeners to `/api/camera/stream`. Ingest a frame; verify all active clients receive the frame simultaneously, and that disconnects cleanly unregister from `mjpegClients` without leaking response sockets.
 4. **Native Zero-Polling Display in CameraPanel:** In `CameraPanel.jsx`, switch to IMS camera (`source === 'device'`). Verify `<img src="/api/camera/stream" />` renders video smoothly without issuing repeated `setInterval` GET requests to `/api/camera/latest.jpg`.
-5. **Automatic Stream Reconnect:** Simulate temporary stream interrupt or device wake; verify `streamKey` retry logic automatically reconnects to `/api/camera/stream` within 2.5s.
+### Suite 124: Camera Vision QA, Anti-Flicker Icon Double Buffering & Interactive Face Gaze (FEAT-124)
+1. **Conversational Scene Description:** Call `lookAtCamera` tool with query "What do you see ims?". Verify backend `askLive` executes Gemini vision against a fresh camera frame, returns natural language description, lists recognised people, and detects unknown individuals.
+2. **Face Enrolment via Voice:** When an unknown face is spotted, verify `lookAtCamera` returns `unknownFacesCount > 0` and guidance to enrol. Invoke `enrolPerson({ name: 'Charlie', notes: 'Brother' })`; verify embedding and thumbnail are saved into SQLite `people` and `face_samples` tables, returning success.
+3. **ESP32 Icon Stack Anti-Flicker:** Verify `drawStatusIconStack()` suppresses screen updates when state is identical to cached values (`lastDrawnAlarm`, `lastDrawnTimer`, etc.). When values change, verify rendering executes offscreen into 16-bit PSRAM `iconStackSprite` (62x160 px) and transfers via atomic `pushSprite()`, eliminating the 15-second screen wipe flicker.
+4. **Authentic Face Pupil Shapes:** Verify `DEFAULT_FACE` in `ImsFace.jsx` specifies row 2 pupils as `00f2f00f2f00` (hex level 2 recessed dots), matching firmware and Face Designer standby/neutral faces rather than solid white square blocks.
+5. **Interactive Viewport Edge Gaze:** Move cursor to left side of screen (<38% width) and right side (>62% width). Verify `ClassicDotFace` dynamically shifts pupil dots left (`002ff002ff00`) and right (`00ff200ff200`), reverting to center with autonomous glances when cursor rests in the central column.
+6. **System Architecture Live Camera Status:** Navigate to `/ims/architecture`. Verify Services card reports 31 services with Camera & Vision active (Logitech C270 stream, Look & Faces), Findings card displays "Camera operational", and live API `/api/system/architecture` returns `cameraAttached: true`.
 
 ## Section 3: Defensive Engineering Invariants
 - **Scheduler Concurrency Protection:** All routines managed by `schedulerService` must acquire an execution run-lock (`isRunning`) before invoking the action and release it in a `finally` block to prevent SQLite database write lock contention.
@@ -1267,4 +1299,6 @@
 - **Camera Polling Frame Retention & Feed Decoupling Invariant:** In `CameraPanel.jsx`, the visual `<img />` tag must not be unmounted on transient HTTP fetch failures or single image load errors (`img.onerror`). The last successfully decoded JPEG frame must be retained in memory (`hasFrameRef`), and `noFrame` state must only trigger after at least 10 consecutive connection failures without any prior valid frame, eliminating black screen flashes during live network polling.
 - **Look & Face Deletion Cascade & Filesystem Hygiene Invariant:** In `lookService.js` and `faceService.js`, deleting snapshots or face profiles must atomically remove both the SQLite metadata records (`snapshots`, `snapshot_qa`, `faces`, `people`, `face_samples`) and the corresponding physical media files (`.jpg` snapshot images and face crop thumbnails in `data/faces/`) from disk. Deleting all snapshots or all people must safely tolerate already-deleted or absent files on disk without throwing unhandled file system exceptions.
 - **MJPEG Multipart Stream Socket Retention & Cleanup Invariant:** In `cameraService.js`, all active client responses in `mjpegClients` must have `close` event listeners that immediately purge the response object from the `Set`. Write failures during frame broadcasting must be trapped in a `try/catch` and automatically trigger deletion of the broken client socket to prevent hung connections or memory leaks during client navigation.
+- **Offscreen PSRAM Icon Double Buffering & Gaze Event Hygiene Invariant:** In `firmware/esp32-s3-box-3/src/main.cpp`, `drawStatusIconStack()` buffers all icon pixel math inside an offscreen 16-bit PSRAM `LGFX_Sprite` (62x160 px), completely avoiding destructive physical SPI rectangle erasures on unchanged 15s schedule status pushes. In `src/components/Ims/ImsFace.jsx`, window `pointermove` event listeners must be removed cleanly in `useEffect` return cleanup to prevent memory leaks across React re-renders.
+
 

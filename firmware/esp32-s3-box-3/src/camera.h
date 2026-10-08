@@ -14,5 +14,6 @@
 // asleep = the stream is stopped so the camera idles.
 void cameraBegin(const char *backendHost, uint16_t httpPort);
 void cameraSetAwake(bool awake); // from the backend's status push
+void cameraSetSuspended(bool on); // recording a call/meeting: camera fully off, overrides awake and the boot wake
 bool cameraStarted();            // cameraBegin() ran
 bool cameraPresent();            // a UVC camera is enumerated

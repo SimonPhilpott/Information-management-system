@@ -92,6 +92,9 @@ export default function GeometricFace({ face, status = 'idle', levelRef, width =
   const lEyeY = 58 + glance.y;
   const rEyeX = 133 + glance.x;
   const rEyeY = 58 + glance.y;
+  // face.gaze (-1 / 1): only the bright core looks left / right inside the still eye - the Box-3 face pack's
+  // eyes that follow you
+  const core = face?.gaze ? face.gaze * 7 : 0;
 
   // Low-poly polygonal eye vertices (Hexagon / Diamond)
   // Left eye polygon:
@@ -201,7 +204,7 @@ export default function GeometricFace({ face, status = 'idle', levelRef, width =
           {/* Left Eye Diamond Core (Iris) */}
           {!blink && !isAsleep && (
             <polygon
-              points={`${lEyeX},${lEyeY - 4} ${lEyeX + 4},${lEyeY} ${lEyeX},${lEyeY + 4} ${lEyeX - 4},${lEyeY}`}
+              points={`${lEyeX + core},${lEyeY - 4} ${lEyeX + core + 4},${lEyeY} ${lEyeX + core},${lEyeY + 4} ${lEyeX + core - 4},${lEyeY}`}
               fill="#ffffff"
             />
           )}
@@ -217,7 +220,7 @@ export default function GeometricFace({ face, status = 'idle', levelRef, width =
           {/* Right Eye Diamond Core (Iris) */}
           {!blink && !isAsleep && (
             <polygon
-              points={`${rEyeX},${rEyeY - 4} ${rEyeX + 4},${rEyeY} ${rEyeX},${rEyeY + 4} ${rEyeX - 4},${rEyeY}`}
+              points={`${rEyeX + core},${rEyeY - 4} ${rEyeX + core + 4},${rEyeY} ${rEyeX + core},${rEyeY + 4} ${rEyeX + core - 4},${rEyeY}`}
               fill="#ffffff"
             />
           )}

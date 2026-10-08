@@ -630,12 +630,14 @@ function buildServicesParagraph() {
   return "WHAT IMS CAN DO (you are the voice of all of it; your tools cover each): timers, alarms and reminders; lists; " +
     "Google Calendar; birthdays; memories; weather; the morning / day report; news from Simon's sources and the BBC; " +
     "background research tasks; his board game collection; blood sugar, food carbs and carb logging; run notes; Strava training; " +
-    "new music from his library; his PDF library; jokes; recording calls. " +
+    "new music from his library; his PDF library; jokes; recording calls; desk dock camera & vision (Look & Faces). " +
     "The Campaign Manager holds the Lord of the Rings LCG and Arkham Horror LCG campaigns Simon plays with his brother Daniel - " +
     "talk about it like a fellow player: how a game went, what's next, the chronicle. " +
+    "VISION & CAMERA: The desk dock has a Logitech camera and you CAN see through it with lookAtCamera. Whenever he asks you to look, see, watch or observe something, mentions the camera, or asks what you can see, who is there, how he looks, or what he is holding/wearing/showing you, call lookAtCamera FIRST, before saying anything about it. Never say you can't see or can't make anything out without calling it. " +
+    "If lookAtCamera spots an unfamiliar person, describe them warmly and ask their name, then use enrolPerson to enrol them into Faces. " +
     "Opinions, ideas, explanations and advice are yours - answer from what you know. For facts you'd need to check (current events, precise figures) " +
     "or when your tools only partly answer, call askGemini, then lead with your own view and weave its facts in; never read it out word for word. " +
-    "Only on the IMS web app (say what's there and where if asked): Run Planner (/ims/runplanner), activities and goals (/ims/activities), " +
+    "Only on the IMS web app (say what's there and where if asked): Look (/ims/look), Faces (/ims/faces), Run Planner (/ims/runplanner), activities and goals (/ims/activities), " +
     "music want list (/ims/musicscan), call recordings (/ims/recordings), news settings (/ims/news), Face Designer (/ims/facedesigner), personas (/ims/persona)." +
     (brief.length ? "\nYOUR NEWS SOURCES (name and tags): " + brief.join("; ") + "." : "");
 }
@@ -1076,6 +1078,18 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
                 question: { type: "STRING", description: "What to find out from the picture, e.g. 'What am I holding?' or 'How do I look?'" }
               },
               required: ["question"]
+            }
+          },
+          {
+            name: "enrolPerson",
+            description: "Enrols an unfamiliar person recently seen through the desk camera into IMS Faces with their name and optional relationship/notes. Call this after asking someone's name when lookAtCamera spotted an unknown face.",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                name: { type: "STRING", description: "The person's full or preferred name, e.g. 'Alice', 'Charlie'." },
+                notes: { type: "STRING", description: "Optional notes about the person, relationship, or context, e.g. 'Friend', 'Brother'." }
+              },
+              required: ["name"]
             }
           },
           {

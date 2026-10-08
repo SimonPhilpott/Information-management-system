@@ -7,6 +7,9 @@
 // Index: { w, h, bg: 'rrggbb', frames: [[name, offset, length], ...], eyes: { emotion: [[x, y, w, h, 'top', 'bottom', open]] } }
 // Frame names are '<emotion>.<shape>': shapes closed / mid / wide for every face; painted faces add
 // small / round (neutral) and the morph in-betweens m1..m4 for each emotion.
+// Eyes that follow you: '<emotion>.<shape>.L' / '.R' are the same frame with the eyes looking left / right
+// (procedural faces held at that glance; painted faces with the iris slid inside each open eye). Painted faces
+// get them for their mouth shapes, not the morph in-betweens. The device swaps to them while someone is at the desk.
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -19,7 +22,7 @@ const PROJECT = path.resolve(__dirname, '../../..');
 const RENDER_DIR = path.resolve(__dirname, '../face_render');
 const PACK_DIR = path.resolve(__dirname, '../data/face_packs');
 const SOURCES = [path.join(PROJECT, 'src/components/Ims'), path.join(PROJECT, 'src/assets/faces'), path.join(PROJECT, 'src/faceRender')];
-const PACK_FORMAT = 1;
+const PACK_FORMAT = 3;
 const W = 204, H = 136, DEVICE_BG = '0b0e15';
 
 const PAINTED = new Set(['orc', 'chronicler']);
@@ -128,9 +131,14 @@ async function renderPack({ id, style, look }) {
       const [aw, ah] = String(art.aspect).split('/').map(Number);
       const pw = H * aw / ah, ox = (W - pw) / 2;
       for (const [emotion, set] of Object.entries(art.frames)) {
+        const open = (art.eyes?.[emotion] || []).filter((e) => e.open !== false);
         for (const [shape, url] of Object.entries(set)) {
-          await page.evaluate((spec) => window.show(spec), { kind: 'image', url, background: art.background, aspect: art.aspect });
-          frames.push([`${emotion}.${shape}`, await shot()]);
+          // every frame goes through the same canvas, so the looking frames match the rest exactly
+          const sides = open.length && !/^m[1-4]$/.test(shape) ? [[0, ''], [-1, '.L'], [1, '.R']] : [[0, '']];
+          for (const [dir, suffix] of sides) {
+            await page.evaluate((spec) => window.show(spec), { kind: 'image', url, background: art.background, aspect: art.aspect, look: { dir, eyes: dir ? open : [] } });
+            frames.push([`${emotion}.${shape}${suffix}`, await shot()]);
+          }
         }
       }
       for (const [emotion, list] of Object.entries(art.eyes || {})) {
@@ -142,10 +150,12 @@ async function renderPack({ id, style, look }) {
     } else {
       for (const emotion of EMOTIONS) {
         for (const [shape, status, level] of SHAPES) {
-          const face = { faceStyle: style, emotion, faceEmotion: emotion, ...(look.color ? { color: look.color, faceColor: look.color } : {}), ...(look.accessories ? { accessories: look.accessories } : {}) };
-          await page.evaluate((spec) => window.show(spec), { kind: 'face', face, status, level });
-          await page.waitForTimeout(450); // let the face's springs and mouth settle on this level
-          frames.push([`${emotion}.${shape}`, await shot()]);
+          for (const [gaze, suffix] of [[0, ''], [-1, '.L'], [1, '.R']]) {
+            const face = { faceStyle: style, emotion, faceEmotion: emotion, ...(gaze ? { gaze } : {}), ...(look.color ? { color: look.color, faceColor: look.color } : {}), ...(look.accessories ? { accessories: look.accessories } : {}) };
+            await page.evaluate((spec) => window.show(spec), { kind: 'face', face, status, level });
+            await page.waitForTimeout(450); // let the face's springs and mouth settle on this level
+            frames.push([`${emotion}.${shape}${suffix}`, await shot()]);
+          }
         }
       }
     }

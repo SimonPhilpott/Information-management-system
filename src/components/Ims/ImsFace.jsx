@@ -8,19 +8,19 @@ import SteampunkFace from './SteampunkFace';
 import FaceAccessories from './FaceAccessories';
 
 // Ims's face for the web: the same 12x8 dot grid, designs and behaviour as the desk terminal -
-// breathing background, random blinks and glances, eye timelines from the Face Designer, the
-// mouth following his actual voice, a thinking spinner and a sleeping face.
+// breathing background, random blinks and glances, interactive cursor gaze tracking, eye timelines
+// from the Face Designer, the mouth following his actual voice, a thinking spinner and a sleeping face.
 const COLS = 12, ROWS = 8;
 const RING = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 23, 35, 47, 59, 71, 83, 95, 94, 93, 92, 91, 90, 89, 88, 87, 86, 85, 84, 72, 60, 48, 36, 24, 12];
 const EYE_CELLS = [2, 3, 4, 7, 8, 9];
 const DEFAULT_FACE = {
-  // eyes rows 1-3, smile on rows 5-6 - the firmware's built-in idle face
-  grid: '000000000000' + '00fff00fff00' + '00fff00fff00' + '00fff00fff00' + '000000000000' + '00f000000f00' + '000ffffff000' + '000000000000',
+  // Eyes on rows 1-3 with proper recessed pupil dots (col 3 and col 8 at level 2 hex), smile on rows 5-6
+  grid: '000000000000' + '00fff00fff00' + '00f2f00f2f00' + '00fff00fff00' + '000000000000' + '00f000000f00' + '000ffffff000' + '000000000000',
   openGrid: null, color: '4CFF7A', eyes: null,
 };
 
-// Faces chosen by style + emotion (Persona page, Face Designer cards) arrive without a grid: draw the
-// dot design saved for that emotion in the Face Designer, loaded once and shared by every dot face.
+// Faces chosen by style + emotion (Persona page, Face Designer cards, System Architecture) arrive without a grid:
+// draw the dot design saved for that emotion in the Face Designer, loaded once and shared by every dot face.
 let designs = null, designsLoading = null;
 const loadDesigns = () => {
   if (designs || designsLoading) return designsLoading;
@@ -29,11 +29,20 @@ const loadDesigns = () => {
   }).catch(() => { designs = {}; });
   return designsLoading;
 };
+
+// Trigger early preload
+if (typeof window !== 'undefined') {
+  loadDesigns();
+}
+
 const resolveFace = (f0) => {
-  if (!f0) return DEFAULT_FACE;
+  if (!f0) {
+    const d = designs?.standby || designs?.neutral;
+    return d ? { grid: d.grid, openGrid: /[1-9a-f]/i.test(d.openGrid || '') ? d.openGrid : null, color: d.color || DEFAULT_FACE.color, eyes: null } : DEFAULT_FACE;
+  }
   if (f0.grid) return f0;
   const name = f0.emotion || f0.faceEmotion || 'neutral';
-  const d = designs?.[name] || designs?.neutral;
+  const d = designs?.[name] || designs?.standby || designs?.neutral;
   const color = f0.color || f0.faceColor || d?.color || DEFAULT_FACE.color;
   return d ? { grid: d.grid, openGrid: /[1-9a-f]/i.test(d.openGrid || '') ? d.openGrid : null, color, eyes: null } : { ...DEFAULT_FACE, color };
 };
@@ -52,22 +61,42 @@ function breath(t) {
   return 0.5 + 0.5 * Math.cos(Math.PI * ((c - 2) / 2.5));
 }
 
-// Classic 12x8 Dot Matrix Canvas Component (Box-3 Hardware Baseline)
+// Classic 12x8 Dot Matrix Canvas Component (Box-3 Hardware Baseline with Interactive Gaze)
 function ClassicDotFace({ face, status = 'idle', levelRef, width = 180, className = '' }) {
   const canvasRef = useRef(null);
   const stateRef = useRef({ face, status });
   stateRef.current = { face, status };
   const faceStartRef = useRef(performance.now());
   useEffect(() => { faceStartRef.current = performance.now(); }, [face]);
-  useEffect(() => { if (!face?.grid) loadDesigns(); }, [face?.grid]);
+  useEffect(() => { loadDesigns(); }, [face?.grid]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
     let raf = 0;
     let nextBlink = performance.now() + 2500, blinkUntil = 0;
     let nextGlance = performance.now() + 6000, glanceUntil = 0, glanceDir = 0;
     let smoothLevel = 0;
+
+    // Interactive cursor gaze: look left or right when pointer is near viewport edges
+    let pointerGaze = 0; // -1: left, 0: centre, 1: right
+    let lastPointerTime = 0;
+
+    const onPointerMove = (e) => {
+      const w = window.innerWidth || 1;
+      const frac = e.clientX / w;
+      if (frac < 0.38) {
+        pointerGaze = -1;
+      } else if (frac > 0.62) {
+        pointerGaze = 1;
+      } else {
+        pointerGaze = 0;
+      }
+      lastPointerTime = performance.now();
+    };
+
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
 
     const draw = (now) => {
       const { face: f0, status: st } = stateRef.current;
@@ -92,7 +121,7 @@ function ClassicDotFace({ face, status = 'idle', levelRef, width = 180, classNam
         for (let c = 3; c <= 8; c++) want[6 * COLS + c] = Math.max(want[6 * COLS + c], 0);
       }
 
-      // Eyes: a designed timeline, or natural blinks and glances.
+      // Eyes: a designed timeline, or natural blinks and interactive glances.
       const cells = f.eyes?.cells;
       if (cells?.length) {
         const total = cells.reduce((a, c) => a + (c.ms || 1000), 0);
@@ -103,16 +132,49 @@ function ClassicDotFace({ face, status = 'idle', levelRef, width = 180, classNam
       } else if (!asleep) {
         if (now > nextBlink) { blinkUntil = now + 130; nextBlink = now + (Math.random() < 0.18 ? 300 : 2500 + Math.random() * 4500); }
         if (now > nextGlance) { glanceDir = Math.random() < 0.5 ? -1 : 1; glanceUntil = now + 600 + Math.random() * 1000; nextGlance = now + 6000 + Math.random() * 9000; }
+
         if (now < blinkUntil) {
           for (let r = 1; r <= 4; r++) for (const c of EYE_CELLS) want[r * COLS + c] = 0;
           for (const c of EYE_CELLS) want[3 * COLS + c] = 1;
-        } else if (now < glanceUntil && st !== 'listening') {
-          const shifted = new Float32Array(want);
-          for (let r = 0; r <= 4; r++) for (let c = 0; c < COLS; c++) {
-            const src = c - glanceDir;
-            shifted[r * COLS + c] = src >= 0 && src < COLS ? want[r * COLS + src] : 0;
+        } else if (st !== 'listening') {
+          // Determine gaze: pointer tracking takes precedence if active within last 3 seconds
+          let effectiveGaze = 0;
+          if (now - lastPointerTime < 3000 && pointerGaze !== 0) {
+            effectiveGaze = pointerGaze;
+          } else if (now < glanceUntil) {
+            effectiveGaze = glanceDir;
           }
-          want = shifted;
+
+          if (effectiveGaze !== 0) {
+            const shifted = new Float32Array(want);
+            let pupilMoved = false;
+
+            // Slide pupil dots (dim dot <= 0.25 into adjacent fully lit dot >= 0.8)
+            for (let r = 1; r <= 3; r++) {
+              for (let c = 0; c < COLS; c++) {
+                const val = want[r * COLS + c];
+                const nc = c + effectiveGaze;
+                if (val > 0 && val <= 0.25 && nc >= 0 && nc < COLS && want[r * COLS + nc] >= 0.8) {
+                  shifted[r * COLS + nc] = val;
+                  shifted[r * COLS + c] = 1.0;
+                  pupilMoved = true;
+                }
+              }
+            }
+
+            if (pupilMoved) {
+              want = shifted;
+            } else {
+              // Fallback for uniform eye grids without pupils: shift the eye rows
+              for (let r = 0; r <= 4; r++) {
+                for (let c = 0; c < COLS; c++) {
+                  const src = c - effectiveGaze;
+                  shifted[r * COLS + c] = src >= 0 && src < COLS ? want[r * COLS + src] : 0;
+                }
+              }
+              want = shifted;
+            }
+          }
         }
       }
 
@@ -145,7 +207,10 @@ function ClassicDotFace({ face, status = 'idle', levelRef, width = 180, classNam
       raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('pointermove', onPointerMove);
+    };
   }, [levelRef]);
 
   return (

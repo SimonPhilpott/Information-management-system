@@ -135,7 +135,8 @@ export default function OscilloscopeFace({ face, status = 'idle', levelRef, widt
         if (!isBlinking && !isAsleep) {
           ctx.fillStyle = '#ffffff';
           ctx.beginPath();
-          ctx.arc(cx + Math.sin(phase) * 3, cy, 2, 0, Math.PI * 2);
+          // face.gaze (-1 / 1): the core looks left / right inside the still eye - the Box-3 face pack's eyes that follow you
+          ctx.arc(cx + (face?.gaze ? face.gaze * baseRadius * 0.5 : Math.sin(phase) * 3), cy, 2, 0, Math.PI * 2);
           ctx.fill();
         }
       };
@@ -211,7 +212,7 @@ export default function OscilloscopeFace({ face, status = 'idle', levelRef, widt
 
     raf = requestAnimationFrame(render);
     return () => cancelAnimationFrame(raf);
-  }, [levelRef]);
+  }, [levelRef, face?.gaze]);
 
   return (
     <div

@@ -87,6 +87,9 @@ import peopleRoutes from './routes/people.js';
 import lookRoutes from './routes/look.js';
 import { getCameraStatus, getFrame, wakeCamera, setFrame, heartbeat, appendDeviceLog, onCameraChange } from './services/cameraService.js';
 import { askLive } from './services/lookService.js';
+import { enrolFace } from './services/faceService.js';
+let lastUnenrolledFace = null;
+import { startPresence, onPresence } from './services/presenceService.js';
 import { getAuthStatus } from './services/driveService.js';
 import { validateConfiguredModels } from './services/modelService.js';
 import { getModelFor } from './services/modelRegistry.js';
@@ -148,6 +151,26 @@ setOtaActivityCheck(() => {
 // A tool call the model has written out as text instead of calling it: setEmotion(emotion='happy'),
 // default_api.endConversation(), print(...) - never meant to be seen or kept.
 const TOOL_TEXT = /(?:\bprint\s*\(\s*)?\b(?:default_api\.)?(?:setEmotion|noWakeDetected|endConversation|lookAtCamera|startRecording|[a-z]+[A-Z]\w*)\s*\((?:[^()]|\([^()]*\))*\)\s*\)?/g;
+// Asking Ims to use his eyes: look / see / camera / observe / watch, in a sentence that's about what's in
+// front of him ("what can you see?", "have a look at this", "watch for the postman", "how do I look?").
+// Gemini doesn't always call lookAtCamera for these (8 Oct: "What can you see?" got "I can't quite make
+// anything out"), so the server looks anyway and hands him the answer if he didn't (see visionAsk).
+const VISION_ASK = [
+  /\b(camera|webcam)\b/i,
+  /\b(can|could|do|did|would|will)\s+you\s+(see|spot|make out|recogni[sz]e)\b/i,
+  /\bwhat\s+(can|do|did)\s+you\s+see\b/i,
+  /\bwho\s+(can|do)\s+you\s+see\b/i,
+  /\b(have|take)\s+a\s+(quick\s+|proper\s+|good\s+)?(look|peek|gander|butcher'?s)\b/i,
+  /\blook(ing)?\s+at\s+(this|that|these|those|me|my|him|her|them|what|who|it|the)\b/i,
+  /\b(observe|watch(ing)?\s+(for|out for|me|this|that|the))\b/i,
+  /\bhow\s+do\s+i\s+look\b/i,
+  /\bwhat\s+am\s+i\s+(holding|wearing|doing|showing)\b/i,
+  /\bwho('s|\s+is)\s+(this|that|here|there|with me|behind me|in front)\b/i,
+];
+// ...but not where the "look" is at information rather than at the room.
+const NOT_VISION = /\b(calendar|diary|schedule|weather|forecast|glucose|sugar|reminders?|lists?|emails?|report|news|notes?|timers?|alarms?|look\s+(up|into|for(ward)?)|see\s+you|we'?ll\s+see|let'?s\s+see|see\s+if)\b/i;
+const looksLikeVisionAsk = (text) => VISION_ASK.some((re) => re.test(text)) && !NOT_VISION.test(text);
+
 const stripToolText = (text) => String(text).replace(TOOL_TEXT, '').replace(/[ 	]{2,}/g, ' ');
 
 
@@ -308,6 +331,7 @@ app.use('/api/voice-latency', (await import('./routes/voiceLatency.js')).default
 app.get('/api/system/architecture', async (req, res) => {
   const count = (sql) => { try { return appDb.prepare(sql).get().c; } catch (_) { return null; } };
   const deviceLinks = await new Promise((resolve) => hardwareTcpServer.getConnections((err, n) => resolve(err ? 0 : n)));
+  const cam = getCameraStatus();
   res.json({
     success: true,
     tables: count("SELECT COUNT(*) c FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"),
@@ -315,6 +339,10 @@ app.get('/api/system/architecture', async (req, res) => {
     birthdays: count('SELECT COUNT(*) c FROM birthdays WHERE deleted_at IS NULL'),
     tasks: count('SELECT COUNT(*) c FROM tasks'),
     scheduled: count('SELECT COUNT(*) c FROM scheduled_items'),
+    cameraAttached: Boolean(cam.attached),
+    cameraAwake: Boolean(cam.awake),
+    snapshots: count('SELECT COUNT(*) c FROM snapshots'),
+    faces: count('SELECT COUNT(*) c FROM people'),
     deviceOnline: deviceLinks > 0 || !!activeHardwareSession,
     uptimeSec: Math.round(process.uptime()),
     node: process.version,
@@ -1369,6 +1397,9 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // unsolicited and was dropped (6 Oct: glucose and pre-bolus answers lost) - the next turn is that answer.
   let toolAnswerOwedAt = 0;
   let toolAnswerWords = 0;
+  // A look / see request (looksLikeVisionAsk): the camera is asked at once, and if his reply comes back
+  // without a lookAtCamera call, the answer is handed to him as a follow-up so he says what he can see.
+  let visionAsk = null; // { at, toolCalled, result: Promise }
   let wordsSpoken = 0; // every word he has said this connection - to tell whether he already answered after a tool call // words spoken since the result went back - a real answer (not the tail of the holding line) settles it
   let wakeKickTimer = null;
   let followUpUntil = 0;
@@ -1996,6 +2027,15 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           if (/[a-z0-9]/i.test(heardText) && (!isHardware || looksAddressed(heardThisTurn) || Date.now() <= followUpUntil || touchToTalkActive)) { lastActivityAt = Date.now(); sessionUsed = true; }
           userSpokenTranscript += heardText;
           turnLog.user += heardText;
+          if (isHardware && imsBrain && !isRecordingActive() && (!visionAsk || Date.now() - visionAsk.at > 20000) && looksLikeVisionAsk(turnLog.user)) {
+            const question = turnLog.user.trim();
+            visionAsk = { at: Date.now(), toolCalled: false, question, result: null };
+            const frame = getFrame();
+            visionAsk.result = frame && Date.now() - frame.at < 120000
+              ? askLive(`${question} (describe what is in front of the desk camera)`, { withEmbeddings: true }).catch(() => null)
+              : Promise.resolve(null);
+            console.log(`${tag} 📷 Heard a look/see request - looking through the camera: "${question.slice(0, 80)}"`);
+          }
           try {
             logCapture(
               `[${new Date().toISOString()}] ${tag} USER SPOKEN TEXT: ${heardText}\n`);
@@ -2042,6 +2082,21 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               followUpUntil = playEnd + followUpMs;
               wakeDaemonService.setSilenceTimeout(followUpMs + 5000);
               if (isHardware) paceSend({ json: JSON.stringify({ followUpMs }) }); // the Box-3 keeps listening that long too
+              // a look / see request he answered without looking: give him what the camera shows, once
+              const va = visionAsk;
+              if (va && !va.toolCalled && !turnLog.tools.some((t) => t.name === 'lookAtCamera') && Date.now() - va.at < 30000) {
+                visionAsk = { ...va, toolCalled: true };
+                va.result.then((snap) => {
+                  if (!snap || !isConversationActive || gWs.readyState !== WebSocket.OPEN || (isHardware && isRecordingActive())) return;
+                  const answer = snap.qa?.[snap.qa.length - 1]?.answer;
+                  if (!answer) return;
+                  const recognised = (snap.faces || []).filter((f) => f.match).map((f) => f.match.name);
+                  textTurnSent = true; sessionUsed = true; lastActivityAt = Date.now();
+                  gWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `(System: you have now looked through the desk camera for "${va.question.slice(0, 160)}". It shows: ${answer}${recognised.length ? ` Recognised: ${recognised.join(', ')}.` : ''} Tell him what you can see, briefly and in your own words, answering what he asked - if you just said you couldn't see, simply say you've had a proper look now. Only use names given here.)` }] }], turnComplete: true } }));
+                  console.log(`${tag} 📷 He answered a look request without looking - gave him the camera's answer`);
+                  try { logCapture(`[${new Date().toISOString()}] ${tag} VISION FALLBACK DELIVERED (snapshot ${snap.id})\n`); } catch (_) { }
+                });
+              }
               // a day report that stopped well short of all its sections: tell him once to finish it
               const reportFloor = Math.max(120, dayReportSections * 20);
               if (imsBrain && dayReportSentAt && Date.now() - dayReportSentAt < 180000 && !dayReportNudged && dayReportWords < reportFloor
@@ -2375,6 +2430,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 respondToToolCall(call, { error: err.message, fallback: "Current weather conditions unavailable." });
               });
             } else if (call.name === 'lookAtCamera') {
+              if (visionAsk) visionAsk.toolCalled = true;
               wakeCamera();
               const frame = getFrame();
               const q = String(call.args?.question || 'What can you see?');
@@ -2382,14 +2438,49 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 console.log(`${tag} 📷 lookAtCamera: no fresh camera frame`);
                 respondToToolCall(call, { error: 'The camera is not delivering pictures right now.' });
               } else {
-                askLive(q).then((snap) => {
+                askLive(q, { withEmbeddings: true }).then((snap) => {
                   const last = snap.qa[snap.qa.length - 1];
-                  console.log(`${tag} 📷 lookAtCamera answered (snapshot ${snap.id})`);
-                  respondToToolCall(call, { answer: last?.answer, recognisedPeople: snap.faces.filter((f) => f.match).map((f) => f.match.name) });
+                  const recognised = snap.faces.filter((f) => f.match).map((f) => f.match.name);
+                  const unknown = snap.faces.filter((f) => !f.match);
+                  if (unknown.length > 0) {
+                    lastUnenrolledFace = unknown[0];
+                  }
+                  console.log(`${tag} 📷 lookAtCamera answered (snapshot ${snap.id}): ${recognised.length} recognised, ${unknown.length} unknown`);
+                  respondToToolCall(call, {
+                    answer: last?.answer,
+                    recognisedPeople: recognised,
+                    unknownFacesCount: unknown.length,
+                    guidance: unknown.length > 0
+                      ? 'An unfamiliar person is in view. Describe them warmly and ask their name, then call enrolPerson to add them to Faces.'
+                      : null
+                  });
                 }).catch((err) => {
                   console.error(`${tag} lookAtCamera error:`, err.message);
                   respondToToolCall(call, { error: err.message });
                 });
+              }
+            } else if (call.name === 'enrolPerson') {
+              const name = String(call.args?.name || '').trim();
+              const notes = call.args?.notes ? String(call.args.notes).trim() : null;
+              if (!name) {
+                respondToToolCall(call, { error: 'A name is required to enrol a person.' });
+              } else if (!lastUnenrolledFace || !lastUnenrolledFace.embedding) {
+                respondToToolCall(call, { error: 'No recent unknown face sample is available to enrol. Call lookAtCamera first.' });
+              } else {
+                try {
+                  const res = enrolFace({
+                    name,
+                    notes,
+                    embedding: lastUnenrolledFace.embedding,
+                    thumbBase64: lastUnenrolledFace.thumb
+                  });
+                  console.log(`${tag} 👤 Enrolled new person "${name}" into Faces (ID ${res.personId})`);
+                  lastUnenrolledFace = null;
+                  respondToToolCall(call, { success: true, name, personId: res.personId, message: `Successfully enrolled ${name} into Faces.` });
+                } catch (err) {
+                  console.error(`${tag} enrolPerson error:`, err.message);
+                  respondToToolCall(call, { error: err.message });
+                }
               }
             } else if (call.name === 'getScheduleHistory') {
               const kind = ['alarm', 'timer', 'reminder'].includes(call.args?.type) ? call.args.type : null;
@@ -3519,6 +3610,22 @@ wakeDaemonService.on('wakeVerified', ({ phrase }) => {
   pushWakeDaemonStatus({ state: 'CONVERSATION_ACTIVE', wakeVerified: true, phrase });
 });
 
+// Desk presence (presenceService.js): Ims's eyes follow whoever is at the desk, and an enrolled person
+// sitting down after being away gets a hello. Both go to the box, which decides: it greets only from
+// standby, never while recording, muted or asleep (and drops both while recording anyway).
+const sendToHardware = (msg) => {
+  const ws = activeHardwareSession?.clientWs;
+  if (ws?.readyState !== WebSocket.OPEN || isRecordingActive()) return;
+  try { ws.send(JSON.stringify(msg)); } catch (err) { console.error('[Presence] Failed to send to hardware client:', err.message); }
+};
+onPresence('gaze', (gaze) => sendToHardware({ gaze }));
+onPresence('greet', ({ names }) => {
+  // First names only, and nothing that could break the device's prompt string.
+  const first = names.map((n) => String(n).trim().split(/\s+/)[0].replace(/["\\]/g, '').slice(0, 24)).filter(Boolean);
+  if (first.length) sendToHardware({ greet: { names: first.join(' and ') } });
+});
+startPresence();
+
 // Ring Doorbell Direct API Service: Wire real-time alerts to ESP32-S3-BOX-3 and Gemini spoken announcements
 doorbellService.on('doorbellEvent', (alert) => {
   console.log(`[DoorbellAlert] Dispatching ${alert.event.toUpperCase()} to hardware client & voice brain...`);
@@ -3600,6 +3707,7 @@ const debugMicCapturesDir = path.join(__dirname, 'audio_captures');
 // rely on a per-interaction capture folder's mkdirSync to have created the
 // parent dir first on a fresh checkout.
 fs.mkdirSync(debugMicCapturesDir, { recursive: true });
+let lastFrameCamKey = '';
 const debugMicServer = http.createServer((req, res) => {
   // Phase 4/5 (imspersonality.md): the settings screen's slider/voice
   // changes POST here, and reads current values on boot. Same server/port
@@ -3617,7 +3725,11 @@ const debugMicServer = http.createServer((req, res) => {
       if (kind === 'frame') {
         if (body.length < 200 || body[0] !== 0xFF || body[1] !== 0xD8) { res.writeHead(400).end('not a jpeg'); return; }
         setFrame(body, 'device');
-        pushScheduleStatus();
+        // Only tell the box when the camera icon's state actually changed - pushing the whole status
+        // on every frame (several a second) crowded the link Ims's voice uses.
+        const cam = getCameraStatus();
+        const camKey = `${cam.attached}|${cam.deviceAwakeWanted}`;
+        if (camKey !== lastFrameCamKey) { lastFrameCamKey = camKey; pushScheduleStatus(); }
         res.writeHead(200).end('ok');
       } else if (kind === 'heartbeat') {
         heartbeat({ boot: req.url.includes('boot=1') });

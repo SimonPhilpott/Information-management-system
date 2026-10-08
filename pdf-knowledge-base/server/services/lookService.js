@@ -5,6 +5,7 @@ import { GoogleGenerativeAI } from './geminiClient.js';
 import config from '../config.js';
 import db from '../db/database.js';
 import { getFrame, markInUse, wakeCamera } from './cameraService.js';
+import { isRecordingActive } from './recordingService.js';
 import { detectFaces, matchEmbedding } from './faceService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -102,6 +103,7 @@ export function deleteSnapshotQa(qaId) {
 
 // Saves the camera's current frame as a snapshot and finds/recognises faces in it.
 export async function takeSnapshot() {
+  if (isRecordingActive()) throw new Error('The camera is off while a call or meeting is being recorded.');
   const frame = getFrame();
   if (!frame) throw new Error('No camera frame available - start the camera view first.');
   markInUse();
@@ -131,7 +133,7 @@ function describeFaces(faces, width) {
 }
 
 // Asks Gemini a question about a stored snapshot and records the exchange.
-export async function askAboutSnapshot(id, question) {
+export async function askAboutSnapshot(id, question, opts = {}) {
   const q = String(question || '').trim();
   if (!q) throw new Error('Ask a question first.');
   const row = db.prepare(`SELECT * FROM snapshots WHERE id = ?`).get(id);
@@ -151,14 +153,14 @@ export async function askAboutSnapshot(id, question) {
   const answer = result.response.text().trim();
   db.prepare(`INSERT INTO snapshot_qa (snapshot_id, question, answer, created_at) VALUES (?, ?, ?, ?)`).run(id, q, answer, Date.now());
   markInUse();
-  return getSnapshot(id);
+  return getSnapshot(id, opts);
 }
 
 // "Ask about what IMS sees right now": snapshot first (so it's kept in the
 // gallery with its answer), then ask.
-export async function askLive(question) {
+export async function askLive(question, opts = {}) {
   const snap = await takeSnapshot();
-  return askAboutSnapshot(snap.id, question);
+  return askAboutSnapshot(snap.id, question, opts);
 }
 
 // Who is in front of the camera right now? Uses the latest frame only if it's

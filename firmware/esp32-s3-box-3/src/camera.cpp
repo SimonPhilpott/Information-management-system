@@ -41,6 +41,7 @@ static uint16_t g_port = 0;
 static bool g_started = false;
 
 static volatile bool g_wantAwake = true;   // boot initialises the camera; the backend then takes over
+static volatile bool g_suspended = false;  // a call/meeting recording is running: no camera activity at all
 static volatile bool g_present = false;    // a UVC device is enumerated
 static volatile bool g_newDevice = false;  // enumeration just happened - dump its formats
 static volatile bool g_needClose = false;  // device vanished while a stream was open
@@ -306,7 +307,7 @@ static void cameraManagerTask(void *) {
       camLogf("[Camera] camera unplugged");
     }
 
-    const bool want = g_present && g_wantAwake;
+    const bool want = g_present && g_wantAwake && !g_suspended;
     if (want && !g_stream && millis() >= nextTryMs) {
       if (!openAndStart()) nextTryMs = millis() + 8000; // don't hammer a camera that won't stream
     } else if (!want && g_stream) {
@@ -321,7 +322,7 @@ static void cameraManagerTask(void *) {
     }
 
     // Newest frame -> backend, up to ~6 per second while awake and streaming.
-    if (g_streaming && g_jpgSeq != g_sentSeq && millis() - lastUploadMs > 160) {
+    if (g_streaming && !g_suspended && g_jpgSeq != g_sentSeq && millis() - lastUploadMs > 160) {
       size_t len = 0;
       if (xSemaphoreTake(g_jpgMux, pdMS_TO_TICKS(15)) == pdTRUE) {
         len = g_jpgLen;
@@ -420,6 +421,12 @@ void cameraSetAwake(bool awake) {
   // boot heartbeat; don't let a stale "asleep" undo the boot wake.
   if (!awake && (int32_t)(g_bootGraceUntil - millis()) > 0) return;
   g_wantAwake = awake;
+}
+
+void cameraSetSuspended(bool on) {
+  if (on == g_suspended) return;
+  g_suspended = on;
+  camLogf("[Camera] %s", on ? "off - recording a call or meeting" : "recording finished - camera may run again");
 }
 
 bool cameraStarted() { return g_started; }

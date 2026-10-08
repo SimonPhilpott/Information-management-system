@@ -34,6 +34,9 @@ try { db.exec(`ALTER TABLE ims_faces ADD COLUMN open_grid TEXT`); } catch (_) { 
 try { db.exec(`ALTER TABLE ims_faces ADD COLUMN eye_blink INTEGER NOT NULL DEFAULT 0`); } catch (_) { }
 try { db.exec(`ALTER TABLE ims_faces ADD COLUMN eye_glance INTEGER NOT NULL DEFAULT 0`); } catch (_) { }
 try { db.exec(`ALTER TABLE ims_faces ADD COLUMN eye_anim TEXT`); } catch (_) { }
+// Eyes for when someone is at the desk and Ims follows them (Face Designer "Following you"): the top five rows
+// looking ahead, left and right, as { ahead, left, right } of 60 hex digits. NULL = not designed (see followEyes).
+try { db.exec(`ALTER TABLE ims_faces ADD COLUMN eye_look TEXT`); } catch (_) { }
 
 const COLS = 12, ROWS = 8;
 
@@ -104,6 +107,17 @@ function cleanAnim(a) {
   if (enabled && clean.length === 0) throw new Error('Add at least one cell to animate the eyes (or switch the animation off).');
   return { enabled, cells: clean };
 }
+// Validates the "Following you" eyes; null (or nothing) = not designed.
+function cleanLook(l) {
+  if (l === null || l === undefined) return null;
+  const out = {};
+  for (const k of ['ahead', 'left', 'right']) {
+    if (!EYE_RE.test(String(l[k] || ''))) throw new Error(`The "looking ${k}" eyes are invalid.`);
+    out[k] = l[k];
+  }
+  return out;
+}
+const parseLook = (text) => { try { return text ? cleanLook(JSON.parse(text)) : null; } catch (_) { return null; } };
 const parseAnim = (text) => { try { return text ? cleanAnim(JSON.parse(text)) : null; } catch (_) { return null; } };
 
 // The everyday eyes: two 3x3 blocks with a dim pupil dot, as on the device.
@@ -214,6 +228,7 @@ const present = (r) => ({
   shapeLocked: false, // every face can be redrawn
   selectable: r.name !== 'standby', // Ims never chooses the standby face itself
   eyeAnim: parseAnim(r.eye_anim) || { enabled: false, cells: [] },
+  eyeLook: parseLook(r.eye_look),
   hasDefault: Boolean(r.builtin && DEFAULTS[r.name]),
   createdAt: new Date(r.created_at).toISOString(),
   updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null,
@@ -236,26 +251,28 @@ function checkFrames(grid, openGrid) {
   if (!GRID_RE.test(String(openGrid || ''))) throw new Error('The speaking (mouth open) face is invalid.');
 }
 
-export function createFace({ name, grid, openGrid, color, scenarios, eyeAnim }) {
+export function createFace({ name, grid, openGrid, color, scenarios, eyeAnim, eyeLook }) {
   const n = normaliseName(name);
   if (!NAME_RE.test(n)) throw new Error('Name must be 2-23 characters: letters, numbers or underscores, starting with a letter.');
   checkFrames(grid, openGrid ?? grid);
   if (!COLOR_RE.test(String(color || ''))) throw new Error('Pick a colour.');
   if (db.prepare(`SELECT 1 FROM ims_faces WHERE LOWER(name) = ?`).get(n)) throw new Error(`A face called "${n}" already exists.`);
   const anim = cleanAnim(eyeAnim);
-  const info = db.prepare(`INSERT INTO ims_faces (name, grid, open_grid, color, scenarios, builtin, eye_anim, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)`)
-    .run(n, grid, openGrid ?? grid, String(color).toUpperCase(), String(scenarios || '').trim(), anim ? JSON.stringify(anim) : null, Date.now());
+  const look = cleanLook(eyeLook);
+  const info = db.prepare(`INSERT INTO ims_faces (name, grid, open_grid, color, scenarios, builtin, eye_anim, eye_look, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`)
+    .run(n, grid, openGrid ?? grid, String(color).toUpperCase(), String(scenarios || '').trim(), anim ? JSON.stringify(anim) : null, look ? JSON.stringify(look) : null, Date.now());
   return present(db.prepare(`SELECT * FROM ims_faces WHERE id = ?`).get(info.lastInsertRowid));
 }
 
 // Built-in faces keep their name; their frames and colour can be edited (and
 // reset to the defaults) - neutral too, which the device uses when idle and speaking.
-export function updateFace(id, { name, grid, openGrid, color, scenarios, eyeAnim }) {
+export function updateFace(id, { name, grid, openGrid, color, scenarios, eyeAnim, eyeLook }) {
   const r = db.prepare(`SELECT * FROM ims_faces WHERE id = ? AND deleted_at IS NULL`).get(id);
   if (!r) throw new Error('Face not found.');
   const locked = false;
-  const next = { name: r.name, grid: r.grid, open_grid: r.open_grid || r.grid, color: r.color, scenarios: r.scenarios, eye_anim: r.eye_anim };
+  const next = { name: r.name, grid: r.grid, open_grid: r.open_grid || r.grid, color: r.color, scenarios: r.scenarios, eye_anim: r.eye_anim, eye_look: r.eye_look };
   if (eyeAnim !== undefined) { const a = cleanAnim(eyeAnim); next.eye_anim = a ? JSON.stringify(a) : null; }
+  if (eyeLook !== undefined) { const l = cleanLook(eyeLook); next.eye_look = l ? JSON.stringify(l) : null; }
   if (scenarios !== undefined) next.scenarios = String(scenarios).trim();
   if (!locked) {
     if (name !== undefined && !r.builtin) {
@@ -271,8 +288,8 @@ export function updateFace(id, { name, grid, openGrid, color, scenarios, eyeAnim
     }
     if (color !== undefined) { if (!COLOR_RE.test(String(color))) throw new Error('Pick a colour.'); next.color = String(color).toUpperCase(); }
   }
-  db.prepare(`UPDATE ims_faces SET name = ?, grid = ?, open_grid = ?, color = ?, scenarios = ?, eye_anim = ?, updated_at = ? WHERE id = ?`)
-    .run(next.name, next.grid, next.open_grid, next.color, next.scenarios, next.eye_anim, Date.now(), id);
+  db.prepare(`UPDATE ims_faces SET name = ?, grid = ?, open_grid = ?, color = ?, scenarios = ?, eye_anim = ?, eye_look = ?, updated_at = ? WHERE id = ?`)
+    .run(next.name, next.grid, next.open_grid, next.color, next.scenarios, next.eye_anim, next.eye_look, Date.now(), id);
   return present(db.prepare(`SELECT * FROM ims_faces WHERE id = ?`).get(id));
 }
 
@@ -281,7 +298,7 @@ export function resetFace(id) {
   const r = db.prepare(`SELECT * FROM ims_faces WHERE id = ? AND deleted_at IS NULL AND builtin = 1`).get(id);
   const d = r && DEFAULTS[r.name];
   if (!d) throw new Error('Only built-in faces can be reset.');
-  db.prepare(`UPDATE ims_faces SET grid = ?, open_grid = ?, color = ?, eye_anim = ?, updated_at = ? WHERE id = ?`).run(d.grid, d.openGrid, d.color, d.anim ? JSON.stringify(d.anim) : null, Date.now(), id);
+  db.prepare(`UPDATE ims_faces SET grid = ?, open_grid = ?, color = ?, eye_anim = ?, eye_look = NULL, updated_at = ? WHERE id = ?`).run(d.grid, d.openGrid, d.color, d.anim ? JSON.stringify(d.anim) : null, Date.now(), id);
   return present(db.prepare(`SELECT * FROM ims_faces WHERE id = ?`).get(id));
 }
 
@@ -318,10 +335,23 @@ export function getFacePromptGuide({ compact = false } = {}) {
 // What to send the device for a chosen face. Every face except neutral goes as
 // its two frames (resting + speaking) and colour, so edits made in the Face
 // Designer - to built-ins as well as new designs - take effect immediately.
-// Cells go over as {g, ms}: 60 hex digits of eyes and a duration.
+// Cells go over as {g, ms}: 60 hex digits of eyes and a duration. The eyes for following someone at the desk
+// go as look: {a, l, r} (ahead / left / right); without them the device slides the pupils itself.
+// They are the face's own "Following you" design if it has one, else its timeline's "Look left" / "Look right"
+// cells (with "Eyes open", or the first cell, looking ahead).
+export function followEyes(f) {
+  if (f.eyeLook) return f.eyeLook;
+  const cells = f.eyeAnim?.enabled ? f.eyeAnim.cells || [] : [];
+  const find = (re) => cells.find((c) => re.test(c.name || ''))?.grid;
+  const left = find(/look\s*left/i), right = find(/look\s*right/i);
+  if (!left || !right) return null;
+  return { ahead: find(/eyes\s*open|ahead/i) || cells[0].grid, left, right };
+}
+export const lookForDevice = (look) => (look ? { a: look.ahead, l: look.left, r: look.right } : null);
 const faceForDevice = (f) => ({
   grid: f.grid, openGrid: f.openGrid, color: f.color,
   eyes: f.eyeAnim.enabled && f.eyeAnim.cells.length ? { cells: f.eyeAnim.cells.map((c) => ({ g: c.grid, ms: c.ms })) } : null,
+  look: lookForDevice(followEyes(f)),
 });
 
 export function getDevicePayload(name) {
@@ -345,7 +375,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS ims_face_backups (
   id INTEGER PRIMARY KEY AUTOINCREMENT, face_id INTEGER NOT NULL, label TEXT, snapshot TEXT NOT NULL, created_at INTEGER NOT NULL
 )`);
 
-const snapshotOf = (r) => ({ grid: r.grid, openGrid: r.open_grid || r.grid, color: r.color, scenarios: r.scenarios, eyeAnim: parseAnim(r.eye_anim) || { enabled: false, cells: [] } });
+const snapshotOf = (r) => ({ grid: r.grid, openGrid: r.open_grid || r.grid, color: r.color, scenarios: r.scenarios, eyeAnim: parseAnim(r.eye_anim) || { enabled: false, cells: [] }, eyeLook: parseLook(r.eye_look) });
 const presentBackup = (b) => ({ id: b.id, faceId: b.face_id, label: b.label, createdAt: new Date(b.created_at).toISOString(), ...JSON.parse(b.snapshot) });
 
 export function listFaceBackups(faceId) {
@@ -367,7 +397,7 @@ export function restoreFaceBackup(backupId) {
   if (!face) throw new Error('That face no longer exists.');
   backupFace(face.id, 'Before restoring');
   const s = JSON.parse(b.snapshot);
-  return updateFace(face.id, { grid: s.grid, openGrid: s.openGrid, color: s.color, scenarios: s.scenarios, eyeAnim: s.eyeAnim });
+  return updateFace(face.id, { grid: s.grid, openGrid: s.openGrid, color: s.color, scenarios: s.scenarios, eyeAnim: s.eyeAnim, eyeLook: s.eyeLook ?? null });
 }
 
 export const deleteFaceBackup = (backupId) => db.prepare('DELETE FROM ims_face_backups WHERE id = ?').run(Number(backupId)).changes > 0;

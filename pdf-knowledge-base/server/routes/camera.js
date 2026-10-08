@@ -1,6 +1,7 @@
 import express, { Router } from 'express';
 import { setFrame, getFrame, getCameraStatus, wakeCamera, heartbeat, readDeviceLog, streamMjpeg } from '../services/cameraService.js';
 import { executeDeviceCommand } from '../services/deviceHealthService.js';
+import { getPresence, getGaze, listPresence } from '../services/presenceService.js';
 
 const router = Router();
 
@@ -52,7 +53,12 @@ router.get('/device-log', (req, res) => {
 });
 
 router.get('/status', (req, res) => {
-  res.json({ success: true, ...getCameraStatus() });
+  res.json({ success: true, ...getCameraStatus(), presence: getPresence() });
+});
+
+// Desk presence: who is at the desk now, where Ims is looking, and recent sit-downs.
+router.get('/presence', (req, res) => {
+  res.json({ success: true, ...getPresence(), gaze: getGaze(), history: listPresence(Number(req.query.limit) || 20) });
 });
 
 export default router;

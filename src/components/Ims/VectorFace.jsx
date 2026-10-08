@@ -52,6 +52,8 @@ export default function VectorFace({ face, status = 'idle', levelRef, width = 18
         if (now > glanceUntil) {
           currentGlance = { x: 0, y: 0 };
         }
+        // face.gaze (-1 / 1): held looking left / right - the Box-3 face pack's eyes that follow you
+        if (face?.gaze) currentGlance = { x: face.gaze * 5, y: 0 };
         setGlance(currentGlance);
       } else {
         setBlink(true);
@@ -72,7 +74,7 @@ export default function VectorFace({ face, status = 'idle', levelRef, width = 18
 
     rafRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [status, levelRef]);
+  }, [status, levelRef, face?.gaze]);
 
   const p = emotionConfig.vector;
   const isSpeaking = status === 'speaking' || audioLevel > 0.05;
@@ -257,25 +259,26 @@ export default function VectorFace({ face, status = 'idle', levelRef, width = 18
           {/* Eye Interior with Pupil, masked by dynamic eyelid scale */}
           <g clipPath="url(#leftEyeClip)">
             {/* Glowing Iris Base */}
-            <circle
+            <ellipse
               cx={68 + pupilX}
               cy={56 + pupilY}
-              r={10 * (p.eyeLeftOpen > 1.2 ? 1.25 : 1)}
+              rx={10 * (p.eyeLeftOpen > 1.2 ? 1.25 : 1)}
+              ry={10 * (p.eyeLeftOpen > 1.2 ? 1.25 : 1)}
               fill={color}
               className="transition-all duration-150"
             />
             {/* Pupil Center Specular Highlight */}
-            <circle
+            <ellipse
               cx={65 + pupilX}
               cy={53 + pupilY}
-              r="3"
+              rx="3" ry="3"
               fill="#ffffff"
               opacity="0.9"
             />
-            <circle
+            <ellipse
               cx={71 + pupilX}
               cy={58 + pupilY}
-              r="1.5"
+              rx="1.5" ry="1.5"
               fill="#ffffff"
               opacity="0.6"
             />
@@ -312,25 +315,26 @@ export default function VectorFace({ face, status = 'idle', levelRef, width = 18
           {/* Eye Interior with Pupil, masked by dynamic eyelid scale */}
           <g clipPath="url(#rightEyeClip)">
             {/* Glowing Iris Base */}
-            <circle
+            <ellipse
               cx={132 + pupilX}
               cy={56 + pupilY}
-              r={10 * (p.eyeRightOpen > 1.2 ? 1.25 : 1)}
+              rx={10 * (p.eyeRightOpen > 1.2 ? 1.25 : 1)}
+              ry={10 * (p.eyeRightOpen > 1.2 ? 1.25 : 1)}
               fill={color}
               className="transition-all duration-150"
             />
             {/* Pupil Center Specular Highlight */}
-            <circle
+            <ellipse
               cx={129 + pupilX}
               cy={53 + pupilY}
-              r="3"
+              rx="3" ry="3"
               fill="#ffffff"
               opacity="0.9"
             />
-            <circle
+            <ellipse
               cx={135 + pupilX}
               cy={58 + pupilY}
-              r="1.5"
+              rx="1.5" ry="1.5"
               fill="#ffffff"
               opacity="0.6"
             />

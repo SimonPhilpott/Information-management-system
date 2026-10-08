@@ -110,13 +110,13 @@ const spokes = (live) => [
     ],
   },
   {
-    key: 'services', title: 'Services', icon: Boxes, accent: 'indigo', count: 29, side: 'top',
+    key: 'services', title: 'Services', icon: Boxes, accent: 'indigo', count: 31, side: 'top',
     rows: [
       { icon: Bell, main: 'Core functions - 10', sub: 'Weather, doorbell, alarms, timers, reminders (1d–2w look-ahead), birthdays, calendar, memories, recordings, tasks' },
       { icon: Heart, main: 'Personal - 6', sub: 'Day report, Code best practices (with dependency watch), music scanner, board games, campaigns, news' },
       { icon: Droplets, main: 'Health and fitness - 3', sub: 'Blood sugar (clinic AGP report), activities (training load), run planner (live run plan, route finder, retrospective) & T1D Rulebook' },
       { icon: Settings, main: 'Customisation and system - 11', sub: 'Device health, storage, model switcher, costs and budget, face designer, persona, wake phrases, Wi-Fi, dev ideas, backups, this page' },
-      { icon: Eye, main: 'Disabled - 2', sub: 'Look and Faces, until the camera works' },
+      { icon: Eye, main: 'Camera and Vision - 2', sub: 'Look and Faces active - Logitech C270 stream, on-demand snapshots, and face recognition' },
     ],
   },
   {
@@ -173,7 +173,7 @@ const supporting = [
 
 const FINDINGS = [
   { level: 'info', title: 'Test prompts are safe', sub: 'The test box under Ims runs read-only tools for real; anything that would change something is shown but not done' },
-  { level: 'warn', title: 'Camera not working', sub: 'Look and Faces stay disabled until it does' },
+  { level: 'info', title: 'Camera operational', sub: 'Logitech C270 USB host streaming at 640x480 MJPEG with real-time Look and Faces detection' },
   { level: 'warn', title: 'Fixed server address', sub: 'The desk terminal connects to 192.168.1.78 (include/config.h) - if the PC gets a new IP, it cannot connect' },
   { level: 'info', title: 'One host', sub: 'Backend, database and tunnel all run on one Windows PC - when it is off, Ims is offline everywhere. Everything is backed up nightly to Google Drive (/ims/backups)' },
   { level: 'info', title: 'Nightscout storage', sub: 'MongoDB free tier - usage shows on the desk screen; old data can be auto-cleared after 3 months' },

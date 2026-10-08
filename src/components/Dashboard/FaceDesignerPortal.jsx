@@ -111,6 +111,26 @@ function cellAt(cells, tMs) {
 }
 const isAnimated = (anim) => Boolean(anim?.enabled && anim.cells?.length);
 
+// --- Following you ----------------------------------------------------------
+// While someone is at the desk, Ims's eyes follow them: these are the eyes (top five rows) he shows looking
+// left, ahead and right. A face's own design wins; otherwise its timeline's "Look left" / "Look right" cells
+// (with "Eyes open" as ahead); otherwise they're made automatically by sliding each dim pupil dot one step.
+// "Left" / "Right" are as you look at the screen. Same rules as followEyes() in faceDesignService.js.
+const LOOKS = [
+  { key: 'left', frame: 'lookLeft', label: 'Left' },
+  { key: 'ahead', frame: 'lookAhead', label: 'Ahead' },
+  { key: 'right', frame: 'lookRight', label: 'Right' },
+];
+function followEyes(d) {
+  if (d.eyeLook) return { ...d.eyeLook, source: 'designed' };
+  const cells = isAnimated(d.eyeAnim) ? d.eyeAnim.cells : [];
+  const find = (re) => cells.find((c) => re.test(c.name || ''))?.grid;
+  const left = find(/look\s*left/i), right = find(/look\s*right/i);
+  if (left && right) return { ahead: find(/eyes\s*open|ahead/i) || cells[0].grid, left, right, source: 'timeline' };
+  const ahead = cells[0]?.grid || d.grid.slice(0, EYE_LEN);
+  return { ahead, left: shiftEyes(ahead, -1), right: shiftEyes(ahead, 1), source: 'automatic' };
+}
+
 // The face "talking" with its eyes animating in real time, alternating the two
 // mouth frames the way the device does.
 function TalkingPreview({ face, size = 9, gap = 2, fluid = false }) {
@@ -264,7 +284,7 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
   const [deleted, setDeleted] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [isNew, setIsNew] = useState(false);
-  const [draft, setDraft] = useState({ name: '', grid: EMPTY_GRID, openGrid: EMPTY_GRID, color: '4CFF7A', scenarios: '', eyeAnim: { enabled: false, cells: [] } });
+  const [draft, setDraft] = useState({ name: '', grid: EMPTY_GRID, openGrid: EMPTY_GRID, color: '4CFF7A', scenarios: '', eyeAnim: { enabled: false, cells: [] }, eyeLook: null });
   const [frame, setFrame] = useState('grid');           // 'grid' | 'openGrid' | 'cell' (an eye-animation cell)
   const [cellIdx, setCellIdx] = useState(0);            // which eye cell is selected
   const [hoverId, setHoverId] = useState(null);         // face in the list under the pointer
@@ -363,7 +383,7 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
     setSelectedId(face.id);
     setIsNew(false);
     setFrame('grid');
-    setDraft({ name: face.name, grid: face.grid, openGrid: face.openGrid, color: face.color, scenarios: face.scenarios, eyeAnim: face.eyeAnim || { enabled: false, cells: [] } });
+    setDraft({ name: face.name, grid: face.grid, openGrid: face.openGrid, color: face.color, scenarios: face.scenarios, eyeAnim: face.eyeAnim || { enabled: false, cells: [] }, eyeLook: face.eyeLook || null });
     setCellIdx(0);
   }
 
@@ -372,8 +392,8 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
     setIsNew(true);
     setFrame('grid');
     setDraft(from
-      ? { name: `${from.name}_copy`, grid: from.grid, openGrid: from.openGrid, color: from.color, scenarios: from.scenarios, eyeAnim: JSON.parse(JSON.stringify(from.eyeAnim || { enabled: false, cells: [] })) }
-      : { name: '', grid: EMPTY_GRID, openGrid: EMPTY_GRID, color: '4CFF7A', scenarios: '', eyeAnim: { enabled: false, cells: [] } });
+      ? { name: `${from.name}_copy`, grid: from.grid, openGrid: from.openGrid, color: from.color, scenarios: from.scenarios, eyeAnim: JSON.parse(JSON.stringify(from.eyeAnim || { enabled: false, cells: [] })), eyeLook: from.eyeLook ? { ...from.eyeLook } : null }
+      : { name: '', grid: EMPTY_GRID, openGrid: EMPTY_GRID, color: '4CFF7A', scenarios: '', eyeAnim: { enabled: false, cells: [] }, eyeLook: null });
     setCellIdx(0);
   };
 
@@ -382,19 +402,35 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
   const cell = cells[Math.min(cellIdx, cells.length - 1)];
   const editingCell = frame === 'cell' && animated;
   const activeFrame = editingCell ? 'cell' : frame === 'cell' ? 'grid' : frame;
+  const editingLook = LOOKS.find((l) => l.frame === frame) || null;
+  const follow = followEyes(draft);
 
   const setCells = (fn) => setDraft((d) => ({ ...d, eyeAnim: { ...d.eyeAnim, cells: fn(d.eyeAnim.cells) } }));
   const patchCell = (i, patch) => setCells((cs) => cs.map((c, k) => (k === i ? { ...c, ...patch } : c)));
 
   // What the big grid shows: with animated eyes the top five rows come from the
   // selected cell and the mouth rows from the resting / speaking frame.
-  const shownGrid = editingCell ? cell.grid + draft.grid.slice(EYE_LEN)
+  const shownGrid = editingLook ? follow[editingLook.key] + draft.grid.slice(EYE_LEN)
+    : editingCell ? cell.grid + draft.grid.slice(EYE_LEN)
     : animated ? cell.grid + draft[activeFrame].slice(EYE_LEN)
     : draft[activeFrame];
-  const editRange = editingCell ? [0, EYE_LEN] : animated ? [EYE_LEN, COLS * ROWS] : null;
+  const editRange = editingLook || editingCell ? [0, EYE_LEN] : animated ? [EYE_LEN, COLS * ROWS] : null;
 
   const strokeLevel = useRef(brush);
   const paint = (i, start = false) => {
+    if (editingLook) {
+      if (i >= EYE_LEN) return;
+      setDraft((d) => {
+        // the first stroke turns the timeline / automatic eyes into this face's own design
+        const f = followEyes(d);
+        const look = d.eyeLook || { ahead: f.ahead, left: f.left, right: f.right };
+        const chars = look[editingLook.key].split('');
+        if (start) strokeLevel.current = (brush !== '0' && chars[i] === brush) ? '0' : brush;
+        chars[i] = strokeLevel.current;
+        return { ...d, eyeLook: { ...look, [editingLook.key]: chars.join('') } };
+      });
+      return;
+    }
     if (editingCell) {
       if (i >= EYE_LEN) return;
       const chars = cell.grid.split('');
@@ -500,8 +536,8 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
   const preview = async () => {
     try {
       const body = isNew || !selected
-        ? { name: draft.name || 'preview', grid: draft.grid, openGrid: draft.openGrid, color: draft.color, eyeAnim: draft.eyeAnim }
-        : { name: draft.name, grid: draft.grid, openGrid: draft.openGrid, color: draft.color, eyeAnim: draft.eyeAnim };
+        ? { name: draft.name || 'preview', grid: draft.grid, openGrid: draft.openGrid, color: draft.color, eyeAnim: draft.eyeAnim, eyeLook: draft.eyeLook }
+        : { name: draft.name, grid: draft.grid, openGrid: draft.openGrid, color: draft.color, eyeAnim: draft.eyeAnim, eyeLook: draft.eyeLook };
       const res = await fetch('/api/face-designs/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || 'Preview failed.');
@@ -1193,10 +1229,22 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
                         {fr.label}
                       </button>
                     ))}
-                    {animated && (
-                      <button onClick={() => selectCell(Math.min(cellIdx, cells.length - 1))} title="Edit the eyes of the selected animation cell"
-                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 ${activeFrame === 'cell' ? `bg-gradient-to-r ${gradient} text-slate-900` : isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}>
-                        <Film size={11} /> Eyes: {cell?.name}
+                    {animated && cells.map((c, i) => (
+                      <button key={`cell-${i}`} onClick={() => selectCell(i)} title={`Edit the eyes of the "${c.name}" animation cell`}
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 ${activeFrame === 'cell' && i === Math.min(cellIdx, cells.length - 1) ? `bg-gradient-to-r ${gradient} text-slate-900` : isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}>
+                        <Film size={11} /> Eyes: {c.name}
+                      </button>
+                    ))}
+                    {LOOKS.map((l) => (
+                      <button key={l.frame} onClick={() => setFrame(l.frame)} title={`The eyes Ims shows looking ${l.key === 'ahead' ? 'straight ahead' : l.key} while following someone at the desk`}
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 ${frame === l.frame ? `bg-gradient-to-r ${gradient} text-slate-900` : isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}>
+                        <Eye size={11} /> Following: {l.label}
+                      </button>
+                    ))}
+                    {!locked && (
+                      <button onClick={save} disabled={busy} title="Save every state of this face"
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 bg-gradient-to-r ${gradient} text-slate-900 active:scale-95 disabled:opacity-50`}>
+                        <Save size={11} />{isNew ? 'Create face' : 'Save'}
                       </button>
                     )}
                   </div>
@@ -1205,7 +1253,8 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
                     <DotGrid grid={shownGrid} color={draft.color} size={22} gap={4} fluid editable={!locked} editRange={editRange} onPaint={paint} />
                   </div>
                   <p className="text-[10px] text-slate-500 mt-1.5">
-                    {activeFrame === 'cell' ? `Painting the eyes of cell "${cell?.name}" (top five rows). The greyed rows are the mouth.`
+                    {editingLook ? `Painting the eyes looking ${editingLook.key === 'ahead' ? 'ahead' : editingLook.key + ' (as you look at the screen)'} while Ims follows someone at the desk (top five rows). ${follow.source === 'designed' ? 'This face has its own design.' : follow.source === 'timeline' ? 'Now showing the timeline\'s look cells - painting makes them this face\'s own.' : 'Now showing the automatic eyes - painting makes them this face\'s own.'}`
+                      : activeFrame === 'cell' ? `Painting the eyes of cell "${cell?.name}" (top five rows). The greyed rows are the mouth.`
                       : animated ? `Painting the ${activeFrame === 'grid' ? 'closed' : 'open'} mouth (bottom three rows). The eyes above come from the animation cell you have selected.`
                       : activeFrame === 'grid' ? 'The resting face: eyes and a closed mouth.' : 'The same face with the mouth open - shown while Ims speaks.'}
                   </p>
@@ -1218,7 +1267,12 @@ export default function FaceDesignerPortal({ theme = 'dark', onThemeToggle, setC
                           {b.key === '0' && <Eraser size={12} />}{b.label}
                         </button>
                       ))}
-                      <button onClick={() => (editingCell ? patchCell(Math.min(cellIdx, cells.length - 1), { grid: '0'.repeat(EYE_LEN) })
+                      {editingLook && draft.eyeLook && (
+                        <button onClick={() => { if (window.confirm('Go back to the eyes made from the timeline (or automatically)?')) setDraft((d) => ({ ...d, eyeLook: null })); }} className={ghost}
+                          title="Forget this face's own following eyes"><Undo2 size={12} /> Back to {isAnimated(draft.eyeAnim) && draft.eyeAnim.cells.some((c) => /look\s*left/i.test(c.name || '')) ? 'timeline' : 'automatic'}</button>
+                      )}
+                      <button onClick={() => (editingLook ? setDraft((d) => { const f = followEyes(d); const look = d.eyeLook || { ahead: f.ahead, left: f.left, right: f.right }; return { ...d, eyeLook: { ...look, [editingLook.key]: '0'.repeat(EYE_LEN) } }; })
+                        : editingCell ? patchCell(Math.min(cellIdx, cells.length - 1), { grid: '0'.repeat(EYE_LEN) })
                         : setDraft((d) => ({ ...d, [activeFrame]: (animated ? d[activeFrame].slice(0, EYE_LEN) : '') + '0'.repeat(animated ? COLS * ROWS - EYE_LEN : COLS * ROWS) })))} className={ghost}><RotateCcw size={12} /> Clear</button>
                     </div>
                   )}

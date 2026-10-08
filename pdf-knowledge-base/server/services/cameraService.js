@@ -11,6 +11,12 @@
 // "asleep". Until then this tracks the same lifecycle for frames arriving from
 // any source (device, the browser's webcam, uploads). Frames live in memory
 // only - nothing is written to disk unless the user takes a snapshot.
+// Recording a call or meeting: no camera activity at all. The device is told
+// to stop its camera (deviceAwakeWanted is false), any frame still arriving is
+// dropped, the last picture is forgotten, and Look / Faces / desk presence all
+// see "no frame" until the recording stops.
+import { isRecordingActive, onRecordingChange } from './recordingService.js';
+
 const ATTACHED_WINDOW_MS = 30000; // > the 15s device status-push cadence, so the icon doesn't flicker
 export const AWAKE_MS = 24 * 60 * 60 * 1000; // Keep camera permanently hot for active testing
 
@@ -57,7 +63,13 @@ export function streamMjpeg(req, res) {
   });
 }
 
+onRecordingChange((status) => {
+  if (status?.active ?? isRecordingActive()) latest = { buffer: null, at: 0, source: null };
+  notifyCameraChange();
+});
+
 export function setFrame(buffer, source = 'unknown') {
+  if (isRecordingActive()) return;
   latest = { buffer, at: Date.now(), source };
   notifyCameraChange();
 
@@ -93,13 +105,15 @@ export function heartbeat({ boot = false } = {}) {
 }
 
 export function getFrame() {
+  if (isRecordingActive()) return null;
   return latest.buffer ? { buffer: latest.buffer, at: latest.at, source: latest.source } : null;
 }
 
 export function getCameraStatus() {
   const now = Date.now();
   const attached = Boolean((latest.buffer && now - latest.at < ATTACHED_WINDOW_MS) || (heartbeatAt && now - heartbeatAt < ATTACHED_WINDOW_MS));
-  const isAwake = now < awakeUntil;
+  const recording = isRecordingActive();
+  const isAwake = now < awakeUntil && !recording;
   return {
     attached,
     awake: attached && isAwake,
@@ -109,6 +123,7 @@ export function getCameraStatus() {
     lastHeartbeatAt: heartbeatAt ? new Date(heartbeatAt).toISOString() : null,
     source: latest.source,
     isAwakeRequested: isAwake,
+    recording,
     recentLogs: readDeviceLog(5)
   };
 }

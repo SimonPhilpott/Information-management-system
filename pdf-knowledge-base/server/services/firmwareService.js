@@ -146,7 +146,7 @@ export function buildFirmware() {
   return new Promise((resolve, reject) => {
     const child = spawn(
       PIO_EXE,
-      ['run', '-d', FIRMWARE_DIR, '-e', 'esp32s3box'],
+      ['run', '-d', `"${FIRMWARE_DIR}"`, '-e', 'esp32s3box'],
       {
         cwd: FIRMWARE_DIR,
         env: {
@@ -261,11 +261,11 @@ export function flashFirmwareOta(options = {}) {
     const child = spawn(
       PYTHON_EXE,
       [
-        ESPOTA_PY,
+        `"${ESPOTA_PY}"`,
         '-i', targetIp,
         '-I', hostIp,
         '-p', String(targetPort),
-        '-f', BIN_PATH,
+        '-f', `"${BIN_PATH}"`,
         '-d',
         '-r',
         '-t', '15'

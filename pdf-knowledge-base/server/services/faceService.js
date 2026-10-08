@@ -3,7 +3,7 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { execFile } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import db from '../db/database.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -52,6 +52,64 @@ export function detectFaces(buffer) {
       }
     });
   });
+}
+
+// The same detection through one long-running python process (face_tool.py
+// --serve) with the models already loaded - for the desk presence loop, which
+// looks several times a second. No thumbnails. Rejects at once while a frame
+// is still being worked on (the caller just tries the next frame), so the
+// queue can never back up.
+let worker = null;
+let workerBuf = '';
+let workerPending = null; // { id, resolve, reject, timer }
+let workerNextId = 1;
+function ensureWorker() {
+  if (worker) return worker;
+  worker = spawn(PYTHON_EXE, [FACE_TOOL, '--serve'], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
+  workerBuf = '';
+  worker.stdout.on('data', (chunk) => {
+    workerBuf += chunk.toString('utf8');
+    let nl;
+    while ((nl = workerBuf.indexOf('\n')) >= 0) {
+      const line = workerBuf.slice(0, nl);
+      workerBuf = workerBuf.slice(nl + 1);
+      let out;
+      try { out = JSON.parse(line); } catch (_) { continue; }
+      const p = workerPending;
+      if (!p || out.id !== p.id) continue;
+      workerPending = null;
+      clearTimeout(p.timer);
+      if (out.error) p.reject(new Error(out.error));
+      else p.resolve(out);
+    }
+  });
+  const dead = () => {
+    worker = null;
+    if (workerPending) { clearTimeout(workerPending.timer); workerPending.reject(new Error('Face engine stopped.')); workerPending = null; }
+  };
+  worker.on('exit', dead);
+  worker.on('error', dead);
+  return worker;
+}
+
+export function detectFacesFast(buffer) {
+  return new Promise((resolve, reject) => {
+    if (workerPending) return reject(new Error('busy'));
+    const w = ensureWorker();
+    const id = workerNextId++;
+    const timer = setTimeout(() => {
+      if (workerPending?.id !== id) return;
+      workerPending = null;
+      reject(new Error('Face engine timed out.'));
+      try { w.kill(); } catch (_) { } // a stuck worker is replaced on the next call
+    }, 15000);
+    workerPending = { id, resolve, reject, timer };
+    w.stdin.write(JSON.stringify({ id, jpeg: buffer.toString('base64') }) + '\n');
+  });
+}
+
+export function stopFaceWorker() {
+  if (worker) { try { worker.kill(); } catch (_) { } worker = null; }
 }
 
 const dot = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; };

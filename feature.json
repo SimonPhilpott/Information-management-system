@@ -1478,6 +1478,50 @@
         "Zero-Polling Browser Display: Updates CameraPanel to consume /api/camera/stream directly via native <img> rendering, eliminating periodic setInterval HTTP polling overhead and frame jitter",
         "Stream Resilience & Auto-Reconnect: CameraPanel maintains automatic retry and reconnection logic with streamKey state upon transient stream interrupts or camera wake transitions"
       ]
+    },
+    "Desk Presence, Eyes That Follow You & Sit-Down Greeting": {
+      "status": "enabled",
+      "description": "Local, silent desk presence from the live camera frames (presenceService.js, YuNet + SFace via a persistent face_tool.py --serve worker). Ims's eyes on the Box-3 follow the person at the desk, and an enrolled person (Faces service) who sits down after being seen away for 5+ minutes gets a short spoken hello by name from standby only.",
+      "renderingEngine": "Node.js / Python OpenCV / C++ LovyanGFX",
+      "subFeatures": [
+        "Persistent Face Worker: face_tool.py --serve keeps YuNet + SFace loaded and answers one base64 JPEG per stdin line; detectFacesFast() never queues (busy frames are skipped)",
+        "Desk Presence State: present / away / unknown, where absence must be observed - camera asleep, unplugged or recording resets to unknown so returning from a call never counts as sitting down; sessions logged in desk_presence; GET /api/camera/presence and presence on /api/camera/status; CameraPanel shows who is at the desk",
+        "Eyes That Follow You: {gaze:{x:-1..1,y:-1..1}} sent on change (left/right only in the outer quarters of the picture, centred in the middle half; repeated every 3 s, null when nobody is there). Dot faces move only the pupils (every built-in emotion, Face Designer designs and the standby face - a dim level-1-3 dot slides into the lit eye dot beside it; designs' own look cells are held while following); face packs swap to whole frames rendered looking left / right (<emotion>.<shape>.L/.R) - Vector, Steampunk, Geometric and Oscilloscope move only their iris / core, Orc and Chronicler have the painted iris slid inside each open eye",
+        "Sit-Down Greeting: {greet:{names}} after 2 matches within 20 s of sitting down, 30 min per-person cooldown; the Box-3 says hello via sendTextQuery only from STANDBY, never while recording, muted, asleep at night or on the settings screen; no health or running talk",
+        "Greeting reliability: no per-person cooldown (the 5-minute observed absence is the rule); the Box-3 drops a wake-word check (VERIFYING) to greet, as the doorbell does, and logs any skipped greeting with the reason over Wi-Fi",
+        "Status Push Throttle: device frame uploads only push schedule status to the Box-3 when the camera attached/awake state changes, not on every frame"
+      ]
+    },
+    "Look / See Requests Always Use the Camera": {
+      "status": "enabled",
+      "description": "When the user's words ask Ims to look, see, watch, observe or use the camera (looksLikeVisionAsk in index.js), the server asks the camera at once; if Ims's reply comes back without a lookAtCamera call, the camera's answer is handed to him as a follow-up turn so he says what he can actually see. The system prompt also tells him to call lookAtCamera first and never claim he can't see.",
+      "renderingEngine": "Node.js / Gemini Live",
+      "subFeatures": [
+        "Intent phrases: what/who can you see, have/take a look, look at this/me/my..., watch for, observe, how do I look, what am I holding/wearing, who is this, camera/webcam - but not look up/into, let's see, see you, or calendar/weather/glucose/lists and other information",
+        "Fallback answer: one follow-up per request within 30 s, never while recording, only names the Faces service returned"
+      ]
+    },
+    "Camera Off During Call & Meeting Recording": {
+      "status": "enabled",
+      "description": "While a call or meeting recording runs there is no camera activity at all: the backend tells the Box-3 the camera is asleep, the firmware suspends the UVC stream and uploads (overriding the boot wake), incoming frames are dropped and the last one forgotten, and Look, Faces, presence and gaze all stand down.",
+      "renderingEngine": "Node.js / C++ ESP-IDF UVC",
+      "subFeatures": [
+        "Backend: cameraService ignores setFrame and returns no frame while recording, deviceAwakeWanted is false, the latest frame is cleared when recording starts; Look snapshots explain the camera is off",
+        "Firmware: setRecordingMode() calls cameraSetSuspended(), which stops the UVC stream and frame uploads and clears the tracked gaze",
+        "CameraPanel shows 'Camera off while a call or meeting is being recorded'"
+      ]
+    },
+    "Camera Vision QA & Face Enrolment Tooling, Anti-Flicker Sprite Buffering, Architecture Representation & Interactive Face Gaze": {
+      "status": "enabled",
+      "description": "End-to-end vision enhancement and display polish: (1) lookAtCamera tool returns scene description, recognised individuals, and unknown face count with guidance; (2) enrolPerson tool enables Gemini Live to enrol unfamiliar faces into SQLite faces table with embeddings and thumbnails; (3) ESP32-S3-BOX-3 left-side icon stack flicker eliminated via PSRAM LGFX_Sprite double buffering and dirty-state checking; (4) SystemArchitecturePortal accurately represents operational camera subsystem and active Look/Faces services; (5) ImsFace ClassicDotFace features authentic pupil dot contours and responsive viewport-edge gaze tracking.",
+      "renderingEngine": "React 19 / Canvas 2D / C++ LovyanGFX / Node.js Express / Gemini Live API",
+      "subFeatures": [
+        "Live Conversational Vision & Face Enrolment: lookAtCamera augmented to return embeddings for face matching, unknown face count, and guidance; added enrolPerson tool for seamless on-device name association and face database enrolment",
+        "Firmware Icon Stack Anti-Flicker Double Buffering: Implements 62x160 16-bit PSRAM LGFX_Sprite buffer and dirty-checking cache in main.cpp, preventing destructive SPI screen erasure every 15 seconds",
+        "System Architecture Accuracy: Updates SystemArchitecturePortal.jsx cards and /api/system/architecture live metrics to reflect operational Logitech C270 camera host and Look/Faces services",
+        "Authentic Face Dot Grid & Eye Contours: Restores row 2 pupil recess dots (level 2 hex) to DEFAULT_FACE in ImsFace.jsx, eliminating solid square eyes and harmonising with firmware dot rendering",
+        "Interactive Edge-of-Screen Gaze Tracking: Window pointer tracking in ImsFace dynamically slides pupil dots left (002ff002ff00) or right (00ff200ff200) when cursor is on the outer sides of the screen"
+      ]
     }
   }
 }

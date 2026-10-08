@@ -96,6 +96,8 @@ export default function SteampunkFace({ face, status = 'idle', levelRef, width =
 
   // Shutter aperture
   const shutterScale = isAsleep ? 0.08 : blink ? 0.05 : (p.shutterOpen || 0.9);
+  // face.gaze (-1 / 1): the pupils look left / right inside the still iris - the Box-3 face pack's eyes that follow you
+  const pupil = face?.gaze ? face.gaze * 6 : 0;
 
   // Jaw drop
   const jawDrop = isSpeaking ? Math.min(22, (p.jawAperture || 0) * 12 + audioLevel * 25) : (p.jawAperture || 0) * 8;
@@ -239,8 +241,8 @@ export default function SteampunkFace({ face, status = 'idle', levelRef, width =
           <line x1="56" y1="56" x2="80" y2="56" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
           <line x1="68" y1="44" x2="68" y2="68" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
           {/* Aperture Pupil */}
-          <circle cx="68" cy="56" r="4.5" fill="#000000" />
-          <circle cx="66" cy="54" r="1.5" fill="#ffffff" opacity="0.8" />
+          <ellipse cx={68 + pupil} cy="56" rx="4.5" ry="4.5" fill="#000000" />
+          <ellipse cx={66 + pupil} cy="54" rx="1.5" ry="1.5" fill="#ffffff" opacity="0.8" />
 
           {/* Right Ocular Bezel with Monocle Gauge Prongs */}
           <circle cx="132" cy="56" r="18" fill="#1c1917" stroke="#451a03" strokeWidth="3" />
@@ -256,8 +258,8 @@ export default function SteampunkFace({ face, status = 'idle', levelRef, width =
           />
           <line x1="120" y1="56" x2="144" y2="56" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
           <line x1="132" y1="44" x2="132" y2="68" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
-          <circle cx="132" cy="56" r="4.5" fill="#000000" />
-          <circle cx="130" cy="54" r="1.5" fill="#ffffff" opacity="0.8" />
+          <ellipse cx={132 + pupil} cy="56" rx="4.5" ry="4.5" fill="#000000" />
+          <ellipse cx={130 + pupil} cy="54" rx="1.5" ry="1.5" fill="#ffffff" opacity="0.8" />
         </g>
 
         {/* 6. Lateral Steam Pipes & Animated Steam Puffs */}

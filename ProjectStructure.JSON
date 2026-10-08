@@ -66,6 +66,24 @@
       "description": "Central visual navigation hub for all IMS subsystems at /ims featuring responsive cards for Memories and Persona management.",
       "dependencies": []
     },
+    "src/components/Ims/ImsFace.jsx": {
+      "description": "Multi-engine face dispatcher for IMS rendering Classic 12x8 Dot Matrix with realistic recessed pupil contours, breathing backdrop, speech lip sync, and viewport-edge interactive gaze tracking alongside procedural 3D/vector faces.",
+      "dependencies": [
+        "src/components/Ims/VectorFace.jsx",
+        "src/components/Ims/OscilloscopeFace.jsx",
+        "src/components/Ims/GeometricFace.jsx",
+        "src/components/Ims/OrcFace.jsx",
+        "src/components/Ims/ChroniclerFace.jsx",
+        "src/components/Ims/SteampunkFace.jsx",
+        "src/components/Ims/FaceAccessories.jsx"
+      ]
+    },
+    "src/components/Dashboard/SystemArchitecturePortal.jsx": {
+      "description": "Full architectural visualization portal displaying backend services, live data stores, pipelines, environment hardware, and operational camera subsystem state with active prompt test bench.",
+      "dependencies": [
+        "src/components/Ims/ImsFace.jsx"
+      ]
+    },
     "src/components/Dashboard/PersonaPortal.jsx": {
       "description": "Modular persona editor for IMS character, voice models, dialect pools, face animation models, and raw output at /ims/persona.",
       "dependencies": [

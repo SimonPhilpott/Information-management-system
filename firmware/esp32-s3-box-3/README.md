@@ -90,11 +90,19 @@ The `bin/` folder contains ready-to-flash binaries:
 Once initial firmware is flashed with dual-partition OTA support, the ESP32-S3-BOX-3 can live on dock power permanently with no USB cable attached to the PC.
 
 ### Wireless OTA Flashing
-- **One-Click Command:**
+- **One-Click Command** (the script lives at the **repository root**, not in this folder; it ends with `pause`):
   ```cmd
   ota-flash.bat
   ```
   *(or `npm run ota:flash` from repository root)*
+- **Exact steps (also for agents / scripts - no pause):**
+  1. Build from the space-free junction (`mklink /J C:\imsfw "<this folder>"` once):
+     `set PYTHONIOENCODING=utf-8` then `%USERPROFILE%\.platformio\penv\Scripts\pio.exe run -d C:\imsfw -e esp32s3box`
+  2. Copy `.pio\build\esp32s3box\firmware.bin` and `firmware.factory.bin` into `bin\`.
+  3. Flash over Wi-Fi (Box-3 `192.168.1.92`, OTA port `3232`, this PC `192.168.1.78`):
+     `C:\Python312\python.exe %USERPROFILE%\.platformio\packages\framework-arduinoespressif32\tools\espota.py -i 192.168.1.92 -I 192.168.1.78 -p 3232 -f .pio\build\esp32s3box\firmware.bin -d -r -t 15`
+     Success ends with `Result ... 'OK'` / `Success`; the Box-3 reboots.
+  4. Check `pdf-knowledge-base/server/audio_captures/debug.log` for `boot_diag reset=SW_RESET panic=0` after the flash.
 - **Web UI Management:**
   Navigate to `/ims/device-health` in the browser. Click **Compile Firmware** and **Update Device (OTA)** to flash wire-free with live progress percentage visualization.
 - **OTA Architecture:**

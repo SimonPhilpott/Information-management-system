@@ -190,7 +190,9 @@ export default function CameraPanel({ isDark, onSnapshot, onError, snapshotLabel
                   : 'bg-slate-500'
             }`} />
             <span className={camStatus?.awake ? 'text-emerald-400 font-bold' : isDark ? 'text-slate-300' : 'text-slate-700'}>
-              {!camStatus?.attached
+              {camStatus?.recording
+                ? 'Camera off while a call or meeting is being recorded'
+                : !camStatus?.attached
                 ? 'No camera detected on dock USB-A'
                 : camStatus.awake
                   ? `Camera awake & streaming (sleeps in ${Math.max(1, Math.ceil(camStatus.sleepsInSeconds / 60))} min)`
@@ -206,6 +208,15 @@ export default function CameraPanel({ isDark, onSnapshot, onError, snapshotLabel
             {showDetails ? 'Hide info' : 'Diagnostics'}
           </button>
         </div>
+
+        {/* Desk presence (silent): who the camera can see at the desk */}
+        {camStatus?.presence?.watching && !camStatus.recording && (
+          <div className={`text-[10px] font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+            {camStatus.presence.present
+              ? `At the desk: ${camStatus.presence.names.length ? camStatus.presence.names.join(' and ') : 'someone not recognised'}${camStatus.presence.since ? ` (since ${new Date(camStatus.presence.since).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : ''}`
+              : 'Nobody at the desk'}
+          </div>
+        )}
 
         {/* Detailed diagnostic dropdown */}
         {showDetails && (
