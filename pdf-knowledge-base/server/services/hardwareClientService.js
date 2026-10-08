@@ -1071,7 +1071,11 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "lookAtCamera",
-            description: "Looks through the desk dock's camera to answer a question about what's in front of it (an object, what someone is holding or wearing, who is there). Always call it when asked what you can see or how he looks - never claim to see anything without it. Only use names it returns.",
+            description: "Looks through the desk dock's camera to answer a question about what's in front of it (an object, what someone is holding or wearing, who is there). Always call it when asked what you can see or how he looks - never claim to see anything without it. Only use names it returns. Wait for its answer and describe what it says; never guess or say you can't see before it returns.",
+            // BLOCKING (unlike most tools, which say a holding line and answer when the result arrives): what's in
+            // front of the camera can't be guessed. Non-blocking, he made up "Nothing clear, just a bit of a
+            // muddle" before the picture was described, and the real description was then dropped (8 Oct).
+            behavior: "BLOCKING",
             parameters: {
               type: "OBJECT",
               properties: {

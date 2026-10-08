@@ -1103,13 +1103,10 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           userSpokenTranscript += heardText;
           turnLog.user += heardText;
           if (isHardware && imsBrain && !isRecordingActive() && (!visionAsk || Date.now() - visionAsk.at > 20000) && looksLikeVisionAsk(turnLog.user)) {
-            const question = turnLog.user.trim();
-            visionAsk = { at: Date.now(), toolCalled: false, question, result: null };
-            const frame = getFrame();
-            visionAsk.result = frame && Date.now() - frame.at < 120000
-              ? askLive(`${question} (describe what is in front of the desk camera)`, { withEmbeddings: true }).catch(() => null)
-              : Promise.resolve(null);
-            console.log(`${tag} 📷 Heard a look/see request - looking through the camera: "${question.slice(0, 80)}"`);
+            // noted only: the camera is asked at the end of his reply, and only if he didn't look himself
+            // (looking in parallel every time cost an extra vision call when he did)
+            visionAsk = { at: Date.now(), toolCalled: false, question: turnLog.user.trim() };
+            console.log(`${tag} 📷 Heard a look/see request: "${visionAsk.question.slice(0, 80)}"`);
           }
           try {
             logCapture(
@@ -1161,7 +1158,11 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               const va = visionAsk;
               if (va && !va.toolCalled && !turnLog.tools.some((t) => t.name === 'lookAtCamera') && Date.now() - va.at < 30000) {
                 visionAsk = { ...va, toolCalled: true };
-                va.result.then((snap) => {
+                const frame = getFrame();
+                const looking = frame && Date.now() - frame.at < 120000
+                  ? askLive(`${va.question} (describe what is in front of the desk camera)`, { withEmbeddings: true }).catch(() => null)
+                  : Promise.resolve(null);
+                looking.then((snap) => {
                   if (!snap || !isConversationActive || gWs.readyState !== WebSocket.OPEN || (isHardware && isRecordingActive())) return;
                   const answer = snap.qa?.[snap.qa.length - 1]?.answer;
                   if (!answer) return;
@@ -1251,7 +1252,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           const respondToToolCall = (call, output) => {
             // an answer is only owed if he hasn't already given one while the tool ran (a slow save like
             // rememberFact finishing after "Aye, I'll remember that" let the same line through twice)
-            if (!['setEmotion', 'endConversation', 'noWakeDetected', 'noteWake'].includes(call.name) && wordsSpoken - wordMark < 10) { toolAnswerOwedAt = Date.now(); toolAnswerWords = 0; }
+            if (!['setEmotion', 'endConversation', 'noWakeDetected', 'noteWake'].includes(call.name) && (wordsSpoken - wordMark < 10 || call.name === 'lookAtCamera')) { toolAnswerOwedAt = Date.now(); toolAnswerWords = 0; }
             if (call.name !== 'setEmotion') turnLog.tools.push({ name: call.name, ms: Date.now() - toolStartedAt, ok: !(output && output.error),
               ...(/^(getWeather|getBloodGlucose|listScheduledItems|getCalendarEvents|getDayReport|getUpcomingBirthdays|getTrainingSummary|getScheduleHistory|getNewMusicReleases)$/.test(call.name) ? { out: JSON.stringify(output).slice(0, 2500) } : {}) });
             // Anything that fails is logged to the dev ideas queue as a prompt for Claude Code.
