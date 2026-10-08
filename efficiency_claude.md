@@ -201,13 +201,18 @@ Suggested order for the rest: **4 and 6** (cost), then **8, 9 and 11**.
 - The live voice proxy (`handleLiveProxyConnection`) is one huge function that handles wake checks, tool calls,
   device messages, recording, timers and logging.
 - **Fix:** split it into modules (wake, tools, device protocol, session lifecycle). Bugs like item 9 would be easier to find.
-- **Left for now:** another agent is editing `index.js` at the same time; a large restructure needs a quiet
-  window. The new wake check went into its own module (`wakeGateService.js`) as a start.
+- **Done:** `index.js` 4,020 -> ~1,340 lines. The live voice proxy is `server/live/liveProxy.js`; its helpers are
+  `live/textMatching.js` (wake / vision / face-cue matchers), `live/setupMessages.js` (Gemini setup), `live/debugLog.js`
+  and `live/state.js` (the device/browser sessions, cooldown and last-conversation state both sides share - they
+  used to be `let`s in index.js the proxy reassigned). Found on the way: `noWakeDetected` / `endConversation` set
+  two variables that no longer existed, which throws in a module - so the device was never told and a farewell
+  never marked the conversation to end; fixed. The OTA "is a conversation open?" check read a variable that
+  never existed outside the proxy; it now asks the wake daemon.
 
 ### 19. The device server (port 3003) has no login
 - The plain HTTP server for the Box-3 accepts camera frames, logs, face packs and **personality setting
   changes** without any authentication. It's on the home network only, so the risk is low, but a shared device key would close it.
-- **Done (switched on after flashing):** the Box-3 sends `X-IMS-Key` (key in `secrets.h`) on all its requests;
+- **Done and on:** the Box-3 sends `X-IMS-Key` (key in `secrets.h`) on all its requests;
   the server rejects requests without it once `IMS_DEVICE_KEY` is set in `pdf-knowledge-base/.env`.
 
 ---
