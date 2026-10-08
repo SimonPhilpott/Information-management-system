@@ -1,11 +1,20 @@
 import { Router } from 'express';
-import { listPeople, enrolFace, updatePerson, deletePerson, deleteSample, sampleThumbPath } from '../services/faceService.js';
+import { listPeople, enrolFace, updatePerson, deletePerson, deleteAllPeople, deleteSample, getPersonSamples, sampleThumbPath } from '../services/faceService.js';
 import { getSnapshot } from '../services/lookService.js';
 
 const router = Router();
 
 router.get('/', (req, res) => {
   res.json({ success: true, people: listPeople() });
+});
+
+router.delete('/', (req, res) => {
+  const count = deleteAllPeople();
+  res.json({ success: true, count });
+});
+
+router.get('/:id/samples', (req, res) => {
+  res.json({ success: true, samples: getPersonSamples(Number(req.params.id)) });
 });
 
 // Enrol one face from a stored snapshot (the snapshot already holds the

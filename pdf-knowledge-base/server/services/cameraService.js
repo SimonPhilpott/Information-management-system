@@ -12,19 +12,35 @@
 // any source (device, the browser's webcam, uploads). Frames live in memory
 // only - nothing is written to disk unless the user takes a snapshot.
 const ATTACHED_WINDOW_MS = 30000; // > the 15s device status-push cadence, so the icon doesn't flicker
-export const AWAKE_MS = 10 * 60 * 1000;
+export const AWAKE_MS = 24 * 60 * 60 * 1000; // Keep camera permanently hot for active testing
 
 let latest = { buffer: null, at: 0, source: null };
 let heartbeatAt = 0;
-let awakeUntil = 0;
+let awakeUntil = Date.now() + AWAKE_MS; // Start hot
+
+const cameraListeners = new Set();
+export function onCameraChange(listener) {
+  if (typeof listener === 'function') {
+    cameraListeners.add(listener);
+    return () => cameraListeners.delete(listener);
+  }
+}
+
+function notifyCameraChange() {
+  for (const l of cameraListeners) {
+    try { l(); } catch (_) { }
+  }
+}
 
 export function setFrame(buffer, source = 'unknown') {
   latest = { buffer, at: Date.now(), source };
+  notifyCameraChange();
 }
 
 // Wakes the camera (or extends its awake period) for another AWAKE_MS.
 export function wakeCamera() {
   awakeUntil = Date.now() + AWAKE_MS;
+  notifyCameraChange();
 }
 // Anything that uses the camera counts as a reason to keep it awake.
 export const markInUse = wakeCamera;
@@ -34,6 +50,7 @@ export const markInUse = wakeCamera;
 export function heartbeat({ boot = false } = {}) {
   heartbeatAt = Date.now();
   if (boot) wakeCamera();
+  else notifyCameraChange();
 }
 
 export function getFrame() {
@@ -43,13 +60,17 @@ export function getFrame() {
 export function getCameraStatus() {
   const now = Date.now();
   const attached = Boolean((latest.buffer && now - latest.at < ATTACHED_WINDOW_MS) || (heartbeatAt && now - heartbeatAt < ATTACHED_WINDOW_MS));
-  const awake = attached && now < awakeUntil;
+  const isAwake = now < awakeUntil;
   return {
     attached,
-    awake,
-    sleepsInSeconds: awake ? Math.round((awakeUntil - now) / 1000) : 0,
+    awake: attached && isAwake,
+    deviceAwakeWanted: isAwake,
+    sleepsInSeconds: isAwake ? Math.round((awakeUntil - now) / 1000) : 0,
     lastFrameAt: latest.buffer ? new Date(latest.at).toISOString() : null,
-    source: latest.source
+    lastHeartbeatAt: heartbeatAt ? new Date(heartbeatAt).toISOString() : null,
+    source: latest.source,
+    isAwakeRequested: isAwake,
+    recentLogs: readDeviceLog(5)
   };
 }
 

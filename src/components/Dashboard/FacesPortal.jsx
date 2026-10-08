@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ScanFace, Save, Trash2, Pencil, X, UserPlus, ShieldCheck } from 'lucide-react';
+import { ScanFace, Save, Trash2, Pencil, X, UserPlus, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
 import PortalShell from './PortalShell';
 import CameraPanel from './CameraPanel';
 import SnapshotView from './SnapshotView';
@@ -13,6 +13,8 @@ export default function FacesPortal({ theme = 'dark', onThemeToggle, setCurrentP
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(null); // { id, name, notes }
+  const [expandedPersonId, setExpandedPersonId] = useState(null);
+  const [personSamples, setPersonSamples] = useState([]);
   const [notification, setNotification] = useState(null);
   const capturedIdRef = useRef(null);
 
@@ -85,6 +87,7 @@ export default function FacesPortal({ theme = 'dark', onThemeToggle, setCurrentP
       });
       const d = await res.json();
       if (!res.ok || !d.success) throw new Error(d.error || 'Could not save.');
+      showToast('Person updated.');
       setEditing(null);
       loadPeople();
     } catch (err) { onError(err.message); }
@@ -92,8 +95,59 @@ export default function FacesPortal({ theme = 'dark', onThemeToggle, setCurrentP
 
   const removePerson = async (p) => {
     if (!window.confirm(`Delete ${p.name} and all ${p.samples} saved face sample(s)?`)) return;
-    await fetch(`/api/people/${p.id}`, { method: 'DELETE' });
-    loadPeople();
+    try {
+      const res = await fetch(`/api/people/${p.id}`, { method: 'DELETE' });
+      const d = await res.json();
+      if (d.success) {
+        showToast(`Deleted ${p.name}.`);
+        if (expandedPersonId === p.id) {
+          setExpandedPersonId(null);
+          setPersonSamples([]);
+        }
+        loadPeople();
+      }
+    } catch (err) { onError(err.message); }
+  };
+
+  const removeAllPeople = async () => {
+    if (!people.length || !window.confirm(`Delete all ${people.length} saved face profile(s)? This will remove all learned faces.`)) return;
+    try {
+      const res = await fetch('/api/people', { method: 'DELETE' });
+      const d = await res.json();
+      if (d.success) {
+        showToast(`Deleted all saved faces (${d.count || people.length}).`);
+        setExpandedPersonId(null);
+        setPersonSamples([]);
+        loadPeople();
+      }
+    } catch (err) { onError(err.message); }
+  };
+
+  const toggleSamples = async (pId) => {
+    if (expandedPersonId === pId) {
+      setExpandedPersonId(null);
+      setPersonSamples([]);
+      return;
+    }
+    setExpandedPersonId(pId);
+    try {
+      const res = await (await fetch(`/api/people/${pId}/samples`)).json();
+      if (res.success) setPersonSamples(res.samples);
+    } catch (_) {}
+  };
+
+  const removeSample = async (sampleId, personId) => {
+    if (!window.confirm('Delete this face sample?')) return;
+    try {
+      const res = await fetch(`/api/people/sample/${sampleId}`, { method: 'DELETE' });
+      const d = await res.json();
+      if (d.success) {
+        showToast('Sample deleted.');
+        loadPeople();
+        const updated = await (await fetch(`/api/people/${personId}/samples`)).json();
+        if (updated.success) setPersonSamples(updated.samples);
+      }
+    } catch (err) { onError(err.message); }
   };
 
   const panel = `rounded-2xl border p-5 ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/70 border-[#2E2B27]/10 shadow-sm'}`;
@@ -160,38 +214,91 @@ export default function FacesPortal({ theme = 'dark', onThemeToggle, setCurrentP
       </div>
 
       <div className={panel}>
-        <h2 className="text-xs font-black uppercase tracking-wider mb-3 flex items-center gap-2"><UserPlus size={14} className="opacity-60" />People IMS knows ({people.length})</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xs font-black uppercase tracking-wider flex items-center gap-2">
+            <UserPlus size={14} className="opacity-60" />
+            People IMS knows ({people.length})
+          </h2>
+          {people.length > 0 && (
+            <button
+              onClick={removeAllPeople}
+              className="text-[11px] text-red-400 hover:text-red-300 flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-red-500/10 transition-colors"
+              title="Delete all saved faces"
+            >
+              <Trash2 size={12} /> Clear all
+            </button>
+          )}
+        </div>
         {people.length === 0 ? (
           <p className="text-xs text-slate-500 py-4 text-center">Nobody yet.</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {people.map((p) => (
-              <div key={p.id} className={`rounded-xl border p-3 flex gap-3 ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
-                {p.thumbSampleId
-                  ? <img src={`/api/people/sample/${p.thumbSampleId}/thumb`} alt="" className="w-16 h-16 rounded-lg object-cover shrink-0" />
-                  : <div className="w-16 h-16 rounded-lg bg-slate-700 shrink-0" />}
-                <div className="min-w-0 flex-1 text-xs">
-                  {editing?.id === p.id ? (
-                    <div className="flex flex-col gap-2">
-                      <input className={field} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
-                      <textarea className={`${field} min-h-[50px]`} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} />
-                      <div className="flex gap-2">
-                        <button onClick={savePerson} className="px-2 py-1 rounded-lg bg-emerald-500 text-white font-bold flex items-center gap-1"><Save size={11} />Save</button>
-                        <button onClick={() => setEditing(null)} className="px-2 py-1 rounded-lg bg-black/10"><X size={11} /></button>
+              <div key={p.id} className={`rounded-xl border p-3 flex flex-col gap-2 ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-[#2E2B27]/10'}`}>
+                <div className="flex gap-3">
+                  {p.thumbSampleId
+                    ? <img src={`/api/people/sample/${p.thumbSampleId}/thumb`} alt="" className="w-16 h-16 rounded-lg object-cover shrink-0" />
+                    : <div className="w-16 h-16 rounded-lg bg-slate-700 shrink-0" />}
+                  <div className="min-w-0 flex-1 text-xs">
+                    {editing?.id === p.id ? (
+                      <div className="flex flex-col gap-2">
+                        <input className={field} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+                        <textarea className={`${field} min-h-[50px]`} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} />
+                        <div className="flex gap-2">
+                          <button onClick={savePerson} className="px-2 py-1 rounded-lg bg-emerald-500 text-white font-bold flex items-center gap-1"><Save size={11} />Save</button>
+                          <button onClick={() => setEditing(null)} className="px-2 py-1 rounded-lg bg-black/10"><X size={11} /></button>
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="font-bold text-sm truncate">{p.name}</div>
-                      <div className="text-[10px] text-slate-500">{p.samples} sample{p.samples === 1 ? '' : 's'}</div>
-                      {p.notes && <div className="mt-1 opacity-80 whitespace-pre-wrap">{p.notes}</div>}
-                      <div className="mt-2 flex gap-1">
-                        <button onClick={() => setEditing({ id: p.id, name: p.name, notes: p.notes })} className={`p-1.5 rounded-lg ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`} title="Edit"><Pencil size={13} /></button>
-                        <button onClick={() => removePerson(p)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10" title="Delete"><Trash2 size={13} /></button>
-                      </div>
-                    </>
-                  )}
+                    ) : (
+                      <>
+                        <div className="font-bold text-sm truncate">{p.name}</div>
+                        <div className="text-[10px] text-slate-500 flex items-center gap-2">
+                          <span>{p.samples} sample{p.samples === 1 ? '' : 's'}</span>
+                          {p.samples > 0 && (
+                            <button
+                              onClick={() => toggleSamples(p.id)}
+                              className="text-[10px] text-violet-400 hover:text-violet-300 underline flex items-center gap-0.5"
+                            >
+                              {expandedPersonId === p.id ? 'Hide' : 'Manage'}
+                              {expandedPersonId === p.id ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                            </button>
+                          )}
+                        </div>
+                        {p.notes && <div className="mt-1 opacity-80 whitespace-pre-wrap">{p.notes}</div>}
+                        <div className="mt-2 flex gap-1">
+                          <button onClick={() => setEditing({ id: p.id, name: p.name, notes: p.notes })} className={`p-1.5 rounded-lg ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`} title="Edit"><Pencil size={13} /></button>
+                          <button onClick={() => removePerson(p)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10" title="Delete"><Trash2 size={13} /></button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
+
+                {expandedPersonId === p.id && (
+                  <div className={`mt-1 pt-2 border-t rounded-lg p-2 ${isDark ? 'border-white/10 bg-slate-900/60' : 'border-[#2E2B27]/10 bg-slate-50'}`}>
+                    <div className="text-[10px] font-bold uppercase tracking-wider mb-2 opacity-70">
+                      Face Samples ({personSamples.length})
+                    </div>
+                    {personSamples.length === 0 ? (
+                      <p className="text-[10px] text-slate-500">No samples found.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {personSamples.map((s) => (
+                          <div key={s.id} className="relative group w-12 h-12 rounded-lg overflow-hidden border border-white/10">
+                            <img src={`/api/people/sample/${s.id}/thumb`} alt="" className="w-full h-full object-cover" />
+                            <button
+                              onClick={() => removeSample(s.id, p.id)}
+                              className="absolute inset-0 bg-red-600/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Delete sample"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

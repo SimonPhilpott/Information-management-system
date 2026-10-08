@@ -85,3 +85,11 @@ pdf-knowledge-base/server/data/face_packs/
 
 # Garmin Connect login tokens (services/garminService.js) - never commit
 pdf-knowledge-base/data/garmin/
+
+# ESP32 firmware build scratch and managed components
+firmware/esp32-s3-box-3/managed_components/
+firmware/esp32-s3-box-3/dummy/
+firmware/esp32-s3-box-3/pio/
+firmware/esp32-s3-box-3/build_trace.txt
+firmware/esp32-s3-box-3/hcd_dwc_disasm.txt
+firmware/esp32-s3-box-3/*.o

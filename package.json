@@ -7,7 +7,9 @@
     "dev": "vite --host",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "ota:probe": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/probe_box3.ps1",
+    "ota:flash": "cmd /c ota-flash.bat"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",

@@ -119,20 +119,28 @@ export async function summariseConversation(conversationId) {
   const c = getConversation(conversationId);
   if (!c || c.summary_done || !c.turns.some((t) => t.role === 'user')) return null;
   db.prepare('UPDATE conversations SET summary_done = 1 WHERE id = ?').run(c.id);
+  // his faces through the conversation, most used first - the feeling stored with the note is drawn from these
+  const faceCount = {};
+  for (const t of c.turns) for (const e of String(t.emotion || '').split(',').map((x) => x.trim()).filter((x) => x && x !== 'neutral')) faceCount[e] = (faceCount[e] || 0) + 1;
+  const faces = Object.entries(faceCount).sort((a, b) => b[1] - a[1]).map(([e, n]) => `${e} x${n}`);
   const when = new Date(c.started_at).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   const raw = await ask(
     'A conversation between Simon and Ims, his voice companion. Answer in exactly this form:\n' +
     "NOTE: up to three short sentences on what Simon talked about - topics, people, plans, what he thinks about something, anything left unresolved that Ims could ask about next time. Write 'NOTE: SKIP' if it was only a quick command or fact (a timer, the time, the weather).\n" +
     "MOOD: one or two words for how Simon seemed (e.g. cheerful, tired, rushed, fed up, chatty), or 'unclear'.\n" +
-    "OPINION: if Ims stated an opinion or preference of his own, restate it in first person in under 15 words; otherwise 'NONE'. One per line if more than one.\n\n" +
+    "OPINION: if Ims stated an opinion or preference of his own, restate it in first person in under 15 words; otherwise 'NONE'. One per line if more than one.\n" +
+    "FEELING: how Ims felt in this conversation - one to three words, then ' - ' and why in under 8 words (e.g. 'chuffed - the running help is landing'). Use the faces he showed as a guide. If it was negative, word it kindly, never as a grudge. 'NONE' if nothing stood out.\n\n" +
+    (faces.length ? `Faces Ims showed: ${faces.join(', ')}\n\n` : '') +
     transcriptOf(c)).catch(() => '');
   if (!raw) return null;
   const note = raw.match(/NOTE:\s*(.+)/i)?.[1]?.trim();
   const mood = raw.match(/MOOD:\s*(.+)/i)?.[1]?.trim();
   for (const m of raw.matchAll(/OPINION:\s*(.+)/gi)) { const o = m[1].trim(); if (o && !/^none\b/i.test(o)) recordOpinion(o); }
   if (mood && !/^unclear/i.test(mood)) writeJson(MOOD_KEY, { mood, at: c.ended_at || Date.now(), conversationId: c.id });
+  const feeling = raw.match(/FEELING:\s*(.+)/i)?.[1]?.trim();
   if (note && !/^skip\b/i.test(note)) {
-    await addNote(`${when}: ${note}`);
+    // the feeling travels inside the note, so it comes back wherever the note does (prompt and recallMemory)
+    await addNote(`${when}: ${note}${feeling && !/^none\b/i.test(feeling) ? ` [Ims felt: ${feeling.slice(0, 80)}]` : ''}`);
     console.log(`[Memory] Conversation #${c.id} noted: "${note}"`);
     return note;
   }

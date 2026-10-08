@@ -62,9 +62,46 @@ export default function LookPortal({ theme = 'dark', onThemeToggle, setCurrentPa
 
   const remove = async () => {
     if (!selected || !window.confirm('Delete this snapshot and its questions?')) return;
-    await fetch(`/api/look/snapshots/${selected.id}`, { method: 'DELETE' });
-    setSelected(null);
-    loadList();
+    try {
+      await fetch(`/api/look/snapshots/${selected.id}`, { method: 'DELETE' });
+      showToast('Snapshot deleted.');
+      setSelected(null);
+      loadList();
+    } catch (err) { onError(err.message); }
+  };
+
+  const removeSingle = async (id, e) => {
+    e?.stopPropagation();
+    if (!window.confirm('Delete this snapshot?')) return;
+    try {
+      await fetch(`/api/look/snapshots/${id}`, { method: 'DELETE' });
+      if (selected?.id === id) setSelected(null);
+      showToast('Snapshot deleted.');
+      loadList();
+    } catch (err) { onError(err.message); }
+  };
+
+  const removeAll = async () => {
+    if (!snapshots.length || !window.confirm(`Delete all ${snapshots.length} snapshot(s)?`)) return;
+    try {
+      const res = await fetch('/api/look/snapshots', { method: 'DELETE' });
+      const d = await res.json();
+      if (d.success) {
+        setSelected(null);
+        showToast(`Deleted ${d.count || snapshots.length} snapshot(s).`);
+        loadList();
+      }
+    } catch (err) { onError(err.message); }
+  };
+
+  const removeQa = async (qaId) => {
+    if (!selected || !window.confirm('Delete this Q&A?')) return;
+    try {
+      await fetch(`/api/look/snapshots/${selected.id}/qa/${qaId}`, { method: 'DELETE' });
+      showToast('Q&A deleted.');
+      openSnapshot(selected.id);
+      loadList();
+    } catch (err) { onError(err.message); }
   };
 
   const panel = `rounded-2xl border p-5 ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/70 border-[#2E2B27]/10 shadow-sm'}`;
@@ -118,8 +155,20 @@ export default function LookPortal({ theme = 'dark', onThemeToggle, setCurrentPa
               {selected.qa.length > 0 && (
                 <div className="flex flex-col gap-2">
                   {selected.qa.map((x) => (
-                    <div key={x.id} className={`rounded-xl p-3 text-xs ${isDark ? 'bg-slate-950/50' : 'bg-white border border-[#2E2B27]/10'}`}>
-                      <div className="font-bold flex items-start gap-2"><MessageSquare size={12} className="mt-0.5 shrink-0 opacity-60" />{x.question}</div>
+                    <div key={x.id} className={`rounded-xl p-3 text-xs relative group ${isDark ? 'bg-slate-950/50' : 'bg-white border border-[#2E2B27]/10'}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="font-bold flex items-start gap-2">
+                          <MessageSquare size={12} className="mt-0.5 shrink-0 opacity-60" />
+                          {x.question}
+                        </div>
+                        <button
+                          onClick={() => removeQa(x.id)}
+                          className="p-1 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors opacity-70 group-hover:opacity-100 shrink-0"
+                          title="Delete Q&A"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
                       <div className="mt-1.5 whitespace-pre-wrap leading-relaxed opacity-90">{x.answer}</div>
                     </div>
                   ))}
@@ -141,20 +190,44 @@ export default function LookPortal({ theme = 'dark', onThemeToggle, setCurrentPa
 
       {/* Gallery */}
       <div className={panel}>
-        <h2 className="text-xs font-black uppercase tracking-wider mb-3">Snapshots ({snapshots.length})</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xs font-black uppercase tracking-wider">Snapshots ({snapshots.length})</h2>
+          {snapshots.length > 0 && (
+            <button
+              onClick={removeAll}
+              className="text-[11px] text-red-400 hover:text-red-300 flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-red-500/10 transition-colors"
+              title="Delete all snapshots"
+            >
+              <Trash2 size={12} /> Clear all
+            </button>
+          )}
+        </div>
         {snapshots.length === 0 ? (
           <p className="text-xs text-slate-500 py-4 text-center">No snapshots yet.</p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
             {snapshots.map((s) => (
-              <button key={s.id} onClick={() => openSnapshot(s.id)}
-                className={`text-left rounded-xl overflow-hidden border transition-all hover:scale-[1.02] ${selected?.id === s.id ? 'border-cyan-400' : isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
-                <img src={`/api/look/snapshots/${s.id}/image`} alt="" loading="lazy" className="w-full aspect-[4/3] object-cover bg-black" />
-                <div className="p-2 text-[10px]">
-                  <div className="font-bold truncate">{s.names.length ? s.names.join(', ') : s.faceCount ? `${s.faceCount} face(s)` : 'No faces'}</div>
-                  <div className="opacity-60">{new Date(s.createdAt).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}{s.qaCount ? ` · ${s.qaCount} Q&A` : ''}</div>
-                </div>
-              </button>
+              <div key={s.id} className="relative group">
+                <button
+                  onClick={() => openSnapshot(s.id)}
+                  className={`w-full text-left rounded-xl overflow-hidden border transition-all hover:scale-[1.02] ${
+                    selected?.id === s.id ? 'border-cyan-400 ring-2 ring-cyan-400/30' : isDark ? 'border-white/10' : 'border-[#2E2B27]/10'
+                  }`}
+                >
+                  <img src={`/api/look/snapshots/${s.id}/image`} alt="" loading="lazy" className="w-full aspect-[4/3] object-cover bg-black" />
+                  <div className="p-2 text-[10px]">
+                    <div className="font-bold truncate">{s.names.length ? s.names.join(', ') : s.faceCount ? `${s.faceCount} face(s)` : 'No faces'}</div>
+                    <div className="opacity-60">{new Date(s.createdAt).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}{s.qaCount ? ` · ${s.qaCount} Q&A` : ''}</div>
+                  </div>
+                </button>
+                <button
+                  onClick={(e) => removeSingle(s.id, e)}
+                  className="absolute top-1.5 right-1.5 p-1.5 rounded-lg bg-black/70 hover:bg-red-600 text-white/90 hover:text-white transition-all shadow-md opacity-70 group-hover:opacity-100 hover:scale-110 z-10"
+                  title="Delete snapshot"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
             ))}
           </div>
         )}

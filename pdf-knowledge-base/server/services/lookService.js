@@ -87,6 +87,19 @@ export function deleteSnapshot(id) {
   return db.prepare(`DELETE FROM snapshots WHERE id = ?`).run(id).changes > 0;
 }
 
+export function deleteAllSnapshots() {
+  const rows = db.prepare(`SELECT id FROM snapshots`).all();
+  for (const r of rows) {
+    try { fs.unlinkSync(imagePath(r.id)); } catch (_) {}
+  }
+  db.prepare(`DELETE FROM snapshot_qa`).run();
+  return db.prepare(`DELETE FROM snapshots`).run().changes;
+}
+
+export function deleteSnapshotQa(qaId) {
+  return db.prepare(`DELETE FROM snapshot_qa WHERE id = ?`).run(qaId).changes > 0;
+}
+
 // Saves the camera's current frame as a snapshot and finds/recognises faces in it.
 export async function takeSnapshot() {
   const frame = getFrame();

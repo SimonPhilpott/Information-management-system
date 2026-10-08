@@ -31,9 +31,9 @@ const norm = (t) => String(t || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-// Authorised core wake phrase patterns (including all phonetic pronunciations rhyming with Tims/Jims/rims/limbs, e.g. ims, imz, ihms, imms, ems, eems, hims, hymns, ames, tims, jims, limbs, rpms, pims)
-const GREETINGS = '(?:hey|hi|hiya|heya|hello|eh\\s*up|ey\\s*up|ay\\s*up|aye\\s*up|ayup|eyup|yo|oi|anya|now\\s*then|how\\s*do|up)';
-const IMS_VARIANTS = '(?:ims|imz|ihms|imms|ems|eems|emms|hims|aims|ames|hms|pims|mims|hymns?|tims|jims|limbs|rims|rpms|m\\\'s|ms)';
+// Authorised core wake phrase patterns (including all phonetic pronunciations rhyming with Tims/Jims/rims/limbs, e.g. ims, imz, ihms, imms, ems, eems, hims, hymns, ames, tims, jims, limbs, rims, rpms, elms, helms, aops, m's, ms)
+const GREETINGS = '(?:hey[\\s,-]*up|eh[\\s,-]*up|ey[\\s,-]*up|ay[\\s,-]*up|aye[\\s,-]*up|ayup|eyup|hey|hi|hiya|heya|hello|yo|oi|anya|now\\s*then|how\\s*do|up)';
+const IMS_VARIANTS = '(?:ims|imz|ihms|imms|ems|eems|emms|hims|aims|ames|hms|pims|mims|hymns?|tims|jims|limbs|rims|rpms|elms|helms|aops|m\\\'s|ms)';
 
 const CORE_WAKE_REGEX = new RegExp(`\\b${GREETINGS}\\b[\\s,.!?'-]*${IMS_VARIANTS}\\b`, 'i');
 const BARE_WAKE_REGEX = new RegExp(`^\\W*${GREETINGS}?\\s*${IMS_VARIANTS}\\b`, 'i');
@@ -67,6 +67,9 @@ class WakeDaemonService extends EventEmitter {
 
     // Start background silence watchdog interval
     this.watchdogInterval = setInterval(() => this._watchdogTick(), 500);
+    if (this.watchdogInterval && typeof this.watchdogInterval.unref === 'function') {
+      this.watchdogInterval.unref();
+    }
   }
 
   _addLog(type, message, metadata = {}) {
@@ -224,6 +227,28 @@ class WakeDaemonService extends EventEmitter {
     console.log(`[WakeDaemon] 👆 Touch-to-talk initiated from ${source} -> CONVERSATION_ACTIVE`);
     this._addLog('touch_to_talk', `Conversation started via touch-to-talk (${source})`, { source });
     this.emit('stateChange', { state: this.state, reason: 'touch_to_talk' });
+  }
+
+  /**
+   * Called when server-side transcription confirms speech was addressed to Ims
+   * (e.g. looksAddressed matching 'Eh up Ims', 'Hey up Elms', 'Hi IMS' etc.).
+   * Immediately transitions to CONVERSATION_ACTIVE and emits wakeVerified so hardware
+   * receives { wakeVerified: true } and extends verifyCeilingMs to 12s before Gemini speaks.
+   */
+  acceptWake(phrase = 'Wake Phrase', source = 'hardware') {
+    const cleanPhrase = String(phrase || '').trim().slice(0, 40) || 'Wake Phrase';
+    this.state = DAEMON_STATES.CONVERSATION_ACTIVE;
+    this.lastWakeAt = Date.now();
+    this.lastWakePhrase = cleanPhrase;
+    this.lastUserSpeechAt = Date.now();
+    this.lastModelSpeechEndAt = 0;
+    this.isModelSpeaking = false;
+    this.conversationsCount++;
+    this.candidateTranscriptBuffer = '';
+    console.log(`[WakeDaemon] 🎯 Wake phrase accepted (${source}: "${cleanPhrase}") -> CONVERSATION_ACTIVE`);
+    this._addLog('wake_verified', `Wake accepted (${source}: "${cleanPhrase}")`, { phrase: cleanPhrase, source });
+    this.emit('wakeVerified', { phrase: cleanPhrase, source });
+    this.emit('stateChange', { state: this.state, reason: 'wake_verified' });
   }
 
   /**

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import {
   takeSnapshot, listSnapshots, getSnapshot, getSnapshotImagePath, deleteSnapshot,
-  askAboutSnapshot, askLive
+  deleteAllSnapshots, deleteSnapshotQa, askAboutSnapshot, askLive
 } from '../services/lookService.js';
 
 const router = Router();
@@ -18,6 +18,11 @@ router.get('/snapshots', (req, res) => {
   res.json({ success: true, snapshots: listSnapshots() });
 });
 
+router.delete('/snapshots', (req, res) => {
+  const count = deleteAllSnapshots();
+  res.json({ success: true, count });
+});
+
 router.get('/snapshots/:id', (req, res) => {
   const snap = getSnapshot(Number(req.params.id));
   if (!snap) return res.status(404).json({ error: 'Snapshot not found.' });
@@ -32,6 +37,11 @@ router.get('/snapshots/:id/image', (req, res) => {
 
 router.delete('/snapshots/:id', (req, res) => {
   if (!deleteSnapshot(Number(req.params.id))) return res.status(404).json({ error: 'Snapshot not found.' });
+  res.json({ success: true });
+});
+
+router.delete('/snapshots/:id/qa/:qaId', (req, res) => {
+  if (!deleteSnapshotQa(Number(req.params.qaId))) return res.status(404).json({ error: 'Question not found.' });
   res.json({ success: true });
 });
 

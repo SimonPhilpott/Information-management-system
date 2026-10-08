@@ -1389,6 +1389,84 @@
         "Floating 8-Bit Emote Badges: Bobbing arcade badges for heart, question block, exclamation, skull, and sleep ZZZs",
         "Dedicated Inspector Metadata Controls: Name input, hex colour picker, and palette swatches directly embedded inside the single-engine inspector"
       ]
+    },
+    "Conversational Feeling & Balanced Discussion Dynamics": {
+      "status": "enabled",
+      "description": "Enriches IMS conversational depth and personality with emotion-derived feeling metadata in conversation memory notes ([Ims felt: ...]), proactive reciprocal dialogue hooks ending detailed discussions with insightful forward-moving questions, dry-by-default expressive vocal dynamics, and recognition of 'catch you later' farewell phrases.",
+      "subFeatures": [
+        "Conversation Feeling Metadata: Extracts and appends Ims emotional states ([Ims felt: ...]) from turn faces during summarizeConversation, enabling empathetic recollection in subsequent interactions",
+        "Balanced Discussion Dynamics: Mandates carrying his half of in-depth discussions by ending detailed topics with a single forward-moving, probing question while keeping quick facts question-free",
+        "Expressive Vocal Modulation: Directs voice delivery to remain level and dry by default but dynamically shift cadence, pitch, and punctuation when feeling distinct emotions",
+        "Conversational Farewell Expansion: Recognizes 'catch you later' and 'catch you later, IMS' as valid closing phrases across system instructions and endConversation tool definitions"
+      ]
+    },
+    "Wake Phrase Recognition Resilience & Immediate Candidate Verification": {
+      "status": "enabled",
+      "description": "Hardens IMS voice wake recognition against phonetic speech-to-text corruptions and timing stalls by expanding greeting tokens, emitting immediate wake-verification signals upon transcript resolution to extend hardware timeouts, and flushing stale turn buffers upon session closure.",
+      "renderingEngine": "Node.js / Express WebSocket",
+      "subFeatures": [
+        "Phonetic Token Expansion: Adds 'hey up', 'elms', 'helms', and 'aops' to WAKE_RX, NAME_TOKEN, IMS_VARIANTS, and voice_phrases database variants",
+        "Immediate Wake Verification: Calls acceptWake() upon transcript address matching to immediately emit wakeVerified and push status to Box-3, extending device verify ceiling from 4.5s to 12s before Gemini speaks",
+        "Transcript Buffer Hygiene: Resets heardThisTurn and turn triggers upon verifying_start, sessionClosed, and wake rejection to prevent cross-session contamination"
+      ]
+    },
+    "Box-3 Wi-Fi OTA Header Indicator & Standalone Verification": {
+      "status": "enabled",
+      "description": "Enables standalone tetherless operation of the ESP32-S3-BOX-3 with dual 6.4MB OTA partitions, background ArduinoOTA network flashing over Wi-Fi, non-blocking TCP probe listener on port 3232, and an on-screen OTA status indicator positioned to the right of USB in the screen header row displaying connection state (red = no connection made yet, green = OTA connection established / active, cyan = flashing in progress).",
+      "renderingEngine": "C++ / LovyanGFX / ESP32 Arduino",
+      "subFeatures": [
+        "Dual 6.4MB OTA Flash Partitioning: Preserves dual-partition OTA scheme (app0/ota_0 at 0x10000, app1/ota_1 at 0x650000) for safe rollback and flash updating",
+        "ArduinoOTA Flashing Service: Implements background ArduinoOTA network flasher on port 3232 with visual TFT progress bar and audio task silencing during flash writes",
+        "Non-blocking TCP Probe Server: Listens on port 3232 TCP via NetworkServer to allow instant connectivity testing and connection status reporting without flashing",
+        "Screen Header OTA Indicator: Adds fifth header indicator 'OTA' at x=264 beside USB (x=210) with reactive dot color reflecting connection status and RTC reboot persistence"
+      ]
+    },
+    "Device Health Portal OTA Controls, Subsystem Matrix & Management Terminal": {
+      "status": "enabled",
+      "description": "Centralises ESP32-S3-BOX-3 hardware observability, wireless OTA firmware updates, and real-time terminal diagnostics in /ims/device-health. Streams live telemetry and heartbeat metrics from the raw TCP hardware bridge into deviceHealthService, provides firmware compilation and Wi-Fi flashing via firmwareService, and exposes an interactive SSE-backed management console with subsystem health matrix and fixed command dispatch.",
+      "renderingEngine": "React / Tailwind / Node.js Express / Server-Sent Events",
+      "subFeatures": [
+        "10-Subsystem Status Matrix: Audits and renders dedicated health status cards with distinctive colour badges for Connection, Firmware, OTA Engine, Device State, Wake Listener, Mic/Speaker, Recording Mode, Camera, Gemini Session, and Watchdog",
+        "Firmware Compilation & Wireless Flashing: Ingests PlatformIO build triggers and executes espota.py Wi-Fi flashing with live progress tracking, SHA-256 binary validation, and SQLite update history logging",
+        "Live SSE Management Terminal: Provides a 2,000-line circular ring buffer console streamed in real time via Server-Sent Events with category filters (All, Device, OTA, Build, Server), auto-scroll, export, and copy capabilities",
+        "Direct Device Command Dispatch: Supports remote execution of fixed management directives including status, heap, reboot, camera on/off, and USB flash fallback via POST /api/device-health/command"
+      ]
+    },
+    "Cable-Free Development & Wi-Fi Log Mirroring": {
+      "status": "enabled",
+      "description": "Enables completely wireless, cable-free Box-3 development and telemetry auditing by streaming firmware logs and USB webcam driver output over Wi-Fi, reporting boot reset reasons and panic diagnostics, executing remote management directives over TCP, and documenting tetherless OTA workflows and recovery procedures.",
+      "renderingEngine": "C++ / FreeRTOS / Node.js Express",
+      "subFeatures": [
+        "Real-Time Wi-Fi Log Mirror Queue: Buffers firmware log lines via FreeRTOS queue (g_logMirrorQueue) and drains over TCP port 3002 to audio_captures/debug.log as DEVICE LOG: entries and the web SSE terminal",
+        "Camera UVC Driver Logging Bridge: Bridges camLogf in camera.cpp to the wireless log mirror queue, streaming USB host enumeration and webcam initialization logs over Wi-Fi",
+        "Boot Diagnostics & Crash Telemetry: Captures esp_reset_reason() and panic state on startup, transmitting boot_diag over Wi-Fi to update device health telemetry and watchdog status",
+        "Remote TCP Management Commands: Executes administrative commands received over TCP port 3002 including software reboot (reboot: true), heap and task telemetry queries, and camera enable/disable frames",
+        "Tetherless Development & Recovery Documentation: Documents cable-free workflow, PlatformIO compilation, Wi-Fi espota.py flashing, and BOOT+RESET recovery procedure in firmware/esp32-s3-box-3/README.md"
+      ]
+    },
+    "Logitech C270 UVC Camera Streaming & Look/Faces Portals": {
+      "status": "enabled",
+      "description": "Full USB host enumeration and UVC driver integration for the Logitech C270 webcam on ESP32-S3-BOX-3 dock power. Negotiates 640x480 MJPEG streaming at 15 fps over Wi-Fi to port 3003, illuminates the Box-3 bottom-left screen camera icon, routes Look (/ims/look) and Faces (/ims/faces) portals in IMS Hub, and enables real-time visual grounding with Gemini via lookAtCamera.",
+      "renderingEngine": "C++ / ESP-IDF USB Host / LovyanGFX / React / Node.js Express",
+      "subFeatures": [
+        "Full USB Device Enumeration: Successfully resets, addresses, and retrieves complete descriptors for Logitech C270 (VID 0x046d, PID 0x0825) with 3072-byte control transfer buffers and 300ms reset recovery",
+        "UVC MJPEG Video Streaming: Negotiates 640x480 @ 15 fps stream format and uploads 2fps JPEGs over Wi-Fi to /device/camera/frame on the IMS backend",
+        "On-Screen Camera Status Indicator: Renders camera icon on the bottom-left Box-3 display (yellow = attached, green = awake) with touch toggle and sleep timer support",
+        "Look & Faces Portals Routing: Exposes /ims/look for live snapshots and visual QA questions with Gemini, and /ims/faces for facial recognition and contact enrolment",
+        "Gemini lookAtCamera Tool Integration: Connects Box-3 voice interactions to on-demand camera frame inspection, allowing Ims to describe what it sees in the room in real time"
+      ]
+    },
+    "Camera Feed Stability & Deletion Operations in Look and Faces Portals": {
+      "status": "enabled",
+      "description": "Stabilises real-time camera rendering by decoupling frame display from transient network polling dropouts (preventing black blanking), and adds comprehensive granular and bulk deletion workflows across Look snapshots, snapshot Q&A items, registered people, and individual face sample crops.",
+      "renderingEngine": "React / Node.js Express / SQLite",
+      "subFeatures": [
+        "Frame Retention & Black Feed Prevention: CameraPanel retains the last successful JPEG frame across transient polling delays and errors, preventing <img> unmounting and eliminating black flashes during polling intervals",
+        "Snapshot Thumbnail Deletion: Each thumbnail in the LookPortal gallery features a direct-action delete button allowing one-click snapshot removal without opening the detail pane",
+        "Bulk Snapshot Removal: Header-level 'Clear all' action in LookPortal enables rapid deletion of all stored camera snapshots with cascade removal of associated disk images and Q&A history",
+        "Granular Q&A Item Deletion: Individual question-and-answer exchanges stored under a snapshot can be deleted independently without removing the parent photo",
+        "Face Sample Management & Bulk Deletion: FacesPortal supports viewing and deleting individual face sample crops per person, deleting entire person profiles with toast feedback, and bulk clearing all learned faces via DELETE /api/people"
+      ]
     }
   }
 }

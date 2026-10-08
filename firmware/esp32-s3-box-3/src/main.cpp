@@ -9,6 +9,8 @@
 #include "camera.h"
 #include <WiFi.h>
 #include <WiFiClient.h>
+#include <ArduinoOTA.h>
+#include <NetworkServer.h>
 #include <lwip/sockets.h>
 #include <lwip/netdb.h>
 #include <lwip/inet.h>
@@ -2431,7 +2433,7 @@ void drawStatusIconStack() {
   }
   y += PITCH;
   // yellow = camera attached but asleep, green = awake and ready
-  if (cameraAttached) drawCameraIcon(iconX, y, cameraAwake ? COL_GREEN : COL_YELLOW);
+  if (cameraAttached || cameraPresent()) drawCameraIcon(iconX, y, cameraAwake ? COL_GREEN : COL_YELLOW);
 
   tft.endWrite();
 }
@@ -2539,7 +2541,16 @@ void drawFooterClock() {
   if (footerSpriteReady) footerSprite.pushSprite(0, 204);
 }
 
-// Header status indicator row: VOICE, WAKE, WIFI, USB all positioned in a single horizontal row
+// ----------------------------------------------------------------------------
+// Over-The-Air (OTA) Firmware Updates over Wi-Fi & Header Indicator State
+// ----------------------------------------------------------------------------
+RTC_DATA_ATTR static bool rtcOtaConnected = false;
+static bool otaConnected = false;
+static bool otaInProgress = false;
+static NetworkServer otaProbeServer(3232);
+void drawOtaIndicator();
+
+// Header status indicator row: VOICE, WAKE, WIFI, USB, OTA positioned in a single horizontal row
 // at HEADER_STATUS_Y (y=31), centered below the vertically centered title (y=14).
 #define HEADER_TITLE_Y 14
 #define HEADER_STATUS_Y 31
@@ -2547,6 +2558,7 @@ void drawFooterClock() {
 #define WAKE_INDICATOR_X 102
 #define WIFI_INDICATOR_X 156
 #define USB_INDICATOR_X 210
+#define OTA_INDICATOR_X 264
 
 void drawUsbIndicator() {
   if (onSettingsScreen) return;
@@ -2558,6 +2570,28 @@ void drawUsbIndicator() {
   tft.setTextColor(tft.color565(140, 150, 175));
   tft.setTextSize(1);
   tft.drawString("USB", USB_INDICATOR_X + 14, HEADER_STATUS_Y);
+  tft.setTextDatum(top_left);
+  tft.endWrite();
+}
+
+void drawOtaIndicator() {
+  if (onSettingsScreen) return;
+  tft.startWrite();
+  tft.fillRect(OTA_INDICATOR_X - 4, HEADER_STATUS_Y - 7, 52, 14, tft.color565(20, 24, 34));
+  const bool wifiUp = (WiFi.status() == WL_CONNECTED);
+  uint16_t dotColor;
+  if (otaInProgress) {
+    dotColor = tft.color565(0, 210, 255); // Cyan: active OTA transfer in progress
+  } else if (wifiUp) {
+    dotColor = tft.color565(46, 213, 115); // Green: OTA Wi-Fi service online & ready (port 3232)
+  } else {
+    dotColor = tft.color565(255, 71, 87);  // Red: Wi-Fi offline, OTA unavailable
+  }
+  tft.fillCircle(OTA_INDICATOR_X + 4, HEADER_STATUS_Y, 4, dotColor);
+  tft.setTextDatum(middle_left);
+  tft.setTextColor(tft.color565(140, 150, 175));
+  tft.setTextSize(1);
+  tft.drawString("OTA", OTA_INDICATOR_X + 14, HEADER_STATUS_Y);
   tft.setTextDatum(top_left);
   tft.endWrite();
 }
@@ -2668,6 +2702,7 @@ void renderScreen(bool forceRedraw = false) {
 
   drawWifiIndicator();
   drawUsbIndicator();
+  drawOtaIndicator();
   drawVoiceDaemonIndicator();
 
 
@@ -3256,6 +3291,22 @@ void sendSetupHandshake() {
   serializeJson(doc, jsonString);
   Serial.printf("[IMS] Setup sent (%d bytes)\n", jsonString.length());
   sendFrame(0x00, (const uint8_t *)jsonString.c_str(), jsonString.length());
+}
+
+// FreeRTOS queue for buffering log lines to mirror over the TCP connection to the backend
+static QueueHandle_t g_logMirrorQueue = nullptr;
+static char g_bootDiagnostics[120] = "";
+
+void logf(const char *fmt, ...) {
+  char buf[160];
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, ap);
+  va_end(ap);
+  Serial.println(buf);
+  if (g_logMirrorQueue) {
+    xQueueSend(g_logMirrorQueue, buf, 0); // non-blocking, drops if queue full
+  }
 }
 
 // Sends a debug telemetry string to the backend over the existing TCP
@@ -3873,6 +3924,9 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         lastTranscript = "Say 'Hey Ims' or tap screen";
         renderScreen(true);
         sendDebug(codecRegDump);
+        if (g_bootDiagnostics[0] != '\0') {
+          sendDebug(g_bootDiagnostics);
+        }
         // Clean silent standby: do NOT inject synthetic sendTextQuery on boot.
         // Device is in ready standby waiting for user touch or wake-word.
       } else {
@@ -3977,6 +4031,30 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       emotionSetAtMs = millis();
       renderScreen(true); // updates the bottom-right emotion label immediately
       Serial.printf("[IMS] setEmotion(%s) -> %d\n", doc["setEmotion"].as<const char *>(), currentEmotion);
+    }
+    // Remote management commands from backend / device-health portal
+    if (doc["reboot"].as<bool>()) {
+      Serial.println("[Command] Remote reboot requested from backend - restarting ESP32");
+      logf("[Command] Remote reboot requested - restarting");
+      delay(200);
+      ESP.restart();
+    }
+    if (doc["camera"].is<JsonObject>()) {
+      if (doc["camera"]["enable"].is<bool>()) {
+        bool en = doc["camera"]["enable"].as<bool>();
+        logf("[Command] Remote camera enable=%d", en ? 1 : 0);
+        cameraSetAwake(en);
+        cameraAwake = en;
+        drawStatusIconStack();
+      }
+    }
+    if (doc["reportTasks"].as<bool>() || doc["reportHeap"].as<bool>()) {
+      char rep[160];
+      snprintf(rep, sizeof(rep), "telemetry_report heap=%u minHeap=%u intHeap=%u intMin=%u",
+               (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap(),
+               (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+               (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
+      sendDebug(rep);
     }
     // Backend forwarded a fired timer/alarm/reminder (see remindersService.js's
     // poller in index.js) - purely a push notification over the raw TCP link,
@@ -4649,6 +4727,8 @@ void audioPlaybackTask(void *param) {
   }
 }
 
+static void initArduinoOTA();
+
 void setup() {
   Serial.begin(115200);
   // ROOT CAUSE of the "short/empty mic recording" bug: ESP32-S3's native
@@ -4687,6 +4767,28 @@ void setup() {
   tft.setBrightness(180);
   renderScreen(true);
 
+  // Initialize FreeRTOS log mirror queue
+  g_logMirrorQueue = xQueueCreate(64, 160);
+
+  // Evaluate boot reset reason and crash state
+  esp_reset_reason_t rstReason = esp_reset_reason();
+  const char *rstReasonStr = "POWERON";
+  switch (rstReason) {
+    case ESP_RST_POWERON:   rstReasonStr = "POWERON"; break;
+    case ESP_RST_SW:        rstReasonStr = "SW_RESET"; break;
+    case ESP_RST_PANIC:     rstReasonStr = "PANIC"; break;
+    case ESP_RST_INT_WDT:   rstReasonStr = "INT_WDT"; break;
+    case ESP_RST_TASK_WDT:  rstReasonStr = "TASK_WDT"; break;
+    case ESP_RST_WDT:       rstReasonStr = "OTHER_WDT"; break;
+    case ESP_RST_DEEPSLEEP: rstReasonStr = "DEEPSLEEP"; break;
+    case ESP_RST_BROWNOUT:  rstReasonStr = "BROWNOUT"; break;
+    case ESP_RST_SDIO:      rstReasonStr = "SDIO"; break;
+    default:                rstReasonStr = "UNKNOWN"; break;
+  }
+  bool panicDetected = (rstReason == ESP_RST_PANIC || rstReason == ESP_RST_INT_WDT || rstReason == ESP_RST_TASK_WDT);
+  snprintf(g_bootDiagnostics, sizeof(g_bootDiagnostics), "boot_diag reset=%s panic=%d uptime=0", rstReasonStr, panicDetected ? 1 : 0);
+  logf("[Boot] %s", g_bootDiagnostics);
+
   // 2. Audio Hardware setup
   initAudioHardware();
   pinMode(MUTE_BTN_PIN, INPUT_PULLUP);
@@ -4717,6 +4819,13 @@ void setup() {
   }
   Serial.println(" Connected!");
   Serial.printf("[WiFi] IP Address: %s\n", WiFi.localIP().toString().c_str());
+
+  // Initialize ArduinoOTA listener over Wi-Fi (port 3232)
+  initArduinoOTA();
+  if (rtcOtaConnected) {
+    otaConnected = true;
+  }
+  drawOtaIndicator();
 
   // Synchronise active personality and voice choice directly from backend
   fetchPersonalityFromBackend();
@@ -4844,7 +4953,89 @@ static void micStallCheck() {
   }
 }
 
+// ----------------------------------------------------------------------------
+// Over-The-Air (OTA) Firmware Updates over Wi-Fi
+// ----------------------------------------------------------------------------
+static void initArduinoOTA() {
+  ArduinoOTA.setHostname("esp32-s3-box-3");
+  ArduinoOTA.onStart([]() {
+    otaConnected = true;
+    otaInProgress = true;
+    drawOtaIndicator();
+    String type = (ArduinoOTA.getCommand() == U_FLASH) ? "firmware" : "filesystem";
+    Serial.println("[OTA] Update started: " + type);
+    // Suppress audio tasks & mic streaming to prevent PSRAM/bus contention during flash write
+    setSpeakerMute(true);
+    micStreamingActive = false;
+    isSpeakingDetected = false;
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_CYAN, TFT_BLACK);
+    tft.setTextDatum(MC_DATUM);
+    tft.drawString("FIRMWARE UPDATE (OTA)", 160, 80, 4);
+    tft.drawRect(38, 128, 244, 24, TFT_WHITE);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.drawString("Receiving binary via Wi-Fi...", 160, 180, 2);
+  });
+  ArduinoOTA.onEnd([]() {
+    rtcOtaConnected = true;
+    otaConnected = true;
+    otaInProgress = false;
+    drawOtaIndicator();
+    Serial.println("\n[OTA] Update complete. Rebooting...");
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    tft.setTextDatum(MC_DATUM);
+    tft.drawString("UPDATE COMPLETE", 160, 100, 4);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.drawString("Rebooting into new partition...", 160, 140, 2);
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    if (total == 0) return;
+    unsigned int pct = progress / (total / 100);
+    int barWidth = (int)((240 * progress) / total);
+    if (barWidth > 240) barWidth = 240;
+    tft.fillRect(40, 130, barWidth, 20, TFT_CYAN);
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.setTextDatum(MC_DATUM);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%u%%", pct);
+    tft.drawString(buf, 160, 180, 4);
+    Serial.printf("[OTA] Progress: %u%%\r", pct);
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    otaInProgress = false;
+    drawOtaIndicator();
+    Serial.printf("[OTA] Error[%u]\n", error);
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_RED, TFT_BLACK);
+    tft.setTextDatum(MC_DATUM);
+    tft.drawString("OTA UPDATE FAILED", 160, 100, 4);
+    char errBuf[64];
+    snprintf(errBuf, sizeof(errBuf), "Error code: %u", error);
+    tft.drawString(errBuf, 160, 140, 2);
+  });
+  ArduinoOTA.begin();
+  otaProbeServer.begin(3232);
+  Serial.printf("[OTA] ArduinoOTA service initialized and TCP probe server listening on port 3232 (IP: %s)\n",
+                WiFi.localIP().toString().c_str());
+}
+
 void loop() {
+  ArduinoOTA.handle();
+  if (WiFi.status() == WL_CONNECTED) {
+    NetworkClient probeClient = otaProbeServer.accept();
+    if (probeClient) {
+      Serial.printf("[OTA] Wi-Fi connection probe received from %s\n", probeClient.remoteIP().toString().c_str());
+      otaConnected = true;
+      probeClient.println("{\"ota\":\"ready\",\"ip\":\"" + WiFi.localIP().toString() + "\",\"port\":3232}");
+      probeClient.stop();
+      drawOtaIndicator();
+    }
+  }
+  if (otaInProgress) {
+    delay(10);
+    return;
+  }
   micStallCheck();
   if (phraseCaptureUntil && (long)(millis() - phraseCaptureUntil) >= 0) {
     phraseCaptureUntil = 0;
@@ -4932,6 +5123,15 @@ void loop() {
   DebugMsg dmsg;
   while (xQueueReceive(debugQueue, &dmsg, 0) == pdTRUE) {
     sendDebug(dmsg.text);
+  }
+
+  // Drain mirrored log queue to backend over TCP
+  if (tcpClient.connected() && g_logMirrorQueue) {
+    char lbuf[160];
+    for (int i = 0; i < 4 && xQueueReceive(g_logMirrorQueue, lbuf, 0) == pdTRUE; i++) {
+      String logPayload = "{\"log\":\"" + String(lbuf) + "\"}";
+      sendFrame(0x00, (const uint8_t *)logPayload.c_str(), logPayload.length());
+    }
   }
 
   // Heartbeat so we can tell "connected but idle" apart from "not receiving
@@ -5192,6 +5392,15 @@ void loop() {
   }
 
   {
+    static int lastOtaState = -1;
+    const int otaNow = (WiFi.status() == WL_CONNECTED && (otaConnected || otaInProgress)) ? (otaInProgress ? 2 : 1) : 0;
+    if (otaNow != lastOtaState) {
+      lastOtaState = otaNow;
+      drawOtaIndicator();
+    }
+  }
+
+  {
     static int lastWifiState = -1;
     const int wifiNow = (WiFi.status() == WL_CONNECTED) ? 1 : 0;
     if (wifiNow != lastWifiState) {
@@ -5334,6 +5543,17 @@ void loop() {
     } else if (currentState == STATE_SPEAKING || isSpeakerActive()) {
       // Tap to stop him talking: back to standby, wake phrase listened for again
       interruptToStandby();
+    } else if (touchX <= 60 && touchY >= 150 && touchY <= 200 && (cameraAttached || cameraStarted())) {
+      // Tap on left status margin camera icon: toggle / wake camera
+      cameraAwake = !cameraAwake;
+      cameraSetAwake(cameraAwake);
+      logf("[Touch] Camera icon tapped -> cameraAwake=%d", cameraAwake ? 1 : 0);
+      drawStatusIconStack();
+      if (tcpClient.connected()) {
+        String cmd = "{\"camera\":{\"awake\":" + String(cameraAwake ? "true" : "false") + "}}";
+        sendFrame(0x00, (const uint8_t *)cmd.c_str(), cmd.length());
+      }
+      delay(200);
     } else if (currentState == STATE_STANDBY || currentState == STATE_VERIFYING) {
       // Touch-to-talk: a deliberate tap confirms intent immediately, whether
       // or not Gemini would have judged an in-flight VERIFYING candidate as

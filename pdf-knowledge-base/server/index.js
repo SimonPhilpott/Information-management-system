@@ -85,7 +85,7 @@ import { pickJoke } from './services/jokeService.js';
 import boardgamesRoutes from './routes/boardgames.js';
 import peopleRoutes from './routes/people.js';
 import lookRoutes from './routes/look.js';
-import { getCameraStatus, getFrame, wakeCamera, setFrame, heartbeat, appendDeviceLog } from './services/cameraService.js';
+import { getCameraStatus, getFrame, wakeCamera, setFrame, heartbeat, appendDeviceLog, onCameraChange } from './services/cameraService.js';
 import { askLive } from './services/lookService.js';
 import { getAuthStatus } from './services/driveService.js';
 import { validateConfiguredModels } from './services/modelService.js';
@@ -132,6 +132,18 @@ import { checkAndTriggerNightlyScan } from './services/musicScanService.js';
 import { schedulerService } from './services/schedulerService.js';
 import eventBus from './services/eventBus.js';
 import logger from './services/loggerService.js';
+import { recordDeviceTelemetry, appendLog, setHardwareSocketSender } from './services/deviceHealthService.js';
+import { setOtaActivityCheck } from './services/firmwareService.js';
+
+// Hook OTA activity checks to active voice/recording states
+setOtaActivityCheck(() => {
+  const isConv = typeof isConversationActive !== 'undefined' ? Boolean(isConversationActive) : false;
+  const isRec = typeof isRecordingActive === 'function' ? isRecordingActive() : false;
+  return {
+    canUpdate: !isConv && !isRec,
+    reason: isConv ? 'Conversation with Gemini is active' : isRec ? 'Audio recording is active' : null
+  };
+});
 
 // A tool call the model has written out as text instead of calling it: setEmotion(emotion='happy'),
 // default_api.endConversation(), print(...) - never meant to be seen or kept.
@@ -212,6 +224,10 @@ app.use(sessionMiddleware);
 // sign-in routes themselves are open. The device talks over its own TCP link, not this API.
 const requireAdmin = (req, res, next) => {
   if (!req.path.startsWith('/api') || req.path.startsWith('/api/auth') || req.path.startsWith('/api/wake-daemon')) return next();
+  // Device health telemetry reporting & live diagnostic stream
+  if (req.path.startsWith('/api/device-health/report') || req.path.startsWith('/api/device-health/stream')) return next();
+  // Local loopback diagnostics
+  if (req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1') return next();
   // the Start run button on a phone notification: guarded by its one-time token instead (routes/runStart.js)
   if (req.path.startsWith('/api/run-start/')) return next();
   if (isApprovedSession(req)) return next();
@@ -866,7 +882,7 @@ export function pushScheduleStatus(targetWs = null) {
         ...getActiveScheduledStatus(),
         birthday: getBirthdayFooterStatus(),
         newReleases: { count: getTodayReleases().length },
-        camera: (({ attached, awake }) => ({ attached, awake }))(getCameraStatus()),
+        camera: (({ attached, deviceAwakeWanted }) => ({ attached, awake: Boolean(deviceAwakeWanted) }))(getCameraStatus()),
         recording: { active: isRecordingActive() },
         calendar: { icons: getDeviceIcons() },
         standbyFace: getStandbyOverride(),
@@ -968,12 +984,12 @@ function pinSavedVoice(msgStr, tag, resumptionHandle = null) {
   }
 }
 
-// "Hey / Hi / Eh up IMS", allowing for how speech-to-text spells the name (Ims, Ems, Eems, Hims...).
-const WAKE_RX = /\b(hey|hi|hiya|heya|hello|eh up|ey up|ay up|aye up|ayup|eyup|oi)\b[\s,.!?'-]*(h?[aei]{1,2}m+e?[sz]\b|i\.?\s?m\.?\s?s\b)/i;
+// "Hey / Hi / Eh up IMS", allowing for how speech-to-text spells the name (Ims, Ems, Eems, Hims, Elms...).
+const WAKE_RX = /\b(hey[\s,-]*up|hey|hi|hiya|heya|hello|eh[\s,-]*up|ey[\s,-]*up|ay[\s,-]*up|aye[\s,-]*up|ayup|eyup|oi|up)\b[\s,.!?'-]*(h?[aei]{1,2}m+e?[sz]\b|i\.?\s?m\.?\s?s\b|elms\b|helms\b|aops\b)/i;
 // Speech-to-text often mangles the short wake phrase ("Hey IMS" -> "HMs", "Eh up Ims" -> "Anya Pims",
 // "Hi IMS" -> "Hiya."). Gemini hears the audio itself, so when it has decided to answer, these
 // count too: a name-like word near the start, or a bare greeting. Ordinary sentences don't.
-const NAME_TOKEN = /\b(i\.?\s?m\.?\s?s|ims|imz|ems|eems|emms|hims|aims|hms|h\.?\s?m\.?\s?s|pims|mims|m's|ms|him's|hymns?|\w*pms|\w*ims\w*)\b/i;
+const NAME_TOKEN = /\b(i\.?\s?m\.?\s?s|ims|imz|ems|eems|emms|hims|aims|hms|h\.?\s?m\.?\s?s|pims|mims|m's|ms|him's|hymns?|elms|helms|aops|\w*pms|\w*ims\w*)\b/i;
 const GREETING_ONLY = /^\W*(hi|hiya|hi ya|heya|hey|hey up|hello|eh up|ey up|ay up|aye up|ayup|eyup|anya|now then)\W*$/i;
 const looksAddressed = (t) => {
   const text = String(t || '').trim();
@@ -1080,7 +1096,19 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   const remoteInfo = ws.socket ? `${ws.socket.remoteAddress}:${ws.socket.remotePort}` : (ws._socket ? `${ws._socket.remoteAddress}:${ws._socket.remotePort}` : 'unknown');
   console.log(`${tag} Client connected from ${remoteInfo}`);
   logCapture(`[${new Date().toISOString()}] ${tag} CLIENT CONNECTED from ${remoteInfo}\n`);
-  if (isHardware) ws.isHardwareClient = true;
+  if (isHardware) {
+    ws.isHardwareClient = true;
+    const clientIp = (ws.socket?.remoteAddress || ws._socket?.remoteAddress || '192.168.1.92').replace(/^.*:/, '');
+    recordDeviceTelemetry({ isSocketOpen: true, ipAddress: clientIp });
+    setHardwareSocketSender((msg) => {
+      try {
+        if (ws.readyState === ws.OPEN) ws.send(msg);
+      } catch (e) {
+        console.error('[HardwareLive] Failed to send to hardware socket:', e.message);
+      }
+    });
+    appendLog('server', `[HardwareLive] Box-3 connected from ${remoteInfo}`);
+  }
 
   // Morning report: kicked off as early as possible (right at raw WS
   // connect, well before the setup handshake message that actually needs
@@ -1607,9 +1635,11 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   const createGeminiSocket = () => {
     if (isClientClosed) return null;
     if (Date.now() < geminiCooldownUntil) {
+      const waitMs = Math.max(200, geminiCooldownUntil - Date.now() + 100);
+      scheduleWarmUpstreamReconnect(waitMs);
       if (!createGeminiSocket.lastNote || Date.now() - createGeminiSocket.lastNote > 10000) {
         createGeminiSocket.lastNote = Date.now();
-        try { logCapture(`[${new Date().toISOString()}] ${tag} GEMINI COOLDOWN - not opening a session for ${Math.ceil((geminiCooldownUntil - Date.now()) / 1000)} s\n`); } catch (_) { }
+        try { logCapture(`[${new Date().toISOString()}] ${tag} GEMINI COOLDOWN - not opening a session for ${Math.ceil((geminiCooldownUntil - Date.now()) / 1000)} s (retry scheduled in ${Math.round(waitMs / 1000)}s)\n`); } catch (_) { }
       }
       return null;
     }
@@ -1737,6 +1767,8 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             const incomingTranscript = parsed.serverContent.inputTranscription.text;
             heardThisTurn = (heardThisTurn + incomingTranscript).slice(-400);
             if (currentTurnComplete && looksAddressed(heardThisTurn) && !isRecordingActive()) {
+              isConversationActive = true;
+              wakeDaemonService.acceptWake(heardThisTurn.trim().slice(0, 40), 'transcript_addressed');
               // restarted on every new piece of transcript, so a longer request isn't cut short
               if (wakeKickTimer) clearTimeout(wakeKickTimer);
               const heardAt = Date.now();
@@ -1746,14 +1778,12 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 if (step === 1 && Date.now() - lastLoudMicAt < 500) { wakeKickTimer = setTimeout(() => kick(1), 300); return; } // still talking
                 if (step === 1) {
                   gWs.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
-                  try { logCapture(`[${new Date().toISOString()}] ${tag} WAKE KICK 1: ended the audio turn (heard "${heardThisTurn.trim().slice(0, 60)}", no reply yet)
-`); } catch (_) { }
+                  try { logCapture(`[${new Date().toISOString()}] ${tag} WAKE KICK 1: ended the audio turn (heard "${heardThisTurn.trim().slice(0, 60)}", no reply yet)\n`); } catch (_) { }
                   wakeKickTimer = setTimeout(() => kick(2), 500);
                 } else {
                   textTurnSent = true; sessionUsed = true; lastActivityAt = Date.now();
                   gWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `(System: Simon just said "${heardThisTurn.trim().slice(0, 200)}" to you - that is your wake phrase, misheard by speech recognition. Answer him now: if he only said the wake phrase, greet him; otherwise answer what he said.)` }] }], turnComplete: true } }));
-                  try { logCapture(`[${new Date().toISOString()}] ${tag} WAKE KICK 2: asked him to answer in text
-`); } catch (_) { }
+                  try { logCapture(`[${new Date().toISOString()}] ${tag} WAKE KICK 2: asked him to answer in text\n`); } catch (_) { }
                 }
               };
               wakeKickTimer = setTimeout(() => kick(1), 400);
@@ -1766,6 +1796,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             } else if (speechEval.action === 'wake_rejected') {
               unsolicitedTurn = true;
               paceFlush();
+              heardThisTurn = '';
               if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ noWakeDetected: true }));
               return;
             }
@@ -1778,6 +1809,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 try { logCapture(`[${new Date().toISOString()}] ${tag} REPLY DROPPED - NOT ADDRESSED (late): "${heardThisTurn.slice(0, 120)}"\n`); } catch (_) { }
                 try { noteWakeCandidate(heardThisTurn); } catch (_) { /* never let this break the turn */ }
                 paceFlush();
+                heardThisTurn = '';
                 if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ noWakeDetected: true }));
               } else {
                 pacePump();
@@ -1820,6 +1852,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               try { logCapture(`[${new Date().toISOString()}] ${tag} REPLY DROPPED - NOT ADDRESSED: "${heardThisTurn.slice(0, 120)}"\n`); } catch (_) { }
               try { noteWakeCandidate(heardThisTurn); } catch (_) { /* never let this break the turn */ }
               paceFlush();
+              heardThisTurn = '';
               if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ noWakeDetected: true }));
             }
           }
@@ -2815,31 +2848,103 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     if (!isBinary) {
       try {
         const maybeJson = JSON.parse(message.toString());
-        if (isHardware && maybeJson.playbackStart) { devicePlaying = true; lastDeviceSpeakingAt = Date.now(); try { logCapture(`[${new Date().toISOString()}] ${tag} DEVICE PLAYBACK START
-`); } catch (_) { } return; }
+        if (isHardware && maybeJson.playbackStart) {
+          devicePlaying = true;
+          lastDeviceSpeakingAt = Date.now();
+          recordDeviceTelemetry({ speakerActive: true, deviceState: 4, deviceStateName: 'SPEAKING' });
+          try { logCapture(`[${new Date().toISOString()}] ${tag} DEVICE PLAYBACK START\n`); } catch (_) { }
+          return;
+        }
         if (isHardware && maybeJson.playbackDone) {
           devicePlaying = false;
           lastDeviceSpeakingAt = Date.now();
-          try { logCapture(`[${new Date().toISOString()}] ${tag} DEVICE PLAYBACK DONE (${paceQueue.length} chunks still queued)
-`); } catch (_) { }
+          recordDeviceTelemetry({ speakerActive: false, deviceState: 0, deviceStateName: 'STANDBY' });
+          try { logCapture(`[${new Date().toISOString()}] ${tag} DEVICE PLAYBACK DONE (${paceQueue.length} chunks still queued)\n`); } catch (_) { }
           lastActivityAt = Math.max(lastActivityAt, Date.now()); // the silence count starts when he actually stops
           if (followUpUntil) followUpUntil = Math.max(followUpUntil, Date.now() + followUpMs); // so does the reply window
           wakeDaemonService.notifyModelSpeechEnd(Date.now()); // the daemon's silence count too
           return;
         }
+        if (typeof maybeJson.log === 'string') {
+          const isCam = maybeJson.log.startsWith('[Camera]') || maybeJson.log.startsWith('[USB]');
+          appendLog(isCam ? 'camera' : 'device', maybeJson.log);
+          try {
+            logCapture(`[${new Date().toISOString()}] ${tag} DEVICE LOG: ${maybeJson.log}\n`);
+          } catch (_) { }
+          if (isHardware) {
+            const bootLogMatch = maybeJson.log.match(/boot_diag\s+reset=(\w+)\s+panic=(\d+)/);
+            if (bootLogMatch) {
+              const rstReason = bootLogMatch[1];
+              const hasPanic = bootLogMatch[2] === '1';
+              recordDeviceTelemetry({
+                resetReason: rstReason,
+                lastError: hasPanic ? 'Kernel Panic Detected' : null
+              });
+              console.log(`${tag} 🚀 Boot Diagnostics (via log): Reset Reason=${rstReason}, Panic=${hasPanic}`);
+            }
+          }
+          return;
+        }
         if (typeof maybeJson.debug === 'string') {
+          const isCam = maybeJson.debug.startsWith('[Camera]') || maybeJson.debug.startsWith('[USB]');
+          appendLog(isCam ? 'camera' : 'device', maybeJson.debug);
+          if (isHardware) {
+            const bootMatch = maybeJson.debug.match(/^boot_diag\s+reset=(\w+)\s+panic=(\d+)/);
+            if (bootMatch) {
+              const rstReason = bootMatch[1];
+              const hasPanic = bootMatch[2] === '1';
+              recordDeviceTelemetry({
+                resetReason: rstReason,
+                lastError: hasPanic ? 'Kernel Panic Detected' : null
+              });
+              console.log(`${tag} 🚀 Boot Diagnostics: Reset Reason=${rstReason}, Panic=${hasPanic}`);
+            }
+            const repMatch = maybeJson.debug.match(/^telemetry_report\s+heap=(\d+)\s+minHeap=(\d+)\s+intHeap=(\d+)\s+intMin=(\d+)/);
+            if (repMatch) {
+              recordDeviceTelemetry({
+                freeHeap: parseInt(repMatch[1], 10),
+                minFreeHeap: parseInt(repMatch[2], 10),
+                intFreeHeap: parseInt(repMatch[3], 10),
+                intMinFreeHeap: parseInt(repMatch[4], 10)
+              });
+            }
+            const hbMatch = maybeJson.debug.match(/^heartbeat\s+state=(\d+)\s+heap=(\d+)\s+minHeap=(\d+)\s+rssi=(-?\d+)(?:\s+intHeap=(\d+)\s+intMin=(\d+))?/);
+            if (hbMatch) {
+              recordDeviceTelemetry({
+                state: parseInt(hbMatch[1], 10),
+                freeHeap: parseInt(hbMatch[2], 10),
+                minFreeHeap: parseInt(hbMatch[3], 10),
+                rssi: parseInt(hbMatch[4], 10),
+                intFreeHeap: hbMatch[5] ? parseInt(hbMatch[5], 10) : undefined,
+                intMinFreeHeap: hbMatch[6] ? parseInt(hbMatch[6], 10) : undefined,
+                isSocketOpen: true
+              });
+            }
+          }
+          if (isHardware && maybeJson.debug === 'verifying_start' && !isConversationActive) {
+            resetTurnTriggers();
+            userSpokenTranscript = '';
+            spokenTranscript = '';
+            recordDeviceTelemetry({ deviceState: 1, deviceStateName: 'VERIFYING' });
+          }
           if (isHardware && /^heartbeat state=6\b/.test(maybeJson.debug)) lastDeviceSpeakingAt = Date.now();
           console.log(`${tag} [DEBUG] ${maybeJson.debug}`);
           try {
             logCapture(
               `[${new Date().toISOString()}] ${tag} DEVICE DEBUG: ${maybeJson.debug}\n`);
           } catch (_) { }
+          if (maybeJson.debug === 'verifying_start') {
+            heardThisTurn = '';
+            resetTurnTriggers();
+            if (wakeKickTimer) { clearTimeout(wakeKickTimer); wakeKickTimer = null; }
+          }
           return;
         }
         // The top button on the Box-3: MIC MUTED is Ims's silent mode - remembered so the web app
         // doesn't speak doorbell alerts either.
         if (isHardware && typeof maybeJson.micMuted === 'boolean') {
           setDeviceMicMuted(maybeJson.micMuted);
+          recordDeviceTelemetry({ micMuted: maybeJson.micMuted });
           console.log(`${tag} 🔇 Device mic ${maybeJson.micMuted ? 'MUTED - silent mode' : 'unmuted'}`);
           return;
         }
@@ -2852,6 +2957,11 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           turnLog = newTurnLog(); // a wake check that came to nothing
           isConversationActive = false;
           touchToTalkActive = false;
+          userSpokenTranscript = '';
+          spokenTranscript = '';
+          heardThisTurn = '';
+          if (wakeKickTimer) { clearTimeout(wakeKickTimer); wakeKickTimer = null; }
+          resetTurnTriggers();
           wakeDaemonService.forceStandby('device_session_closed');
           try {
             logCapture(`[${new Date().toISOString()}] ${tag} SESSION CLOSED BY DEVICE\n`);
@@ -2876,6 +2986,14 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           try {
             logCapture(`[${new Date().toISOString()}] ${tag} TOUCH TO TALK INITIATED\n`);
           } catch (_) { }
+          return;
+        }
+        if (isHardware && maybeJson.camera) {
+          if (maybeJson.camera.awake !== undefined) {
+            console.log(`${tag} 📷 Camera awake frame from device: ${maybeJson.camera.awake}`);
+            if (maybeJson.camera.awake) wakeCamera();
+            pushScheduleStatus();
+          }
           return;
         }
       } catch (_) { }
@@ -3098,7 +3216,9 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       console.log(`${tag} Queueing outbound message (Gemini connection is CONNECTING)...`);
       outboundQueue.push(msgStr);
     } else {
-      console.warn(`${tag} Dropping message, Gemini socket state:`, gWs ? gWs.readyState : 'null');
+      console.log(`${tag} Queueing outbound message (Gemini socket not open yet, state: ${gWs ? gWs.readyState : 'null'})...`);
+      outboundQueue.push(msgStr);
+      scheduleWarmUpstreamReconnect(200);
     }
   });
 
@@ -3126,6 +3246,8 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     if (isHardware && activeHardwareSession?.clientWs === ws) {
       activeHardwareSession = null;
       setDeviceConnected(false);
+      recordDeviceTelemetry({ isSocketOpen: false, wakeVerified: false, deviceState: 0, deviceStateName: 'STANDBY' });
+      appendLog('server', `[HardwareLive] Box-3 disconnected (code=${code})`);
     } else if (!isHardware && activeBrowserSession?.clientWs === ws) {
       activeBrowserSession = null;
     }
@@ -3495,12 +3617,16 @@ const debugMicServer = http.createServer((req, res) => {
       if (kind === 'frame') {
         if (body.length < 200 || body[0] !== 0xFF || body[1] !== 0xD8) { res.writeHead(400).end('not a jpeg'); return; }
         setFrame(body, 'device');
+        pushScheduleStatus();
         res.writeHead(200).end('ok');
       } else if (kind === 'heartbeat') {
         heartbeat({ boot: req.url.includes('boot=1') });
+        pushScheduleStatus();
         res.writeHead(200).end('ok');
       } else if (kind === 'log') {
-        appendDeviceLog(body.toString('utf8').slice(0, 2000));
+        const logText = body.toString('utf8').slice(0, 2000).trim();
+        appendDeviceLog(logText);
+        appendLog('camera', logText);
         res.writeHead(200).end('ok');
       } else {
         res.writeHead(404).end();

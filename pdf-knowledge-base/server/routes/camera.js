@@ -1,5 +1,6 @@
 import express, { Router } from 'express';
 import { setFrame, getFrame, getCameraStatus, wakeCamera, heartbeat, readDeviceLog } from '../services/cameraService.js';
+import { executeDeviceCommand } from '../services/deviceHealthService.js';
 
 const router = Router();
 
@@ -30,9 +31,12 @@ router.post('/heartbeat', (req, res) => {
   res.json({ success: true });
 });
 
-// Wakes the camera for another 10 minutes (used when /ims/look or /ims/faces opens).
-router.post('/wake', (req, res) => {
+// Wakes the camera for another 10 minutes (used when /ims/look or /ims/faces opens, or when Wake button clicked).
+router.post('/wake', async (req, res) => {
   wakeCamera();
+  try {
+    await executeDeviceCommand('camera on');
+  } catch (_) { }
   res.json({ success: true, ...getCameraStatus() });
 });
 

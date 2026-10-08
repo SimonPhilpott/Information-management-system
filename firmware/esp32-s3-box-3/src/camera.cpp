@@ -5,8 +5,31 @@
 #include <WiFi.h>
 #include <stdarg.h>
 #include "esp_heap_caps.h"
+#include "esp_log.h"
 #include "usb/usb_host.h"
+#ifndef CONFIG_UVC_INTERVAL_ARRAY_SIZE
+#define CONFIG_UVC_INTERVAL_ARRAY_SIZE 3
+#endif
 #include "usb/uvc_host.h"
+
+extern void logf(const char *fmt, ...);
+extern "C" const char *enum_get_current_stage(void);
+
+// Forward ESP-IDF USB stack logs (HUB, USBH, ENUM, uvc_host) directly into logf
+// so lower-level enumeration issues are visible over Wi-Fi without UART0.
+static int espLogVprintf(const char *fmt, va_list ap) {
+  if (xPortInIsrContext()) return 0;
+  char buf[160];
+  vsnprintf(buf, sizeof(buf), fmt, ap);
+  size_t len = strlen(buf);
+  while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r')) {
+    buf[--len] = '\0';
+  }
+  if (len > 0) {
+    logf("%s", buf);
+  }
+  return len;
+}
 
 // Everything USB/camera related runs in tasks on Core 1 (audio owns Core 0).
 // The USB library callbacks stay tiny (copy a frame, set a flag); all real
@@ -45,7 +68,7 @@ static void camLogf(const char *fmt, ...) {
   va_start(ap, fmt);
   vsnprintf(buf, sizeof(buf), fmt, ap);
   va_end(ap);
-  Serial.println(buf);
+  logf("%s", buf);
   if (g_logQ) xQueueSend(g_logQ, buf, 0);
 }
 
@@ -131,11 +154,19 @@ static void diagTask(void *) {
       g_diagGone = false;
       camLogf("[USB] a device was removed");
     }
-    if (millis() - lastAlive > 30000) {
+    if (millis() - lastAlive > 10000) {
       lastAlive = millis();
       usb_host_lib_info_t li = {};
       usb_host_lib_info(&li);
-      camLogf("[USB] host alive - devices seen so far: %u (lib: %d devices, %d clients)", (unsigned)g_devicesSeen, li.num_devices, li.num_clients);
+      uint8_t addrs[8] = {0};
+      int numDevs = 0;
+      esp_err_t addrErr = usb_host_device_addr_list_fill(sizeof(addrs), addrs, &numDevs);
+      camLogf("[USB] host: seen=%u lib=%d devs (addrs: %s, cnt=%d) stage=%s",
+              (unsigned)g_devicesSeen, li.num_devices, esp_err_to_name(addrErr), numDevs, enum_get_current_stage());
+      for (int i = 0; i < numDevs; i++) {
+        camLogf("[USB] dev addr %u present in pool", (unsigned)addrs[i]);
+        describeDevice(addrs[i]);
+      }
     }
   }
 }
@@ -332,6 +363,17 @@ void cameraBegin(const char *backendHost, uint16_t httpPort) {
   delay(100);
   Serial.end();
   delay(200);
+
+  // Forward ESP-IDF USB errors directly to the Wi-Fi log stream
+  esp_log_set_vprintf(espLogVprintf);
+  esp_log_level_set("HUB", ESP_LOG_VERBOSE);
+  esp_log_level_set("USBH", ESP_LOG_VERBOSE);
+  esp_log_level_set("ENUM", ESP_LOG_VERBOSE);
+  esp_log_level_set("HCD", ESP_LOG_VERBOSE);
+  esp_log_level_set("hcd_dwc", ESP_LOG_VERBOSE);
+  esp_log_level_set("uvc_host", ESP_LOG_VERBOSE);
+  esp_log_level_set("UVC_HOST", ESP_LOG_VERBOSE);
+
   usb_host_config_t hc = {};
   hc.skip_phy_setup = false;
   hc.intr_flags = ESP_INTR_FLAG_LEVEL1;
@@ -341,7 +383,6 @@ void cameraBegin(const char *backendHost, uint16_t httpPort) {
     return;
   }
   xTaskCreatePinnedToCore(usbDaemonTask, "usb_lib", 4096, nullptr, 5, nullptr, 1);
-  camLogf("[USB] root port power: %s", esp_err_to_name(usb_host_lib_set_root_port_power(true)));
 
   usb_host_client_config_t cc = {};
   cc.is_synchronous = false;

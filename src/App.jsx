@@ -1445,6 +1445,16 @@ export default function App() {
     );
   }
 
+  if (currentPath === '/ims/faces' || currentPath.startsWith('/ims/faces')) {
+    return (
+      <FacesPortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
   if (currentPath === '/ims/runplanner' || currentPath.startsWith('/ims/runplanner')) {
     return (
       <RunPlannerPortal

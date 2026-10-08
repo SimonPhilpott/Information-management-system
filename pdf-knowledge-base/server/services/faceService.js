@@ -119,6 +119,16 @@ export function deletePerson(id) {
   return db.prepare(`DELETE FROM people WHERE id = ?`).run(id).changes > 0;
 }
 
+export function deleteAllPeople() {
+  for (const s of db.prepare(`SELECT id FROM face_samples`).all()) removeThumb(s.id);
+  db.prepare(`DELETE FROM face_samples`).run();
+  return db.prepare(`DELETE FROM people`).run().changes;
+}
+
+export function getPersonSamples(personId) {
+  return db.prepare(`SELECT id, created_at FROM face_samples WHERE person_id = ? ORDER BY id DESC`).all(personId);
+}
+
 export function deleteSample(sampleId) {
   removeThumb(sampleId);
   return db.prepare(`DELETE FROM face_samples WHERE id = ?`).run(sampleId).changes > 0;

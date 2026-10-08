@@ -208,11 +208,18 @@
       ]
     },
     "pdf-knowledge-base/server/services/hardwareClientService.js": {
-      "description": "Hardware bridge service executing precision 3 wake-phrase gating ('Hey IMS', 'Hi IMS', 'Eh up IMS'), getWeather and getBloodGlucose tool declarations with weather & glucose commentary directives, automated RAG tool searches, dynamic ims_persona_rules.md loading, explicit memory injection & tool declarations (rememberFact, recallMemory, forgetMemory), Umbriel default voice enforcement with non-mutating previewVoice setup payloads, authentic Yorkshire dialect & phonetic priming, turn-by-turn emotion matrix activation across 14 pixel faces, and non-blocking instant farewell execution.",
+      "description": "Hardware bridge service executing precision wake-phrase gating, getWeather and getBloodGlucose tool declarations with weather & glucose commentary directives, automated RAG tool searches, dynamic persona loading, explicit memory injection & tool declarations (rememberFact, recallMemory, forgetMemory), feeling memory recollection, expanded farewell recognition ('catch you later'), default voice enforcement, authentic Yorkshire dialect & phonetic priming, turn-by-turn emotion matrix activation across animated faces, and non-blocking instant farewell execution.",
       "dependencies": [
-        "ims_persona_rules.md",
+        "personas/_house_rules.md",
+        "personas/yorkshire.md",
         "pdf-knowledge-base/server/db/database.js",
         "pdf-knowledge-base/server/services/subjectMatcherService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/memoryService.js": {
+      "description": "Conversation memory and summarisation service generating contextual notes with turn emotion feeling extraction ([Ims felt: ...]), vector embeddings for semantic recall, persona profile extraction, and memory note pruning.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js"
       ]
     },
     "pdf-knowledge-base/server/services/weatherService.js": {
@@ -956,6 +963,97 @@
       "dependencies": [
         "src/components/Ims/ImsFace.jsx",
         "src/components/Ims/faceEmotions.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/wakeDaemonService.js": {
+      "description": "Background wake daemon and conversation lifecycle manager providing fast wake phrase verification, immediate wake verification push signalling to hardware clients, and conversational silence watchdogs.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/phrasesService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/phrasesService.js": {
+      "description": "Persistent SQLite voice phrase and variant registry for wake and stop phrases with real-time phonetic normalisation.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js"
+      ]
+    },
+    "firmware/esp32-s3-box-3/src/main.cpp": {
+      "description": "ESP32-S3-BOX-3 core firmware implementing dual 6.4MB OTA partitions, background ArduinoOTA network flashing, non-blocking TCP probe listener (port 3232), screen header status indicators (VOICE, WAKE, WIFI, USB, OTA), FreeRTOS Wi-Fi log mirror queue, boot reset diagnostics, and remote TCP management command handlers.",
+      "dependencies": [
+        "firmware/esp32-s3-box-3/src/camera.cpp"
+      ]
+    },
+    "firmware/esp32-s3-box-3/src/camera.cpp": {
+      "description": "Logitech C270 USB UVC camera host driver for ESP32-S3-BOX-3 with wireless log streaming bridge (camLogf -> logf) and MJPEG video frame grabbing.",
+      "dependencies": []
+    },
+    "ota-flash.bat": {
+      "description": "One-click batch utility for wireless over-the-air firmware flashing of the ESP32-S3-BOX-3 via espota.py with automated pre-flight TCP port 3232 probing.",
+      "dependencies": [
+        "scripts/probe_box3.ps1"
+      ]
+    },
+    "scripts/probe_box3.ps1": {
+      "description": "PowerShell diagnostic probe verifying active status across all 5 local IMS ports (6001, 3001, 3002, 3003, 5173) and the ESP32-S3-BOX-3 ArduinoOTA service (192.168.1.92:3232).",
+      "dependencies": []
+    },
+    "pdf-knowledge-base/server/services/firmwareService.js": {
+      "description": "PlatformIO firmware compilation manager, Wi-Fi OTA flasher via espota.py, binary metadata inspection, and SQLite update history tracker for ESP32-S3-BOX-3.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js",
+        "pdf-knowledge-base/server/services/deviceHealthService.js"
+      ]
+    },
+    "src/components/Dashboard/LookPortal.jsx": {
+      "description": "Visual feed portal for /ims/look displaying live Box-3 camera frames, on-demand snapshots, and interactive visual QA query dispatch with Gemini.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx",
+        "src/components/Dashboard/CameraPanel.jsx",
+        "src/components/Dashboard/SnapshotView.jsx"
+      ]
+    },
+    "src/components/Dashboard/FacesPortal.jsx": {
+      "description": "Facial identification and enrolment portal for /ims/faces allowing snapshot enrolment, person labelling, and recognition matching across camera captures.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx",
+        "src/components/Dashboard/CameraPanel.jsx",
+        "src/components/Dashboard/SnapshotView.jsx"
+      ]
+    },
+    "pdf-knowledge-base/server/services/lookService.js": {
+      "description": "Snapshot management and multimodal Gemini vision grounding service analyzing camera frames, running facial detection, and answering visual questions.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js",
+        "pdf-knowledge-base/server/services/cameraService.js",
+        "pdf-knowledge-base/server/services/geminiClient.js"
+      ]
+    },
+    "src/components/Dashboard/CameraPanel.jsx": {
+      "description": "Real-time camera view component with persistent frame retention, WebRTC/local and IMS camera switching, awake/sleep toggling, and snapshot capture triggers.",
+      "dependencies": []
+    },
+    "src/components/Dashboard/SnapshotView.jsx": {
+      "description": "Visual snapshot inspection component displaying captured camera images, highlighted face detection bounding boxes, and recognition labels.",
+      "dependencies": []
+    },
+    "pdf-knowledge-base/server/services/faceService.js": {
+      "description": "Local OpenCV face recognition and embedding management service managing enrolled individuals, face sample crops, and cosine similarity matches.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js"
+      ]
+    },
+    "pdf-knowledge-base/server/routes/look.js": {
+      "description": "REST endpoints for Look portal managing live snapshot capture, multimodal vision QA, individual/bulk snapshot deletion, and Q&A item removal.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/lookService.js",
+        "pdf-knowledge-base/server/services/cameraService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/routes/people.js": {
+      "description": "REST endpoints for facial enrolment, listing people, updating contacts, face sample retrieval, sample deletion, and bulk profile removal.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/faceService.js",
+        "pdf-knowledge-base/server/services/lookService.js"
       ]
     }
   }

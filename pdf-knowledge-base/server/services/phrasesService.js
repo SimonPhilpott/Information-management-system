@@ -29,10 +29,26 @@ if (!db.prepare('SELECT COUNT(*) AS n FROM voice_phrases').get().n) {
   const now = Date.now();
   ins.run('wake', 'Hey IMS', JSON.stringify(['hey ims', 'hey ems', 'hey eems', 'hey i m s', 'hms', 'hey hims']), now);
   ins.run('wake', 'Hi IMS', JSON.stringify(['hi ims', 'hi ems', 'hiya', 'hi i m s']), now);
-  ins.run('wake', 'Eh up IMS', JSON.stringify(['eh up ims', 'ey up ims', 'ay up ims', 'anya pims', 'eh up ems']), now);
+  ins.run('wake', 'Eh up IMS', JSON.stringify(['eh up ims', 'ey up ims', 'ay up ims', 'anya pims', 'eh up ems', 'hey up elms', 'elms', 'aops']), now);
   ins.run('stop', 'IMS stop', JSON.stringify(['ims stop', 'ems stop', 'eems stop', 'i m s stop']), now);
   ins.run('stop', 'Stop IMS', JSON.stringify(['stop ims', 'stop ems']), now);
 }
+
+try {
+  const ehUpRow = db.prepare("SELECT id, variants FROM voice_phrases WHERE phrase = 'Eh up IMS'").get();
+  if (ehUpRow) {
+    let variants = [];
+    try { variants = JSON.parse(ehUpRow.variants || '[]'); } catch (_) { }
+    const needed = ['hey up elms', 'elms', 'aops', 'aap ims', 'aup ims', 'a up ims', 'up ims'];
+    let changed = false;
+    for (const v of needed) {
+      if (!variants.includes(v)) { variants.push(v); changed = true; }
+    }
+    if (changed) {
+      db.prepare('UPDATE voice_phrases SET variants = ? WHERE id = ?').run(JSON.stringify(variants), ehUpRow.id);
+    }
+  }
+} catch (_) { }
 
 const present = (r) => ({
   id: r.id, kind: r.kind, phrase: r.phrase, createdAt: r.created_at,

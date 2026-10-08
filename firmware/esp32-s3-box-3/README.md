@@ -82,3 +82,37 @@ The `bin/` folder contains ready-to-flash binaries:
   - Screen tap or top button press during `STATE_LISTENING` completes the turn immediately.
 - **Decoupled PA Warmup**:
   - `PA_ENABLE_PIN` (GPIO46) is raised non-blocking when entering `STATE_THINKING` so the NS4150B exits shutdown during Gemini's 1–3s inference time, completely eliminating audio latency and Core 1 stalling.
+
+---
+
+## 6. Wireless Development & Over-The-Air (OTA) Updates
+
+Once initial firmware is flashed with dual-partition OTA support, the ESP32-S3-BOX-3 can live on dock power permanently with no USB cable attached to the PC.
+
+### Wireless OTA Flashing
+- **One-Click Command:**
+  ```cmd
+  ota-flash.bat
+  ```
+  *(or `npm run ota:flash` from repository root)*
+- **Web UI Management:**
+  Navigate to `/ims/device-health` in the browser. Click **Compile Firmware** and **Update Device (OTA)** to flash wire-free with live progress percentage visualization.
+- **OTA Architecture:**
+  - Port 3232 ArduinoOTA listener and TCP probe server.
+  - Dual 6.25MB app partition layout (`app0` / `app1`) for automatic rollback if a flash fails.
+  - Visual progress bar on the Box-3 LCD TFT display during transfer.
+
+### Wi-Fi Log Mirroring & Crash Diagnostics
+- All `Serial.printf`, `logf()`, and webcam UVC driver logs (`[Camera]`, `[USB]`) are mirrored in real time over TCP port 3002 to the server.
+- Inspected live in `/ims/device-health` web terminal and saved to `audio_captures/debug.log` with `DEVICE LOG:` tags.
+- On boot, hardware reset reason (`POWERON`, `SW_RESET`, `PANIC`, `TASK_WDT`, `BROWNOUT`) is reported over Wi-Fi.
+
+### Hardware Recovery (BOOT + RESET Button Procedure)
+If a non-bootable build is flashed without OTA or USB enumeration fails:
+1. Connect USB-C directly to the Box-3 unit (not the dock).
+2. Press and hold the **BOOT** button (bottom edge).
+3. Tap the **RESET** button (top edge).
+4. Release the **BOOT** button.
+5. The device enters ROM download mode (COM3 appears as `ESP32-S3 USB CDC`).
+6. Run `build-and-flash.bat` or `flash-binary.bat` to flash the merged factory image at offset `0x0`.
+

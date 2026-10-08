@@ -86,8 +86,6 @@ const LINKS = [
     icon: Eye,
     gradient: 'from-cyan-500 to-indigo-600',
     glow: 'rgba(56,189,248,0.3)'
-,
-    disabled: 'Needs the camera, which is not working yet.'
   },
   {
     path: '/ims/faces',
@@ -96,8 +94,6 @@ const LINKS = [
     icon: ScanFace,
     gradient: 'from-violet-500 to-purple-600',
     glow: 'rgba(139,92,246,0.3)'
-,
-    disabled: 'Needs the camera, which is not working yet.'
   },
   {
     path: '/ims/facedesigner',
@@ -271,10 +267,10 @@ const LINKS = [
 
 const SECTIONS = [
   ['Core functions', ['/ims/weather', '/ims/doorbell', '/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings', '/ims/tasks']],
+  ['Vision & camera', ['/ims/look', '/ims/faces']],
   ['Personal', ['/ims/code-repo', '/ims/dayreport', '/ims/musicscan', '/ims/boardgames', '/campaigns', '/ims/news']],
   ['Health and fitness', ['/ims/glucose', '/ims/activities', '/ims/runplanner']],
   ['Customisation and system settings', ['/ims/device-health', '/ims/storage', '/ims/models', '/ims/costs', '/ims/facedesigner', '/ims/persona', '/ims/phrases', '/ims/wifi', '/ims/devideas', '/ims/backups', '/ims/architecture']],
-  ['Disabled', ['/ims/look', '/ims/faces']],
 ];
 
 export default function ImsHub({

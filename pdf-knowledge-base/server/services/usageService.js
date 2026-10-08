@@ -18,7 +18,7 @@ export function logUsage(model, promptTokens, completionTokens, operation) {
   // Calculate cost based on model pricing (per million tokens)
   const pricing = getPrices()[model] || { input: 0, output: 0 };
   const estimatedCost = (promptTokens / 1_000_000) * pricing.input +
-                        (completionTokens / 1_000_000) * pricing.output;
+    (completionTokens / 1_000_000) * pricing.output;
 
   db.prepare(`
     INSERT INTO token_usage (model, prompt_tokens, completion_tokens, total_tokens, estimated_cost, operation)
