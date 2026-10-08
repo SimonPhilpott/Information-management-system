@@ -633,6 +633,7 @@ void fetchPersonalityFromBackend() {
   HTTPClient http;
   String url = String("http://") + IMS_PRIMARY_HOST + ":3003/device/personality";
   http.begin(url);
+  http.addHeader("X-IMS-Key", IMS_DEVICE_KEY);
   int code = http.GET();
   if (code == 200) {
     String payload = http.getString();
@@ -674,6 +675,7 @@ void postPersonalityToBackend() {
   HTTPClient http;
   String url = String("http://") + IMS_PRIMARY_HOST + ":3003/device/personality";
   http.begin(url);
+  http.addHeader("X-IMS-Key", IMS_DEVICE_KEY);
   http.addHeader("Content-Type", "application/json");
   JsonDocument doc;
   for (int i = 0; i < PERSONALITY_AXIS_COUNT; i++) doc[PERSONALITY_AXIS_KEYS[i]] = personalityValues[i];
@@ -1453,6 +1455,7 @@ static void facePackTask(void *) {
   String url = String("http://") + IMS_PRIMARY_HOST + ":3003/device/face-pack/" + id + ".bin";
   http.setTimeout(15000);
   if (http.begin(url)) {
+    http.addHeader("X-IMS-Key", IMS_DEVICE_KEY);
     int code = http.GET();
     len = http.getSize();
     if (code == 200 && len > 8 && len < 4 * 1024 * 1024) {
@@ -4799,7 +4802,8 @@ void audioMicTask(void *param) {
         }
 
         static unsigned long lastRmsLog = 0;
-        if (millis() - lastRmsLog > 500) {
+        // every 10 s (was every 0.5 s: ~88,000 log lines a day for the backend, mostly from standby)
+        if (millis() - lastRmsLog > 10000) {
           lastRmsLog = millis();
           unsigned long elapsed = millis() - sessionStartMs;
           // state= added specifically to check for echo/barge-in during

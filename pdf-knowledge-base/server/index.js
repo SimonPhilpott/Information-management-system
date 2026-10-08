@@ -90,6 +90,7 @@ import { askLive } from './services/lookService.js';
 import { enrolFace } from './services/faceService.js';
 let lastUnenrolledFace = null;
 import { startPresence, onPresence } from './services/presenceService.js';
+import { startWakeGate, transcribeWake } from './services/wakeGateService.js';
 import { getAuthStatus } from './services/driveService.js';
 import { validateConfiguredModels } from './services/modelService.js';
 import { getModelFor } from './services/modelRegistry.js';
@@ -332,6 +333,7 @@ app.get('/api/system/architecture', async (req, res) => {
   const count = (sql) => { try { return appDb.prepare(sql).get().c; } catch (_) { return null; } };
   const deviceLinks = await new Promise((resolve) => hardwareTcpServer.getConnections((err, n) => resolve(err ? 0 : n)));
   const cam = getCameraStatus();
+  const online = deviceLinks > 0 || !!activeHardwareSession;
   res.json({
     success: true,
     tables: count("SELECT COUNT(*) c FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"),
@@ -341,9 +343,17 @@ app.get('/api/system/architecture', async (req, res) => {
     scheduled: count('SELECT COUNT(*) c FROM scheduled_items'),
     cameraAttached: Boolean(cam.attached),
     cameraAwake: Boolean(cam.awake),
+    cameraStreaming: Boolean(cam.attached && cam.awake),
+    hardware: {
+      mic: { online, active: online && !isDeviceMicMuted(), muted: isDeviceMicMuted() },
+      camera: { attached: Boolean(cam.attached), awake: Boolean(cam.awake), streaming: Boolean(cam.attached && cam.awake) },
+      speaker: { online, active: false },
+      display: { online, active: online },
+      presence: { online: Boolean(cam.attached), active: Boolean(cam.attached && cam.awake) },
+    },
     snapshots: count('SELECT COUNT(*) c FROM snapshots'),
     faces: count('SELECT COUNT(*) c FROM people'),
-    deviceOnline: deviceLinks > 0 || !!activeHardwareSession,
+    deviceOnline: online,
     uptimeSec: Math.round(process.uptime()),
     node: process.version,
   });
@@ -759,10 +769,13 @@ schedulerService.registerJob({
 
 schedulerService.registerJob({
   name: 'model_assessment',
-  description: 'Finds new Gemini models and tries each in every IMS service it could run (Ims\'s persona and accent included)',
+  description: 'Finds new Gemini models and tries each in every IMS service it could run (Ims\'s persona and accent included) - manual only (Model Switcher), as one run can use millions of tokens',
   category: 'maintenance',
   intervalMs: 24 * 3600 * 1000,
   initialDelayMs: 10 * 60 * 1000,
+  // Off: it re-ran after every server restart and one run used 7.3M tokens (5 Oct). Run it from the
+  // Model Switcher page (/api/models/assess) or the scheduler's "Run now" when wanted.
+  enabled: false,
   action: async () => {
     const { assessModels } = await import('./services/modelAudit.js');
     return assessModels({ onlyNew: true });
@@ -1074,6 +1087,60 @@ const FACE_CUES = [
 const faceFromWords = (text, used = []) => (FACE_CUES.find(([emo, rx]) => !used.includes(emo) && rx.test(text)) || [])[0] || null;
 const FOLLOW_UP_MS = 10000; // after Ims stops talking, a reply within this long needs no wake phrase
 
+// The always-on debug log (audio_captures/debug.log). Written through one stream - a blocking write per line
+// paused the server, and it grew to 430 MB - and rotated: at the first write of a new day, or past 100 MB,
+// the current file becomes debug-YYYY-MM-DD[-HHMM].log, and rotated logs older than 14 days are deleted.
+// The ESP-IDF verbose/debug lines older firmware sends ("V (1234) ENUM: ...") are left out.
+const DEBUG_LOG_DIR = path.join(__dirname, 'audio_captures');
+const DEBUG_LOG_PATH = path.join(DEBUG_LOG_DIR, 'debug.log');
+const DEBUG_LOG_MAX_BYTES = 100 * 1024 * 1024;
+const DEBUG_LOG_KEEP_DAYS = 14;
+const IDF_NOISE = /DEVICE LOG: [VD] \(\d+\) /;
+let debugLogStream = null, debugLogDay = '', debugLogBytes = 0;
+const londonDay = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+function rotateDebugLog(label) {
+  try { if (debugLogStream) debugLogStream.end(); } catch (_) { }
+  debugLogStream = null;
+  try {
+    if (fs.existsSync(DEBUG_LOG_PATH) && fs.statSync(DEBUG_LOG_PATH).size > 0) {
+      let dest = path.join(DEBUG_LOG_DIR, `debug-${label}.log`);
+      if (fs.existsSync(dest)) dest = path.join(DEBUG_LOG_DIR, `debug-${label}-${Date.now()}.log`);
+      fs.renameSync(DEBUG_LOG_PATH, dest);
+    }
+    // rotated logs, and the per-conversation capture folders (audio.wav / mic.wav / debug.log), after 14 days
+    const cutoff = Date.now() - DEBUG_LOG_KEEP_DAYS * 86400000;
+    for (const f of fs.readdirSync(DEBUG_LOG_DIR)) {
+      const full = path.join(DEBUG_LOG_DIR, f);
+      if (/^debug-.+\.log$/.test(f) && fs.statSync(full).mtimeMs < cutoff) fs.unlinkSync(full);
+      else if (/^\d{13}_(hardware|browser)$/.test(f) && Number(f.slice(0, 13)) < cutoff) fs.rmSync(full, { recursive: true, force: true });
+    }
+  } catch (err) { console.warn('[DebugLog] rotate:', err.message); }
+}
+function writeDebugLog(line) {
+  if (IDF_NOISE.test(line)) return;
+  const day = londonDay();
+  if (!debugLogStream) {
+    // first write since start-up: a log left from an earlier day, or an oversized one, is rotated first
+    try {
+      const st = fs.existsSync(DEBUG_LOG_PATH) ? fs.statSync(DEBUG_LOG_PATH) : null;
+      const fileDay = st ? new Date(st.mtimeMs).toLocaleDateString('en-CA', { timeZone: 'Europe/London' }) : day;
+      if (st && (fileDay !== day || st.size > DEBUG_LOG_MAX_BYTES)) rotateDebugLog(fileDay);
+      debugLogBytes = fs.existsSync(DEBUG_LOG_PATH) ? fs.statSync(DEBUG_LOG_PATH).size : 0;
+    } catch (_) { debugLogBytes = 0; }
+    debugLogDay = day;
+    debugLogStream = fs.createWriteStream(DEBUG_LOG_PATH, { flags: 'a' });
+    debugLogStream.on('error', (err) => { console.warn('[DebugLog]', err.message); debugLogStream = null; });
+  } else if (day !== debugLogDay || debugLogBytes > DEBUG_LOG_MAX_BYTES) {
+    rotateDebugLog(day !== debugLogDay ? debugLogDay : `${day}-${new Date().toISOString().slice(11, 16).replace(':', '')}`);
+    debugLogDay = day;
+    debugLogBytes = 0;
+    debugLogStream = fs.createWriteStream(DEBUG_LOG_PATH, { flags: 'a' });
+    debugLogStream.on('error', (err) => { console.warn('[DebugLog]', err.message); debugLogStream = null; });
+  }
+  debugLogBytes += Buffer.byteLength(line);
+  debugLogStream.write(line);
+}
+
 function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   const imsWeb = Boolean(opts.imsWeb);
   const imsBrain = isHardware || imsWeb; // sessions that run Ims's own tools on the server
@@ -1090,13 +1157,14 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // reconnect. Every log line for this connection is buffered in memory from
   // the start regardless, so a folder that does get created still has the
   // full context leading up to the interaction, not just what happened after.
-  const globalLogPath = path.join(__dirname, 'audio_captures', 'debug.log');
   const captureDir = path.join(__dirname, 'audio_captures', `${Date.now()}_${isHardware ? 'hardware' : 'browser'}`);
   const capturePath = path.join(captureDir, 'audio.wav');
   const micCapturePath = path.join(captureDir, 'mic.wav');
   const connectionLogPath = path.join(captureDir, 'debug.log');
-  const connectionLogLines = [];
+  const connectionLogLines = []; // the last CONNECTION_LOG_MAX lines - a Box-3 connection lasts hours
+  const CONNECTION_LOG_MAX = 2000;
   let captureFolderCreated = false;
+  let connectionLogStream = null;
 
   const ensureCaptureFolder = () => {
     if (captureFolderCreated) return;
@@ -1106,7 +1174,9 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     captureFolderCreated = true;
     try {
       fs.mkdirSync(captureDir, { recursive: true });
-      fs.appendFileSync(connectionLogPath, connectionLogLines.join(''));
+      connectionLogStream = fs.createWriteStream(connectionLogPath, { flags: 'a' });
+      connectionLogStream.on('error', () => { connectionLogStream = null; });
+      connectionLogStream.write(connectionLogLines.join(''));
     } catch (_) { }
   };
 
@@ -1114,10 +1184,12 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // connection's own in-memory log - only actually written to a folder (and
   // kept live-appended from then on) once ensureCaptureFolder() has fired.
   const logCapture = (line) => {
-    try { fs.appendFileSync(globalLogPath, line); } catch (_) { }
+    try { writeDebugLog(line); } catch (_) { }
+    if (IDF_NOISE.test(line)) return;
     connectionLogLines.push(line);
-    if (captureFolderCreated) {
-      try { fs.appendFileSync(connectionLogPath, line); } catch (_) { }
+    if (connectionLogLines.length > CONNECTION_LOG_MAX) connectionLogLines.splice(0, connectionLogLines.length - CONNECTION_LOG_MAX);
+    if (connectionLogStream) {
+      try { connectionLogStream.write(line); } catch (_) { }
     }
   };
 
@@ -1211,10 +1283,101 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   let cachedSetupMsg = null;
   let liveModel = null; // the voice model this session was set up with (Model Switcher), for usage logging
   let resumptionHandle = null; // latest Gemini session-resumption handle for this device connection
+  let resumptionHandleAt = 0;
+  // An old handle has usually expired on Google's side: presenting it failed the connection ("Requested entity
+  // was not found", 1008) and cost a back-off before a fresh session. Only resume recent ones.
+  const RESUME_MAX_AGE_MS = 15 * 60000;
+  const freshResumptionHandle = () => (resumptionHandle && Date.now() - resumptionHandleAt < RESUME_MAX_AGE_MS ? resumptionHandle : null);
   let isClientClosed = false;
   const outboundQueue = [];
   const outboundAudioQueue = [];
   let geminiSetupAcknowledged = false;
+
+  // ---- Local wake check (wakeGateService.js) ----------------------------------------------------------
+  // On standby, the Box-3's mic audio is held and transcribed on this PC; Gemini is opened (and handed the
+  // held audio) only when it sounds like a wake phrase - the same matchers as everywhere else
+  // (looksAddressed: the wake phrases service's recorded spellings included), or speech that opens with a
+  // greeting, which Gemini still judges as before. A local check that fails lets the audio through.
+  const WAKE_FIRST_CHECK_BYTES = 16000 * 2 * 1.2; // 1.2 s of 16 kHz 16-bit audio: enough for "Hey Ims"
+  const WAKE_RECHECK_BYTES = 16000 * 2 * 0.6;     // then look again every 0.6 s while the sound goes on
+  const WAKE_MAX_BYTES = 16000 * 2 * 8;           // hold at most the last 8 s
+  const WAKE_GIVE_UP_MS = 8000;                   // no wake phrase 8 s into a sound: not for Ims
+  const WAKE_GREETING_START = /^\W*(hey|hi|hiya|heya|hello|eh|ey|ay|aye|ayup|eyup|oi|now then)\b/i;
+  const wakeGate = { frames: [], bytes: 0, startedAt: 0, lastFrameAt: 0, checkedBytes: 0, checking: false, done: false, passedAt: 0 };
+  const resetWakeGate = () => Object.assign(wakeGate, { frames: [], bytes: 0, startedAt: 0, lastFrameAt: 0, checkedBytes: 0, checking: false, done: false });
+  const wakeGateApplies = () => {
+    if (isRecordingActive() || phraseCapture) return false;
+    if (isConversationActive || touchToTalkActive || Date.now() <= followUpUntil + 1500) return false;
+    if (wakeDaemonService.state === DAEMON_STATES.CONVERSATION_ACTIVE) return false;
+    if (Date.now() - wakeGate.passedAt < 15000) return false; // this burst already opened Gemini
+    if (currentGeminiWs && currentGeminiWs.readyState === WebSocket.OPEN && !currentTurnComplete) return false; // he's mid-reply
+    return true;
+  };
+  const openWakeGate = (text, strong) => {
+    if (Date.now() - wakeGate.passedAt < 15000) return;
+    wakeGate.passedAt = Date.now();
+    const held = wakeGate.frames;
+    resetWakeGate();
+    console.log(`${tag} 🗝️ Local wake check passed ("${text}") - opening Gemini with ${held.length} held frames`);
+    // a clear wake phrase: tell the Box-3 now, so it keeps listening while Gemini connects
+    if (strong) wakeDaemonService.acceptWake(text.slice(0, 40), 'local');
+    for (const f of held) outboundAudioQueue.push(JSON.stringify({ realtimeInput: { audio: { mimeType: 'audio/pcm;rate=16000', data: f.toString('base64') } } }));
+    sessionUsed = true;
+    const g = ensureGeminiSocket();
+    if (g && g.readyState === WebSocket.OPEN && geminiSetupAcknowledged) while (outboundAudioQueue.length) g.send(outboundAudioQueue.shift());
+  };
+  const checkWake = () => {
+    if (wakeGate.checking || wakeGate.done) return;
+    if (wakeGate.bytes - wakeGate.checkedBytes < (wakeGate.checkedBytes ? WAKE_RECHECK_BYTES : WAKE_FIRST_CHECK_BYTES)) return;
+    if (Date.now() - wakeGate.startedAt > WAKE_GIVE_UP_MS) {
+      wakeGate.done = true;
+      try { logCapture(`[${new Date().toISOString()}] ${tag} LOCAL WAKE CHECK: no wake phrase - Gemini not opened\n`); } catch (_) { }
+      return;
+    }
+    wakeGate.checkedBytes = wakeGate.bytes;
+    // too quiet to hold speech (no 0.1 s stretch louder than ~400 RMS): nothing to transcribe
+    const pcm = Buffer.concat(wakeGate.frames);
+    let loud = false;
+    for (let i = 0; i + 3200 <= pcm.length && !loud; i += 3200) {
+      let s = 0;
+      for (let j = i; j < i + 3200; j += 2) { const v = pcm.readInt16LE(j); s += v * v; }
+      loud = Math.sqrt(s / 1600) > 400;
+    }
+    if (!loud) return;
+    wakeGate.checking = true;
+    const t0 = Date.now();
+    transcribeWake(pcm).then((text) => {
+      const strong = looksAddressed(text);
+      const ok = strong || WAKE_GREETING_START.test(text);
+      try { logCapture(`[${new Date().toISOString()}] ${tag} LOCAL WAKE CHECK "${text}" -> ${ok ? 'OPEN' : 'hold'} (${Date.now() - t0} ms)\n`); } catch (_) { }
+      if (ok) openWakeGate(text, strong);
+    }).catch((err) => {
+      if (err.message === 'busy') return;
+      try { logCapture(`[${new Date().toISOString()}] ${tag} LOCAL WAKE CHECK unavailable (${err.message}) - letting Gemini decide\n`); } catch (_) { }
+      openWakeGate('', false);
+    }).finally(() => {
+      wakeGate.checking = false;
+      if (wakeGateApplies()) checkWake();
+    });
+  };
+  const gateWakeAudio = (buf) => {
+    const now = Date.now();
+    if (now - wakeGate.lastFrameAt > 1500) resetWakeGate(); // a new burst of sound
+    if (!wakeGate.startedAt) wakeGate.startedAt = now;
+    wakeGate.lastFrameAt = now;
+    lastMicFrameAt = now;
+    if (!isRecordingActive()) micAudioChunks.push(buf);
+    wakeDaemonService.notifyCandidateStart(clientType);
+    if (wakeGate.done) return; // already judged not to be for Ims - wait for the sound to stop
+    wakeGate.frames.push(buf);
+    wakeGate.bytes += buf.length;
+    while (wakeGate.bytes > WAKE_MAX_BYTES) {
+      const f = wakeGate.frames.shift();
+      wakeGate.bytes -= f.length;
+      wakeGate.checkedBytes = Math.max(0, wakeGate.checkedBytes - f.length);
+    }
+    checkWake();
+  };
   let geminiFirstMessageLogged = false;
   let lastModelAudioTime = 0;
   let suppressedMicFrameCount = 0; // see the echo-suppression logging below
@@ -1749,14 +1912,14 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       const hasQueuedSetup = outboundQueue.some(m => typeof m === 'string' && m.includes('"setup"'));
       if (cachedSetupMsg && !hasQueuedSetup) {
         console.log(`${tag} Replaying cached setup handshake to Gemini...`);
-        gWs.send(pinSavedVoice(cachedSetupMsg, tag, resumptionHandle));
-        if (resumptionHandle) console.log(`${tag} 🔁 Resuming previous Gemini session (context preserved)`);
+        gWs.send(pinSavedVoice(cachedSetupMsg, tag, freshResumptionHandle()));
+        if (freshResumptionHandle()) console.log(`${tag} 🔁 Resuming previous Gemini session (context preserved)`);
       }
       // Flush queued messages
       while (outboundQueue.length > 0) {
         const msg = outboundQueue.shift();
         console.log(`${tag} Flushing queued message to Gemini...`);
-        gWs.send(typeof msg === 'string' && msg.includes('"setup"') ? pinSavedVoice(msg, tag, resumptionHandle) : msg);
+        gWs.send(typeof msg === 'string' && msg.includes('"setup"') ? pinSavedVoice(msg, tag, freshResumptionHandle()) : msg);
       }
     });
 
@@ -1774,7 +1937,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       if (msgStr.includes('sessionResumptionUpdate')) {
         try {
           const upd = JSON.parse(msgStr).sessionResumptionUpdate;
-          if (upd?.newHandle && upd.resumable !== false) resumptionHandle = upd.newHandle;
+          if (upd?.newHandle && upd.resumable !== false) { resumptionHandle = upd.newHandle; resumptionHandleAt = Date.now(); }
         } catch (_) { }
       }
       let parsedAudioBytes = null;
@@ -3090,6 +3253,24 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       } catch (_) { }
     }
 
+    // Local wake check: on standby the Box-3's microphone audio is held and transcribed on this PC first
+    // (wakeGateService.js); Gemini is only opened - and handed the held audio - for something that sounds
+    // like a wake phrase. In a conversation, a follow-up window, touch-to-talk or a recording, audio goes
+    // straight through as before.
+    if (isBinary && isHardware && imsBrain && wakeGateApplies()) { gateWakeAudio(Buffer.from(message)); return; }
+
+    // Only Gemini's own client messages go upstream (and open a session). Anything else - typically a device
+    // log line it couldn't turn into valid JSON during the USB boot flood - is logged and dropped: forwarded,
+    // it made Gemini close the session (1007 "Unknown name 'log'").
+    if (!isBinary) {
+      let upstream = false;
+      try { const o = JSON.parse(message.toString()); upstream = Boolean(o && (o.setup || o.clientContent || o.realtimeInput || o.toolResponse)); } catch (_) { }
+      if (!upstream) {
+        try { logCapture(`[${new Date().toISOString()}] ${tag} DEVICE MESSAGE (not for Gemini, dropped): ${message.toString().slice(0, 300)}\n`); } catch (_) { }
+        return;
+      }
+    }
+
     const gWs = ensureGeminiSocket();
 
     // In ws library, message is ALWAYS a Buffer. ONLY isBinary indicates an opcode 0x02 binary frame.
@@ -3316,6 +3497,7 @@ function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   ws.on('close', (code, reason) => {
     isClientClosed = true;
     thinkDeliverers.delete(deliverThink);
+    try { if (connectionLogStream) connectionLogStream.end(); } catch (_) { }
     convRecordTurn();
     convEnd('disconnect');
     if (turnStallWatchdogInterval) clearInterval(turnStallWatchdogInterval);
@@ -3625,6 +3807,7 @@ onPresence('greet', ({ names }) => {
   if (first.length) sendToHardware({ greet: { names: first.join(' and ') } });
 });
 startPresence();
+startWakeGate(); // load the local wake-check model now, not on the first "Hey Ims"
 
 // Ring Doorbell Direct API Service: Wire real-time alerts to ESP32-S3-BOX-3 and Gemini spoken announcements
 doorbellService.on('doorbellEvent', (alert) => {
@@ -3709,6 +3892,13 @@ const debugMicCapturesDir = path.join(__dirname, 'audio_captures');
 fs.mkdirSync(debugMicCapturesDir, { recursive: true });
 let lastFrameCamKey = '';
 const debugMicServer = http.createServer((req, res) => {
+  // Device key: when IMS_DEVICE_KEY is set (pdf-knowledge-base/.env), every request must carry it in the
+  // X-IMS-Key header - the Box-3 sends it (secrets.h) - so nothing else on the network can change Ims's
+  // personality, post camera frames or fetch face packs. Not set: open, as before.
+  if (process.env.IMS_DEVICE_KEY && req.headers['x-ims-key'] !== process.env.IMS_DEVICE_KEY) {
+    res.writeHead(401, { 'Content-Type': 'text/plain' }).end('Device key required.');
+    return;
+  }
   // Phase 4/5 (imspersonality.md): the settings screen's slider/voice
   // changes POST here, and reads current values on boot. Same server/port
   // as the mic upload above, same reasoning - a bare device HTTP request has

@@ -110,21 +110,6 @@ export function runBackup({ reason = 'manual' } = {}) {
   return running;
 }
 
-// Once a night, after 03:00 London time.
-export function startNightlyBackups() {
-  const check = () => {
-    const now = new Date();
-    const day = now.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
-    const hour = Number(now.toLocaleString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hour12: false }));
-    if (hour >= 3 && getSetting('backup_last_day') !== day) {
-      setSetting('backup_last_day', day);
-      runBackup({ reason: 'nightly' }).catch(() => { /* recorded in the status */ });
-    }
-  };
-  setTimeout(check, 60 * 1000);
-  setInterval(check, 10 * 60 * 1000);
-}
-
 // Automated weekly SQLite PRAGMA integrity_check drill against latest local archive
 export async function runIntegrityDrill() {
   const started = Date.now();
@@ -187,9 +172,12 @@ export async function runIntegrityDrill() {
     console.error(`[BackupDrill] ❌ Automated integrity drill FAILED:`, err.message);
     throw err;
   } finally {
-    try {
-      if (fs.existsSync(tempSandboxDb)) fs.unlinkSync(tempSandboxDb);
-    } catch (_) { /* ignore cleanup error */ }
+    // the sandbox database and its -wal / -shm companions (left behind before: ~230 of them, ~280 MB),
+    // plus any left by earlier drills
+    for (const f of fs.existsSync(LOCAL) ? fs.readdirSync(LOCAL) : []) {
+      if (!/^drill-sandbox-\d+\.db(-wal|-shm)?$/.test(f)) continue;
+      try { fs.unlinkSync(path.join(LOCAL, f)); } catch (_) { /* still open - next drill */ }
+    }
   }
 }
 

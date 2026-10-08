@@ -106,11 +106,6 @@ export async function tickRunPushQueue() {
     }
     return { sent: due.length };
 }
-let pushTicker = null;
-export function startRunPushQueue() {
-  if (pushTicker) return;
-  pushTicker = setInterval(() => { tickRunPushQueue().catch(() => {}); }, 10000);
-}
 
 export async function testPush() {
   // the test is an alarm, so it checks the topic and the sound / vibrate set-up the reminders will use
@@ -261,7 +256,7 @@ export async function sendRunAlerts({ date, time, routeId = null, routeName = ''
     try { const reply = await callTasker(fillUrl(st.taskerUrl, values)); tasker = { ok: true, values, reply }; }
     catch (err) { tasker = { ok: false, values, error: `Tasker did not answer (${err.message}) - is the phone on the same Wi-Fi with the Tasker profile on?` }; }
   }
-  // push notifications: queued here, pushed at each minute by startRunPushQueue
+  // push notifications: queued here, pushed by the scheduler's run_push_queue_tick
   let push = null;
   if (st.push && st.pushTopic) {
     // pre-run route link straight away - not when the run is being started from the Ready notification

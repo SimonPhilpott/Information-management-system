@@ -185,10 +185,6 @@ export async function eveningKomootCheck() {
   return job;
 }
 
-export function startEveningKomootSync() {
-  setInterval(() => { eveningKomootCheck().catch((err) => console.error('[RouteFinder] evening sync:', err.message)); }, 10 * 60000);
-}
-
 // Deletes every duplicate copy, keeping the oldest in each group (from IMS only - Komoot is untouched).
 export async function deleteAllDuplicates() {
   const { groups } = await findDuplicateRoutes();

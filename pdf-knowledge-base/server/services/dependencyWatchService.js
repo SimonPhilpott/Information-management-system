@@ -181,8 +181,3 @@ export async function checkDependencyWatch() {
   if (!running && (!last || Date.now() - last.finishedAt >= WEEK)) return runDependencyWatch({ reason: 'weekly' });
   return null;
 }
-export function startWeeklyDependencyWatch() {
-  const check = () => { checkDependencyWatch().catch((err) => console.error('[DependencyWatch]', err.message)); };
-  setTimeout(check, 5 * 60000); // not in the busy first minutes after start-up
-  setInterval(check, 6 * 3600000);
-}

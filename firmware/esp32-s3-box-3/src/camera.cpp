@@ -1,4 +1,5 @@
 #include "camera.h"
+#include "config.h"
 
 #include <Arduino.h>
 #include <HTTPClient.h>
@@ -282,6 +283,7 @@ static bool postBytes(const char *path, const uint8_t *data, size_t len, const c
   http.setTimeout(1200);
   http.setReuse(true);
   if (!http.begin(url)) return false;
+  http.addHeader("X-IMS-Key", IMS_DEVICE_KEY);
   http.addHeader("Content-Type", contentType);
   int code = http.POST((uint8_t *)data, len);
   http.end();
@@ -366,15 +368,17 @@ void cameraBegin(const char *backendHost, uint16_t httpPort) {
   Serial.end();
   delay(200);
 
-  // Forward ESP-IDF USB errors directly to the Wi-Fi log stream
+  // Forward ESP-IDF USB warnings and errors to the Wi-Fi log stream. (These were VERBOSE while bringing the
+  // C270 up; with the camera working that flooded the backend log with raw enumeration dumps on every boot -
+  // set a tag back to ESP_LOG_VERBOSE to debug USB again.)
   esp_log_set_vprintf(espLogVprintf);
-  esp_log_level_set("HUB", ESP_LOG_VERBOSE);
-  esp_log_level_set("USBH", ESP_LOG_VERBOSE);
-  esp_log_level_set("ENUM", ESP_LOG_VERBOSE);
-  esp_log_level_set("HCD", ESP_LOG_VERBOSE);
-  esp_log_level_set("hcd_dwc", ESP_LOG_VERBOSE);
-  esp_log_level_set("uvc_host", ESP_LOG_VERBOSE);
-  esp_log_level_set("UVC_HOST", ESP_LOG_VERBOSE);
+  esp_log_level_set("HUB", ESP_LOG_WARN);
+  esp_log_level_set("USBH", ESP_LOG_WARN);
+  esp_log_level_set("ENUM", ESP_LOG_WARN);
+  esp_log_level_set("HCD", ESP_LOG_WARN);
+  esp_log_level_set("hcd_dwc", ESP_LOG_WARN);
+  esp_log_level_set("uvc_host", ESP_LOG_WARN);
+  esp_log_level_set("UVC_HOST", ESP_LOG_WARN);
 
   usb_host_config_t hc = {};
   hc.skip_phy_setup = false;

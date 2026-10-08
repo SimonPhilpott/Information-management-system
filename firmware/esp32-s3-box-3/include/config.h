@@ -9,6 +9,13 @@
 // in your real WiFi name/password there, not here.
 #include "secrets.h"
 
+// Shared key for the backend's device server (port 3003): sent as the X-IMS-Key header on every request
+// (personality, camera frames/logs, face packs), so nothing else on the network can use those endpoints.
+// Set it in secrets.h to the same value as IMS_DEVICE_KEY in pdf-knowledge-base/.env.
+#ifndef IMS_DEVICE_KEY
+#define IMS_DEVICE_KEY ""
+#endif
+
 // 2. IMS Backend Configuration - raw TCP, NOT WebSocket. Arduino's
 // WebSocketsClient (Links2004) hard-caps messages at 15KB (a real project -
 // github.com/mk14ray/RIO-ESP32-S3-Gemini-Live-Voice-Assistant - hit this

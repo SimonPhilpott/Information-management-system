@@ -8,6 +8,19 @@
 
 import eventBus from './eventBus.js';
 import logger from './loggerService.js';
+import { getSetting, setSetting } from '../db/database.js';
+
+// When each job last ran is saved (setting 'scheduler_last_runs'), so a restart picks up where the schedule
+// was rather than starting every clock again: before, a job with a start-up delay re-ran after every restart
+// (weekly and daily jobs ran dozens of times on a busy development day), and a job without one waited a full
+// interval from start-up, so a daily job never ran if the server restarted at least once a day.
+// Only jobs every 10 minutes or longer are saved - the second-by-second ones just start on their interval.
+const PERSIST_MIN_INTERVAL_MS = 10 * 60 * 1000;
+const FIRST_RUN_DELAY_MS = 5 * 60 * 1000; // a long-interval job that has never run: shortly after start-up
+const loadLastRuns = () => { try { return JSON.parse(getSetting('scheduler_last_runs') || '{}') || {}; } catch (_) { return {}; } };
+function saveLastRun(name, at) {
+  try { const all = loadLastRuns(); all[name] = at; setSetting('scheduler_last_runs', JSON.stringify(all)); } catch (_) { /* not fatal */ }
+}
 
 class SchedulerService {
   constructor() {
@@ -107,12 +120,14 @@ class SchedulerService {
       job.lastError = null;
       job.lastRun = Date.now();
       job.runCount++;
+      if (job.intervalMs >= PERSIST_MIN_INTERVAL_MS) saveLastRun(name, job.lastRun);
       logger.info('Scheduler', `Completed job "${name}" in ${job.durationMs}ms`);
     } catch (err) {
       job.durationMs = Date.now() - start;
       job.status = 'failed';
       job.lastError = err.message || String(err);
       job.lastRun = Date.now();
+      if (job.intervalMs >= PERSIST_MIN_INTERVAL_MS) saveLastRun(name, job.lastRun);
       logger.error('Scheduler', `Failed job "${name}": ${err.message}`, { error: err.message, stack: err.stack });
     } finally {
       job.isRunning = false;
@@ -139,12 +154,26 @@ class SchedulerService {
       await this._executeJob(job.name, { forced: false });
     };
 
-    if (job.initialDelayMs > 0) {
+    // First run: for a long-interval job, when it's next due by its saved last run (never sooner than its
+    // start-up delay, so start-up isn't swamped); never run yet: shortly after start-up.
+    let firstDelay = job.initialDelayMs;
+    if (job.intervalMs >= PERSIST_MIN_INTERVAL_MS) {
+      const last = loadLastRuns()[job.name];
+      if (last) {
+        job.lastRun = last;
+        firstDelay = Math.max(job.initialDelayMs || 60000, last + job.intervalMs - Date.now());
+      } else {
+        firstDelay = job.initialDelayMs || FIRST_RUN_DELAY_MS;
+      }
+    }
+    job.nextRun = Date.now() + (firstDelay > 0 ? firstDelay : job.intervalMs);
+
+    if (firstDelay > 0) {
       const initialTimer = setTimeout(() => {
         runAndReschedule();
         const intervalTimer = setInterval(runAndReschedule, job.intervalMs);
         this.timerIds.set(job.name, { intervalTimer });
-      }, job.initialDelayMs);
+      }, firstDelay);
 
       this.timerIds.set(job.name, { initialTimer });
     } else {

@@ -7,6 +7,9 @@ the scheduler definitions in `index.js`, and local tests.
 > **Status (8 Oct 2026, 12:40): items 1, 2 and 3 are fixed** - see "Fixed" notes under each. Verified through
 > the public tunnel address: the database, project files and `.env` return 404, the tool routes return 403,
 > and the app still loads.
+>
+> **Update (8 Oct 2026, afternoon):** items 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16 and 17 are done, 15 and 19
+> partly (see the "Done" notes). 5 (prompt trimming) and 18 (splitting `index.js`) are left on purpose - see their notes.
 
 Suggested order for the rest: **4 and 6** (cost), then **8, 9 and 11**.
 
@@ -67,6 +70,12 @@ Suggested order for the rest: **4 and 6** (cost), then **8, 9 and 11**.
   - or on the Box-3: ESP-SR WakeNet.
   
   Only open a Gemini session for a real wake phrase. Expect roughly a 90% cut in voice cost and faster first replies.
+- **Done:** `wakeGateService.js` + `python/wake_stt.py` (faster-whisper `base.en`, int8, CPU, hotword "Ims").
+  On standby the Box-3's audio is held and transcribed locally; Gemini is opened - and handed the held audio -
+  only when it matches the wake phrases (the same matchers, including the phrases service's recorded
+  spellings) or opens with a greeting. Never applies in a conversation, follow-up, touch-to-talk or recording.
+  Fails open (local model down -> Gemini decides). Tested: all six wake recordings pass (~0.8 s); silence,
+  noise and ordinary chat are held. Live: background sounds are now held instead of opening Gemini.
 
 ### 5. The voice prompt is very large, and may be getting cut off
 - The system instruction is **40,000 characters**, plus **23,000 characters of tool declarations (39 tools)**:
@@ -76,16 +85,24 @@ Suggested order for the rest: **4 and 6** (cost), then **8, 9 and 11**.
 - It's *exactly* 40,000 characters, which suggests a cap somewhere is trimming the end. Worth verifying.
 - **Fix:** trim and deduplicate the prompt, move rarely needed rules into tool descriptions or tool results,
   and send only the tools that are relevant.
+- **Checked, not changed:** there is **no 40,000 cap** - the prompt was 39,709 characters, nothing is cut. It
+  is: persona rules (`personas/yorkshire.md`, your own persona file) 14,912; memory 6,078; fixed rules and
+  data ~18,700; tools 22,654. With the wake check, ~90% fewer sessions carry it. Trimming the persona file
+  or memory changes how Ims talks, so it is left for you to decide.
 
 ### 6. The cost page under-reports badly
 - The Costs page shows **£0.37 for the last 7 days**, but **24.4 million tokens are unpriced**, including
   `gemini-3.8-live` and `gemini-3.8-flash`, the models doing nearly all the work.
 - **Fix:** add prices for the models in use, so the dashboard and the monthly cap mean something.
+- **Done:** list prices (ai.google.dev, checked 8 Oct) added for `gemini-3.8-flash`, `gemini-3.8-live`,
+  `gemini-3.8-flash-tts`, `gemini-3.5-flash-lite`, `gemini-3.1-flash-image`. The last 7 days now show
+  **£17.35** (Ims voice £9.01, model tests £7.66); this month is projected at about **£72**.
 
 ### 7. Model Switcher assessments are expensive
 - `modelTest` used **8+ million input tokens in 7 days**, including **7.3 million on 5 October** alone, when new models appeared.
 - The daily `model_assessment` job also re-runs after every server restart (see 8).
 - **Fix:** run it weekly, test fewer services per new model, or require confirmation for big runs.
+- **Done:** the scheduled `model_assessment` job is disabled; it runs only from the Model Switcher page.
 
 ---
 
@@ -99,6 +116,9 @@ Suggested order for the rest: **4 and 6** (cost), then **8, 9 and 11**.
 - **Jobs without one only run once a full interval has passed since start-up**, so the daily
   `pdf_dedupe` effectively never runs.
 - **Fix:** save `lastRun` per job in the database, and on start-up schedule each job for `lastRun + interval`.
+- **Done:** `lastRun` of every job of 10 minutes or longer is saved (setting `scheduler_last_runs`); a restart
+  schedules it for `lastRun + interval` (never sooner than its start-up delay), and a job that has never run
+  goes ~5 minutes after start-up.
 
 ### 9. Gemini sessions dropped by bad messages
 - 8 closes with **1007 "Unknown name 'log'"**: a Box-3 `{"log": ...}` message sometimes gets forwarded to
@@ -106,10 +126,15 @@ Suggested order for the rest: **4 and 6** (cost), then **8, 9 and 11**.
 - 6 closes with **1008 "Requested entity was not found"**: an expired session resumption handle. Resuming with it fails.
 - **Fix:** never forward device messages that aren't `realtimeInput` or `clientContent` upstream; drop
   the resumption handle after a failure.
+- **Done:** only `setup` / `clientContent` / `realtimeInput` / `toolResponse` messages go to Gemini (or open a
+  session); anything else is logged as "DEVICE MESSAGE (not for Gemini, dropped)". The cause was device log
+  lines from the USB boot flood that weren't valid JSON. Resumption handles older than 15 minutes aren't used.
 
 ### 10. `feature.json` is invalid JSON
 - There is an extra closing brace at the end, and it has been there for several commits.
   Anything that parses it will fail.
+- **Done:** the `"features"` object closed after 90 entries, leaving 37 at the top level; they are back inside
+  it (127 features) and the file parses.
 
 ---
 
@@ -122,15 +147,21 @@ Suggested order for the rest: **4 and 6** (cost), then **8, 9 and 11**.
   500 ms) and verbose USB-host debug output (`D (...) USBH: Processing actions`). The firmware builds with
   `CORE_DEBUG_LEVEL=3`, and USB host logging is at debug level.
 - **Fix:** lower the device log levels, write asynchronously (a stream), and rotate daily or by size.
+- **Done:** one write stream; rotation to `debug-YYYY-MM-DD.log` daily or past 100 MB; rotated logs and capture
+  folders deleted after 14 days; ESP-IDF `V`/`D` lines dropped. Firmware (built, needs flashing): USB stack
+  logging back to warnings, the mic `rms=` reading every 10 s instead of 0.5 s.
 
 ### 12. Unbounded memory per live connection
 - `connectionLogLines` in `handleLiveProxyConnection` keeps every log line for the lifetime of the
   connection, even when per-conversation capture is off. The Box-3 stays connected for hours.
 - **Fix:** keep a short ring buffer (e.g. the last 500 lines), only for writing a capture folder.
+- **Done:** the last 2,000 lines are kept; the capture file is written through a stream.
 
 ### 13. The web app is one 4.1 MB JavaScript file
 - `dist/assets/index-*.js` is 4.1 MB, and `App.jsx` is about 2,500 lines. Every page is downloaded at start-up.
 - **Fix:** load each page (`React.lazy` per route) only when it's opened. Expect start-up several times faster.
+- **Done:** 32 pages are `React.lazy` with a `Suspense` in `main.jsx`: main bundle **4.1 MB -> 2.7 MB**, 84 chunks.
+  Most of the rest is the 3D knowledge mesh (three.js) on the main screen - lazy-loading it is the next step.
 
 ---
 
@@ -140,29 +171,44 @@ Suggested order for the rest: **4 and 6** (cost), then **8, 9 and 11**.
 - `start-all.bat` runs `pdf-knowledge-base`'s `dev:client`, an **old copy of the front end**
   (`pdf-knowledge-base/client`, last changed 27 August) that uses memory and a port for nothing.
 - About **280 duplicate source files** are tracked in `scratch/` (`extracted_backup_june`, `temp_zip`) and `pdf-knowledge-base/client`.
+- **Done:** no longer started (`start-all.bat`, `pdf-knowledge-base/package.json`), its process stopped and the
+  folder removed (still in git history). `scratch/` is no longer tracked (kept on disk, already in `.gitignore`).
 
 ### 15. About 2.6 GB of stale data
 - `server/data/vectors_float32_backup` (**1.9 GB**), `vectors_stale_backup` (83 MB), `data/backups` (645 MB).
 - `audio_captures/` has 183 per-conversation folders (about 1 GB of WAV files).
 - **Fix:** delete the old vector backups once the current vectors are confirmed good; add retention for backups and captures.
+- **Done:** 458 leftover integrity-drill files removed and the drill now cleans up after itself; capture
+  folders older than 14 days are deleted with the log rotation. The nightly backup zips (7 x ~51 MB, kept 10)
+  are the intended backups. **Not done:** the vector backups - the old one holds 135 files under a different
+  topic naming scheme from the 78 live ones, so it isn't clearly redundant; confirm before deleting 2 GB.
 
 ### 16. Leftover start functions that are never called
 - `startNightlyBackups` (backupService), `startWeeklyDependencyWatch` (dependencyWatchService),
   `startEveningKomootSync` (routeFinderService), `startRunLearning` (runLearningService) and
   `startRunPushQueue` (runAlertsService). The scheduler took over these jobs. Delete them.
+- **Done:** deleted.
 
 ### 17. Root folder clutter (much of it tracked in git)
 - PowerPoints, a spreadsheet, JPEGs, a firmware zip, NAV exports (`NAVXML.*`, `nav.*`, `RawOutput.json`),
   an Office lock file (`~$an my run backup.docx`) and the 60 MB `antigravity-god-mode` folder.
+- **Done:** 21 documents and reference files moved to `archive/` (git-ignored, kept on disk, no longer in the
+  public repo); the Office lock file deleted. `NAVXML.txt` stays (the SharePoint fallback reads it);
+  `antigravity-god-mode` stays (the Antigravity agent uses it); the extracted factory-firmware folder is
+  locked by another program, so it's just ignored by git.
 
 ### 18. `index.js` is 3,800 lines
 - The live voice proxy (`handleLiveProxyConnection`) is one huge function that handles wake checks, tool calls,
   device messages, recording, timers and logging.
 - **Fix:** split it into modules (wake, tools, device protocol, session lifecycle). Bugs like item 9 would be easier to find.
+- **Left for now:** another agent is editing `index.js` at the same time; a large restructure needs a quiet
+  window. The new wake check went into its own module (`wakeGateService.js`) as a start.
 
 ### 19. The device server (port 3003) has no login
 - The plain HTTP server for the Box-3 accepts camera frames, logs, face packs and **personality setting
   changes** without any authentication. It's on the home network only, so the risk is low, but a shared device key would close it.
+- **Done (switched on after flashing):** the Box-3 sends `X-IMS-Key` (key in `secrets.h`) on all its requests;
+  the server rejects requests without it once `IMS_DEVICE_KEY` is set in `pdf-knowledge-base/.env`.
 
 ---
 

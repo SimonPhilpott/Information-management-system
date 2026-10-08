@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+// Each page (portal) is loaded only when it's first opened - they used to all be in one 4.1 MB bundle.
+// main.jsx's <Suspense> shows a blank themed screen for the moment that takes.
 import { ENTITY_TYPES, SCHEMAS } from './data/nodes';
 import { MESHES } from './data/mesh_authority.js';
 
@@ -21,39 +23,39 @@ import { Activity, Link as LinkIcon, Cpu, ArrowDown, Network, GitMerge, Box, Cir
 import { useAppLogic } from './hooks/useAppLogic';
 import OnboardingSetup from './components/Dashboard/OnboardingSetup';
 import { checkIsEntertainment } from './utils/contentFilter';
-import DemoPortal from './components/Dashboard/DemoPortal';
-import MemoriesPortal from './components/Dashboard/MemoriesPortal';
-import PersonaPortal from './components/Dashboard/PersonaPortal';
-import DayReportPortal from './components/Dashboard/DayReportPortal';
-import CodeRepoPortal from './components/Dashboard/CodeRepoPortal';
-import MusicScanPortal from './components/Dashboard/MusicScanPortal';
-import ScheduledItemsPortal from './components/Dashboard/ScheduledItemsPortal';
-import BirthdayPortal from './components/Dashboard/BirthdayPortal';
-import BoardgamesPortal from './components/Dashboard/BoardgamesPortal';
-import LookPortal from './components/Dashboard/LookPortal';
-import FacesPortal from './components/Dashboard/FacesPortal';
-import FaceDesignerPortal from './components/Dashboard/FaceDesignerPortal';
-import WifiPortal from './components/Dashboard/WifiPortal';
-import RecordingsPortal from './components/Dashboard/RecordingsPortal';
-import CalendarPortal from './components/Dashboard/CalendarPortal';
-import ActivitiesPortal from './components/Dashboard/ActivitiesPortal';
-import GlucosePortal from './components/Dashboard/GlucosePortal';
-import NewsPortal from './components/Dashboard/NewsPortal';
-import TasksPortal from './components/Dashboard/TasksPortal';
-import SystemArchitecturePortal from './components/Dashboard/SystemArchitecturePortal';
-import DevIdeasPortal from './components/Dashboard/DevIdeasPortal';
-import BackupsPortal from './components/Dashboard/BackupsPortal';
-import DecksPortal from './components/Dashboard/DecksPortal';
+const DemoPortal = React.lazy(() => import('./components/Dashboard/DemoPortal'));
+const MemoriesPortal = React.lazy(() => import('./components/Dashboard/MemoriesPortal'));
+const PersonaPortal = React.lazy(() => import('./components/Dashboard/PersonaPortal'));
+const DayReportPortal = React.lazy(() => import('./components/Dashboard/DayReportPortal'));
+const CodeRepoPortal = React.lazy(() => import('./components/Dashboard/CodeRepoPortal'));
+const MusicScanPortal = React.lazy(() => import('./components/Dashboard/MusicScanPortal'));
+const ScheduledItemsPortal = React.lazy(() => import('./components/Dashboard/ScheduledItemsPortal'));
+const BirthdayPortal = React.lazy(() => import('./components/Dashboard/BirthdayPortal'));
+const BoardgamesPortal = React.lazy(() => import('./components/Dashboard/BoardgamesPortal'));
+const LookPortal = React.lazy(() => import('./components/Dashboard/LookPortal'));
+const FacesPortal = React.lazy(() => import('./components/Dashboard/FacesPortal'));
+const FaceDesignerPortal = React.lazy(() => import('./components/Dashboard/FaceDesignerPortal'));
+const WifiPortal = React.lazy(() => import('./components/Dashboard/WifiPortal'));
+const RecordingsPortal = React.lazy(() => import('./components/Dashboard/RecordingsPortal'));
+const CalendarPortal = React.lazy(() => import('./components/Dashboard/CalendarPortal'));
+const ActivitiesPortal = React.lazy(() => import('./components/Dashboard/ActivitiesPortal'));
+const GlucosePortal = React.lazy(() => import('./components/Dashboard/GlucosePortal'));
+const NewsPortal = React.lazy(() => import('./components/Dashboard/NewsPortal'));
+const TasksPortal = React.lazy(() => import('./components/Dashboard/TasksPortal'));
+const SystemArchitecturePortal = React.lazy(() => import('./components/Dashboard/SystemArchitecturePortal'));
+const DevIdeasPortal = React.lazy(() => import('./components/Dashboard/DevIdeasPortal'));
+const BackupsPortal = React.lazy(() => import('./components/Dashboard/BackupsPortal'));
+const DecksPortal = React.lazy(() => import('./components/Dashboard/DecksPortal'));
 import { isCampaignPath, canonicalCampaignPath } from './components/Dashboard/campaignPaths';
-import PhrasesPortal from './components/Dashboard/PhrasesPortal';
-import RunPlannerPortal from './components/Dashboard/RunPlannerPortal';
-import DoorbellPortal from './components/Dashboard/DoorbellPortal';
-import WeatherPortal from './components/Dashboard/WeatherPortal';
-import DeviceHealthPortal from './components/Dashboard/DeviceHealthPortal';
-import StoragePortal from './components/Dashboard/StoragePortal';
-import ModelSwitcherPortal from './components/Dashboard/ModelSwitcherPortal';
-import CostsPortal from './components/Dashboard/CostsPortal';
-import ImsHub from './components/Dashboard/ImsHub';
+const PhrasesPortal = React.lazy(() => import('./components/Dashboard/PhrasesPortal'));
+const RunPlannerPortal = React.lazy(() => import('./components/Dashboard/RunPlannerPortal'));
+const DoorbellPortal = React.lazy(() => import('./components/Dashboard/DoorbellPortal'));
+const WeatherPortal = React.lazy(() => import('./components/Dashboard/WeatherPortal'));
+const DeviceHealthPortal = React.lazy(() => import('./components/Dashboard/DeviceHealthPortal'));
+const StoragePortal = React.lazy(() => import('./components/Dashboard/StoragePortal'));
+const ModelSwitcherPortal = React.lazy(() => import('./components/Dashboard/ModelSwitcherPortal'));
+const CostsPortal = React.lazy(() => import('./components/Dashboard/CostsPortal'));
+const ImsHub = React.lazy(() => import('./components/Dashboard/ImsHub'));
 import CommandPalette from './components/Dashboard/CommandPalette';
 
 function getShortSummary(text) {

@@ -42,7 +42,10 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <ThemeProvider>
         <ThemeVersionProvider>
           <AuthGate>
-            <App />
+            {/* pages load on first visit (React.lazy in App.jsx): a blank themed screen meanwhile */}
+            <React.Suspense fallback={<div style={{ minHeight: '100vh', background: 'var(--bg-primary)' }} />}>
+              <App />
+            </React.Suspense>
           </AuthGate>
         </ThemeVersionProvider>
       </ThemeProvider>

@@ -1101,8 +1101,7 @@
         "Interactive Spend & Budget Breakdown portal at /ims/spend with service share tables, spend cap modifier, and top expensive prompts optimizer",
         "Dynamic budget status badge and direct navigation link embedded in TokenUsageMeter.jsx in the top application header"
       ]
-    }
-  },
+    },
     "Weather Service & Honest Weather Language": {
       "status": "enabled",
       "description": "Dedicated weather service under Core functions (/ims/weather). Open-Meteo hourly forecasts for home and saved places up to 16 days ahead, graded from the hours still to come so rain that has already fallen is never reported as coming. Rain, temperature, wind, fog, frost, snow, thunder, UV and muggy days each have bands with the Yorkshire words that fit and the words that would overstate them, and each day is compared with the last 10 years at that place to flag weather that is unusual for the time of year.",
@@ -1521,6 +1520,17 @@
         "System Architecture Accuracy: Updates SystemArchitecturePortal.jsx cards and /api/system/architecture live metrics to reflect operational Logitech C270 camera host and Look/Faces services",
         "Authentic Face Dot Grid & Eye Contours: Restores row 2 pupil recess dots (level 2 hex) to DEFAULT_FACE in ImsFace.jsx, eliminating solid square eyes and harmonising with firmware dot rendering",
         "Interactive Edge-of-Screen Gaze Tracking: Window pointer tracking in ImsFace dynamically slides pupil dots left (002ff002ff00) or right (00ff200ff200) when cursor is on the outer sides of the screen"
+      ]
+    },
+    "System Architecture Hardware Subsystems & Real-Time In-Use Telemetry Highlighting": {
+      "status": "enabled",
+      "description": "Comprehensive hardware representation and active-state telemetry across the IMS System Architecture map (/ims/architecture). Incorporates a dedicated Hardware Subsystems card across the system grid (dual MEMS microphone array, Logitech C270 USB host webcam, speaker with Class-D amp, 2.4\" colour LCD touch screen, desk presence gaze sensor, physical controls/sensors), periodic live hardware state polling from /api/system/architecture, real-time in-use glowing pulse highlights, interactive tool-access reasons, test-prompt trace integration, and a dedicated Hardware drawer tab with bus specifications and audio/video pipeline diagrams.",
+      "renderingEngine": "React 19 / Tailwind CSS / Node.js Express / Lucide Icons",
+      "subFeatures": [
+        "Dedicated Hardware Architecture Card: Displays 6 physical modules (ESP32-S3 Dual MEMS Mic, Logitech C270 HD Web Camera, ESP32-S3 Speaker & Audio Amp, 2.4\" Colour LCD Display & Touch, Desk Presence & Gaze Sensor, Physical Controls & Sensors) with chipsets and bus specifications",
+        "Real-Time In-Use Highlighting: Merges live hardware operations (webcam streaming, active microphone audio, face presence detection, screen rendering) and test prompt execution states into effectiveHot, applying glowing pulsing borders, Active badges, and interactive tooltips",
+        "Hardware Drawer Tab & Bus Pinouts: Dedicated Hardware tab in summary drawer detailing ESP32-S3 pinouts (USB Host GPIO 19/20, I2S Mic/DAC GPIOs, SPI LCD, I2C Touch), live status chips, and end-to-end signal ingress/egress pipeline diagrams",
+        "Test Prompt Trace Integration: Updates traceService.js to trace microphone on prompt start, webcam on lookAtCamera/enrolPerson vision queries, and speaker + LCD display during audio reply synthesis"
       ]
     }
   }

@@ -162,6 +162,14 @@ export const KNOWN_PRICES = {
   'gemini-embedding-001': { input: 0.15, output: 0 },
   'gemini-2.5-flash-preview-tts': { input: 0.50, output: 10.00 },
   'gemini-2.5-pro-preview-tts': { input: 1.00, output: 20.00 },
+  // From ai.google.dev/gemini-api/docs/pricing, checked 8 Oct 2026. 3.8 Flash and Flash TTS double on 1 Jan 2027.
+  'gemini-3.8-flash': { input: 0.75, output: 3.75 },
+  // Live: text input $0.75 (most of what's sent is the system prompt; the microphone audio is $3.00, so this
+  // slightly under-counts), audio output $12.00 (Ims's replies are spoken).
+  'gemini-3.8-live': { input: 0.75, output: 12.00 },
+  'gemini-3.8-flash-tts': { input: 0.50, output: 9.00 },
+  'gemini-3.5-flash-lite': { input: 0.30, output: 2.50 },
+  'gemini-3.1-flash-image': { input: 0.50, output: 60.00 },
 };
 
 const RATING = { 1: 'Low', 2: 'Moderate', 3: 'High', 4: 'Very high' };

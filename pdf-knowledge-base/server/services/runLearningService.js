@@ -734,18 +734,11 @@ function proposeRulebookFinding(l) {
 }
 
 // Every 15 minutes: link sent runs to their Strava activity, and analyse them.
-let ticker = null;
 // Run by the scheduler ('run_learning_tick' in index.js).
 export async function tickRunLearning() {
   const ids = await linkSessions();
   if (ids.length) await refreshLearnings();
   return { linked: ids.length };
-}
-export function startRunLearning() {
-  if (ticker) return;
-  const tick = () => tickRunLearning().catch((err) => console.warn('[run learning]', err.message));
-  ticker = setInterval(tick, 15 * 60000);
-  setTimeout(tick, 60000);
 }
 
 /** For Ims: a note on the most recent run ("felt tired halfway"). */
