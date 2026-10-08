@@ -61,43 +61,20 @@ export default function CameraPanel({ isDark, onSnapshot, onError, snapshotLabel
     }
   };
 
-  // Device mode: poll the server's latest frame with frame retention
-  // (prevents unmounting the image and flashing black on transient packet drops).
+  const [streamKey, setStreamKey] = useState(0);
+
+  // Device mode: stream via /api/camera/stream (multipart MJPEG). Check status on mount.
   useEffect(() => {
     if (source !== 'device') return;
-    let stopped = false;
-    let inFlight = false;
-
-    const tick = () => {
-      if (inFlight) return;
-      inFlight = true;
-      const img = new Image();
-      const url = `/api/camera/latest.jpg?t=${Date.now()}`;
-      img.onload = () => {
-        inFlight = false;
-        if (!stopped) {
-          errorCountRef.current = 0;
+    fetch('/api/camera/status')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.attached) {
           hasFrameRef.current = true;
-          setFrameSrc(url);
           setNoFrame(false);
         }
-      };
-      img.onerror = () => {
-        inFlight = false;
-        if (!stopped) {
-          errorCountRef.current++;
-          // Only show placeholder if we haven't received any frame yet
-          // or if 10 consecutive ticks (6+ seconds) have persistently failed.
-          if (errorCountRef.current >= 10 && !hasFrameRef.current) {
-            setNoFrame(true);
-          }
-        }
-      };
-      img.src = url;
-    };
-    tick();
-    const id = setInterval(tick, 600);
-    return () => { stopped = true; clearInterval(id); };
+      })
+      .catch(() => {});
   }, [source]);
 
   // Browser webcam: show it locally and push a frame to the server ~1/sec.
@@ -255,7 +232,23 @@ export default function CameraPanel({ isDark, onSnapshot, onError, snapshotLabel
       <div className={`relative w-full aspect-[4/3] rounded-xl overflow-hidden border flex items-center justify-center ${isDark ? 'bg-black border-white/10' : 'bg-slate-900 border-[#2E2B27]/10'}`}>
         {source === 'browser' && !camError && <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-contain" />}
         {source === 'browser' && camError && <p className="text-xs text-red-300 p-4 text-center">{camError}</p>}
-        {source !== 'browser' && !noFrame && frameSrc && <img src={frameSrc} alt="Camera view" className="w-full h-full object-contain" />}
+        {source === 'device' && (
+          <img
+            key={streamKey}
+            src={`/api/camera/stream?k=${streamKey}`}
+            alt="IMS Camera Live Stream"
+            className={`w-full h-full object-contain ${noFrame ? 'hidden' : 'block'}`}
+            onLoad={() => {
+              hasFrameRef.current = true;
+              setNoFrame(false);
+            }}
+            onError={() => {
+              setTimeout(() => setStreamKey((k) => k + 1), 2500);
+              if (!hasFrameRef.current) setNoFrame(true);
+            }}
+          />
+        )}
+        {source === 'upload' && !noFrame && frameSrc && <img src={frameSrc} alt="Camera view" className="w-full h-full object-contain" />}
         
         {source === 'device' && noFrame && (
           <div className="flex flex-col items-center justify-center p-6 text-center max-w-sm gap-3">

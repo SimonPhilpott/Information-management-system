@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 120
-- Verified Features: 120
+- Total Registered Features: 121
+- Verified Features: 121
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -128,6 +128,7 @@
 | FEAT-118 | Cable-Free Development & Wi-Fi Log Mirroring | [main.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/main.cpp) | FreeRTOS log queue streaming over TCP 3002, camera log bridge, boot_diag reset telemetry, and remote management command verification | PASS |
 | FEAT-119 | Logitech C270 UVC Camera Streaming & Look/Faces Portals | [camera.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/camera.cpp) | USB host enumeration (VID 046D PID 0825), 640x480 MJPEG streaming, on-screen camera icon, /api/look visual QA, and Look & Faces portal routing verification | PASS |
 | FEAT-120 | Camera Feed Stability & Deletion Operations in Look and Faces Portals | [LookPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/LookPortal.jsx) | Camera feed frame retention, gallery thumbnail deletion, snapshot Q&A deletion, person deletion, face sample management, and bulk clear all | PASS |
+| FEAT-121 | Camera Frame Rate Acceleration: ESP32 Cadence Optimization & Live MJPEG Multipart Stream | [camera.cpp](file:///d:/Information%20management%20system/firmware/esp32-s3-box-3/src/camera.cpp) | ESP32 upload cadence tuning (160ms/40ms), GET /api/camera/stream multipart MJPEG broadcast, and zero-polling browser rendering | PASS |
 
 ## Section 2: Detailed Scenarios
 ### Suite 31: Observability Device Health Panel & Service (FEAT-086)
@@ -1232,6 +1233,13 @@
 5. **Saved Face & Sample Management:** In `FacesPortal.jsx`, verify each person card displays their name, sample count, and an interactive 'Manage samples' toggle. Expanding samples loads `/api/people/:id/samples` with image thumbnails; verify clicking a sample's delete button executes `DELETE /api/people/sample/:sampleId` and updates the sample count.
 6. **Person & Bulk Face Deletion:** In `FacesPortal.jsx`, verify clicking a person's delete button invokes `DELETE /api/people/:id` with confirmation and removes the person. Verify the 'Clear all' button in the header executes `DELETE /api/people`, wiping all enrolled people and face samples.
 
+### Suite 121: Camera Frame Rate Acceleration: ESP32 Cadence Optimization & Live MJPEG Multipart Stream (FEAT-121)
+1. **ESP32 Upload Cadence:** In `camera.cpp`, verify `cameraManagerTask` runs with 40ms task delay and upload throttle reduced from 500ms to 160ms, increasing hardware frame transmission headroom to ~6 fps over Wi-Fi without starvation of audio or diagnostic queues.
+2. **Server Multipart Stream Endpoint:** In `cameraService.js` and `routes/camera.js`, issue a request to `GET /api/camera/stream`. Verify response sets `multipart/x-mixed-replace; boundary=frame` and begins streaming incoming JPEG frames wrapped in multipart boundaries.
+3. **Multi-Client Broadcast Hygiene:** Connect multiple clients or curl listeners to `/api/camera/stream`. Ingest a frame; verify all active clients receive the frame simultaneously, and that disconnects cleanly unregister from `mjpegClients` without leaking response sockets.
+4. **Native Zero-Polling Display in CameraPanel:** In `CameraPanel.jsx`, switch to IMS camera (`source === 'device'`). Verify `<img src="/api/camera/stream" />` renders video smoothly without issuing repeated `setInterval` GET requests to `/api/camera/latest.jpg`.
+5. **Automatic Stream Reconnect:** Simulate temporary stream interrupt or device wake; verify `streamKey` retry logic automatically reconnects to `/api/camera/stream` within 2.5s.
+
 ## Section 3: Defensive Engineering Invariants
 - **Scheduler Concurrency Protection:** All routines managed by `schedulerService` must acquire an execution run-lock (`isRunning`) before invoking the action and release it in a `finally` block to prevent SQLite database write lock contention.
 - **Pre-Restore Snapshot Guarantee:** Every database restoration via `backupService.restoreBackup()` must take a full SQLite backup snapshot of the active database (`LOCAL/pre-restore-app-${Date.now()}.db`) before touching live database or asset files.
@@ -1258,4 +1266,5 @@
 - **USB Host Control Transfer Buffer & Enumeration Invariant:** In `custom_sdkconfig` and `sdkconfig.h`, `CONFIG_USB_HOST_CONTROL_TRANSFER_MAX_SIZE` must be configured to >= 3072 bytes (accommodating complex multi-interface UVC descriptors with 14+ frame resolutions), and in `enum.c`, `enum_proceed` must default to `true` when `enum_filter_cb` is NULL to prevent spurious aborts of standard UVC peripherals. USB port reset recovery delay (`CONFIG_USB_HOST_RESET_RECOVERY_MS`) must be at least 300ms to allow external camera sensor and DSP PLL clocks to stabilize after bus reset.
 - **Camera Polling Frame Retention & Feed Decoupling Invariant:** In `CameraPanel.jsx`, the visual `<img />` tag must not be unmounted on transient HTTP fetch failures or single image load errors (`img.onerror`). The last successfully decoded JPEG frame must be retained in memory (`hasFrameRef`), and `noFrame` state must only trigger after at least 10 consecutive connection failures without any prior valid frame, eliminating black screen flashes during live network polling.
 - **Look & Face Deletion Cascade & Filesystem Hygiene Invariant:** In `lookService.js` and `faceService.js`, deleting snapshots or face profiles must atomically remove both the SQLite metadata records (`snapshots`, `snapshot_qa`, `faces`, `people`, `face_samples`) and the corresponding physical media files (`.jpg` snapshot images and face crop thumbnails in `data/faces/`) from disk. Deleting all snapshots or all people must safely tolerate already-deleted or absent files on disk without throwing unhandled file system exceptions.
+- **MJPEG Multipart Stream Socket Retention & Cleanup Invariant:** In `cameraService.js`, all active client responses in `mjpegClients` must have `close` event listeners that immediately purge the response object from the `Set`. Write failures during frame broadcasting must be trapped in a `try/catch` and automatically trigger deletion of the broken client socket to prevent hung connections or memory leaks during client navigation.
 

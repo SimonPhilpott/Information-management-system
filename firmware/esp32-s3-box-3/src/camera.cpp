@@ -277,8 +277,9 @@ static bool postBytes(const char *path, const uint8_t *data, size_t len, const c
   if (WiFi.status() != WL_CONNECTED) return false;
   HTTPClient http;
   String url = String("http://") + g_host + ":" + g_port + path;
-  http.setConnectTimeout(2000);
-  http.setTimeout(3000);
+  http.setConnectTimeout(800);
+  http.setTimeout(1200);
+  http.setReuse(true);
   if (!http.begin(url)) return false;
   http.addHeader("Content-Type", contentType);
   int code = http.POST((uint8_t *)data, len);
@@ -292,7 +293,7 @@ static void cameraManagerTask(void *) {
   char line[160];
 
   for (;;) {
-    vTaskDelay(pdMS_TO_TICKS(250));
+    vTaskDelay(pdMS_TO_TICKS(40));
 
     if (g_newDevice) {
       g_newDevice = false;
@@ -319,10 +320,10 @@ static void cameraManagerTask(void *) {
       if (postBytes(bootBeatSent ? "/device/camera/heartbeat" : "/device/camera/heartbeat?boot=1", (const uint8_t *)"", 0, "text/plain")) bootBeatSent = true;
     }
 
-    // Newest frame -> backend, ~2 per second while awake and streaming.
-    if (g_streaming && g_jpgSeq != g_sentSeq && millis() - lastUploadMs > 500) {
+    // Newest frame -> backend, up to ~6 per second while awake and streaming.
+    if (g_streaming && g_jpgSeq != g_sentSeq && millis() - lastUploadMs > 160) {
       size_t len = 0;
-      if (xSemaphoreTake(g_jpgMux, pdMS_TO_TICKS(20)) == pdTRUE) {
+      if (xSemaphoreTake(g_jpgMux, pdMS_TO_TICKS(15)) == pdTRUE) {
         len = g_jpgLen;
         if (len > 0) memcpy(g_tx, g_jpg, len);
         g_sentSeq = g_jpgSeq;
@@ -335,7 +336,7 @@ static void cameraManagerTask(void *) {
     }
 
     // Drain diagnostic log lines (a few per pass so uploads aren't starved).
-    for (int i = 0; i < 4 && xQueueReceive(g_logQ, line, 0) == pdTRUE; i++) {
+    for (int i = 0; i < 2 && xQueueReceive(g_logQ, line, 0) == pdTRUE; i++) {
       postBytes("/device/camera/log", (const uint8_t *)line, strlen(line), "text/plain");
     }
   }

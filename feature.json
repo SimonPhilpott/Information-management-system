@@ -1467,6 +1467,17 @@
         "Granular Q&A Item Deletion: Individual question-and-answer exchanges stored under a snapshot can be deleted independently without removing the parent photo",
         "Face Sample Management & Bulk Deletion: FacesPortal supports viewing and deleting individual face sample crops per person, deleting entire person profiles with toast feedback, and bulk clearing all learned faces via DELETE /api/people"
       ]
+    },
+    "Camera Frame Rate Acceleration: ESP32 Cadence Optimization & Live MJPEG Multipart Stream": {
+      "status": "enabled",
+      "description": "Increases camera frame delivery rate across the full end-to-end stack by tuning ESP32 upload cadence and task delays (160ms throttle, 40ms task tick, HTTP keep-alive reuse) and introducing a high-throughput server-side multipart MJPEG stream endpoint (/api/camera/stream) consumed natively in CameraPanel with 0ms client polling latency.",
+      "renderingEngine": "C++ / ESP-IDF / React / Node.js Express Multipart",
+      "subFeatures": [
+        "ESP32 Upload Cadence Acceleration: Tightens cameraManagerTask delay to 40ms, lowers JPEG upload interval throttle from 500ms to 160ms (~6 fps capacity), and enables HTTP connection reuse in postBytes",
+        "Server-Side Multipart MJPEG Distribution: Implements GET /api/camera/stream emitting multipart/x-mixed-replace boundary chunks to broadcast every incoming JPEG frame to connected clients in real time",
+        "Zero-Polling Browser Display: Updates CameraPanel to consume /api/camera/stream directly via native <img> rendering, eliminating periodic setInterval HTTP polling overhead and frame jitter",
+        "Stream Resilience & Auto-Reconnect: CameraPanel maintains automatic retry and reconnection logic with streamKey state upon transient stream interrupts or camera wake transitions"
+      ]
     }
   }
 }

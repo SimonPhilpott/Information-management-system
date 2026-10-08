@@ -1,5 +1,5 @@
 import express, { Router } from 'express';
-import { setFrame, getFrame, getCameraStatus, wakeCamera, heartbeat, readDeviceLog } from '../services/cameraService.js';
+import { setFrame, getFrame, getCameraStatus, wakeCamera, heartbeat, readDeviceLog, streamMjpeg } from '../services/cameraService.js';
 import { executeDeviceCommand } from '../services/deviceHealthService.js';
 
 const router = Router();
@@ -15,6 +15,12 @@ router.post('/frame', express.raw({ type: ['image/jpeg', 'application/octet-stre
   }
   setFrame(req.body, String(req.query.source || 'unknown').slice(0, 24));
   res.json({ success: true });
+});
+
+// Multipart MJPEG live stream (high FPS, zero client polling overhead)
+router.get('/stream', (req, res) => {
+  wakeCamera();
+  streamMjpeg(req, res);
 });
 
 router.get('/latest.jpg', (req, res) => {

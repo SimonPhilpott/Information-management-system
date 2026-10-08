@@ -19,6 +19,8 @@ let heartbeatAt = 0;
 let awakeUntil = Date.now() + AWAKE_MS; // Start hot
 
 const cameraListeners = new Set();
+const mjpegClients = new Set();
+
 export function onCameraChange(listener) {
   if (typeof listener === 'function') {
     cameraListeners.add(listener);
@@ -32,9 +34,46 @@ function notifyCameraChange() {
   }
 }
 
+export function streamMjpeg(req, res) {
+  res.writeHead(200, {
+    'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Connection': 'close',
+    'Pragma': 'no-cache'
+  });
+
+  if (latest.buffer) {
+    try {
+      res.write(`--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${latest.buffer.length}\r\n\r\n`);
+      res.write(latest.buffer);
+      res.write('\r\n');
+    } catch (_) {}
+  }
+
+  mjpegClients.add(res);
+
+  req.on('close', () => {
+    mjpegClients.delete(res);
+  });
+}
+
 export function setFrame(buffer, source = 'unknown') {
   latest = { buffer, at: Date.now(), source };
   notifyCameraChange();
+
+  if (mjpegClients.size > 0) {
+    const header = Buffer.from(`--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${buffer.length}\r\n\r\n`);
+    const footer = Buffer.from('\r\n');
+    for (const client of mjpegClients) {
+      try {
+        client.write(header);
+        client.write(buffer);
+        client.write(footer);
+      } catch (_) {
+        mjpegClients.delete(client);
+      }
+    }
+  }
 }
 
 // Wakes the camera (or extends its awake period) for another AWAKE_MS.
