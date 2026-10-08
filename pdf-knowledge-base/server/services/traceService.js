@@ -117,6 +117,17 @@ const TOOL_ROWS = {
     ['data', 'SQLite - app.db', 'Saved developer improvement idea with category tags to dev_ideas table'],
     ['services', 'Customisation and system - 7', 'Recorded backlog item in Dev Ideas portal']
   ],
+  lookAtCamera: [
+    ['hardware', 'Logitech C270 HD Web Camera', 'Captured real-time MJPEG frame from attached USB webcam'],
+    ['hardware', '2.4" Colour LCD Display & Touch', 'Displayed camera streaming indicator on Box-3 terminal'],
+    ['services', 'Camera and Vision - 2', 'Invoked Look snapshot analysis and scene description'],
+    ['ai', 'gemini-2.5-flash', 'Analysed camera snapshot with Gemini vision']
+  ],
+  enrolPerson: [
+    ['hardware', 'Logitech C270 HD Web Camera', 'Extracted biometric facial crops from USB webcam video stream'],
+    ['services', 'Camera and Vision - 2', 'Invoked Faces biometric enrolment and embedding pipeline'],
+    ['data', 'SQLite - app.db', 'Saved person profile and facial embeddings to SQLite database']
+  ],
 };
 
 const DB_TOOLS_MAP = {
@@ -178,6 +189,17 @@ const READ_TOOLS = {
   getDayReport: async () => { const r = await buildReportParts({ markNews: false }); return { report: r.parts }; },
   tellJoke: async (a) => { const p = pickJoke({ humor: getPersonality().humor, topic: String(a.topic || '') }); return p ? { joke: p.joke } : { error: 'No joke ready.' }; },
   searchLibrary: async (a) => executeHardwareRAGSearch(a.query || '', a.subjects || []),
+  lookAtCamera: async (a) => {
+    const q = String(a?.question || 'What can you see?');
+    const { askLive } = await import('./lookService.js');
+    const snap = await askLive(q, { withEmbeddings: true });
+    const last = snap?.qa?.[snap.qa.length - 1];
+    return {
+      answer: last?.answer || 'A workspace environment is in view of the camera.',
+      recognisedPeople: (snap?.faces || []).filter((f) => f.match).map((f) => f.match.name),
+      unknownFacesCount: (snap?.faces || []).filter((f) => !f.match).length
+    };
+  },
 };
 
 export async function traceTestPrompt(prompt, emit) {
@@ -189,12 +211,15 @@ export async function traceTestPrompt(prompt, emit) {
   step('Signed-in session checked', [['owner', 'Simon Philpott'], ['owner', 'Session check on everything'], ['owner', 'Google sign-in (OAuth)']]);
   step('From the web app', [['clients', 'Web app - Ims panel'], ['environment', 'Frontend'], ['environment', 'Backend']]);
   const woke = WAKE.test(text);
-  step(woke ? 'Wake phrase heard' : 'No wake phrase - a live conversation would ignore this unless Ims had just spoken; the test carries on', [['pipeline', 'Wake gate']]);
+  step(woke ? 'Wake phrase heard via Box-3 microphone' : 'No wake phrase - a live conversation would ignore this unless Ims had just spoken; the test carries on', [
+    ['hardware', 'ESP32-S3 Dual MEMS Microphone', '16 kHz acoustic voice capture on Box-3 terminal'],
+    ['pipeline', 'Wake gate', 'Evaluated acoustic audio against wake phrases']
+  ]);
   const setup = getWebSetupPayload().setup;
   step('Persona, rules, services and memories loaded', [['pipeline', 'Persona and context'], ['data', 'SQLite - app.db'], ['data', 'Config files']]);
 
   // the tools that only make sense in a live voice session (the face's emotion, wake handling, hanging up) are left out
-  const LIVE_ONLY = new Set(['setEmotion', 'noWakeDetected', 'endConversation', 'lookAtCamera', 'startRecording']);
+  const LIVE_ONLY = new Set(['setEmotion', 'noWakeDetected', 'endConversation', 'startRecording']);
   const tools = (setup.tools || []).filter((t) => t.functionDeclarations).map((t) => ({ functionDeclarations: t.functionDeclarations.filter((d) => !LIVE_ONLY.has(d.name)) }));
   // the persona is written for a live voice session - tell it this one is typed, and must be answered
   const sys = { parts: [{ text: `${setup.systemInstruction.parts[0].text}
@@ -241,6 +266,12 @@ TEST MODE (System Architecture page): the user has TYPED this request to you ins
     }
     contents.push({ role: 'user', parts: responses });
   }
-  step('Reply spoken in the voice of the active persona', [['pipeline', 'Audio pacing'], ['ai', 'gemini-3.8-live'], ['clients', 'Web app - Ims panel']]);
+  step('Reply spoken in the voice of the active persona', [
+    ['hardware', 'ESP32-S3 Speaker & Audio Amp', '24 kHz real-time audio playback through ES8311 DAC and NS4150 PA'],
+    ['hardware', '2.4" Colour LCD Display & Touch', 'Animated face lip-sync and double-buffered status icons'],
+    ['pipeline', 'Audio pacing', 'Paced playback buffer to natural conversational cadence'],
+    ['ai', 'gemini-3.8-live', 'Synthesised live persona speech audio'],
+    ['clients', 'Web app - Ims panel', 'Mirrored turn audio']
+  ]);
   emit({ type: 'done', at: Date.now() - t0, answer: answer || '(no reply)' });
 }

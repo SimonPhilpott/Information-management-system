@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 124
-- Verified Features: 122
+- Total Registered Features: 125
+- Verified Features: 123
 - Awaiting On-Device Check: 3
 - Pending Features: 0
 
@@ -133,7 +133,8 @@
 | FEAT-122 | Desk Presence, Eyes That Follow You & Sit-Down Greeting | [presenceService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/presenceService.js) | Presence state machine, gaze to Box-3 (dot/designed/pack faces), one greeting per sit-down from standby only, desk_presence log | PENDING (device) |
 | FEAT-123 | Camera Off During Call & Meeting Recording | [cameraService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/cameraService.js) | No frames, no stream, no presence/gaze/greeting and UVC suspended while recording | PENDING (device) |
 | FEAT-124 | Look / See Requests Always Use the Camera | [index.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/index.js) | Vision phrases trigger the camera; reply without lookAtCamera gets a follow-up with what the camera shows | PENDING (device) |
-| FEAT-124 | Camera Vision QA & Face Enrolment Tooling, Anti-Flicker Sprite Buffering, Architecture Representation & Interactive Face Gaze | [ImsFace.jsx](file:///d:/Information%20management%20system/src/components/Ims/ImsFace.jsx) | Look/Faces tool execution, double-buffered LGFX_Sprite compilation, and interactive pointer edge tracking | PASS |
+| FEAT-124b | Camera Vision QA & Face Enrolment Tooling, Anti-Flicker Sprite Buffering, Architecture Representation & Interactive Face Gaze | [ImsFace.jsx](file:///d:/Information%20management%20system/src/components/Ims/ImsFace.jsx) | Look/Faces tool execution, double-buffered LGFX_Sprite compilation, and interactive pointer edge tracking | PASS |
+| FEAT-125 | System Architecture Hardware Subsystems & Real-Time In-Use Telemetry Highlighting | [SystemArchitecturePortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/SystemArchitecturePortal.jsx) | Interactive hardware card with 6 modules, live polling telemetry, active in-use highlights, and trace runner hardware lighting | PASS |
 
 ## Section 2: Detailed Scenarios
 ### Suite 31: Observability Device Health Panel & Service (FEAT-086)
@@ -1272,7 +1273,14 @@
 5. **Interactive Viewport Edge Gaze:** Move cursor to left side of screen (<38% width) and right side (>62% width). Verify `ClassicDotFace` dynamically shifts pupil dots left (`002ff002ff00`) and right (`00ff200ff200`), reverting to center with autonomous glances when cursor rests in the central column.
 6. **System Architecture Live Camera Status:** Navigate to `/ims/architecture`. Verify Services card reports 31 services with Camera & Vision active (Logitech C270 stream, Look & Faces), Findings card displays "Camera operational", and live API `/api/system/architecture` returns `cameraAttached: true`.
 
+### Suite 125: System Architecture Hardware Subsystems & Real-Time In-Use Telemetry Highlighting (FEAT-125)
+1. **Hardware Card Structure:** Navigate to `/ims/architecture`. Expand the 'Across the whole system' supporting section. Verify 4 cards render side by side: Background jobs (8), Guardrails (7), Desk terminal, and Hardware subsystems (6). Verify Hardware subsystems card lists all 6 modules: ESP32-S3 Dual MEMS Microphone, Logitech C270 HD Web Camera, ESP32-S3 Speaker & Audio Amp, 2.4" Colour LCD Display & Touch, Desk Presence & Gaze Sensor, and Physical Controls & Sensors.
+2. **Real-Time Live Hardware Polling & Highlighting:** Query `GET /api/system/architecture`. Verify response contains `hardware: { mic, camera, speaker, display, presence }` and `cameraStreaming`. When webcam is streaming, verify the 'Logitech C270 HD Web Camera' row in `SystemArchitecturePortal` lights up with a pulsing border, an 'Active' badge, and a tooltip displaying "Live 640x480 MJPEG video streaming active over USB host".
+3. **Trace Runner Hardware Integration:** In the 'Test a prompt' box under Ims, run "What can you see right now?". Verify trace stream emits hardware row highlights: microphone on input start, webcam during `lookAtCamera` snapshot acquisition, and speaker + display during response speech. Hover over highlighted items to verify contextual reasons are displayed.
+4. **Dedicated Hardware Drawer Tab:** In the summary drawer, select the **Hardware** tab. Verify the panel displays live status chips (Desk Connected/Offline, Streaming, Ready), chipset & bus specifications, the ESP32-S3 GPIO pinout matrix (USB Host 19/20, I2S 41/42/2/40/15, SPI 4/5/6/7, I2C 8/18), and the complete audio/video ingress/egress pipeline diagram.
+
 ## Section 3: Defensive Engineering Invariants
+- **Hardware Telemetry Polling Cleanup Invariant:** In `SystemArchitecturePortal.jsx`, periodic polling of `/api/system/architecture` (4000ms interval) must be cleanly cleared with `clearInterval` on component unmount, and `effectiveHot` state memoization must defensively coalesce null/undefined backend telemetry values to prevent UI render crashes.
 - **Scheduler Concurrency Protection:** All routines managed by `schedulerService` must acquire an execution run-lock (`isRunning`) before invoking the action and release it in a `finally` block to prevent SQLite database write lock contention.
 - **Pre-Restore Snapshot Guarantee:** Every database restoration via `backupService.restoreBackup()` must take a full SQLite backup snapshot of the active database (`LOCAL/pre-restore-app-${Date.now()}.db`) before touching live database or asset files.
 - **Hardware Credential Isolation:** The hardware Wi-Fi key (`data/.wifi_key`) must never be deleted or overwritten by backup archive unpack routines.

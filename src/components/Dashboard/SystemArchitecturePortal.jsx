@@ -6,7 +6,7 @@ import {
   Terminal, GitBranch, Clock, Timer, RefreshCw, Scale, ChevronRight, AlertTriangle, Info, Smile, Drama,
   MessageSquareQuote, Wifi, Newspaper, Heart, Radio, Speaker, Cake, Bell, ListChecks, Eye, Maximize2, Minimize2, Eraser,
   UserPlus, Mail, ClipboardCopy, X, Check, Filter, Download, Printer, Search, Play, Loader2, CheckCircle2,
-  Trash2,
+  Trash2, Camera, Volume2, Sliders,
 } from 'lucide-react';
 import PortalShell from './PortalShell';
 import ImsFace from '../Ims/ImsFace';
@@ -169,6 +169,17 @@ const supporting = [
       { icon: Cpu, main: 'Hardware', sub: 'ESP32-S3, 16 MB flash, 8 MB PSRAM' },
     ],
   },
+  {
+    key: 'hardware', title: 'Hardware subsystems', icon: Cpu, accent: 'blue', count: 6,
+    rows: [
+      { icon: Mic, main: 'ESP32-S3 Dual MEMS Microphone', sub: 'Dual ES7210 I2S ADC, 16 kHz 16-bit mono acoustic array with beamforming & AEC' },
+      { icon: Camera, main: 'Logitech C270 HD Web Camera', sub: 'UVC MJPEG over ESP32 USB Host (D+/D- GPIO 19/20), 640x480 @ 15 fps' },
+      { icon: Volume2, main: 'ESP32-S3 Speaker & Audio Amp', sub: 'ES8311 I2S DAC + NS4150 3W Class-D power amplifier, 24 kHz high-fidelity playback' },
+      { icon: Monitor, main: '2.4" Colour LCD Display & Touch', sub: 'ST7789V 320x240 SPI display + FT6336U capacitive touch controller (LovyanGFX)' },
+      { icon: Eye, main: 'Desk Presence & Gaze Sensor', sub: 'Biometric sit-down detection via YuNet face localization & C270 video stream' },
+      { icon: Sliders, main: 'Physical Controls & Sensors', sub: 'Hardware mute switch, Boot/Reset tactiles, battery monitor & AXP2101 PMU' },
+    ],
+  },
 ];
 
 const FINDINGS = [
@@ -203,6 +214,7 @@ const DATA_GROUPS = [
 const ACTIONS = [
   { icon: Drama, title: 'Persona', sub: 'Dialect and rules', path: '/ims/persona', accent: 'purple' },
   { icon: MessageSquareQuote, title: 'Wake and stop phrases', sub: 'Record and add', path: '/ims/phrases', accent: 'violet' },
+  { icon: Camera, title: 'Look & Faces', sub: 'Webcam stream & biometrics', path: '/ims/look', accent: 'blue' },
   { icon: Droplets, title: 'Blood sugar', sub: 'Nightscout and carbs', path: '/ims/glucose', accent: 'red' },
   { icon: Newspaper, title: 'News sources', sub: 'Feeds and weighting', path: '/ims/news', accent: 'sky' },
   { icon: Smile, title: 'Face designer', sub: 'Faces and eyes', path: '/ims/facedesigner', accent: 'amber' },
@@ -825,7 +837,12 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
   const wrapRef = useRef(null), centreRef = useRef(null), cardRefs = useRef({}), panelRef = useRef(null);
 
   useEffect(() => {
-    fetch('/api/system/architecture').then((r) => r.json()).then((d) => { if (d.success) setLive(d); }).catch(() => {});
+    const fetchArch = () => {
+      fetch('/api/system/architecture').then((r) => r.json()).then((d) => { if (d.success) setLive(d); }).catch(() => {});
+    };
+    fetchArch();
+    const iv = setInterval(fetchArch, 4000);
+    return () => clearInterval(iv);
   }, []);
 
   const cards = spokes(live);
@@ -844,9 +861,50 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
     if (action === 'invite') setInviteModalOpen(true);
   };
 
+  // Merges test-prompt highlights with active live hardware operations
+  const effectiveHot = useMemo(() => {
+    const result = { ...hot };
+    // Camera streaming live right now
+    if (live?.cameraStreaming || live?.hardware?.camera?.streaming) {
+      const k = 'hardware|Logitech C270 HD Web Camera';
+      if (!result[k]) {
+        result[k] = { at: Date.now(), uses: 1, pulse: true, reason: 'Live 640x480 MJPEG video streaming active over USB host' };
+      }
+    }
+    // Desk terminal connected and microphone active
+    if (live?.hardware?.mic?.active) {
+      const k = 'hardware|ESP32-S3 Dual MEMS Microphone';
+      if (!result[k]) {
+        result[k] = { at: Date.now(), uses: 1, pulse: false, reason: 'Active 16 kHz PCM stream from desk terminal' };
+      }
+    }
+    // Presence tracking active
+    if (live?.hardware?.presence?.active) {
+      const k = 'hardware|Desk Presence & Gaze Sensor';
+      if (!result[k]) {
+        result[k] = { at: Date.now(), uses: 1, pulse: false, reason: 'Real-time face presence tracking active on webcam feed' };
+      }
+    }
+    // Display active
+    if (live?.hardware?.display?.active) {
+      const k = 'hardware|2.4" Colour LCD Display & Touch';
+      if (!result[k]) {
+        result[k] = { at: Date.now(), uses: 1, pulse: false, reason: 'Active 320x240 ST7789 display rendering face & live dashboard' };
+      }
+    }
+    // Speaker active
+    if (live?.hardware?.speaker?.active) {
+      const k = 'hardware|ESP32-S3 Speaker & Audio Amp';
+      if (!result[k]) {
+        result[k] = { at: Date.now(), uses: 1, pulse: true, reason: '24 kHz DAC audio playback active over NS4150 amplifier' };
+      }
+    }
+    return result;
+  }, [hot, live]);
+
   const place = (key, cls) => (
     <div className={cls}>
-      <Card card={byKey[key]} isDark={isDark} hot={hot} cardRef={(el) => { cardRefs.current[key] = el; }}
+      <Card card={byKey[key]} isDark={isDark} hot={effectiveHot} cardRef={(el) => { cardRefs.current[key] = el; }}
         showUsedOnly={showUsedOnly}
         searchQuery={searchQuery}
         onOpen={() => openTab(key === 'data' ? 'data' : key === 'pipeline' ? 'turn' : 'overview')}
@@ -854,7 +912,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
     </div>
   );
 
-  const litCount = Object.keys(hot).length;
+  const litCount = Object.keys(effectiveHot).length;
 
   return (
     <PortalShell title="System Architecture" subtitle="/ims/architecture • how Ims is built and how it all connects"
@@ -1005,15 +1063,15 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
               {place('connections', '')}
             </div>
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-5">
             {/* supporting row - belongs to the whole system, so no connectors */}
-            <button onClick={toggleSupport} className="no-print lg:col-span-3 flex items-center gap-3 text-left">
+            <button onClick={toggleSupport} className="no-print md:col-span-2 lg:col-span-4 flex items-center gap-3 text-left">
               <span className={`text-[11px] font-black uppercase tracking-widest ${muted}`}>Across the whole system</span>
               <span className={`flex-1 h-px ${isDark ? 'bg-white/10' : 'bg-slate-200'}`} />
               <span className={`text-[11px] font-bold flex items-center gap-1 ${muted}`}>{supportOpen ? 'Hide' : 'Show'} <ChevronRight size={14} className={`transition-transform ${supportOpen ? '-rotate-90' : 'rotate-90'}`} /></span>
             </button>
             {supportOpen && supporting.map((c) => (
-              <div key={c.key}><Card card={c} isDark={isDark} hot={hot} showUsedOnly={showUsedOnly} searchQuery={searchQuery} onRowAction={handleRowAction} /></div>
+              <div key={c.key}><Card card={c} isDark={isDark} hot={effectiveHot} showUsedOnly={showUsedOnly} searchQuery={searchQuery} onOpen={() => openTab(c.key === 'hardware' ? 'hardware' : c.key === 'jobs' ? 'jobs' : 'overview')} onRowAction={handleRowAction} /></div>
             ))}
           </div>
         </div>
@@ -1041,7 +1099,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
           </div>
 
           <TabSlider isDark={isDark} active={tab}>
-            {[['overview', 'Overview'], ['jobs', 'Background Jobs'], ['logs', 'Logs Explorer'], ['turn', 'A conversation'], ['latency', 'Voice Latency & Tools'], ['data', 'Data'], ['findings', 'Findings']].map(([k, label]) => (
+            {[['overview', 'Overview'], ['hardware', 'Hardware'], ['jobs', 'Background Jobs'], ['logs', 'Logs Explorer'], ['turn', 'A conversation'], ['latency', 'Voice Latency & Tools'], ['data', 'Data'], ['findings', 'Findings']].map(([k, label]) => (
               <button key={k} data-tab={k} onClick={() => setTab(k)}
                 className={`pb-2.5 whitespace-nowrap border-b-2 -mb-px ${tab === k ? 'border-violet-500 text-violet-500 font-bold' : `border-transparent ${muted}`}`}>{label}</button>
             ))}
@@ -1142,6 +1200,10 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
               </ol>
             )}
 
+            {tab === 'hardware' && (
+              <HardwareSubsystemsSection isDark={isDark} muted={muted} live={live} effectiveHot={effectiveHot} />
+            )}
+
             {tab === 'jobs' && (
               <BackgroundJobsSection isDark={isDark} muted={muted} />
             )}
@@ -1175,6 +1237,202 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
 
       <ArchitectureInviteModal isOpen={inviteModalOpen} onClose={() => setInviteModalOpen(false)} isDark={isDark} toast={toast} />
     </PortalShell>
+  );
+}
+
+function HardwareSubsystemsSection({ isDark, muted, live, effectiveHot }) {
+  const box = `p-3 rounded-xl border ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-slate-200'}`;
+
+  const isMicLit = Boolean(effectiveHot['hardware|ESP32-S3 Dual MEMS Microphone']);
+  const isCamLit = Boolean(effectiveHot['hardware|Logitech C270 HD Web Camera']);
+  const isSpkLit = Boolean(effectiveHot['hardware|ESP32-S3 Speaker & Audio Amp']);
+  const isDispLit = Boolean(effectiveHot['hardware|2.4" Colour LCD Display & Touch']);
+  const isPresLit = Boolean(effectiveHot['hardware|Desk Presence & Gaze Sensor']);
+  const isCtrlLit = Boolean(effectiveHot['hardware|Physical Controls & Sensors']);
+
+  const camStreaming = live?.cameraStreaming || live?.hardware?.camera?.streaming;
+  const camAttached = live?.cameraAttached || live?.hardware?.camera?.attached;
+  const micActive = live?.hardware?.mic?.active;
+  const micMuted = live?.hardware?.mic?.muted;
+  const online = live?.deviceOnline;
+
+  const items = [
+    {
+      title: 'ESP32-S3 Dual MEMS Microphone',
+      chip: 'Dual ES7210 I2S ADC',
+      bus: 'I2S Mono 16 kHz 16-bit PCM',
+      status: micActive ? 'Active (Streaming)' : micMuted ? 'Muted' : online ? 'Ready' : 'Offline',
+      statusColor: micActive ? 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30' : micMuted ? 'text-amber-400 bg-amber-500/15 border-amber-500/30' : online ? 'text-sky-400 bg-sky-500/15 border-sky-500/30' : 'text-slate-400 bg-slate-500/15 border-slate-500/30',
+      icon: Mic,
+      lit: isMicLit,
+      reason: effectiveHot['hardware|ESP32-S3 Dual MEMS Microphone']?.reason,
+      details: 'Dual microphone array with acoustic echo cancellation (AEC), voice activity detection (VAD), and wake phrase gating.',
+    },
+    {
+      title: 'Logitech C270 HD Web Camera',
+      chip: '720p CMOS Sensor / USB UVC',
+      bus: 'USB Host 1.1 Full Speed (D+ GPIO 20, D- GPIO 19)',
+      status: camStreaming ? 'Active (Streaming)' : camAttached ? 'Attached (Idle)' : 'Disconnected',
+      statusColor: camStreaming ? 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30' : camAttached ? 'text-sky-400 bg-sky-500/15 border-sky-500/30' : 'text-rose-400 bg-rose-500/15 border-rose-500/30',
+      icon: Camera,
+      lit: isCamLit,
+      reason: effectiveHot['hardware|Logitech C270 HD Web Camera']?.reason,
+      details: 'Streams 640x480 MJPEG @ 15 fps over USB Host to :3003/look; captured for Gemini vision snapshots and YuNet face detection.',
+    },
+    {
+      title: 'ESP32-S3 Speaker & Audio Amp',
+      chip: 'ES8311 I2S DAC + NS4150 3W Class-D',
+      bus: 'I2S Mono 24 kHz 16-bit PCM',
+      status: isSpkLit ? 'Speaking (Active)' : online ? 'Ready' : 'Offline',
+      statusColor: isSpkLit ? 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30' : online ? 'text-sky-400 bg-sky-500/15 border-sky-500/30' : 'text-slate-400 bg-slate-500/15 border-slate-500/30',
+      icon: Volume2,
+      lit: isSpkLit,
+      reason: effectiveHot['hardware|ESP32-S3 Speaker & Audio Amp']?.reason,
+      details: 'Plays 24 kHz Gemini Live speech replies with 15-second lead buffering to eliminate audio jitter.',
+    },
+    {
+      title: '2.4" Colour LCD Display & Touch',
+      chip: 'ST7789V Display + FT6336U Touch',
+      bus: 'SPI (Display) + I2C (Touch) via LovyanGFX',
+      status: online ? 'Active (Rendering)' : 'Offline',
+      statusColor: online ? 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30' : 'text-slate-400 bg-slate-500/15 border-slate-500/30',
+      icon: Monitor,
+      lit: isDispLit,
+      reason: effectiveHot['hardware|2.4" Colour LCD Display & Touch']?.reason,
+      details: '320x240 RGB display rendering 12x8 dot animated face, lip sync, glucose & weather stats, and touch navigation.',
+    },
+    {
+      title: 'Desk Presence & Gaze Sensor',
+      chip: 'YuNet Neural Detector (100% On-Device)',
+      bus: 'Shared C270 Video Pipeline (30 s Poll)',
+      status: camStreaming ? 'Tracking (Engaged)' : 'Waiting for Camera',
+      statusColor: camStreaming ? 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30' : 'text-amber-400 bg-amber-500/15 border-amber-500/30',
+      icon: Eye,
+      lit: isPresLit,
+      reason: effectiveHot['hardware|Desk Presence & Gaze Sensor']?.reason,
+      details: 'Tracks desk presence, triggers sit-down greetings, auto-sleeps on absence, and suspends during privacy/recordings.',
+    },
+    {
+      title: 'Physical Controls & Sensors',
+      chip: 'AXP2101 PMU & GPIO Tactile Switches',
+      bus: 'Hardware GPIO & ADC Sensing',
+      status: 'Armed & Monitored',
+      statusColor: 'text-indigo-400 bg-indigo-500/15 border-indigo-500/30',
+      icon: Sliders,
+      lit: isCtrlLit,
+      reason: effectiveHot['hardware|Physical Controls & Sensors']?.reason,
+      details: 'Dedicated microphone hardware mute switch, Boot and Reset buttons, battery level monitoring, and USB-C power.',
+    },
+  ];
+
+  const pinouts = [
+    { bus: 'USB Host', pins: 'GPIO 19 (D-), GPIO 20 (D+)', desc: 'Full-Speed 12 Mbps host transceiver for Logitech C270 webcam' },
+    { bus: 'I2S Audio In (Mic)', pins: 'GPIO 41 (MCLK), GPIO 42 (BCLK), GPIO 2 (WS), GPIO 40 (SDIN)', desc: 'ES7210 16 kHz 16-bit mono stream' },
+    { bus: 'I2S Audio Out (DAC)', pins: 'GPIO 41 (MCLK), GPIO 42 (BCLK), GPIO 2 (WS), GPIO 15 (SDOUT)', desc: 'ES8311 + NS4150 24 kHz mono stream' },
+    { bus: 'SPI LCD Display', pins: 'GPIO 4 (CS), GPIO 5 (DC), GPIO 6 (SCLK), GPIO 7 (MOSI)', desc: 'ST7789V 320x240 LCD controller with LovyanGFX DMA' },
+    { bus: 'I2C Peripherals', pins: 'GPIO 8 (SDA), GPIO 18 (SCL)', desc: 'FT6336U touch screen, ES7210 / ES8311 control registers' },
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-bold text-sm">Hardware Subsystems & Peripherals</h3>
+          <p className={`text-[11px] ${muted}`}>ESP32-S3-BOX-3 desk terminal, attached sensors, and live telemetry</p>
+        </div>
+        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${online ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-slate-500/15 text-slate-400 border-slate-500/30'}`}>
+          {online ? 'Desk Connected' : 'Desk Offline'}
+        </span>
+      </div>
+
+      {/* Modules List */}
+      <div className="flex flex-col gap-2.5">
+        {items.map((it) => {
+          const Icon = it.icon;
+          return (
+            <div
+              key={it.title}
+              className={`p-3 rounded-xl border transition-all ${
+                it.lit
+                  ? 'border-blue-500/60 shadow-[0_0_20px_rgba(59,130,246,0.25)] bg-blue-500/10'
+                  : box
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${it.lit ? 'bg-blue-500/20 text-blue-400' : isDark ? 'bg-white/5 text-slate-300' : 'bg-slate-200 text-slate-700'}`}>
+                    <Icon size={15} />
+                  </div>
+                  <div>
+                    <div className="font-bold text-xs flex items-center gap-1.5 flex-wrap">
+                      <span>{it.title}</span>
+                      {it.lit && (
+                        <span className="px-1.5 py-0.2 rounded text-[9.5px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 animate-pulse">
+                          In Use
+                        </span>
+                      )}
+                    </div>
+                    <div className={`text-[10.5px] font-mono ${muted}`}>{it.chip} • {it.bus}</div>
+                  </div>
+                </div>
+
+                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${it.statusColor}`}>
+                  {it.status}
+                </span>
+              </div>
+
+              <div className={`mt-2 text-[11px] leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                {it.details}
+              </div>
+
+              {it.reason && (
+                <div className="mt-2 pt-2 border-t border-white/5 flex items-center gap-1.5 text-[10.5px] text-blue-400 font-medium">
+                  <Sparkles size={11} className="shrink-0" />
+                  <span>{it.reason}</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Bus Architecture & GPIO Pinout Table */}
+      <div className="flex flex-col gap-2 pt-2">
+        <h4 className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+          ESP32-S3 Bus & Pinout Assignments
+        </h4>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className={`text-[10px] uppercase font-bold tracking-wider border-b ${isDark ? 'border-white/10' : 'border-slate-200'} ${muted}`}>
+                <th className="py-1.5">Bus / Subsystem</th>
+                <th className="py-1.5">Assigned GPIO Pins</th>
+                <th className="py-1.5">Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pinouts.map((p) => (
+                <tr key={p.bus} className={`border-b ${isDark ? 'border-white/5' : 'border-slate-100'}`}>
+                  <td className={`py-1.5 font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{p.bus}</td>
+                  <td className="py-1.5 font-mono text-blue-400 text-[11px]">{p.pins}</td>
+                  <td className={`py-1.5 text-[11px] ${muted}`}>{p.desc}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Pipeline Diagram */}
+      <div className={`p-3 rounded-xl border text-xs ${box}`}>
+        <div className="font-bold text-xs mb-1 text-violet-400">Audio & Vision Ingress / Egress Pipeline</div>
+        <div className={`text-[11px] leading-relaxed ${muted}`}>
+          <b>Microphone Ingress:</b> ES7210 (16 kHz PCM) &rarr; ESP32-S3 &rarr; TCP :3002 &rarr; Gemini 3.8 Live<br />
+          <b>Webcam Ingress:</b> Logitech C270 &rarr; USB Host (D+/D-) &rarr; HTTP :3003 /look &rarr; OpenCV / Gemini Vision<br />
+          <b>Speaker Egress:</b> Gemini Live (24 kHz PCM) &rarr; TCP :3002 &rarr; ES8311 DAC &rarr; NS4150 Amp &rarr; Speaker
+        </div>
+      </div>
+    </div>
   );
 }
 

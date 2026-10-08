@@ -1073,6 +1073,14 @@
         "pdf-knowledge-base/server/services/faceService.js",
         "pdf-knowledge-base/server/services/lookService.js"
       ]
+    },
+    "src/components/Dashboard/SystemArchitecturePortal.jsx": {
+      "description": "System architecture visualization component featuring interactive spoke cards, supporting system modules, dedicated hardware card, live hardware polling, in-use highlight pulses, and hardware bus specifications drawer.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx",
+        "src/components/Ims/ImsFace.jsx",
+        "src/hooks/useSystemEvents.js"
+      ]
     }
   }
 }

@@ -37,20 +37,26 @@ Everything runs on your own machine. Cloud services used: Google (Drive, Calenda
 ## Architecture
 
 ```
-                    +---------------------------+
-   voice / touch    |   ESP32-S3-BOX-3 (Ims)    |   footer icons, face, clock
-  ----------------> |   firmware/esp32-s3-box-3 |
-                    +-------------+-------------+
-                                  | raw TCP :3002 (framed audio + JSON)
-                                  | plain HTTP :3003 (device endpoints)
-                                  v
+  Logitech C270 HD Web Camera (USB Host)
+                |
+                v
+  +---------------------------+
+  |   ESP32-S3-BOX-3 (Ims)    |   Dual MEMS mics, speaker & PA, 2.4" LCD touch,
+  |   firmware/esp32-s3-box-3 |   footer icons, animated face, clock, camera stream
+  +-------------+-------------+
+                | raw TCP :3002 (framed audio + telemetry + log mirror)
+                | plain HTTP :3003 (camera frames, face packs, personality)
+                | Wi-Fi OTA :3232 (espota.py firmware updates)
+                v
  +-------------------------------------------------------------------+
  |  Backend  pdf-knowledge-base/server  (Node + Express, :3001)      |
  |   - Gemini Live proxy (persona, tools, session resumption)        |
  |   - RAG search over your PDF library (HNSW + Gemini embeddings)   |
  |   - /api/* for every /ims service (SQLite + JSON files)           |
+ |   - Look & Faces vision: multipart MJPEG stream, Gemini Flash Q&A,|
+ |     YuNet / SFace on-device biometrics, desk presence & gaze      |
  |   - schedulers: alarms/timers, nightly music scan, morning report |
- |   - python helpers: music scanner                                 |
+ |   - python helpers: music scanner, face recognition tool          |
  +---------+---------------------------+-----------------+-----------+
            |                           |                 |
            v                           v                 v
@@ -63,7 +69,7 @@ Everything runs on your own machine. Cloud services used: Google (Drive, Calenda
  +-------------------------------+
 ```
 
-The web app talks to the backend through the Vite dev proxy. The device never touches the web app: it speaks a small framed TCP protocol to the backend and posts a few plain HTTP endpoints (personality) that intentionally bypass the web login.
+The web app talks to the backend through the Vite dev proxy. The device never touches the web app: it speaks a small framed TCP protocol to the backend (:3002) for real-time audio and log mirroring, streams MJPEG frames and fetches face packs over plain HTTP (:3003), and accepts wireless firmware updates on its OTA port (:3232).
 
 > For the comprehensive modernisation roadmap covering all 9 outstanding system architecture dev ideas, see the [System Architecture Implementation Plan](docs/SYSTEM_ARCHITECTURE_PLAN.md).
 
@@ -179,8 +185,8 @@ The **IMS Hub** (`/ims`) links to every service below, listed alphabetically und
 | `/ims/tasks` | **Background tasks.** Research Ims runs on its own (with Google Search) and reports on later, or in the next day report |
 | `/ims/devideas` | **Dev ideas.** Ideas for improving IMS, saved by Ims (`saveDevIdea`) or automatically when a tool fails, for pickup in Claude Code |
 | `/ims/phrases` | **Wake and stop phrases.** Record how you say them; your recorded spellings feed the wake gate |
-| `/ims/look` | **Look (Desk Camera Vision).** Real-time camera feed (`/api/camera/stream`) and snapshot visual Q&A powered by Gemini Flash vision. Ask "What can you see?", "Who do you see?", or inquire about specific objects and clothing in front of the Box-3 desk dock |
-| `/ims/faces` | **Faces (Biometric Identity).** 100% on-device face detection and recognition using OpenCV YuNet and SFace models. Manage enrolled individuals, view biometric samples, and track desk presence with automated sit-down greetings |
+| `/ims/look` | **Look (Desk Camera Vision).** Real-time camera feed (`/api/camera/stream`) broadcasting 640x480 MJPEG at 15 fps directly from the Box-3 USB host, with on-demand snapshot capture and Gemini Flash visual reasoning. Integrates with conversational Gemini Live: ask Ims "What do you see?" or "Who do you see?" to trigger `lookAtCamera` with face embedding extraction and unfamiliar person guidance. Includes interactive snapshot gallery management: single snapshot deletion, full gallery clear, and individual Q&A entry removal. Privacy-guarded: automatically suspends camera capture and stream during call/meeting recording mode |
+| `/ims/faces` | **Faces (Biometric Identity).** 100% on-device face detection and recognition using OpenCV YuNet and SFace models. Manage enrolled individuals, view biometric samples, and track desk presence with automated sit-down greetings. Supports live conversational enrolment: when Ims describes an unfamiliar person in view, exchanging names triggers the `enrolPerson` tool to register them and their face sample into SQLite (`people` and `face_samples`). Includes full management: individual person deletion, biometric sample inspection and removal, bulk clear, and uncommitted sample discard |
 | `/ims/doorbell` | **Ring Doorbell.** Direct Ring API integration (`ring-client-api`) with persistent 2FA refresh token persistence, real-time SIP/WebSocket streaming for dings and motion, live snapshot previews, Box-3 hardware chime pushes, and Gemini Live Yorkshire spoken announcements |
 | `/ims/device-health` | **Device Health & Observability.** Minute-by-minute ESP32-S3-BOX-3 hardware telemetry (Wi-Fi RSSI, free heap, uptime, reconnect count, audio buffer underruns, last error) with live SVG sparklines, historical log, and automatic Dev Ideas logging on reconnect/reboot spikes |
 | `/ims/spend` | **Gemini Spend Budget & Breakdown.** Token usage and cost breakdown per service per day/month, soft monthly spend budget warnings (≥ 80% and ≥ 95%), and high-cost prompt candidate identification for model optimization or caching |
@@ -242,11 +248,23 @@ platformio run --target upload       # flash over USB
 
 ### What the device shows
 
-- **Header:** *(I)nformation (M)anagement (S)ystem* title, gear icon (settings: personality sliders, voice, preferences), and **VOICE / WAKE / WIFI / USB** status dots (USB green = a PC is on the USB link).
-- **Face:** an expressive 12x8 dot-matrix face that breathes when idle and reacts to what Ims says (emotions set by Gemini), with the status text below it.
-- **Icon stack (left of the face):** alarms, timers, reminders (orange, with counts), birthdays (yellow within a week, green on the day), new music released today (record icon, with count), and camera (bottom left: green = awake and streaming, yellow = attached and asleep, tap to toggle).
+- **Header:** *(I)nformation (M)anagement (S)ystem* title, gear icon (settings: preferences), and **VOICE / WAKE / WIFI / USB / OTA** status dots (USB green = PC connected via USB; OTA green = ready for wireless update, cyan = flashing in progress).
+- **Face:** an expressive 12x8 dot-matrix face that breathes when idle and reacts to what Ims says (emotions set by Gemini), with the status text below it. Follows user presence left/right.
+- **Icon stack (left of the face):** alarms, timers, reminders (orange, with counts), birthdays (yellow within a week, green on the day), new music released today (record icon, with count), and camera (bottom left: green = awake and streaming, yellow = attached and asleep, tap to toggle). Rendered into an offscreen 16-bit PSRAM `LGFX_Sprite` double-buffer with dirty-state diffing to completely eliminate 15s repaint flicker.
 - **Right:** live blood-glucose reading with trend arrows (if Nightscout is configured).
 - **Footer:** date/time (Europe/London, DST-aware) and rotating active notification ticker.
+
+### Hardware components & subsystems
+
+| Hardware Subsystem | Component & Interface | Functionality & Capabilities |
+|---|---|---|
+| **Microphone Array** | Dual MEMS mics via ES7210 ADC (I2S DMA) | Stereo DMA deinterleaving, 16 kHz 16-bit PCM capture, PSRAM acoustic pre-roll buffer, and server-side wake-word gating |
+| **Attached Web Camera** | Logitech C270 HD via USB-A Host port (UVC) | 640x480 MJPEG @ 15 fps video streaming over Wi-Fi (`:3003`), active green LED, Look snapshot Q&A, Faces biometric recognition, and desk presence tracking. Automatically suspended during call recordings |
+| **Speaker & Amplifier** | ES8311 DAC + NS4150 Class-D PA | 24 kHz speech synthesis audio playback, alarm/timer chimes, Ring doorbell alerts, and half-duplex acoustic feedback suppression |
+| **Colour Display & Touch** | 2.4" 320x240 ST7789V LCD + TT21100 capacitive touch | 12x8 animated face, double-buffered PSRAM sprite status icons (flicker-free), Nightscout CGM mmol/L & arrows, 5 top status dots, and capacitive tap-to-interrupt |
+| **Presence & Gaze Sensor** | OpenCV YuNet + SFace on camera video feed | Real-time face detection and gaze tracking, interactive pupil eye lean, and automated sit-down greeting from standby (5+ min absence, 30 min cooldown) |
+| **Physical Controls** | Hardware latching mute switch (GPIO 1), BOOT & RESET | Physical mic kill-switch (preserves recording if toggled), BOOT/RESET bootloader buttons, and touch screen tap-to-standby |
+| **Wireless OTA & Bridge** | ArduinoOTA (port 3232) & FreeRTOS log queue | Tetherless Wi-Fi updates via `espota.py` / `/api/device-health/ota/flash` in ~18s, and real-time serial/camera log streaming over TCP port 3002 |
 
 ### Wake phrases
 
