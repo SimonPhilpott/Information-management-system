@@ -209,13 +209,12 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // ---- Local wake check (wakeGateService.js) ----------------------------------------------------------
   // On standby, the Box-3's mic audio is held and transcribed on this PC; Gemini is opened (and handed the
   // held audio) only when it sounds like a wake phrase - the same matchers as everywhere else
-  // (looksAddressed: the wake phrases service's recorded spellings included), or speech that opens with a
-  // greeting, which Gemini still judges as before. A local check that fails lets the audio through.
+  // (looksAddressed: the wake phrases service's recorded spellings included), which always need the name:
+  // "Hello", "Hi" or "Eh up" on their own don't open anything. A local check that fails lets the audio through.
   const WAKE_FIRST_CHECK_BYTES = 16000 * 2 * 1.2; // 1.2 s of 16 kHz 16-bit audio: enough for "Hey Ims"
   const WAKE_RECHECK_BYTES = 16000 * 2 * 0.6;     // then look again every 0.6 s while the sound goes on
   const WAKE_MAX_BYTES = 16000 * 2 * 8;           // hold at most the last 8 s
   const WAKE_GIVE_UP_MS = 8000;                   // no wake phrase 8 s into a sound: not for Ims
-  const WAKE_GREETING_START = /^\W*(hey|hi|hiya|heya|hello|eh|ey|ay|aye|ayup|eyup|oi|now then)\b/i;
   const wakeGate = { frames: [], bytes: 0, startedAt: 0, lastFrameAt: 0, checkedBytes: 0, checking: false, done: false, passedAt: 0 };
   const resetWakeGate = () => Object.assign(wakeGate, { frames: [], bytes: 0, startedAt: 0, lastFrameAt: 0, checkedBytes: 0, checking: false, done: false });
   const wakeGateApplies = () => {
@@ -260,8 +259,8 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     wakeGate.checking = true;
     const t0 = Date.now();
     transcribeWake(pcm).then((text) => {
-      const strong = looksAddressed(text);
-      const ok = strong || WAKE_GREETING_START.test(text);
+      const ok = looksAddressed(text);
+      const strong = ok;
       try { logCapture(`[${new Date().toISOString()}] ${tag} LOCAL WAKE CHECK "${text}" -> ${ok ? 'OPEN' : 'hold'} (${Date.now() - t0} ms)\n`); } catch (_) { }
       if (ok) openWakeGate(text, strong);
     }).catch((err) => {

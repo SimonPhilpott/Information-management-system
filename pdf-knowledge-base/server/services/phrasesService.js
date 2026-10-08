@@ -74,12 +74,17 @@ function lists() {
   return cache;
 }
 
+// A greeting on its own is never a wake phrase - the name has to be in it ("Hello", "Hi", "Hiya", "Eh up"
+// alone don't wake Ims). A recorded spelling that is only a greeting is ignored, and never collected.
+const BARE_GREETING = /^(hi|hiya|hi ya|heya|hey|hey up|hello|hallo|eh up|ey up|ay up|aye up|ayup|eyup|eh|ey|ay|up|oi|now then|morning|alright)$/;
+export const isBareGreeting = (text) => BARE_GREETING.test(norm(text));
+
 // Did what was just heard start with (or open with) one of the wake phrase's known spellings?
 export function matchesWake(text) {
   const t = norm(text);
-  if (!t) return false;
+  if (!t || BARE_GREETING.test(t)) return false;
   const opening = t.split(' ').slice(0, 6).join(' ');
-  return lists().wake.some((v) => t === v || opening.startsWith(v) || opening.includes(` ${v}`) || (v.length >= 3 && opening === v));
+  return lists().wake.some((v) => !BARE_GREETING.test(v) && (t === v || opening.startsWith(v) || opening.includes(` ${v}`) || (v.length >= 3 && opening === v)));
 }
 // Does what was just heard end with one of the stop phrase's spellings?
 // Enforces strict multi-character word matching so phonetic fragments or single letters ('m stop', 're set') never trigger.
@@ -112,7 +117,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS wake_candidates (
 )`);
 export function noteWakeCandidate(text) {
   const t = norm(text);
-  if (!t || t.split(' ').length > 3 || t.length > 24 || matchesWake(t)) return;
+  if (!t || t.split(' ').length > 3 || t.length > 24 || BARE_GREETING.test(t) || matchesWake(t)) return;
   const now = Date.now();
   db.prepare(`INSERT INTO wake_candidates (text, count, first_at, last_at) VALUES (?, 1, ?, ?)
     ON CONFLICT(text) DO UPDATE SET count = count + 1, last_at = excluded.last_at`).run(t, now, now);

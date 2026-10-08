@@ -30,15 +30,14 @@ export const stripToolText = (text) => String(text).replace(TOOL_TEXT, '').repla
 
 // "Hey / Hi / Eh up IMS", allowing for how speech-to-text spells the name (Ims, Ems, Eems, Hims, Elms...).
 const WAKE_RX = /\b(hey[\s,-]*up|hey|hi|hiya|heya|hello|eh[\s,-]*up|ey[\s,-]*up|ay[\s,-]*up|aye[\s,-]*up|ayup|eyup|oi|up)\b[\s,.!?'-]*(h?[aei]{1,2}m+e?[sz]\b|i\.?\s?m\.?\s?s\b|elms\b|helms\b|aops\b)/i;
-// Speech-to-text often mangles the short wake phrase ("Hey IMS" -> "HMs", "Eh up Ims" -> "Anya Pims",
-// "Hi IMS" -> "Hiya."). Gemini hears the audio itself, so when it has decided to answer, these
-// count too: a name-like word near the start, or a bare greeting. Ordinary sentences don't.
+// Speech-to-text often mangles the short wake phrase ("Hey IMS" -> "HMs", "Eh up Ims" -> "Anya Pims").
+// A name-like word near the start counts too. The name has to be there in some form: a greeting on its
+// own ("Hello", "Hi", "Hiya", "Eh up") never wakes Ims - Simon's rule (8 Oct).
 const NAME_TOKEN = /\b(i\.?\s?m\.?\s?s|ims|imz|ems|eems|emms|hims|aims|hms|h\.?\s?m\.?\s?s|pims|mims|m's|ms|him's|hymns?|elms|helms|aops|\w*pms|\w*ims\w*)\b/i;
-const GREETING_ONLY = /^\W*(hi|hiya|hi ya|heya|hey|hey up|hello|eh up|ey up|ay up|aye up|ayup|eyup|anya|now then)\W*$/i;
 export const looksAddressed = (t) => {
   const text = String(t || '').trim();
   const opening = text.split(/\s+/).slice(0, 5).join(' ');
-  if (WAKE_RX.test(text) || NAME_TOKEN.test(opening) || GREETING_ONLY.test(text) || matchesWake(text) || ehUpSounding(text)) return true; // + spellings recorded on /ims/phrases
+  if (WAKE_RX.test(text) || NAME_TOKEN.test(opening) || matchesWake(text) || ehUpSounding(text)) return true; // + spellings recorded on /ims/phrases
   if (wakeDaemonService.isWakePhrase(text).matches) return true;
   return false;
 };
