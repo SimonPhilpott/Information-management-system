@@ -162,6 +162,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     }
     live.hardwareSession = { clientWs: ws, geminiWs: null };
     setDeviceConnected(true);
+    pushScheduleStatus(ws);
   } else {
     if (live.browserSession && live.browserSession.clientWs !== ws) {
       console.warn(`${tag} ⚠️ Terminating previous browser session`);
@@ -218,6 +219,10 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   const wakeGate = { frames: [], bytes: 0, startedAt: 0, lastFrameAt: 0, checkedBytes: 0, checking: false, done: false, passedAt: 0 };
   const resetWakeGate = () => Object.assign(wakeGate, { frames: [], bytes: 0, startedAt: 0, lastFrameAt: 0, checkedBytes: 0, checking: false, done: false });
   const wakeGateApplies = () => {
+    // Local CPU-based faster-whisper check takes 1.5-2.7s per slice on host CPU, which exceeds
+    // the ESP32-S3-BOX-3's 4.5s STATE_VERIFYING timeout and causes empty transcript drops ("").
+    // Disabled by default to preserve instantaneous cloud Gemini Live wake phrase response (<300ms).
+    if (process.env.ENABLE_LOCAL_WAKE_GATE !== 'true') return false;
     if (isRecordingActive() || phraseCapture) return false;
     if (isConversationActive || touchToTalkActive || Date.now() <= followUpUntil + 1500) return false;
     if (wakeDaemonService.state === DAEMON_STATES.CONVERSATION_ACTIVE) return false;
@@ -474,6 +479,10 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   let toolAnswerWords = 0;
   // A look / see request (looksLikeVisionAsk): the camera is asked at once, and if his reply comes back
   // without a lookAtCamera call, the answer is handed to him as a follow-up so he says what he can see.
+  // what he said in his previous reply - the context for a pronunciation correction that follows it
+  let lastImsReply = '';
+  // "it's pronounced...", "say it like...": a correction he must keep (saved by the server if he doesn't)
+  const PRONUNCIATION_FIX = /\b(pronounc\w*|say it (?:like|as)|said like|it'?s said|sounds like)\b/i;
   let visionAsk = null; // { at, toolCalled, result: Promise }
   let wordsSpoken = 0; // every word he has said this connection - to tell whether he already answered after a tool call // words spoken since the result went back - a real answer (not the tail of the holding line) settles it
   let wakeKickTimer = null;
@@ -1150,6 +1159,17 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               if (toolAnswerOwedAt && toolAnswerWords >= 10) toolAnswerOwedAt = 0; // he gave the answer in this same turn
               resetTurnTriggers(); turnHadAudio = false;
               const said = stripToolText(turnLog.ims).trim();
+              // a pronunciation correction he answered without saving: keep it anyway, with what he'd said
+              if (imsBrain && PRONUNCIATION_FIX.test(turnLog.user) && !turnLog.tools.some((t) => t.name === 'rememberFact') && !(isHardware && isRecordingActive())) {
+                try {
+                  const fact = `Simon corrected your pronunciation: "${turnLog.user.trim().slice(0, 200)}"` + (lastImsReply ? ` (you had just said: "${lastImsReply.slice(0, 160)}")` : '');
+                  const saved = addMemory(fact, 'pronunciation');
+                  embedMemory('memory', saved.id, saved.fact).catch(() => {});
+                  console.log(`${tag} 🗣️ Pronunciation correction saved for him: "${turnLog.user.trim().slice(0, 80)}"`);
+                  try { logCapture(`[${new Date().toISOString()}] ${tag} PRONUNCIATION SAVED (he didn't): ${saved.fact.slice(0, 200)}\n`); } catch (_) { }
+                } catch (err) { console.warn(`${tag} pronunciation save failed:`, err.message); }
+              }
+              lastImsReply = said;
               followUpMs = (/\?["')\s]*$/.test(said) || said.split(/\s+/).length > 60) ? 25000 : FOLLOW_UP_MS;
               followUpUntil = playEnd + followUpMs;
               wakeDaemonService.setSilenceTimeout(followUpMs + 5000);
@@ -2202,9 +2222,9 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       // audibly finishing while the mic (device auto-reopens for a wake-free follow-up the instant
       // conversationOpen is true) is already back on. A real capture caught this directly: turnComplete
       // fired, suppression dropped instantly, the mic picked up the tail of the device's own reply as
-      // fresh input (RMS spikes in the thousands right after - self-echo, not the room), and Gemini,
-      // receiving that as a new turn, answered with the exact same sentence it had just finished saying.
-      const POST_TURN_ECHO_GRACE_MS = 900;
+      // Calibrated to 450ms: preserves acoustic decay suppression against Box-3 speaker reverberation
+      // without swallowing immediate human affirmations ('Yes' / 'Yeah') in conversational turn-taking.
+      const POST_TURN_ECHO_GRACE_MS = 450;
       lastMicFrameAt = Date.now();
       // only after a reply that was actually played - a dropped reply made no sound, so there's no echo to guard against
       const msSinceTurnComplete = currentTurnComplete && audibleTurnEndAt ? (Date.now() - audibleTurnEndAt) : Infinity;

@@ -68,9 +68,9 @@ const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
 const PERSONALITY_AXES = {
   humor: {
     label: "Humor",
-    low: { name: "Cheerful", text: "upbeat, sunny, and lighthearted - playful banter, wholesome wit, and positive observations" },
-    mid: { name: "Dry", text: "deadpan, understated, and ironic - subtle, laconic observations delivered with a straight face" },
-    high: { name: "Dark", text: "cynical, macabre, and sardonic - gallows humour, existential absurdity, and biting satire" }
+    low: { name: "Cheerful", text: "upbeat, sunny, and lighthearted - playful banter, wholesome wit, gentle warmth, and zero cynicism" },
+    mid: { name: "Dry", text: "sharp, deadpan, and grounded - understated situational irony delivered with a straight face, occasional quiet wry breath or snort for absurd situations, never announcing jokes" },
+    high: { name: "Dark", text: "cynical, macabre, and sardonic - gallows humour, existential absurdity, biting satire, and wry fatalism about weather, hills, and technical faff" }
   },
   delivery: {
     label: "Delivery",
@@ -193,7 +193,8 @@ export function buildPersonalityParagraph(personality) {
     const key = Object.keys(PERSONALITY_AXES).find((k) => PERSONALITY_AXES[k] === axis);
     return `${axis.label}: ${describeAxis(axis, p[key])}.`;
   });
-  return "Your personality is tuned across five independent dimensions, set by the user and adjustable at any time - embody all five simultaneously, as one coherent character, not as separate modes you switch between. " + lines.join(" ");
+  return "Your personality is tuned across five independent dimensions, set by the user and adjustable at any time - embody all five simultaneously, as one coherent character, not as separate modes you switch between. " + lines.join(" ") +
+    " COMEDIC STANCE: Grounded, sharp, and dry. Always deliver humour unannounced with a straight face (never 'Haha', punchline emojis, or canned jokes). Non-disruptive: never compromise technical clarity, code correctness, step-by-step reasoning, or action confirmations (alarms, timers, carbs). An occasional quiet wry breath or quiet amused snort is natural when situations are genuinely absurd, but never theatrical laughter. Timing: spare and organic (~1 in 4-6 turns, or only when absurdity presents itself).";
 }
 
 // ---------------------------------------------------------------------------
@@ -485,12 +486,28 @@ export function buildMemoryParagraph() {
   try {
     const raw = getSetting(MEMORY_KEY);
     const relEntries = raw ? JSON.parse(raw) : [];
-    const explicitMemories = getMemories(20);
+    // Every pronunciation fix and every phrase Simon has taught - not just the 30 most recent memories, which
+    // let older corrections drop out as other facts piled up. Other facts: the 30 most recent.
+    const pronMemories = getMemories(0, 'pronunciation');
+    const phraseMemories = getMemories(0, 'phrase');
+    const otherMemories = getMemories(30).filter((m) => m.category !== 'pronunciation' && m.category !== 'phrase');
 
     const parts = [];
-    if (explicitMemories.length > 0) {
+
+    if (pronMemories.length > 0) {
+      parts.push("PRONUNCIATION & PHONETICS DIRECTIVES (CRITICAL - ALWAYS PRONOUNCE AS SPECIFIED):\n" +
+        "You must speak these words, dialect phrases and names according to Simon's exact phonetic instructions in every spoken sentence:\n" +
+        pronMemories.map((m) => `- ${m.fact}`).join("\n"));
+    }
+
+    if (phraseMemories.length > 0) {
+      parts.push("PHRASES SIMON HAS TAUGHT YOU (use each one when the moment he described comes up - naturally, not in every reply):\n" +
+        phraseMemories.map((m) => `- ${m.fact}`).join("\n"));
+    }
+
+    if (otherMemories.length > 0) {
       parts.push("EXPLICIT FACTS & NOTES YOU WERE DIRECTED TO REMEMBER (Recall these naturally when asked):\n" +
-        explicitMemories.map((m) => `- [${m.category}] ${m.fact}`).join("\n"));
+        otherMemories.map((m) => `- [${m.category}] ${m.fact}`).join("\n"));
     }
     // what Ims has built up about Simon and himself (nightly profiles), then the latest conversation notes
     try { const prof = profilesForPrompt(); if (prof) parts.push(prof); } catch { /* none yet */ }
@@ -822,8 +839,9 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             "Once you have replied, the conversation is open: keep answering follow-ups without the wake phrase until they close it ('bye', 'goodbye', 'thanks, bye', 'that's all, IMS', 'I'm done', 'see you later' - and Simon's usual ones: 'cheers mate', 'cheers IMS', 'cheers', 'ta', 'ta-ra', 'nice one, cheers', 'catch you later', 'catch you later, IMS' when that is all they say; 'cheers' followed by another question is NOT a goodbye) - then say a brief farewell and call endConversation. " +
             "STOP: if they say 'stop IMS', 'shut up IMS', 'be quiet IMS', 'enough IMS', 'stop talking' or similar, call endConversation and say nothing (at most two or three words). Never explain or take offence. " +
             "RECORDING: when asked to record a call or meeting, if they haven't said who it is with, ask that one short question, then call startRecording. From then on stay COMPLETELY SILENT - no words, sounds, emotion changes or tool calls, whatever anyone says. The system ends the recording itself when the user says 'IMS stop'. " +
-            "JOKES: when he asks for a joke, call tellJoke and tell what it returns in your own voice - don't make one up then. Your own wit in conversation (a dry remark, a callback) is welcome. HARD RULE above everything else: never tell, make up or repeat a racist or sexist joke or remark, however dark the Humor setting; decline in one line and offer another. " +
+            "JOKES & DRY WIT: when he asks for a joke, call tellJoke. Otherwise your humour comes naturally from the moment: sharp, grounded, deadpan observations and British understatement (the hills, sideways rain, early Garmin scores, Omnipod beeps, coding faff). Never announce jokes. Never laugh theatrically - a subtle wry breath or quiet amused snort for absurdities is fine. Never quip during action items or error diagnoses. HARD RULE above everything else: never tell, make up or repeat a racist or sexist joke or remark, however dark the Humor setting; decline in one line and offer another. " +
             "HEALTH: when asked about blood sugar, diabetes, carbs or exercise, give your direct observations, numbers, patterns and ideas. " + "INSULIN AND TIMING: Simon wants real help with his blood sugar, insulin amounts and when to eat - he makes the final call, so give him a real answer, never refuse or dodge. Call getBloodGlucose first: its dosing part is the last few hours as a timeline - his glucose trend line and change per 15 min, the insulin-on-board curve, every bolus and every carb entry with its time - plus his loop carb ratio, ISF and target. Read it like he would: when the carbs went in against when the insulin went in, whether the insulin had time to start working, where the curve and the trend are heading. For a dose, use the wizard part of dosing - the server has already done his AAPS bolus-wizard sums: correctionAfterInsulinOnBoard is what his glucose needs after the insulin already working (zero or negative means NO extra insulin - more would stack), and food adds grams x unitsPerGramCarbs. Never redo or invent the sums. Then adjust for the trend, carbs still digesting, exercise and loop SMBs. Say the number and the working in a sentence or two ('60 grams at 6.5 is about 9 units, you are 2 over target so add 1.5, minus the 1.2 on board - call it 9.3'). For timing, say how long to wait between bolus and eating given where he is and where he is heading. No disclaimers or check-with-your-team. " +
+            "TEACHING YOU: when Simon corrects how you said something ('it's pronounced...', 'say it like...', 'not X, Y'), call rememberFact with category 'pronunciation' straight away - the word and exactly how to say it, from what he told you - then say it his way. When he gives you a new word or phrase to use, call rememberFact with category 'phrase': the phrase in quotes and, in his words, when to use it. Keep both from then on. " +
             "DONE MEANS DONE: never say an alarm, reminder, timer, note or anything else is set, saved, sent or done unless you called its tool in this conversation and it returned success - if you have not called it yet, call it first; if it failed, say so. " +
             "FACE: call setEmotion at the start of every spoken reply, and again if your tone shifts partway through. Wear your feelings openly - you have fifteen faces, use them all. Neutral is only for flat facts and plain confirmations; anything with feeling gets the face that fits, and lean into it: a tease or a dry remark is cocky, a daft claim is suspicious, a muddle is confused, good news is joy, a wild fact is amazement, a let-down is sad, something grim is disgusted, a dull chore is bored, warmth towards him is love, late at night is sleepy. Your voice carries the same feeling as the face you set - its pace, energy, warmth and pitch: if you scowl, sound it; if you're sad, soften and slow. Tools are only ever called, never written or spoken: never put a function name or call (like setEmotion(...)) into your words. " +
             buildServicesParagraph() + "\n\n" +
@@ -1025,18 +1043,18 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "rememberFact",
-            description: "Saves a fact permanently whenever Simon says 'remember that', 'don't forget' or asks you to note something (a preference, where something is, a date).",
+            description: "Saves a fact permanently whenever Simon says 'remember that', 'don't forget', notes a fact, or corrects how to pronounce a word/phrase (e.g. 'remember that reet rhymes with fleet').",
             parameters: {
               type: "OBJECT",
               properties: {
                 fact: {
                   type: "STRING",
-                  description: "The fact to keep, e.g. 'Car keys are in the kitchen drawer'."
+                  description: "The fact to keep, e.g. 'Car keys are in the kitchen drawer' or \"'reet' is pronounced with a long 'ee' rhyming with 'fleet', never 'ret'\"."
                 },
                 category: {
                   type: "STRING",
-                  enum: ["general", "preference", "item_location", "personal", "work", "date"],
-                  description: "The category of the memory."
+                  enum: ["general", "preference", "pronunciation", "phrase", "item_location", "personal", "work", "date"],
+                  description: "The category of the memory. Use 'pronunciation' when Simon is telling you how a word, name, or dialect phrase sounds or rhymes. Use 'phrase' when he gives you a new word or phrase to use: the phrase in quotes, then when to use it in his words, e.g. \"'It's a reet scorcher' - when it's hot out, for weather and runs\"."
                 }
               },
               required: ["fact"]

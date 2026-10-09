@@ -25,11 +25,15 @@ import {
   AlertCircle,
   Database,
   Archive,
-  Undo2
+  Undo2,
+  Volume2,
+  Quote
 } from 'lucide-react';
 
 const CATEGORY_CONFIG = {
   all: { label: 'All Categories', color: 'text-slate-400 bg-slate-500/10 border-slate-500/20', icon: Filter },
+  pronunciation: { label: 'Pronunciation', color: 'text-rose-400 bg-rose-500/10 border-rose-500/20', icon: Volume2 },
+  phrase: { label: 'Phrases', color: 'text-teal-400 bg-teal-500/10 border-teal-500/20', icon: Quote },
   general: { label: 'General', color: 'text-sky-400 bg-sky-500/10 border-sky-500/20', icon: Tag },
   item_location: { label: 'Item Locations', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20', icon: MapPin },
   preference: { label: 'Preferences', color: 'text-purple-400 bg-purple-500/10 border-purple-500/20', icon: Heart },
@@ -38,6 +42,7 @@ const CATEGORY_CONFIG = {
 };
 
 const SUGGESTED_EXAMPLES = [
+  { fact: "Pronounce 'reet' with a long 'ee' rhyming with 'fleet' and 'sweet', never 'ret'.", category: "pronunciation" },
   { fact: "Spare car keys are kept in the small top drawer in the hallway.", category: "item_location" },
   { fact: "Prefers strong Yorkshire Gold tea with a splash of milk, no sugar.", category: "preference" },
   { fact: "Passport and birth certificate are stored in the metal fireproof safe.", category: "item_location" },
@@ -739,7 +744,7 @@ export default function MemoriesPortal({
                   Category
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {['general', 'item_location', 'preference', 'personal', 'work'].map((catKey) => {
+                  {['pronunciation', 'phrase', 'general', 'item_location', 'preference', 'personal', 'work'].map((catKey) => {
                     const isSelected = categoryInput === catKey;
                     const catCfg = CATEGORY_CONFIG[catKey];
                     const CatIco = catCfg.icon;
@@ -863,7 +868,7 @@ export default function MemoriesPortal({
                   Category
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {['general', 'item_location', 'preference', 'personal', 'work'].map((catKey) => {
+                  {['pronunciation', 'phrase', 'general', 'item_location', 'preference', 'personal', 'work'].map((catKey) => {
                     const isSelected = editCategoryInput === catKey;
                     const catCfg = CATEGORY_CONFIG[catKey];
                     const CatIco = catCfg.icon;
