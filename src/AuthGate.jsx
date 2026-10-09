@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { LogIn, Loader2, Layers } from 'lucide-react';
-import DecksPortal from './components/Dashboard/DecksPortal';
+const DecksPortal = React.lazy(() => import('./components/Dashboard/DecksPortal'));
 import { isCampaignPath, canonicalCampaignPath } from './components/Dashboard/campaignPaths';
 
 const AuthContext = createContext({ user: null, signOut: () => {} });
@@ -82,5 +82,9 @@ function GuestDeckBuilder() {
   }, []);
   const toggle = () => setTheme((t) => { const n = t === 'dark' ? 'light' : 'dark'; try { localStorage.setItem('deckTheme', n); } catch { /* fine */ } return n; });
   const go = (p) => setPath(guestPath(p));
-  return <DecksPortal theme={theme} onThemeToggle={toggle} currentPath={path} setCurrentPath={go} />;
+  return (
+    <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#030712] text-slate-400"><Loader2 className="animate-spin" size={22} /></div>}>
+      <DecksPortal theme={theme} onThemeToggle={toggle} currentPath={path} setCurrentPath={go} />
+    </React.Suspense>
+  );
 }

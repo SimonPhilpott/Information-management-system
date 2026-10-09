@@ -1,8 +1,14 @@
 {
   "name": "Information Management System",
   "modules": {
+    "src/AuthGate.jsx": {
+      "description": "Authentication gate and invite routing wrapper with lazy-loaded DecksPortal guest fallback.",
+      "dependencies": [
+        "src/components/Dashboard/DecksPortal.jsx"
+      ]
+    },
     "src/App.jsx": {
-      "description": "Main entrypoint managing state, layout config, node authorities, and view transformations.",
+      "description": "Main entrypoint managing state, layout config, node authorities, and view transformations with comprehensive React.lazy dynamic import code-splitting for low-latency network tunnels.",
       "dependencies": [
         "src/components/KnowledgeMesh/MeshCanvas.jsx",
         "src/components/KnowledgeMesh/SpatialCanvas.jsx",
@@ -13,7 +19,11 @@
         "src/components/Dashboard/DemoPortal.jsx",
         "src/components/Dashboard/MemoriesPortal.jsx",
         "src/components/Dashboard/PersonaPortal.jsx",
-        "src/components/Dashboard/ImsHub.jsx"
+        "src/components/Dashboard/ImsHub.jsx",
+        "src/components/Admin/AdminPanel.jsx",
+        "src/components/Editor/IntelligenceDrawer.jsx",
+        "src/components/Dashboard/CatalogBrowser.jsx",
+        "src/components/Dashboard/HnswIndexModal.jsx"
       ]
     },
     "src/components/Dashboard/Layout.jsx": {
@@ -1080,6 +1090,83 @@
         "src/components/Dashboard/PortalShell.jsx",
         "src/components/Ims/ImsFace.jsx",
         "src/hooks/useSystemEvents.js"
+      ]
+    },
+    "pdf-knowledge-base/server/middleware/localOnly.js": {
+      "description": "Security guard middleware ensuring administrative endpoints are only callable from localhost and not forwarded across ngrok/cloudflared tunnels.",
+      "dependencies": []
+    },
+    "pdf-knowledge-base/server/routes/meshBackups.js": {
+      "description": "Express router handling /api/mesh-backups (listing, creation, restoration) and /api/backup full project archive compression.",
+      "dependencies": [
+        "pdf-knowledge-base/server/middleware/localOnly.js"
+      ]
+    },
+    "pdf-knowledge-base/server/routes/tunnel.js": {
+      "description": "Express router handling /api/tunnel (status probe, starting, stopping, and taskkill cleanup of ngrok daemon).",
+      "dependencies": [
+        "pdf-knowledge-base/server/middleware/localOnly.js"
+      ]
+    },
+    "pdf-knowledge-base/server/routes/sharepoint.js": {
+      "description": "Express router handling /api/sharepoint-nav navigation menustate proxying and XML tree traversal helpers.",
+      "dependencies": [
+        "pdf-knowledge-base/server/middleware/localOnly.js"
+      ]
+    },
+    "pdf-knowledge-base/server/routes/portStatus.js": {
+      "description": "Express router handling /ims/port-status and /api/port-status multi-service port probes.",
+      "dependencies": [
+        "pdf-knowledge-base/server/middleware/localOnly.js"
+      ]
+    },
+    "pdf-knowledge-base/server/routes/planner.js": {
+      "description": "Express router for Route Planner handling GPX parsing (up to 30MB), route elevation profile generation, fuelling plan calculations, save-plan persistence, and retrospective session linking/unlinking.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js",
+        "pdf-knowledge-base/server/services/runLearningService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/runLearningService.js": {
+      "description": "Machine learning and retrospective analysis service linking planned runs to completed Strava activities, computing glucose/pace/milestone adherence, back-filling start timestamps, purging placeholder sessions, and calculating historical carb absorption curves.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js"
+      ]
+    },
+    "src/components/Dashboard/RunPlannerPortal.jsx": {
+      "description": "Comprehensive run planning and fuelling portal handling GPX uploads, course map elevation visualisations, carbohydrate pacing models, and retrospective learning insights.",
+      "dependencies": [
+        "src/components/Dashboard/RunPlanner/SendToPhoneCard.jsx",
+        "src/components/Dashboard/RunPlanner/RunLearningTab.jsx",
+        "src/components/Dashboard/RunPlanner/SavedPlans.jsx"
+      ]
+    },
+    "src/components/Dashboard/RunPlanner/SendToPhoneCard.jsx": {
+      "description": "Run dispatch component allowing runners to arm live phone notifications or save plans locally without sending alerts via 'Save plan only'.",
+      "dependencies": []
+    },
+    "src/components/Dashboard/RunPlanner/RunLearningTab.jsx": {
+      "description": "Retrospective learning interface comparing planned fuelling against actual Strava runs, featuring automatic candidate pairing and an interactive manual matching modal for unstarted or historical runs.",
+      "dependencies": []
+    },
+    "src/components/Dashboard/RunPlanner/SavedPlans.jsx": {
+      "description": "Management list for saved fuelling plans displaying distance, target pace, elevation, and decoupled execution statuses.",
+      "dependencies": []
+    },
+    "pdf-knowledge-base/server/garmin/garmin_sync.py": {
+      "description": "Headless Python synchronisation engine utilising garminconnect to extract sleep metrics, HRV status, Body Battery, training readiness, resting heart rate, and VO2 Max into SQLite and JSON cache.",
+      "dependencies": []
+    },
+    "pdf-knowledge-base/server/services/garminService.js": {
+      "description": "Backend orchestrator managing headless Garmin sync processes, session token persistence, daily health record caching, and readiness summaries.",
+      "dependencies": [
+        "pdf-knowledge-base/server/db/database.js"
+      ]
+    },
+    "pdf-knowledge-base/server/routes/garmin.js": {
+      "description": "Express REST router exposing Garmin Connect authentication, status probes, on-demand synchronization, and historical health query endpoints.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/garminService.js"
       ]
     }
   }

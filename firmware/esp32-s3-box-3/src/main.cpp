@@ -3826,16 +3826,30 @@ const char *resetReasonName(esp_reset_reason_t reason) {
   }
 }
 
+#ifdef IMS_FALLBACK_HOST
+static const char* const IMS_HOST_CANDIDATES[] = {
+  IMS_PRIMARY_HOST,
+  IMS_FALLBACK_HOST
+};
+static const size_t NUM_HOST_CANDIDATES = sizeof(IMS_HOST_CANDIDATES) / sizeof(IMS_HOST_CANDIDATES[0]);
+static size_t currentHostCandidateIdx = 0;
+#endif
+
 void connectToBackend() {
   tcpClient.stop();
   // Whatever partial frame the old socket was mid-way through is gone with
   // it - see incomingParserResetPending's declaration.
   incomingParserResetPending = true;
-  Serial.printf("[TCP] Connecting to PRIMARY (Local LAN): %s:%d\n",
-                IMS_PRIMARY_HOST, IMS_TCP_PORT);
+#ifdef IMS_FALLBACK_HOST
+  const char* hostToTry = IMS_HOST_CANDIDATES[currentHostCandidateIdx % NUM_HOST_CANDIDATES];
+#else
+  const char* hostToTry = IMS_PRIMARY_HOST;
+#endif
+  Serial.printf("[TCP] Connecting to backend: %s:%d\n",
+                hostToTry, IMS_TCP_PORT);
   currentState = STATE_CONNECTING_SERVER;
-  if (tcpClient.connect(IMS_PRIMARY_HOST, IMS_TCP_PORT)) {
-    Serial.println("[TCP] Connected to backend");
+  if (tcpClient.connect(hostToTry, IMS_TCP_PORT)) {
+    Serial.printf("[TCP] Connected to backend on %s\n", hostToTry);
     connectionAttempts = 0;
     isSetupAcknowledged = true;
     geminiSetupComplete = false; // Will be set true when Gemini ACKs setup
@@ -3847,6 +3861,9 @@ void connectToBackend() {
   } else {
     Serial.println("[TCP] Connect failed - will retry");
     connectionAttempts++;
+#ifdef IMS_FALLBACK_HOST
+    currentHostCandidateIdx++;
+#endif
   }
 }
 

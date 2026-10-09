@@ -24,7 +24,8 @@
 // (HardwareTcpClient in index.js) speaking a simple framed protocol instead:
 // [1 byte type: 0x00 text/0x01 binary][4 bytes big-endian length][payload] -
 // no WebSocket handshake, no size limit, no extra library needed.
-#define IMS_PRIMARY_HOST "192.168.1.78"
+#define IMS_PRIMARY_HOST "192.168.1.27"
+#define IMS_FALLBACK_HOST "192.168.1.78"
 #define IMS_TCP_PORT 3002
 
 // 3. Audio Codec Hardware Pinout (ESP32-S3-BOX-3)

@@ -18,7 +18,7 @@
 import { isRecordingActive, onRecordingChange } from './recordingService.js';
 
 const ATTACHED_WINDOW_MS = 30000; // > the 15s device status-push cadence, so the icon doesn't flicker
-export const AWAKE_MS = 24 * 60 * 60 * 1000; // Keep camera permanently hot for active testing
+export const AWAKE_MS = 10 * 60 * 1000; // 10 minutes idle sleep (refreshed by presence, interaction, or vision Q&A)
 
 let latest = { buffer: null, at: 0, source: null };
 let heartbeatAt = 0;

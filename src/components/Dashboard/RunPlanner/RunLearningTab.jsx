@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { GraduationCap, Check, X, Undo2, RotateCw, Info, Route as RouteIcon, Layers, Globe } from 'lucide-react';
+import { GraduationCap, Check, X, Undo2, RotateCw, Info, Route as RouteIcon, Layers, Globe, Link2, ExternalLink, Calendar, Timer } from 'lucide-react';
 import RunRetrospective from './RunRetrospective';
 import PostRunReviewPanel from './PostRunReviewPanel';
 
@@ -9,13 +9,14 @@ import PostRunReviewPanel from './PostRunReviewPanel';
 
 const SCOPE = { route: ['This route', RouteIcon], profile: ['This kind of run', Layers], general: ['All runs', Globe] };
 const when = (ms) => (ms ? new Date(ms).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
-const STATUS = { armed: 'waiting for you to tap Start', scheduled: 'sent - waiting for the run', started: 'run started - waiting for Strava', linked: 'matched to Strava', no_run: 'no Strava run found' };
+const STATUS = { armed: 'planned · waiting for run / match', scheduled: 'planned in IMS', started: 'run started · waiting for Strava', linked: 'matched to Strava', no_run: 'no Strava run found' };
 
 export default function RunLearningTab({ call, send, isDark, panelClass, units = 'km' }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [open, setOpen] = useState(null); // activity id whose retrospective is shown
+  const [matchModalSession, setMatchModalSession] = useState(null);
 
   const [checkMsg, setCheckMsg] = useState(null);
   const load = useCallback(async (sync = false) => {
@@ -34,6 +35,20 @@ export default function RunLearningTab({ call, send, isDark, panelClass, units =
   const decide = async (id, decision) => {
     setBusy(true);
     try { setData(await send(`/api/planner/learning/${id}/${decision}`, 'POST')); } catch (err) { setError(err.message); } finally { setBusy(false); }
+  };
+
+  const matchSession = async (sessionId, activityId) => {
+    setBusy(true); setError(null);
+    try {
+      await send(`/api/planner/retro/sessions/${sessionId}/link`, 'POST', { activityId });
+      setMatchModalSession(null);
+      setOpen(activityId);
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const muted = isDark ? 'text-slate-400' : 'text-[#6A645D]';
@@ -66,7 +81,7 @@ export default function RunLearningTab({ call, send, isDark, panelClass, units =
         </div>
         {checkMsg && <div className="text-[11px] text-sky-600">{checkMsg}</div>}
         <p className={`text-[11px] ${muted}`}>
-          Each run you send to your phone saves its plan; Taken / Skipped on the reminders records what you actually took. After the run IMS matches it to Strava and your glucose,
+          Each run you plan saves its fuelling strategy. You can send it to your phone or save the plan directly. After the run, IMS matches it to your Strava activity and glucose,
           replays the plan with what really happened, and measures where the planner was wrong. When the same thing shows up again - {data?.minRuns?.route ?? 2} runs on a route,
           {' '}{data?.minRuns?.profile ?? 3} of a kind, {data?.minRuns?.general ?? 4} overall - it's suggested here. Nothing changes your plans until you accept it.
           Lessons that would mean fewer carbs need an extra run and no lows. Lessons that hold across routes are offered to your T1D Rulebook too. Never insulin.
@@ -188,21 +203,140 @@ export default function RunLearningTab({ call, send, isDark, panelClass, units =
 
       <div className={card}>
         <div className="font-black uppercase tracking-wider text-[10px] mb-2">Your runs</div>
-        {!data?.sessions?.length ? <div className={muted}>No runs yet - send one from the Run Planner, or open a past run in the Flythrough tab.</div> : (
+        {!data?.sessions?.length ? <div className={muted}>No runs yet - plan one in the Run Planner, or open a past run in the Flythrough tab.</div> : (
           <div className="flex flex-col divide-y divide-current/5">
-            {data.sessions.map((x) => (
-              <button key={x.id} disabled={!x.activityId} onClick={() => setOpen(x.activityId)}
-                className={`flex flex-wrap items-center gap-x-3 gap-y-0.5 py-1.5 text-left ${x.activityId ? 'hover:opacity-80' : 'opacity-70 cursor-default'} ${open === x.activityId && x.activityId ? 'font-bold text-sky-500' : ''}`}>
-                <span className="w-40 shrink-0">{x.day || when(x.startedAt)}</span>
-                <span className="flex-1 min-w-[160px]">{x.activityName || x.routeName}{x.kind === 'live' ? ' · planned in IMS' : ''}</span>
-                <span className={muted}>{x.activityId ? (x.quality === 'good' ? `uptake ${x.effective >= 1 ? '+' : ''}${Math.round((x.effective - 1) * 100)}%` : x.quality === 'low' ? 'not clear enough to learn from' : 'not analysed') : STATUS[x.status] || x.status}</span>
-                {x.accuracy != null && <span className={muted}>prediction {x.accuracy}%</span>}
-                {x.lowest != null && <span className={muted}>lowest {x.lowest}</span>}
-              </button>
-            ))}
+            {data.sessions.map((x) => {
+              const isLinked = Boolean(x.activityId);
+              const timeDisplay = x.day || when(x.startedAt || x.createdAt);
+              // Check if there is an unlinked Strava run within 36 hours of the planned time
+              const suggestedAct = !isLinked && (data?.unlinkedActivities || []).find((act) => {
+                if (!act.start_utc) return false;
+                const actMs = Date.parse(act.start_utc);
+                const targetMs = x.startedAt || x.createdAt;
+                return targetMs && Math.abs(actMs - targetMs) < 36 * 3600000;
+              });
+
+              return (
+                <div key={x.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2 text-left">
+                  <div
+                    onClick={() => isLinked && setOpen(x.activityId)}
+                    className={`flex flex-wrap items-center gap-x-3 gap-y-0.5 flex-1 min-w-[240px] ${isLinked ? 'cursor-pointer hover:opacity-80' : ''} ${open === x.activityId && isLinked ? 'font-bold text-sky-500' : ''}`}
+                  >
+                    <span className="w-36 shrink-0">{timeDisplay}</span>
+                    <span className="font-bold min-w-[140px]">{x.activityName || x.routeName}{x.kind === 'live' ? ' · planned in IMS' : ''}</span>
+                    <span className={muted}>
+                      {isLinked
+                        ? (x.quality === 'good' ? `uptake ${x.effective >= 1 ? '+' : ''}${Math.round((x.effective - 1) * 100)}%` : x.quality === 'low' ? 'not clear enough to learn from' : 'not analysed')
+                        : <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20">{STATUS[x.status] || x.status}</span>
+                      }
+                    </span>
+                    {x.accuracy != null && <span className={muted}>prediction {x.accuracy}%</span>}
+                    {x.lowest != null && <span className={muted}>lowest {x.lowest}</span>}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {!isLinked && (
+                      <>
+                        {suggestedAct ? (
+                          <button
+                            onClick={() => matchSession(x.id, suggestedAct.id)}
+                            disabled={busy}
+                            className={`${small} bg-emerald-500 text-white border-transparent hover:bg-emerald-600`}
+                            title={`Match to ${suggestedAct.name} (${(suggestedAct.distance / 1000).toFixed(1)} km, ${suggestedAct.day || when(Date.parse(suggestedAct.start_utc))})`}
+                          >
+                            <Link2 size={12} /> Link to {suggestedAct.name}
+                          </button>
+                        ) : null}
+                        <button
+                          onClick={() => setMatchModalSession(x)}
+                          disabled={busy}
+                          className={`${small} text-sky-500 border-sky-500/30 hover:bg-sky-500/10`}
+                          title="Choose a Strava activity to match to this plan"
+                        >
+                          <Link2 size={12} /> {suggestedAct ? 'Choose other run' : 'Match to Strava run'}
+                        </button>
+                      </>
+                    )}
+                    {isLinked && (
+                      <button
+                        onClick={() => setOpen(x.activityId)}
+                        className={`${small} ${open === x.activityId ? 'bg-sky-500/15 border-sky-500 text-sky-500' : ''}`}
+                      >
+                        {open === x.activityId ? 'Showing review' : 'View review'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
+
+      {/* Manual Run Matching Modal */}
+      {matchModalSession && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setMatchModalSession(null)}>
+          <div className={`w-full max-w-xl rounded-2xl border p-5 shadow-2xl ${isDark ? 'bg-slate-900 border-white/15 text-slate-100' : 'bg-white border-[#2E2B27]/15 text-[#2E2B27]'}`} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
+                  <Link2 size={16} className="text-sky-500" /> Match Planned Run to Strava
+                </h3>
+                <p className={`text-xs mt-1 ${muted}`}>
+                  Planned: <b>{matchModalSession.routeName || 'Run'}</b> ({when(matchModalSession.startedAt || matchModalSession.createdAt)})
+                </p>
+              </div>
+              <button onClick={() => setMatchModalSession(null)} className="p-1 rounded-lg hover:bg-white/10 opacity-70 hover:opacity-100"><X size={16} /></button>
+            </div>
+
+            <p className={`text-xs mb-3 ${muted}`}>
+              Select the completed Strava run to link with this plan. IMS will align your glucose telemetry, calculate your fuelling accuracy, and produce your post-run learning insights.
+            </p>
+
+            <div className="flex flex-col gap-2 max-h-[360px] overflow-y-auto pr-1">
+              {!data?.unlinkedActivities?.length ? (
+                <div className={`text-center py-6 text-xs ${muted}`}>
+                  No recent unlinked Strava runs found.
+                  <div className="mt-2">
+                    <button onClick={() => load(true)} disabled={busy} className={`${small} mx-auto`}>
+                      <RotateCw size={12} className={busy ? 'animate-spin' : ''} /> Check Strava for new runs
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                data.unlinkedActivities.map((act) => {
+                  const distKm = act.distance ? (act.distance / 1000).toFixed(1) : '-';
+                  const durMin = Math.round((act.elapsed_time || act.moving_time || 0) / 60);
+                  const actTime = act.day || (act.start_utc ? when(Date.parse(act.start_utc)) : '');
+                  return (
+                    <div key={act.id} className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-colors ${isDark ? 'border-white/10 hover:bg-white/5 bg-slate-950/40' : 'border-[#2E2B27]/10 hover:bg-[#F4EFE6] bg-[#FAF7F2]'}`}>
+                      <div className="flex-1 min-w-[180px]">
+                        <div className="font-bold text-xs">{act.name}</div>
+                        <div className={`text-[11px] flex items-center gap-3 mt-0.5 ${muted}`}>
+                          <span className="flex items-center gap-1"><Calendar size={11} /> {actTime}</span>
+                          <span>{distKm} km</span>
+                          <span className="flex items-center gap-1"><Timer size={11} /> {durMin} min</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => matchSession(matchModalSession.id, act.id)}
+                        disabled={busy}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-sky-500 hover:bg-sky-600 text-white flex items-center gap-1 active:scale-95 disabled:opacity-50"
+                      >
+                        <Link2 size={12} /> Link this run
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-current/10">
+              <button onClick={() => setMatchModalSession(null)} className={small}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {open && <RunRetrospective activityId={open} isDark={isDark} call={call} send={send} units={units} />}
       {/* what the run means for the next day or two: sensitivity window, refuelling, the next plan */}
@@ -210,3 +344,4 @@ export default function RunLearningTab({ call, send, isDark, panelClass, units =
     </div>
   );
 }
+

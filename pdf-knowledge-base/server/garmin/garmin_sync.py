@@ -33,13 +33,14 @@ def client():
 
 def login():
     email, password = os.environ.get("GARMIN_EMAIL"), os.environ.get("GARMIN_PASSWORD")
+    mfa = os.environ.get("GARMIN_MFA_CODE")
     if not email or not password:
         out({"ok": False, "error": "GARMIN_EMAIL and GARMIN_PASSWORD are needed for the first login"}, 2)
     from garminconnect import Garmin
     os.makedirs(TOKEN_DIR, exist_ok=True)
-    g = Garmin(email, password)
-    g.login()
-    g.garth.dump(TOKEN_DIR)
+    prompt_cb = (lambda: mfa) if mfa else None
+    g = Garmin(email, password, prompt_mfa=prompt_cb)
+    g.login(TOKEN_DIR)
     out({"ok": True, "tokenDir": os.path.abspath(TOKEN_DIR)})
 
 
@@ -62,6 +63,7 @@ def day(date):
         "maxMetrics": lambda: g.get_max_metrics(date),
         "racePredictions": lambda: g.get_race_predictions(),
         "bodyBattery": lambda: g.get_body_battery(date, date),
+        "hrZones": lambda: g.get_heart_rate_zones(),
     }
     for name, fn in calls.items():
         try:
@@ -112,6 +114,7 @@ def day(date):
         "readinessLevel": rd.get("level"),
         "recoveryTimeMin": rd.get("recoveryTime"),
         "trainingStatus": str(st.get("mostRecentTrainingStatus", {}).get("latestTrainingStatusData", ""))[:400] if isinstance(st, dict) else None,
+        "hrZones": raw.get("hrZones") or [],
     }
     out({"ok": True, "metrics": m, "errors": errors})
 

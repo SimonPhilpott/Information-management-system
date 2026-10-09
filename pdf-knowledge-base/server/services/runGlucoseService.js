@@ -4,6 +4,7 @@ import { GoogleGenerativeAI } from './geminiClient.js';
 import { textInUnits, clearUnitCache, normaliseUnits } from './aiTextService.js';
 import { getRulebookPromptContext } from './t1dRulebookService.js';
 import { stripMedicalDisclaimers } from './disclaimerSanitizer.js';
+import { getCachedGlucose } from './glucoseService.js';
 
 // Matches each Strava activity with what Nightscout (an AAPS closed loop with a Libre 2
 // sensor and an Omnipod) recorded around it: glucose, insulin on board (IOB), carbs on
@@ -114,14 +115,28 @@ function store({ entries, treatments, devicestatus }) {
 // Where glucose and insulin stand right now, from the local Nightscout log (used to plan the
 // next run and to write "next time" advice).
 export function getCurrentState() {
-  const e = db.prepare('SELECT date, sgv, direction FROM ns_entries ORDER BY date DESC LIMIT 1').get();
+  const e = db.prepare('SELECT date, sgv, direction, scaled FROM ns_entries ORDER BY date DESC LIMIT 1').get();
   const d = db.prepare('SELECT at, iob, basal_iob, cob FROM ns_devicestatus ORDER BY at DESC LIMIT 1').get();
   const bolus = db.prepare('SELECT at, insulin FROM ns_treatments WHERE insulin > 0 ORDER BY at DESC LIMIT 1').get();
   const carbs = db.prepare('SELECT SUM(carbs) AS g FROM ns_treatments WHERE carbs > 0 AND at >= ?').get(Date.now() - 3 * 3600000).g;
   const ago = (t) => Math.round((Date.now() - t) / 60000);
-  const bg = e ? Math.round((e.sgv / MGDL) * 10) / 10 : null;
+
+  // Align precisely with the live Box-3 screen widget & Nightscout canonical mmol/L reading:
+  // 1. If cached glucose from glucoseService is fresh (<= 20m), use its canonical numeric value (matches Box-3 screen).
+  // 2. Otherwise prefer stored e.scaled if recorded in ns_entries.
+  // 3. Fall back to mathematical conversion (e.sgv / MGDL).
+  let bg = null;
+  const cached = typeof getCachedGlucose === 'function' ? getCachedGlucose() : null;
+  if (cached && typeof cached.numericValue === 'number' && Number.isFinite(cached.numericValue) && (Date.now() - (cached.timestamp || 0) <= 20 * 60000)) {
+    bg = cached.numericValue;
+  } else if (e && typeof e.scaled === 'number' && Number.isFinite(e.scaled)) {
+    bg = e.scaled;
+  } else if (e) {
+    bg = Math.round((e.sgv / MGDL) * 10) / 10;
+  }
+
   return {
-    bg, direction: e?.direction || null, bgMinutesAgo: e ? ago(e.date) : null, bgFresh: Boolean(e && ago(e.date) <= 20),
+    bg, direction: (cached && cached.direction) || e?.direction || null, bgMinutesAgo: e ? ago(e.date) : null, bgFresh: Boolean(e && ago(e.date) <= 20),
     iob: d && ago(d.at) <= 20 ? Math.max(0, Math.round(d.iob * 100) / 100) : null,
     cob: d && ago(d.at) <= 20 && d.cob != null ? Math.round(d.cob) : null,
     lastBolusUnits: bolus?.insulin ?? null, lastBolusMinutesAgo: bolus ? ago(bolus.at) : null, carbsLast3h: Math.round(carbs || 0),

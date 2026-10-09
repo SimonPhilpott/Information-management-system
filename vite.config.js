@@ -1,109 +1,16 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { exec, spawn } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import http from 'http'
-import { config as decryptEnv } from '@dotenvx/dotenvx'
-
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ports = JSON.parse(fs.readFileSync(path.join(__dirname, 'ports.json'), 'utf8'))
 
-const parseSharePointXml = (xmlStr) => {
-  const items = [];
-  let pos = 0;
-  while (true) {
-    const entryStart = xmlStr.indexOf('<entry>', pos);
-    if (entryStart === -1) break;
-
-    let entryEnd = -1;
-    let depth = 0;
-    let scanPos = entryStart;
-    while (scanPos < xmlStr.length) {
-      const nextOpen = xmlStr.indexOf('<entry>', scanPos);
-      const nextClose = xmlStr.indexOf('</entry>', scanPos);
-      if (nextClose === -1) break;
-      if (nextOpen !== -1 && nextOpen < nextClose) {
-        depth++;
-        scanPos = nextOpen + 7;
-      } else {
-        depth--;
-        if (depth === 0) {
-          entryEnd = nextClose + 8;
-          break;
-        }
-        scanPos = nextClose + 8;
-      }
-    }
-    if (entryEnd === -1) {
-      pos = entryStart + 7;
-      continue;
-    }
-    const entryContent = xmlStr.substring(entryStart, entryEnd);
-    const titleMatch = entryContent.match(/<d:Title[^>]*>([\s\S]*?)<\/d:Title>/);
-    const urlMatch = entryContent.match(/<d:Url[^>]*>([\s\S]*?)<\/d:Url>/);
-    const idMatch = entryContent.match(/<d:Id[^>]*>([\s\S]*?)<\/d:Id>/);
-
-    if (titleMatch && urlMatch) {
-      const title = titleMatch[1].replace(/&amp;/g, '&').trim();
-      const url = urlMatch[1].trim();
-      const id = idMatch ? idMatch[1].trim() : '';
-
-      const item = { id, title, url, children: [] };
-      const inlineStart = entryContent.indexOf('<m:inline>');
-      const inlineEnd = entryContent.indexOf('</m:inline>');
-      if (inlineStart !== -1 && inlineEnd !== -1) {
-        const inlineContent = entryContent.substring(inlineStart + 10, inlineEnd);
-        item.children = parseSharePointXml(inlineContent);
-      }
-      items.push(item);
-    }
-    pos = entryEnd;
-  }
-  return items;
-};
-
-const flattenSharePointItems = (items, prefix = '') => {
-  let flat = [];
-  items.forEach((item) => {
-    const fullTitle = prefix ? `${prefix} > ${item.title}` : item.title;
-    if (item.url && item.url !== 'http://linkless.header/') {
-      flat.push({
-        title: fullTitle,
-        url: item.url,
-        type: 'CONCEPT'
-      });
-    }
-    if (item.children && item.children.length > 0) {
-      flat = flat.concat(flattenSharePointItems(item.children, item.title));
-    }
-  });
-  return flat;
-};
-
-const findNodeInTreeByUrl = (nodes, siteUrl) => {
-  const targetPath = siteUrl.toLowerCase().replace(/https?:\/\/turntown\.sharepoint\.com/, '').trim();
-  for (const node of nodes) {
-    const nodePath = node.url.toLowerCase().replace(/https?:\/\/turntown\.sharepoint\.com/, '').trim();
-    if (nodePath && targetPath && (nodePath === targetPath || nodePath.includes(targetPath) || targetPath.includes(nodePath))) {
-      return node;
-    }
-    if (node.children && node.children.length > 0) {
-      const found = findNodeInTreeByUrl(node.children, siteUrl);
-      if (found) return found;
-    }
-  }
-  return null;
-};
-
-// Security guard (review of 8 Oct 2026). This dev server is published to the internet through ngrok, and
-// only /api calls reach the backend's login - so, before anything else runs:
-//  1. It serves the app and nothing else: src/, public/, node_modules/ and index.html. Any other real file or
+// Security guard (review of 8 Oct 2026). When the dev server is published over ngrok:
+//  1. It serves the frontend app and nothing else: src/, public/, node_modules/ and index.html. Any other real file or
 //     folder in the project (the database, server code, logs, backups, firmware...) and any dot-file is "not found".
-//  2. Its own tool routes (backups, mesh backups, tunnel control, SharePoint fetch, port status) answer only
-//     requests made on this PC - never ones arriving through the tunnel.
+//  2. Device/internal endpoints only answer requests made on this PC - never ones arriving through the tunnel.
 const SERVED_DIRS = ['src', 'public', 'node_modules']
 const LOCAL_ONLY = [/^\/api\/(backup|mesh-backups|tunnel|sharepoint-nav)(\/|\?|$)/, /^\/ims\/port-status(\?|$)/]
 const isThisPc = (req) => {
@@ -113,6 +20,7 @@ const isThisPc = (req) => {
     !req.headers['x-forwarded-for'] && !req.headers['x-forwarded-host']
 }
 const notFound = (res) => { res.statusCode = 404; res.setHeader('Content-Type', 'text/plain'); res.end('Not found') }
+
 const securityGuardPlugin = () => ({
   name: 'security-guard',
   configureServer(server) {
@@ -124,7 +32,7 @@ const securityGuardPlugin = () => ({
         res.setHeader('Content-Type', 'text/plain')
         return res.end('Only available on this PC.')
       }
-      if (p.split('/').some((seg) => seg === '..' || (seg.startsWith('.') && seg.length > 1))) return notFound(res)
+      if (p.split('/').some((seg) => seg === '..' || (seg.startsWith('.') && seg.length > 1 && seg !== '.vite'))) return notFound(res)
       if (p.startsWith('/@fs/')) return /\/node_modules\//.test(p) ? next() : notFound(res)
       if (p === '/' || p.startsWith('/@') || p.startsWith('/api/') || p.startsWith('/__')) return next()
       const rel = path.posix.normalize(p).replace(/^\/+/, '')
@@ -136,521 +44,20 @@ const securityGuardPlugin = () => ({
   }
 })
 
-const backupPlugin = () => ({
-  name: 'backup-plugin',
-  configureServer(server) {
-    server.middlewares.use((req, res, next) => {
-      res.setHeader('Content-Type', 'application/json');
-
-      if (req.url === '/api/backup') {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const backupDir = "D:/Information management system/backups";
-        const zipFile = `${backupDir}/hive_mesh_checkpoint_${timestamp}.zip`;
-
-        const psCommand = `
-          if (!(Test-Path '${backupDir}')) { New-Item -ItemType Directory -Path '${backupDir}' };
-          Compress-Archive -Path src, index.html, package.json, tailwind.config.js, vite.config.js, public -DestinationPath '${zipFile}' -Force
-        `.trim().replace(/\n/g, ' ');
-
-        exec(`powershell.exe -NoProfile -Command "${psCommand}"`, (err, stdout, stderr) => {
-          if (err) {
-            console.error('Backup Engine Error:', stderr);
-            res.statusCode = 500;
-            res.end(JSON.stringify({ error: err.message, details: stderr }));
-          } else {
-            res.end(JSON.stringify({ success: true, file: zipFile }));
-          }
-        });
-      } else if (req.url === '/api/mesh-backups' && req.method === 'GET') {
-        const registryPath = path.join(__dirname, 'backups/mesh_backups_registry.json');
-        if (!fs.existsSync(registryPath)) {
-          res.end(JSON.stringify([]));
-        } else {
-          try {
-            const registry = fs.readFileSync(registryPath, 'utf8');
-            res.end(registry);
-          } catch (e) {
-            res.statusCode = 500;
-            res.end(JSON.stringify({ error: e.message }));
-          }
-        }
-      } else if (req.url === '/api/mesh-backups' && req.method === 'POST') {
-        const backupDir = path.join(__dirname, 'backups');
-        if (!fs.existsSync(backupDir)) {
-          fs.mkdirSync(backupDir, { recursive: true });
-        }
-
-        const authorityJsonFilePath = path.join(__dirname, 'src/data/mesh_authority.json');
-        if (!fs.existsSync(authorityJsonFilePath)) {
-          res.statusCode = 404;
-          res.end(JSON.stringify({ error: 'Authority JSON file not found' }));
-          return;
-        }
-
-        try {
-          const rawData = fs.readFileSync(authorityJsonFilePath, 'utf8');
-          const nodes = JSON.parse(rawData);
-
-          // Calculate stats
-          const nodeCount = nodes.length;
-          let connectionCount = 0;
-          nodes.forEach(n => {
-            if (n.parentId) connectionCount++;
-            if (n.secondaryLinks && Array.isArray(n.secondaryLinks)) {
-              connectionCount += n.secondaryLinks.length;
-            }
-          });
-
-          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-          const backupFilename = `mesh_backup_${timestamp}.json`;
-          const backupFilePath = path.join(backupDir, backupFilename);
-
-          // Save backup file
-          fs.writeFileSync(backupFilePath, rawData, 'utf8');
-
-          // Update registry
-          const registryPath = path.join(backupDir, 'mesh_backups_registry.json');
-          let registry = [];
-          if (fs.existsSync(registryPath)) {
-            registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-          }
-
-          const newBackup = {
-            filename: backupFilename,
-            timestamp: new Date().toISOString(),
-            nodeCount,
-            connectionCount
-          };
-          registry.unshift(newBackup);
-
-          fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2), 'utf8');
-          res.end(JSON.stringify({ success: true, backup: newBackup }));
-        } catch (e) {
-          res.statusCode = 500;
-          res.end(JSON.stringify({ error: e.message }));
-        }
-      } else if (req.url.startsWith('/api/mesh-backups/restore') && req.method === 'POST') {
-        const urlObj = new URL(req.url, 'http://localhost');
-        const filename = urlObj.searchParams.get('filename');
-
-        // a plain backup file name only - never a path (../ could read any file on the PC)
-        if (filename && (filename !== path.basename(filename) || !/^[\w.-]+\.json$/.test(filename))) {
-          res.statusCode = 400;
-          res.end(JSON.stringify({ error: 'Invalid backup file name' }));
-          return;
-        }
-
-        if (!filename) {
-          res.statusCode = 400;
-          res.end(JSON.stringify({ error: 'Missing filename parameter' }));
-          return;
-        }
-
-        const backupFilePath = path.join(__dirname, 'backups', filename);
-        if (!fs.existsSync(backupFilePath)) {
-          res.statusCode = 404;
-          res.end(JSON.stringify({ error: 'Backup file not found' }));
-          return;
-        }
-
-        try {
-          const rawData = fs.readFileSync(backupFilePath, 'utf8');
-          const authorityJsonFilePath = path.join(__dirname, 'src/data/mesh_authority.json');
-          const authorityJsFilePath = path.join(__dirname, 'src/data/mesh_authority.js');
-
-          // Overwrite JSON file
-          fs.writeFileSync(authorityJsonFilePath, rawData, 'utf8');
-
-          // Overwrite JS file
-          const jsContent = `export const MESHES = ${rawData};\n`;
-          fs.writeFileSync(authorityJsFilePath, jsContent, 'utf8');
-
-          res.end(JSON.stringify({ success: true }));
-        } catch (e) {
-          res.statusCode = 500;
-          res.end(JSON.stringify({ error: e.message }));
-        }
-      } else if (req.url.startsWith('/api/sharepoint-nav') && req.method === 'GET') {
-        const urlObj = new URL(req.url, 'http://localhost');
-        const siteUrl = urlObj.searchParams.get('siteUrl');
-        if (!siteUrl) {
-          res.statusCode = 400;
-          res.end(JSON.stringify({ error: 'Missing siteUrl parameter' }));
-          return;
-        }
-
-        let targetUrl = siteUrl.trim();
-        if (targetUrl.endsWith('/')) {
-          targetUrl = targetUrl.slice(0, -1);
-        }
-        targetUrl = `${targetUrl}/_api/navigation/menustate`;
-
-        const targetObj = new URL(targetUrl);
-        const protocol = targetObj.protocol === 'https:' ? import('https') : import('http');
-
-        protocol.then((client) => {
-          const request = client.get({
-            hostname: targetObj.hostname,
-            port: targetObj.port || (targetObj.protocol === 'https:' ? 443 : 80),
-            path: targetObj.pathname + targetObj.search,
-            headers: {
-              'Accept': 'application/json;odata=nometadata',
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
-          }, (response) => {
-            let body = '';
-            response.on('data', (chunk) => { body += chunk; });
-            response.on('end', () => {
-              res.statusCode = response.statusCode || 200;
-              res.setHeader('Content-Type', 'application/json');
-              res.end(body);
-            });
-          });
-
-          request.on('error', (err) => {
-            res.statusCode = 500;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ error: err.message }));
-          });
-        }).catch((err) => {
-          res.statusCode = 500;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: err.message }));
-        });
-      } else {
-        // Clear it for other requests so Vite sets the right type itself (forcing text/html here
-        // served the app manifest, icons and SVGs as HTML, which stops "Install app" working)
-        res.removeHeader('Content-Type');
-        next();
-      }
-    });
-  }
-});
-
-/**
- * portStatusPlugin — Vite dev-server middleware that probes all local service
- * ports from the Node.js process (where localhost is always the server) and
- * returns a unified status JSON at GET /api/port-status.
- *
- * This is the correct approach when the frontend may be accessed via an ngrok
- * tunnel: the browser cannot reach localhost ports on the remote server, but
- * a relative API call to /api/port-status is transparently forwarded through
- * the tunnel and the check runs server-side where all ports are reachable.
- */
-const portStatusPlugin = () => ({
-  name: 'port-status-plugin',
-  configureServer(server) {
-    server.middlewares.use((req, res, next) => {
-      if (req.url !== '/ims/port-status') {
-        next();
-        return;
-      }
-
-      /**
-       * Probe a single local HTTP endpoint with a tight timeout.
-       * Returns 'online' if we receive any HTTP response (even an error code),
-       * 'offline' if the connection is refused or times out.
-       *
-       * @param {string} host
-       * @param {number} port
-       * @param {string} [path='/']
-       * @returns {Promise<'online'|'offline'>}
-       */
-      const probePort = (host, port, path = '/') =>
-        new Promise((resolve) => {
-          const timeoutId = setTimeout(() => {
-            req_.destroy();
-            resolve('offline');
-          }, 1500);
-
-          const req_ = http.get({ host, port, path, headers: { connection: 'close' } }, () => {
-            clearTimeout(timeoutId);
-            req_.destroy();
-            resolve('online');
-          });
-
-          req_.on('error', () => {
-            clearTimeout(timeoutId);
-            resolve('offline');
-          });
-        });
-
-      /**
-       * Query the ngrok local agent API to confirm an active tunnel exists.
-       * Falls back to a raw TCP probe of port 4040 if the JSON parse fails.
-       *
-       * @returns {Promise<'online'|'offline'>}
-       */
-      const probeNgrok = async () => {
-        try {
-          const status = await new Promise((resolve) => {
-            const timeoutId = setTimeout(() => {
-              req_.destroy();
-              resolve('offline');
-            }, 1500);
-
-            const req_ = http.get(
-              { host: '127.0.0.1', port: 4040, path: '/api/tunnels', headers: { connection: 'close' } },
-              (ngrokRes) => {
-                let body = '';
-                ngrokRes.on('data', (chunk) => { body += chunk; });
-                ngrokRes.on('end', () => {
-                  clearTimeout(timeoutId);
-                  try {
-                    const parsed = JSON.parse(body);
-                    const hasTunnel = parsed.tunnels?.some(
-                      (t) => t.public_url?.includes('simon-ims') || t.public_url?.includes('ngrok')
-                    );
-                    resolve(hasTunnel ? 'online' : 'offline');
-                  } catch {
-                    // Agent responded but body wasn't JSON — still counts as online
-                    resolve('online');
-                  }
-                });
-              }
-            );
-
-            req_.on('error', () => {
-              clearTimeout(timeoutId);
-              resolve('offline');
-            });
-          });
-
-          return status;
-        } catch {
-          return 'offline';
-        }
-      };
-
-      (async () => {
-        const [mainApp, authServer, kbClient, ngrok] = await Promise.all([
-          probePort('127.0.0.1', ports.ims.port),
-          probePort('127.0.0.1', ports.pdf_knowledge_base.server.port, '/api/auth/status'),
-          probePort('127.0.0.1', ports.pdf_knowledge_base.client.port),
-          probeNgrok(),
-        ]);
-
-        res.setHeader('Content-Type', 'application/json');
-        res.setHeader('Cache-Control', 'no-store');
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        // Respond directly — this route intentionally bypasses the /api proxy.
-        res.end(JSON.stringify({ mainApp, authServer, kbClient, ngrok }));
-      })().catch((err) => {
-        console.error('[port-status-plugin] Error:', err);
-        res.setHeader('Content-Type', 'application/json');
-        res.statusCode = 500;
-        res.end(JSON.stringify({ error: err.message }));
-      });
-    });
-  },
-});
-
-const tunnelPlugin = () => {
-  let tunnelProcess = null;
-  let tunnelUrl = 'https://simon-ims.ngrok-free.app';
-  let tunnelStatus = 'disconnected';
-  let tunnelError = '';
-  let tunnelLogs = [];
-
-  // .env is encrypted with dotenvx (safe to commit); the private key stays on this PC (Windows Credential
-  // Manager, or a git-ignored .env.keys), and dotenvx decrypts with it here.
-  const getNgrokAuthToken = () => {
-    try {
-      const envPath = path.join(__dirname, '.env');
-      if (fs.existsSync(envPath)) {
-        const values = {};
-        decryptEnv({ path: envPath, processEnv: values, quiet: true });
-        return String(values.NGROK_AUTHTOKEN || '').trim();
-      }
-    } catch (e) {
-      console.error('Error reading NGROK_AUTHTOKEN from .env:', e);
-    }
-    return '';
-  };
-
-  const fetchTunnelUrl = () => {
-    return new Promise((resolve) => {
-      http.get('http://127.0.0.1:4040/api/tunnels', (res) => {
-        let data = '';
-        res.on('data', (chunk) => { data += chunk; });
-        res.on('end', () => {
-          try {
-            const parsed = JSON.parse(data);
-            if (parsed.tunnels && parsed.tunnels.length > 0) {
-              resolve(parsed.tunnels[0].public_url);
-              return;
-            }
-          } catch (e) {
-            // ignore
-          }
-          resolve(null);
-        });
-      }).on('error', () => {
-        resolve(null);
-      });
-    });
-  };
-
-  return {
-    name: 'tunnel-plugin',
-    configureServer(server) {
-      server.middlewares.use((req, res, next) => {
-        // Wrap in async IIFE so we can use await for ngrok API checks
-        // without changing the synchronous Vite middleware signature.
-        (async () => {
-          if (req.url === '/api/tunnel/status') {
-            res.setHeader('Content-Type', 'application/json');
-            // Cross-check against the live ngrok agent API (port 4040) so the
-            // status is accurate even after a Vite restart that orphaned the
-            // previous ngrok process (tunnelProcess would be null but ngrok.exe
-            // could still be running and serving the static domain).
-            const liveCheck = await fetchTunnelUrl();
-            if (liveCheck && tunnelStatus === 'disconnected') {
-              tunnelStatus = 'connected';
-              tunnelUrl = liveCheck;
-            } else if (!liveCheck && tunnelStatus === 'connected') {
-              tunnelStatus = 'disconnected';
-            }
-            res.end(JSON.stringify({
-              status: tunnelStatus,
-              url: tunnelUrl,
-              error: tunnelError,
-              logs: tunnelLogs.slice(-20)
-            }));
-
-          } else if (req.url === '/api/tunnel/start' && req.method === 'POST') {
-            res.setHeader('Content-Type', 'application/json');
-            if (tunnelProcess) {
-              res.end(JSON.stringify({ success: true, status: tunnelStatus, url: tunnelUrl }));
-              return;
-            }
-
-            try {
-              tunnelStatus = 'connecting';
-              tunnelError = '';
-              tunnelLogs = [`[System] Starting ngrok Tunnel to port ${ports.ims.port}...`];
-
-              const authtoken = getNgrokAuthToken();
-              const spawnEnv = { ...process.env };
-              if (authtoken) {
-                spawnEnv.NGROK_AUTHTOKEN = authtoken;
-                tunnelLogs.push('[System] Custom NGROK_AUTHTOKEN environment variable loaded.');
-              } else {
-                tunnelLogs.push('[System] Warning: No NGROK_AUTHTOKEN found in .env file.');
-              }
-
-              // Spawn ngrok CLI with custom static URL
-              tunnelProcess = spawn('ngrok', [
-                'http',
-                ports.ims.port.toString(),
-                '--url=https://simon-ims.ngrok-free.app'
-              ], { env: spawnEnv });
-
-              let checkCount = 0;
-              const checkInterval = setInterval(async () => {
-                if (!tunnelProcess) {
-                  clearInterval(checkInterval);
-                  return;
-                }
-                const url = await fetchTunnelUrl();
-                if (url) {
-                  tunnelUrl = url;
-                  tunnelStatus = 'connected';
-                  tunnelLogs.push(`[System] Tunnel running at: ${tunnelUrl}`);
-                  clearInterval(checkInterval);
-                } else if (checkCount > 15) {
-                  clearInterval(checkInterval);
-                  if (tunnelStatus === 'connecting') {
-                    tunnelStatus = 'error';
-                    tunnelError = 'Timed out waiting for ngrok public URL';
-                    tunnelLogs.push('[System] Error: Timed out waiting for ngrok public URL');
-                  }
-                }
-                checkCount++;
-              }, 1000);
-
-              tunnelProcess.stdout.on('data', (data) => {
-                tunnelLogs.push(data.toString());
-                if (tunnelLogs.length > 100) tunnelLogs.shift();
-              });
-
-              tunnelProcess.stderr.on('data', (data) => {
-                tunnelLogs.push(data.toString());
-                if (tunnelLogs.length > 100) tunnelLogs.shift();
-              });
-
-              tunnelProcess.on('close', (code) => {
-                tunnelProcess = null;
-                tunnelStatus = 'disconnected';
-                tunnelLogs.push(`[System] Process closed with exit code ${code}`);
-              });
-
-              tunnelProcess.on('error', (err) => {
-                tunnelStatus = 'error';
-                tunnelError = err.message;
-                tunnelProcess = null;
-                tunnelLogs.push(`[System] Error: ${err.message}`);
-              });
-
-              res.end(JSON.stringify({ success: true, status: tunnelStatus }));
-            } catch (e) {
-              tunnelStatus = 'error';
-              tunnelError = e.message;
-              tunnelProcess = null;
-              res.statusCode = 500;
-              res.end(JSON.stringify({ error: e.message }));
-            }
-
-          } else if (req.url === '/api/tunnel/stop' && req.method === 'POST') {
-            res.setHeader('Content-Type', 'application/json');
-            tunnelLogs.push('[System] Stopping ngrok tunnel...');
-
-            // 1. Kill the tracked child process if present.
-            if (tunnelProcess) {
-              try { tunnelProcess.kill('SIGKILL'); } catch (e) { /* ignore */ }
-              tunnelProcess = null;
-            }
-
-            // 2. Kill ALL system-level ngrok.exe processes so orphaned instances
-            //    from previous Vite sessions are also terminated. taskkill exits
-            //    with a non-zero code if no matching process exists — that is fine.
-            try {
-              const { execSync } = await import('child_process');
-              execSync('taskkill /F /IM ngrok.exe', { stdio: 'ignore' });
-              tunnelLogs.push('[System] All ngrok processes terminated via taskkill.');
-            } catch (e) {
-              tunnelLogs.push('[System] No additional ngrok processes found.');
-            }
-
-            tunnelStatus = 'disconnected';
-            tunnelUrl = '';
-            res.end(JSON.stringify({ success: true, status: 'disconnected' }));
-
-          } else {
-            next();
-          }
-        })().catch((err) => {
-          console.error('[tunnel-plugin] Middleware error:', err);
-          next(err);
-        });
-      });
-
-      server.httpServer?.on('close', () => {
-        if (tunnelProcess) {
-          try {
-            tunnelProcess.kill('SIGKILL');
-          } catch (e) {
-            // ignore
-          }
-        }
-      });
-    }
-  };
-};
-
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [securityGuardPlugin(), react(), backupPlugin(), portStatusPlugin(), tunnelPlugin()],
+  plugins: [securityGuardPlugin(), react()],
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'react-dom/client',
+      'framer-motion',
+      'lucide-react',
+      'clsx',
+      'tailwind-merge'
+    ]
+  },
   server: {
     fs: {
       // second line of defence for Vite's own file serving
@@ -662,7 +69,7 @@ export default defineConfig({
     allowedHosts: [
       'simon-ims.ngrok-free.app',
       '.ngrok-free.app',
-      '.ngrok-free.dev', // the current static domain ends .dev - without it Vite refused every request through ngrok (403)
+      '.ngrok-free.dev', // static domain ends .dev - without it Vite refused every request through ngrok (403)
       '.ngrok.app',
       '.ngrok.dev',
       '.ngrok.io',
@@ -676,7 +83,6 @@ export default defineConfig({
         changeOrigin: true,
         configure: (proxy, _options) => {
           proxy.on('error', (err, _req, _res) => {
-            // Silence noisy ECONNRESET warnings on backend hot-reload restarts
             if (err.code !== 'ECONNRESET') {
               console.error('Vite WS Proxy Error:', err);
             }
@@ -707,20 +113,18 @@ export default defineConfig({
           });
         }
       },
+      '/ims/port-status': {
+        target: `http://127.0.0.1:${ports.pdf_knowledge_base.server.port}`,
+        changeOrigin: true,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.error('Vite Port Status Proxy Error:', err);
+          });
+        }
+      },
       '/api': {
         target: `http://127.0.0.1:${ports.pdf_knowledge_base.server.port}`,
         changeOrigin: true,
-        bypass(req) {
-          // These endpoints are handled by Vite plugin middleware — do not proxy them.
-          if (
-            req.url.startsWith('/api/tunnel') ||
-            req.url.startsWith('/api/backup') ||
-            req.url.startsWith('/api/mesh-backups') ||
-            req.url.startsWith('/api/sharepoint-nav')
-          ) {
-            return req.url;
-          }
-        },
         configure: (proxy, _options) => {
           proxy.on('error', (err, _req, _res) => {
             console.error('Vite Proxy Error:', err);

@@ -14,7 +14,7 @@ import { syncActivities } from '../services/stravaService.js';
 import { logNightscout } from '../services/runGlucoseService.js';
 import {
   retrospective, latestRetrospectiveForRoute, analyseSession, sessionChart, routePlans, currentSentPlan, refreshLearnings, listLearnings, decideLearning, updateIntake, addIntake, deleteIntake,
-  addNote, deleteNote, setEffort, linkSessionManually, linkSessions,
+  addNote, deleteNote, setEffort, linkSessionManually, linkSessions, createSession, unlinkSession,
 } from '../services/runLearningService.js';
 import {
   getRulebook, saveRulebook, resetRulebook,
@@ -98,7 +98,7 @@ router.delete('/routes/:id', (req, res) => { deleteRoute(Number(req.params.id)) 
 router.post('/routes/gpx', async (req, res) => {
   try {
     const xml = String(req.body?.gpx || '');
-    if (xml.length > 15 * 1024 * 1024) throw new Error('That file is too large.');
+    if (xml.length > 30 * 1024 * 1024) throw new Error('That file is too large.');
     const points = parseGpx(xml);
     if (points.length < 2) throw new Error('No route points were found - is this a GPX file?');
     const nameInFile = /<name>\s*([^<]{1,120}?)\s*<\/name>/.exec(xml)?.[1];
@@ -197,6 +197,29 @@ router.put('/retro/sessions/:id/effort', async (req, res) => {
 });
 router.post('/retro/sessions/:id/link', async (req, res) => {
   try { await linkSessionManually(Number(req.params.id), Number(req.body?.activityId)); res.json({ success: true, ...listLearnings() }); } catch (err) { fail(res, err); }
+});
+router.post('/retro/sessions/:id/unlink', async (req, res) => {
+  try { res.json({ success: true, ...(await unlinkSession(Number(req.params.id))) }); } catch (err) { fail(res, err); }
+});
+
+// Save a planned run directly to IMS history without needing to push alerts to the phone
+router.post('/sessions/save-plan', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const route = b.routeId ? getRoute(Number(b.routeId)) : null;
+    const name = route?.name || b.routeName || 'Planned Run';
+    const list = [...(b.stops || [])].filter((x) => x.minute >= 0 && (x.grams || x.ml)).sort((a, b) => a.minute - b.minute);
+    const session = createSession({
+      routeId: route?.id ?? null,
+      routeName: name,
+      plan: b.plan || null,
+      stops: list,
+      test: Boolean(b.test),
+      startedAt: null,
+      status: 'scheduled'
+    });
+    res.json({ success: true, sessionId: session.id, name });
+  } catch (err) { fail(res, err); }
 });
 
 // T1D Rulebook Core Endpoints

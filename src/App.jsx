@@ -5,23 +5,24 @@ import { ENTITY_TYPES, SCHEMAS } from './data/nodes';
 import { MESHES } from './data/mesh_authority.js';
 
 const MESH_JSON_AUTHORITY = MESHES;
-import { MeshCanvas } from './components/KnowledgeMesh/MeshCanvas';
-import { OrbitalNav } from './components/Navigation/OrbitalNav';
-import Layout from './components/Dashboard/Layout';
-import ChatInterface from './components/Dashboard/ChatInterface';
-import HomeChat from './components/Ims/HomeChat';
-import { IntelligenceDrawer } from './components/Editor/IntelligenceDrawer';
-import { AdminPanel } from './components/Admin/AdminPanel';
-import CatalogBrowser from './components/Dashboard/CatalogBrowser';
-import HnswIndexModal from './components/Dashboard/HnswIndexModal';
-import { SpatialCanvas } from './components/KnowledgeMesh/SpatialCanvas';
-import { InstancedSpatialCanvas } from './components/KnowledgeMesh/InstancedSpatialCanvas';
-import { SunburstCanvas } from './components/KnowledgeMesh/SunburstCanvas';
+const OrbitalNav = React.lazy(() => import('./components/Navigation/OrbitalNav').then(m => ({ default: m.OrbitalNav })));
+const Layout = React.lazy(() => import('./components/Dashboard/Layout'));
+const ChatInterface = React.lazy(() => import('./components/Dashboard/ChatInterface'));
+const HomeChat = React.lazy(() => import('./components/Ims/HomeChat'));
+const IntelligenceDrawer = React.lazy(() => import('./components/Editor/IntelligenceDrawer').then(m => ({ default: m.IntelligenceDrawer })));
+const AdminPanel = React.lazy(() => import('./components/Admin/AdminPanel').then(m => ({ default: m.AdminPanel })));
+const CatalogBrowser = React.lazy(() => import('./components/Dashboard/CatalogBrowser'));
+const HnswIndexModal = React.lazy(() => import('./components/Dashboard/HnswIndexModal'));
 import { AnimatePresence, motion, animate } from 'framer-motion';
 import { Activity, Link as LinkIcon, Cpu, ArrowDown, Network, GitMerge, Box, CircleDot, Type, Globe, Aperture, Maximize2, Minimize2, ListOrdered } from 'lucide-react';
 
+const MeshCanvas = React.lazy(() => import('./components/KnowledgeMesh/MeshCanvas').then(m => ({ default: m.MeshCanvas })));
+const SpatialCanvas = React.lazy(() => import('./components/KnowledgeMesh/SpatialCanvas').then(m => ({ default: m.SpatialCanvas })));
+const InstancedSpatialCanvas = React.lazy(() => import('./components/KnowledgeMesh/InstancedSpatialCanvas').then(m => ({ default: m.InstancedSpatialCanvas })));
+const SunburstCanvas = React.lazy(() => import('./components/KnowledgeMesh/SunburstCanvas').then(m => ({ default: m.SunburstCanvas })));
+
 import { useAppLogic } from './hooks/useAppLogic';
-import OnboardingSetup from './components/Dashboard/OnboardingSetup';
+const OnboardingSetup = React.lazy(() => import('./components/Dashboard/OnboardingSetup'));
 import { checkIsEntertainment } from './utils/contentFilter';
 const DemoPortal = React.lazy(() => import('./components/Dashboard/DemoPortal'));
 const MemoriesPortal = React.lazy(() => import('./components/Dashboard/MemoriesPortal'));
@@ -56,7 +57,7 @@ const StoragePortal = React.lazy(() => import('./components/Dashboard/StoragePor
 const ModelSwitcherPortal = React.lazy(() => import('./components/Dashboard/ModelSwitcherPortal'));
 const CostsPortal = React.lazy(() => import('./components/Dashboard/CostsPortal'));
 const ImsHub = React.lazy(() => import('./components/Dashboard/ImsHub'));
-import CommandPalette from './components/Dashboard/CommandPalette';
+const CommandPalette = React.lazy(() => import('./components/Dashboard/CommandPalette'));
 
 function getShortSummary(text) {
   if (!text) return '';
@@ -1680,11 +1681,13 @@ export default function App() {
 
   if (!authStatus?.isAuthorized || !settings?.isConfigured) {
     return (
-      <OnboardingSetup
-        authStatus={authStatus}
-        onComplete={() => window.location.reload()}
-        API=""
-      />
+      <React.Suspense fallback={<div className="min-h-screen bg-[var(--bg-primary)]" />}>
+        <OnboardingSetup
+          authStatus={authStatus}
+          onComplete={() => window.location.reload()}
+          API=""
+        />
+      </React.Suspense>
     );
   }
 
@@ -1818,8 +1821,13 @@ export default function App() {
         </AnimatePresence>
       </div>
 
-      <Layout
-        sessions={state.sessions}
+      <React.Suspense fallback={
+        <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
+          <div className="w-8 h-8 border-2 border-brand-cyan/20 border-t-brand-cyan rounded-full animate-spin" />
+        </div>
+      }>
+        <Layout
+          sessions={state.sessions}
         activeSessionId={state.sessionId}
         onLoadSession={actions.loadSession}
         onDeleteSession={actions.deleteSession}
@@ -2183,6 +2191,14 @@ export default function App() {
                 </motion.div>
               )}
             </AnimatePresence>
+            <React.Suspense fallback={
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-8 h-8 border-2 border-brand-cyan/20 border-t-brand-cyan rounded-full animate-spin" />
+                  <span className="text-[10px] font-black tracking-widest text-slate-400 uppercase">Loading Canvas...</span>
+                </div>
+              </div>
+            }>
             {layoutRules.projectionMode === 'sunburst' ? (
               <SunburstCanvas 
                 meshRef={meshRef}
@@ -2306,18 +2322,21 @@ export default function App() {
                 theme={state.theme}
               />
             )}
-            <OrbitalNav 
-              nodes={filteredNodes} 
-              view={view} 
-              stickPos={stickPos} 
-              setStickPos={setStickPos} 
-              onOpenAdmin={() => setIsAdminOpen(true)} 
-              onOpenAppearance={() => setIsAppearanceOpen(!isAppearanceOpen)} 
-              onMinimapJump={centerOnPoint}
-              showMinimap={true}
-              projectionMode={layoutRules.projectionMode} 
-              theme={state.theme}
-            />
+            </React.Suspense>
+            <React.Suspense fallback={null}>
+              <OrbitalNav 
+                nodes={filteredNodes} 
+                view={view} 
+                stickPos={stickPos} 
+                setStickPos={setStickPos} 
+                onOpenAdmin={() => setIsAdminOpen(true)} 
+                onOpenAppearance={() => setIsAppearanceOpen(!isAppearanceOpen)} 
+                onMinimapJump={centerOnPoint}
+                showMinimap={true}
+                projectionMode={layoutRules.projectionMode} 
+                theme={state.theme}
+              />
+            </React.Suspense>
 
             {/* Viewport Relative Zoom Indicator HUD — hidden in sunburst mode where it overlaps the interactivity guide */}
             {layoutRules.projectionMode !== 'sunburst' && (
@@ -2388,8 +2407,10 @@ export default function App() {
             />
           </HomeChat>
         )}
-      </Layout>
+        </Layout>
+      </React.Suspense>
       <AnimatePresence>
+        <React.Suspense fallback={null}>
          {(isEditorOpen || isAdminOpen || state.showAdmin) && (
             <motion.div 
               initial={{ opacity: 0 }} animate={{ opacity: 0 }} exit={{ opacity: 0 }}
@@ -2515,6 +2536,7 @@ export default function App() {
             }}
             theme={state.theme}
           />
+        </React.Suspense>
       </AnimatePresence>
     </>
   );

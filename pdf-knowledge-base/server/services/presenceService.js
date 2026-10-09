@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import db from '../db/database.js';
-import { getFrame } from './cameraService.js';
+import { getFrame, wakeCamera } from './cameraService.js';
 import { detectFacesFast, matchEmbedding } from './faceService.js';
 import { isRecordingActive } from './recordingService.js';
 
@@ -104,6 +104,7 @@ function onFaces(out, frameAt) {
   const faces = out.faces || [];
   if (faces.length) {
     lastFaceAt = frameAt;
+    wakeCamera(); // Actively refresh camera awake timeout while a person is present
     // Eyes: follow the biggest (nearest) face.
     const [x, y, w, h] = faces[0].box;
     const nx = ((x + w / 2) / out.width) * 2 - 1;
@@ -185,10 +186,41 @@ async function tick() {
 }
 
 let timer = null;
+let running = false;
+
+function scheduleNextTick() {
+  if (!running) return;
+  // Adaptive cadence:
+  // - 250ms when a person is present (ultra-responsive pupil & eye tracking)
+  // - 1500ms when absent / awaiting return (slashes CPU inferences by 83% while catching return promptly)
+  // - 3000ms when no fresh frames arrive (camera asleep or recording active)
+  const frame = isRecordingActive() ? null : getFrame();
+  const hasFresh = frame && (Date.now() - frame.at <= FRESH_MS);
+  const delay = !hasFresh ? 3000 : (present === true ? TICK_MS : 1500);
+
+  timer = setTimeout(async () => {
+    try {
+      await tick();
+    } catch (err) {
+      console.warn('[Presence]', err.message);
+    }
+    if (running) scheduleNextTick();
+  }, delay);
+}
+
 export function startPresence() {
-  if (timer) return;
-  timer = setInterval(() => { tick().catch((err) => console.warn('[Presence]', err.message)); }, TICK_MS);
-  console.log('[Presence] Desk presence watching the camera (silent; greets on return)');
+  if (running) return;
+  running = true;
+  scheduleNextTick();
+  console.log('[Presence] Desk presence watching the camera (adaptive cadence; silent; greets on return)');
+}
+
+export function stopPresence() {
+  running = false;
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
+  }
 }
 
 export function getGaze() {

@@ -33,9 +33,9 @@ const LANGS = [
 const PERSONALITY_AXES_CONFIG = {
   humor: {
     label: "Humor",
-    low: { name: "Cheerful", val: 15, text: "upbeat, sunny, and lighthearted - playful banter, wholesome wit, and positive observations" },
-    mid: { name: "Dry", val: 50, text: "deadpan, understated, and ironic - subtle, laconic observations delivered with a straight face" },
-    high: { name: "Dark", val: 85, text: "cynical, macabre, and sardonic - gallows humour, existential absurdity, and biting satire" }
+    low: { name: "Cheerful", val: 15, text: "upbeat, sunny, and lighthearted - playful banter, wholesome wit, gentle warmth, and zero cynicism" },
+    mid: { name: "Dry", val: 50, text: "sharp, deadpan, and grounded - understated situational irony delivered with a straight face, occasional quiet wry breath for absurdities, never announced" },
+    high: { name: "Dark", val: 85, text: "cynical, macabre, and sardonic - gallows humour, existential absurdity, biting satire, and wry fatalism about weather, hills, and code" }
   },
   delivery: {
     label: "Delivery",

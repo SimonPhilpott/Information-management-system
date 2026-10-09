@@ -71,6 +71,7 @@ import { SqliteSessionStore } from './db/sessionStore.js';
 import { onDevicePush, onSchedulePush, onDeviceCapture } from './services/deviceBus.js';
 import calendarRoutes from './routes/calendar.js';
 import stravaRoutes from './routes/strava.js';
+import garminRoutes from './routes/garmin.js';
 import plannerRoutes from './routes/planner.js';
 import goalRoutes from './routes/goals.js';
 import { getStatus as getStravaStatus, syncActivities as syncStrava } from './services/stravaService.js';
@@ -111,6 +112,11 @@ import doorbellRoutes from './routes/doorbell.js';
 import weatherRoutes from './routes/weather.js';
 import searchRoutes from './routes/search.js';
 import runStartRoutes from './routes/runStart.js';
+import meshBackupsRoutes, { backupArchiveHandler } from './routes/meshBackups.js';
+import tunnelRoutes from './routes/tunnel.js';
+import sharepointRoutes from './routes/sharepoint.js';
+import portStatusRoutes from './routes/portStatus.js';
+import localOnly from './middleware/localOnly.js';
 import { doorbellService } from './services/doorbellService.js';
 import appDb from './db/database.js';
 import { getWeather } from './services/weatherService.js';
@@ -182,14 +188,22 @@ app.use(cors({
   credentials: true
 }));
 
-// Scoped upload parsers with 50MB limits for file/image uploads
+// Scoped upload parsers with 50MB limits for file/image/gpx uploads
 app.use('/api/pdf', express.json({ limit: '50mb' }), express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/api/glucose-hub/carbs/photo', express.json({ limit: '50mb' }), express.urlencoded({ limit: '50mb', extended: true }));
-app.use('/api/planner/rulebook/books/upload', express.json({ limit: '50mb' }), express.urlencoded({ limit: '50mb', extended: true }));
+app.use('/api/planner', express.json({ limit: '50mb' }), express.urlencoded({ limit: '50mb', extended: true }));
 
 // Standard global 1MB limit for all other routes to protect against oversized payload crashes
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ limit: '1mb', extended: true }));
+
+// Graceful JSON parse and entity limit error handler
+app.use((err, req, res, next) => {
+  if (err && (err.type === 'entity.too.large' || err.status === 413)) {
+    return res.status(413).json({ error: 'That file is too large to upload. Please choose a smaller file.' });
+  }
+  next(err);
+});
 
 const sessionMiddleware = session({
   store: new SqliteSessionStore(), // logins survive backend restarts
@@ -265,6 +279,7 @@ app.use('/api/wifi', wifiRoutes);
 app.use('/api/recordings', recordingRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/strava', stravaRoutes);
+app.use('/api/garmin', garminRoutes);
 app.use('/api/planner', plannerRoutes);
 app.use('/api/goals', goalRoutes);
 app.use('/api/boardgames', boardgamesRoutes);
@@ -288,6 +303,12 @@ app.use('/api/costs', (await import('./routes/costs.js')).default);
 app.use('/api/conversations', (await import('./routes/conversations.js')).default); // transcripts + Ims's answer times
 app.use('/api/personas', (await import('./routes/personas.js')).default); // Ims's personas (character, accent, voice) + test bench
 app.use('/api/voice-latency', (await import('./routes/voiceLatency.js')).default);
+app.all('/api/backup', localOnly, backupArchiveHandler);
+app.use('/api/mesh-backups', meshBackupsRoutes);
+app.use('/api/tunnel', tunnelRoutes);
+app.use('/api/sharepoint-nav', sharepointRoutes);
+app.use('/api/port-status', portStatusRoutes);
+app.use('/ims/port-status', portStatusRoutes);
 
 // Live figures for the System Architecture page (/ims/architecture).
 app.get('/api/system/architecture', async (req, res) => {
@@ -540,8 +561,15 @@ let deviceWeather = null;
 const weatherKind = (c, day) => (/thunder/i.test(c) ? 'storm' : /snow/i.test(c) ? 'snow' : /rain|drizzle|shower/i.test(c) ? 'rain' : /fog/i.test(c) ? 'fog'
   : /clear|sunny|mainly clear/i.test(c) ? (day ? 'sun' : 'moon') : /partly/i.test(c) ? (day ? 'partsun' : 'cloud') : 'cloud');
 const refreshDeviceWeather = () => getWeather({}).then((w) => {
-  if (w?.current) { deviceWeather = { tempC: w.current.temperature_c, weather: weatherKind(w.current.condition, w.current.is_daylight) }; pushScheduleStatus(); }
-}).catch(() => {});
+  if (w?.current) {
+    deviceWeather = { tempC: w.current.temperature_c, weather: weatherKind(w.current.condition, w.current.is_daylight) };
+    pushScheduleStatus();
+  }
+}).catch((err) => console.error('[Weather] Device refresh failed:', err.message));
+
+// Seed device weather immediately on startup so hardware clients never wait up to 30m for scheduler
+refreshDeviceWeather();
+
 
 // Central Job Scheduler Registrations (Dev Idea #44 & Implementation Plan Phase 2)
 schedulerService.registerJob({
@@ -727,6 +755,20 @@ schedulerService.registerJob({
 });
 
 schedulerService.registerJob({
+  name: 'garmin_daily_sync',
+  description: 'Daily pull of Garmin sleep, HRV, Body Battery, VO2 Max, and training readiness',
+  category: 'sync',
+  intervalMs: 2 * 60 * 60 * 1000,
+  initialDelayMs: 2 * 60 * 1000,
+  londonHourWindow: { minHour: 6, maxHour: 11 },
+  action: async () => {
+    const { isGarminConnected, syncGarminRecent } = await import('./services/garminService.js');
+    if (!isGarminConnected()) return { skipped: true, reason: 'not_connected' };
+    return syncGarminRecent();
+  }
+});
+
+schedulerService.registerJob({
   name: 'model_assessment',
   description: 'Finds new Gemini models and tries each in every IMS service it could run (Ims\'s persona and accent included) - manual only (Model Switcher), as one run can use millions of tokens',
   category: 'maintenance',
@@ -770,6 +812,9 @@ schedulerService.registerJob({
 
 // The footer line: the soonest timer (the device counts it down), and unified rolling ticker of all upcoming items.
 function deviceInfo() {
+  if (!deviceWeather) {
+    refreshDeviceWeather().catch(() => {});
+  }
   const info = { ...(deviceWeather || {}) };
   try {
     const items = listScheduledItems();

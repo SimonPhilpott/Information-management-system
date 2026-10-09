@@ -392,7 +392,8 @@
         "Authentic 22x22 XBM mechanical settings cog icon rendered in header at (22, 21) replacing hand-drawn geometric primitives with 8 tapered orthogonal teeth and hollow central axle bore cutout",
         "Flicker-free selective bounding box invalidation (66x80px at x=252) on 60-second updates without disrupting face animations or causing full screen flashes",
         "Blocking getBloodGlucose Gemini Live tool allowing the user to ask verbally about blood sugar with caring Yorkshire commentary",
-        "Express REST API endpoint at GET /api/glucose exposing cached glucose data with error resilience and stale detection"
+        "Express REST API endpoint at GET /api/glucose exposing cached glucose data with error resilience and stale detection",
+        "Canonical mmol/L Rounding Parity: Persists scaled mmol/L reading to ns_entries and unifies glucoseService, glucoseHubService, runGlucoseService, and morningReportService to eliminate 0.1 mmol/L double-conversion rounding offset between spoken day reports and the Box-3 screen"
       ]
     },
     "Hardware Preferences Screen Volume Control & Left-Aligned Logging Toggle": {
@@ -1531,6 +1532,92 @@
         "Real-Time In-Use Highlighting: Merges live hardware operations (webcam streaming, active microphone audio, face presence detection, screen rendering) and test prompt execution states into effectiveHot, applying glowing pulsing borders, Active badges, and interactive tooltips",
         "Hardware Drawer Tab & Bus Pinouts: Dedicated Hardware tab in summary drawer detailing ESP32-S3 pinouts (USB Host GPIO 19/20, I2S Mic/DAC GPIOs, SPI LCD, I2C Touch), live status chips, and end-to-end signal ingress/egress pipeline diagrams",
         "Test Prompt Trace Integration: Updates traceService.js to trace microphone on prompt start, webcam on lookAtCamera/enrolPerson vision queries, and speaker + LCD display during audio reply synthesis"
+      ]
+    },
+    "Backend Route Decoupling, Adaptive Vision Cadence & Lazy 3D Canvases": {
+      "status": "enabled",
+      "description": "System architecture optimization extracting custom dev-server routes out of vite.config.js into dedicated Express routers (meshBackups, tunnel, sharepoint, portStatus) with local-only host isolation. Implements OpenCV neural inference cadence back-off (250ms when present, 1500ms when absent, 3000ms when idle) with 10-minute camera wake timeout and active presence refresh. Resolves Layout React.Suspense unmounting regression and converts 3D graph canvases (MeshCanvas, SpatialCanvas, InstancedSpatialCanvas, SunburstCanvas) into React.lazy code-split bundles.",
+      "renderingEngine": "Node.js Express / Vite 5 / React 19 / OpenCV YuNet",
+      "subFeatures": [
+        "Vite Config Slimming: Reduces vite.config.js from 736 to 134 lines by offloading backup, tunnel, and SharePoint routes to Express routers",
+        "Express Architecture Modularisation: Implements server/routes/meshBackups.js, tunnel.js, sharepoint.js, portStatus.js, and server/middleware/localOnly.js",
+        "Adaptive Neural Cadence: presenceService.js backs off inference cadence to 1500ms when absent and 3000ms when idle, reducing continuous CPU usage",
+        "Active Presence Camera Refresh: onFaces presence detection invokes wakeCamera() to keep the camera active while the user is seated at the desk",
+        "App Shell Preservation: Dedicated React.Suspense boundary in Layout.jsx prevents route and portal changes from unmounting the sidebar or topbar",
+        "Lazy 3D Canvases: Converts heavy 3D canvases to React.lazy dynamic imports, producing discrete code-split bundle chunks"
+      ]
+    },
+    "Frontend Waterfall Optimisation & Dynamic Code-Splitting": {
+      "status": "enabled",
+      "description": "Comprehensive frontend code-splitting and latency remediation eliminating unbundled module waterfalls over ngrok. Lazy-loads DecksPortal, PDFWorkspace, AdminPanel, IntelligenceDrawer, CatalogBrowser, HnswIndexModal, OnboardingSetup, and CommandPalette with explicit React.Suspense boundaries. Configures optimizeDeps vendor pre-bundling in vite.config.js. Drops production index.js bundle size by 70% from 1.63 MB to 478 KB and slashes ngrok initial page loads from ~30s to under 1.5s.",
+      "renderingEngine": "React 19 / Vite 5 / Rollup Code-Splitting",
+      "subFeatures": [
+        "AuthGate Dynamic Import: Converts DecksPortal into React.lazy import with Suspense fallback, preventing the massive 1000+ line campaign suite from downloading on root and hub visits",
+        "PDF Workspace Decoupling: Lazy-loads PDFWorkspace in Layout.jsx, eliminating premature downloads of react-pdf and multi-megabyte pdfjs-dist workers",
+        "Modal & Drawer Code Splitting: Converts AdminPanel, IntelligenceDrawer, CatalogBrowser, HnswIndexModal, and CommandPalette to dynamic imports wrapped in Suspense",
+        "Core Shell Lazy Loading: Converts Layout, OrbitalNav, ChatInterface, and HomeChat to React.lazy, allowing bare portal routes (/ims, /ims/*) to bootstrap without graph or chat engine overhead",
+        "Vite optimizeDeps Pre-Bundling: Configures vendor dependencies (react, react-dom, framer-motion, lucide-react, clsx, tailwind-merge) for instant cache delivery over public tunnels"
+      ]
+    },
+    "Run Planner GPX Upload Payload Expansion & Decoupled Strava Run Session Matching": {
+      "status": "enabled",
+      "description": "Remediates 413 Payload Too Large errors during GPX route uploads by expanding Express /api/planner body parser to 50MB and handling oversized payload errors gracefully. Decouples run planning from mandatory phone notification dispatching with a dedicated 'Save plan only' option. Unblocks retrospective matching for runs completed without phone start taps by automatically reconciling unstarted/armed sessions against Strava activities, populating session start timestamps from activity start_utc, eliminating conflicting retro sessions, and providing an interactive manual run matcher modal in RunLearningTab.",
+      "renderingEngine": "Node.js Express / Better-SQLite3 / React 19 / Lucide React",
+      "subFeatures": [
+        "50MB GPX Upload Parser: Expands /api/planner body parser to 50MB and adds Express 413 error middleware returning structured JSON",
+        "Save Plan Only: Implements POST /api/planner/sessions/save-plan and 'Save plan only' UI button in SendToPhoneCard to record fuelling plans without phone push alerts",
+        "Unstarted Session Strava Matching: Enhances linkSessions() in runLearningService.js to inspect armed and unstarted planned runs within a 48-hour window and match against Strava activities",
+        "Start Time Reconciliation: linkTo() automatically sets session started_at from activity start_utc, aligning planned intake milestones with real-world run time",
+        "Conflicting Retro Cleanup: linkAndClean() automatically purges auto-generated empty retro sessions when linking a comprehensive planned session",
+        "Interactive Matcher Modal: RunLearningTab displays suggested matching runs with 1-click linking and provides a manual picker modal listing all recent unlinked Strava runs",
+        "Session Unlink Support: Implements POST /api/planner/retro/sessions/:id/unlink to allow resetting session linkage when necessary"
+      ]
+    },
+    "Garmin Connect Headless Health Data Integration & Sleep Recovery Day Report Filter": {
+      "status": "enabled",
+      "description": "Headless Garmin Connect health integration via Python garminconnect library with token caching in data/garmin/garmin_tokens.json, syncing sleep quality, Body Battery, resting heart rate, HRV status, training readiness, and VO2 Max into the IMS backend. Enriches the Morning Day Report (/ims/dayreport) with a dedicated garmin_recovery section and 8 granular sub-filters including 4-level detail sliders (Off/Brief/Normal/Detailed), feeds physiological readiness metrics into the Run Planner PreRunReadinessCard and glucoseReadinessService, and provides a Garmin Connect authentication and sync modal in RunPlannerPortal.",
+      "renderingEngine": "Python 3.12 garminconnect / Node.js Express / React 19 / Better-SQLite3",
+      "subFeatures": [
+        "Headless Python Sync Script: garmin_sync.py authenticates against Garmin Connect SSO using session tokens, serialising sleep stages, Body Battery, resting HR, HRV, VO2 Max, race predictions, and HR zones to SQLite and JSON cache",
+        "Backend Garmin Service & Router: garminService.js and routes/garmin.js handle auth, daily sync, background scheduler integration (every 2h in morning window 06:00-11:00), and historical health retrieval",
+        "Morning Day Report Section & Granular Filter: Added garmin_recovery to morningReportService.js with 8 configurable sub-filters (sleep score, sleep stages, HRV, resting HR, Body Battery, readiness, recovery time, waking glucose correlation) and 4-level slider granularity",
+        "Day Report Portal UI Integration: Added Moon recovery icon, placeholder notes, and section toggle support in DayReportPortal.jsx",
+        "Run Planner Physiological Readiness Integration: Enriched glucoseReadinessService.js and PreRunReadinessCard.jsx to combine CGM metrics with Garmin training readiness, sleep score, Body Battery, and recovery hours",
+        "Run Planner Top Bar Garmin Sync Modal: Provides connection status pill, credentials/MFA modal, and on-demand sync button in RunPlannerPortal.jsx"
+      ]
+    },
+    "Grounded Deadpan Humour & Situational Irony Calibration": {
+      "status": "enabled",
+      "description": "Sharp, grounded, and dry comedic style calibration across Ims's persona architecture. Expands _house_rules.md with an explicit deadpan humour protocol (subtlety first, no joke announcements, non-disruptive separation between action commands and conversational turns, British understatement, situational irony grounded in Simon's world, cadence governor). Updates hardwareClientService.js and PersonaPortal.jsx to dynamically translate the continuous 0-100 Humor slider into distinct comedic stances (Cheerful, Dry & Grounded, Dark & Sardonic) and subtle wry audio delivery instructions (occasional wry breath/quiet snort for absurd situations, never theatrical laughing or reading *chuckles*).",
+      "renderingEngine": "Prompt Engineering / Better-SQLite3 / React 19 / Gemini Live Audio",
+      "subFeatures": [
+        "House Rules Deadpan Protocol: Adds Section 5 deadpan rules to _house_rules.md with anti-joke-announcement constraints and straight-faced delivery",
+        "Action vs Chat Separation: Ensures humour never disrupts technical clarity, code correctness, step-by-step reasoning, medical facts, or action confirmations (alarms, timers, carbs)",
+        "Simon Context Grounding: Anchors situational irony in Simon's real-world environment (hills, sideways rain, early Garmin scores, Omnipod beeps, coding faff, gaming, brews)",
+        "Dynamic 5-Axis Slider Calibration: hardwareClientService.js dynamically modulates comedic stance, deadpan frequency (~1 in 4-6 turns), and audio delivery across the continuous 0-100 Humor slider",
+        "Subtle Audio Delivery: Instructs Gemini Live voice model to use occasional quiet wry breaths or amused snorts for absurd situations rather than theatrical laughter or bracketed directions",
+        "PersonaPortal UI Descriptors: PersonaPortal.jsx slider UI updated with matching 3-tier descriptors for Cheerful (15), Dry (50), and Dark (85)"
+    },
+    "Acoustic Post-Turn Echo Suppression Grace Calibration": {
+      "status": "enabled",
+      "description": "Acoustic post-turn echo suppression calibration in liveProxy.js, tuning POST_TURN_ECHO_GRACE_MS from 900ms to 450ms. Eliminates false-positive speech drops for fast follow-up utterances and immediate monosyllabic conversational answers ('Yes', 'Yeah', 'No') following Ims's spoken questions, while maintaining sufficient acoustic ring-down suppression against physical speaker vibration coupling into the ES7210 microphone.",
+      "renderingEngine": "Node.js WebSocket Proxy / Live Audio Pacing",
+      "subFeatures": [
+        "450ms Grace Window: Tunes POST_TURN_ECHO_GRACE_MS to 450ms post-turnComplete",
+        "Fast Follow-Up Turn-Taking: Permits immediate monosyllabic responses without swallowing audio",
+        "Acoustic Reflection Margin: Retains ~200-250ms of dead-band following physical speaker playback completion",
+        "Secondary Defence Synergy: Integrates with VAD threshold, unsolicitedTurn guards, and half-duplex suppression"
+    },
+    "Phonetic Pronunciation Memory & Dialect Correction System": {
+      "status": "enabled",
+      "description": "Cross-cutting persistent phonetic pronunciation guidance and verbal correction memory for Gemini Live TTS audio output. Enhances personas/_house_rules.md with Section 3 pronunciation correction protocol, updates personas/yorkshire.md with explicit phonetic rhyming rules ('reet' rhymes with 'fleet'/'sweet', never 'ret'), expands rememberFact tool schema with 'pronunciation' category, updates buildMemoryParagraph() with high-priority PRONUNCIATION & PHONETICS DIRECTIVES prompt section, and adds pronunciation category management and badge rendering to MemoriesPortal.jsx.",
+      "renderingEngine": "Prompt Engineering / Better-SQLite3 / React 19 / Gemini Live Audio",
+      "subFeatures": [
+        "Yorkshire Dialect Phonetic Rule: Explicitly anchors 'reet' (/riːt/) rhyming with 'fleet' and 'sweet' in yorkshire.md accentRule, dialectWords, and Voice & accent section",
+        "House Rules Pronunciation Correction Protocol: Empowers Ims to detect verbal pronunciation corrections, confirm aloud, call rememberFact with category 'pronunciation', and honour the rule permanently",
+        "Tool Schema 'pronunciation' Category: Expands rememberFact category enum to include 'pronunciation' with dedicated descriptive guidance for dialect and name phonetics",
+        "System Prompt Priority Invariant: buildMemoryParagraph() queries pronunciation memories and formats them at the top under PRONUNCIATION & PHONETICS DIRECTIVES (CRITICAL)",
+        "MemoriesPortal UI Category & Badge: MemoriesPortal.jsx incorporates 'pronunciation' into category filters, dashboard stats, color tokens, Volume2 icon, and add/edit modals"
       ]
     }
   }

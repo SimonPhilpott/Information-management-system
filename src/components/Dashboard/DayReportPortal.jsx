@@ -35,7 +35,9 @@ import {
   FileText,
   Sliders,
   Filter,
-  CheckCircle2
+  CheckCircle2,
+  Moon,
+  HeartPulse
 } from 'lucide-react';
 import PortalShell from './PortalShell';
 
@@ -53,6 +55,7 @@ const SERVICE_ICONS = {
   glucose_overnight: Activity,
   device_status: ShieldAlert,
   device_changes: ShieldAlert,
+  garmin_recovery: Moon,
   strava: Dumbbell,
   training: Dumbbell,
   last_run: Route,
@@ -86,6 +89,7 @@ const SECTION_NOTE_PLACEHOLDERS = {
   glucose_now: 'e.g. Alert if current glucose is outside 4.0–7.5 mmol/L; note high IOB...',
   glucose_overnight: 'e.g. Flag overnight dips below 3.9 mmol/L; highlight percentage time in range...',
   device_changes: 'e.g. Remind to prepare replacement pod or sensor; note warmup countdown window...',
+  garmin_recovery: 'e.g. Warn if sleep score is below 70; correlate low Body Battery with high waking glucose...',
   training: 'e.g. Compare mileage against weekly target; highlight scheduled recovery or rest days...',
   last_run: 'e.g. Note pace consistency and glucose stability during the workout...',
   goals: 'e.g. Highlight progress towards active running distance milestones; encourage momentum...',

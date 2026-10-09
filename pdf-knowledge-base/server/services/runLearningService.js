@@ -173,28 +173,57 @@ export function setEffort(sessionId, effort) {
 
 // ---- matching sessions to Strava runs ----------------------------------------------------------------
 const RUN_SPORTS = "('Run','TrailRun','VirtualRun')";
-/** Sessions that have started get the Strava run that began closest to the tap (within 40 minutes). */
+/** Sessions get matched to their Strava run: timed runs within 40 min of start, or armed/scheduled runs within 48h of plan creation. */
 export async function linkSessions() {
-  const open = db.prepare("SELECT * FROM run_session WHERE activity_id IS NULL AND test = 0 AND kind = 'live' AND status IN ('started','scheduled') AND started_at IS NOT NULL AND started_at < ?").all(Date.now() - 10 * 60000);
+  // 1. Sessions with started_at: match Strava run that started closest to started_at
+  const openStarted = db.prepare("SELECT * FROM run_session WHERE activity_id IS NULL AND test = 0 AND kind = 'live' AND status IN ('started','scheduled') AND started_at IS NOT NULL AND started_at < ?").all(Date.now() - 10 * 60000);
+  // 2. Unstarted or armed sessions: user planned without tapping start on phone (status in 'armed', 'scheduled', 'started')
+  const openUnstarted = db.prepare("SELECT * FROM run_session WHERE activity_id IS NULL AND test = 0 AND kind = 'live' AND status IN ('armed','scheduled','started') AND started_at IS NULL AND created_at < ?").all(Date.now() - 5 * 60000);
+  
   const linked = [];
-  for (const s of open) {
+  const linkAndClean = (s, bestId) => {
+    const other = db.prepare('SELECT id, kind FROM run_session WHERE activity_id = ?').get(Number(bestId));
+    if (other && other.id !== s.id) {
+      if (other.kind === 'retro') {
+        db.prepare('DELETE FROM run_intake WHERE session_id = ?').run(other.id);
+        db.prepare('DELETE FROM run_note WHERE session_id = ?').run(other.id);
+        db.prepare('DELETE FROM run_session WHERE id = ?').run(other.id);
+      }
+    }
+    linkTo(s, bestId);
+    linked.push(s.id);
+  };
+
+  for (const s of openStarted) {
     const from = new Date(s.started_at - 20 * 60000).toISOString(), to = new Date(s.started_at + 40 * 60000).toISOString();
-    const cands = db.prepare(`SELECT id, start_utc FROM strava_activities WHERE sport IN ${RUN_SPORTS} AND start_utc >= ? AND start_utc <= ? AND id NOT IN (SELECT activity_id FROM run_session WHERE activity_id IS NOT NULL)`).all(from, to);
+    const cands = db.prepare(`SELECT id, start_utc FROM strava_activities WHERE sport IN ${RUN_SPORTS} AND start_utc >= ? AND start_utc <= ? AND (id NOT IN (SELECT activity_id FROM run_session WHERE activity_id IS NOT NULL AND kind != 'retro') OR id IN (SELECT activity_id FROM run_session WHERE kind = 'retro'))`).all(from, to);
     const best = cands.sort((a, b) => Math.abs(Date.parse(a.start_utc) - s.started_at) - Math.abs(Date.parse(b.start_utc) - s.started_at))[0];
     if (!best) {
-      // a day on with no run found: it didn't happen (or wasn't recorded)
       if (Date.now() - s.started_at > 36 * 3600000) db.prepare("UPDATE run_session SET status = 'no_run' WHERE id = ?").run(s.id);
       continue;
     }
-    linkTo(s, best.id);
-    linked.push(s.id);
+    linkAndClean(s, best.id);
   }
+
+  for (const s of openUnstarted) {
+    // Window from 2 hours before plan creation to 48 hours after
+    const from = new Date(s.created_at - 2 * 3600000).toISOString(), to = new Date(s.created_at + 48 * 3600000).toISOString();
+    const cands = db.prepare(`SELECT id, start_utc, distance FROM strava_activities WHERE sport IN ${RUN_SPORTS} AND start_utc >= ? AND start_utc <= ? AND (id NOT IN (SELECT activity_id FROM run_session WHERE activity_id IS NOT NULL AND kind != 'retro') OR id IN (SELECT activity_id FROM run_session WHERE kind = 'retro'))`).all(from, to);
+    if (!cands.length) continue;
+    // Prefer route match if route_id is known, else closest to plan creation time
+    const routeMatch = s.route_id ? cands.find((c) => linkedRouteId(c.id) === s.route_id) : null;
+    const best = routeMatch || cands.sort((a, b) => Math.abs(Date.parse(a.start_utc) - s.created_at) - Math.abs(Date.parse(b.start_utc) - s.created_at))[0];
+    if (best) linkAndClean(s, best.id);
+  }
+
   for (const id of linked) { try { await analyseSession(id); } catch { /* shown when opened */ } }
   return linked;
 }
 function linkTo(s, activityId) {
-  db.prepare("UPDATE run_session SET activity_id = ?, status = 'linked' WHERE id = ?").run(activityId, s.id);
-  if (s.route_id && !linkedRouteId(activityId) && getRoute(s.route_id)) { try { linkActivityRoute(activityId, s.route_id); } catch { /* fine */ } }
+  const act = db.prepare('SELECT id, start_utc FROM strava_activities WHERE id = ?').get(Number(activityId));
+  const startMs = act?.start_utc ? Date.parse(act.start_utc) : Date.now();
+  db.prepare("UPDATE run_session SET activity_id = ?, status = 'linked', started_at = COALESCE(started_at, ?) WHERE id = ?").run(Number(activityId), startMs, s.id);
+  if (s.route_id && !linkedRouteId(Number(activityId)) && getRoute(s.route_id)) { try { linkActivityRoute(Number(activityId), s.route_id); } catch { /* fine */ } }
 }
 export async function linkSessionManually(sessionId, activityId) {
   const s = db.prepare('SELECT * FROM run_session WHERE id = ?').get(Number(sessionId));
@@ -208,6 +237,12 @@ export async function linkSessionManually(sessionId, activityId) {
   }
   linkTo(s, Number(activityId));
   return analyseSession(s.id);
+}
+export async function unlinkSession(sessionId) {
+  const s = db.prepare('SELECT * FROM run_session WHERE id = ?').get(Number(sessionId));
+  if (!s) throw new Error('Run not found.');
+  db.prepare("UPDATE run_session SET activity_id = NULL, status = 'scheduled', analysis = NULL, analysed_at = NULL WHERE id = ?").run(s.id);
+  return listLearnings();
 }
 
 // For a run with no sent plan: a "retro" session, so it can still be reviewed, annotated and learned from.
@@ -612,12 +647,13 @@ export function listLearnings() {
     profiles.set(p.key, e);
   }
   const sessions = db.prepare("SELECT s.*, a.name AS activity_name, a.day AS activity_day FROM run_session s LEFT JOIN strava_activities a ON a.id = s.activity_id WHERE s.test = 0 AND s.status != 'cancelled' ORDER BY COALESCE(s.started_at, s.created_at) DESC LIMIT 30").all()
-    .map((s) => { const an = parse(s.analysis); return { id: s.id, kind: s.kind, status: s.status, startedAt: s.started_at, routeName: s.route_name, activityId: s.activity_id, activityName: s.activity_name, day: s.activity_day, quality: an?.quality || null, lowest: an?.stats?.lowest ?? null, effective: an?.fit?.effective ?? null, profile: an?.profile?.label || null, accuracy: an?.accuracy?.pct ?? null }; });
+    .map((s) => { const an = parse(s.analysis); return { id: s.id, kind: s.kind, status: s.status, startedAt: s.started_at, createdAt: s.created_at, routeId: s.route_id, routeName: s.route_name, activityId: s.activity_id, activityName: s.activity_name, day: s.activity_day, quality: an?.quality || null, lowest: an?.stats?.lowest ?? null, effective: an?.fit?.effective ?? null, profile: an?.profile?.label || null, accuracy: an?.accuracy?.pct ?? null }; });
+  const unlinkedActivities = db.prepare(`SELECT id, name, day, start_utc, distance, moving_time, elapsed_time FROM strava_activities WHERE sport IN ${RUN_SPORTS} AND (id NOT IN (SELECT activity_id FROM run_session WHERE activity_id IS NOT NULL AND kind != 'retro') OR id IN (SELECT activity_id FROM run_session WHERE kind = 'retro')) ORDER BY start_utc DESC LIMIT 15`).all();
   return {
     suggestions: rows.filter((r) => r.status === 'suggested'),
     accepted: rows.filter((r) => r.status === 'accepted'),
     profiles: [...profiles.values()].map((p) => ({ ...p, medianEffective: r2(median(p.effective)), effective: undefined })).sort((x, y) => y.runs - x.runs),
-    sessions, minRuns: MIN_RUNS, postRun: postRunPattern(), refuel: refuelStatus(),
+    sessions, unlinkedActivities, minRuns: MIN_RUNS, postRun: postRunPattern(), refuel: refuelStatus(),
     accuracy: usableRuns().filter((r) => r.a.accuracy).map((r) => ({ id: r.id, day: r.a.run.day, name: r.a.run.name, routeName: r.route_name, ...r.a.accuracy }))
       .sort((x, y) => String(x.day).localeCompare(String(y.day))),
   };

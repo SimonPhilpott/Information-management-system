@@ -1,6 +1,7 @@
 import { getCurrentState } from './runGlucoseService.js';
 import { getTargets } from './runPlanService.js';
 import { getRulebook } from './t1dRulebookService.js';
+import { getLatestGarminDay } from './garminService.js';
 
 /**
  * Evaluates real-time pre-run readiness combining current CGM, trend arrow,
@@ -134,6 +135,38 @@ export function evaluateGlucoseReadiness(params = {}) {
     advisoryBullets.push('High-intensity VO2 Max / Anaerobic effort: catecholamines may provoke an initial hepatic glucose spike. Do not over-fuel during early surges.');
   }
 
+  // Garmin Physiological Readiness Integration
+  let garminPayload = null;
+  try {
+    const g = getLatestGarminDay();
+    if (g) {
+      garminPayload = {
+        readinessScore: g.readinessScore ?? null,
+        readinessLevel: g.readinessLevel ?? null,
+        bodyBatteryWake: g.bodyBatteryWake ?? null,
+        sleepScore: g.sleepScore ?? null,
+        hrvStatus: g.hrvStatus ?? null,
+        hrvNight: g.hrvNight ?? null,
+        restingHr: g.restingHr ?? null,
+        recoveryTimeMin: g.recoveryTimeMin ?? null,
+        vo2max: g.vo2max ?? null,
+        syncedAt: g.syncedAt ?? null
+      };
+
+      if (g.readinessScore != null && g.readinessScore < 45) {
+        advisoryBullets.push(`Garmin Training Readiness is Low (${g.readinessScore}/100) with Body Battery ${g.bodyBatteryWake ?? 'low'}. Autonomic recovery is compromised; consider scaling down intense intervals to an easy Zone 2 aerobic run.`);
+      }
+      if (g.sleepScore != null && g.sleepScore < 60) {
+        advisoryBullets.push(`Poor sleep score (${g.sleepScore}/100): expect acute morning insulin resistance and higher post-prandial glycemic volatility.`);
+      }
+      if (g.recoveryTimeMin != null && g.recoveryTimeMin > 1440) {
+        advisoryBullets.push(`Garmin reports ${Math.round(g.recoveryTimeMin / 60)} hours residual recovery time recommended before strenuous training.`);
+      }
+    }
+  } catch (err) {
+    console.warn('[GlucoseReadiness] Garmin evaluation error:', err.message);
+  }
+
   return {
     status,
     statusTitle,
@@ -151,6 +184,7 @@ export function evaluateGlucoseReadiness(params = {}) {
     recommendedCarbsGrams,
     delayMinutes,
     advisoryBullets,
+    garmin: garminPayload,
     evaluatedAt: Date.now()
   };
 }

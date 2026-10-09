@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Activity, ArrowRight, Clock, AlertTriangle, CheckCircle2,
   AlertOctagon, Cookie, RefreshCw, Sparkles, TrendingUp,
-  TrendingDown, Minus, Info
+  TrendingDown, Minus, Info, Moon
 } from 'lucide-react';
 
 export default function PreRunReadinessCard({
@@ -34,7 +34,7 @@ export default function PreRunReadinessCard({
       const res = await fetch(`/api/planner/readiness?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setReadiness(data);
+        setReadiness(data.readiness || data);
         setError(null);
       } else {
         setError('Failed to evaluate glucose readiness');
@@ -64,13 +64,15 @@ export default function PreRunReadinessCard({
 
   const {
     status, // 'GO' | 'WAIT' | 'EAT FIRST'
+    statusTitle,
     summary,
     targetLaunchBg,
     recommendedPreRunCarbs,
     delayMinutes,
     trendBufferApplied,
     advisoryBullets = [],
-    clinicalNotes
+    clinicalNotes,
+    garmin = null
   } = readiness;
 
   let badgeColor = isDark
@@ -80,14 +82,14 @@ export default function PreRunReadinessCard({
   let borderAccent = isDark ? 'border-emerald-500/30' : 'border-emerald-300';
   let titleText = 'READY TO LAUNCH';
 
-  if (status === 'WAIT') {
+  if (status === 'wait') {
     badgeColor = isDark
       ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
       : 'bg-rose-100 text-rose-950 border-rose-300 font-black';
     badgeIcon = AlertOctagon;
     borderAccent = isDark ? 'border-rose-500/30' : 'border-rose-300';
     titleText = 'WAIT & STABILISE FIRST';
-  } else if (status === 'EAT FIRST') {
+  } else if (status === 'eat_first') {
     badgeColor = isDark
       ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
       : 'bg-amber-100 text-amber-950 border-amber-300 font-black';
@@ -109,14 +111,14 @@ export default function PreRunReadinessCard({
           <div>
             <div className="flex items-center gap-2">
               <span className={`text-[11px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md border ${badgeColor}`}>
-                {status}
+                {status?.toUpperCase()?.replace('_', ' ')}
               </span>
               <span className={`text-xs font-black uppercase tracking-tight ${isDark ? 'text-slate-100' : 'text-slate-950 font-black'}`}>
-                Pre-Run Glucose Readiness
+                {statusTitle || 'Pre-Run Readiness'}
               </span>
             </div>
             <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-300' : 'text-slate-800 font-medium'}`}>
-              {summary}
+              {summary || statusTitle}
             </p>
           </div>
         </div>
@@ -137,6 +139,54 @@ export default function PreRunReadinessCard({
           )}
         </div>
       </div>
+
+      {/* Garmin Physiological Recovery Strip */}
+      {garmin && (garmin.readinessScore != null || garmin.sleepScore != null || garmin.bodyBatteryWake != null) && (
+        <div className={`p-2.5 rounded-xl border flex flex-wrap items-center gap-3 text-[11px] ${isDark ? 'bg-slate-950/40 border-white/10 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-800'}`}>
+          <div className="flex items-center gap-1.5 font-bold">
+            <Moon size={13} className="text-indigo-400" />
+            <span>Garmin:</span>
+          </div>
+          {garmin.readinessScore != null && (
+            <div className="flex items-center gap-1">
+              <span className="opacity-70">Readiness:</span>
+              <strong className="font-mono text-emerald-400">{garmin.readinessScore}/100</strong>
+              {garmin.readinessLevel && <span className="text-[10px] uppercase opacity-75">({garmin.readinessLevel})</span>}
+            </div>
+          )}
+          {garmin.sleepScore != null && (
+            <div className="flex items-center gap-1">
+              <span className="opacity-70">Sleep:</span>
+              <strong className="font-mono text-sky-400">{garmin.sleepScore}/100</strong>
+            </div>
+          )}
+          {garmin.bodyBatteryWake != null && (
+            <div className="flex items-center gap-1">
+              <span className="opacity-70">Body Battery:</span>
+              <strong className="font-mono text-amber-400">{garmin.bodyBatteryWake}</strong>
+            </div>
+          )}
+          {garmin.hrvNight != null && (
+            <div className="flex items-center gap-1">
+              <span className="opacity-70">HRV:</span>
+              <strong className="font-mono">{garmin.hrvNight} ms</strong>
+              {garmin.hrvStatus && <span className="text-[10px] opacity-75">({garmin.hrvStatus})</span>}
+            </div>
+          )}
+          {garmin.recoveryTimeMin != null && garmin.recoveryTimeMin > 0 && (
+            <div className="flex items-center gap-1">
+              <span className="opacity-70">Recovery:</span>
+              <strong className="font-mono">{Math.round(garmin.recoveryTimeMin / 60)}h</strong>
+            </div>
+          )}
+          {garmin.vo2max != null && (
+            <div className="flex items-center gap-1 ml-auto">
+              <span className="opacity-70">VO2 Max:</span>
+              <strong className="font-mono text-violet-400">{garmin.vo2max}</strong>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Advisory Bullet Guidance */}
       {advisoryBullets.length > 0 && (

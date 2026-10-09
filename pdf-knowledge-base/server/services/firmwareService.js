@@ -2,6 +2,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import db from '../db/database.js';
 import { appendLog } from './deviceHealthService.js';
@@ -221,12 +222,26 @@ export function buildFirmware() {
   });
 }
 
+export function getLocalLanIp() {
+  try {
+    const ifaces = os.networkInterfaces();
+    for (const name of Object.keys(ifaces)) {
+      for (const net of ifaces[name] || []) {
+        if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('169.254') && !net.address.startsWith('100.')) {
+          return net.address;
+        }
+      }
+    }
+  } catch (_) {}
+  return '192.168.1.27';
+}
+
 /**
  * Flashes the compiled binary over Wi-Fi using espota.py
  */
 export function flashFirmwareOta(options = {}) {
   const targetIp = options.targetIp || '192.168.1.92';
-  const hostIp = options.hostIp || '192.168.1.78';
+  const hostIp = options.hostIp || getLocalLanIp();
   const targetPort = options.targetPort || 3232;
 
   const activity = activityCheckFn();

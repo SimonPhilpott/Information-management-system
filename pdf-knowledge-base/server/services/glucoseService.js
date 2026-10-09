@@ -100,7 +100,13 @@ export async function fetchGlucose() {
 
     const direction = latest.direction || 'Flat';
     if (typeof latest.mgdl === 'number' && latest.mills) {
-      try { db.prepare('INSERT OR IGNORE INTO ns_entries (date, sgv, direction) VALUES (?, ?, ?)').run(latest.mills, Math.round(latest.mgdl), direction); } catch (_) { /* table not created yet */ }
+      try {
+        db.prepare('INSERT OR IGNORE INTO ns_entries (date, sgv, direction, scaled) VALUES (?, ?, ?, ?)').run(latest.mills, Math.round(latest.mgdl), direction, numeric);
+      } catch (_) {
+        try {
+          db.prepare('INSERT OR IGNORE INTO ns_entries (date, sgv, direction) VALUES (?, ?, ?)').run(latest.mills, Math.round(latest.mgdl), direction);
+        } catch (_) { /* table not created yet */ }
+      }
     }
     const classification = classifyGlucose(numeric);
     const deltaDisplay = data.delta?.display || '';
@@ -183,10 +189,15 @@ export async function getGlucoseData() {
   return cachedGlucose;
 }
 
+export function getCachedGlucose() {
+  return cachedGlucose;
+}
+
 export default {
   startGlucosePoller,
   onGlucoseUpdate,
   getGlucoseData,
+  getCachedGlucose,
   fetchGlucose,
   classifyGlucose
 };

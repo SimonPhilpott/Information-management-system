@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Route as RouteIcon, RotateCw, LogIn, Lock, Upload, Link2, Trash2, Mountain, Calculator, AlertTriangle, Save, Cookie, Syringe, BookOpen, Unlink, Download, ExternalLink, Edit3, Check, Copy, ChevronDown, ChevronUp, Sparkles, Shield, HeartPulse, Zap, Clock, FileText, Plus, CheckCircle, XCircle, ArrowRight, HelpCircle, Layers, Sliders, AlertCircle, Compass, GraduationCap, Printer } from 'lucide-react';
+import { Route as RouteIcon, RotateCw, LogIn, Lock, Upload, Link2, Trash2, Mountain, Calculator, AlertTriangle, Save, Cookie, Syringe, BookOpen, Unlink, Download, ExternalLink, Edit3, Check, Copy, ChevronDown, ChevronUp, Sparkles, Shield, HeartPulse, Zap, Clock, FileText, Plus, CheckCircle, XCircle, ArrowRight, HelpCircle, Layers, Sliders, AlertCircle, Compass, GraduationCap, Printer, Moon, X } from 'lucide-react';
 import PortalShell from './PortalShell';
 import { useUnits, UnitToggle, dist, toKm, paceText, paceToMinPerKm, KM_PER_MI } from '../../utils/units';
 
@@ -256,6 +256,12 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
   const [pasteText, setPasteText] = useState('');
   const [pasteSaveAsBook, setPasteSaveAsBook] = useState(true);
 
+  // Garmin Connect State
+  const [garmin, setGarmin] = useState(null);
+  const [showGarminModal, setShowGarminModal] = useState(false);
+  const [garminForm, setGarminForm] = useState({ email: '', password: '', mfaCode: '' });
+  const [garminBusy, setGarminBusy] = useState(false);
+
   const [needsSignIn, setNeedsSignIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [busy, setBusy] = useState('');
@@ -274,6 +280,7 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
     const res = await fetch(url, { credentials: 'same-origin', ...options });
     const d = await res.json().catch(() => ({}));
     if (res.status === 401) { setNeedsSignIn(true); throw new Error(d.error || 'Sign in required.'); }
+    if (res.status === 413) throw new Error(d.error || 'That file is too large to upload. Please choose a smaller GPX file.');
     if (!res.ok || d.success === false) throw new Error(d.error || 'Request failed.');
     return d;
   }, []);
@@ -291,8 +298,14 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
 
   const loadAll = useCallback(async () => {
     try {
-      const [r, t, k] = await Promise.all([call('/api/planner/routes'), call('/api/planner/targets'), call('/api/planner/komoot/status')]);
+      const [r, t, k, gStatus] = await Promise.all([
+        call('/api/planner/routes'),
+        call('/api/planner/targets'),
+        call('/api/planner/komoot/status'),
+        call('/api/garmin/status').catch(() => ({ connected: false }))
+      ]);
       setNeedsSignIn(false); setRoutes(r.routes); setTargets(t.targets); setKomoot(k);
+      setGarmin(gStatus);
       try { setGoals((await call('/api/goals')).goals); } catch (_) { /* optional */ }
       try {
         const rb = await call('/api/planner/rulebook');
@@ -685,6 +698,66 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
     }
   };
 
+  const handleConnectGarmin = async (e) => {
+    if (e) e.preventDefault();
+    if (!garminForm.email || !garminForm.password) {
+      return showToast('Please enter your Garmin Connect email and password.', 'error');
+    }
+    setGarminBusy(true);
+    try {
+      const res = await send('/api/garmin/connect', 'POST', garminForm);
+      setGarmin(res);
+      if (res.connected) {
+        showToast('Garmin Connect linked and health data synced!');
+        setGarminForm({ email: '', password: '', mfaCode: '' });
+        setShowGarminModal(false);
+        await useCurrent(true);
+      } else if (res.mfaRequired) {
+        showToast('MFA verification code required from your email/SMS.', 'info');
+      } else {
+        showToast(res.error || 'Failed to authenticate with Garmin.', 'error');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setGarminBusy(false);
+    }
+  };
+
+  const handleSyncGarmin = async () => {
+    setGarminBusy(true);
+    try {
+      const res = await send('/api/garmin/sync', 'POST');
+      if (res.success) {
+        showToast('Garmin daily health metrics synced!');
+        const gStatus = await call('/api/garmin/status').catch(() => ({ connected: true }));
+        setGarmin(gStatus);
+        await useCurrent(true);
+      } else {
+        showToast(res.error || 'Garmin sync failed.', 'error');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setGarminBusy(false);
+    }
+  };
+
+  const handleDisconnectGarmin = async () => {
+    if (!window.confirm('Disconnect Garmin Connect? This removes stored OAuth session tokens.')) return;
+    setGarminBusy(true);
+    try {
+      await send('/api/garmin/disconnect', 'POST');
+      setGarmin({ connected: false });
+      showToast('Garmin disconnected.');
+      await useCurrent(true);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setGarminBusy(false);
+    }
+  };
+
   const removeRoute = async (r) => {
     if (!window.confirm(`Delete the route "${r.name}"?`)) return;
     try {
@@ -929,8 +1002,21 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
         <div className="py-16 flex justify-center"><RotateCw size={22} className="animate-spin opacity-50" /></div>
       ) : (
         <>
-          {/* Header Action Bar: the whole run as a PDF, and the distances unit toggle */}
+          {/* Header Action Bar: the whole run as a PDF, Garmin sync, and the distances unit toggle */}
           <div className={`flex items-center justify-end gap-3 text-[10px] ${isDark ? 'text-slate-500' : 'text-[#6A645D] font-medium'} mb-2`}>
+            <button
+              onClick={() => setShowGarminModal(true)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-colors ${
+                garmin?.connected
+                  ? (isDark ? 'border-sky-500/30 text-sky-300 bg-sky-500/10 hover:bg-sky-500/20' : 'border-sky-600/30 text-sky-800 bg-sky-50 hover:bg-sky-100')
+                  : (isDark ? 'border-white/15 text-slate-300 hover:bg-white/5' : 'border-[#2E2B27]/20 text-[#2E2B27] hover:bg-[#F4EFE6]')
+              }`}
+              title={garmin?.connected ? `Garmin connected (${garmin.latestDate || 'synced'}). Click to sync or manage.` : 'Connect Garmin Connect for VO2 Max, training readiness & sleep'}
+            >
+              <Moon size={13} className={garmin?.connected ? 'text-sky-400' : ''} />
+              <span>{garmin?.connected ? 'Garmin Synced' : 'Connect Garmin'}</span>
+              {garmin?.connected && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />}
+            </button>
             <button
               onClick={() => printRunReport({ plan: plan?.plan ? plan : null, routeId: routeId ? Number(routeId) : null, units })}
               disabled={!routeId && !plan?.plan}
@@ -1227,6 +1313,150 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
               call={call}
               send={send}
             />
+          )}
+
+          {/* GARMIN CONNECT MODAL */}
+          {showGarminModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+              <div className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl ${isDark ? 'bg-slate-900 border-white/10 text-slate-100' : 'bg-white border-[#2E2B27]/15 text-[#2E2B27]'}`}>
+                <div className="flex items-center justify-between pb-3 mb-4 border-b border-white/10">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 text-white shadow-md">
+                      <Moon size={18} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black">Garmin Connect Health Sync</h3>
+                      <p className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>Headless sleep, VO2 Max & training readiness</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowGarminModal(false)}
+                    className={`p-1.5 rounded-lg ${isDark ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-[#2E2B27]/5 text-[#6A645D]'}`}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {garmin?.connected ? (
+                  <div className="space-y-4">
+                    <div className={`p-4 rounded-xl border ${isDark ? 'bg-slate-950/60 border-emerald-500/20' : 'bg-emerald-50/50 border-emerald-500/30'}`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <CheckCircle size={16} className="text-emerald-500" />
+                        <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Garmin Account Linked</span>
+                      </div>
+                      <div className="text-[11px] space-y-1.5">
+                        <div className="flex justify-between">
+                          <span className={isDark ? 'text-slate-400' : 'text-[#6A645D]'}>OAuth Session:</span>
+                          <span className="font-mono text-emerald-400 font-medium">Valid OAuth Token File</span>
+                        </div>
+                        {garmin.user && (
+                          <div className="flex justify-between">
+                            <span className={isDark ? 'text-slate-400' : 'text-[#6A645D]'}>Account:</span>
+                            <span className="font-semibold">{garmin.user}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between">
+                          <span className={isDark ? 'text-slate-400' : 'text-[#6A645D]'}>Latest Health Record:</span>
+                          <span className="font-semibold">{garmin.latestDate || 'None'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className={isDark ? 'text-slate-400' : 'text-[#6A645D]'}>Total Synced Days:</span>
+                          <span className="font-semibold">{garmin.dayRecordsCount || 0}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={handleSyncGarmin}
+                        disabled={garminBusy}
+                        className={`flex-1 ${btn} justify-center`}
+                      >
+                        {garminBusy ? <RotateCw size={14} className="animate-spin" /> : <RotateCw size={14} />}
+                        <span>Sync Today Now</span>
+                      </button>
+                      <button
+                        onClick={handleDisconnectGarmin}
+                        disabled={garminBusy}
+                        className="px-3 py-2 rounded-xl text-xs font-bold border border-rose-500/30 text-rose-500 hover:bg-rose-500/10 transition-colors disabled:opacity-40"
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <form onSubmit={handleConnectGarmin} className="space-y-4">
+                    <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-[#6A645D]'}`}>
+                      Sign in with your Garmin Connect credentials to authenticate. OAuth tokens are generated locally and stored securely so you don't have to sign in every day.
+                    </p>
+
+                    <div>
+                      <label className={label}>Garmin Email</label>
+                      <input
+                        type="email"
+                        required
+                        className={field}
+                        placeholder="your.email@example.com"
+                        value={garminForm.email}
+                        onChange={(e) => setGarminForm({ ...garminForm, email: e.target.value })}
+                        disabled={garminBusy}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={label}>Garmin Password</label>
+                      <input
+                        type="password"
+                        required
+                        className={field}
+                        placeholder="••••••••••••"
+                        value={garminForm.password}
+                        onChange={(e) => setGarminForm({ ...garminForm, password: e.target.value })}
+                        disabled={garminBusy}
+                      />
+                    </div>
+
+                    {garmin?.mfaRequired && (
+                      <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10">
+                        <label className={`${label} text-amber-500`}>Garmin MFA Verification Code</label>
+                        <input
+                          type="text"
+                          className={field}
+                          placeholder="6-digit code from email/SMS"
+                          value={garminForm.mfaCode}
+                          onChange={(e) => setGarminForm({ ...garminForm, mfaCode: e.target.value })}
+                          disabled={garminBusy}
+                          autoFocus
+                        />
+                      </div>
+                    )}
+
+                    <div className="pt-2 flex items-center justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowGarminModal(false)}
+                        className={ghost}
+                        disabled={garminBusy}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={garminBusy}
+                        className={btn}
+                      >
+                        {garminBusy ? <RotateCw size={14} className="animate-spin" /> : <LogIn size={14} />}
+                        <span>Connect Garmin</span>
+                      </button>
+                    </div>
+
+                    <p className={`text-[10px] text-center ${isDark ? 'text-slate-500' : 'text-[#6A645D]/70'}`}>
+                      Uses official headless garminconnect session handshake. Password is never logged or stored.
+                    </p>
+                  </form>
+                )}
+              </div>
+            </div>
           )}
         </>
       )}

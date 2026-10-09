@@ -9,7 +9,7 @@ import SyncStatus from './SyncStatus';
 import ToneSwitcher from './ToneSwitcher';
 import ThemeToggle from './ThemeToggle';
 import GemSelector from './GemSelector';
-import PDFWorkspace from './PDFWorkspace';
+const PDFWorkspace = React.lazy(() => import('./PDFWorkspace'));
 
 export default function Layout({
   children, // The main center viewport children
@@ -303,7 +303,13 @@ export default function Layout({
           position: 'relative'
         }}>
           <div style={{ flex: 1, height: '100%', overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
-            {children}
+            <React.Suspense fallback={
+              <div className="flex-1 flex items-center justify-center">
+                <div className="w-6 h-6 border-2 border-brand-cyan/20 border-t-brand-cyan rounded-full animate-spin" />
+              </div>
+            }>
+              {children}
+            </React.Suspense>
           </div>
           {pdfViewer && (
             <>
@@ -315,13 +321,19 @@ export default function Layout({
                 }}
               />
               <div style={{ width: `${pdfWidth}px`, height: '100%', flexShrink: 0 }}>
-                <PDFWorkspace
-                  driveFileId={pdfViewer.driveFileId}
-                  initialPage={pdfViewer.pageNum || pdfViewer.page_num}
-                  filename={pdfViewer.filename}
-                  highlightText={pdfViewer.highlightText}
-                  onClose={onClosePdf}
-                />
+                <React.Suspense fallback={
+                  <div className="h-full flex items-center justify-center bg-slate-900/60">
+                    <div className="w-6 h-6 border-2 border-brand-cyan/20 border-t-brand-cyan rounded-full animate-spin" />
+                  </div>
+                }>
+                  <PDFWorkspace
+                    driveFileId={pdfViewer.driveFileId}
+                    initialPage={pdfViewer.pageNum || pdfViewer.page_num}
+                    filename={pdfViewer.filename}
+                    highlightText={pdfViewer.highlightText}
+                    onClose={onClosePdf}
+                  />
+                </React.Suspense>
               </div>
             </>
           )}

@@ -34,6 +34,17 @@ if (!db.prepare('SELECT COUNT(*) AS n FROM voice_phrases').get().n) {
   ins.run('stop', 'Stop IMS', JSON.stringify(['stop ims', 'stop ems']), now);
 }
 
+// Ensure default stop phrases exist if created prior to stop phrase introduction
+try {
+  const stopCount = db.prepare("SELECT COUNT(*) AS n FROM voice_phrases WHERE kind = 'stop'").get().n;
+  if (!stopCount) {
+    const ins = db.prepare('INSERT INTO voice_phrases (kind, phrase, variants, created_at) VALUES (?, ?, ?, ?)');
+    const now = Date.now();
+    ins.run('stop', 'IMS stop', JSON.stringify(['ims stop', 'ems stop', 'eems stop', 'i m s stop']), now);
+    ins.run('stop', 'Stop IMS', JSON.stringify(['stop ims', 'stop ems']), now);
+  }
+} catch (_) { }
+
 try {
   const ehUpRow = db.prepare("SELECT id, variants FROM voice_phrases WHERE phrase = 'Eh up IMS'").get();
   if (ehUpRow) {

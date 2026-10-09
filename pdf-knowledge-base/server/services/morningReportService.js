@@ -181,7 +181,8 @@ export const AVAILABLE_SERVICES = [
   { id: 'goals', name: 'Goals Service', description: 'Active mileage, running, and fitness targets' },
   { id: 'news', name: 'News & Tour Announcements', description: 'RSS feeds and UK tour announcements' },
   { id: 'tasks', name: 'Background Tasks', description: 'Completed automated background jobs' },
-  { id: 'memories', name: 'IMS Memories', description: 'Personal memory vault and recorded facts' }
+  { id: 'memories', name: 'IMS Memories', description: 'Personal memory vault and recorded facts' },
+  { id: 'garmin_recovery', name: 'Garmin Sleep & Recovery', description: 'Sleep score, stages, overnight HRV, resting heart rate, Body Battery, and training readiness' }
 ];
 
 // Extensible metadata registry detailing available sub-filters per connected service & built-in section
@@ -299,6 +300,16 @@ export const SERVICE_SUB_FILTERS = {
   nightscout_db: [
     { key: 'alertThresholdPct', label: 'Database Warning Threshold (%)', type: 'number', default: 90, min: 50, max: 98, step: 5, description: 'Trigger alert when MongoDB usage exceeds this capacity.' },
     { key: 'offerClearout', label: 'Offer Automated Mongo Cleanup', type: 'boolean', default: true, description: 'Conclude report by asking whether to purge older readings.' }
+  ],
+  garmin_recovery: [
+    { key: 'includeSleepScore', label: 'Sleep Score & Quality', type: 'boolean', default: true, description: 'State overnight sleep score (0-100) and qualitative tier (Poor, Fair, Good, Excellent).' },
+    { key: 'includeSleepStages', label: 'Sleep Stages Duration', type: 'boolean', default: true, description: 'Break down hours and minutes of deep, REM, light, and awake sleep.' },
+    { key: 'includeHrv', label: 'Overnight HRV & Baseline', type: 'boolean', default: true, description: 'State overnight HRV average in ms and status compared with personal baseline.' },
+    { key: 'includeRestingHr', label: 'Resting Heart Rate', type: 'boolean', default: true, description: 'State resting heart rate in bpm and compare with 7-day average.' },
+    { key: 'includeBodyBattery', label: 'Body Battery (Wake & Charged)', type: 'boolean', default: true, description: 'State waking Body Battery and overnight recharge points.' },
+    { key: 'includeReadiness', label: 'Training Readiness Score & Level', type: 'boolean', default: true, description: 'Report Garmin training readiness (0-100) and readiness category.' },
+    { key: 'includeRecoveryTime', label: 'Remaining Recovery Time', type: 'boolean', default: true, description: 'State hours of recovery remaining before hard efforts.' },
+    { key: 'correlateWithGlucose', label: 'Correlate with Waking Glucose', type: 'boolean', default: true, description: 'Link poor sleep or elevated overnight stress with morning waking glucose or dawn rises.' }
   ]
 };
 
@@ -471,6 +482,17 @@ export const DEFAULT_REPORT_SECTIONS = [
     enabled: true,
     customNote: '',
     subFilters: getDefaultSubFilters('device_changes')
+  },
+  {
+    id: 'garmin_recovery',
+    type: 'builtin',
+    title: 'Sleep & Recovery',
+    serviceId: 'garmin_recovery',
+    serviceName: 'Garmin Connect',
+    description: 'Sleep duration and score, overnight HRV status, resting heart rate, Body Battery, and training readiness.',
+    enabled: true,
+    customNote: '',
+    subFilters: getDefaultSubFilters('garmin_recovery')
   },
   {
     id: 'training',
@@ -1238,6 +1260,90 @@ async function buildNightscoutDbSection(section, context) {
   return null;
 }
 
+async function buildGarminRecoverySection(section, context) {
+  try {
+    const { getGarminDay, getLatestGarminDay, isGarminConnected } = await import('./garminService.js');
+    const filters = section.subFilters || {};
+    const dateStr = londonNow().dateStr;
+    const g = getGarminDay(dateStr) || getLatestGarminDay();
+
+    if (!g) {
+      if (!isGarminConnected()) return null;
+      let line = 'Sleep & Recovery: Garmin health data has not synced yet this morning.';
+      if (section.customNote?.trim()) line += ` Note: ${section.customNote.trim()}.`;
+      return line;
+    }
+
+    const bits = [];
+
+    // 1. Sleep score & quality
+    if (filters.includeSleepScore !== false && g.sleepScore != null) {
+      let tier = 'fair';
+      if (g.sleepScore >= 85) tier = 'excellent';
+      else if (g.sleepScore >= 75) tier = 'good';
+      else if (g.sleepScore < 60) tier = 'poor';
+      const durationStr = g.sleepS ? `${Math.floor(g.sleepS / 3600)}h ${Math.round((g.sleepS % 3600) / 60)}m` : null;
+      bits.push(`sleep score ${g.sleepScore}/100 (${tier}${durationStr ? `, ${durationStr}` : ''})`);
+    }
+
+    // 2. Sleep stages
+    if (filters.includeSleepStages !== false && (g.deepS || g.remS)) {
+      const stageBits = [];
+      if (g.deepS) stageBits.push(`${(g.deepS / 3600).toFixed(1)}h deep`);
+      if (g.remS) stageBits.push(`${(g.remS / 3600).toFixed(1)}h REM`);
+      if (stageBits.length) bits.push(`stages: ${stageBits.join(', ')}`);
+    }
+
+    // 3. Overnight HRV
+    if (filters.includeHrv !== false && g.hrvNight != null) {
+      bits.push(`overnight HRV ${g.hrvNight} ms${g.hrvStatus ? ` (${g.hrvStatus.toLowerCase()})` : ''}`);
+    }
+
+    // 4. Resting Heart Rate
+    if (filters.includeRestingHr !== false && g.restingHr != null) {
+      const avgBit = g.restingHr7d ? ` vs 7-day average of ${g.restingHr7d}` : '';
+      bits.push(`resting heart rate ${g.restingHr} bpm${avgBit}`);
+    }
+
+    // 5. Body Battery
+    if (filters.includeBodyBattery !== false && g.bodyBatteryWake != null) {
+      bits.push(`Body Battery woke at ${g.bodyBatteryWake}/100`);
+    }
+
+    // 6. Training Readiness
+    if (filters.includeReadiness !== false && g.readinessScore != null) {
+      bits.push(`Training Readiness is ${g.readinessScore}/100${g.readinessLevel ? ` (${g.readinessLevel.toLowerCase()})` : ''}`);
+    }
+
+    // 7. Recovery Time
+    if (filters.includeRecoveryTime !== false && g.recoveryTimeMin != null && g.recoveryTimeMin > 0) {
+      const hours = Math.round(g.recoveryTimeMin / 60);
+      bits.push(`${hours} hours recovery recommended`);
+    }
+
+    // 8. Correlate with waking glucose
+    if (filters.correlateWithGlucose) {
+      const n = getOvernight();
+      if (n && n.endValue != null) {
+        if ((g.sleepScore != null && g.sleepScore < 65) || g.hrvStatus === 'LOW' || g.hrvStatus === 'UNBALANCED') {
+          if (n.endValue > 9.0) {
+            bits.push(`waking glucose (${n.endValue} mmol/L) is elevated, likely reflecting higher cortisol and acute insulin resistance from sub-optimal sleep and recovery`);
+          }
+        }
+      }
+    }
+
+    if (!bits.length) return null;
+
+    let line = `Sleep & Recovery: ${bits.join('; ')}.`;
+    if (section.customNote?.trim()) line += ` Note: ${section.customNote.trim()}.`;
+    return line;
+  } catch (err) {
+    console.warn('[MorningReport] Garmin recovery section skipped:', err.message);
+    return null;
+  }
+}
+
 async function buildCustomSection(section, context) {
   const title = section.title || 'Custom Subject';
   const content = section.content || section.customNote || '';
@@ -1258,6 +1364,7 @@ const SECTION_BUILDERS = {
   glucose_now: buildGlucoseNowSection,
   glucose_overnight: buildGlucoseOvernightSection,
   device_changes: buildDeviceChangesSection,
+  garmin_recovery: buildGarminRecoverySection,
   training: buildTrainingSection,
   last_run: buildLastRunSection,
   goals: buildGoalsSection,

@@ -6,6 +6,7 @@ import { stripMedicalDisclaimers } from './disclaimerSanitizer.js';
 import crypto from 'crypto';
 import { encryptSecret, decryptSecret } from './wifiService.js';
 import { getDeviceIcons } from './calendarService.js';
+import { getCachedGlucose } from './glucoseService.js';
 
 // The blood sugar service: everything is worked out from the local copy of Nightscout
 // (ns_entries / ns_treatments / ns_devicestatus, filled every minute by glucoseService and
@@ -168,12 +169,16 @@ function insulinAndCarbs(from, to) {
 }
 
 export function getCurrent() {
-  const e = db.prepare('SELECT date, sgv, direction FROM ns_entries ORDER BY date DESC LIMIT 1').get();
+  const e = db.prepare('SELECT date, sgv, direction, scaled FROM ns_entries ORDER BY date DESC LIMIT 1').get();
   if (!e) return null;
-  const prev = db.prepare('SELECT date, sgv FROM ns_entries WHERE date <= ? ORDER BY date DESC LIMIT 1').get(e.date - 4 * 60000);
+  const prev = db.prepare('SELECT date, sgv, scaled FROM ns_entries WHERE date <= ? ORDER BY date DESC LIMIT 1').get(e.date - 4 * 60000);
   const d = db.prepare('SELECT at, iob, cob FROM ns_devicestatus ORDER BY at DESC LIMIT 1').get();
   const mins = Math.round((Date.now() - e.date) / 60000);
-  const v = r1(mmol(e.sgv));
+
+  const cached = typeof getCachedGlucose === 'function' ? getCachedGlucose() : null;
+  const isFresh = cached && typeof cached.numericValue === 'number' && Number.isFinite(cached.numericValue) && (Date.now() - (cached.timestamp || 0) <= 20 * 60000);
+  const v = isFresh ? cached.numericValue : (typeof e.scaled === 'number' && Number.isFinite(e.scaled) ? e.scaled : r1(mmol(e.sgv)));
+  const prevV = prev ? (typeof prev.scaled === 'number' && Number.isFinite(prev.scaled) ? prev.scaled : mmol(prev.sgv)) : null;
   const th = getGlucoseThresholds();
   const pLow = th.personalLow || 4.5;
   const pHigh = th.personalHigh || th.tightHigh || 7.8;
@@ -189,7 +194,7 @@ export function getCurrent() {
 
   return {
     value: v, direction: e.direction || null, minutesAgo: mins, fresh: mins <= 15,
-    delta: prev ? r1(v - mmol(prev.sgv)) : null,
+    delta: prev && prevV != null ? r1(v - prevV) : null,
     range,
     iob: d && Date.now() - d.at < 20 * 60000 ? r1(Math.max(0, d.iob)) : null,
     cob: d && Date.now() - d.at < 20 * 60000 && d.cob != null ? Math.round(d.cob) : null,
