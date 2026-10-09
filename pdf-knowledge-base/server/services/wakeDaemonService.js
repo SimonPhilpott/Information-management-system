@@ -21,7 +21,12 @@ export const DAEMON_STATES = {
 };
 
 const SILENCE_TIMEOUT_MS = 15000; // 15 seconds
-const VERIFY_WINDOW_MS = 3500;   // 3.5 seconds
+// 4.5 s - the Box-3's own wake-check ceiling (main.cpp verifyCeilingMs). At 3.5 s the server gave up a second
+// before the device did, often while Gemini was still transcribing "Hey Ims" on a freshly opened session.
+const VERIFY_WINDOW_MS = 4500;
+// After a wake check ends, the Box-3 keeps sending a few frames until its cancel lands. Those must not start a
+// new check: they did, and that window ran out two seconds into the next real "Hey Ims" and killed it (9 Oct).
+const RESIDUAL_AUDIO_MS = 1500;
 
 // Normalise spoken text for robust matching
 const norm = (t) => String(t || '')
@@ -150,6 +155,7 @@ class WakeDaemonService extends EventEmitter {
    * Called when acoustic candidate begins (e.g. RMS spike on desk unit)
    */
   notifyCandidateStart(source = 'hardware') {
+    if (this.state === DAEMON_STATES.STANDBY && this.lastCloseAt && Date.now() - this.lastCloseAt < RESIDUAL_AUDIO_MS) return;
     if (this.state === DAEMON_STATES.STANDBY) {
       this.state = DAEMON_STATES.VERIFYING;
       this.verifyingStartedAt = Date.now();
