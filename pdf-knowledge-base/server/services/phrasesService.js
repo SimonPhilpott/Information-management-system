@@ -61,6 +61,38 @@ try {
   }
 } catch (_) { }
 
+try {
+  const hiRow = db.prepare("SELECT id, variants FROM voice_phrases WHERE phrase = 'Hi IMS'").get();
+  if (hiRow) {
+    let variants = [];
+    try { variants = JSON.parse(hiRow.variants || '[]'); } catch (_) { }
+    const needed = ["hi i'm", "hi im", "hi, i'm", "hi, im", "hi i am"];
+    let changed = false;
+    for (const v of needed) {
+      if (!variants.includes(v)) { variants.push(v); changed = true; }
+    }
+    if (changed) {
+      db.prepare('UPDATE voice_phrases SET variants = ? WHERE id = ?').run(JSON.stringify(variants), hiRow.id);
+    }
+  }
+} catch (_) { }
+
+try {
+  const heyRow = db.prepare("SELECT id, variants FROM voice_phrases WHERE phrase = 'Hey IMS'").get();
+  if (heyRow) {
+    let variants = [];
+    try { variants = JSON.parse(heyRow.variants || '[]'); } catch (_) { }
+    const needed = ["hey i'm", "hey im", "hey, i'm", "hey, im"];
+    let changed = false;
+    for (const v of needed) {
+      if (!variants.includes(v)) { variants.push(v); changed = true; }
+    }
+    if (changed) {
+      db.prepare('UPDATE voice_phrases SET variants = ? WHERE id = ?').run(JSON.stringify(variants), heyRow.id);
+    }
+  }
+} catch (_) { }
+
 const present = (r) => ({
   id: r.id, kind: r.kind, phrase: r.phrase, createdAt: r.created_at,
   variants: (() => { try { return JSON.parse(r.variants || '[]'); } catch { return []; } })(),

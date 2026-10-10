@@ -31,6 +31,9 @@ const DEFAULTS = {
   signOffs: [], dialectWords: [], tagEndings: [], thinkingSounds: [], doorbell: { ding: [], motion: [] },
   tastes: [], // what this persona likes and can't stand - gives it opinions of its own (persona plan D3)
   holdingLines: [], // short "hang on, let me look" lines, recorded in this persona's voice for slow lookups (A2)
+  // said the moment a wake phrase is heard on its own, recorded in this voice (holdingClips.js): any time of
+  // day, or only in the morning / afternoon / evening. None: Gemini greets live, as before.
+  greetings: { anytime: [], morning: [], afternoon: [], evening: [] },
 };
 
 // ---- files ----
@@ -45,6 +48,7 @@ export function parsePersona(raw) {
       ...DEFAULTS,
       ...meta,
       doorbell: { ...DEFAULTS.doorbell, ...(meta.doorbell || {}) },
+      greetings: { ...DEFAULTS.greetings, ...(meta.greetings || {}) },
       accessories: { ...DEFAULTS.accessories, ...(meta.accessories || {}) },
     },
     body: m[2].trim()

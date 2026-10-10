@@ -28,8 +28,10 @@ export const looksLikeVisionAsk = (text) => VISION_ASK.some((re) => re.test(text
 
 export const stripToolText = (text) => String(text).replace(TOOL_TEXT, '').replace(/[ 	]{2,}/g, ' ');
 
-// "Hey / Hi / Eh up IMS", allowing for how speech-to-text spells the name (Ims, Ems, Eems, Hims, Elms...).
-const WAKE_RX = /\b(hey[\s,-]*up|hey|hi|hiya|heya|hello|eh[\s,-]*up|ey[\s,-]*up|ay[\s,-]*up|aye[\s,-]*up|ayup|eyup|oi|up)\b[\s,.!?'-]*(h?[aei]{1,2}m+e?[sz]\b|i\.?\s?m\.?\s?s\b|elms\b|helms\b|aops\b)/i;
+// "Hey / Hi / Eh up IMS", allowing for how speech-to-text spells the name (Ims, Ems, Eems, Hims, Elms, I'm...).
+const WAKE_RX = /\b(hey[\s,-]*up|hey|hi|hiya|heya|hello|eh[\s,-]*up|ey[\s,-]*up|ay[\s,-]*up|aye[\s,-]*up|ayup|eyup|oi|up)\b[\s,.!?'-]*(h?[aei]{1,2}m+e?[sz]\b|i\.?\s?m\.?\s?s\b|elms\b|helms\b|aops\b|i['’]?m\b)/i;
+// Bare opening greeting word without a name yet - used to hold streaming responses rather than dropping early
+export const BARE_GREETING_RX = /^(?:hey[\s,-]*up|hey|hi|hiya|heya|hello|eh[\s,-]*up|ey[\s,-]*up|ay[\s,-]*up|aye[\s,-]*up|ayup|eyup|oi|up)[,.!? ]*$/i;
 // Speech-to-text often mangles the short wake phrase ("Hey IMS" -> "HMs", "Eh up Ims" -> "Anya Pims").
 // A name-like word near the start counts too. The name has to be there in some form: a greeting on its
 // own ("Hello", "Hi", "Hiya", "Eh up") never wakes Ims - Simon's rule (8 Oct).
@@ -75,3 +77,16 @@ const FACE_CUES = [
   ['joy', /\b(great news|good news|brilliant|cracking|fantastic|wonderful|lovely|grand|smashing|champion|well done|congratulations|morning|hello|ey up|now then)\b/i],
 ];
 export const faceFromWords = (text, used = []) => (FACE_CUES.find(([emo, rx]) => !used.includes(emo) && rx.test(text)) || [])[0] || null;
+
+// A wake phrase said on its own - nothing but greeting words and the name, however speech-to-text spelled it
+// ("Hey Ims", "Hymns", "Hi M's", "Eh up Ims", a recorded one-word mishearing like "poems") - so Ims can greet
+// at once with a recorded line (the fast greeting in liveProxy.js). Anything more than that is a request.
+const WAKE_ONLY_WORDS = /^(hey|hi|hiya|heya|hello|eh|ey|ay|aye|up|ayup|eyup|oi|now|then|a|op|aap|aup|anya|i'?m|i)$/i;
+export const isWakeOnly = (t) => {
+  const text = String(t || '').trim();
+  if (!text || !looksAddressed(text)) return false;
+  const words = text.toLowerCase().replace(/[^a-z' -]/g, ' ').split(/[\s-]+/).filter(Boolean);
+  if (!words.length || words.length > 5) return false;
+  if (words.every((w) => WAKE_ONLY_WORDS.test(w) || NAME_TOKEN.test(w))) return true;
+  return words.length === 1 && matchesWake(words[0]);
+};

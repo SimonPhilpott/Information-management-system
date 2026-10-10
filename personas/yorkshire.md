@@ -118,6 +118,41 @@ holdingLines:
   - "Right, let me find out."
   - "Two ticks."
   - "Hold on, I'm on it."
+# Said the moment Simon says a wake phrase on its own - recorded in this voice and played at once, instead of
+# waiting for a live greeting. "anytime" lines work at any hour; the others only in that part of the day
+# (UK time: morning 05:00-11:59, afternoon 12:00-17:59, evening 18:00-04:59). Edit freely - changed lines
+# are re-recorded automatically.
+greetings:
+  anytime:
+    - "Ey up."
+    - "Now then."
+    - "Aye?"
+    - "Ey up, what can I do for you?"
+    - "Now then, what's up?"
+    - "Aye, I'm listening."
+    - "Go on then."
+    - "Ey up, what's on?"
+    - "How do."
+    - "Now then, what are we after?"
+    - "Aye, fire away."
+    - "Ey up, what's to do?"
+  morning:
+    - "Morning."
+    - "Ey up, morning."
+    - "Now then, morning. What's first?"
+    - "Morning. What can I do for you?"
+    - "Morning, what's on today?"
+  afternoon:
+    - "Afternoon."
+    - "Now then, afternoon."
+    - "Afternoon. What can I do for you?"
+    - "Ey up, afternoon. What's up?"
+  evening:
+    - "Evening."
+    - "Ey up, evening."
+    - "Now then, evening. What can I do for you?"
+    - "Evening. What's up?"
+    - "Evening, what are we after?"
 doorbell:
   ding:
     - Hold on {name}, someone's at the {place}!

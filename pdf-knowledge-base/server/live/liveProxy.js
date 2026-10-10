@@ -40,13 +40,13 @@ import { getWeather } from '../services/weatherService.js';
 import { isDeviceMicMuted, setDeviceConnected, setDeviceMicMuted } from '../services/deviceState.js';
 import { lookUpFood } from '../services/foodService.js';
 import { noteWakeCandidate } from '../services/phrasesService.js';
-import { pickClip } from '../services/holdingClips.js';
+import { pickClip, pickGreeting } from '../services/holdingClips.js';
 import { pickJoke } from '../services/jokeService.js';
 import { recordUsage } from '../services/geminiClient.js';
 import { stripMedicalDisclaimers } from '../services/disclaimerSanitizer.js';
 import { transcribeWake } from '../services/wakeGateService.js';
 import { live, thinkDeliverers, FOLLOW_UP_MS } from './state.js';
-import { stripToolText, looksLikeVisionAsk, looksAddressed, heardLikeWake, faceFromWords } from './textMatching.js';
+import { stripToolText, looksLikeVisionAsk, looksAddressed, heardLikeWake, faceFromWords, BARE_GREETING_RX, isWakeOnly } from './textMatching.js';
 import { withVoiceReminder, toSilentSetup, pinSavedVoice } from './setupMessages.js';
 import { writeDebugLog, IDF_NOISE } from './debugLog.js';
 
@@ -479,6 +479,41 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   let toolAnswerWords = 0;
   // A look / see request (looksLikeVisionAsk): the camera is asked at once, and if his reply comes back
   // without a lookAtCamera call, the answer is handed to him as a follow-up so he says what he can see.
+  // ---- Fast greeting: a wake phrase said on its own is answered at once with a recorded greeting in his voice
+  // (the persona's `greetings`, holdingClips.js) instead of waiting ~2.4 s for a live one. Simon always pauses
+  // after a wake phrase, so once it's been heard and the mic has been quiet briefly, the greeting plays; Gemini
+  // is told he has greeted, and its own greeting (if it makes one before Simon speaks again) is dropped.
+  const FAST_GREET_QUIET_MS = 300;
+  let fastGreet = null; // { at, line, newSpeech }
+  let fastGreetTimer = null;
+  const scheduleFastGreeting = (heardAt) => {
+    if (fastGreetTimer) clearTimeout(fastGreetTimer);
+    const tryNow = () => {
+      fastGreetTimer = null;
+      if (fastGreet || isClientClosed || lastModelOutputAt >= heardAt || !isWakeOnly(heardThisTurn) || isRecordingActive() || isDeviceMicMuted()) return;
+      if (Date.now() - lastLoudMicAt < FAST_GREET_QUIET_MS) { // still saying it
+        if (Date.now() - heardAt < 3000) fastGreetTimer = setTimeout(tryNow, 60);
+        return;
+      }
+      let clip = null;
+      try { clip = pickGreeting(activePersonaId()); } catch (_) { }
+      if (!clip) return; // none recorded yet: Gemini greets live, as before
+      fastGreet = { at: Date.now(), line: clip.line, newSpeech: false };
+      if (wakeKickTimer) { clearTimeout(wakeKickTimer); wakeKickTimer = null; }
+      lastModelOutputAt = Date.now(); // the wake kick stands down
+      for (let o = 0; o < clip.pcm.length; o += 4800) paceSend({ bin: clip.pcm.subarray(o, o + 4800) });
+      const clipMs = Math.round(clip.pcm.length / 48); // 24 kHz 16-bit mono
+      followUpUntil = Date.now() + clipMs + followUpMs;
+      paceSend({ json: JSON.stringify({ followUpMs }) }); // the Box-3 keeps listening for his reply
+      if (currentGeminiWs && currentGeminiWs.readyState === WebSocket.OPEN) {
+        currentGeminiWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `(System: Simon said only your wake phrase and you have already greeted him out loud: "${clip.line}". Don't greet him again or say anything now - wait for what he says next and answer that.)` }] }], turnComplete: false } }));
+      }
+      console.log(`${tag} 👋 Fast greeting "${clip.line}" (${Date.now() - heardAt} ms after the wake phrase was heard)`);
+      try { logCapture(`[${new Date().toISOString()}] ${tag} FAST GREETING "${clip.line}" (${Date.now() - heardAt} ms after the wake phrase was heard)\n`); } catch (_) { }
+    };
+    tryNow();
+  };
+
   // what he said in his previous reply - the context for a pronunciation correction that follows it
   let lastImsReply = '';
   // "it's pronounced...", "say it like...": a correction he must keep (saved by the server if he doesn't)
@@ -881,6 +916,8 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             if (!heardStartAt) heardStartAt = speechStartAt && Date.now() - speechStartAt < 60000 ? speechStartAt : Date.now();
             const incomingTranscript = parsed.serverContent.inputTranscription.text;
             heardThisTurn = (heardThisTurn + incomingTranscript).slice(-400);
+            // after a fast greeting, his next words (not the tail of the wake phrase) are what Gemini answers
+            if (fastGreet && !fastGreet.newSpeech && Date.now() - fastGreet.at > 400 && /[a-z0-9]/i.test(incomingTranscript) && !isWakeOnly(incomingTranscript)) fastGreet.newSpeech = true;
             if (currentTurnComplete && looksAddressed(heardThisTurn) && !isRecordingActive()) {
               isConversationActive = true;
               wakeDaemonService.acceptWake(heardThisTurn.trim().slice(0, 40), 'transcript_addressed');
@@ -902,6 +939,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 }
               };
               wakeKickTimer = setTimeout(() => kick(1), 400);
+              if (!fastGreet && isWakeOnly(heardThisTurn)) scheduleFastGreeting(heardAt);
             }
 
             // Wake Daemon user speech assessment
@@ -935,6 +973,12 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           const answersTool = Boolean(startsModelOutput && currentTurnComplete && toolAnswerOwedAt && Date.now() - toolAnswerOwedAt < 90000);
           if (answersTool) { toolAnswerOwedAt = 0; unsolicitedTurn = false; }
           if (startsModelOutput) { lastModelOutputAt = Date.now(); if (wakeKickTimer) { clearTimeout(wakeKickTimer); wakeKickTimer = null; } }
+          // he's already greeted (fast greeting): Gemini's own reply to the wake phrase is dropped until Simon speaks again
+          if (fastGreet && (fastGreet.newSpeech || Date.now() - fastGreet.at > 15000)) fastGreet = null;
+          if (startsModelOutput && fastGreet) {
+            if (!unsolicitedTurn) { try { logCapture(`[${new Date().toISOString()}] ${tag} FAST GREETING: Gemini's own greeting dropped\n`); } catch (_) { } }
+            unsolicitedTurn = true;
+          }
           if (startsModelOutput && currentTurnComplete && !unsolicitedTurn && !turnHasTrigger() && !answersTool) {
             // Allow a continuation turn within 120 s of a getDayReport tool response:
             // Gemini sometimes fires turnComplete after the first batch of audio
@@ -956,10 +1000,11 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           if (startsModelOutput && currentTurnComplete && !unsolicitedTurn) {
             const followUp = heardStartAt ? heardStartAt <= followUpUntil : ((energeticMicFrames >= 8 || answeredAloud()) && Date.now() <= followUpUntil);
             // an open conversation is a to and fro: anything said in it is for Ims - no timing test. It only ends
-            // when he's told goodbye or nobody speaks for the silence timeout (device idle / SILENCE_CLOSE_MS).
             const addressed = isConversationActive || answersTool || textTurnSent || touchToTalkActive || looksAddressed(heardThisTurn) || followUp;
-            if (!addressed && !heardThisTurn.trim()) {
-              // No transcript yet - hold his voice for up to 1.5 s until it arrives (see above).
+            const isPartialWake = !heardThisTurn.trim() || BARE_GREETING_RX.test(heardThisTurn.trim());
+            if (!addressed && isPartialWake) {
+              // No transcript yet, or only the opening greeting word ("Hi", "Hey", "Eh up") has streamed in so far:
+              // hold model audio in the queue for up to 1.5 s until the full wake phrase finishes streaming.
               judgePendingUntil = Date.now() + 1500;
             } else if (!addressed) {
               unsolicitedTurn = true;
