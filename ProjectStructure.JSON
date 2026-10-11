@@ -209,6 +209,12 @@
         "src/components/Dashboard/PortalShell.jsx"
       ]
     },
+    "pdf-knowledge-base/server/services/holdingClips.js": {
+      "description": "Pre-recorded audio greeting and holding clip service managing localized Yorkshire audio clips for instant wake phrase playback and slow tool call holding lines.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/personaService.js"
+      ]
+    },
     "pdf-knowledge-base/server/services/personaService.js": {
       "description": "Unified persona authority providing YAML frontmatter and Markdown body parsing/serialization, persona file lifecycle, version history snapshots, and active persona resolution.",
       "dependencies": [

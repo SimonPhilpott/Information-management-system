@@ -1,8 +1,8 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 132
-- Verified Features: 130
+- Total Registered Features: 133
+- Verified Features: 131
 - Awaiting On-Device Check: 3
 - Pending Features: 0
 
@@ -142,6 +142,7 @@
 | FEAT-130 | Grounded Deadpan Humour & Situational Irony Calibration | [hardwareClientService.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/services/hardwareClientService.js) | Continuous 0-100 Humor slider translation, _house_rules.md deadpan comedic protocol, and non-disruptive straight-faced delivery | PASS |
 | FEAT-131 | Acoustic Post-Turn Echo Suppression Grace Calibration | [liveProxy.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/live/liveProxy.js) | Calibration of POST_TURN_ECHO_GRACE_MS to 450ms, fast follow-up capture & acoustic damping verification | PASS |
 | FEAT-132 | Phonetic Pronunciation Memory & Dialect Correction System | [yorkshire.md](file:///d:/Information%20management%20system/personas/yorkshire.md) | Yorkshire dialect rhyming guidance ('reet' -> 'fleet'), rememberFact 'pronunciation' category, and MemoriesPortal UI | PASS |
+| FEAT-133 | Instant Recorded Wake Greeting & Phonetic Wake Contraction Handling | [liveProxy.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/live/liveProxy.js) | Instant Yorkshire audio greeting for wake-only utterances, holdingClips.js pre-recording, WAKE_RX i'm/im contraction matching, and BARE_GREETING_RX partial stream buffering | PASS |
 
 ## Section 2: Detailed Scenarios
 ### Suite 31: Observability Device Health Panel & Service (FEAT-086)
@@ -1330,6 +1331,7 @@
 - **Canonical Blood Glucose mmol/L Rounding Parity Invariant:** In `glucoseService.js`, `glucoseHubService.js`, and `runGlucoseService.js`, the native `scaled` mmol/L value from Nightscout (Libre 2) must be persisted in `ns_entries` and prioritized across `getCurrentState()` and `getCurrent()`. Services must never exclusively re-divide integer mg/dL `sgv` by `18.0182` for real-time reporting, eliminating 0.1 mmol/L discrepancies between Box-3 LCD widgets, spoken Day Reports, and web UIs.
 - **Pronunciation Memory Prioritization & Injection Invariant:** In `hardwareClientService.js`, explicit memories with category `'pronunciation'` must be fetched and injected unconditionally at the very top of the system prompt under `PRONUNCIATION & PHONETICS DIRECTIVES (CRITICAL)`. These directives must never be truncated or displaced by regular conversation notes, ensuring that speech-to-text / text-to-speech phonetic rhymes instructed by the user remain active across all turns.
 - **Local Wake Gate CPU Fallback & Latency Invariant:** In `liveProxy.js`, `wakeGateApplies()` must require `process.env.ENABLE_LOCAL_WAKE_GATE === 'true'` before routing microphone audio through the local Python faster-whisper worker (`wake_stt.py`). Because CPU-bound whisper inference latency (1.5s–2.7s) exceeds the ESP32-S3-BOX-3 hardware `STATE_VERIFYING` timeout window (4.5s), local gating is disabled by default to prevent dropped wake phrases and verify-timeout loops, ensuring real-time (<300ms) Gemini Live speech-to-text response.
+- **Instant Wake Greeting Pacing & Partial Stream Guard Invariant:** In `liveProxy.js`, when a stand-alone wake phrase is identified followed by 300ms silence (`isWakeOnly`), the proxy immediately delivers a cached local audio greeting from `holdingClips.js` in <150ms while notifying Gemini to drop its own redundant greeting. Additionally, when incoming transcripts contain only an opening greeting word (`BARE_GREETING_RX`), the server holds model audio output in the pacing buffer for up to 1.5s (`judgePendingUntil`) to allow downstream wake tokens to finish streaming without prematurely triggering `unsolicitedTurn` drops.
 
 ### Suite 40: Phonetic Pronunciation Memory & Dialect Correction System (FEAT-132)
 1. **Yorkshire Dialect Phonetic Rule Verification:** Inspect `personas/yorkshire.md`. Verify YAML `accentRule`, `dialectWords`, and Section 2 (`Voice & accent`) contain explicit phonetic guidance specifying that 'reet' must rhyme with 'fleet' and 'sweet' (/riːt/) and never sound like 'ret' or 'rate'.
@@ -1373,6 +1375,12 @@
 4. **Day Report Filter & Granular Sliders:** In `/ims/dayreport`, navigate to Report Settings. Verify **Sleep & Recovery** appears as an active section between Device Status and Running Training. Expand the sub-filters and verify all 8 granular toggles: Sleep Score slider (Off, Brief, Normal, Detailed), Sleep Stages slider, HRV Status slider, Resting Heart Rate slider, Body Battery slider, Training Readiness slider, Recovery Time slider, and Waking Glucose Correlation switch. Preview the report and verify concise prose synthesis of sleep and recovery metrics.
 5. **Run Planner Readiness Synthesis:** In `/ims/runplanner`, inspect `PreRunReadinessCard` under Mission Control. Verify Garmin physiological recovery metrics (Training Readiness score, Sleep Score, Body Battery, overnight HRV, recovery hours) are presented alongside real-time CGM glucose readiness and fuel recommendations.
 6. **Top Bar Sync Modal:** Click the Garmin status button in the Run Planner top header. Verify the modal opens displaying linked account details, latest sync timestamp, on-demand "Sync Today Now" button with spinner, and graceful "Disconnect" operation.
+
+### Suite 41: Instant Recorded Wake Greeting & Phonetic Wake Contraction Handling (FEAT-133)
+1. **Phonetic Contraction Recognition:** Inspect `pdf-knowledge-base/server/live/textMatching.js`. Verify `WAKE_RX` regex contains `i['’]?m\b`. Test `looksAddressed("Hi, I'm")`, `looksAddressed("Hi, Im")`, `looksAddressed("Hey I'm")`, and verify each evaluates to `true`.
+2. **Partial Stream Buffering:** In `liveProxy.js`, verify `BARE_GREETING_RX` holds incoming model responses (`judgePendingUntil = Date.now() + 1500`) when `heardThisTurn` holds an isolated greeting word ("Hi", "Hey", "Eh up") so partial streaming transcripts do not prematurely trigger `unsolicitedTurn` drops.
+3. **Instant Local Audio Greeting:** In `holdingClips.js` and `liveProxy.js`, verify `isWakeOnly` triggers instant pre-recorded greeting playback (under 150ms) across time-of-day slots (anytime, morning, afternoon, evening) for the active Yorkshire persona, bypassing cloud speech latency.
+4. **Cloud Greeting Suppression:** Verify that upon local greeting playback, the server instructs Gemini Live that Ims has already greeted the user and suppresses duplicate cloud-generated greetings until the user speaks their follow-up query.
 
 
 

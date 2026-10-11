@@ -1619,6 +1619,18 @@
         "System Prompt Priority Invariant: buildMemoryParagraph() queries pronunciation memories and formats them at the top under PRONUNCIATION & PHONETICS DIRECTIVES (CRITICAL)",
         "MemoriesPortal UI Category & Badge: MemoriesPortal.jsx incorporates 'pronunciation' into category filters, dashboard stats, color tokens, Volume2 icon, and add/edit modals"
       ]
+    },
+    "Instant Recorded Wake Greeting & Phonetic Wake Contraction Handling": {
+      "status": "enabled",
+      "description": "Ultra-low-latency voice activation architecture providing instant pre-recorded greetings for stand-alone wake phrases, eliminating the ~2.4s cloud turn delay, alongside phonetic recognition of spoken contractions ('Hi I'm', 'Hey I'm', 'Hi Im') and bare greeting buffering to prevent premature response cancellation during streaming speech-to-text.",
+      "renderingEngine": "Node.js WebSocket Proxy / Live Audio Pacing / SQLite / Audio Cache",
+      "subFeatures": [
+        "Instant Pre-recorded Greeting: Evaluates isWakeOnly followed by 300ms silence to immediately play localized audio greeting clips (12 anytime, 5 morning, 4 afternoon, 5 evening for Yorkshire) from holdingClips.js, reducing perceived wake response latency from ~2.4s to under 150ms",
+        "Cloud Greeting Drop: Instructs Gemini that Ims has already greeted the user and drops upstream synthesized greeting audio until user speaks their query",
+        "Phonetic Contraction Recognition: Expands WAKE_RX in textMatching.js with i['’]?m to recognize 'Hi I'm' and 'Hey I'm' as valid wake phrases when cloud STT mishears 'IMS'",
+        "Partial Greeting Stream Buffering: Deploys BARE_GREETING_RX in liveProxy.js to hold synthesized audio for up to 1.5s when streaming transcripts emit partial opening words ('Hi', 'Hey', 'Eh up'), preventing premature turn cancellation while speaker completes the utterance",
+        "Database Variant Synchronization: Migrates SQLite voice_phrases table with phonetic contraction spellings for Hi IMS and Hey IMS"
+      ]
     }
   }
 }
