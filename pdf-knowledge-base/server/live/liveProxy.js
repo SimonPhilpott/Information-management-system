@@ -9,7 +9,7 @@ import config from '../config.js';
 import fs from 'fs';
 import { DAEMON_STATES, wakeDaemonService } from '../services/wakeDaemonService.js';
 import { WebSocket } from 'ws';
-import { activePersonaId, inYourVoice, languageCode as personaLanguageCode } from '../services/personaService.js';
+import { activePersonaId, inYourVoice, languageCode as personaLanguageCode, signOffs as personaSignOffs } from '../services/personaService.js';
 import { addIdea as addDevIdea, flagToolFailure } from '../services/devIdeasService.js';
 import { addMemory, deleteMemory } from '../db/database.js';
 import { addToList, cancelScheduledItem, clearList, getHistorySummary, listScheduledItems, readList, removeFromList, scheduleItem, stopAllRinging } from '../services/remindersService.js';
@@ -438,6 +438,10 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   let userTranscriptSeen = false;
   let textTurnSent = false;
   let unsolicitedTurn = false;
+  // Once any part of a reply has been dropped, the rest of that reply is dropped too - until Gemini ends the
+  // turn or is interrupted. Simon talking (to Ims or anyone else) only affects his NEXT reply: un-dropping
+  // mid-reply let an unwanted answer to a conversation with someone else play out (11 Oct).
+  let droppingThisTurn = false;
   // Tracks when the getDayReport tool response was last sent. Gemini sometimes
   // fires a genuine turnComplete mid-report (it finished the first batch of
   // audio) and then immediately starts a second turn to continue - that
@@ -448,7 +452,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // Gemini sometimes speaks a few items of the report and stops (6 Oct: three calendar items, no weather,
   // health or news). Words spoken since the report went out are counted; a reply that ends far short of a
   // full report gets one "carry on" note, so he finishes it without being asked twice.
-  let dayReportWords = 0, dayReportSections = 0, dayReportNudged = false;
+  let dayReportWords = 0, dayReportSections = 0, dayReportNudged = false, dayReportSpoken = '';
   // Triggers are only cleared once a turn that actually SPOKE has finished. Gemini
   // reports a tool call (e.g. the wake-phrase check) as its own finished turn, and
   // its real answer follows it a moment later - that answer is still a reply to
@@ -1021,18 +1025,21 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             // Gemini only sets alarms, looks things up etc. when asked - this was a reply after all. Dropping it
             // used to answer the call "acknowledged" without running it (6 Oct: an alarm he said he'd set, never set).
             unsolicitedTurn = false;
+            droppingThisTurn = false;
             console.log(`${tag} ✅ Reply un-dropped - it carries ${realAction.name}`);
             try { logCapture(`[${new Date().toISOString()}] ${tag} REPLY UN-DROPPED - carries ${realAction.name}
 `); } catch (_) { }
           }
-          if (unsolicitedTurn) {
+          if (unsolicitedTurn || droppingThisTurn) {
+            droppingThisTurn = true;
             for (const call of parsed.toolCall?.functionCalls || []) {
               if (gWs.readyState === WebSocket.OPEN) {
                 gWs.send(JSON.stringify({ toolResponse: { functionResponses: [{ response: { output: { status: 'acknowledged' } }, id: call.id }] } }));
               }
             }
-            if (parsed.serverContent?.turnComplete && !parsed.toolCall) {
+            if ((parsed.serverContent?.turnComplete || parsed.serverContent?.interrupted) && !parsed.toolCall) {
               unsolicitedTurn = false;
+              droppingThisTurn = false;
               currentTurnComplete = true;
               turnCompleteAt = Date.now();
               resetTurnTriggers();
@@ -1108,7 +1115,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           turnReplyText = stripToolText(turnReplyText + spokenText);
           turnLog.ims += spokenText;
           { const n = spokenText.split(/\s+/).filter(Boolean).length; wordsSpoken += n; if (toolAnswerOwedAt) toolAnswerWords += n; }
-          if (dayReportSentAt && Date.now() - dayReportSentAt < 180000) dayReportWords += spokenText.split(/\s+/).filter(Boolean).length;
+          if (dayReportSentAt && Date.now() - dayReportSentAt < 180000) { dayReportWords += spokenText.split(/\s+/).filter(Boolean).length; dayReportSpoken = (dayReportSpoken + spokenText).slice(-600); }
           // I4: the face follows a turn in a long reply - timed to when those words are actually heard
           // (no face set yet: from the first ~8 words; already set: on a later turn in a reply past 12 words)
           const wordsSoFar = turnLog.ims.split(/\s+/).filter(Boolean).length;
@@ -1240,7 +1247,14 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               }
               // a day report that stopped well short of all its sections: tell him once to finish it
               const reportFloor = Math.max(120, dayReportSections * 20);
-              if (imsBrain && dayReportSentAt && Date.now() - dayReportSentAt < 180000 && !dayReportNudged && dayReportWords < reportFloor
+              // ...but not once he's signed off: short sections ("nothing else on today") make a complete report
+              // look short, and the nudge tacked more news on after "and that's your lot" (11 Oct)
+              const signedOff = (() => {
+                const said = dayReportSpoken.toLowerCase().replace(/[^a-z' ]+/g, ' ');
+                try { if (personaSignOffs().some((x) => said.includes(String(x).toLowerCase().replace(/[^a-z' ]+/g, ' ').trim()))) return true; } catch (_) { }
+                return /\b(and that'?s (your lot|it|everything|the lot)|that'?s your day|have a (grand|good|great) day)\b/.test(said);
+              })();
+              if (imsBrain && dayReportSentAt && Date.now() - dayReportSentAt < 180000 && !dayReportNudged && !signedOff && dayReportWords < reportFloor
                 && isConversationActive && gWs.readyState === WebSocket.OPEN && !(isHardware && isRecordingActive())) {
                 dayReportNudged = true;
                 textTurnSent = true; sessionUsed = true; lastActivityAt = Date.now();
@@ -1684,7 +1698,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               getDayReport().then((r) => {
                 console.log(`${tag} 📰 getDayReport -> ${r.sectionCount} sections, ${r.report.length} chars`);
                 dayReportSentAt = Date.now();
-                dayReportWords = 0; dayReportSections = r.sectionCount || 0; dayReportNudged = false;
+                dayReportWords = 0; dayReportSections = r.sectionCount || 0; dayReportNudged = false; dayReportSpoken = '';
                 respondToToolCall(call, { instructions: r.instructions, sectionCount: r.sectionCount, report: r.report });
               }).catch((err) => respondToToolCall(call, { error: err.message }));
             } else if (call.name === 'getNews') {
@@ -1865,6 +1879,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
     gWs.on('close', (code, reason) => {
       unsolicitedTurn = false; // a dropped turn never carries over to a new upstream session
+      droppingThisTurn = false;
       clearInterval(pingInterval);
       clearInterval(silenceInterval);
       flushWavToDisk();
