@@ -1030,8 +1030,11 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             try { logCapture(`[${new Date().toISOString()}] ${tag} REPLY UN-DROPPED - carries ${realAction.name}
 `); } catch (_) { }
           }
-          if (unsolicitedTurn || droppingThisTurn) {
-            droppingThisTurn = true;
+          // Sticky only for Gemini's own output and the end of that reply: transcripts of what Simon says, the
+          // session's setupComplete etc. must always get through (sticking on everything left him deaf, 11 Oct).
+          const endsTurn = Boolean(parsed.serverContent?.turnComplete || parsed.serverContent?.interrupted);
+          if (unsolicitedTurn || (droppingThisTurn && (startsModelOutput || endsTurn))) {
+            if (startsModelOutput) droppingThisTurn = true;
             for (const call of parsed.toolCall?.functionCalls || []) {
               if (gWs.readyState === WebSocket.OPEN) {
                 gWs.send(JSON.stringify({ toolResponse: { functionResponses: [{ response: { output: { status: 'acknowledged' } }, id: call.id }] } }));
