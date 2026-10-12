@@ -12,7 +12,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { execFile } from 'child_process';
+import { execFile, exec } from 'child_process';
 import { promisify } from 'util';
 import { GoogleGenerativeAI } from './geminiClient.js';
 import config from '../config.js';
@@ -24,6 +24,7 @@ import { presets, stackOf, lookOf } from './codeStacks.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const run = promisify(execFile);
+const sh = promisify(exec);
 const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const TIDY_MARK = path.join(DATA_DIR, '.code_library_tidied_v1');
@@ -340,7 +341,9 @@ function buildPrompt(body, plan, { inlineCode, reusePaths = {}, chosen: given } 
     '## Setup',
     `- Built with: ${st?.name} - ${st?.plain}`,
     `- How it looks: ${lk ? `${lk.name} - ${lk.plain}` : 'your choice'}`,
-    `- Create the project in this folder with: \`${plan.starter}\`. The folder may already hold README.md, PROMPT.md, .github/, .agents/ and reuse/ - keep them.`,
+    plan.started
+      ? `- The project has already been created in this folder with \`${plan.starter}\` and its packages installed - build on it, don't create it again.`
+      : `- Create the project in this folder with: \`${plan.starter}\`. The folder may already hold README.md, PROMPT.md, .github/, .agents/ and reuse/ - keep them.`,
     '',
   ];
   if (rules.length) lines.push('## House rules', ...rules.map((r) => `- ${r.prompt}`), '');
@@ -381,7 +384,8 @@ const cell = (t) => clean(t, 300).replace(/\|/g, '\\|').replace(/\n/g, ' ');
 // ---------------------------------------------------------------- step 4: create the folder
 
 export async function createProject(body) {
-  const { name, brief, stack, rules = [], plan = {}, applyChanges = false, github = {} } = body;
+  const { name, brief, stack, rules = [], applyChanges = false, github = {}, setUp = true } = body;
+  let plan = body.plan || {};
   if (!clean(name)) throw fail(400, 'Give the project a name.');
   const p = presets();
   const st = p.stacks.find((s) => s.id === stack);
@@ -440,15 +444,33 @@ Reply with JSON only: {"code":"the whole updated file"}`);
     files[base] = code;
   }));
 
+  // The framework itself, for the starters that run without asking questions (React, Vue, SolidJS, Node.js
+  // API): created and its packages installed before anything else goes in, so the project builds straight
+  // away. If it fails (no internet, say) the folder is still made and Antigravity runs the starter instead.
+  fs.mkdirSync(folder, { recursive: true });
+  const starter = plan.starter || resolveStarter(st, name);
+  let started = false, startError = null;
+  if (setUp && st.autoStart) {
+    try {
+      await sh(starter, { cwd: folder, windowsHide: true, timeout: 180000, maxBuffer: 16 * 1024 * 1024 });
+      await sh('npm install --no-audit --no-fund', { cwd: folder, windowsHide: true, timeout: 600000, maxBuffer: 32 * 1024 * 1024 });
+      started = true;
+    } catch (err) {
+      startError = String(err.stderr || err.message || err).trim().split('\n').slice(-3).join(' ').slice(0, 300);
+      console.warn(`[ProjectBuilder] Starter failed for ${folder}:`, startError);
+    }
+  }
+  plan = { ...plan, starter, started };
+
   const owner = await githubLogin().catch(() => null);
   const stackName = st.name;
   const ruleList = p.rules.filter((r) => rules.includes(r.id));
   Object.assign(files, {
     'README.md': readme({ name, brief, st, plan, chosen, reusePaths, ruleList }),
-    'PROMPT.md': buildPrompt(body, { ...plan, starter: plan.starter || resolveStarter(st, name) }, { inlineCode: false, reusePaths, chosen }),
+    'PROMPT.md': buildPrompt(body, plan, { inlineCode: false, reusePaths, chosen }),
     'AGENTS.md': `# How to work on ${clean(name, 120)}\n\nRead PROMPT.md for the brief and build order, and follow the house rules in .agents/rules/house-rules.md.\n`,
     '.agents/rules/house-rules.md': `# House rules\n\n${ruleList.map((r) => `- **${r.name}.** ${r.prompt}`).join('\n') || '- Keep the code simple and readable.'}\n`,
-    '.gitignore': gitignoreFor(st),
+    '.gitignore': mergeLines(fs.existsSync(path.join(folder, '.gitignore')) ? fs.readFileSync(path.join(folder, '.gitignore'), 'utf8') : '', gitignoreFor(st)),
     '.editorconfig': 'root = true\n\n[*]\ncharset = utf-8\nend_of_line = lf\nindent_style = space\nindent_size = 2\ninsert_final_newline = true\ntrim_trailing_whitespace = true\n\n[*.md]\ntrim_trailing_whitespace = false\n\n[*.{c,cpp,h,hpp,ino}]\nindent_size = 4\n',
     '.env.example': '# Copy to .env and fill in. .env never goes to GitHub.\n',
     '.github/workflows/ci.yml': ciFor(st),
@@ -464,7 +486,6 @@ Reply with JSON only: {"code":"the whole updated file"}`);
     files['test_plan.md'] = `# Test plan - ${clean(name, 120)}\n\n## Executive summary\n\n## 1. Feature test matrix\n\n| Feature | Test | Status |\n|---|---|---|\n\n## 2. Test scenarios\n`;
   }
 
-  fs.mkdirSync(folder, { recursive: true });
   for (const [rel, content] of Object.entries(files)) {
     const full = path.join(folder, rel);
     fs.mkdirSync(path.dirname(full), { recursive: true });
@@ -475,7 +496,7 @@ Reply with JSON only: {"code":"the whole updated file"}`);
   const git = (args) => run('git', args, { cwd: folder, windowsHide: true });
   await git(['init', '-b', 'main']);
   await git(['add', '-A']);
-  const message = `Start ${clean(name, 80)}: brief, house rules, reused code and GitHub setup`;
+  const message = `Start ${clean(name, 80)}: ${started ? `${st.name} set up, ` : ''}brief, house rules, reused code and GitHub setup`;
   try { await git(['commit', '-m', message]); } catch (_) {
     const id = async (k) => (await run('git', ['config', k], { cwd: IMS_ROOT, windowsHide: true }).catch(() => ({ stdout: '' }))).stdout.trim();
     const [user, email] = [await id('user.name'), await id('user.email')];
@@ -489,6 +510,8 @@ Reply with JSON only: {"code":"the whole updated file"}`);
     folder,
     files: Object.keys(files).sort(),
     changesApplied: chosen.reduce((n, c) => n + (c.changes || []).filter((x) => x.applied).length, 0),
+    started,
+    startError,
     github: githubResult,
   };
 }
@@ -539,8 +562,10 @@ function readme({ name, brief, st, plan, chosen, reusePaths, ruleList }) {
     `# ${clean(name, 120)}`, '', clean(brief), '',
     plan.summary ? `${plan.summary}\n` : '',
     '## Getting started', '',
-    `Built with ${st.name}. The project itself isn't generated yet: open this folder in Antigravity and give it PROMPT.md, or create it yourself with:`, '',
-    '```', plan.starter || resolveStarter(st, name), '```', '',
+    ...(plan.started
+      ? [`Built with ${st.name}, already set up with \`${plan.starter}\` and its packages installed.${st.ci === 'node' && st.id !== 'node-api' ? ' Run `npm run dev` to see it.' : ''} Open this folder in Antigravity and give it PROMPT.md to build the rest.`, '']
+      : [`Built with ${st.name}. The project itself isn't generated yet: open this folder in Antigravity and give it PROMPT.md, or create it yourself with:`, '',
+        '```', plan.starter || resolveStarter(st, name), '```', '']),
   ];
   if (plan.folders?.length) out.push('## Folder layout', '', ...plan.folders.map((f) => `- \`${f.path}\` - ${f.purpose}`), '');
   if (chosen.length) {
@@ -556,6 +581,14 @@ function readme({ name, brief, st, plan, chosen, reusePaths, ruleList }) {
   }
   if (ruleList.length) out.push('## House rules', '', ...ruleList.map((r) => `- **${r.name}** - ${r.plain}`), '');
   return out.join('\n');
+}
+
+// Two .gitignore files as one, without repeating a line
+function mergeLines(first, second) {
+  const seen = new Set();
+  return [...String(first).split(/\r?\n/), ...String(second).split(/\r?\n/)]
+    .filter((l) => { const k = l.trim(); if (!k) return true; if (seen.has(k)) return false; seen.add(k); return true; })
+    .join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
 }
 
 function gitignoreFor(st) {

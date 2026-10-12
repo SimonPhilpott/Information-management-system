@@ -46,6 +46,7 @@ export default function ProjectBuilderPage({ theme = 'dark', onThemeToggle, setC
   const [folder, setFolder] = useState(draft?.folder || '');
   const [applyChanges, setApplyChanges] = useState(draft?.applyChanges ?? true);
   const [makeRepo, setMakeRepo] = useState(false);
+  const [setUpNow, setSetUpNow] = useState(true);
   const [created, setCreated] = useState(null);
   const [busy, setBusy] = useState('');
   const [toast, setToast] = useState(null);
@@ -122,9 +123,10 @@ export default function ProjectBuilderPage({ theme = 'dark', onThemeToggle, setC
     if (makeRepo && !window.confirm(`This will create a private repository called "${slugify(name)}" on your personal GitHub account and push the project to it. Carry on?`)) return;
     setBusy('create');
     try {
-      const r = await call('create', { ...body, plan, folder, applyChanges, github: { create: makeRepo, isPrivate: true } });
+      const r = await call('create', { ...body, plan, folder, applyChanges, setUp: setUpNow, github: { create: makeRepo, isPrivate: true } });
       setCreated(r);
-      say(`Created ${r.folder}${r.github?.url ? ' and pushed it to GitHub' : ''}.`);
+      if (r.startError) say(`Created ${r.folder}, but setting up ${stack?.name} failed (${r.startError}) - Antigravity will do it from PROMPT.md.`, 'error');
+      else say(`Created ${r.folder}${r.started ? `, with ${stack?.name} set up` : ''}${r.github?.url ? ' and pushed it to GitHub' : ''}.`);
     } catch (err) { say(err.message, 'error'); } finally { setBusy(''); }
   };
 
@@ -437,19 +439,24 @@ export default function ProjectBuilderPage({ theme = 'dark', onThemeToggle, setC
               <Toggle on={applyChanges} set={setApplyChanges} isDark={isDark}
                 title="Make the code changes for me"
                 text="Swaps the names and values from step 2 in the copied code (about 1p). Anything it can't do is left as a checklist in the README." />
+              {stack?.autoStart && (
+                <Toggle on={setUpNow} set={setSetUpNow} isDark={isDark}
+                  title={`Set up ${stack.name} now`}
+                  text={`Runs the starter and installs its packages, so the project builds straight away. Takes 1-3 minutes and needs the internet.`} />
+              )}
               <Toggle on={makeRepo} set={setMakeRepo} isDark={isDark}
                 title={<span className="flex items-center gap-1.5"><GitBranch size={14} /> Also create a private GitHub repo and push</span>}
                 text={`Creates "${slugify(name)}" on your personal account. You'll be asked to confirm.`} />
               <button className={`${primary} justify-center`} onClick={createProject} disabled={busy === 'create' || !folder.trim()}>
                 {busy === 'create' ? <Loader2 size={16} className="animate-spin" /> : <Rocket size={16} />}
-                {busy === 'create' ? 'Creating…' : 'Create project'}
+                {busy === 'create' ? (setUpNow && stack?.autoStart ? 'Creating and installing packages…' : 'Creating…') : 'Create project'}
               </button>
 
               {created && (
                 <div className="p-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 flex flex-col gap-2.5 text-sm">
                   <span className="font-bold flex items-center gap-2 text-emerald-500"><CheckCircle2 size={16} /> Project created</span>
                   <span className="font-mono text-xs break-all">{created.folder}</span>
-                  <span className={`text-xs ${sub}`}>{created.files.length} files, first commit made{created.changesApplied ? `, ${created.changesApplied} code change${created.changesApplied === 1 ? '' : 's'} made for you` : ''}.</span>
+                  <span className={`text-xs ${sub}`}>{created.files.length} files{created.started ? `, ${stack?.name} set up and packages installed` : ''}, first commit made{created.changesApplied ? `, ${created.changesApplied} code change${created.changesApplied === 1 ? '' : 's'} made for you` : ''}.</span>
                   {created.github?.url && (
                     <a href={created.github.url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-cyan-500 hover:underline flex items-center gap-1">
                       <GitBranch size={13} /> {created.github.url} <ExternalLink size={11} />

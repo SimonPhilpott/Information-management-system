@@ -8,16 +8,27 @@
       "starter": "yo @microsoft/sharepoint --solution-name {slug} --component-type webpart --component-name {pascal} --framework react --skip-install",
       "ci": "node",
       "gitignore": "node",
-      "match": ["spfx", "sharepoint", "pnp", "webpart"]
+      "match": [
+        "spfx",
+        "sharepoint",
+        "pnp",
+        "webpart"
+      ]
     },
     {
       "id": "react-vite",
       "name": "React web app",
       "plain": "A web app that runs in the browser, built with Vite.",
-      "starter": "npm create vite@latest . -- --template react-ts",
+      "starter": "npm create vite@latest . -- --template react-ts --no-interactive",
       "ci": "node",
       "gitignore": "node",
-      "match": ["react", "vite", "jsx", "tsx"]
+      "match": [
+        "react",
+        "vite",
+        "jsx",
+        "tsx"
+      ],
+      "autoStart": true
     },
     {
       "id": "nextjs",
@@ -26,7 +37,11 @@
       "starter": "npx create-next-app@latest . --typescript --app --eslint --use-npm",
       "ci": "node",
       "gitignore": "node",
-      "match": ["next.js", "nextjs", "next "]
+      "match": [
+        "next.js",
+        "nextjs",
+        "next "
+      ]
     },
     {
       "id": "sveltekit",
@@ -35,25 +50,34 @@
       "starter": "npx sv create . --template minimal --types ts",
       "ci": "node",
       "gitignore": "node",
-      "match": ["svelte"]
+      "match": [
+        "svelte"
+      ]
     },
     {
       "id": "vue",
       "name": "Vue web app",
       "plain": "A web app built with Vue and Vite.",
-      "starter": "npm create vite@latest . -- --template vue-ts",
+      "starter": "npm create vite@latest . -- --template vue-ts --no-interactive",
       "ci": "node",
       "gitignore": "node",
-      "match": ["vue", "pinia"]
+      "match": [
+        "vue",
+        "pinia"
+      ],
+      "autoStart": true
     },
     {
       "id": "solid",
       "name": "SolidJS web app",
       "plain": "A very fast web app for screens with lots of live data.",
-      "starter": "npm create vite@latest . -- --template solid-ts",
+      "starter": "npm create vite@latest . -- --template solid-ts --no-interactive",
       "ci": "node",
       "gitignore": "node",
-      "match": ["solid"]
+      "match": [
+        "solid"
+      ],
+      "autoStart": true
     },
     {
       "id": "node-api",
@@ -62,7 +86,13 @@
       "starter": "npm init -y && npm i express",
       "ci": "node",
       "gitignore": "node",
-      "match": ["express", "node.js", "server", "api"]
+      "match": [
+        "express",
+        "node.js",
+        "server",
+        "api"
+      ],
+      "autoStart": true
     },
     {
       "id": "esp32",
@@ -71,15 +101,56 @@
       "starter": "pio project init --board esp32-s3-devkitc-1 --project-option \"framework=arduino\"",
       "ci": "platformio",
       "gitignore": "platformio",
-      "match": ["esp32", "esp-idf", "freertos", "platformio", "arduino"]
+      "match": [
+        "esp32",
+        "esp-idf",
+        "freertos",
+        "platformio",
+        "arduino"
+      ]
     }
   ],
   "looks": [
-    { "id": "fluent", "name": "Fluent UI", "plain": "The Microsoft 365 look: matches SharePoint and Teams.", "match": ["fluent", "griffel"] },
-    { "id": "tailwind", "name": "Tailwind CSS", "plain": "Style straight in the markup with ready-made classes.", "match": ["tailwind"] },
-    { "id": "plain-css", "name": "Plain CSS", "plain": "Your own colours and spacing in ordinary CSS files, nothing extra to install.", "match": ["css"] },
-    { "id": "scss", "name": "SCSS modules", "plain": "CSS with variables and nesting, kept separate for each component.", "match": ["scss", "sass"] },
-    { "id": "none", "name": "No screen", "plain": "For servers and devices that don't have a user interface.", "match": [] }
+    {
+      "id": "fluent",
+      "name": "Fluent UI",
+      "plain": "The Microsoft 365 look: matches SharePoint and Teams.",
+      "match": [
+        "fluent",
+        "griffel"
+      ]
+    },
+    {
+      "id": "tailwind",
+      "name": "Tailwind CSS",
+      "plain": "Style straight in the markup with ready-made classes.",
+      "match": [
+        "tailwind"
+      ]
+    },
+    {
+      "id": "plain-css",
+      "name": "Plain CSS",
+      "plain": "Your own colours and spacing in ordinary CSS files, nothing extra to install.",
+      "match": [
+        "css"
+      ]
+    },
+    {
+      "id": "scss",
+      "name": "SCSS modules",
+      "plain": "CSS with variables and nesting, kept separate for each component.",
+      "match": [
+        "scss",
+        "sass"
+      ]
+    },
+    {
+      "id": "none",
+      "name": "No screen",
+      "plain": "For servers and devices that don't have a user interface.",
+      "match": []
+    }
   ],
   "rules": [
     {
