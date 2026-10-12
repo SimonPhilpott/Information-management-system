@@ -375,7 +375,7 @@ export default function ProjectBuilderPage({ theme = 'dark', onThemeToggle, setC
               <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] gap-6">
                 <section className={`rounded-2xl border p-5 sm:p-6 ${card}`}>
                   <h3 className="font-extrabold flex items-center gap-2 mb-4"><FolderTree size={17} className="text-cyan-500" /> Project layout</h3>
-                  <FolderMap folders={plan.folders} titles={Object.fromEntries((groups || []).flatMap((g) => g.items.map((i) => [i.id, i.title])))} isDark={isDark} sub={sub} />
+                  <FolderMap folders={plan.folders} pieces={Object.fromEntries((groups || []).flatMap((g) => g.items.map((i) => [i.id, { title: i.title, ...fileNames(i) }])))} isDark={isDark} sub={sub} />
                 </section>
                 <section className={`rounded-2xl border p-5 sm:p-6 ${card}`}>
                   <h3 className="font-extrabold flex items-center gap-2 mb-4"><ListChecks size={17} className="text-emerald-500" /> Build order</h3>
@@ -517,6 +517,9 @@ function CodeCard({ item, onChange, isDark, card, sub }) {
           <div className={`text-xs mt-0.5 font-mono break-all ${sub}`}>
             {item.repoUrl ? <a className="hover:underline" href={item.repoUrl} target="_blank" rel="noreferrer">{item.repo}</a> : item.repo} / {item.filePath}
           </div>
+          {on && fileNames(item).renamedFrom && (
+            <div className="text-xs mt-0.5 text-amber-500">Will be called <span className="font-mono font-semibold">{fileNames(item).fileName}</span> in this project</div>
+          )}
           <p className="text-sm mt-2 leading-snug">{item.why}</p>
 
           {on && (
@@ -573,34 +576,62 @@ function CodeCard({ item, onChange, isDark, card, sub }) {
   );
 }
 
-// The planned folders as a tree, with the reused code shown where it goes
-function FolderMap({ folders, titles, isDark, sub }) {
-  const rows = [...(folders || [])].sort((a, b) => a.path.localeCompare(b.path));
+// What a piece of reused code will be called in the new project: a file named after what it exports takes the
+// new name when that name is being changed (same rule as renamedFile in projectBuilderService.js)
+function fileNames(item) {
+  const name = String(item.filePath || '').split('/').pop() || '';
+  const dot = name.lastIndexOf('.');
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : '';
+  const hit = (item.changes || []).find((c) => c.include !== false && String(c.current || '').trim() === stem && /^[A-Za-z_$][\w$-]*$/.test(String(c.suggested || '').trim()));
+  return hit ? { fileName: `${hit.suggested.trim()}${ext}`, renamedFrom: name } : { fileName: name, renamedFrom: null };
+}
+
+// The planned folders as a tree (folders the plan skipped, like src/ above src/webparts/x/, are filled in),
+// with each piece of reused code shown where it goes under the name it will have
+function FolderMap({ folders, pieces, isDark, sub }) {
+  const byPath = new Map();
+  for (const f of folders || []) {
+    const parts = f.path.replace(/\/+$/, '').split('/').filter(Boolean);
+    parts.forEach((_, i) => {
+      const p = `${parts.slice(0, i + 1).join('/')}/`;
+      if (!byPath.has(p)) byPath.set(p, { path: p, purpose: '', reuse: [] });
+    });
+    const own = byPath.get(`${parts.join('/')}/`);
+    if (own) { own.purpose = f.purpose || own.purpose; own.reuse = [...own.reuse, ...(f.reuse || [])]; }
+  }
+  const rows = [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path));
   if (!rows.length) return <p className={`text-sm ${sub}`}>No layout yet.</p>;
   return (
     <div className="flex flex-col gap-1.5">
       {rows.map((f) => {
-        const depth = Math.max(0, f.path.replace(/\/+$/, '').split('/').length - 1);
-        const leaf = f.path.replace(/\/+$/, '').split('/').pop();
+        const parts = f.path.replace(/\/+$/, '').split('/');
         return (
-          <div key={f.path} className="flex items-start gap-2" style={{ paddingLeft: `${depth * 22}px` }}>
-            <FolderOpen size={16} className="text-cyan-500 mt-0.5 shrink-0" />
+          <div key={f.path} className="flex items-start gap-2" style={{ paddingLeft: `${(parts.length - 1) * 22}px` }}>
+            <FolderOpen size={16} className={`mt-0.5 shrink-0 ${f.purpose ? 'text-cyan-500' : 'text-slate-400'}`} />
             <div className="min-w-0">
-              <span className="font-mono text-sm font-semibold">{leaf}/</span>
-              <span className={`text-xs ml-2 ${sub}`}>{f.purpose}</span>
-              {f.reuse?.length > 0 && (
+              <span className="font-mono text-sm font-semibold">{parts[parts.length - 1]}/</span>
+              {f.purpose && <span className={`text-xs ml-2 ${sub}`}>{f.purpose}</span>}
+              {f.reuse.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-1">
-                  {f.reuse.map((id) => (
-                    <span key={id} className={`px-2 py-0.5 rounded-md text-[11px] font-semibold ${isDark ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-100 text-amber-800'}`}>
-                      <Code2 size={11} className="inline mr-1 -mt-0.5" />{titles[id] || 'Your code'}
-                    </span>
-                  ))}
+                  {f.reuse.map((id) => {
+                    const piece = pieces[id] || { title: 'Your code' };
+                    return (
+                      <span key={id} title={piece.title} className={`px-2 py-0.5 rounded-md text-[11px] ${isDark ? 'bg-amber-500/15 text-amber-200' : 'bg-amber-100 text-amber-900'}`}>
+                        <Code2 size={11} className="inline mr-1 -mt-0.5" />
+                        <span className="font-mono font-semibold">{piece.fileName || piece.title}</span>
+                        {piece.renamedFrom && <span className="opacity-70"> (was {piece.renamedFrom})</span>}
+                        <span className="opacity-70"> - {piece.title}</span>
+                      </span>
+                    );
+                  })}
                 </div>
               )}
             </div>
           </div>
         );
       })}
+      <p className={`text-[11px] mt-2 ${sub}`}>Your code is shown under the name it will have in this project. Renames happen when "Make the code changes for me" is on.</p>
     </div>
   );
 }

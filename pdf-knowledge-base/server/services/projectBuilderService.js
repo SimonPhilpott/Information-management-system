@@ -397,10 +397,6 @@ export async function createProject(body) {
   const usedNames = new Set();
   const files = {};
   await Promise.all(chosen.map(async (c) => {
-    let base = `reuse/${slugify(c.row.repo_name || 'code')}/${path.basename(c.row.file_path || `${c.id}.txt`)}`;
-    while (usedNames.has(base)) base = base.replace(/(\.[^.]+)?$/, (ext) => `-2${ext || ''}`);
-    usedNames.add(base);
-    reusePaths[c.id] = base;
     let code = String(c.row.code_content || '');
     c.changes = (c.changes || []).map((x) => ({ ...x }));
     const wanted = c.changes.filter((x) => x.include !== false && clean(x.what) && clean(x.current) && clean(x.suggested));
@@ -433,6 +429,14 @@ Reply with JSON only: {"code":"the whole updated file"}`);
       }
       c.applied = c.changes.some((x) => x.applied);
     }
+    // a file named after what it exports takes the new name when that name was changed in the code
+    // (DropdownFilterRenderer.tsx -> DepartmentFilterRenderer.tsx), so the renamed imports find it
+    const fileName = renamedFile(c.row.file_path || `${c.id}.txt`, c.changes.filter((x) => x.applied));
+    c.renamedFrom = fileName !== path.basename(c.row.file_path || '') ? path.basename(c.row.file_path || '') : null;
+    let base = `reuse/${slugify(c.row.repo_name || 'code')}/${fileName}`;
+    while (usedNames.has(base)) base = base.replace(/(\.[^.]+)?$/, (ext) => `-2${ext || ''}`);
+    usedNames.add(base);
+    reusePaths[c.id] = base;
     files[base] = code;
   }));
 
@@ -489,6 +493,15 @@ Reply with JSON only: {"code":"the whole updated file"}`);
   };
 }
 
+// The file's name after a change that renames the thing it's named after (shared rule with the review page)
+export function renamedFile(filePath, changes = []) {
+  const name = path.basename(String(filePath || ''));
+  const ext = path.extname(name);
+  const stem = name.slice(0, name.length - ext.length);
+  const hit = changes.find((x) => x && x.include !== false && clean(x.current) === stem && /^[A-Za-z_$][\w$-]*$/.test(clean(x.suggested)));
+  return hit ? `${clean(hit.suggested)}${ext}` : name;
+}
+
 async function githubLogin() {
   const token = getRawGitHubToken('personal');
   if (!token) return null;
@@ -533,7 +546,7 @@ function readme({ name, brief, st, plan, chosen, reusePaths, ruleList }) {
   if (chosen.length) {
     out.push('## Code reused from my other projects', '');
     for (const c of chosen) {
-      out.push(`### ${c.row.title}`, `From ${c.row.repo_name} / \`${c.row.file_path}\`, copied to \`${reusePaths[c.id]}\`.`, '');
+      out.push(`### ${c.row.title}`, `From ${c.row.repo_name} / \`${c.row.file_path}\`, copied to \`${reusePaths[c.id]}\`${c.renamedFrom ? ` (renamed from \`${c.renamedFrom}\`)` : ''}.`, '');
       const changes = (c.changes || []).filter((x) => x.include !== false && clean(x.what));
       if (changes.length) {
         out.push(c.applied ? 'Changes for this project (ticked ones are already made - check them):' : 'To change for this project:', '',
