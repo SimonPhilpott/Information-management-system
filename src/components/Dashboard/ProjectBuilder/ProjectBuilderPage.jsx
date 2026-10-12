@@ -47,6 +47,8 @@ export default function ProjectBuilderPage({ theme = 'dark', onThemeToggle, setC
   const [applyChanges, setApplyChanges] = useState(draft?.applyChanges ?? true);
   const [makeRepo, setMakeRepo] = useState(false);
   const [setUpNow, setSetUpNow] = useState(true);
+  const [promptText, setPromptText] = useState('');
+  const [undecidedList, setUndecidedList] = useState([]);
   const [created, setCreated] = useState(null);
   const [busy, setBusy] = useState('');
   const [toast, setToast] = useState(null);
@@ -118,6 +120,18 @@ export default function ProjectBuilderPage({ theme = 'dark', onThemeToggle, setC
     setStep(n);
     if (n === 3 && (!plan || planKey !== bodyKey)) makePlan();
   };
+
+  useEffect(() => {
+    if (step !== 4 || !plan || created) return undefined;
+    const t = setTimeout(() => {
+      call('prompt', { ...body, plan }).then((r) => { setPromptText(r.prompt); setUndecidedList(r.undecided || []); }).catch((err) => say(err.message, 'error'));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [step, plan, bodyKey, created]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const updateGap = (i, next) => setPlan((pl) => ({ ...pl, gaps: pl.gaps.map((g, gi) => (gi === i ? next : g)) }));
+  const updateDecision = (i, answer) => setPlan((pl) => ({ ...pl, decisions: pl.decisions.map((d, di) => (di === i ? { ...d, answer } : d)) }));
+  const gapPieces = (plan?.gaps || []).filter((g) => g.covered && g.use !== false);
 
   const createProject = async () => {
     if (makeRepo && !window.confirm(`This will create a private repository called "${slugify(name)}" on your personal GitHub account and push the project to it. Carry on?`)) return;
@@ -277,15 +291,16 @@ export default function ProjectBuilderPage({ theme = 'dark', onThemeToggle, setC
             <ChoiceSection title="House rules" icon={ShieldCheck} isDark={isDark} card={card} sub={sub} hint="How the code should be written. Antigravity is told to follow every one you tick.">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
                 {(options?.rules || []).map((r) => {
-                  const on = (setup.rules || []).includes(r.id);
+                  const on = r.locked || (setup.rules || []).includes(r.id);
                   return (
-                    <button key={r.id} className={`${choice(on, 'bg-emerald-500/10 border-emerald-500/70 ring-emerald-500/30')} !p-3 flex items-start gap-3`}
-                      onClick={() => { setSetup((x) => ({ ...x, rules: on ? x.rules.filter((id) => id !== r.id) : [...(x.rules || []), r.id] })); setPlan(null); }}>
+                    <button key={r.id} className={`${choice(on, 'bg-emerald-500/10 border-emerald-500/70 ring-emerald-500/30')} !p-3 flex items-start gap-3 ${r.locked ? 'cursor-default' : ''}`}
+                      onClick={() => { if (r.locked) return; setSetup((x) => ({ ...x, rules: on ? x.rules.filter((id) => id !== r.id) : [...(x.rules || []), r.id] })); setPlan(null); }}>
                       {on ? <CheckSquare size={18} className="text-emerald-500 shrink-0 mt-0.5" /> : <Square size={18} className="opacity-40 shrink-0 mt-0.5" />}
                       <span>
                         <span className="font-bold text-sm block">{r.name}</span>
                         <span className={`text-xs leading-snug block mt-0.5 ${sub}`}>{r.plain}</span>
-                        {on && reasons.rules[r.id] && <span className="text-xs leading-snug block mt-1 text-emerald-500">{reasons.rules[r.id]}</span>}
+                        {r.locked && <span className="text-[11px] font-semibold block mt-1 text-emerald-500">Always on</span>}
+                        {!r.locked && on && reasons.rules[r.id] && <span className="text-xs leading-snug block mt-1 text-emerald-500">{reasons.rules[r.id]}</span>}
                       </span>
                     </button>
                   );
@@ -368,16 +383,50 @@ export default function ProjectBuilderPage({ theme = 'dark', onThemeToggle, setC
                 <SummaryCard icon={Boxes} colour="text-cyan-500" title="Built with" card={card} sub={sub} lines={[stack?.name, stack?.plain]} />
                 <SummaryCard icon={Palette} colour="text-violet-500" title="How it looks" card={card} sub={sub} lines={look ? [look.name, look.plain] : ['Not chosen']} />
                 <SummaryCard icon={ShieldCheck} colour="text-emerald-500" title="House rules" card={card} sub={sub}
-                  list={(options?.rules || []).filter((r) => (setup.rules || []).includes(r.id)).map((r) => r.name)} />
+                  list={(options?.rules || []).filter((r) => r.locked || (setup.rules || []).includes(r.id)).map((r) => r.name)} />
                 <SummaryCard icon={Code2} colour="text-amber-500" title="My code to reuse" card={card} sub={sub}
-                  list={(groups || []).flatMap((g) => g.items.filter((i) => i.include !== false).map((i) => `${i.title} (${(i.changes || []).filter((c) => c.include !== false).length} to change)`))}
+                  list={[
+                    ...(groups || []).flatMap((g) => g.items.filter((i) => i.include !== false).map((i) => `${i.title} (${(i.changes || []).filter((c) => c.include !== false).length} to change)`)),
+                    ...gapPieces.map((g) => `${g.covered.title} (for ${g.need.toLowerCase()})`),
+                  ]}
                   empty="None - starts from the official starter" />
               </div>
+
+              {plan.gaps?.length > 0 && (
+                <section className="flex flex-col gap-3">
+                  <div>
+                    <h3 className="font-extrabold flex items-center gap-2"><Search size={17} className="text-amber-500" /> What the code you picked doesn't cover</h3>
+                    <p className={`text-xs mt-1 ${sub}`}>Each part is filled from your own library first and used as it is, so it looks and works like your other projects. Only what your code doesn't do is built new, in the same style.</p>
+                  </div>
+                  {plan.gaps.map((g, gi) => (
+                    <GapCard key={`${g.need}-${gi}`} gap={g} onChange={(next) => updateGap(gi, next)} isDark={isDark} card={card} sub={sub} field={field} />
+                  ))}
+                </section>
+              )}
+
+              {plan.decisions?.length > 0 && (
+                <section className={`rounded-2xl border p-5 sm:p-6 ${card}`}>
+                  <h3 className="font-extrabold flex items-center gap-2"><ListChecks size={17} className="text-violet-500" /> Decisions</h3>
+                  <p className={`text-xs mt-1 mb-4 ${sub}`}>Choices the brief leaves open. Where your code already settles one, its answer is filled in. Change any of them.</p>
+                  <div className="flex flex-col gap-4">
+                    {plan.decisions.map((d, di) => (
+                      <label key={di} className="flex flex-col gap-1.5">
+                        <span className="text-sm font-semibold">{d.question}</span>
+                        <input className={`${field} !py-2 !text-sm`} value={d.answer} placeholder="You decide" onChange={(e) => updateDecision(di, e.target.value)} />
+                        {d.why && <span className={`text-xs ${sub}`}>{d.why}</span>}
+                      </label>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] gap-6">
                 <section className={`rounded-2xl border p-5 sm:p-6 ${card}`}>
                   <h3 className="font-extrabold flex items-center gap-2 mb-4"><FolderTree size={17} className="text-cyan-500" /> Project layout</h3>
-                  <FolderMap folders={plan.folders} pieces={Object.fromEntries((groups || []).flatMap((g) => g.items.map((i) => [i.id, { title: i.title, ...fileNames(i) }])))} isDark={isDark} sub={sub} />
+                  <FolderMap folders={plan.folders} pieces={Object.fromEntries([
+                    ...(groups || []).flatMap((g) => g.items.map((i) => [i.id, { title: i.title, ...fileNames(i) }])),
+                    ...gapPieces.map((g) => [g.covered.id, { title: g.covered.title, ...fileNames(g.covered) }]),
+                  ])} isDark={isDark} sub={sub} />
                 </section>
                 <section className={`rounded-2xl border p-5 sm:p-6 ${card}`}>
                   <h3 className="font-extrabold flex items-center gap-2 mb-4"><ListChecks size={17} className="text-emerald-500" /> Build order</h3>
@@ -418,11 +467,20 @@ export default function ProjectBuilderPage({ theme = 'dark', onThemeToggle, setC
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
                   <h3 className="font-extrabold flex items-center gap-2"><Sparkles size={17} className="text-amber-500" /> Prompt for Antigravity</h3>
-                  <p className={`text-xs mt-1 ${sub}`}>Paste this into a new Antigravity session in an empty folder. If you create the folder on the right, a copy is saved in it as PROMPT.md.</p>
+                  <p className={`text-xs mt-1 ${sub}`}>{created
+                    ? 'This is PROMPT.md in your new folder: open the folder in Antigravity and give it this. It points to your code in reuse/.'
+                    : 'Paste this into a new Antigravity session in an empty folder - it includes your code in full. If you create the folder instead, use the version saved there as PROMPT.md.'}</p>
                 </div>
-                <CopyButton text={plan.prompt} className={primary} />
+                <CopyButton text={created?.prompt || promptText} className={primary} />
               </div>
-              <pre className={`p-4 rounded-xl text-xs leading-relaxed whitespace-pre-wrap overflow-auto max-h-[62vh] border ${isDark ? 'bg-slate-950 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-800'}`}>{plan.prompt}</pre>
+              {!created && undecidedList.length > 0 && (
+                <div className="p-3 rounded-xl border border-amber-500/40 bg-amber-500/10 text-xs flex flex-col gap-1.5">
+                  <span className="font-bold text-amber-500 flex items-center gap-1.5"><AlertCircle size={14} /> {undecidedList.length} thing{undecidedList.length === 1 ? '' : 's'} still to decide - the prompt tells Antigravity to ask you</span>
+                  <ul className="flex flex-col gap-0.5">{undecidedList.slice(0, 8).map((u, i) => <li key={i}>• {u}</li>)}</ul>
+                  <button className="self-start text-xs font-semibold text-cyan-500 hover:underline" onClick={() => setStep(3)}>Decide them on the Review step</button>
+                </div>
+              )}
+              <pre className={`p-4 rounded-xl text-xs leading-relaxed whitespace-pre-wrap overflow-auto max-h-[62vh] border ${isDark ? 'bg-slate-950 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-800'}`}>{created?.prompt || promptText || 'Writing the prompt…'}</pre>
             </section>
 
             <section className={`rounded-2xl border p-5 sm:p-6 flex flex-col gap-4 self-start ${card}`}>
@@ -639,6 +697,38 @@ function FolderMap({ folders, pieces, isDark, sub }) {
         );
       })}
       <p className={`text-[11px] mt-2 ${sub}`}>Your code is shown under the name it will have in this project. Renames happen when "Make the code changes for me" is on.</p>
+    </div>
+  );
+}
+
+// One part of the brief the picked code doesn't cover: your code that already does it (used as it is), or
+// how it will be built new when your library has nothing for it
+function GapCard({ gap, onChange, isDark, card, sub, field }) {
+  const useCode = Boolean(gap.covered) && gap.use !== false;
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-bold text-sm">{gap.need}</span>
+        {useCode
+          ? <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-500">From your code</span>
+          : <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-500">New - not in your library{gap.covered ? ' (you left yours out)' : ''}</span>}
+      </div>
+      {gap.covered && (
+        <CodeCard
+          item={{ ...gap.covered, include: gap.use !== false, strength: 'Fills this gap' }}
+          onChange={(next) => onChange({ ...gap, use: next.include !== false, covered: { ...gap.covered, changes: next.changes } })}
+          isDark={isDark} card={card} sub={sub} />
+      )}
+      {!useCode && (
+        <div className={`rounded-2xl border p-4 ${card}`}>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-bold uppercase tracking-wide opacity-80">How it will be built</span>
+            <textarea className={`${field} !text-sm min-h-[80px] resize-y`} value={gap.approach || ''}
+              placeholder="How should this work? It will be built in the same style as your reused code."
+              onChange={(e) => onChange({ ...gap, approach: e.target.value })} />
+          </label>
+        </div>
+      )}
     </div>
   );
 }

@@ -25,7 +25,7 @@ import {
   auditQualityAndRegistry,
   snippetStackCounts
 } from '../services/codeRepoService.js';
-import { getOptions, suggestSetup, findCode, planProject, createProject, tidyLibrary } from '../services/projectBuilderService.js';
+import { getOptions, suggestSetup, findCode, planProject, promptFor, createProject, tidyLibrary } from '../services/projectBuilderService.js';
 
 const router = express.Router();
 
@@ -58,6 +58,7 @@ router.get('/builder/options', builderRoute(() => getOptions()));
 router.post('/builder/suggest', builderRoute((b) => suggestSetup(b)));
 router.post('/builder/find-code', builderRoute((b) => findCode(b)));
 router.post('/builder/plan', builderRoute((b) => planProject(b)));
+router.post('/builder/prompt', builderRoute((b) => promptFor(b)));
 router.post('/builder/create', builderRoute((b) => createProject(b)));
 router.post('/builder/tidy-library', builderRoute(() => tidyLibrary()));
 

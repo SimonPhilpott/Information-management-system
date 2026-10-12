@@ -164,7 +164,7 @@ HOUSE RULES (pick every one that fits; those marked default suit almost any proj
 ${p.rules.map((r) => `- ${r.id}: ${r.name} - ${r.plain}${r.default ? ' (default)' : ''}`).join('\n')}
 
 Choose on what the brief needs. Having examples of his own is a tie-breaker only - never pick a stack just because he has used it.
-Each "why" is one short plain-English sentence aimed at Simon, about his project - no jargon, no marketing words.
+Each "why" is one short plain sentence in British English aimed at Simon, about his project - no jargon, no marketing words.
 
 Reply with JSON only:
 {"stack":{"id":"...","why":"..."},"look":{"id":"...","why":"..."},"rules":[{"id":"...","why":"..."}]}`, 0.2);
@@ -173,6 +173,7 @@ Reply with JSON only:
   const stack = ok(stacks, ai?.stack?.id) ? ai.stack : { id: 'react-vite', why: 'A good general choice for a web app - change it if the project is something else.' };
   const look = ok(looks, ai?.look?.id) ? ai.look : { id: stack.id === 'spfx' ? 'fluent' : stack.id === 'esp32' || stack.id === 'node-api' ? 'none' : 'tailwind', why: '' };
   const rules = Array.isArray(ai?.rules) ? ai.rules.filter((r) => ok(p.rules, r.id)) : p.rules.filter((r) => r.default).map((r) => ({ id: r.id, why: '' }));
+  for (const r of p.rules) if (r.locked && !rules.some((x) => x.id === r.id)) rules.push({ id: r.id, why: '' }); // British English, always
   return { stack, look, rules, aiUsed: Boolean(ai) };
 }
 
@@ -215,9 +216,9 @@ BRIEF:
 ${clean(brief)}
 BUILT WITH: ${st.name}. LOOKS: ${lk?.name || 'not chosen'}.
 
-For each piece you keep, list what has to change for the new project: the hard-coded values, names and parameters in the code - list or library names, site addresses, field or column names, IDs, labels and text, API addresses, keys and environment variables, pin numbers, component and file names. Give the value in the code now and a suggested value for the new project taken from the brief (empty if Simon has to decide). Real values from the code only - no general advice. Up to 8 per piece; none if nothing needs changing.
+For each piece you keep, list what has to change for the new project: the hard-coded values, names and parameters in the code - list or library names, site addresses, field or column names, IDs, labels and text, API addresses, keys and environment variables, pin numbers, component and file names. Give the value in the code now and a suggested value for the new project taken from the brief (empty if Simon has to decide). Real values from the code only - no general advice. His look is the standard: never list styling - colours, fonts, sizes, spacing, borders, shadows, theme values - unless the brief explicitly asks for a different look. Up to 8 per piece; none if nothing needs changing.
 
-Write in plain English for Simon: short job labels (e.g. "Getting data from SharePoint", "Settings panel", "Tests"), one-sentence reasons, no jargon or marketing words.
+Write in plain British English for Simon: short job labels (e.g. "Getting data from SharePoint", "Settings panel", "Tests"), one-sentence reasons, no jargon or marketing words.
 
 CANDIDATES:
 ${scored.map((h) => describe(h.row)).join('\n\n')}
@@ -273,60 +274,145 @@ function resolveStarter(st, name) {
 
 function chosenCode(code = []) {
   const rows = new Map(librarySnippets().map((s) => [s.id, s]));
-  return code.filter((c) => c && c.include !== false && rows.has(c.id)).map((c) => ({ ...c, row: rows.get(c.id) }));
+  const seen = new Set();
+  return code.filter((c) => c && c.include !== false && rows.has(c.id) && !seen.has(c.id) && seen.add(c.id)).map((c) => ({ ...c, row: rows.get(c.id) }));
 }
 
+// Everything reused: the code picked in step 2, plus pieces of his code the plan found for the gaps
+function allCode(body, plan = {}) {
+  const fromGaps = (plan.gaps || []).filter((g) => g.covered && g.use !== false)
+    .map((g) => ({ id: g.covered.id, job: g.need, why: g.covered.why, changes: g.covered.changes || [], include: true, fillsGap: g.need }));
+  return chosenCode([...(body.code || []), ...fromGaps]);
+}
+
+// British English is always on (projectBuilderPresets.json: "locked"), whatever was ticked
+function rulesFor(body) {
+  return presets().rules.filter((r) => r.locked || (body.rules || []).includes(r.id));
+}
+
+const BRITISH = 'Write in British English.';
+
 export async function planProject(body) {
-  const { name, brief, stack, look, rules = [], code = [] } = body;
+  const { name, brief, stack, look, code = [] } = body;
   if (!clean(name)) throw fail(400, 'Give the project a name.');
   const p = presets();
   const st = p.stacks.find((s) => s.id === stack);
   if (!st) throw fail(400, 'Choose what it\'s built with first.');
   const lk = p.looks.find((l) => l.id === look);
   const chosen = chosenCode(code);
+  const describe = (row, max = 2500) => `id ${row.id}: ${row.title} - ${row.repo_name}/${row.file_path}\nWhat it does: ${clean(row.description, 400)}\nCode (start):\n${String(row.code_content || '').slice(0, max)}`;
+
+  // 1. What the brief needs that the chosen code doesn't cover
+  let needs = [];
+  try {
+    const r = await askJson(`Simon is building a new project from his own proven code. List the parts of the brief that NONE of the chosen code already does - each a distinct feature or component the project still needs (at most 6; none if the chosen code covers everything). ${BRITISH}
+
+BRIEF:
+${clean(brief)}
+BUILT WITH: ${st.name}. LOOKS: ${lk?.name || 'not chosen'}.
+CHOSEN CODE:
+${chosen.map((c) => `- ${c.row.title}: ${clean(c.row.description, 300)}`).join('\n') || '- none'}
+
+For each, give a short plain name and the words to search his code library with.
+Reply with JSON only: {"needs":[{"need":"...","searchFor":"..."}]}`, 0.2);
+    needs = (r?.needs || []).filter((n) => clean(n.need)).slice(0, 6);
+  } catch (err) { console.warn('[ProjectBuilder] Gap check failed:', err.message); }
+
+  // 2. His library, searched for each of them
+  const library = librarySnippets();
+  const byId = new Map(library.map((s) => [s.id, s]));
+  const taken = new Set(chosen.map((c) => c.id));
+  for (const n of needs) {
+    try {
+      const vec = await generateQueryEmbedding(`${clean(n.searchFor || n.need)}\nBuilt with: ${st.name}`);
+      n.candidates = (await searchCodeSnippets(vec, 8))
+        .map((h) => byId.get(h.snippetId)).filter((row) => row && !taken.has(row.id))
+        .sort((a, b) => (stackOf(b, p.stacks) === stack) - (stackOf(a, p.stacks) === stack)).slice(0, 3);
+    } catch (_) { n.candidates = []; }
+  }
+
+  // 3. The plan: gaps filled from his code where it already does the job, decisions, layout, build order
   let ai = null;
   try {
-    ai = await askJson(`Plan the starting layout of a new project for Simon.
+    ai = await askJson(`Plan the starting layout of a new project for Simon, built from his own proven code. ${BRITISH}
 
 PROJECT: ${clean(name, 120)}
 BRIEF:
 ${clean(brief)}
 BUILT WITH: ${st.name} (created with: ${resolveStarter(st, name)})
 LOOKS: ${lk?.name || 'not chosen'}
-HOUSE RULES: ${p.rules.filter((r) => rules.includes(r.id)).map((r) => r.name).join('; ')}
-HIS CODE TO REUSE:
+HOUSE RULES: ${rulesFor(body).map((r) => r.name).join('; ')}
+HIS CODE ALREADY CHOSEN:
 ${chosen.map((c) => `- id ${c.id}: ${c.row.title} (${c.job || 'reuse'}) from ${c.row.repo_name}/${c.row.file_path}`).join('\n') || '- none'}
 
+PARTS THE CHOSEN CODE DOESN'T COVER, each with the closest pieces of his library:
+${needs.map((n, i) => `## Gap ${i + 1}: ${n.need}\n${(n.candidates || []).map((row) => describe(row)).join('\n\n') || '(nothing in his library)'}`).join('\n\n') || '(none)'}
+
+HIS CODE IS THE STANDARD. For each gap: if one of its candidates already does that job, use it - as it is, with the same set-up, look and behaviour - and list only the names and values that must change for this project (real values from its code). His look is the standard: never list styling - colours, fonts, sizes, spacing, borders, shadows, theme values - unless the brief explicitly asks for a different look. Never redesign, restyle or rebuild something his code already does. Only when no candidate does the job, describe briefly how to build it, reusing the patterns, components and styling of his chosen code so it looks and behaves like the rest of his work.
+
+Decisions: only real choices the brief leaves open. Where his code already settles one, suggest what his code does.
+
 Give:
+- gaps: one per gap above.
+- decisions: up to 6.
 - summary: 3 to 5 plain sentences on what will be built and how the parts fit together.
-- folders: 6 to 12 entries showing the real folder layout this stack uses (paths ending in "/"), each with a short plain purpose and the ids of his code that goes there.
+- folders: 6 to 12 entries showing the real folder layout this stack uses (paths ending in "/"), each with a short plain purpose and the ids of his code that goes there (chosen and gap code).
 - placements: for each piece of his code, the file path it should become in the new project.
 - buildOrder: 4 to 7 short plain steps, in order.
-Plain English, no jargon or marketing words.
 
 Reply with JSON only:
-{"summary":"...","folders":[{"path":"src/components/","purpose":"...","reuse":["id"]}],"placements":[{"id":"...","target":"src/..."}],"buildOrder":["..."]}`, 0.3);
+{"gaps":[{"need":"...","useId":"candidate id, or empty","why":"...","changes":[{"what":"...","current":"...","suggested":"...","where":"..."}],"approach":"only when useId is empty"}],"decisions":[{"question":"...","suggested":"...","why":"..."}],"summary":"...","folders":[{"path":"src/components/","purpose":"...","reuse":["id"]}],"placements":[{"id":"...","target":"src/..."}],"buildOrder":["..."]}`, 0.3);
   } catch (err) { console.warn('[ProjectBuilder] Plan failed:', err.message); }
 
-  const ids = new Set(chosen.map((c) => c.id));
+  const candidateIds = new Set(needs.flatMap((n) => (n.candidates || []).map((row) => row.id)));
+  const gaps = (Array.isArray(ai?.gaps) ? ai.gaps : needs.map((n) => ({ need: n.need }))).filter((g) => clean(g.need)).slice(0, 6).map((g) => {
+    const row = candidateIds.has(g.useId) ? byId.get(g.useId) : null;
+    return {
+      need: clean(g.need, 120),
+      use: true,
+      covered: row ? {
+        id: row.id, title: row.title, repo: row.repo_name, repoUrl: row.repo_url, filePath: row.file_path, language: row.language,
+        why: clean(g.why, 300), code: row.code_content,
+        changes: (g.changes || []).filter((c) => clean(c.what)).slice(0, 8)
+          .map((c) => ({ what: clean(c.what, 120), current: clean(c.current, 300), suggested: clean(c.suggested, 300), where: clean(c.where, 120), include: true })),
+      } : null,
+      approach: row ? '' : clean(g.approach, 800),
+    };
+  });
+  const decisions = (Array.isArray(ai?.decisions) ? ai.decisions : []).filter((d) => clean(d.question)).slice(0, 6)
+    .map((d) => ({ question: clean(d.question, 300), answer: clean(d.suggested, 300), why: clean(d.why, 300) }));
+  const ids = new Set([...chosen.map((c) => c.id), ...gaps.filter((g) => g.covered).map((g) => g.covered.id)]);
   const summary = clean(ai?.summary, 1500) || `${clean(name)}: ${clean(brief, 600)}`;
   const folders = (Array.isArray(ai?.folders) ? ai.folders : [{ path: 'src/', purpose: 'The project\'s code' }, { path: 'reuse/', purpose: 'Your code to start from', reuse: [...ids] }])
     .map((f) => ({ path: clean(f.path, 160), purpose: clean(f.purpose, 200), reuse: (f.reuse || []).filter((id) => ids.has(id)) }))
     .filter((f) => f.path);
   const placements = Object.fromEntries((Array.isArray(ai?.placements) ? ai.placements : []).filter((x) => ids.has(x.id) && clean(x.target)).map((x) => [x.id, clean(x.target, 200)]));
   const buildOrder = (Array.isArray(ai?.buildOrder) ? ai.buildOrder : []).map((s) => clean(s, 300)).filter(Boolean);
-  const plan = { summary, folders, placements, buildOrder, starter: resolveStarter(st, name) };
-  return { ...plan, prompt: buildPrompt(body, plan, { inlineCode: true }), aiUsed: Boolean(ai) };
+  return { summary, folders, placements, buildOrder, gaps, decisions, starter: resolveStarter(st, name), aiUsed: Boolean(ai) };
 }
 
-// The Antigravity prompt. Before the folder exists the code is written into the prompt; in the created
-// project it's in reuse/ and the prompt points there.
+// The prompt for the plan as it stands (gaps and decisions as Simon left them) - no AI
+export async function promptFor(body) {
+  if (!body.plan) throw fail(400, 'Make the plan first.');
+  return { prompt: buildPrompt(body, body.plan, { inlineCode: true }), undecided: undecided(body, body.plan) };
+}
+
+// What's still marked "you decide": values to change with no new value, and open decisions
+function undecided(body, plan) {
+  const out = [];
+  for (const c of allCode(body, plan)) for (const x of c.changes || []) if (x.include !== false && clean(x.what) && !clean(x.suggested)) out.push(`${c.row.title}: ${x.what}`);
+  for (const d of plan.decisions || []) if (!clean(d.answer)) out.push(d.question);
+  return out;
+}
+
+// The Antigravity prompt. Before the folder exists each file's whole code is written into the prompt (never
+// cut short); in the created project the code is in reuse/ and the prompt points there.
 function buildPrompt(body, plan, { inlineCode, reusePaths = {}, chosen: given } = {}) {
   const p = presets();
   const st = p.stacks.find((s) => s.id === body.stack);
   const lk = p.looks.find((l) => l.id === body.look);
-  const rules = p.rules.filter((r) => (body.rules || []).includes(r.id));
-  const chosen = given || chosenCode(body.code);
+  const rules = rulesFor(body);
+  const chosen = given || allCode(body, plan);
   const lines = [
     `# Build ${clean(body.name, 120)}`,
     '',
@@ -347,6 +433,12 @@ function buildPrompt(body, plan, { inlineCode, reusePaths = {}, chosen: given } 
     '',
   ];
   if (rules.length) lines.push('## House rules', ...rules.map((r) => `- ${r.prompt}`), '');
+  if (chosen.length) {
+    lines.push("## Simon's code is the standard",
+      "- Reuse each piece of Simon's code below as it is: keep its structure, set-up, styling, Fluent UI usage, spacing, colours and behaviour. Don't restyle, redesign or rewrite it - only make the listed name and value changes.",
+      "- Anything new must follow the same patterns, components and styles as his reused code, so the project looks and behaves like the rest of his work. Don't introduce a different UI library, design or interaction pattern.",
+      '');
+  }
   if (plan.folders?.length) {
     lines.push('## Folder layout');
     for (const f of plan.folders) {
@@ -357,11 +449,12 @@ function buildPrompt(body, plan, { inlineCode, reusePaths = {}, chosen: given } 
   }
   if (chosen.length) {
     lines.push("## Reuse Simon's own code",
-      `These are proven pieces from Simon's repositories. Use each as the starting point for the part it covers rather than writing a new version${inlineCode ? '' : ' - each is in reuse/ in this folder'}.`, '');
+      `These are proven pieces from Simon's repositories${inlineCode ? '' : ' - each is in reuse/ in this folder'}.`, '');
     chosen.forEach((c, i) => {
       const changes = (c.changes || []).filter((x) => x.include !== false && clean(x.what));
       lines.push(`### ${i + 1}. ${c.row.title}${c.job ? ` - ${c.job}` : ''}`,
         `- From: ${c.row.repo_name} / \`${c.row.file_path}\`${reusePaths[c.id] ? ` (copy in \`${reusePaths[c.id]}\`)` : ''}`);
+      if (c.fillsGap) lines.push(`- Covers: ${c.fillsGap} - use it as it is, with the same set-up and look.`);
       if (plan.placements?.[c.id]) lines.push(`- Put it in: \`${plan.placements[c.id]}\``);
       if (c.why) lines.push(`- Why: ${c.why}`);
       if (changes.length) {
@@ -369,12 +462,25 @@ function buildPrompt(body, plan, { inlineCode, reusePaths = {}, chosen: given } 
         lines.push('- Change for this project:', '', `| What | Now | Change to |${anyDone ? ' Done? |' : ''}`, `|---|---|---|${anyDone ? '---|' : ''}`,
           ...changes.map((x) => `| ${cell(x.what)}${x.where ? ` (\`${cell(x.where)}\`)` : ''} | ${cell(x.current) || '-'} | ${cell(x.suggested) || 'ask Simon'} |${anyDone ? (x.applied ? ' already made - check it |' : ' still to do |') : ''}`), '');
       }
-      if (inlineCode) lines.push('```' + (c.row.language || '').toLowerCase().split(/[^a-z+#]/)[0], String(c.row.code_content || '').slice(0, 12000), '```', '');
+      if (inlineCode) lines.push('```' + (c.row.language || '').toLowerCase().split(/[^a-z+#]/)[0], String(c.row.code_content || ''), '```', '');
     });
+  }
+  const newParts = (plan.gaps || []).filter((g) => !(g.covered && g.use !== false));
+  if (newParts.length) {
+    lines.push("## Parts Simon's code doesn't cover",
+      'Build these new, in the same style as the reused code above (same components, set-up, styling and patterns):');
+    newParts.forEach((g) => lines.push(`- **${g.need}:** ${clean(g.approach) || 'ask Simon how this should work before building it.'}`));
+    lines.push('');
+  }
+  if ((plan.decisions || []).length) {
+    lines.push('## Decisions');
+    plan.decisions.forEach((d) => lines.push(`- ${d.question} **${clean(d.answer) || 'Not decided yet - ask Simon before building this part.'}**`));
+    lines.push('');
   }
   if (plan.buildOrder?.length) lines.push('## Build order', ...plan.buildOrder.map((s, i) => `${i + 1}. ${s}`), '');
   lines.push('## Done when',
     `- It builds and its tests pass (${st?.ci === 'platformio' ? '`pio run`' : '`npm run build` and `npm test`'}), and the GitHub CI check is green.`,
+    "- Reused pieces look and behave as they do in Simon's other projects, and new parts match them.",
     '- Every "Change for this project" item has been made.',
     '- README.md says how to set it up and run it.');
   return lines.join('\n');
@@ -384,7 +490,7 @@ const cell = (t) => clean(t, 300).replace(/\|/g, '\\|').replace(/\n/g, ' ');
 // ---------------------------------------------------------------- step 4: create the folder
 
 export async function createProject(body) {
-  const { name, brief, stack, rules = [], applyChanges = false, github = {}, setUp = true } = body;
+  const { name, brief, stack, applyChanges = false, github = {}, setUp = true } = body;
   let plan = body.plan || {};
   if (!clean(name)) throw fail(400, 'Give the project a name.');
   const p = presets();
@@ -396,7 +502,7 @@ export async function createProject(body) {
   if (fs.existsSync(folder) && fs.readdirSync(folder).length) throw fail(409, `${folder} already exists and isn't empty - choose another folder.`);
 
   // his code, with the changes applied when asked (one call per piece, in parallel)
-  const chosen = chosenCode(body.code);
+  const chosen = allCode(body, body.plan || {});
   const reusePaths = {};
   const usedNames = new Set();
   const files = {};
@@ -464,7 +570,7 @@ Reply with JSON only: {"code":"the whole updated file"}`);
 
   const owner = await githubLogin().catch(() => null);
   const stackName = st.name;
-  const ruleList = p.rules.filter((r) => rules.includes(r.id));
+  const ruleList = rulesFor(body);
   Object.assign(files, {
     'README.md': readme({ name, brief, st, plan, chosen, reusePaths, ruleList }),
     'PROMPT.md': buildPrompt(body, plan, { inlineCode: false, reusePaths, chosen }),
@@ -480,7 +586,7 @@ Reply with JSON only: {"code":"the whole updated file"}`);
     '.github/ISSUE_TEMPLATE/feature_request.md': '---\nname: An idea\nabout: Suggest a new feature or change\nlabels: enhancement\n---\n\n## What you\'d like\n\n\n## Why it would help\n\n',
   });
   if (owner) files['.github/CODEOWNERS'] = `* @${owner}\n`;
-  if (rules.includes('registry')) {
+  if (ruleList.some((r) => r.id === 'registry')) {
     files['feature.json'] = '[]\n';
     files['ProjectStructure.JSON'] = JSON.stringify({ project: clean(name, 120), stack: stackName, modules: [] }, null, 2) + '\n';
     files['test_plan.md'] = `# Test plan - ${clean(name, 120)}\n\n## Executive summary\n\n## 1. Feature test matrix\n\n| Feature | Test | Status |\n|---|---|---|\n\n## 2. Test scenarios\n`;
@@ -512,6 +618,7 @@ Reply with JSON only: {"code":"the whole updated file"}`);
     changesApplied: chosen.reduce((n, c) => n + (c.changes || []).filter((x) => x.applied).length, 0),
     started,
     startError,
+    prompt: files['PROMPT.md'],
     github: githubResult,
   };
 }
@@ -637,10 +744,16 @@ jobs:
       - name: Not created yet
         if: hashFiles('package.json') == ''
         run: echo "No package.json yet - nothing to build."
+      # the Node version the project itself asks for (package.json "engines"), so CI always matches the
+      # framework - current SharePoint (SPFx 1.21+) needs Node 22, older versions need 18 or 20
+      - name: Node version
+        id: node
+        if: hashFiles('package.json') != ''
+        run: echo "version=$(node -p "(require('./package.json').engines || {}).node || '22'")" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
         if: hashFiles('package.json') != ''
         with:
-          node-version: 22
+          node-version: \${{ steps.node.outputs.version }}
       - name: Install
         if: hashFiles('package.json') != ''
         run: npm ci || npm install

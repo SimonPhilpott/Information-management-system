@@ -193,7 +193,8 @@
       "name": "British spelling and £",
       "plain": "UK spelling everywhere, and money shown in pounds.",
       "prompt": "Use British English spelling in all text, comments and docs, and format money in pounds sterling (£).",
-      "default": true
+      "default": true,
+      "locked": true
     },
     {
       "id": "registry",
