@@ -502,7 +502,9 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       let clip = null;
       try { clip = pickGreeting(activePersonaId()); } catch (_) { }
       if (!clip) return; // none recorded yet: Gemini greets live, as before
-      fastGreet = { at: Date.now(), line: clip.line, newSpeech: false };
+      // endsAt: when the greeting has finished playing - anything he says after that is his reply, even if it's
+      // the wake phrase again (12 Oct: "poems" after "Morning." was taken as the old wake phrase and dropped)
+      fastGreet = { at: Date.now(), endsAt: Date.now() + Math.round(clip.pcm.length / 48) + 300, line: clip.line, newSpeech: false };
       if (wakeKickTimer) { clearTimeout(wakeKickTimer); wakeKickTimer = null; }
       lastModelOutputAt = Date.now(); // the wake kick stands down
       for (let o = 0; o < clip.pcm.length; o += 4800) paceSend({ bin: clip.pcm.subarray(o, o + 4800) });
@@ -604,6 +606,36 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   let audibleTurnEndAt = 0; // when a reply that was actually played last ended - the echo guard keys off this, not dropped replies
   let lastMicFrameAt = 0;   // the Box-3 streams the mic only while checking a wake phrase or listening
   let speechStartAt = 0;    // first loud mic frame after his last reply - when the user STARTED talking
+  // ---- Wake check (the Box-3 heard a sound in standby and is streaming it): timings for the log, and two
+  // things that help a real wake phrase through in time (11 Oct):
+  //  - once he's spoken and the mic has gone quiet for WAKE_END_QUIET_MS, Gemini is told the audio has ended,
+  //    so it transcribes at once instead of waiting for its own end-of-speech (median 2.2 s, 1 in 10 over 4 s).
+  //    Only in a wake check - mid-sentence pauses in a conversation are never cut short. Simon always pauses
+  //    after a wake phrase, so this costs nothing.
+  //  - when the first words sound like the start of a wake phrase, the check is given a few seconds more.
+  const WAKE_END_QUIET_MS = 500;
+  const WAKE_START_RX = /^\W*(hey|hi|hiya|heya|eh|ey|ay|aye|ayup|eyup|i'?m|ims|ems|hymns?|elms|poems|pms)\b/i;
+  let wakeCheck = null; // { at, cold, readyAt, spokeAt, ends, endAt, heardAt, extended }
+  const wakeCheckLog = (outcome) => {
+    if (!wakeCheck) return;
+    const w = wakeCheck; wakeCheck = null;
+    // the last 20 wake checks' audio, kept to check what the Box-3 actually sent (11 Oct, Gemini heard nothing)
+    try {
+      const dir = path.join(__dirname, 'audio_captures', 'wake_checks');
+      fs.mkdirSync(dir, { recursive: true });
+      const pcm = Buffer.concat(w.frames || []);
+      const hdr = Buffer.alloc(44);
+      hdr.write('RIFF', 0); hdr.writeUInt32LE(36 + pcm.length, 4); hdr.write('WAVEfmt ', 8); hdr.writeUInt32LE(16, 16);
+      hdr.writeUInt16LE(1, 20); hdr.writeUInt16LE(1, 22); hdr.writeUInt32LE(16000, 24); hdr.writeUInt32LE(32000, 28);
+      hdr.writeUInt16LE(2, 32); hdr.writeUInt16LE(16, 34); hdr.write('data', 36); hdr.writeUInt32LE(pcm.length, 40);
+      fs.writeFileSync(path.join(dir, `${new Date(w.at).toISOString().replace(/[:.]/g, '-')}_${outcome.startsWith('woke') ? 'woke' : 'timeout'}.wav`), Buffer.concat([hdr, pcm]));
+      const old = fs.readdirSync(dir).sort();
+      for (const f of old.slice(0, Math.max(0, old.length - 20))) fs.unlinkSync(path.join(dir, f));
+    } catch (_) { }
+    const rel = (t) => (t ? `+${t - w.at}ms` : '-');
+    try { logCapture(`[${new Date().toISOString()}] ${tag} WAKE TIMING ${outcome}: ${w.cold ? 'cold' : 'warm'} session, ready ${rel(w.readyAt)}, speech ended ${rel(w.endAt)} (${w.ends} audio end${w.ends === 1 ? '' : 's'} sent), first heard ${rel(w.heardAt)}, loudest mic ${w.peak || 0}${w.extended ? ', check extended' : ''}\n`); } catch (_) { }
+  };
+  let recentMicFrames = []; // { at, buf } - the Box-3's pre-roll arrives just before its verifying_start
   let lastLoudMicAt = 0;    // last mic frame with real speech in it - the end of what the user said
 
   // Strict session lifecycle state for hardware clients
@@ -920,11 +952,18 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             if (!heardStartAt) heardStartAt = speechStartAt && Date.now() - speechStartAt < 60000 ? speechStartAt : Date.now();
             const incomingTranscript = parsed.serverContent.inputTranscription.text;
             heardThisTurn = (heardThisTurn + incomingTranscript).slice(-400);
+            if (wakeCheck && !wakeCheck.heardAt && /[a-z]/i.test(incomingTranscript)) wakeCheck.heardAt = Date.now();
+            if (wakeCheck && !wakeCheck.extended && !looksAddressed(heardThisTurn) && WAKE_START_RX.test(heardThisTurn)) {
+              wakeCheck.extended = true;
+              paceSend({ json: JSON.stringify({ verifyExtendMs: 3000 }) });
+              wakeDaemonService.extendVerify(3000);
+            }
             // after a fast greeting, his next words (not the tail of the wake phrase) are what Gemini answers
-            if (fastGreet && !fastGreet.newSpeech && Date.now() - fastGreet.at > 400 && /[a-z0-9]/i.test(incomingTranscript) && !isWakeOnly(incomingTranscript)) fastGreet.newSpeech = true;
+            if (fastGreet && !fastGreet.newSpeech && Date.now() - fastGreet.at > 400 && /[a-z0-9]/i.test(incomingTranscript) && (Date.now() > fastGreet.endsAt || !isWakeOnly(incomingTranscript))) fastGreet.newSpeech = true;
             if (currentTurnComplete && looksAddressed(heardThisTurn) && !isRecordingActive()) {
               isConversationActive = true;
               wakeDaemonService.acceptWake(heardThisTurn.trim().slice(0, 40), 'transcript_addressed');
+              wakeCheckLog(`woke ("${heardThisTurn.trim().slice(0, 40)}")`);
               // restarted on every new piece of transcript, so a longer request isn't cut short
               if (wakeKickTimer) clearTimeout(wakeKickTimer);
               const heardAt = Date.now();
@@ -1838,6 +1877,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           }
           if (parsed?.setupComplete) {
             geminiSetupAcknowledged = true;
+            if (wakeCheck && !wakeCheck.readyAt) wakeCheck.readyAt = Date.now();
             paceFlush();
             ws.send(JSON.stringify({ setupComplete: {} }));
             if (isHardware && !resumptionHandle && live.lastConversationEnd.at && Date.now() - live.lastConversationEnd.at < 10 * 60000
@@ -1865,6 +1905,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         } else {
           if (parsed?.setupComplete) {
             geminiSetupAcknowledged = true;
+            if (wakeCheck && !wakeCheck.readyAt) wakeCheck.readyAt = Date.now();
             while (outboundAudioQueue.length > 0) {
               const audioPayload = outboundAudioQueue.shift();
               if (gWs && gWs.readyState === WebSocket.OPEN) {
@@ -2171,11 +2212,14 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             }
           }
           if (isHardware && maybeJson.debug === 'verifying_start' && !isConversationActive) {
+            const ready = Boolean(currentGeminiWs && currentGeminiWs.readyState === WebSocket.OPEN && geminiSetupAcknowledged);
+            wakeCheck = { frames: recentMicFrames.filter((f) => Date.now() - f.at < 2000).map((f) => f.buf), at: Date.now(), cold: !ready, readyAt: ready ? Date.now() : 0, spokeAt: 0, ends: 0, endAt: 0, heardAt: 0, extended: false };
             resetTurnTriggers();
             userSpokenTranscript = '';
             spokenTranscript = '';
             recordDeviceTelemetry({ deviceState: 1, deviceStateName: 'VERIFYING' });
           }
+          if (isHardware && maybeJson.debug === 'verify_timeout') wakeCheckLog('timed out');
           if (isHardware && /^heartbeat state=6\b/.test(maybeJson.debug)) lastDeviceSpeakingAt = Date.now();
           console.log(`${tag} [DEBUG] ${maybeJson.debug}`);
           try {
@@ -2321,6 +2365,9 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         // Ignore the first 3 s after a turn ends: the speaker's own tail and room echo are
         // loud enough on the mic to look like speech. A quick follow-up from the user is
         // still recognised through its transcription instead.
+        if (wakeCheck && samples > 0 && (wakeCheck.frames ||= []).length < 400) wakeCheck.frames.push(Buffer.from(message));
+        if (!wakeCheck && samples > 0) { recentMicFrames.push({ at: Date.now(), buf: Buffer.from(message) }); if (recentMicFrames.length > 80) recentMicFrames.shift(); }
+        if (wakeCheck && samples > 0) wakeCheck.peak = Math.max(wakeCheck.peak || 0, Math.round(Math.sqrt(sumSq / samples)));
         if (samples > 0 && Math.sqrt(sumSq / samples) > 400) {
           lastLoudMicAt = Date.now();
           // a transcript only arrives once a long sentence is finished, so judge "did he answer in time" from here
@@ -2347,6 +2394,13 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       sessionUsed = true; // mic audio went into this session (a wake check or a conversation)
       if (gWs && gWs.readyState === WebSocket.OPEN && geminiSetupAcknowledged) {
         gWs.send(realtimePayload);
+        if (wakeCheck && isHardware && !isConversationActive) {
+          if (lastLoudMicAt > wakeCheck.at && lastLoudMicAt > wakeCheck.spokeAt) { wakeCheck.spokeAt = lastLoudMicAt; wakeCheck.endPending = true; }
+          if (wakeCheck.endPending && wakeCheck.ends < 3 && Date.now() - lastLoudMicAt >= WAKE_END_QUIET_MS) {
+            wakeCheck.endPending = false; wakeCheck.ends++; wakeCheck.endAt = Date.now();
+            gWs.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
+          }
+        }
       } else {
         outboundAudioQueue.push(realtimePayload);
         if (outboundAudioQueue.length > 150) outboundAudioQueue.shift();

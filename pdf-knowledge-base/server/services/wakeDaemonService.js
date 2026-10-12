@@ -23,7 +23,9 @@ export const DAEMON_STATES = {
 const SILENCE_TIMEOUT_MS = 15000; // 15 seconds
 // 4.5 s - the Box-3's own wake-check ceiling (main.cpp verifyCeilingMs). At 3.5 s the server gave up a second
 // before the device did, often while Gemini was still transcribing "Hey Ims" on a freshly opened session.
-const VERIFY_WINDOW_MS = 4500;
+// A little longer than the Box-3's own 7 s wake check, so the device decides when a check is over. It was
+// 4.5 s, but 1 in 10 first transcripts arrive after 4 s - a cold Gemini session is slow to start (11 Oct).
+const VERIFY_WINDOW_MS = 7500;
 // After a wake check ends, the Box-3 keeps sending a few frames until its cancel lands. Those must not start a
 // new check: they did, and that window ran out two seconds into the next real "Hey Ims" and killed it (9 Oct).
 const RESIDUAL_AUDIO_MS = 1500;
@@ -159,6 +161,7 @@ class WakeDaemonService extends EventEmitter {
     if (this.state === DAEMON_STATES.STANDBY) {
       this.state = DAEMON_STATES.VERIFYING;
       this.verifyingStartedAt = Date.now();
+      this.verifyExtraMs = 0;
       this.candidateTranscriptBuffer = '';
       console.log(`[WakeDaemon] Candidate audio detected from ${source} - state: VERIFYING`);
       this._addLog('candidate', `Candidate audio spike from ${source}`, { source });
@@ -178,6 +181,7 @@ class WakeDaemonService extends EventEmitter {
       if (this.state === DAEMON_STATES.STANDBY) {
         this.state = DAEMON_STATES.VERIFYING;
         this.verifyingStartedAt = Date.now();
+        this.verifyExtraMs = 0;
         this.candidateTranscriptBuffer = '';
       }
 
@@ -217,6 +221,12 @@ class WakeDaemonService extends EventEmitter {
     }
 
     return { action: 'none' };
+  }
+
+  // The start of a wake phrase has been heard ("Hey...", "Eh up..."): this check gets a little longer, as the
+  // Box-3's does (liveProxy.js sends it verifyExtendMs), so the rest of the transcript can arrive.
+  extendVerify(ms) {
+    if (this.state === DAEMON_STATES.VERIFYING) this.verifyExtraMs = Math.max(this.verifyExtraMs || 0, Math.min(4000, Number(ms) || 0));
   }
 
   /**
@@ -302,7 +312,7 @@ class WakeDaemonService extends EventEmitter {
 
     // 1. Verification timeout check
     if (this.state === DAEMON_STATES.VERIFYING) {
-      if (now - this.verifyingStartedAt > VERIFY_WINDOW_MS) {
+      if (now - this.verifyingStartedAt > VERIFY_WINDOW_MS + (this.verifyExtraMs || 0)) {
         console.log(`[WakeDaemon] ⏱️ Verification window expired without wake phrase -> reverting to STANDBY`);
         this._addLog('verify_timeout', `Verification window (${VERIFY_WINDOW_MS}ms) expired with no wake phrase`);
         this.forceStandby('verify_timeout');
@@ -406,7 +416,7 @@ class WakeDaemonService extends EventEmitter {
   autoRecover() {
     let recovered = false;
     const now = Date.now();
-    if (this.state === DAEMON_STATES.VERIFYING && (now - this.verifyingStartedAt > VERIFY_WINDOW_MS)) {
+    if (this.state === DAEMON_STATES.VERIFYING && (now - this.verifyingStartedAt > VERIFY_WINDOW_MS + (this.verifyExtraMs || 0))) {
       this.forceStandby('auto_recover_verifying_timeout');
       recovered = true;
     } else if (this.state === DAEMON_STATES.CONVERSATION_ACTIVE) {
