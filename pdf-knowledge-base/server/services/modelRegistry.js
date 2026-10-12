@@ -41,7 +41,7 @@ export const SERVICES = [
     use: 'Tags news stories and tidies music scan results.' },
   { key: 'recordings', recommended: 'gemini-3.8-flash', recommendedWhy: 'Meeting and call summaries need to read a whole long transcript and pick out what matters - the newer Flash keeps more of the detail and decisions than 2.5, and handles very long inputs.', label: 'Call & meeting recordings', kind: 'text', default: 'gemini-2.5-flash', files: ['recordingService.js'],
     use: 'Summarises recorded calls and meetings.' },
-  { key: 'codeRepo', recommended: 'gemini-3.8-flash', recommendedWhy: 'Pattern cataloguing and audits run over many files, so Pro\'s price multiplies quickly; 3.8 Flash is strong at code and keeps a scan affordable.', label: 'Code best practices', kind: 'text', default: 'gemini-2.5-flash', files: ['codeRepoService.js'],
+  { key: 'codeRepo', recommended: 'gemini-3.8-flash', recommendedWhy: 'Pattern cataloguing and audits run over many files, so Pro\'s price multiplies quickly; 3.8 Flash is strong at code and keeps a scan affordable.', label: 'Code best practices', kind: 'text', default: 'gemini-2.5-flash', files: ['codeRepoService.js', 'projectBuilderService.js'],
     use: 'Catalogues patterns and audits your repositories.' },
   { key: 'vision', recommended: 'gemini-3.8-flash', recommendedWhy: 'Answering questions about a camera snapshot needs a model that reads images well - 3.8 Flash does, quickly, and is stable.', label: 'Look (camera questions)', kind: 'text', default: config.gemini.chatModels.flash, files: ['lookService.js'],
     use: 'Answers questions about a camera snapshot - needs a model that reads images.' },

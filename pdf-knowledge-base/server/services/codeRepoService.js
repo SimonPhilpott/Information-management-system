@@ -5,6 +5,7 @@ import { GoogleGenerativeAI } from './geminiClient.js';
 import config from '../config.js';
 import db from '../db/database.js';
 import { generateEmbeddings, generateQueryEmbedding } from './embeddingService.js';
+import { readVectorFileSync, writeVectorFile, cosine } from './vectorCodec.js';
 import { logUsage } from './usageService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -273,7 +274,8 @@ export function saveRepository({
   last_scanned_commit_sha = null,
   latest_pushed_at = null,
   is_outdated = 0,
-  commit_message = null
+  commit_message = null,
+  is_fork = 0
 }) {
   let repoId = id;
   // Deduplicate by URL (case-insensitive)
@@ -291,8 +293,8 @@ export function saveRepository({
     INSERT INTO code_repositories (
       id, name, url, type, local_path, branch, description, account,
       is_private, is_selected, last_commit_sha, last_scanned_commit_sha,
-      latest_pushed_at, is_outdated, commit_message
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      latest_pushed_at, is_outdated, commit_message, is_fork
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       name = excluded.name,
       url = excluded.url,
@@ -307,12 +309,13 @@ export function saveRepository({
       last_scanned_commit_sha = COALESCE(excluded.last_scanned_commit_sha, code_repositories.last_scanned_commit_sha),
       latest_pushed_at = COALESCE(excluded.latest_pushed_at, code_repositories.latest_pushed_at),
       is_outdated = COALESCE(excluded.is_outdated, code_repositories.is_outdated),
-      commit_message = COALESCE(excluded.commit_message, code_repositories.commit_message)
+      commit_message = COALESCE(excluded.commit_message, code_repositories.commit_message),
+      is_fork = excluded.is_fork
   `).run(
     repoId, name, url, type, local_path, branch, description, account,
     is_private ? 1 : 0, is_selected ? 1 : 0,
     last_commit_sha, last_scanned_commit_sha,
-    latest_pushed_at, is_outdated ? 1 : 0, commit_message
+    latest_pushed_at, is_outdated ? 1 : 0, commit_message, is_fork ? 1 : 0
   );
   return getRepository(repoId);
 }
@@ -595,7 +598,8 @@ export async function discoverGitHubRepositories() {
       account: r._account,
       is_private: r.private ? 1 : 0,
       is_selected: 1,
-      latest_pushed_at: r.pushed_at || r.updated_at || null
+      latest_pushed_at: r.pushed_at || r.updated_at || null,
+      is_fork: r.fork ? 1 : 0
     });
 
     discovered.push(repoId);
@@ -1090,8 +1094,22 @@ export async function scanRepository(repoId, onProgress = () => {}) {
 
     onProgress({ phase: 'scanning', message: `Scanning source files in ${repo.name}...`, progress: 25 });
 
-    // Collect candidates (.tsx, .ts, .jsx, .js, .cpp) excluding build/dist/deps
+    // Collect candidates (.tsx, .ts, .jsx, .js, .cpp) excluding build/dist/deps and code that isn't Simon's:
+    // a local repo is listed with git (tracked files only), and downloaded frameworks, examples and hidden
+    // tool folders are skipped - the IMS scan once picked up ESPHome's copy of ESP-IDF and an example app.
     const filesToExamine = [];
+    const SOURCE_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.cpp'];
+    const wanted = (rel) => SOURCE_EXTS.includes(path.extname(rel).toLowerCase()) && !isThirdPartyPath(rel) &&
+      !rel.endsWith('.min.js') && !rel.endsWith('.d.ts') && !path.basename(rel).includes('.config.');
+    let tracked = null;
+    if (fs.existsSync(path.join(scanRoot, '.git'))) {
+      try {
+        const { execSync } = await import('child_process');
+        tracked = execSync('git ls-files', { cwd: scanRoot, windowsHide: true, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] })
+          .split('\n').map((l) => l.trim()).filter(Boolean);
+      } catch (err) { console.warn(`[CodeRepoService] git ls-files failed for ${repo.name}, walking the folder instead:`, err.message); }
+    }
+    if (tracked) for (const rel of tracked) if (wanted(rel)) filesToExamine.push({ full: path.join(scanRoot, rel), rel });
     function walk(dir) {
       if (!fs.existsSync(dir)) return;
       const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -1100,29 +1118,15 @@ export async function scanRepository(repoId, onProgress = () => {}) {
         const rel = path.relative(scanRoot, full).replace(/\\/g, '/');
 
         if (entry.isDirectory()) {
-          if (
-            entry.name === 'node_modules' ||
-            entry.name === 'dist' ||
-            entry.name === 'build' ||
-            entry.name === '.git' ||
-            entry.name === 'coverage' ||
-            entry.name === 'temp'
-          ) {
-            continue;
-          }
+          if (isThirdPartyPath(rel + '/')) continue;
           walk(full);
-        } else if (entry.isFile()) {
-          const ext = path.extname(entry.name).toLowerCase();
-          if (['.ts', '.tsx', '.js', '.jsx', '.cpp'].includes(ext)) {
-            if (!entry.name.endsWith('.min.js') && !entry.name.endsWith('.d.ts') && !entry.name.includes('.config.')) {
-              filesToExamine.push({ full, rel });
-            }
-          }
+        } else if (entry.isFile() && wanted(rel)) {
+          filesToExamine.push({ full, rel });
         }
       }
     }
 
-    walk(scanRoot);
+    if (!tracked) walk(scanRoot);
     onProgress({ phase: 'extracting', message: `Identified ${filesToExamine.length} source files. Extracting best-practice patterns...`, progress: 40 });
 
     filesToExamine.sort((a, b) => {
@@ -1136,16 +1140,16 @@ export async function scanRepository(repoId, onProgress = () => {}) {
     const addedSnippets = [];
 
     // Query existing snippets for this repo so we can update them in place if modified
-    const existingSnippets = db.prepare('SELECT * FROM code_snippets WHERE repo_id = ?').all(repo.id);
-    const existingByPath = new Map();
-    existingSnippets.forEach(s => existingByPath.set(s.file_path, s));
+    const existingSnippets = db.prepare('SELECT * FROM code_snippets WHERE repo_id = ? ORDER BY created_at').all(repo.id);
+    const existingByPath = new Map(); // file path -> its saved pieces, oldest first
+    existingSnippets.forEach(s => existingByPath.set(s.file_path, [...(existingByPath.get(s.file_path) || []), s]));
 
     for (const target of targetFiles) {
       try {
         const code = fs.readFileSync(target.full, 'utf8');
         const units = extractCodeUnits(code, target.rel);
 
-        for (const unit of units.slice(0, 2)) {
+        for (const [unitIndex, unit] of units.slice(0, 2).entries()) {
           onProgress({
             phase: 'evaluating',
             message: `Evaluating ${unit.title} against 5 Engineering Principles & Inputs/Outputs...`,
@@ -1158,7 +1162,7 @@ export async function scanRepository(repoId, onProgress = () => {}) {
             repoName: repo.name
           });
 
-          const existingMatch = existingByPath.get(target.rel);
+          const existingMatch = (existingByPath.get(target.rel) || [])[unitIndex];
 
           const snippet = saveCodeSnippet({
             id: existingMatch ? existingMatch.id : undefined,
@@ -1330,14 +1334,12 @@ export async function syncCodeVectors() {
     };
   });
 
-  const embeddings = await generateEmbeddings(chunksToEmbed, 'RETRIEVAL_DOCUMENT');
+  // generateEmbeddings returns each chunk with its `embedding` (and skips any that failed). This used to
+  // store that whole object as the embedding, so every search score was NaN and matches were random.
+  const vectorRecords = await generateEmbeddings(chunksToEmbed, 'RETRIEVAL_DOCUMENT');
 
-  const vectorRecords = chunksToEmbed.map((chunk, index) => ({
-    ...chunk,
-    embedding: embeddings[index]
-  }));
-
-  fs.writeFileSync(CODE_VECTORS_PATH, JSON.stringify(vectorRecords, null, 2), 'utf8');
+  fs.mkdirSync(VECTORS_DIR, { recursive: true });
+  writeVectorFile(CODE_VECTORS_PATH, vectorRecords);
   console.log(`[CodeRepoService] Synchronized ${vectorRecords.length} code snippet vectors to ${CODE_VECTORS_PATH}`);
   return { indexed: vectorRecords.length };
 }
@@ -1347,233 +1349,32 @@ export async function syncCodeVectors() {
  */
 export async function searchCodeSnippets(queryEmbedding, topK = 5) {
   if (!fs.existsSync(CODE_VECTORS_PATH)) return [];
-
   try {
-    const raw = fs.readFileSync(CODE_VECTORS_PATH, 'utf8');
-    const records = JSON.parse(raw);
-
-    const scored = records.map((r) => {
-      let dot = 0, normA = 0, normB = 0;
-      for (let i = 0; i < queryEmbedding.length; i++) {
-        dot += queryEmbedding[i] * r.embedding[i];
-        normA += queryEmbedding[i] * queryEmbedding[i];
-        normB += r.embedding[i] * r.embedding[i];
-      }
-      const mag = Math.sqrt(normA) * Math.sqrt(normB);
-      const similarity = mag === 0 ? 0 : dot / mag;
-      return {
-        ...r,
-        similarity,
-        embedding: undefined
-      };
-    });
-
-    scored.sort((a, b) => b.similarity - a.similarity);
-    return scored.slice(0, topK);
+    const records = readVectorFileSync(CODE_VECTORS_PATH).filter((r) => r.embedding && r.embedding.length);
+    return records
+      .map(({ embedding, ...r }) => ({ ...r, similarity: cosine(queryEmbedding, embedding) }))
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, topK);
   } catch (err) {
     console.error('[CodeRepoService] Error searching code vectors:', err.message);
     return [];
   }
 }
 
-/**
- * Suggest matching best practice code patterns from the repository library
- * based on a user's project description, framework, and target preconditions.
- */
-export async function suggestBestPractices({ description, scaffold, cssFramework, preconditions = [] }) {
-  const queryText = `Project Description: ${description || ''}\nScaffold: ${scaffold || ''}\nCSS: ${cssFramework || ''}\nPreconditions: ${Array.isArray(preconditions) ? preconditions.join(', ') : preconditions || ''}`;
-
-  let matchedSnippets = [];
+// Whether the search index matches the saved snippets (same ids, all with real vectors) - rebuilt if not
+export function codeIndexIsCurrent() {
+  if (!fs.existsSync(CODE_VECTORS_PATH)) return false;
   try {
-    const queryEmbedding = await generateQueryEmbedding(queryText);
-    const vectorMatches = await searchCodeSnippets(queryEmbedding, 8);
-    
-    if (vectorMatches.length > 0) {
-      const ids = vectorMatches.map(m => m.snippetId).filter(Boolean);
-      if (ids.length > 0) {
-        const placeholders = ids.map(() => '?').join(',');
-        const rows = db.prepare(`
-          SELECT s.*, r.name as repo_name, r.account as repo_account, r.url as repo_url
-          FROM code_snippets s
-          LEFT JOIN code_repositories r ON s.repo_id = r.id
-          WHERE s.id IN (${placeholders})
-        `).all(...ids);
-        
-        // Preserve similarity score
-        matchedSnippets = rows.map(r => {
-          const v = vectorMatches.find(m => m.snippetId === r.id);
-          return {
-            ...r,
-            inputs: r.inputs_json ? safeJson(r.inputs_json, []) : [],
-            outputs: r.outputs_json ? safeJson(r.outputs_json, []) : [],
-            similarity: v ? Math.round(v.similarity * 100) : 85
-          };
-        });
-      }
-    }
-  } catch (err) {
-    console.warn('[CodeRepoService] Vector search fallback for suggestBestPractices:', err.message);
-  }
-
-  // Fallback / keyword matching if vector store is empty or returned few results
-  if (matchedSnippets.length < 4) {
-    const existingIds = new Set(matchedSnippets.map(s => s.id));
-    const keywords = [scaffold, cssFramework, ...(Array.isArray(preconditions) ? preconditions : []), ...(description ? description.split(/\s+/) : [])]
-      .filter(Boolean)
-      .map(k => `%${k.toLowerCase()}%`);
-
-    if (keywords.length > 0) {
-      const fallbackRows = db.prepare(`
-        SELECT s.*, r.name as repo_name, r.account as repo_account, r.url as repo_url
-        FROM code_snippets s
-        LEFT JOIN code_repositories r ON s.repo_id = r.id
-        ORDER BY s.overall_score DESC, s.created_at DESC
-        LIMIT 12
-      `).all();
-
-      for (const row of fallbackRows) {
-        if (!existingIds.has(row.id)) {
-          matchedSnippets.push({
-            ...row,
-            inputs: row.inputs_json ? safeJson(row.inputs_json, []) : [],
-            outputs: row.outputs_json ? safeJson(row.outputs_json, []) : [],
-            similarity: 78
-          });
-          existingIds.add(row.id);
-        }
-      }
-    }
-  }
-
-  return matchedSnippets.slice(0, 8);
+    const records = readVectorFileSync(CODE_VECTORS_PATH);
+    const ids = new Set(db.prepare('SELECT id FROM code_snippets').all().map((r) => r.id));
+    return records.length === ids.size && records.every((r) => ids.has(r.snippetId) && r.embedding && r.embedding.length > 0);
+  } catch (_) { return false; }
 }
 
-/**
- * Generate a comprehensive, production-ready Antigravity initialization prompt
- * and phased implementation plan referencing selected best-practice code patterns.
- */
-export async function generateProjectPrompt({
-  projectName,
-  description,
-  scaffold = 'React 18 + Vite',
-  cssFramework = 'Tailwind CSS v4',
-  preconditions = [],
-  customPreconditions = '',
-  selectedSnippetIds = []
-}) {
-  // 1. Fetch full details of all selected snippets
-  let snippets = [];
-  if (Array.isArray(selectedSnippetIds) && selectedSnippetIds.length > 0) {
-    const placeholders = selectedSnippetIds.map(() => '?').join(',');
-    const rows = db.prepare(`
-      SELECT s.*, r.name as repo_name, r.account as repo_account, r.url as repo_url
-      FROM code_snippets s
-      LEFT JOIN code_repositories r ON s.repo_id = r.id
-      WHERE s.id IN (${placeholders})
-    `).all(...selectedSnippetIds);
-
-    snippets = rows.map(r => ({
-      ...r,
-      inputs: r.inputs_json ? safeJson(r.inputs_json, []) : [],
-      outputs: r.outputs_json ? safeJson(r.outputs_json, []) : []
-    }));
-  }
-
-  const pName = projectName || 'New Project';
-  const allPreconditions = [
-    ...(Array.isArray(preconditions) ? preconditions : []),
-    ...(customPreconditions ? customPreconditions.split('\n').map(p => p.trim()).filter(Boolean) : [])
-  ];
-
-  // 2. Synthesize architectural implementation plan using Gemini or structured template
-  let promptMarkdown = `# Project Kick-off Specification & Implementation Plan: ${pName}
-
-You are pair programming with me in **Antigravity (Google DeepMind)**. 
-Execute the following step-by-step implementation plan to scaffold, build, and verify **${pName}** from scratch in this new project directory.
-
----
-
-## 1. Executive Summary & Project Intent
-- **Project Name:** ${pName}
-- **Core Architecture & Framework:** ${scaffold}
-- **Styling & Design System:** ${cssFramework}
-- **Project Goal & Description:**
-${description || 'Build a modular, production-ready application adhering to verified software engineering principles.'}
-
----
-
-## 2. Technical Stack & Mandatory Preconditions
-${allPreconditions.length > 0 ? allPreconditions.map(p => `- [x] **Precondition:** ${p}`).join('\n') : '- [x] Standard modern web application structure with strict linting and module boundaries.'}
-- **Language / Runtime:** TypeScript / Modern JavaScript
-- **Operating Environment:** Windows / Node.js
-- **Regionalisation & Dialect:** British English (en-GB) and GBP (£)
-
----
-
-## 3. GitHub Best Practice Reference Patterns (Gold Standard Code)
-The following best-practice modules from my verified GitHub code library MUST be used as reference architectures, structural blueprints, and contract models for this project:
-
-${snippets.length > 0 ? snippets.map((s, idx) => `### Reference ${idx + 1}: ${s.title} (${s.technology})
-- **Source Repository:** [${s.repo_name}](${s.repo_url || 'https://github.com'}) • \`${s.file_path}\`
-- **Architectural Role:** ${s.description}
-- **Best Practice Rationale:** ${s.best_practice_rationale}
-- **Inputs Contract:** ${s.inputs.length > 0 ? s.inputs.map(i => `\`${i.name}\` (${i.type}): ${i.description}`).join(', ') : 'Self-contained / zero external props'}
-- **Outputs Contract:** ${s.outputs.length > 0 ? s.outputs.map(o => `\`${o.name}\` (${o.type}): ${o.description}`).join(', ') : 'DOM reconciliation / side-effect free'}
-
-\`\`\`${s.language?.toLowerCase() || 'typescript'}
-// Reference blueprint from ${s.file_path}:
-${s.code_content.slice(0, 1500)}${s.code_content.length > 1500 ? '\n// ... [code truncated for reference blueprint]' : ''}
-\`\`\`
-`).join('\n') : '*No specific snippets were manually attached. Adhere to modular architecture, strict boundary validation, and defensive programming.*'}
-
----
-
-## 4. Phased Implementation Roadmap for Antigravity
-
-### Phase 1: Project Initialization & Directory Scaffolding
-1. Initialize the project using \`${scaffold}\` with zero interactive prompts:
-   - For Vite/React: \`npx -y create-vite@latest ./ --template react-ts\`
-   - For SvelteKit: \`npx -y create-svelte@latest ./\`
-   - For Next.js: \`npx -y create-next-app@latest ./ --typescript --tailwind --eslint\`
-2. Configure **${cssFramework}** with design tokens, typography, and dark/light theme variables.
-3. Establish clean directory layout:
-   - \`src/components/\` (UI components & presentation)
-   - \`src/hooks/\` or \`src/state/\` (reactive state management & custom hooks)
-   - \`src/services/\` or \`src/api/\` (data fetching, contracts, and backend adapters)
-   - \`src/types/\` (strict TypeScript interfaces and validation schemas)
-   - \`src/utils/\` (pure helper functions and resilience guards)
-
-### Phase 2: Core Contracts, Interfaces & State Architecture
-1. Define central TypeScript domain models and schemas.
-2. Implement custom hooks and state stores adhering to Reference Pattern architecture.
-3. Build defensive boundary guards (error boundaries, input sanitization, null guards).
-
-### Phase 3: UI Presentation & Interactive Component Build
-1. Build reusable presentation components utilizing ${cssFramework}.
-2. Ensure responsive container layouts, glassmorphism, and micro-animations.
-3. Integrate data flow pipelines connecting UI triggers to service adapters.
-
-### Phase 4: Verification, Linting & Production Build
-1. Verify TypeScript types: \`npx tsc --noEmit\` (must exit code 0).
-2. Execute production bundle test: \`npm run build\` (must exit code 0).
-3. Test all interactive flows and confirm zero console runtime exceptions.
-
----
-
-## 5. Architectural Invariants & Definition of Done (DoD)
-1. **Full Module Output:** Never output truncated code blocks (\`// ... rest of code\`). Emit complete files.
-2. **Defensive Cleanup:** Always clean up event listeners, timers, and WebSocket handles on unmount.
-3. **No Placeholders:** All buttons, forms, and triggers must be functional or wired to real state.
-4. **Immediate Next Step:** Begin with **Phase 1: Project Initialization & Directory Scaffolding** now.
-`;
-
-  return {
-    projectName: pName,
-    promptMarkdown,
-    snippetCount: snippets.length,
-    snippets: snippets.map(s => ({ id: s.id, title: s.title, repo: s.repo_name, tech: s.technology }))
-  };
-}
+// Folders whose code isn't Simon's own: dependencies, downloaded frameworks (ESPHome's ESP-IDF lives in
+// .esphome), hidden tool folders, examples and vendored code
+const THIRD_PARTY_RX = /(^|\/)(\.[^/]+|node_modules|dist|build|coverage|temp|vendor|third[_-]?party|libdeps|managed_components|examples?|samples?|test_apps|fixtures|antigravity-god-mode)\//i;
+export const isThirdPartyPath = (rel) => THIRD_PARTY_RX.test(String(rel || '').replace(/\\/g, '/'));
 
 /**
  * Execute an automated PR Quality, TypeScript linting, and Triple Registry audit.

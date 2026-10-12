@@ -1,0 +1,163 @@
+{
+  "projectsRoot": "D:\\Projects",
+  "stacks": [
+    {
+      "id": "spfx",
+      "name": "SharePoint web part (SPFx)",
+      "plain": "A part you add to SharePoint pages or Microsoft Teams.",
+      "starter": "yo @microsoft/sharepoint --solution-name {slug} --component-type webpart --component-name {pascal} --framework react --skip-install",
+      "ci": "node",
+      "gitignore": "node",
+      "match": ["spfx", "sharepoint", "pnp", "webpart"]
+    },
+    {
+      "id": "react-vite",
+      "name": "React web app",
+      "plain": "A web app that runs in the browser, built with Vite.",
+      "starter": "npm create vite@latest . -- --template react-ts",
+      "ci": "node",
+      "gitignore": "node",
+      "match": ["react", "vite", "jsx", "tsx"]
+    },
+    {
+      "id": "nextjs",
+      "name": "Next.js website or app",
+      "plain": "Pages built on the server: good for public sites and apps with sign-in.",
+      "starter": "npx create-next-app@latest . --typescript --app --eslint --use-npm",
+      "ci": "node",
+      "gitignore": "node",
+      "match": ["next.js", "nextjs", "next "]
+    },
+    {
+      "id": "sveltekit",
+      "name": "SvelteKit web app",
+      "plain": "A light, fast web app with very little code per page.",
+      "starter": "npx sv create . --template minimal --types ts",
+      "ci": "node",
+      "gitignore": "node",
+      "match": ["svelte"]
+    },
+    {
+      "id": "vue",
+      "name": "Vue web app",
+      "plain": "A web app built with Vue and Vite.",
+      "starter": "npm create vite@latest . -- --template vue-ts",
+      "ci": "node",
+      "gitignore": "node",
+      "match": ["vue", "pinia"]
+    },
+    {
+      "id": "solid",
+      "name": "SolidJS web app",
+      "plain": "A very fast web app for screens with lots of live data.",
+      "starter": "npm create vite@latest . -- --template solid-ts",
+      "ci": "node",
+      "gitignore": "node",
+      "match": ["solid"]
+    },
+    {
+      "id": "node-api",
+      "name": "Server / API (Node.js)",
+      "plain": "A back-end service that other apps talk to.",
+      "starter": "npm init -y && npm i express",
+      "ci": "node",
+      "gitignore": "node",
+      "match": ["express", "node.js", "server", "api"]
+    },
+    {
+      "id": "esp32",
+      "name": "ESP32 device (PlatformIO)",
+      "plain": "Code that runs on a small ESP32 board, like the Box-3.",
+      "starter": "pio project init --board esp32-s3-devkitc-1 --project-option \"framework=arduino\"",
+      "ci": "platformio",
+      "gitignore": "platformio",
+      "match": ["esp32", "esp-idf", "freertos", "platformio", "arduino"]
+    }
+  ],
+  "looks": [
+    { "id": "fluent", "name": "Fluent UI", "plain": "The Microsoft 365 look: matches SharePoint and Teams.", "match": ["fluent", "griffel"] },
+    { "id": "tailwind", "name": "Tailwind CSS", "plain": "Style straight in the markup with ready-made classes.", "match": ["tailwind"] },
+    { "id": "plain-css", "name": "Plain CSS", "plain": "Your own colours and spacing in ordinary CSS files, nothing extra to install.", "match": ["css"] },
+    { "id": "scss", "name": "SCSS modules", "plain": "CSS with variables and nesting, kept separate for each component.", "match": ["scss", "sass"] },
+    { "id": "none", "name": "No screen", "plain": "For servers and devices that don't have a user interface.", "match": [] }
+  ],
+  "rules": [
+    {
+      "id": "strict-types",
+      "name": "Catch type mistakes early",
+      "plain": "TypeScript in strict mode, with every function and component input described.",
+      "prompt": "Use TypeScript in strict mode. Give every function, component prop and API response an explicit type; never use `any`.",
+      "default": true
+    },
+    {
+      "id": "tidy-up",
+      "name": "Tidy up after itself",
+      "plain": "Close connections, stop timers and remove listeners when something closes.",
+      "prompt": "Every timer, listener, subscription and connection must be cleaned up when its component or service closes.",
+      "default": true
+    },
+    {
+      "id": "whole-files",
+      "name": "Always write whole files",
+      "plain": "No \"…rest of code\" gaps and no buttons that don't do anything yet.",
+      "prompt": "Always write complete files - never leave \"...rest of code\" gaps, placeholders or buttons that aren't wired up.",
+      "default": true
+    },
+    {
+      "id": "no-secrets",
+      "name": "No secrets in the code",
+      "plain": "Keys and passwords go in a .env file that never reaches GitHub.",
+      "prompt": "Keep keys, passwords and connection strings out of the code: read them from environment variables, list them in .env.example, and never commit .env.",
+      "default": true
+    },
+    {
+      "id": "tests",
+      "name": "Tests from the start",
+      "plain": "Each feature comes with automated tests that run on every push.",
+      "prompt": "Write automated tests alongside each feature and keep `npm test` (or the stack's equivalent) passing; CI runs them on every push.",
+      "default": true
+    },
+    {
+      "id": "british",
+      "name": "British spelling and £",
+      "plain": "UK spelling everywhere, and money shown in pounds.",
+      "prompt": "Use British English spelling in all text, comments and docs, and format money in pounds sterling (£).",
+      "default": true
+    },
+    {
+      "id": "registry",
+      "name": "Keep the project records up to date",
+      "plain": "Update the feature list, project map and test plan with every feature.",
+      "prompt": "Keep feature.json (one entry per feature), ProjectStructure.JSON (modules and how they connect) and test_plan.md (a test for each feature) up to date with every change.",
+      "default": false
+    },
+    {
+      "id": "sharepoint-data",
+      "name": "Read and write SharePoint data",
+      "plain": "Works with SharePoint lists and libraries through the page it sits on.",
+      "prompt": "Use the SharePoint page context and PnPjs (spfi with the SPFx behaviour) for all SharePoint list and library access; never hard-code site URLs.",
+      "default": false
+    },
+    {
+      "id": "live-updates",
+      "name": "Live two-way updates",
+      "plain": "A live connection that reconnects by itself if it drops.",
+      "prompt": "Use a WebSocket for live two-way updates, with automatic reconnection and a heartbeat, and messages as typed JSON.",
+      "default": false
+    },
+    {
+      "id": "local-db",
+      "name": "Local database that upgrades itself safely",
+      "plain": "SQLite on the machine. When the data layout changes, the update finishes completely or not at all.",
+      "prompt": "Store data in SQLite (WAL mode, prepared statements). Apply schema changes on startup inside a transaction so an upgrade either completes or leaves the database untouched.",
+      "default": false
+    },
+    {
+      "id": "accessible",
+      "name": "Works for everyone",
+      "plain": "Keyboard-friendly, readable contrast and screen-reader labels.",
+      "prompt": "Meet WCAG 2.1 AA: everything usable by keyboard, visible focus, sufficient contrast and labels for screen readers.",
+      "default": false
+    }
+  ]
+}

@@ -197,6 +197,8 @@ try {
   try { db.exec("ALTER TABLE code_repositories ADD COLUMN account TEXT DEFAULT 'personal'"); } catch (_) {}
   try { db.exec("ALTER TABLE code_repositories ADD COLUMN is_private INTEGER DEFAULT 0"); } catch (_) {}
   try { db.exec("ALTER TABLE code_repositories ADD COLUMN is_selected INTEGER DEFAULT 1"); } catch (_) {}
+  // a fork is someone else's code: still searchable, but ranked below Simon's own in the project builder
+  try { db.exec("ALTER TABLE code_repositories ADD COLUMN is_fork INTEGER DEFAULT 0"); } catch (_) {}
   try { db.exec("ALTER TABLE code_repositories ADD COLUMN last_commit_sha TEXT"); } catch (_) {}
   try { db.exec("ALTER TABLE code_repositories ADD COLUMN last_scanned_commit_sha TEXT"); } catch (_) {}
   try { db.exec("ALTER TABLE code_repositories ADD COLUMN latest_pushed_at DATETIME"); } catch (_) {}

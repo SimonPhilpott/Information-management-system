@@ -22,10 +22,9 @@ import {
   discoverGitHubRepositories,
   toggleRepositorySelection,
   selectAllRepositories,
-  suggestBestPractices,
-  generateProjectPrompt,
   auditQualityAndRegistry
 } from '../services/codeRepoService.js';
+import { getOptions, suggestSetup, findCode, planProject, createProject, tidyLibrary, openFolder } from '../services/projectBuilderService.js';
 
 const router = express.Router();
 
@@ -49,41 +48,18 @@ router.post('/audit', async (req, res) => {
   }
 });
 
-/**
- * POST /api/code-repo/suggest-best-practices
- * Suggest matching best practice code patterns from the repository library.
- */
-router.post('/suggest-best-practices', async (req, res) => {
-  try {
-    const { description, scaffold, cssFramework, preconditions } = req.body;
-    const suggestions = await suggestBestPractices({ description, scaffold, cssFramework, preconditions });
-    res.json({ success: true, suggestions });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/**
- * POST /api/code-repo/generate-prompt
- * Generate an exhaustive Antigravity project kick-off prompt and phased implementation plan.
- */
-router.post('/generate-prompt', async (req, res) => {
-  try {
-    const { projectName, description, scaffold, cssFramework, preconditions, customPreconditions, selectedSnippetIds } = req.body;
-    const result = await generateProjectPrompt({
-      projectName,
-      description,
-      scaffold,
-      cssFramework,
-      preconditions,
-      customPreconditions,
-      selectedSnippetIds
-    });
-    res.json({ success: true, ...result });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// ---- New Project builder (/ims/code-repo/new-project): brief -> setup -> my code -> review -> build
+const builderRoute = (fn) => async (req, res) => {
+  try { res.json({ success: true, ...(await fn(req.body || {})) }); }
+  catch (err) { res.status(err.status || 500).json({ success: false, error: err.message }); }
+};
+router.get('/builder/options', builderRoute(() => getOptions()));
+router.post('/builder/suggest', builderRoute((b) => suggestSetup(b)));
+router.post('/builder/find-code', builderRoute((b) => findCode(b)));
+router.post('/builder/plan', builderRoute((b) => planProject(b)));
+router.post('/builder/create', builderRoute((b) => createProject(b)));
+router.post('/builder/tidy-library', builderRoute(() => tidyLibrary()));
+router.post('/builder/open-folder', builderRoute((b) => openFolder(b)));
 
 /**
  * GET /api/code-repo/tokens

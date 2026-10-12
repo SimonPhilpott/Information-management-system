@@ -29,6 +29,7 @@ const MemoriesPortal = React.lazy(() => import('./components/Dashboard/MemoriesP
 const PersonaPortal = React.lazy(() => import('./components/Dashboard/PersonaPortal'));
 const DayReportPortal = React.lazy(() => import('./components/Dashboard/DayReportPortal'));
 const CodeRepoPortal = React.lazy(() => import('./components/Dashboard/CodeRepoPortal'));
+const ProjectBuilderPage = React.lazy(() => import('./components/Dashboard/ProjectBuilder/ProjectBuilderPage'));
 const MusicScanPortal = React.lazy(() => import('./components/Dashboard/MusicScanPortal'));
 const ScheduledItemsPortal = React.lazy(() => import('./components/Dashboard/ScheduledItemsPortal'));
 const BirthdayPortal = React.lazy(() => import('./components/Dashboard/BirthdayPortal'));
@@ -1379,6 +1380,16 @@ export default function App() {
         theme={state.theme}
         onThemeToggle={actions.toggleTheme}
         currentPath={currentPath}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath.startsWith('/ims/code-repo/new-project')) {
+    return (
+      <ProjectBuilderPage
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
         setCurrentPath={setCurrentPath}
       />
     );
