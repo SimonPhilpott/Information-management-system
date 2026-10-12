@@ -160,8 +160,9 @@ export default function ProjectBuilderPage({ theme = 'dark', onThemeToggle, setC
   const card = isDark ? 'bg-slate-900/80 border-white/10' : 'bg-white border-slate-200/80 shadow-[0_6px_24px_rgba(15,23,42,0.06)]';
   const sub = isDark ? 'text-slate-400' : 'text-slate-500';
   const field = `w-full px-4 py-3 rounded-xl text-sm border outline-none transition-colors ${isDark ? 'bg-slate-950 border-slate-800 focus:border-cyan-500 text-slate-100' : 'bg-slate-50 border-slate-300 focus:border-cyan-600 text-slate-900'}`;
-  const primary = 'px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-md shadow-blue-500/20 transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none';
-  const secondary = `px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 border transition-colors disabled:opacity-40 ${isDark ? 'border-slate-700 hover:bg-slate-800 text-slate-200' : 'border-slate-300 hover:bg-slate-100 text-slate-700'}`;
+  // the app's button style (as on Code Best Practices): pale tint, matching border, coloured text
+  const primary = `px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 border transition-all disabled:opacity-40 disabled:pointer-events-none ${isDark ? 'bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-300 border-cyan-500/40' : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-300'}`;
+  const secondary = `px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 border transition-colors disabled:opacity-40 ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'}`;
   const choice = (selected, accent) => `text-left p-4 rounded-2xl border transition-all ${selected
     ? `${accent} ring-1`
     : isDark ? 'bg-slate-950/50 border-slate-800 hover:border-slate-600' : 'bg-slate-50 border-slate-200 hover:border-slate-400'}`;

@@ -322,6 +322,18 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
   const [selectedTech, setSelectedTech] = useState('all'); // a stack id (codeStacks.js), e.g. 'spfx'
   const [stackOptions, setStackOptions] = useState([]); // the whole library by stack, for the filter
   const [isTidying, setIsTidying] = useState(false);
+  // Header buttons all share one look (pale tint, matching border, coloured text) - only the colour differs
+  const headerBtn = (tone) => {
+    const tones = {
+      amber: isDark ? 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border-amber-500/30' : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300',
+      slate: isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300',
+      indigo: isDark ? 'bg-indigo-950/70 hover:bg-indigo-900/80 text-indigo-300 border-indigo-500/30' : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200',
+      emerald: isDark ? 'bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border-emerald-500/30' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300',
+      rose: isDark ? 'bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border-rose-500/30' : 'bg-rose-50 hover:bg-rose-100 text-rose-800 border-rose-300',
+      cyan: isDark ? 'bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-300 border-cyan-500/30' : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-300',
+    };
+    return `px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all disabled:opacity-50 ${tones[tone] || tones.slate}`;
+  };
   const [searchQuery, setSearchQuery] = useState('');
   const [snippets, setSnippets] = useState([]);
   const [activeSnippet, setActiveSnippet] = useState(null);
@@ -973,42 +985,42 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
             <button
               onClick={handleRunAudit}
               disabled={isAuditing}
-              className="px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white transition-all shadow-md shadow-emerald-500/20 active:scale-95 disabled:opacity-50"
+              className={headerBtn('emerald')}
               title="Run automated PR quality scan checking for missing type definitions, unhandled async catch blocks, and out-of-sync Triple Registry entries"
             >
-              <FileCheck size={14} className={isAuditing ? 'animate-spin text-amber-300' : 'text-amber-300'} />
+              <FileCheck size={13} className={isAuditing ? 'animate-spin' : ''} />
               <span>{isAuditing ? 'Auditing Codebase...' : 'PR Quality & Registry Audit'}</span>
             </button>
 
             {/* Dependency & vulnerability watch (weekly npm audit / outdated) */}
             <button
               onClick={() => { reloadDepWatch(); setIsDepsOpen(true); }}
-              className="px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-2 bg-gradient-to-r from-rose-600 to-orange-500 hover:from-rose-500 hover:to-orange-400 text-white transition-all shadow-md shadow-rose-500/20 active:scale-95"
+              className={headerBtn('rose')}
               title="npm audit and npm outdated for IMS and your scanned repos - critical and high advisories, and packages a major version behind"
             >
-              <ShieldAlert size={14} />
+              <ShieldAlert size={13} />
               <span>Dependencies</span>
-              {depWatch?.last?.summary?.critical > 0 && <span className="px-1.5 py-0.5 rounded-full bg-white text-rose-600 text-[10px] font-black">{depWatch.last.summary.critical}</span>}
+              {depWatch?.last?.summary?.critical > 0 && <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black">{depWatch.last.summary.critical}</span>}
             </button>
 
             {/* Tidy & re-index: duplicates and non-Simon code out, search index rebuilt */}
             <button
               onClick={handleTidyLibrary}
               disabled={isTidying}
-              className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-2 border transition-all active:scale-95 disabled:opacity-50 ${isDark ? 'border-slate-700 hover:bg-slate-800 text-slate-200' : 'border-slate-300 hover:bg-slate-100 text-slate-700'}`}
+              className={headerBtn('slate')}
               title="Remove duplicate snippets and code that isn't yours (downloaded frameworks, examples), then rebuild the search index"
             >
-              <RefreshCw size={14} className={isTidying ? 'animate-spin' : ''} />
+              <RefreshCw size={13} className={isTidying ? 'animate-spin' : ''} />
               <span>{isTidying ? 'Tidying…' : 'Tidy & re-index'}</span>
             </button>
 
             {/* New Project: brief -> setup -> my code -> review -> build (ProjectBuilder/ProjectBuilderPage.jsx) */}
             <button
               onClick={() => { window.history.pushState(null, '', '/ims/code-repo/new-project'); setCurrentPath?.('/ims/code-repo/new-project'); }}
-              className="px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white transition-all shadow-md shadow-blue-500/20 active:scale-95"
+              className={headerBtn('cyan')}
               title="Start a new project from a short brief and your own best code"
             >
-              <Rocket size={14} className="text-amber-300" />
+              <Rocket size={13} />
               <span>New Project</span>
             </button>
 
@@ -1017,7 +1029,7 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
               <button
                 onClick={handleStartScanOutdated}
                 disabled={isScanning}
-                className="px-3.5 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-black transition-all shadow-md shadow-amber-500/20 animate-pulse"
+                className={headerBtn('amber')}
                 title="Re-scan and incrementally update modified or newly expanded code snippets"
               >
                 <RefreshCw size={13} className={isScanning && scanTarget === 'outdated' ? 'animate-spin' : ''} />
@@ -1028,11 +1040,7 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
             <button
               onClick={handleCheckOutdated}
               disabled={isCheckingOutdated || isScanning}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
-                isDark
-                  ? 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border border-amber-500/30'
-                  : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300'
-              }`}
+              className={headerBtn('amber')}
               title="Check GitHub for newer commits since last scan"
             >
               <GitCommit size={13} className={isCheckingOutdated ? 'animate-spin' : ''} />
@@ -1041,11 +1049,7 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
 
             <button
               onClick={() => setIsTokenModalOpen(true)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
-                isDark
-                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
-                  : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300'
-              }`}
+              className={headerBtn('slate')}
             >
               <KeyRound size={14} className="text-blue-500" />
               <span>GitHub Tokens & Setup</span>
@@ -1054,11 +1058,7 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
             <button
               onClick={handleDiscoverRepos}
               disabled={isDiscoveringRepos}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
-                isDark
-                  ? 'bg-indigo-950/70 hover:bg-indigo-900/80 text-indigo-300 border border-indigo-500/30'
-                  : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
-              }`}
+              className={headerBtn('indigo')}
             >
               <RefreshCw size={13} className={isDiscoveringRepos ? 'animate-spin' : ''} />
               <span>{isDiscoveringRepos ? 'Syncing Repos...' : 'Sync / Discover Repos'}</span>
