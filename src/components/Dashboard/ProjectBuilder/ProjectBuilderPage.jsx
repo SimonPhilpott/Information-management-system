@@ -128,10 +128,6 @@ export default function ProjectBuilderPage({ theme = 'dark', onThemeToggle, setC
     } catch (err) { say(err.message, 'error'); } finally { setBusy(''); }
   };
 
-  const openFolder = async () => {
-    try { const r = await call('open-folder', { folder: created.folder }); say(`Opened in ${r.openedIn}.`); } catch (err) { say(err.message, 'error'); }
-  };
-
   const startAgain = () => {
     if (!window.confirm('Clear this project and start a new one?')) return;
     setStep(1); setName(''); setBrief(''); setGroups(null); setPlan(null); setPlanKey(''); setCreated(null); setFolder('');
@@ -459,7 +455,6 @@ export default function ProjectBuilderPage({ theme = 'dark', onThemeToggle, setC
                       <GitBranch size={13} /> {created.github.url} <ExternalLink size={11} />
                     </a>
                   )}
-                  <button className={`${secondary} self-start`} onClick={openFolder}><FolderOpen size={15} /> Open it</button>
                 </div>
               )}
             </section>

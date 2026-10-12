@@ -12,7 +12,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { execFile, spawn } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { GoogleGenerativeAI } from './geminiClient.js';
 import config from '../config.js';
@@ -20,16 +20,15 @@ import db from '../db/database.js';
 import { getModelFor } from './modelRegistry.js';
 import { generateQueryEmbedding } from './embeddingService.js';
 import { syncCodeVectors, searchCodeSnippets, codeIndexIsCurrent, isThirdPartyPath, getRawGitHubToken } from './codeRepoService.js';
+import { presets, stackOf, lookOf } from './codeStacks.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const run = promisify(execFile);
 const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
-const PRESETS_PATH = path.join(__dirname, 'projectBuilderPresets.json');
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const TIDY_MARK = path.join(DATA_DIR, '.code_library_tidied_v1');
 const IMS_ROOT = path.resolve(__dirname, '..', '..', '..');
 
-const presets = () => JSON.parse(fs.readFileSync(PRESETS_PATH, 'utf8'));
 const fail = (status, message) => Object.assign(new Error(message), { status });
 const clean = (t, max = 4000) => String(t ?? '').trim().slice(0, max);
 const slugify = (t) => clean(t, 80).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'new-project';
@@ -48,20 +47,6 @@ function librarySnippets() {
     SELECT s.*, r.name AS repo_name, r.url AS repo_url, r.account AS repo_account, COALESCE(r.is_fork, 0) AS repo_is_fork
     FROM code_snippets s LEFT JOIN code_repositories r ON r.id = s.repo_id
   `).all();
-}
-
-// Which stack / look a saved snippet belongs to. Its "technology" was written freely by the scanner (70-odd
-// spellings), so it's read for keywords; SharePoint and ESP32 first, as their snippets also mention React/C++.
-const STACK_PRIORITY = ['spfx', 'esp32', 'nextjs', 'sveltekit', 'vue', 'solid', 'react-vite', 'node-api'];
-function stackOf(s, stacks) {
-  const text = `${s.technology || ''} ${s.file_path || ''}`.toLowerCase();
-  const rank = (id) => { const i = STACK_PRIORITY.indexOf(id); return i < 0 ? 99 : i; };
-  const ordered = [...stacks].sort((a, b) => rank(a.id) - rank(b.id));
-  return ordered.find((st) => (st.match || []).some((m) => text.includes(m)))?.id || null;
-}
-function lookOf(s, looks) {
-  const text = `${s.technology || ''} ${s.code_content?.slice(0, 3000) || ''}`.toLowerCase();
-  return looks.find((l) => (l.match || []).length && l.match.some((m) => text.includes(m)))?.id || null;
 }
 
 // One-off library clean-up (and on demand): pieces of code that aren't Simon's (downloaded frameworks,
@@ -532,21 +517,6 @@ async function createGithubRepo({ folder, slug, brief, isPrivate }) {
     throw fail(502, `The repo ${repo.html_url} was created, but the push failed: ${String(err.stderr || err.message).replace(auth, '***').slice(0, 300)}`);
   }
   return { url: repo.html_url, private: repo.private };
-}
-
-export async function openFolder({ folder }) {
-  const target = path.resolve(clean(folder, 500));
-  if (!target || !fs.existsSync(target)) throw fail(404, 'That folder doesn\'t exist.');
-  // Antigravity if its command-line launcher is installed, otherwise File Explorer
-  const opened = await new Promise((resolve) => {
-    const child = spawn('antigravity', [target], { shell: true, detached: true, stdio: 'ignore', windowsHide: true });
-    child.on('error', () => resolve(false));
-    child.on('exit', (code) => resolve(code === 0));
-    setTimeout(() => resolve(true), 3000);
-    child.unref();
-  });
-  if (!opened) spawn('explorer.exe', [target], { detached: true, stdio: 'ignore' }).unref();
-  return { openedIn: opened ? 'Antigravity' : 'File Explorer' };
 }
 
 // ---------------------------------------------------------------- generated files

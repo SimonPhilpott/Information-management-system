@@ -22,9 +22,10 @@ import {
   discoverGitHubRepositories,
   toggleRepositorySelection,
   selectAllRepositories,
-  auditQualityAndRegistry
+  auditQualityAndRegistry,
+  snippetStackCounts
 } from '../services/codeRepoService.js';
-import { getOptions, suggestSetup, findCode, planProject, createProject, tidyLibrary, openFolder } from '../services/projectBuilderService.js';
+import { getOptions, suggestSetup, findCode, planProject, createProject, tidyLibrary } from '../services/projectBuilderService.js';
 
 const router = express.Router();
 
@@ -59,7 +60,6 @@ router.post('/builder/find-code', builderRoute((b) => findCode(b)));
 router.post('/builder/plan', builderRoute((b) => planProject(b)));
 router.post('/builder/create', builderRoute((b) => createProject(b)));
 router.post('/builder/tidy-library', builderRoute(() => tidyLibrary()));
-router.post('/builder/open-folder', builderRoute((b) => openFolder(b)));
 
 /**
  * GET /api/code-repo/tokens
@@ -201,15 +201,16 @@ router.delete('/repositories/:id', (req, res) => {
  */
 router.get('/snippets', (req, res) => {
   try {
-    const { repoId, technology, language, search, limit } = req.query;
+    const { repoId, technology, stack, language, search, limit } = req.query;
     const snippets = querySnippets({
       repoId,
       technology,
+      stack,
       language,
       search,
       limit: limit ? Number(limit) : 150
     });
-    res.json({ success: true, count: snippets.length, snippets });
+    res.json({ success: true, count: snippets.length, snippets, stacks: snippetStackCounts() });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

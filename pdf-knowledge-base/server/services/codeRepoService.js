@@ -6,6 +6,7 @@ import config from '../config.js';
 import db from '../db/database.js';
 import { generateEmbeddings, generateQueryEmbedding } from './embeddingService.js';
 import { readVectorFileSync, writeVectorFile, cosine } from './vectorCodec.js';
+import { stackOf, stackNames } from './codeStacks.js';
 import { logUsage } from './usageService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -885,6 +886,7 @@ export function updateUserObservations(id, userObservations) {
 export function querySnippets({
   repoId = null,
   technology = null,
+  stack = null,
   language = null,
   search = '',
   limit = 150
@@ -915,14 +917,27 @@ export function querySnippets({
     params.push(term, term, term, term, term, term);
   }
 
-  sql += ` ORDER BY s.created_at DESC LIMIT ?`;
-  params.push(limit);
-
-  const rows = db.prepare(sql).all(...params);
-  return rows.map(formatSnippetRow);
+  sql += ` ORDER BY s.created_at DESC`;
+  const names = stackNames();
+  return db.prepare(sql).all(...params)
+    .map((row) => formatSnippetRow(row, names))
+    .filter((row) => !stack || stack === 'all' || row.stack === stack)
+    .slice(0, limit);
 }
 
-function formatSnippetRow(row) {
+// The whole library grouped by stack, for the filter: [{ id, name, count }] (plus "other" for the rest)
+export function snippetStackCounts() {
+  const names = stackNames();
+  const counts = {};
+  for (const row of db.prepare('SELECT technology, file_path FROM code_snippets').all()) {
+    const id = stackOf(row) || 'other';
+    counts[id] = (counts[id] || 0) + 1;
+  }
+  return Object.entries(counts).map(([id, count]) => ({ id, name: names[id] || 'Other', count })).sort((a, b) => b.count - a.count);
+}
+
+function formatSnippetRow(row, names = stackNames()) {
+  const stack = stackOf(row) || 'other';
   const principles = row.principles_json ? safeJson(row.principles_json, {}) : {};
   let overallScore = principles.overallScore;
   if (!overallScore && principles && typeof principles === 'object') {
@@ -942,6 +957,8 @@ function formatSnippetRow(row) {
 
   return {
     ...row,
+    stack,
+    stackName: names[stack] || 'Other',
     principles,
     overallScore: overallScore || 8.8,
     inputs,

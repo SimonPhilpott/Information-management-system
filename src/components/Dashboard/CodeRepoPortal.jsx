@@ -319,7 +319,9 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
   const [repositories, setRepositories] = useState([]);
   const [selectedRepoId, setSelectedRepoId] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedTech, setSelectedTech] = useState('all');
+  const [selectedTech, setSelectedTech] = useState('all'); // a stack id (codeStacks.js), e.g. 'spfx'
+  const [stackOptions, setStackOptions] = useState([]); // the whole library by stack, for the filter
+  const [isTidying, setIsTidying] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [snippets, setSnippets] = useState([]);
   const [activeSnippet, setActiveSnippet] = useState(null);
@@ -418,13 +420,14 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
     try {
       const params = new URLSearchParams();
       if (selectedRepoId !== 'all') params.set('repoId', selectedRepoId);
-      if (selectedTech !== 'all') params.set('technology', selectedTech);
+      if (selectedTech !== 'all') params.set('stack', selectedTech);
       if (searchQuery.trim()) params.set('search', searchQuery.trim());
 
       const res = await fetch(`/api/code-repo/snippets?${params.toString()}`);
       const data = await res.json();
       if (data.success) {
         setSnippets(data.snippets || []);
+        if (Array.isArray(data.stacks)) setStackOptions(data.stacks);
         if (data.snippets?.length > 0 && !activeSnippet) {
           setActiveSnippet(data.snippets[0]);
           setEditingObservations(data.snippets[0].user_observations || '');
@@ -897,12 +900,25 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
     return groups;
   }, [snippets]);
 
-  // Aggregate technologies for dropdown filter
-  const availableTechs = useMemo(() => {
-    const set = new Set();
-    snippets.forEach(s => { if (s.technology) set.add(s.technology); });
-    return Array.from(set);
-  }, [snippets]);
+  // Remove duplicates and code that isn't Simon's, then rebuild the search index (projectBuilderService.tidyLibrary)
+  const handleTidyLibrary = async () => {
+    setIsTidying(true);
+    try {
+      const res = await fetch('/api/code-repo/builder/tidy-library', { method: 'POST' });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Tidy failed');
+      const removed = (data.removedDuplicates || 0) + (data.removedNotYours || 0);
+      showToast(removed
+        ? `Removed ${data.removedDuplicates} duplicate${data.removedDuplicates === 1 ? '' : 's'} and ${data.removedNotYours} piece${data.removedNotYours === 1 ? '' : 's'} that weren't your code; ${data.kept} kept and re-indexed.`
+        : `Nothing to remove - ${data.kept} pieces of code, search index ${data.reindexed ? 'rebuilt' : 'already up to date'}.`);
+      setActiveSnippet(null);
+      loadSnippets();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsTidying(false);
+    }
+  };
 
   return (
     <PortalShell
@@ -973,6 +989,17 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
               <ShieldAlert size={14} />
               <span>Dependencies</span>
               {depWatch?.last?.summary?.critical > 0 && <span className="px-1.5 py-0.5 rounded-full bg-white text-rose-600 text-[10px] font-black">{depWatch.last.summary.critical}</span>}
+            </button>
+
+            {/* Tidy & re-index: duplicates and non-Simon code out, search index rebuilt */}
+            <button
+              onClick={handleTidyLibrary}
+              disabled={isTidying}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-2 border transition-all active:scale-95 disabled:opacity-50 ${isDark ? 'border-slate-700 hover:bg-slate-800 text-slate-200' : 'border-slate-300 hover:bg-slate-100 text-slate-700'}`}
+              title="Remove duplicate snippets and code that isn't yours (downloaded frameworks, examples), then rebuild the search index"
+            >
+              <RefreshCw size={14} className={isTidying ? 'animate-spin' : ''} />
+              <span>{isTidying ? 'Tidying…' : 'Tidy & re-index'}</span>
             </button>
 
             {/* New Project: brief -> setup -> my code -> review -> build (ProjectBuilder/ProjectBuilderPage.jsx) */}
@@ -1661,9 +1688,9 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
                 isDark ? 'bg-slate-950 border-slate-800 text-slate-200 focus:border-blue-500' : 'bg-white border-slate-300 text-slate-800 shadow-sm focus:border-blue-500'
               }`}
             >
-              <option value="all">All Technologies ({availableTechs.length})</option>
-              {availableTechs.map(t => (
-                <option key={t} value={t}>{t}</option>
+              <option value="all">All kinds of project</option>
+              {stackOptions.map(t => (
+                <option key={t.id} value={t.id}>{t.name} ({t.count})</option>
               ))}
             </select>
             <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
@@ -1813,8 +1840,8 @@ export default function CodeRepoPortal({ theme = 'dark', onThemeToggle, setCurre
                             <div className="flex flex-wrap items-center gap-1.5 text-[10px] pt-2 border-t border-slate-200/40 dark:border-white/5">
                               <span className={`px-2 py-0.5 rounded-md font-medium ${
                                 isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-700'
-                              }`}>
-                                {snip.technology}
+                              }`} title={snip.technology}>
+                                {snip.stackName || snip.technology}
                               </span>
                               <span className={`px-2 py-0.5 rounded-md font-medium ${
                                 isDark ? 'bg-indigo-950/60 text-indigo-300 border border-indigo-500/20' : 'bg-indigo-50 text-indigo-700'
