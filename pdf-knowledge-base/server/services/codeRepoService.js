@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { GoogleGenerativeAI } from './geminiClient.js';
 import config from '../config.js';
 import db from '../db/database.js';
-import { generateEmbeddings, generateQueryEmbedding } from './embeddingService.js';
+import { generateEmbeddings } from './embeddingService.js';
 import { readVectorFileSync, writeVectorFile, cosine } from './vectorCodec.js';
 import { stackOf, stackNames } from './codeStacks.js';
 import { logUsage } from './usageService.js';
@@ -1115,9 +1115,10 @@ export async function scanRepository(repoId, onProgress = () => {}) {
     // a local repo is listed with git (tracked files only), and downloaded frameworks, examples and hidden
     // tool folders are skipped - the IMS scan once picked up ESPHome's copy of ESP-IDF and an example app.
     const filesToExamine = [];
-    const SOURCE_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.cpp'];
+    const SOURCE_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cpp', '.c', '.ino', '.py'];
     const wanted = (rel) => SOURCE_EXTS.includes(path.extname(rel).toLowerCase()) && !isThirdPartyPath(rel) &&
-      !rel.endsWith('.min.js') && !rel.endsWith('.d.ts') && !path.basename(rel).includes('.config.');
+      !/\.(min|generated|d)\.[a-z]+$/i.test(rel) && !path.basename(rel).includes('.config.') &&
+      !/(^|\/)loc\//i.test(rel); // SPFx string tables
     let tracked = null;
     if (fs.existsSync(path.join(scanRoot, '.git'))) {
       try {
@@ -1146,13 +1147,28 @@ export async function scanRepository(repoId, onProgress = () => {}) {
     if (!tracked) walk(scanRoot);
     onProgress({ phase: 'extracting', message: `Identified ${filesToExamine.length} source files. Extracting best-practice patterns...`, progress: 40 });
 
-    filesToExamine.sort((a, b) => {
-      const isPriA = /components|services|hooks|webparts/i.test(a.rel) ? 1 : 0;
-      const isPriB = /components|services|hooks|webparts/i.test(b.rel) ? 1 : 0;
-      return isPriB - isPriA;
-    });
-
-    const targetFiles = filesToExamine.slice(0, 14);
+    // Which files are worth assessing: focused files with real logic (lines that aren't blank, comments,
+    // imports or bare re-exports), with a nudge for the folders that hold components, services and hooks and a small one
+    // down for tests. It used to be the first 14 files whose path mentioned components/services/hooks -
+    // most of a big repo was never looked at (12 Oct). Bigger repos get more files, up to 60.
+    const logicLines = (code) => code.split('\n').filter((l) => {
+      const t = l.trim();
+      return t && !/^(\/\/|\/\*|\*|#(?!include)|import\s|export\s+\*|export\s+\{[^}]*\}\s*from)/.test(t);
+    }).length;
+    for (const f of filesToExamine) {
+      try {
+        const code = fs.readFileSync(f.full, 'utf8');
+        const lines = logicLines(code);
+        f.score = lines < 25 || code.length > 200000 ? -1
+          // focused files make the best examples: score rises to ~300 lines of logic, then falls for huge ones
+          : (lines <= 300 ? lines : Math.max(50, 300 - (lines - 300) / 4))
+            + (/(components|services|hooks|webparts|live|routes|lib|utils|src)\//i.test(f.rel) ? 150 : 0)
+            - (/(\.test\.|\.spec\.|__tests__|(^|\/)tests?\/)/i.test(f.rel) ? 100 : 0);
+      } catch (_) { f.score = -1; }
+    }
+    const worthIt = filesToExamine.filter((f) => f.score > 0).sort((a, b) => b.score - a.score);
+    const fileBudget = Math.min(worthIt.length > 200 ? 60 : 40, Math.max(20, Math.round(worthIt.length * 0.3)));
+    const targetFiles = worthIt.slice(0, fileBudget);
     let completedCount = 0;
     const addedSnippets = [];
 
@@ -1161,12 +1177,15 @@ export async function scanRepository(repoId, onProgress = () => {}) {
     const existingByPath = new Map(); // file path -> its saved pieces, oldest first
     existingSnippets.forEach(s => existingByPath.set(s.file_path, [...(existingByPath.get(s.file_path) || []), s]));
 
-    for (const target of targetFiles) {
+    // four files assessed at a time - one by one, a full rescan took hours
+    const assessFile = async (target) => {
       try {
         const code = fs.readFileSync(target.full, 'utf8');
         const units = extractCodeUnits(code, target.rel);
 
         for (const [unitIndex, unit] of units.slice(0, 2).entries()) {
+          const existingMatch = (existingByPath.get(target.rel) || [])[unitIndex];
+          if (existingMatch && existingMatch.code_content === unit.code) { addedSnippets.push(existingMatch); continue; } // unchanged since its last assessment
           onProgress({
             phase: 'evaluating',
             message: `Evaluating ${unit.title} against 5 Engineering Principles & Inputs/Outputs...`,
@@ -1178,8 +1197,6 @@ export async function scanRepository(repoId, onProgress = () => {}) {
             filePath: target.rel,
             repoName: repo.name
           });
-
-          const existingMatch = (existingByPath.get(target.rel) || [])[unitIndex];
 
           const snippet = saveCodeSnippet({
             id: existingMatch ? existingMatch.id : undefined,
@@ -1207,7 +1224,11 @@ export async function scanRepository(repoId, onProgress = () => {}) {
         console.warn(`[CodeRepoService] Failed evaluating ${target.rel}:`, fileErr.message);
       }
       completedCount++;
-    }
+    };
+    const queue = [...targetFiles];
+    await Promise.all(Array.from({ length: Math.min(4, queue.length) }, async () => {
+      while (queue.length) await assessFile(queue.shift());
+    }));
 
     onProgress({ phase: 'indexing', message: 'Generating vector embeddings for hybrid RAG search...', progress: 95 });
     await syncCodeVectors();
@@ -1236,9 +1257,10 @@ export async function scanMultipleRepositories(repoIds, onProgress = () => {}, a
   if (accountFilter && accountFilter !== 'all') {
     pool = pool.filter(r => (r.account || 'personal') === accountFilter);
   }
-  const ids = Array.isArray(repoIds) && repoIds.length > 0 
-    ? repoIds 
-    : pool.filter(r => r.is_selected).map(r => r.id);
+  // a fork is someone else's code: scanned only when asked for by name
+  const ids = Array.isArray(repoIds) && repoIds.length > 0
+    ? repoIds
+    : pool.filter(r => r.is_selected && !r.is_fork).map(r => r.id);
 
   if (ids.length === 0) {
     onProgress({ phase: 'finished', message: 'No repositories selected for scanning.', progress: 100 });
@@ -1390,7 +1412,7 @@ export function codeIndexIsCurrent() {
 
 // Folders whose code isn't Simon's own: dependencies, downloaded frameworks (ESPHome's ESP-IDF lives in
 // .esphome), hidden tool folders, examples and vendored code
-const THIRD_PARTY_RX = /(^|\/)(\.[^/]+|node_modules|dist|build|coverage|temp|vendor|third[_-]?party|libdeps|managed_components|examples?|samples?|test_apps|fixtures|antigravity-god-mode)\//i;
+const THIRD_PARTY_RX = /(^|\/)(\.[^/]+|node_modules|dist|build|coverage|temp|vendor|third[_-]?party|libdeps|managed_components|examples?|samples?|test_apps|fixtures|antigravity-god-mode|archive|backups?|scratch)\//i;
 export const isThirdPartyPath = (rel) => THIRD_PARTY_RX.test(String(rel || '').replace(/\\/g, '/'));
 
 /**
