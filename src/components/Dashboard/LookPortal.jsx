@@ -1,8 +1,97 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Eye, RotateCw, Send, Trash2, MessageSquare, Users } from 'lucide-react';
+import { Eye, RotateCw, Send, Trash2, MessageSquare, Users, Clock, Save } from 'lucide-react';
 import PortalShell from './PortalShell';
 import CameraPanel from './CameraPanel';
 import SnapshotView from './SnapshotView';
+
+// Camera hours: when the camera stays on so Ims can see you come and go (eyes that follow, the sit-down hello).
+// Outside these hours it sleeps until it's woken - you ask him to look, tap the camera icon, or open the live
+// view - and then it stays on for 10 minutes. Saved on the server (camera_desk_hours) and sent to the Box-3 at once.
+const DAY_ROWS = [{ key: 'weekday', label: 'Weekdays', sub: 'Monday to Friday' }, { key: 'weekend', label: 'Weekends', sub: 'Saturday and Sunday' }];
+
+function CameraHours({ isDark, panel, showToast, onError }) {
+  const [hours, setHours] = useState(null);
+  const [saved, setSaved] = useState(null);
+  const [now, setNow] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const loadNow = useCallback(() => {
+    fetch('/api/camera/status').then((r) => r.json()).then((d) => { if (d.success) setNow(d); }).catch(() => {});
+  }, []);
+  useEffect(() => {
+    fetch('/api/camera/hours').then((r) => r.json()).then((d) => { if (d.success) { setHours(d.hours); setSaved(d.hours); } }).catch((err) => onError(err.message));
+    loadNow();
+    const t = setInterval(loadNow, 30000);
+    return () => clearInterval(t);
+  }, [loadNow, onError]);
+
+  if (!hours) return null;
+  const changed = JSON.stringify(hours) !== JSON.stringify(saved);
+  const setRow = (key, patch) => setHours((h) => ({ ...h, [key]: { ...h[key], ...patch } }));
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/camera/hours', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hours }) });
+      const d = await res.json();
+      if (!res.ok || !d.success) throw new Error(d.error || 'Could not save the camera hours.');
+      setHours(d.hours); setSaved(d.hours);
+      showToast('Camera hours saved - the Box-3 has been told.');
+      loadNow();
+    } catch (err) { onError(err.message); } finally { setSaving(false); }
+  };
+
+  const nowText = !now ? '' : now.recording ? 'Off - a call or meeting is being recorded'
+    : now.deviceAwakeWanted ? (now.idle ? 'On - nobody at the desk, so taking about one picture a second' : 'On - full speed')
+    : 'Asleep - outside camera hours';
+  const timeField = `px-2.5 py-1.5 rounded-lg text-xs outline-none border font-mono ${isDark ? 'bg-slate-950/60 border-white/10 text-slate-100 [color-scheme:dark]' : 'bg-white border-[#2E2B27]/10 text-slate-900'}`;
+
+  return (
+    <div className={panel}>
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+        <div>
+          <h2 className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5"><Clock size={13} /> Camera hours</h2>
+          <p className="text-[11px] text-slate-500 mt-1 max-w-2xl">
+            When the camera stays on, so Ims can see you come and go - his eyes follow you and he says hello when you sit back down after 5 minutes away.
+            Outside these hours it sleeps until you ask him to look, tap the camera icon or open the live view, then stays on for 10 minutes. Everything it sees stays on this PC.
+          </p>
+        </div>
+        {nowText && <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border ${now?.deviceAwakeWanted ? (isDark ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30' : 'bg-emerald-50 text-emerald-800 border-emerald-300') : (isDark ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-300')}`}>Now: {nowText}</span>}
+      </div>
+      <div className="flex flex-col gap-2.5">
+        {DAY_ROWS.map(({ key, label, sub }) => {
+          const row = hours[key];
+          return (
+            <div key={key} className={`flex items-center gap-3 flex-wrap rounded-xl p-3 ${isDark ? 'bg-slate-950/50' : 'bg-white border border-[#2E2B27]/10'}`}>
+              <label className="flex items-center gap-2.5 cursor-pointer min-w-[180px]">
+                <input type="checkbox" checked={row.on} onChange={(e) => setRow(key, { on: e.target.checked })} className="w-4 h-4 accent-cyan-500" />
+                <span>
+                  <span className="text-xs font-bold block">{label}</span>
+                  <span className="text-[10px] text-slate-500">{sub}</span>
+                </span>
+              </label>
+              {row.on ? (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="opacity-70">On from</span>
+                  <input type="time" value={row.from} onChange={(e) => setRow(key, { from: e.target.value })} className={timeField} />
+                  <span className="opacity-70">until</span>
+                  <input type="time" value={row.until} onChange={(e) => setRow(key, { until: e.target.value })} className={timeField} />
+                </div>
+              ) : (
+                <span className="text-xs text-slate-500">Camera only on when woken</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex justify-end mt-3">
+        <button onClick={save} disabled={!changed || saving}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all disabled:opacity-40 ${isDark ? 'bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-300 border-cyan-500/30' : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-300'}`}>
+          {saving ? <RotateCw size={13} className="animate-spin" /> : <Save size={13} />} Save camera hours
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function LookPortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
   const isDark = theme === 'dark';
@@ -187,6 +276,9 @@ export default function LookPortal({ theme = 'dark', onThemeToggle, setCurrentPa
           )}
         </div>
       </div>
+
+      {/* Camera hours */}
+      <CameraHours isDark={isDark} panel={panel} showToast={showToast} onError={onError} />
 
       {/* Gallery */}
       <div className={panel}>

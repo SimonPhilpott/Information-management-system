@@ -16,6 +16,7 @@
 // dropped, the last picture is forgotten, and Look / Faces / desk presence all
 // see "no frame" until the recording stops.
 import { isRecordingActive, onRecordingChange } from './recordingService.js';
+import { getSetting, setSetting } from '../db/database.js';
 
 const ATTACHED_WINDOW_MS = 30000; // > the 15s device status-push cadence, so the icon doesn't flicker
 export const AWAKE_MS = 10 * 60 * 1000; // 10 minutes idle sleep (refreshed by presence, interaction, or vision Q&A)
@@ -23,14 +24,43 @@ export const AWAKE_MS = 10 * 60 * 1000; // 10 minutes idle sleep (refreshed by p
 // Desk hours (UK time): the camera stays on so desk presence can see Simon leave and come back - otherwise it
 // slept 10 minutes after he left and never saw him return, so no "Hello Simon". Outside a wake (someone at the
 // desk, a look, a tap) it runs "idle": the Box-3 sends about one picture a second instead of six, sparing the
-// Wi-Fi Ims's voice uses. Everything it sees is processed on this PC. Simon's hours (13 Oct).
-const DESK_HOURS = { weekday: [8, 18], weekend: [9, 21] }; // [from hour, until hour)
+// Wi-Fi Ims's voice uses. Everything it sees is processed on this PC. Set on /ims/look (Camera hours); saved
+// as the camera_desk_hours setting. Simon's starting hours (13 Oct): weekdays 08:00-18:00, weekends 09:00-21:00.
+const DEFAULT_DESK_HOURS = { weekday: { on: true, from: '08:00', until: '18:00' }, weekend: { on: true, from: '09:00', until: '21:00' } };
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const minutesOf = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+
+export function getDeskHours() {
+  let saved = null;
+  try { saved = JSON.parse(getSetting('camera_desk_hours') || 'null'); } catch (_) { }
+  const out = {};
+  for (const k of ['weekday', 'weekend']) {
+    const d = DEFAULT_DESK_HOURS[k], v = saved?.[k] || {};
+    out[k] = { on: typeof v.on === 'boolean' ? v.on : d.on, from: HHMM.test(v.from) ? v.from : d.from, until: HHMM.test(v.until) ? v.until : d.until };
+  }
+  return out;
+}
+
+export function setDeskHours(hours) {
+  const clean = {};
+  for (const k of ['weekday', 'weekend']) {
+    const v = hours?.[k];
+    if (!v || typeof v.on !== 'boolean' || !HHMM.test(v.from) || !HHMM.test(v.until)) throw new Error(`Give ${k === 'weekday' ? 'weekday' : 'weekend'} hours as on/off and HH:MM times.`);
+    if (v.on && minutesOf(v.until) <= minutesOf(v.from)) throw new Error(`${k === 'weekday' ? 'Weekday' : 'Weekend'} hours must finish after they start.`);
+    clean[k] = { on: v.on, from: v.from, until: v.until };
+  }
+  setSetting('camera_desk_hours', JSON.stringify(clean));
+  notifyCameraChange(); // the Box-3 is told at once
+  return getDeskHours();
+}
+
 export function inDeskHours(date = new Date()) {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', weekday: 'short', hour: 'numeric', hourCycle: 'h23' })
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
     .formatToParts(date).map((x) => [x.type, x.value]));
-  const [from, until] = ['Sat', 'Sun'].includes(parts.weekday) ? DESK_HOURS.weekend : DESK_HOURS.weekday;
-  const hour = Number(parts.hour);
-  return hour >= from && hour < until;
+  const day = getDeskHours()[['Sat', 'Sun'].includes(parts.weekday) ? 'weekend' : 'weekday'];
+  if (!day.on) return false;
+  const now = Number(parts.hour) * 60 + Number(parts.minute);
+  return now >= minutesOf(day.from) && now < minutesOf(day.until);
 }
 
 let latest = { buffer: null, at: 0, source: null };

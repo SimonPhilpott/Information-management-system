@@ -1,5 +1,5 @@
 import express, { Router } from 'express';
-import { setFrame, getFrame, getCameraStatus, wakeCamera, heartbeat, readDeviceLog, streamMjpeg } from '../services/cameraService.js';
+import { setFrame, getFrame, getCameraStatus, wakeCamera, heartbeat, readDeviceLog, streamMjpeg, getDeskHours, setDeskHours } from '../services/cameraService.js';
 import { executeDeviceCommand } from '../services/deviceHealthService.js';
 import { getPresence, getGaze, listPresence } from '../services/presenceService.js';
 
@@ -50,6 +50,13 @@ router.post('/wake', async (req, res) => {
 // What the box has reported about its camera (enumeration, formats, errors).
 router.get('/device-log', (req, res) => {
   res.json({ success: true, lines: readDeviceLog(Number(req.query.lines) || 200) });
+});
+
+// Camera hours (desk hours): when the camera stays on for desk presence - Look page
+router.get('/hours', (req, res) => res.json({ success: true, hours: getDeskHours() }));
+router.put('/hours', express.json(), (req, res) => {
+  try { res.json({ success: true, hours: setDeskHours(req.body?.hours) }); }
+  catch (err) { res.status(400).json({ success: false, error: err.message }); }
 });
 
 router.get('/status', (req, res) => {
