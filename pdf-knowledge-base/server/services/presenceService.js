@@ -20,7 +20,7 @@ import { isRecordingActive } from './recordingService.js';
 // restart never counts as "just sat down".
 
 const TICK_MS = 250;                    // how often a fresh frame is looked at
-const FRESH_MS = 2000;                  // older frames are not looked at
+const FRESH_MS = 2500;                  // older frames are not looked at (idle desk hours: ~1 picture a second)
 const BLIND_MS = 20000;                 // no fresh frames this long -> state unknown
 const GAZE_LOST_MS = 1500;              // no face this long -> eyes go back to their own glances
 const GAZE_REPEAT_MS = 3000;            // the device forgets a gaze it isn't reminded of

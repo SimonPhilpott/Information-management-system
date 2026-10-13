@@ -137,6 +137,10 @@ enum TerminalState {
 
 volatile TerminalState currentState = STATE_CONNECTING_WIFI;
 volatile unsigned long verifyingStartMs = 0;
+extern char g_backendHost[40]; // the backend the voice connection reached (see connectToBackend)
+// Extra time for this wake check, sent by the server ({"verifyExtendMs": n}) when what it has heard so far
+// sounds like the start of a wake phrase - Gemini's first transcript can take 4 s or more (11 Oct).
+volatile unsigned long verifyExtraMs = 0;
 TerminalState lastRenderedState = (TerminalState)-1;
 // i2s_std channel handles (see initAudioHardware()) - separate TX/RX handles
 // even though they share one physical I2S peripheral/clock, matching
@@ -631,7 +635,7 @@ void savePersonalityToNVS() {
 void fetchPersonalityFromBackend() {
   if (WiFi.status() != WL_CONNECTED) return;
   HTTPClient http;
-  String url = String("http://") + IMS_PRIMARY_HOST + ":3003/device/personality";
+  String url = String("http://") + g_backendHost + ":3003/device/personality";
   http.begin(url);
   http.addHeader("X-IMS-Key", IMS_DEVICE_KEY);
   int code = http.GET();
@@ -673,7 +677,7 @@ void fetchPersonalityFromBackend() {
 void postPersonalityToBackend() {
   if (WiFi.status() != WL_CONNECTED) return;
   HTTPClient http;
-  String url = String("http://") + IMS_PRIMARY_HOST + ":3003/device/personality";
+  String url = String("http://") + g_backendHost + ":3003/device/personality";
   http.begin(url);
   http.addHeader("X-IMS-Key", IMS_DEVICE_KEY);
   http.addHeader("Content-Type", "application/json");
@@ -1452,7 +1456,7 @@ static void facePackTask(void *) {
   int len = 0;
   bool ok = false;
   HTTPClient http;
-  String url = String("http://") + IMS_PRIMARY_HOST + ":3003/device/face-pack/" + id + ".bin";
+  String url = String("http://") + g_backendHost + ":3003/device/face-pack/" + id + ".bin";
   http.setTimeout(15000);
   if (http.begin(url)) {
     http.addHeader("X-IMS-Key", IMS_DEVICE_KEY);
@@ -3762,6 +3766,7 @@ void beginVerifying() {
   currentEmotion = EMOTION_NEUTRAL;
   currentState = STATE_VERIFYING;
   verifyingStartMs = millis();
+  verifyExtraMs = 0;
   micStreamingActive = true;
   lastSpeechTimestamp = millis();
   isSpeakingDetected = true;
@@ -3835,6 +3840,12 @@ static const size_t NUM_HOST_CANDIDATES = sizeof(IMS_HOST_CANDIDATES) / sizeof(I
 static size_t currentHostCandidateIdx = 0;
 #endif
 
+// The backend address the voice connection actually reached. The camera uploads, personality settings and
+// face-pack downloads use it too - they used IMS_PRIMARY_HOST, and when the PC's address moved to the
+// fallback (Oct 2026) they silently went to a PC that wasn't there: no pictures for Ims, no face packs.
+// The camera keeps a pointer to this buffer, so it follows a change without being told.
+char g_backendHost[40] = IMS_PRIMARY_HOST;
+
 void connectToBackend() {
   tcpClient.stop();
   // Whatever partial frame the old socket was mid-way through is gone with
@@ -3850,6 +3861,11 @@ void connectToBackend() {
   currentState = STATE_CONNECTING_SERVER;
   if (tcpClient.connect(hostToTry, IMS_TCP_PORT)) {
     Serial.printf("[TCP] Connected to backend on %s\n", hostToTry);
+    if (strcmp(g_backendHost, hostToTry) != 0) {
+      strncpy(g_backendHost, hostToTry, sizeof(g_backendHost) - 1);
+      g_backendHost[sizeof(g_backendHost) - 1] = '\0';
+      logf("[TCP] Backend is at %s - camera, settings and face packs use it too", g_backendHost);
+    }
     connectionAttempts = 0;
     isSetupAcknowledged = true;
     geminiSetupComplete = false; // Will be set true when Gemini ACKs setup
@@ -4190,6 +4206,10 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
     // the conversation should close once STATE_SPEAKING naturally finishes
     // (see the auto-transition in loop()), same as any other reply.
     // How long to keep listening for a reply without the wake phrase (sent after each of Ims's replies)
+    if (doc["verifyExtendMs"].is<int>() && currentState == STATE_VERIFYING) {
+      long x = doc["verifyExtendMs"].as<long>();
+      verifyExtraMs = (unsigned long)(x < 0 ? 0 : (x > 4000 ? 4000 : x));
+    }
     if (doc["followUpMs"].is<int>()) {
       long f = doc["followUpMs"].as<long>() + 3000; // a little longer than the server's own window
       if (f < 12000) f = 12000;
@@ -4476,6 +4496,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       cameraAttached = s["camera"]["attached"] | false;
       cameraAwake = s["camera"]["awake"] | false;
       cameraSetAwake(cameraAwake);
+      cameraSetIdle(s["camera"]["idle"] | false);
       setRecordingMode(s["recording"]["active"] | false);
       if (s.containsKey("standbyFace")) applyStandbyFace(s["standbyFace"]);
       if (s["face"].is<JsonObject>() && applyDeviceFace(s["face"]) && !onSettingsScreen) renderScreen(true);
@@ -4866,6 +4887,7 @@ void audioMicTask(void *param) {
               micStreamingActive = true;
               isSpeakingDetected = true;
               verifyingStartMs = millis();
+              verifyExtraMs = 0;
               speechStartTime = millis();
               lastSpeechTimestamp = millis();
 
@@ -5114,7 +5136,7 @@ void setup() {
   // running from the dock's own power). With a PC plugged in the camera stays
   // off so flashing and serial logging keep working.
   if (!Serial.isPlugged()) {
-    cameraBegin(IMS_PRIMARY_HOST, 3003);
+    cameraBegin(g_backendHost, 3003);
   } else {
     Serial.println("[Camera] PC USB link present - camera disabled (unplug the PC cable and power from the dock to use it)");
   }
@@ -5580,10 +5602,13 @@ void loop() {
   // verifyingStartMs provides an absolute ceiling (4500ms) to prevent permanent lockup.
   // Once the server has verified the wake phrase (the green dot) the reply is on its way - Gemini can take
   // a second or more to start, and the 4.5 s ceiling used to close the session just before it arrived.
-  const unsigned long verifyCeilingMs = voiceWakeVerified ? 12000 : 4500;
+  // Unverified: 7 s (was 4.5 s - 1 in 10 first transcripts arrived after 4 s and the check had already closed),
+  // plus whatever the server added because it heard the start of a wake phrase. Simon pauses after a wake
+  // phrase, so the quiet limit is 6 s - quiet is exactly what follows a real one (11 Oct).
+  const unsigned long verifyCeilingMs = voiceWakeVerified ? 12000 : 7000 + verifyExtraMs;
   if (currentState == STATE_VERIFYING &&
       ((verifyingStartMs > 0 && (millis() - verifyingStartMs > verifyCeilingMs)) ||
-       (!voiceWakeVerified && millis() - lastSpeechTimestamp > 4000))) {
+       (!voiceWakeVerified && millis() - lastSpeechTimestamp > 6000 + verifyExtraMs))) {
     sendDebug("verify_timeout");
     sendAudioStreamEnd(); // this is exactly the case that was never being closed
     sendSessionClosed();

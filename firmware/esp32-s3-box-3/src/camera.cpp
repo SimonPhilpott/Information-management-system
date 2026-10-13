@@ -38,6 +38,9 @@ static int espLogVprintf(const char *fmt, va_list ap) {
 // cameraManagerTask(), so USB timing is never held up by the network.
 
 static const char *g_host = nullptr;
+// Desk hours with nobody about, the backend asks for "idle": about one picture a second instead of ~6, enough
+// for desk presence to notice someone arriving, without crowding the Wi-Fi Ims's voice uses
+static volatile bool g_idle = false;
 static uint16_t g_port = 0;
 static bool g_started = false;
 
@@ -324,7 +327,7 @@ static void cameraManagerTask(void *) {
     }
 
     // Newest frame -> backend, up to ~6 per second while awake and streaming.
-    if (g_streaming && !g_suspended && g_jpgSeq != g_sentSeq && millis() - lastUploadMs > 160) {
+    if (g_streaming && !g_suspended && g_jpgSeq != g_sentSeq && millis() - lastUploadMs > (g_idle ? 1000u : 160u)) {
       size_t len = 0;
       if (xSemaphoreTake(g_jpgMux, pdMS_TO_TICKS(15)) == pdTRUE) {
         len = g_jpgLen;
@@ -426,6 +429,8 @@ void cameraSetAwake(bool awake) {
   if (!awake && (int32_t)(g_bootGraceUntil - millis()) > 0) return;
   g_wantAwake = awake;
 }
+
+void cameraSetIdle(bool idle) { g_idle = idle; }
 
 void cameraSetSuspended(bool on) {
   if (on == g_suspended) return;

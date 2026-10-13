@@ -20,6 +20,19 @@ import { isRecordingActive, onRecordingChange } from './recordingService.js';
 const ATTACHED_WINDOW_MS = 30000; // > the 15s device status-push cadence, so the icon doesn't flicker
 export const AWAKE_MS = 10 * 60 * 1000; // 10 minutes idle sleep (refreshed by presence, interaction, or vision Q&A)
 
+// Desk hours (UK time): the camera stays on so desk presence can see Simon leave and come back - otherwise it
+// slept 10 minutes after he left and never saw him return, so no "Hello Simon". Outside a wake (someone at the
+// desk, a look, a tap) it runs "idle": the Box-3 sends about one picture a second instead of six, sparing the
+// Wi-Fi Ims's voice uses. Everything it sees is processed on this PC. Simon's hours (13 Oct).
+const DESK_HOURS = { weekday: [8, 18], weekend: [9, 21] }; // [from hour, until hour)
+export function inDeskHours(date = new Date()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', weekday: 'short', hour: 'numeric', hourCycle: 'h23' })
+    .formatToParts(date).map((x) => [x.type, x.value]));
+  const [from, until] = ['Sat', 'Sun'].includes(parts.weekday) ? DESK_HOURS.weekend : DESK_HOURS.weekday;
+  const hour = Number(parts.hour);
+  return hour >= from && hour < until;
+}
+
 let latest = { buffer: null, at: 0, source: null };
 let heartbeatAt = 0;
 let awakeUntil = Date.now() + AWAKE_MS; // Start hot
@@ -113,11 +126,15 @@ export function getCameraStatus() {
   const now = Date.now();
   const attached = Boolean((latest.buffer && now - latest.at < ATTACHED_WINDOW_MS) || (heartbeatAt && now - heartbeatAt < ATTACHED_WINDOW_MS));
   const recording = isRecordingActive();
-  const isAwake = now < awakeUntil && !recording;
+  const woken = now < awakeUntil;
+  const deskHours = inDeskHours();
+  const isAwake = (woken || deskHours) && !recording;
   return {
     attached,
     awake: attached && isAwake,
     deviceAwakeWanted: isAwake,
+    idle: isAwake && !woken, // desk hours with nobody about: slow pictures
+    deskHours,
     sleepsInSeconds: isAwake ? Math.round((awakeUntil - now) / 1000) : 0,
     lastFrameAt: latest.buffer ? new Date(latest.at).toISOString() : null,
     lastHeartbeatAt: heartbeatAt ? new Date(heartbeatAt).toISOString() : null,

@@ -931,7 +931,7 @@ function deviceStatus() {
         ...getActiveScheduledStatus(),
         birthday: getBirthdayFooterStatus(),
         newReleases: { count: getTodayReleases().length },
-        camera: (({ attached, deviceAwakeWanted }) => ({ attached, awake: Boolean(deviceAwakeWanted) }))(getCameraStatus()),
+        camera: (({ attached, deviceAwakeWanted, idle }) => ({ attached, awake: Boolean(deviceAwakeWanted), idle: Boolean(idle) }))(getCameraStatus()),
         recording: { active: isRecordingActive() },
         calendar: { icons: getDeviceIcons() },
         standbyFace: getStandbyOverride(),
@@ -1360,11 +1360,18 @@ const debugMicCapturesDir = path.join(__dirname, 'audio_captures');
 // parent dir first on a fresh checkout.
 fs.mkdirSync(debugMicCapturesDir, { recursive: true });
 let lastFrameCamKey = '';
+const deviceKeyRefusedAt = {};
 const debugMicServer = http.createServer((req, res) => {
   // Device key: when IMS_DEVICE_KEY is set (pdf-knowledge-base/.env), every request must carry it in the
   // X-IMS-Key header - the Box-3 sends it (secrets.h) - so nothing else on the network can change Ims's
   // personality, post camera frames or fetch face packs. Not set: open, as before.
   if (process.env.IMS_DEVICE_KEY && req.headers['x-ims-key'] !== process.env.IMS_DEVICE_KEY) {
+    // logged (at most once a minute per path) so a device with an old or missing key shows up in debug.log
+    const p = `${req.method} ${req.url.split('?')[0].replace(/\/[^/]+\.bin$/, '/*.bin')}`;
+    if (!deviceKeyRefusedAt[p] || Date.now() - deviceKeyRefusedAt[p] > 60000) {
+      deviceKeyRefusedAt[p] = Date.now();
+      tcpLog(`DEVICE REQUEST REFUSED ${p} from ${req.socket.remoteAddress} - ${req.headers['x-ims-key'] ? 'wrong device key' : 'no device key sent'}`);
+    }
     res.writeHead(401, { 'Content-Type': 'text/plain' }).end('Device key required.');
     return;
   }
