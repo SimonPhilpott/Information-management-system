@@ -86,6 +86,7 @@ import { startPresence, onPresence } from './services/presenceService.js';
 import { startWakeGate } from './services/wakeGateService.js';
 import { live, thinkDeliverers } from './live/state.js';
 import { handleLiveProxyConnection, setPushScheduleStatus } from './live/liveProxy.js';
+import { writeDebugLog } from './live/debugLog.js';
 import { validateConfiguredModels } from './services/modelService.js';
 import { isDeviceMicMuted } from './services/deviceState.js';
 import { loadHnswFromDisk } from './services/hnswService.js';
@@ -1106,17 +1107,41 @@ HardwareTcpClient.OPEN = HardwareTcpClient.prototype.OPEN = 1;
 HardwareTcpClient.CLOSING = HardwareTcpClient.prototype.CLOSING = 2;
 HardwareTcpClient.CLOSED = HardwareTcpClient.prototype.CLOSED = 3;
 
+// Why each Box-3 connection ended, in audio_captures/debug.log: the device drops and reconnects a few times an
+// hour and a drop mid-reply cuts the reply off (13 Oct, the day report) - this says which side ended it.
+const tcpLog = (line) => { try { writeDebugLog(`[${new Date().toISOString()}] [HardwareTCP] ${line}\n`); } catch (_) { } };
+
 const hardwareTcpServer = net.createServer((socket) => {
   socket.setNoDelay(true);
   socket.setKeepAlive(true, 10000); // 10s TCP keep-alive probe
   socket.setTimeout(60000); // 60s idle timeout
+  const peer = `${socket.remoteAddress}:${socket.remotePort}`;
+  const openedAt = Date.now();
+  let lastRxAt = Date.now(), endedBy = null;
+  socket.on('data', () => { lastRxAt = Date.now(); });
   socket.on('timeout', () => {
     console.warn('[HardwareTCP] Socket idle timeout (60s no activity) — closing stale connection');
+    endedBy = 'server: 60 s with nothing from the device';
     socket.destroy();
+  });
+  socket.on('end', () => { endedBy = endedBy || 'device closed it'; });
+  socket.on('error', (err) => { endedBy = endedBy || `error ${err.code || err.message}`; });
+  socket.on('close', (hadError) => {
+    tcpLog(`CONNECTION CLOSED ${peer}: ${endedBy || (hadError ? 'error' : 'closed')} - open ${Math.round((Date.now() - openedAt) / 1000)} s, last data from device ${Date.now() - lastRxAt} ms before, ${socket.bytesRead} bytes in / ${socket.bytesWritten} out`);
   });
   const client = new HardwareTcpClient(socket);
   handleLiveProxyConnection(client, true);
 });
+
+{
+  let expected = Date.now() + 500;
+  setInterval(() => {
+    const late = Date.now() - expected;
+    if (late > 1000) tcpLog(`SERVER FROZE for ${late} ms (nothing could be read from the device meanwhile)`);
+    expected = Date.now() + 500;
+  }, 500).unref();
+}
+tcpLog(`SERVER STARTED pid ${process.pid}`);
 
 hardwareTcpServer.listen(HARDWARE_TCP_PORT, () => {
   console.log(`[HardwareTCP] Raw TCP hardware endpoint listening on port ${HARDWARE_TCP_PORT}`);
