@@ -1386,10 +1386,20 @@ export async function syncCodeVectors() {
 /**
  * Search code snippets using cosine similarity against query embedding.
  */
+// The decoded index, kept in memory until the file changes: reading and decoding the ~10 MB file on every
+// search froze the server for seconds at a time, long enough for the Box-3 to drop its connection (13 Oct).
+let codeIndexCache = { mtimeMs: 0, records: null };
+function codeIndexRecords() {
+  if (!fs.existsSync(CODE_VECTORS_PATH)) return [];
+  const mtimeMs = fs.statSync(CODE_VECTORS_PATH).mtimeMs;
+  if (!codeIndexCache.records || codeIndexCache.mtimeMs !== mtimeMs) codeIndexCache = { mtimeMs, records: readVectorFileSync(CODE_VECTORS_PATH) };
+  return codeIndexCache.records;
+}
+
 export async function searchCodeSnippets(queryEmbedding, topK = 5) {
   if (!fs.existsSync(CODE_VECTORS_PATH)) return [];
   try {
-    const records = readVectorFileSync(CODE_VECTORS_PATH).filter((r) => r.embedding && r.embedding.length);
+    const records = codeIndexRecords().filter((r) => r.embedding && r.embedding.length);
     return records
       .map(({ embedding, ...r }) => ({ ...r, similarity: cosine(queryEmbedding, embedding) }))
       .sort((a, b) => b.similarity - a.similarity)
@@ -1404,7 +1414,7 @@ export async function searchCodeSnippets(queryEmbedding, topK = 5) {
 export function codeIndexIsCurrent() {
   if (!fs.existsSync(CODE_VECTORS_PATH)) return false;
   try {
-    const records = readVectorFileSync(CODE_VECTORS_PATH);
+    const records = codeIndexRecords();
     const ids = new Set(db.prepare('SELECT id FROM code_snippets').all().map((r) => r.id));
     return records.length === ids.size && records.every((r) => ids.has(r.snippetId) && r.embedding && r.embedding.length > 0);
   } catch (_) { return false; }

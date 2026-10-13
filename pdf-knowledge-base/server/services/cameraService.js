@@ -131,10 +131,21 @@ export function setFrame(buffer, source = 'unknown') {
   }
 }
 
-// Wakes the camera (or extends its awake period) for another AWAKE_MS.
+// Wakes the camera (or extends its awake period) for another AWAKE_MS, at full speed (~6 pictures a second)
+// for the next minute: someone is using a picture - Ims looking, the live view, a tap on the camera icon.
+// Full speed only then: at ~6 uploads a second all the time the Box-3's Wi-Fi couldn't keep up with Ims's voice
+// link as well, and it dropped and reconnected about once a minute (13 Oct, "Connecting to IMS backend").
+const FULL_SPEED_MS = 60 * 1000;
+let fullSpeedUntil = 0;
 export function wakeCamera() {
   awakeUntil = Date.now() + AWAKE_MS;
+  fullSpeedUntil = Date.now() + FULL_SPEED_MS;
   notifyCameraChange();
+}
+// Keeps the camera awake without asking for full speed - desk presence while someone is at the desk: about
+// one picture a second is enough for the eyes to follow and for the sit-down hello.
+export function keepCameraAwake() {
+  awakeUntil = Date.now() + AWAKE_MS;
 }
 // Anything that uses the camera counts as a reason to keep it awake.
 export const markInUse = wakeCamera;
@@ -157,13 +168,14 @@ export function getCameraStatus() {
   const attached = Boolean((latest.buffer && now - latest.at < ATTACHED_WINDOW_MS) || (heartbeatAt && now - heartbeatAt < ATTACHED_WINDOW_MS));
   const recording = isRecordingActive();
   const woken = now < awakeUntil;
+  const fullSpeed = now < fullSpeedUntil;
   const deskHours = inDeskHours();
   const isAwake = (woken || deskHours) && !recording;
   return {
     attached,
     awake: attached && isAwake,
     deviceAwakeWanted: isAwake,
-    idle: isAwake && !woken, // desk hours with nobody about: slow pictures
+    idle: isAwake && !fullSpeed, // about one picture a second unless a picture is being used right now
     deskHours,
     sleepsInSeconds: isAwake ? Math.round((awakeUntil - now) / 1000) : 0,
     lastFrameAt: latest.buffer ? new Date(latest.at).toISOString() : null,

@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import db from '../db/database.js';
-import { getFrame, wakeCamera } from './cameraService.js';
+import { getFrame, keepCameraAwake } from './cameraService.js';
 import { detectFacesFast, matchEmbedding } from './faceService.js';
 import { isRecordingActive } from './recordingService.js';
 
@@ -104,7 +104,7 @@ function onFaces(out, frameAt) {
   const faces = out.faces || [];
   if (faces.length) {
     lastFaceAt = frameAt;
-    wakeCamera(); // Actively refresh camera awake timeout while a person is present
+    keepCameraAwake(); // someone's here: stay awake (at the idle rate - see cameraService)
     // Eyes: follow the biggest (nearest) face.
     const [x, y, w, h] = faces[0].box;
     const nx = ((x + w / 2) / out.width) * 2 - 1;
