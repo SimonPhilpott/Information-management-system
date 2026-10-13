@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Mic, MicOff, Send, Volume2, VolumeX, Square, Trash2, Utensils, Activity, Radio, Cpu, Sparkles, Wifi, Command } from 'lucide-react';
+import { Mic, MicOff, Send, Volume2, VolumeX, Square, Trash2, Utensils, Activity, Radio, Cpu, Sparkles, Wifi, Command, Pill, AlarmClock, Timer, Bell, Cake, Disc3, Syringe, CircleDot } from 'lucide-react';
 import PhotoCarbs, { CameraCapture } from '../Dashboard/PhotoCarbs';
 import ImsFace from './ImsFace';
 import { useImsLive } from '../../hooks/useImsLive';
@@ -21,6 +21,87 @@ const STATUS_DOT = {
   thinking: 'bg-sky-400 animate-pulse',
   speaking: 'bg-violet-400',
 };
+
+// The Box-3's status icons, under Ims's face: pod, sensor and prescription (from the calendar rules - orange
+// means it's coming up, as on the device), alarms, timers (counting down), reminders, birthdays and new
+// releases. Same data as the device (GET /api/ims/status), refreshed every 15 s like it.
+const CALENDAR_ICONS = {
+  pod: { Icon: Syringe, name: 'Omnipod change' },
+  sensor: { Icon: CircleDot, name: 'Sensor change' },
+  prescription: { Icon: Pill, name: 'Prescription' },
+};
+const londonTime = (iso) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', hour: '2-digit', minute: '2-digit' });
+const countdown = (sec) => {
+  const s = Math.max(0, Math.round(sec));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}` : `${m}:${String(r).padStart(2, '0')}`;
+};
+
+function StatusStrip({ isDark }) {
+  const [status, setStatus] = useState(null);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    let stop = false;
+    const load = () => fetch('/api/ims/status').then((r) => r.json()).then((d) => { if (!stop && d.success) setStatus(d); }).catch(() => {});
+    load();
+    const poll = setInterval(load, 15000);
+    return () => { stop = true; clearInterval(poll); };
+  }, []);
+  const hasTimer = Boolean(status?.hasTimer);
+  useEffect(() => {
+    if (!hasTimer) return undefined;
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(tick);
+  }, [hasTimer]);
+  if (!status) return null;
+
+  const tone = (t) => ({
+    slate: isDark ? 'bg-slate-800 text-slate-200 border-slate-700' : 'bg-slate-100 text-slate-800 border-slate-300',
+    amber: isDark ? 'bg-amber-950/40 text-amber-300 border-amber-500/30' : 'bg-amber-50 text-amber-800 border-amber-300',
+    rose: isDark ? 'bg-rose-950/40 text-rose-300 border-rose-500/30' : 'bg-rose-50 text-rose-800 border-rose-300',
+    sky: isDark ? 'bg-sky-950/40 text-sky-300 border-sky-500/30' : 'bg-sky-50 text-sky-800 border-sky-300',
+    violet: isDark ? 'bg-violet-950/40 text-violet-300 border-violet-500/30' : 'bg-violet-50 text-violet-800 border-violet-300',
+    pink: isDark ? 'bg-pink-950/40 text-pink-300 border-pink-500/30' : 'bg-pink-50 text-pink-800 border-pink-300',
+  }[t]);
+  const items = status.items || [];
+  const of = (type) => items.filter((i) => i.type === type);
+  const chips = [];
+  for (const ic of status.icons || []) {
+    const def = CALENDAR_ICONS[ic.icon];
+    if (!def) continue;
+    const soon = ic.color && ic.color !== 'white';
+    chips.push({ key: `cal-${ic.icon}`, Icon: def.Icon, tone: soon ? 'amber' : 'slate', text: soon ? `${def.name} soon` : `${def.name} today`, title: soon ? `${def.name} coming up (from your calendar)` : `${def.name} due today (from your calendar)` });
+  }
+  if (status.hasAlarm) {
+    const next = of('alarm')[0];
+    chips.push({ key: 'alarm', Icon: AlarmClock, tone: 'rose', text: next ? londonTime(next.fireAt) : `${status.alarmCount}`, count: status.alarmCount, title: of('alarm').map((i) => `${i.label || 'Alarm'} - ${londonTime(i.fireAt)}`).join('\n') });
+  }
+  if (hasTimer) {
+    const timers = of('timer');
+    const next = timers[0];
+    const left = next ? (new Date(next.fireAt).getTime() - now) / 1000 : 0;
+    chips.push({ key: 'timer', Icon: Timer, tone: 'sky', text: next ? countdown(left) : `${status.timerCount}`, count: status.timerCount, title: timers.map((i) => `${i.label || 'Timer'} - ends ${londonTime(i.fireAt)}`).join('\n') });
+  }
+  if (status.hasReminder) {
+    const next = of('reminder')[0];
+    chips.push({ key: 'reminder', Icon: Bell, tone: 'violet', text: next ? `${next.label || 'Reminder'} · ${londonTime(next.fireAt)}` : `${status.reminderCount}`, count: status.reminderCount, title: of('reminder').map((i) => `${i.label || 'Reminder'} - ${londonTime(i.fireAt)}`).join('\n') });
+  }
+  if (status.birthday?.count) chips.push({ key: 'birthday', Icon: Cake, tone: 'pink', text: `${status.birthday.count} birthday${status.birthday.count === 1 ? '' : 's'}`, title: 'Birthdays coming up' });
+  if (status.newReleases?.count) chips.push({ key: 'releases', Icon: Disc3, tone: 'violet', text: `${status.newReleases.count} new release${status.newReleases.count === 1 ? '' : 's'}`, title: 'New music out today' });
+  if (!chips.length) return null;
+
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-1.5 mt-2 max-w-xl mx-auto">
+      {chips.map(({ key, Icon, tone: t, text, count, title }) => (
+        <span key={key} title={title} className={`px-2 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 border max-w-[260px] ${tone(t)}`}>
+          <Icon size={13} className="shrink-0" />
+          <span className="truncate">{text}</span>
+          {count > 1 && <span className="px-1.5 rounded-full text-[10px] font-black border border-current opacity-80">{count}</span>}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 // Real-time audio waveform visualizer rendered around/under IMS's avatar mirroring the Box-3 display state
 function AudioWaveVisualizer({ getAudioFrequencyData, isSpeaking, isListening, isDark }) {
@@ -188,6 +269,7 @@ export default function ImsPanel({ theme = 'dark' }) {
       <div className={`px-4 pt-2 pb-2 border-b ${border}`}>
         <Box3TelemetryHeader status={ims.status} isDark={isDark} levelRef={ims.levelRef} />
         <ImsFace face={ims.face} status={ims.status} levelRef={ims.levelRef} width="100%" className="max-w-[280px] mx-auto shadow-2xl" />
+        <StatusStrip isDark={isDark} />
         
         {/* Dynamic real-time audio waveform visualizer */}
         <AudioWaveVisualizer

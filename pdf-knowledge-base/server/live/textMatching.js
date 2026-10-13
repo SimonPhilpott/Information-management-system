@@ -5,7 +5,11 @@ import { wakeDaemonService } from '../services/wakeDaemonService.js';
 
 // A tool call the model has written out as text instead of calling it: setEmotion(emotion='happy'),
 // default_api.endConversation(), print(...) - never meant to be seen or kept.
-const TOOL_TEXT = /(?:\bprint\s*\(\s*)?\b(?:default_api\.)?(?:setEmotion|noWakeDetected|endConversation|lookAtCamera|startRecording|[a-z]+[A-Z]\w*)\s*\((?:[^()]|\([^()]*\))*\)\s*\)?/g;
+// A tool call that ended up in the transcript as text - Gemini's output transcript writes out the calls it
+// makes ("setEmotion{emotion:neutral}", "setEmotion(emotion='happy')", "<speaker:setEmotion/>"), whole or cut off
+const TOOL_TEXT = /(?:\bprint\s*\(\s*)?\b(?:default_api\.)?(?:setEmotion|noWakeDetected|endConversation|lookAtCamera|startRecording|[a-z]+[A-Z]\w*)\s*[({](?:[^(){}]|[({][^(){}]*[)}])*[)}]\s*\)?/g;
+const TOOL_TEXT_OPEN = /(?:\bprint\s*\(\s*)?\b(?:default_api\.)?(?:setEmotion|noWakeDetected|endConversation|lookAtCamera|startRecording|[a-z]+[A-Z]\w*)\s*[({][^(){}]*$/;
+const TOOL_TAG = /<[^<>]*\b(?:setEmotion|noWakeDetected|endConversation|lookAtCamera|startRecording|[a-z]+[A-Z]\w*)\b[^<>]*>/g;
 // Asking Ims to use his eyes: look / see / camera / observe / watch, in a sentence that's about what's in
 // front of him ("what can you see?", "have a look at this", "watch for the postman", "how do I look?").
 // Gemini doesn't always call lookAtCamera for these (8 Oct: "What can you see?" got "I can't quite make
@@ -26,7 +30,7 @@ const VISION_ASK = [
 const NOT_VISION = /\b(calendar|diary|schedule|weather|forecast|glucose|sugar|reminders?|lists?|emails?|report|news|notes?|timers?|alarms?|look\s+(up|into|for(ward)?)|see\s+you|we'?ll\s+see|let'?s\s+see|see\s+if)\b/i;
 export const looksLikeVisionAsk = (text) => VISION_ASK.some((re) => re.test(text)) && !NOT_VISION.test(text);
 
-export const stripToolText = (text) => String(text).replace(TOOL_TEXT, '').replace(/[ 	]{2,}/g, ' ');
+export const stripToolText = (text) => String(text).replace(TOOL_TAG, '').replace(TOOL_TEXT, '').replace(TOOL_TEXT_OPEN, '').replace(/[ 	]{2,}/g, ' ');
 
 // "Hey / Hi / Eh up IMS", allowing for how speech-to-text spells the name (Ims, Ems, Eems, Hims, Elms, I'm...).
 const WAKE_RX = /\b(hey[\s,-]*up|hey|hi|hiya|heya|hello|eh[\s,-]*up|ey[\s,-]*up|ay[\s,-]*up|aye[\s,-]*up|ayup|eyup|oi|up)\b[\s,.!?'-]*(h?[aei]{1,2}m+e?[sz]\b|i\.?\s?m\.?\s?s\b|elms\b|helms\b|aops\b|i['’]?m\b)/i;

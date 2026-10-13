@@ -289,6 +289,13 @@ app.use('/api/look', lookRoutes);
 app.use('/api/alarms', scheduledRouter('alarm'));
 app.use('/api/timers', scheduledRouter('timer'));
 app.use('/api/reminders', scheduledRouter('reminder'));
+// The Box-3's status icons for Ims on the web app's main screen, with each alarm, timer and reminder's time
+app.get('/api/ims/status', (req, res) => {
+  try {
+    const { calendar, hasAlarm, hasTimer, hasReminder, alarmCount, timerCount, reminderCount, birthday, newReleases, recording } = deviceStatus();
+    res.json({ success: true, icons: calendar?.icons || [], hasAlarm, hasTimer, hasReminder, alarmCount, timerCount, reminderCount, birthday, newReleases, recording, items: listScheduledItems() });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
 app.use('/api/day-report', dayReportRoutes);
 app.use('/api/code-repo', codeRepoRoutes);
 app.use('/api/wake-daemon', wakeDaemonRoutes);
@@ -916,16 +923,11 @@ function deviceInfo() {
 }
 
 setPushScheduleStatus(pushScheduleStatus); // the live proxy pushes it too (live/liveProxy.js)
-export function pushScheduleStatus(targetWs = null) {
-  const ws = targetWs || live.hardwareSession?.clientWs;
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    try {
-      // Bundles alarms/timers/reminders (counts, not just booleans, so the
-      // footer can show a number badge) with birthdays and today's new music
-      // releases - one message covers the whole left-of-face icon stack,
-      // since all of it is refreshed together on the same 15s poll (see the
-      // setInterval below) regardless of which single thing actually changed.
-      const status = {
+// What the Box-3's screen shows: calendar icons (pod, sensor, prescription), alarms, timers, reminders,
+// birthdays, new releases, camera, recording, face. Ims on the web app's main screen shows the same
+// (GET /api/ims/status).
+function deviceStatus() {
+  return {
         ...getActiveScheduledStatus(),
         birthday: getBirthdayFooterStatus(),
         newReleases: { count: getTodayReleases().length },
@@ -935,7 +937,19 @@ export function pushScheduleStatus(targetWs = null) {
         standbyFace: getStandbyOverride(),
         face: (() => { try { return getDeviceFace(); } catch (err) { console.error('[FaceDevice]', err.message); return { style: 'dots' }; } })(),
         info: deviceInfo()
-      };
+  };
+}
+
+export function pushScheduleStatus(targetWs = null) {
+  const ws = targetWs || live.hardwareSession?.clientWs;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      // Bundles alarms/timers/reminders (counts, not just booleans, so the
+      // footer can show a number badge) with birthdays and today's new music
+      // releases - one message covers the whole left-of-face icon stack,
+      // since all of it is refreshed together on the same 15s poll (see the
+      // setInterval below) regardless of which single thing actually changed.
+      const status = deviceStatus();
       ws.send(JSON.stringify({
         schedule: status
       }));
