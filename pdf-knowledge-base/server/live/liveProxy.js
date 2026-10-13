@@ -207,6 +207,31 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   const outboundAudioQueue = [];
   let geminiSetupAcknowledged = false;
 
+  // Track cumulative prompt tokens reported by Gemini Live to log only incremental deltas
+  let lastLoggedPromptTokens = 0;
+  const recordLiveUsage = (meta) => {
+    if (!meta) return;
+    const currentPrompt = meta.promptTokenCount || 0;
+    // If upstream session was restarted or reset to a lower token count, reset tracker
+    if (currentPrompt < lastLoggedPromptTokens) {
+      lastLoggedPromptTokens = 0;
+    }
+    const promptDelta = Math.max(0, currentPrompt - lastLoggedPromptTokens);
+    lastLoggedPromptTokens = currentPrompt;
+
+    const completionTokens = (meta.candidatesTokenCount || 0) + (meta.thoughtsTokenCount || 0);
+
+    if (promptDelta > 0 || completionTokens > 0) {
+      const model = liveModel || getModelFor(isHardware || imsWeb ? 'imsVoice' : 'browserVoice');
+      const operation = isHardware || imsWeb ? 'imsVoice' : 'browserVoice';
+      recordUsage(model, {
+        promptTokenCount: promptDelta,
+        candidatesTokenCount: completionTokens,
+        thoughtsTokenCount: 0,
+      }, operation);
+    }
+  };
+
   // ---- Local wake check (wakeGateService.js) ----------------------------------------------------------
   // On standby, the Box-3's mic audio is held and transcribed on this PC; Gemini is opened (and handed the
   // held audio) only when it sounds like a wake phrase - the same matchers as everywhere else
@@ -508,6 +533,9 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       if (wakeKickTimer) { clearTimeout(wakeKickTimer); wakeKickTimer = null; }
       lastModelOutputAt = Date.now(); // the wake kick stands down
       for (let o = 0; o < clip.pcm.length; o += 4800) paceSend({ bin: clip.pcm.subarray(o, o + 4800) });
+      // the greeting is a whole turn: say so, as a Gemini reply does, or the Box-3 keeps "talking" (mouth moving)
+      // for 4 s after the words end, waiting for more audio (13 Oct)
+      paceSend({ json: JSON.stringify({ turnComplete: true }) });
       const clipMs = Math.round(clip.pcm.length / 48); // 24 kHz 16-bit mono
       followUpUntil = Date.now() + clipMs + followUpMs;
       paceSend({ json: JSON.stringify({ followUpMs }) }); // the Box-3 keeps listening for his reply
@@ -840,6 +868,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     geminiSetupAcknowledged = false;
     lastActivityAt = Date.now(); // a fresh session gets its full 15 s before the silence close
     sessionUsed = false;
+    if (!freshResumptionHandle()) lastLoggedPromptTokens = 0;
     try { sessionPersonaId = activePersonaId(); } catch (_) { sessionPersonaId = null; }
 
     if (isHardware) {
@@ -937,8 +966,8 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       try {
         parsed = JSON.parse(msgStr);
 
-        // Live sessions report token use per turn (audio both ways) - logged for the Costs page
-        if (parsed.usageMetadata) recordUsage(liveModel || getModelFor(isHardware || imsWeb ? 'imsVoice' : 'browserVoice'), parsed.usageMetadata, isHardware || imsWeb ? 'imsVoice' : 'browserVoice');
+        // Live sessions report cumulative prompt tokens across the session. Log only the incremental delta so turns are not repeatedly charged for the whole system prompt.
+        if (parsed.usageMetadata) recordLiveUsage(parsed.usageMetadata);
 
         if (isHardware && isRecordingActive()) {
           recordingMessage(parsed, gWs);

@@ -120,6 +120,20 @@ export async function ensureAllClips() {
 
 // a random clip for this persona, never the same one twice in a row
 const lastPicked = new Map();
+// The silence the live model leaves after a line (about a third of a second) is cut, keeping 80 ms, so the
+// Box-3 stops "talking" as soon as the words end (24 kHz 16-bit mono)
+function trimTail(pcm) {
+  const WIN = 480; // 20 ms
+  let end = pcm.length - (pcm.length % 2);
+  while (end > WIN * 2) {
+    let sum = 0;
+    for (let i = end - WIN * 2; i < end; i += 2) { const v = pcm.readInt16LE(i); sum += v * v; }
+    if (Math.sqrt(sum / WIN) > 300) break;
+    end -= WIN * 2;
+  }
+  return pcm.subarray(0, Math.min(pcm.length, end + WIN * 2 * 4));
+}
+
 export function pickClip(personaId) {
   const p = getPersona(personaId);
   if (!p) return null;
@@ -128,7 +142,7 @@ export function pickClip(personaId) {
   const choices = ready.length > 1 ? ready.filter((x) => x.line !== lastPicked.get(p.id)) : ready;
   const pick = choices[Math.floor(Math.random() * choices.length)];
   lastPicked.set(p.id, pick.line);
-  return { line: pick.line, pcm: fs.readFileSync(pick.f) };
+  return { line: pick.line, pcm: trimTail(fs.readFileSync(pick.f)) };
 }
 
 // A greeting for now: any recorded "anytime" line or one for this part of the day, never the same twice in a
@@ -143,5 +157,5 @@ export function pickGreeting(personaId, date = new Date()) {
   const choices = ready.length > 1 ? ready.filter((x) => x.line !== lastGreeting.get(p.id)) : ready;
   const pick = choices[Math.floor(Math.random() * choices.length)];
   lastGreeting.set(p.id, pick.line);
-  return { line: pick.line, pcm: fs.readFileSync(pick.f) };
+  return { line: pick.line, pcm: trimTail(fs.readFileSync(pick.f)) };
 }
