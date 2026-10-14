@@ -45,8 +45,14 @@ const NAME_TOKEN = /\b(i\.?\s?m\.?\s?s|ims|imz|ems|eems|emms|hims|aims|hms|h\.?\
 // not a list. Short utterances only (up to three words), so ordinary sentences aren't caught.
 const GREETING_THEN_NAME = /^\W*(hey|hi|hiya|heya|hello|eh[\s,-]*up|ey[\s,-]*up|ay[\s,-]*up|ayup|eyup|oi)\b[\s,.!?-]*[a-z]*m'?[sz]\W*$/i;
 
+// Brand names speech-to-text hears instead of the name: "Hey Ims" as "M&Ms" / "M and Ms" (chocolate,
+// 14 Oct) and "Hi Ims" as "H&M" (the shop - "H&M H&M", 14 Oct, ignored all afternoon).
+export const unmishear = (t) => String(t || '')
+  .replace(/\bm\s*(?:&|and|n)\s*m'?s\b/gi, 'Ims')
+  .replace(/\bh\s*(?:&|and|n)\s*m'?s?\b/gi, 'Hi Ims');
+
 export const looksAddressed = (t) => {
-  const text = String(t || '').trim();
+  const text = unmishear(t).trim();
   if (text.split(/\s+/).filter(Boolean).length <= 4 && GREETING_THEN_NAME.test(text)) return true;
   const opening = text.split(/\s+/).slice(0, 5).join(' ');
   if (WAKE_RX.test(text) || NAME_TOKEN.test(opening) || matchesWake(text) || ehUpSounding(text)) return true; // + spellings recorded on /ims/phrases
@@ -56,7 +62,7 @@ export const looksAddressed = (t) => {
 // Strict enough to overrule Gemini's own "no wake phrase" verdict: a recorded spelling, the full
 // wake phrase, or a short utterance ending in something like the name ("Neyo Pims", "radio Pims").
 export const heardLikeWake = (t) => {
-  const text = String(t || '').trim();
+  const text = unmishear(t).trim();
   if (!text) return false;
   if (matchesWake(text) || WAKE_RX.test(text) || ehUpSounding(text) || wakeDaemonService.isWakePhrase(text).matches) return true;
   const words = text.split(/\s+/).filter(Boolean);
@@ -94,7 +100,7 @@ export const faceFromWords = (text, used = []) => (FACE_CUES.find(([emo, rx]) =>
 const WAKE_ONLY_WORDS = /^(hey|hi|hiya|heya|hello|eh|ey|ay|aye|up|ayup|eyup|oi|now|then|a|op|aap|aup|anya|i'?m|i)$/i;
 export const isWakeOnly = (t) => {
   // "Hey Ims" heard as "M&Ms" / "M and Ms": the name, not chocolate (14 Oct - he asked which M&Ms and how many grams)
-  const text = String(t || '').replace(/\bm\s*(?:&|and|n)\s*m'?s\b/gi, 'Ims').trim();
+  const text = unmishear(t).trim();
   if (!text || !looksAddressed(text)) return false;
   if (GREETING_THEN_NAME.test(text)) return true; // "Hi, Yums" - a greeting and the name, misheard
   const words = text.toLowerCase().replace(/[^a-z' -]/g, ' ').split(/[\s-]+/).filter(Boolean);

@@ -661,7 +661,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       for (const f of old.slice(0, Math.max(0, old.length - 20))) fs.unlinkSync(path.join(dir, f));
     } catch (_) { }
     const rel = (t) => (t ? `+${t - w.at}ms` : '-');
-    try { logCapture(`[${new Date().toISOString()}] ${tag} WAKE TIMING ${outcome}: ${w.cold ? 'cold' : 'warm'} session, ready ${rel(w.readyAt)}, speech ended ${rel(w.endAt)} (${w.ends} audio end${w.ends === 1 ? '' : 's'} sent), first heard ${rel(w.heardAt)}, loudest mic ${w.peak || 0}${w.extended ? ', check extended' : ''}\n`); } catch (_) { }
+    try { logCapture(`[${new Date().toISOString()}] ${tag} WAKE TIMING ${outcome}: ${w.cold ? 'cold' : 'warm'} session, ready ${rel(w.readyAt)}, speech ended ${rel(w.endAt)} (${w.ends} audio end${w.ends === 1 ? '' : 's'} sent), first heard ${rel(w.heardAt)}, loudest mic ${w.peak || 0}${w.extended ? ', check extended' : ''} | socket age ${w.socketAgeS ?? '-'} s, ping ${w.pongMs != null ? `${w.pongMs} ms` : (w.pingAt ? 'NO PONG' : '-')}, unsent ${currentGeminiWs?.bufferedAmount ?? '-'} bytes, audio sent ${w.sent || 0}, queued ${w.queued || 0}, from Gemini ${w.fromGemini || 0} msg${w.fromGemini === 1 ? '' : 's'}${w.kinds ? ` (${[...new Set(w.kinds)].join(', ')})` : ''}\n`); } catch (_) { }
   };
   let recentMicFrames = []; // { at, buf } - the Box-3's pre-roll arrives just before its verifying_start
   let lastLoudMicAt = 0;    // last mic frame with real speech in it - the end of what the user said
@@ -860,6 +860,15 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     const gWs = new WebSocket(geminiUrl);
     geminiConnectedAt = Date.now();
     gWs.openedAt = geminiConnectedAt; // this session's own start (geminiConnectedAt moves on to the next one)
+    // Each session's setup is logged as fresh or resumed (wake deafness hunt, 14 Oct)
+    const sendRaw = gWs.send.bind(gWs);
+    gWs.send = (d, ...rest) => {
+      if (typeof d === 'string' && d.startsWith('{"setup"')) {
+        try { logCapture(`[${new Date().toISOString()}] ${tag} GEMINI SETUP SENT ${/"sessionResumption":\{"handle"/.test(d) ? '(resuming the last session)' : '(fresh session)'}
+`); } catch (_) { }
+      }
+      return sendRaw(d, ...rest);
+    };
     // The gap before the next session counts from when a close STARTS: the server drops its handle straight
     // after close(), so the next mic frame used to open a new session while this one was still closing -
     // Google answered those with "Internal error" (46 of 50 on 6 Oct 2026).
@@ -955,6 +964,10 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         } catch (_) { }
       }
       const msgStr = data.toString();
+      if (wakeCheck) {
+        wakeCheck.fromGemini = (wakeCheck.fromGemini || 0) + 1;
+        try { const k = Object.keys(JSON.parse(msgStr)); const sc = JSON.parse(msgStr).serverContent; (wakeCheck.kinds ||= []).push(sc ? `serverContent.${Object.keys(sc).join('+')}` : k.join('+')); } catch (_) { }
+      }
       if (msgStr.includes('sessionResumptionUpdate')) {
         try {
           const upd = JSON.parse(msgStr).sessionResumptionUpdate;
@@ -2264,6 +2277,13 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           if (isHardware && maybeJson.debug === 'verifying_start' && !isConversationActive) {
             const ready = Boolean(currentGeminiWs && currentGeminiWs.readyState === WebSocket.OPEN && geminiSetupAcknowledged);
             wakeCheck = { frames: recentMicFrames.filter((f) => Date.now() - f.at < 2000).map((f) => f.buf), at: Date.now(), cold: !ready, readyAt: ready ? Date.now() : 0, spokeAt: 0, ends: 0, endAt: 0, heardAt: 0, extended: false };
+            // is the link to Google really alive? (a connection can look open while nothing gets through)
+            if (ready) {
+              const wc = wakeCheck, sock = currentGeminiWs;
+              wc.socketAgeS = Math.round((Date.now() - geminiConnectedAt) / 1000);
+              wc.pingAt = Date.now();
+              try { sock.once('pong', () => { wc.pongMs = Date.now() - wc.pingAt; }); sock.ping(); } catch (_) { }
+            }
             resetTurnTriggers();
             userSpokenTranscript = '';
             spokenTranscript = '';
@@ -2444,6 +2464,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       sessionUsed = true; // mic audio went into this session (a wake check or a conversation)
       if (gWs && gWs.readyState === WebSocket.OPEN && geminiSetupAcknowledged) {
         gWs.send(realtimePayload);
+        if (wakeCheck) wakeCheck.sent = (wakeCheck.sent || 0) + 1;
         if (wakeCheck && isHardware && !isConversationActive) {
           if (lastLoudMicAt > wakeCheck.at && lastLoudMicAt > wakeCheck.spokeAt) { wakeCheck.spokeAt = lastLoudMicAt; wakeCheck.endPending = true; }
           if (wakeCheck.endPending && wakeCheck.ends < 3 && Date.now() - lastLoudMicAt >= WAKE_END_QUIET_MS) {
@@ -2453,6 +2474,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         }
       } else {
         outboundAudioQueue.push(realtimePayload);
+        if (wakeCheck) wakeCheck.queued = (wakeCheck.queued || 0) + 1;
         if (outboundAudioQueue.length > 150) outboundAudioQueue.shift();
       }
       return;
