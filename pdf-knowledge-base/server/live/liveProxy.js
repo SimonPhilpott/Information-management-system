@@ -1975,7 +1975,12 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         // a session that failed may have left a bad resume token - presenting it again got 'Internal error' every time
         if (!quota && resumptionHandle) { resumptionHandle = null; try { logCapture(`[${new Date().toISOString()}] ${tag} RESUME TOKEN DROPPED after ${code}
 `); } catch (_) { } }
-        const wait = quota ? RETRY_LADDER_MS[Math.min(warmReconnectAttempts - 1, RETRY_LADDER_MS.length - 1)] : Math.min(5000, RETRY_LADDER_MS[Math.min(warmReconnectAttempts - 1, 1)]);
+        // A resume ticket Google no longer has ("Requested entity was not found" / "already exists" / "session not
+        // found or expired") isn't a fault: the ticket was dropped above, so reconnect straight away without a pause -
+        // the pause made a wake phrase said at that moment fail (~30 of these a day, 12-13 Oct)
+        const staleTicket = /entity was not found|entity already exists|session not found or expired/i.test(reasonStr);
+        if (staleTicket) warmReconnectAttempts = 0;
+        const wait = staleTicket ? 0 : quota ? RETRY_LADDER_MS[Math.min(warmReconnectAttempts - 1, RETRY_LADDER_MS.length - 1)] : Math.min(5000, RETRY_LADDER_MS[Math.min(warmReconnectAttempts - 1, 1)]);
         live.geminiCooldownUntil = Math.max(live.geminiCooldownUntil, Date.now() + wait);
       }
       try {
