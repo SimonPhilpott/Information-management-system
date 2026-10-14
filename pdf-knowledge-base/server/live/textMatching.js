@@ -87,7 +87,8 @@ export const faceFromWords = (text, used = []) => (FACE_CUES.find(([emo, rx]) =>
 // at once with a recorded line (the fast greeting in liveProxy.js). Anything more than that is a request.
 const WAKE_ONLY_WORDS = /^(hey|hi|hiya|heya|hello|eh|ey|ay|aye|up|ayup|eyup|oi|now|then|a|op|aap|aup|anya|i'?m|i)$/i;
 export const isWakeOnly = (t) => {
-  const text = String(t || '').trim();
+  // "Hey Ims" heard as "M&Ms" / "M and Ms": the name, not chocolate (14 Oct - he asked which M&Ms and how many grams)
+  const text = String(t || '').replace(/\bm\s*(?:&|and|n)\s*m'?s\b/gi, 'Ims').trim();
   if (!text || !looksAddressed(text)) return false;
   const words = text.toLowerCase().replace(/[^a-z' -]/g, ' ').split(/[\s-]+/).filter(Boolean);
   if (!words.length || words.length > 5) return false;
