@@ -13,6 +13,57 @@ const EFFORT_WORDS = ['', 'very easy', 'easy', 'moderate', 'somewhat hard', 'har
 // notes pinned to the minute, then what the run teaches. Corrections here (a stop taken late, an extra gel)
 // go to the carb log and Nightscout and re-run the analysis.
 
+// The predicted glucose every 5 minutes against what you really had, with the recommended carb stops - the
+// planner's prediction as a list (Simon, 14 Oct)
+function PredictedTable({ a, isDark, muted }) {
+  const [open, setOpen] = useState(false);
+  const near = (series, m, tol) => {
+    let best = null;
+    for (const [x, bg] of series || []) if (Math.abs(x - m) <= tol && (best == null || Math.abs(x - m) < Math.abs(best[0] - m))) best = [x, bg];
+    return best ? best[1] : null;
+  };
+  const end = Math.max(0, Math.round(a.run?.durationMin || 0));
+  const rows = [];
+  for (let m = 0; m <= end; m += 5) {
+    const predicted = near(a.planned, m, 3);
+    const actual = near(a.actual, m, 3);
+    const stop = (a.plannedStops || []).filter((x) => Math.abs(x.minute - m) < 2.5).map((x) => `${x.grams} g`).join(', ');
+    if (predicted != null || actual != null) rows.push({ m, predicted, actual, stop });
+  }
+  if (!rows.length) return null;
+  const cell = 'px-2 py-1 text-right tabular-nums';
+  return (
+    <div className="mt-3">
+      <button onClick={() => setOpen((v) => !v)} className={`text-[11px] font-bold ${isDark ? 'text-sky-300' : 'text-sky-700'} hover:underline`}>
+        {open ? 'Hide' : 'Show'} the predicted glucose, every 5 minutes
+      </button>
+      {open && (
+        <div className="mt-2 overflow-x-auto">
+          <table className="text-[11px] min-w-[360px]">
+            <thead>
+              <tr className={muted}><th className="px-2 py-1 text-left">Minute</th><th className={cell}>Predicted</th><th className={cell}>Actual</th><th className={cell}>Difference</th><th className="px-2 py-1 text-left">Carbs recommended</th></tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const diff = r.predicted != null && r.actual != null ? Math.round((r.actual - r.predicted) * 10) / 10 : null;
+                return (
+                  <tr key={r.m} className={isDark ? 'border-t border-white/5' : 'border-t border-[#2E2B27]/5'}>
+                    <td className="px-2 py-1">{r.m === 0 ? 'Start' : `${r.m} min`}</td>
+                    <td className={cell}>{r.predicted ?? '-'}</td>
+                    <td className={cell}>{r.actual ?? '-'}</td>
+                    <td className={`${cell} ${diff == null ? '' : Math.abs(diff) <= 1 ? 'text-emerald-500' : 'text-amber-500'}`}>{diff == null ? '-' : `${diff > 0 ? '+' : ''}${diff}`}</td>
+                    <td className="px-2 py-1 font-bold">{r.stop}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function RunRetrospective({ activityId, isDark, call, send, units = 'km', hideChart = false }) {
   const [effortDraft, setEffortDraft] = useState(null);
   const [showPlan, setShowPlan] = useState(false);
@@ -55,7 +106,7 @@ export default function RunRetrospective({ activityId, isDark, call, send, units
           <div>
             <div className="font-black uppercase tracking-wider text-[11px]">Plan against reality{a?.run ? `: ${a.run.name}, ${a.run.day}` : ''}</div>
             <div className={`text-[11px] ${muted}`}>
-              {s?.kind === 'live' ? `The dashed line is the plan's prediction as sent at ${s.createdAt ? new Date(s.createdAt).toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' }) : '?'}${s.plan ? ` (start ${s.plan.startBg}, ${s.plan.iob} U on board, ${s.plan.stops.map((x) => `${x.grams} g at ${x.minute === 0 ? 'the start' : `${x.minute} min`}`).join(', ')})` : ''} - your real glucose is the bold line.` : 'Not sent from the planner, so there\'s no plan to compare timings with - your carbs come from the carb log. Add anything else you took below.'}
+              {s?.kind === 'live' ? `The dashed line is the plan's prediction as sent at ${s.createdAt ? new Date(s.createdAt).toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' }) : '?'}${s.plan ? ` (start ${s.plan.startBg}, ${s.plan.iob} U on board, ${s.plan.stops.map((x) => `${x.grams} g at ${x.minute === 0 ? 'the start' : `${x.minute} min`}`).join(', ')})` : ''} - your real glucose is the bold line.` : s?.plan ? `Planned afterwards for the run you actually ran${a?.routeName ? ` (${a.routeName})` : ''}: what the planner would have said from your start (${s.plan.startBg} mmol/L, ${s.plan.iob ?? 0} U on board)${s.plan.stops.length ? ` - ${s.plan.stops.map((x) => `${x.grams} g at ${x.minute === 0 ? 'the start' : `${x.minute} min`}`).join(', ')}` : ' - no carbs needed'}. The dashed line is its prediction, your real glucose the bold line; mark below whether you took each stop.` : 'Not sent from the planner, so there\'s no plan to compare timings with - your carbs come from the carb log. Add anything else you took below.'}
               {a?.profile ? ` Kind of run: ${a.profile.label}.` : ''}
             </div>
           </div>
@@ -86,6 +137,7 @@ export default function RunRetrospective({ activityId, isDark, call, send, units
               ))}
             </div>
             {!hideChart && <RetroChart a={a} notes={notes} isDark={isDark} units={units} />}
+            {a.planned?.length > 0 && <PredictedTable a={a} isDark={isDark} muted={muted} />}
           </>
         )}
       </div>

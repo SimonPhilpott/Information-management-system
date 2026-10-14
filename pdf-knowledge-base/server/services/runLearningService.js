@@ -1,8 +1,8 @@
 import crypto from 'crypto';
 import db, { getSetting } from '../db/database.js';
 import { matchActivity, getLoopSettings } from './runGlucoseService.js';
-import { getRoute, linkedRouteId, linkActivityRoute } from './routeService.js';
-import { estimatePlan, getTargets, replaySimulate, runProfile, personalFit } from './runPlanService.js';
+import { getRoute, linkedRouteId, linkActivityRoute, listRoutes, saveRouteAsync } from './routeService.js';
+import { estimatePlan, getTargets, replaySimulate, runProfile, personalFit, decodePolyline, shareNear } from './runPlanService.js';
 import { logCarbs, deleteCarbs } from './glucoseHubService.js';
 
 // Run learning: every run teaches the next one.
@@ -264,6 +264,83 @@ function ensureSession(activityId) {
       .run(id, c.at, r1((c.at - start) / 60000), Math.round(c.grams));
   }
   return db.prepare('SELECT * FROM run_session WHERE id = ?').get(id);
+}
+
+// ---- reviewing the run you actually ran ------------------------------------------------------------
+// "Check for new runs" lists your latest runs whatever happened to the plan; any of them can be reviewed as
+// the run it really was: its own route (from the GPS track), the time it really took and the glucose you
+// started on. The planner is run for that, so the review shows the predicted line and the carb stops it
+// would have recommended - each with Taken / Skipped for you to fill in. (Simon, 14 Oct: a run on a
+// different route from the plan was matched to the plan's route, and an unplanned run had nothing to review.)
+
+/** Your latest runs, newest first, with whether each is matched to a plan or already reviewed. */
+export function recentRuns(limit = 5) {
+  const rows = db.prepare(`SELECT id, name, day, start_utc, distance, moving_time, elapsed_time, avg_hr FROM strava_activities WHERE sport IN ${RUN_SPORTS} ORDER BY start_utc DESC LIMIT ?`).all(limit);
+  return rows.map((a) => {
+    const s = db.prepare('SELECT id, kind, status, route_id, route_name, plan FROM run_session WHERE activity_id = ?').get(a.id);
+    const p = parse(s?.plan);
+    return {
+      activityId: a.id, name: a.name, day: a.day, startUtc: a.start_utc, km: r2(a.distance / 1000), minutes: Math.round((a.moving_time || 0) / 60), avgHr: a.avg_hr ? Math.round(a.avg_hr) : null,
+      status: !s ? 'new' : s.kind === 'live' ? 'matched' : p?.stops ? 'reviewed' : 'basic',
+      sessionId: s?.id ?? null, routeName: s?.route_name || null, routeId: s?.route_id ?? null,
+    };
+  });
+}
+
+// A saved route with the same shape as the run (start within 400 m, distance within 10 %, nearly all of
+// each on the other), or the run's own track saved as a route
+async function routeForActivity(a) {
+  const raw = parse(a.raw) || {};
+  const poly = raw.map?.summary_polyline ? decodePolyline(raw.map.summary_polyline) : null;
+  if (!poly || poly.length < 5) throw new Error('Strava has no GPS track for this run, so its route can\'t be worked out.');
+  const km = a.distance / 1000;
+  for (const summary of listRoutes()) {
+    if (!summary.distanceKm || Math.abs(km - summary.distanceKm) / summary.distanceKm > 0.10) continue;
+    const r = getRoute(summary.id); // with its path
+    if (!r?.path?.length) continue;
+    try { if (shareNear(r.path, poly, 60) >= 0.85 && shareNear(poly, r.path, 60) >= 0.85) return r; } catch { /* next */ }
+  }
+  const date = a.day || String(a.start_utc || '').slice(0, 10);
+  return saveRouteAsync({ source: 'strava', externalId: String(a.id), name: `${a.name} ${date}`.trim(), points: poly.map(([lat, lng]) => ({ lat, lng })) });
+}
+
+/** Review a run as the run it really was. A run matched to a sent plan is only re-done with
+ *  { unlinkPlan: true } - the plan is then marked "you ran a different route" and isn't matched again. */
+export async function reviewActualRun(activityId, { unlinkPlan = false } = {}) {
+  const id = Number(activityId);
+  const a = db.prepare('SELECT * FROM strava_activities WHERE id = ?').get(id);
+  if (!a) throw new Error('Run not found.');
+  const existing = db.prepare('SELECT * FROM run_session WHERE activity_id = ?').get(id);
+  if (existing?.kind === 'live') {
+    if (!unlinkPlan) throw new Error('This run is matched to the plan you sent - choose "Ran a different route" to review it as the route you actually ran.');
+    db.prepare("UPDATE run_session SET activity_id = NULL, status = 'other_route', analysis = NULL, analysed_at = NULL WHERE id = ?").run(existing.id);
+    if (existing.route_id && linkedRouteId(id) === existing.route_id) linkActivityRoute(id, null);
+  }
+
+  // glucose, insulin and carbs on board when you set off
+  const m = await matchActivity(id);
+  if (m.status !== 'ok' || m.stats?.bgStart == null) throw new Error(m.note || 'No glucose readings were logged around this run, so there is nothing to compare a plan with.');
+  const atStart = (m.series || []).reduce((b, p) => (p.bg != null && Math.abs(p.m) < Math.abs(b?.m ?? 1e9) ? p : b), null) || {};
+
+  const route = await routeForActivity(a);
+  linkActivityRoute(id, route.id);
+  const intensity = intensityOf(a);
+  const plan = await estimatePlan({
+    routeId: route.id, targetMinutes: (a.moving_time || 0) / 60 || undefined, startBg: m.stats.bgStart,
+    iob: m.stats.iobStart ?? atStart.iob ?? 0, cob: m.stats.cobStart ?? atStart.cob ?? 0, intensity, sport: a.sport || 'Run',
+    weather: {}, // not today's weather on a past run
+  });
+
+  const s = ensureSession(id); // a "retro" session (carbs from the carb log come with it)
+  db.prepare("UPDATE run_session SET plan = ?, route_id = ?, route_name = ?, analysis = NULL, analysed_at = NULL WHERE id = ?")
+    .run(JSON.stringify(snapshotOf(plan)), route.id, route.name, s.id);
+  // the recommended stops, for Taken / Skipped - replacing any from an earlier review of this run
+  db.prepare('DELETE FROM run_intake WHERE session_id = ? AND planned_minute IS NOT NULL AND action IS NULL').run(s.id);
+  const ins = db.prepare('INSERT INTO run_intake (session_id, planned_minute, planned_g, planned_ml) VALUES (?, ?, ?, ?)');
+  for (const x of plan.plan?.stops || []) if (x.grams || x.ml) ins.run(s.id, Math.round(x.minute), Math.round(x.grams || 0), Math.round(x.ml || 0));
+  try { await analyseSession(s.id); } catch { /* shown when opened */ }
+  refreshLearnings();
+  return { activityId: id, routeId: route.id, routeName: route.name, startBg: m.stats.bgStart, stops: (plan.plan?.stops || []).length };
 }
 
 // ---- the analysis ------------------------------------------------------------------------------------

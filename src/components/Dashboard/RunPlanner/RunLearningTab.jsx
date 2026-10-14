@@ -9,7 +9,7 @@ import PostRunReviewPanel from './PostRunReviewPanel';
 
 const SCOPE = { route: ['This route', RouteIcon], profile: ['This kind of run', Layers], general: ['All runs', Globe] };
 const when = (ms) => (ms ? new Date(ms).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
-const STATUS = { armed: 'planned · waiting for run / match', scheduled: 'planned in IMS', started: 'run started · waiting for Strava', linked: 'matched to Strava', no_run: 'no Strava run found' };
+const STATUS = { armed: 'planned · waiting for run / match', scheduled: 'planned in IMS', started: 'run started · waiting for Strava', linked: 'matched to Strava', no_run: 'no Strava run found', other_route: 'you ran a different route' };
 
 export default function RunLearningTab({ call, send, isDark, panelClass, units = 'km' }) {
   const [data, setData] = useState(null);
@@ -19,6 +19,12 @@ export default function RunLearningTab({ call, send, isDark, panelClass, units =
   const [matchModalSession, setMatchModalSession] = useState(null);
 
   const [checkMsg, setCheckMsg] = useState(null);
+  const [recent, setRecent] = useState(null);       // your latest runs (newest first)
+  const [reviewing, setReviewing] = useState(null); // activity id being reviewed
+  const loadRecent = useCallback(async () => {
+    try { const d = await call('/api/planner/runs/recent'); setRecent(d.runs || []); } catch (_) { /* the list just stays as it was */ }
+  }, [call]);
+  useEffect(() => { loadRecent(); }, [loadRecent]);
   const load = useCallback(async (sync = false) => {
     setBusy(true); setError(null); if (sync) setCheckMsg('Checking Strava and Nightscout...');
     try {
@@ -26,11 +32,25 @@ export default function RunLearningTab({ call, send, isDark, panelClass, units =
       setData(d); setOpen((o) => o ?? d.sessions.find((x) => x.activityId)?.activityId ?? null);
       if (d.check) {
         const c = d.check;
-        setCheckMsg(c.stravaError ? `Strava: ${c.stravaError}` : `Strava checked (${c.strava?.fetched ?? 0} recent activities)${c.linked ? ` - ${c.linked} run${c.linked === 1 ? '' : 's'} matched and analysed` : ' - no new run to match yet'}${c.nightscoutError ? ` · Nightscout: ${c.nightscoutError}` : ''}.`);
+        setCheckMsg(c.stravaError ? `Strava: ${c.stravaError}` : `Strava checked (${c.strava?.fetched ?? 0} recent activities)${c.linked ? ` - ${c.linked} run${c.linked === 1 ? '' : 's'} matched to a plan and analysed` : ''}. Your latest runs are below - pick one to review.${c.nightscoutError ? ` · Nightscout: ${c.nightscoutError}` : ''}`);
       }
+      if (sync) loadRecent();
     } catch (err) { setError(err.message); setCheckMsg(null); } finally { setBusy(false); }
-  }, [call]);
+  }, [call, loadRecent]);
   useEffect(() => { load(); }, [load]);
+
+  // Review a run as the run it really was: its own route, time and starting glucose - the planner's predicted
+  // line and recommended carb stops, then Taken / Skipped for each
+  const reviewRun = async (run, unlinkPlan = false) => {
+    if (unlinkPlan && !window.confirm(`Review "${run.name}" as the route you actually ran? It will no longer count as the run for your plan (${run.routeName || 'planned route'}), and that plan will show as "you ran a different route".`)) return;
+    setReviewing(run.activityId); setError(null);
+    try {
+      const r = await send(`/api/planner/runs/${run.activityId}/review`, 'POST', { unlinkPlan });
+      setCheckMsg(`Reviewed ${run.name} as ${r.routeName}: started on ${r.startBg} mmol/L, ${r.stops ? `${r.stops} carb stop${r.stops === 1 ? '' : 's'} recommended - mark below whether you took ${r.stops === 1 ? 'it' : 'them'}` : 'no carbs needed'}.`);
+      setOpen(run.activityId);
+      await Promise.all([load(), loadRecent()]);
+    } catch (err) { setError(err.message); } finally { setReviewing(null); }
+  };
 
   const decide = async (id, decision) => {
     setBusy(true);
@@ -80,6 +100,50 @@ export default function RunLearningTab({ call, send, isDark, panelClass, units =
           <button onClick={() => load(true)} disabled={busy} className={small}><RotateCw size={12} className={busy ? 'animate-spin' : ''} />Check for new runs</button>
         </div>
         {checkMsg && <div className="text-[11px] text-sky-600">{checkMsg}</div>}
+        {recent?.length > 0 && (
+          <div className={`rounded-xl border ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
+            <div className={`px-3 pt-2.5 pb-1 text-[10px] font-black uppercase tracking-wider ${muted}`}>Your latest runs</div>
+            <div className="flex flex-col">
+              {recent.map((r) => {
+                const badge = {
+                  new: ['Not reviewed yet', 'bg-amber-500/10 text-amber-600 border-amber-500/25'],
+                  basic: ['Glucose only - no plan to compare', 'bg-slate-500/10 text-slate-500 border-slate-500/25'],
+                  reviewed: [`Reviewed as ${r.routeName || 'the route you ran'}`, 'bg-emerald-500/10 text-emerald-600 border-emerald-500/25'],
+                  matched: [`Matched to your plan: ${r.routeName || 'planned route'}`, 'bg-sky-500/10 text-sky-600 border-sky-500/25'],
+                }[r.status];
+                const busyHere = reviewing === r.activityId;
+                return (
+                  <div key={r.activityId} className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 text-xs border-t ${isDark ? 'border-white/5' : 'border-[#2E2B27]/5'} ${open === r.activityId ? (isDark ? 'bg-sky-500/10' : 'bg-sky-50') : ''}`}>
+                    <span className="w-24 shrink-0">{r.day ? new Date(`${r.day}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : ''}</span>
+                    <span className="font-bold flex-1 min-w-[160px]">{r.name}</span>
+                    <span className={`${muted} tabular-nums`}>{units === 'mi' ? `${(r.km / 1.609).toFixed(1)} mi` : `${r.km} km`} · {r.minutes} min</span>
+                    {badge && <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${badge[1]}`}>{badge[0]}</span>}
+                    <span className="flex gap-1.5 ml-auto">
+                      {(r.status === 'new' || r.status === 'basic') && (
+                        <button onClick={() => reviewRun(r)} disabled={busyHere || busy} className={`${small} bg-sky-500 text-white border-transparent hover:bg-sky-600`}>
+                          <RotateCw size={12} className={busyHere ? 'animate-spin' : 'hidden'} />{busyHere ? 'Working it out...' : 'Review this run'}
+                        </button>
+                      )}
+                      {r.status !== 'new' && r.status !== 'basic' && (
+                        <button onClick={() => setOpen(r.activityId)} className={small}>{open === r.activityId ? 'Showing review' : 'Open review'}</button>
+                      )}
+                      {r.status === 'reviewed' && (
+                        <button onClick={() => reviewRun(r)} disabled={busyHere || busy} className={small} title="Work the plan out again (e.g. after new glucose data arrived)">
+                          <RotateCw size={12} className={busyHere ? 'animate-spin' : ''} />Redo
+                        </button>
+                      )}
+                      {r.status === 'matched' && (
+                        <button onClick={() => reviewRun(r, true)} disabled={busyHere || busy} className={small} title="You ran a different route from the plan: review it as the route you actually ran">
+                          <RotateCw size={12} className={busyHere ? 'animate-spin' : 'hidden'} />Ran a different route?
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <p className={`text-[11px] ${muted}`}>
           Each run you plan saves its fuelling strategy. You can send it to your phone or save the plan directly. After the run, IMS matches it to your Strava activity and glucose,
           replays the plan with what really happened, and measures where the planner was wrong. When the same thing shows up again - {data?.minRuns?.route ?? 2} runs on a route,

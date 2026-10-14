@@ -14,7 +14,7 @@ import { syncActivities } from '../services/stravaService.js';
 import { logNightscout } from '../services/runGlucoseService.js';
 import {
   retrospective, latestRetrospectiveForRoute, analyseSession, sessionChart, routePlans, currentSentPlan, refreshLearnings, listLearnings, decideLearning, updateIntake, addIntake, deleteIntake,
-  addNote, deleteNote, setEffort, linkSessionManually, linkSessions, createSession, unlinkSession,
+  addNote, deleteNote, setEffort, linkSessionManually, linkSessions, createSession, unlinkSession, recentRuns, reviewActualRun,
 } from '../services/runLearningService.js';
 import {
   getRulebook, saveRulebook, resetRulebook,
@@ -164,6 +164,11 @@ router.get('/learning', async (req, res) => {
     const linked = await linkSessions();
     res.json({ success: true, ...refreshLearnings(), ...(check ? { check: { ...check, linked: linked.length } } : {}) });
   } catch (err) { fail(res, err); }
+});
+// Your latest runs, and reviewing one as the run it really was (its own route, time and starting glucose)
+router.get('/runs/recent', (req, res) => { try { res.json({ success: true, runs: recentRuns(5) }); } catch (err) { fail(res, err); } });
+router.post('/runs/:activityId/review', async (req, res) => {
+  try { res.json({ success: true, ...(await reviewActualRun(Number(req.params.activityId), { unlinkPlan: Boolean(req.body?.unlinkPlan) })) }); } catch (err) { fail(res, err, 400); }
 });
 router.post('/learning/:id/:decision', (req, res) => {
   try { res.json({ success: true, ...decideLearning(Number(req.params.id), req.params.decision) }); } catch (err) { fail(res, err); }

@@ -318,7 +318,7 @@ export const havM = (a, b) => {
   return 2 * R * Math.asin(Math.sqrt(h));
 };
 // Google's encoded polyline (Strava's map.summary_polyline) -> [[lat, lng], ...]
-function decodePolyline(str) {
+export function decodePolyline(str) {
   const out = []; let i = 0, lat = 0, lng = 0;
   while (i < str.length) {
     for (const axis of [0, 1]) {
