@@ -40,6 +40,7 @@ import { getWeather } from '../services/weatherService.js';
 import { isDeviceMicMuted, setDeviceConnected, setDeviceMicMuted } from '../services/deviceState.js';
 import { lookUpFood } from '../services/foodService.js';
 import { noteWakeCandidate } from '../services/phrasesService.js';
+import { recordWakeCheck } from '../services/wakeModelService.js';
 import { pickClip, pickGreeting } from '../services/holdingClips.js';
 import { pickJoke } from '../services/jokeService.js';
 import { recordUsage } from '../services/geminiClient.js';
@@ -662,6 +663,15 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     } catch (_) { }
     const rel = (t) => (t ? `+${t - w.at}ms` : '-');
     try { logCapture(`[${new Date().toISOString()}] ${tag} WAKE TIMING ${outcome}: ${w.cold ? 'cold' : 'warm'} session, ready ${rel(w.readyAt)}, speech ended ${rel(w.endAt)} (${w.ends} audio end${w.ends === 1 ? '' : 's'} sent), first heard ${rel(w.heardAt)}, loudest mic ${w.peak || 0}${w.extended ? ', check extended' : ''} | socket age ${w.socketAgeS ?? '-'} s, ping ${w.pongMs != null ? `${w.pongMs} ms` : (w.pingAt ? 'NO PONG' : '-')}, unsent ${currentGeminiWs?.bufferedAmount ?? '-'} bytes, audio sent ${w.sent || 0}, queued ${w.queued || 0}, from Gemini ${w.fromGemini || 0} msg${w.fromGemini === 1 ? '' : 's'}${w.kinds ? ` (${[...new Set(w.kinds)].join(', ')})` : ''}\n`); } catch (_) { }
+    // Simon's own wake-word model, in SHADOW MODE: it scores this same audio and the result is only logged
+    // beside Gemini's verdict - it never wakes Ims (the live decision above stays Gemini's)
+    try {
+      recordWakeCheck({
+        pcm: Buffer.concat(w.frames || []), outcome, peak: w.peak || 0,
+        transcript: (userSpokenTranscript || '').trim(),
+        log: (line) => { try { logCapture(`[${new Date().toISOString()}] ${tag} ${line}\n`); } catch (_) { } },
+      });
+    } catch (_) { /* never let the shadow model affect a wake */ }
   };
   let recentMicFrames = []; // { at, buf } - the Box-3's pre-roll arrives just before its verifying_start
   let lastLoudMicAt = 0;    // last mic frame with real speech in it - the end of what the user said

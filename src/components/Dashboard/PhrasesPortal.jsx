@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MessageSquareQuote, Mic, Square, Plus, Trash2, X, Play, RotateCw, Activity, ShieldCheck, Clock, Power, VolumeX, CheckCircle2, RotateCcw, Sparkles } from 'lucide-react';
 import PortalShell from './PortalShell';
+import WakeModelCard from './WakeModelCard';
 
 const MAX_SECONDS = 6;   // a recording stops itself after this if Stop isn't pressed
 const COUNTDOWN = 3;     // 3, 2, 1 - then speak
@@ -386,6 +387,7 @@ export default function PhrasesPortal({ theme = 'dark', onThemeToggle, setCurren
           </div>
         </div>
       )}
+      <WakeModelCard isDark={isDark} notify={notify} panel={panel} />
       {section('stop', 'Stop phrases', 'Stop Ims straight away - cancels what he is doing, silences a ringing alarm or timer, or ends a call recording.')}
     </PortalShell>
   );
