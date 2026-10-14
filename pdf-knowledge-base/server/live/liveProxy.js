@@ -1089,6 +1089,9 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             }
           }
           const realAction = (parsed.toolCall?.functionCalls || []).find((c) => !['setEmotion', 'noWakeDetected', 'noteWake', 'endConversation'].includes(c.name));
+          // A new request after the day report (he's using another tool for it) ends the report's grace: a
+          // second, identical answer was let through as a "report continuation" (14 Oct, music news twice)
+          if (realAction && realAction.name !== 'getDayReport' && dayReportSentAt) dayReportSentAt = 0;
           if (unsolicitedTurn && realAction && (isConversationActive || Date.now() <= followUpUntil + 5000) && !isRecordingActive()) {
             // Gemini only sets alarms, looks things up etc. when asked - this was a reply after all. Dropping it
             // used to answer the call "acknowledged" without running it (6 Oct: an alarm he said he'd set, never set).
