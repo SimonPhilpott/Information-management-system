@@ -2148,15 +2148,28 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     ws.capturePhrase = (seconds = 3) => new Promise((resolve, reject) => {
       if (phraseCapture) return reject(new Error('Already recording - wait a moment.'));
       if (isConversationActive || !currentTurnComplete || isRecordingActive()) return reject(new Error('Ims is busy - try again when he is on standby.'));
-      phraseCapture = { chunks: [] };
-      try { ws.send(JSON.stringify({ phraseCapture: { seconds } })); } catch (err) { phraseCapture = null; return reject(err); }
-      setTimeout(() => {
+      let done = false;
+      const finish = () => {
+        if (done) return; done = true;
+        clearTimeout(timer);
         const pcm = Buffer.concat(phraseCapture?.chunks || []);
         phraseCapture = null;
         if (pcm.length < 16000) reject(new Error('No sound came from the device - it may have been busy. Try again.'));
         else resolve(pcm);
-      }, seconds * 1000 + 800);
+      };
+      phraseCapture = { chunks: [], finish };
+      try { ws.send(JSON.stringify({ phraseCapture: { seconds } })); } catch (err) { phraseCapture = null; return reject(err); }
+      const timer = setTimeout(finish, seconds * 1000 + 800);
     });
+    // The Stop button: the device stops streaming ("0 seconds" ends its capture), the last frames still on
+    // their way are collected, and the recording is handed back
+    ws.stopPhraseCapture = () => {
+      if (!phraseCapture) return false;
+      try { ws.send(JSON.stringify({ phraseCapture: { seconds: 0 } })); } catch (_) { }
+      const { finish } = phraseCapture;
+      setTimeout(finish, 400);
+      return true;
+    };
   }
 
   ws.on('message', (message, isBinary) => {

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { listPhrases, addPhrase, updatePhrase, deletePhrase, addRecording, deleteRecording, recordingFile, listWakeCandidates, acceptWakeCandidate, dismissWakeCandidate } from '../services/phrasesService.js';
-import { requestDeviceCapture } from '../services/deviceBus.js';
+import { requestDeviceCapture, stopDeviceCapture } from '../services/deviceBus.js';
 
 const router = Router();
 const fail = (res, err, code = 500) => res.status(code).json({ success: false, error: err.message });
@@ -14,9 +14,11 @@ router.patch('/:id', (req, res) => { try { res.json({ success: true, phrase: upd
 router.delete('/:id', (req, res) => { try { res.json({ success: deletePhrase(req.params.id) }); } catch (err) { fail(res, err); } });
 router.post('/:id/recordings', async (req, res) => { try { res.json({ success: true, ...(await addRecording(req.params.id, req.body?.pcm)) }); } catch (err) { fail(res, err, 400); } });
 // Record from the IMS device's own microphone (the one the phrases are really heard on).
+router.post('/record-device/stop', (req, res) => { stopDeviceCapture(); res.json({ success: true }); });
 router.post('/:id/record-device', async (req, res) => {
   try {
-    const pcm = await requestDeviceCapture(Math.max(2, Math.min(5, Number(req.body?.seconds) || 3)));
+    // up to 6 s: the page's Stop button usually ends it sooner (POST /record-device/stop)
+    const pcm = await requestDeviceCapture(Math.max(2, Math.min(6, Number(req.body?.seconds) || 3)));
     res.json({ success: true, ...(await addRecording(req.params.id, null, pcm)) });
   } catch (err) { fail(res, err, 400); }
 });

@@ -68,7 +68,7 @@ import wifiRoutes from './routes/wifi.js';
 import recordingRoutes from './routes/recordings.js';
 import { isRecordingActive } from './services/recordingService.js';
 import { SqliteSessionStore } from './db/sessionStore.js';
-import { onDevicePush, onSchedulePush, onDeviceCapture } from './services/deviceBus.js';
+import { onDevicePush, onSchedulePush, onDeviceCapture, onDeviceCaptureStop } from './services/deviceBus.js';
 import calendarRoutes from './routes/calendar.js';
 import stravaRoutes from './routes/strava.js';
 import garminRoutes from './routes/garmin.js';
@@ -554,6 +554,7 @@ onDeviceCapture(({ seconds, resolve, reject }) => {
   if (!ws || ws.readyState !== WebSocket.OPEN || !ws.capturePhrase) return reject(new Error('The IMS device is not connected.'));
   ws.capturePhrase(seconds).then(resolve, reject);
 });
+onDeviceCaptureStop(() => { live.hardwareSession?.clientWs?.stopPhraseCapture?.(); });
 
 // Google Calendar: refresh every 5 minutes (also applies any "remind" rules)
 // and re-send the icons. Silent no-op until the user has connected Calendar.

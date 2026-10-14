@@ -17,3 +17,6 @@ export const requestDeviceCapture = (seconds) => new Promise((resolve, reject) =
   bus.emit('capture', { seconds, resolve, reject });
 });
 export const onDeviceCapture = (handler) => bus.on('capture', handler);
+// "Stop now" - the Stop button on the phrases page ends the recording early
+export const stopDeviceCapture = () => bus.emit('captureStop');
+export const onDeviceCaptureStop = (handler) => bus.on('captureStop', handler);

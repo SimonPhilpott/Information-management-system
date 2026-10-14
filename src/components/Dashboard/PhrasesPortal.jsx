@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MessageSquareQuote, Mic, Square, Plus, Trash2, X, Play, RotateCw, Activity, ShieldCheck, Clock, Power, VolumeX, CheckCircle2, RotateCcw, Sparkles } from 'lucide-react';
 import PortalShell from './PortalShell';
 
-const DEVICE_SECONDS = 3;
+const MAX_SECONDS = 6;   // a recording stops itself after this if Stop isn't pressed
+const COUNTDOWN = 3;     // 3, 2, 1 - then speak
 
 function WakeDaemonMonitorCard({ isDark, notify }) {
   const [status, setStatus] = useState(null);
@@ -216,18 +217,22 @@ function WakeDaemonMonitorCard({ isDark, notify }) {
 }
 
 function PhraseCard({ p, isDark, onChanged, notify }) {
-  const [state, setState] = useState('idle'); // idle | recording | working
+  const [state, setState] = useState('idle'); // idle | countdown | recording | working
   const [level, setLevel] = useState(0);
   const [last, setLast] = useState(null);
   const [adding, setAdding] = useState('');
   const border = isDark ? 'border-white/10' : 'border-[#2E2B27]/10';
 
-  // Records from the IMS desk unit's own microphone: it shows "Say the phrase now" for 3 seconds.
+  // Records from the IMS desk unit's own microphone. A 3-2-1 countdown first (nothing recorded yet), then
+  // "Speak now" - say the phrase and press Stop (it stops itself after MAX_SECONDS). The desk unit's screen
+  // shows "Say the phrase now" while it records.
   const record = async () => {
-    setLast(null); setState('recording'); setLevel(DEVICE_SECONDS);
-    const tick = setInterval(() => setLevel((n) => Math.max(0, n - 1)), 1000);
+    setLast(null); setState('countdown');
+    for (let n = COUNTDOWN; n >= 1; n--) { setLevel(n); await new Promise((r) => setTimeout(r, 1000)); }
+    setState('recording'); setLevel(0);
+    const tick = setInterval(() => setLevel((n) => n + 1), 1000);
     try {
-      const res = await fetch(`/api/phrases/${p.id}/record-device`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seconds: DEVICE_SECONDS }) });
+      const res = await fetch(`/api/phrases/${p.id}/record-device`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seconds: MAX_SECONDS }) });
       clearInterval(tick); setState('working');
       const d = await res.json();
       if (!d.success) throw new Error(d.error);
@@ -236,6 +241,7 @@ function PhraseCard({ p, isDark, onChanged, notify }) {
     } catch (err) { notify(err.message, 'error'); }
     clearInterval(tick); setState('idle');
   };
+  const stop = () => { fetch('/api/phrases/record-device/stop', { method: 'POST' }).catch(() => {}); };
   const saveVariants = async (variants) => {
     const d = await (await fetch(`/api/phrases/${p.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ variants }) })).json();
     if (d.success) onChanged(d.phrase); else notify(d.error, 'error');
@@ -251,9 +257,18 @@ function PhraseCard({ p, isDark, onChanged, notify }) {
     <div className={`rounded-xl border ${border} p-3 flex flex-col gap-2.5 ${isDark ? 'bg-slate-950/40' : 'bg-white'}`}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-black text-sm flex-1 min-w-0 break-words">"{p.phrase}"</span>
-        {state === 'recording' ? (
-          <span className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 bg-red-500 text-white animate-pulse">
-            <Mic size={12} /> Say it to Ims now{level > 0 ? ` (${level})` : '...'}
+        {state === 'countdown' ? (
+          <span className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 bg-amber-500/15 text-amber-500 border border-amber-500/40">
+            Get ready... <span className="text-base font-black tabular-nums">{level}</span>
+          </span>
+        ) : state === 'recording' ? (
+          <span className="flex items-center gap-2">
+            <span className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 bg-red-500 text-white animate-pulse">
+              <Mic size={12} /> Speak now <span className="tabular-nums opacity-80">{level}s</span>
+            </span>
+            <button onClick={stop} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 border border-red-500/50 text-red-500 hover:bg-red-500/10" title={`Stops by itself after ${MAX_SECONDS} seconds`}>
+              <Square size={11} fill="currentColor" /> Stop
+            </button>
           </span>
         ) : (
           <button onClick={record} disabled={state === 'working'} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white disabled:opacity-50">
@@ -348,7 +363,7 @@ export default function PhrasesPortal({ theme = 'dark', onThemeToggle, setCurren
       <WakeDaemonMonitorCard isDark={isDark} notify={notify} />
 
       <div className={`${panel} text-xs text-slate-500`}>
-        Speech-to-text often writes these short phrases oddly ("Hey IMS" can come out as "HMs"). Press Record on Ims, then say the phrase to the desk unit within 3 seconds (its screen shows "Say the phrase now") - it records with its own microphone, the one it really listens with. Do each a few times. IMS runs the recording through the same speech-to-text Ims listens with, and adds any new spelling to the list. Ims then recognises those spellings too. You can edit the lists by hand. Speak from where you'd normally talk to Ims. He needs to be on standby (not mid-conversation).
+        Speech-to-text often writes these short phrases oddly ("Hey IMS" can come out as "HMs"). Press Record on Ims and wait for the 3-2-1 countdown. When it says Speak now, say the phrase to the desk unit, then press Stop (it stops by itself after 6 seconds). It records with the desk unit's own microphone, the one it really listens with. Do each a few times. IMS runs the recording through the same speech-to-text Ims listens with, and adds any new spelling to the list. Ims then recognises those spellings too. You can edit the lists by hand. Speak from where you'd normally talk to Ims. He needs to be on standby (not mid-conversation).
       </div>
       {section('wake', 'Wake phrases', 'Start a conversation with Ims. Anything else he hears is ignored.')}
       {candidates.length > 0 && (
