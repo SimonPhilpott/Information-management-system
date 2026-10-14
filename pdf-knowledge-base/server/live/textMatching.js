@@ -40,8 +40,14 @@ export const BARE_GREETING_RX = /^(?:hey[\s,-]*up|hey|hi|hiya|heya|hello|eh[\s,-
 // A name-like word near the start counts too. The name has to be there in some form: a greeting on its
 // own ("Hello", "Hi", "Hiya", "Eh up") never wakes Ims - Simon's rule (8 Oct).
 const NAME_TOKEN = /\b(i\.?\s?m\.?\s?s|ims|imz|ems|eems|emms|hims|aims|hms|h\.?\s?m\.?\s?s|pims|mims|m's|ms|him's|hymns?|elms|helms|aops|\w*pms|\w*ims\w*)\b/i;
+// A greeting and then one word ending like the name - "Hi, Yums", "Hey, Elms", "Hi Rhyms", "Eh up Mims": speech
+// to text keeps finding new spellings of "Ims" ("Hi, Yums" twice, 14 Oct, both ignored), so the shape counts,
+// not a list. Short utterances only (up to three words), so ordinary sentences aren't caught.
+const GREETING_THEN_NAME = /^\W*(hey|hi|hiya|heya|hello|eh[\s,-]*up|ey[\s,-]*up|ay[\s,-]*up|ayup|eyup|oi)\b[\s,.!?-]*[a-z]*m'?[sz]\W*$/i;
+
 export const looksAddressed = (t) => {
   const text = String(t || '').trim();
+  if (text.split(/\s+/).filter(Boolean).length <= 4 && GREETING_THEN_NAME.test(text)) return true;
   const opening = text.split(/\s+/).slice(0, 5).join(' ');
   if (WAKE_RX.test(text) || NAME_TOKEN.test(opening) || matchesWake(text) || ehUpSounding(text)) return true; // + spellings recorded on /ims/phrases
   if (wakeDaemonService.isWakePhrase(text).matches) return true;
@@ -90,6 +96,7 @@ export const isWakeOnly = (t) => {
   // "Hey Ims" heard as "M&Ms" / "M and Ms": the name, not chocolate (14 Oct - he asked which M&Ms and how many grams)
   const text = String(t || '').replace(/\bm\s*(?:&|and|n)\s*m'?s\b/gi, 'Ims').trim();
   if (!text || !looksAddressed(text)) return false;
+  if (GREETING_THEN_NAME.test(text)) return true; // "Hi, Yums" - a greeting and the name, misheard
   const words = text.toLowerCase().replace(/[^a-z' -]/g, ' ').split(/[\s-]+/).filter(Boolean);
   if (!words.length || words.length > 5) return false;
   if (words.every((w) => WAKE_ONLY_WORDS.test(w) || NAME_TOKEN.test(w))) return true;
