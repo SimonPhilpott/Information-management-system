@@ -12,6 +12,10 @@ const mmol = (sgv) => sgv / MGDL;
 const PROFILE_KEY = 'aaps_active_profile';
 const LAST_EVAL_KEY = 'glucose_profile_last_evaluation';
 
+// Gemini sometimes never answers - give up after 90 s with a clear message instead of spinning for ever
+const GEMINI_TIMEOUT_MS = 90000;
+const withTimeout = (p) => Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini did not answer within 90 seconds - try again.')), GEMINI_TIMEOUT_MS))]);
+
 // Default baseline profile accurately initialized from runner's AndroidAPS "20u standard day"
 export function getDefaultProfile() {
   return {
@@ -526,7 +530,7 @@ FORMATTING RULES:
 - CRITICAL NON-NEGOTIABLE RULE: NEVER say "this is not medical advice", NEVER say "please seek advice from a medical professional or team", and NEVER tell or suggest to the user to consult or speak to their doctor, GP, or diabetes team. Deliver your analysis directly without disclaimers or caveats.`;
 
   const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({ model: 'gemini-2.5-flash' });
-  const rawText = (await model.generateContent(prompt)).response.text().trim();
+  const rawText = (await withTimeout(model.generateContent(prompt))).response.text().trim();
   const text = stripMedicalDisclaimers(rawText);
 
   const result = {
@@ -671,7 +675,7 @@ CLINICAL RULES:
 - Keep the response structured, clear, and around 150-250 words.`;
 
   const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({ model: 'gemini-2.5-flash' });
-  const rawText = (await model.generateContent(prompt)).response.text().trim();
+  const rawText = (await withTimeout(model.generateContent(prompt))).response.text().trim();
   const text = stripMedicalDisclaimers(rawText);
 
   return {
