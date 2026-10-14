@@ -72,8 +72,8 @@ function RouteMap({ route, units }) {
   if (!view) return <div className="rounded-xl border border-dashed border-slate-500/40 p-6 text-center text-xs text-slate-500">This route was saved without its map. Delete it and import it again to see the map.</div>;
   const line = view.pts.map((p) => p.join(',')).join(' ');
   return (
-    <div className="rounded-xl overflow-hidden border border-white/10 relative">
-      <svg viewBox={`0 0 ${view.W} ${view.H}`} className="w-full block bg-slate-200" role="img" aria-label={`Map of ${route.name}`}>
+    <div className="rounded-xl overflow-hidden border border-white/10 relative w-full max-w-full min-w-0">
+      <svg viewBox={`0 0 ${view.W} ${view.H}`} className="w-full max-w-full h-auto block bg-slate-200" role="img" aria-label={`Map of ${route.name}`}>
         {view.tiles.map((t) => <image key={t.key} href={t.url} x={t.x} y={t.y} width="256" height="256" />)}
         <polyline points={line} fill="none" stroke="#fff" strokeWidth="8" strokeLinejoin="round" strokeLinecap="round" opacity="0.9" />
         {view.segs.map((s, i) => <line key={i} x1={s.a[0]} y1={s.a[1]} x2={s.b[0]} y2={s.b[1]} stroke={s.colour} strokeWidth="4.5" strokeLinecap="round" />)}
@@ -84,7 +84,7 @@ function RouteMap({ route, units }) {
         {!view.loop && <rect x={view.pts[view.pts.length - 1][0] - 6} y={view.pts[view.pts.length - 1][1] - 6} width="12" height="12" fill="#ef4444" stroke="#fff" strokeWidth="2" />}
         <text x="6" y={view.H - 6} fontSize="9" fill="#334155">(c) OpenStreetMap contributors</text>
       </svg>
-      <div className="absolute top-2 right-2 rounded-lg px-2 py-1 text-[9px] font-bold bg-slate-900/80 text-white flex gap-2">
+      <div className="absolute top-2 right-2 max-w-[calc(100%-1rem)] rounded-lg px-2 py-1 text-[9px] font-bold bg-slate-900/80 text-white flex flex-wrap justify-end gap-x-2 gap-y-0.5">
         <span><span className="inline-block w-2 h-2 rounded-full align-middle mr-1" style={{ background: '#22c55e' }} />flat</span>
         <span><span className="inline-block w-2 h-2 rounded-full align-middle mr-1" style={{ background: '#f59e0b' }} />climb</span>
         <span><span className="inline-block w-2 h-2 rounded-full align-middle mr-1" style={{ background: '#ef4444' }} />steep</span>
@@ -106,7 +106,7 @@ function ElevationProfile({ route, units }) {
   const area = `M${X(p[0][0])},${H - PADB} ` + p.map((x) => `L${X(x[0]).toFixed(1)},${Y(x[1]).toFixed(1)}`).join(' ') + ` L${X(p[p.length - 1][0])},${H - PADB} Z`;
   const ticks = []; for (let k = 0; k * step <= totalKm; k++) ticks.push(k);
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Elevation profile">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-full h-auto block" role="img" aria-label="Elevation profile">
       <path d={area} fill="rgba(148,163,184,0.18)" />
       {p.slice(1).map((x, i) => <line key={i} x1={X(p[i][0])} y1={Y(p[i][1])} x2={X(x[0])} y2={Y(x[1])} stroke={gradeColour(x[2])} strokeWidth="2.6" strokeLinecap="round" />)}
       <text x={2} y={Y(eMax) + 3} fontSize="9" fill="currentColor" opacity="0.6">{Math.round(eMax)}m</text>

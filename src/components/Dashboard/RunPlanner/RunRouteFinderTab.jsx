@@ -299,9 +299,9 @@ export default function RunRouteFinderTab({ call, send, units, isDark, panel, la
             {result ? `${result.count} of ${result.total} saved route${result.total === 1 ? '' : 's'} match.` : 'Matching your routes against your runs - the first time takes a few seconds...'}
           </div>
           {result && (
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {result.routes.map((r) => (
-                <div key={r.id} className={`rounded-xl border p-4 ${isDark ? 'border-white/10 bg-slate-950/40' : 'border-[#2E2B27]/10 bg-[#FAF7F2]'}`}>
+                <div key={r.id} className={`min-w-0 rounded-xl border p-4 ${isDark ? 'border-white/10 bg-slate-950/40' : 'border-[#2E2B27]/10 bg-[#FAF7F2]'}`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="font-bold text-sm"><RouteName route={r} onRename={renameRoute} isDark={isDark} /></div>

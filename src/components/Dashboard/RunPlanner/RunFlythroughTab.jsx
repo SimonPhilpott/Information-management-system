@@ -378,7 +378,7 @@ export default function RunFlythroughTab({
           </div>
           {/* the route map, with the runner moving as the replay plays - click the route to jump there */}
           {route?.path?.length > 1 && (
-            <div className="h-[240px] lg:h-auto lg:min-h-[300px] order-first lg:order-none">
+            <div className="h-[240px] lg:h-auto lg:min-h-[300px] min-w-0 order-first lg:order-none">
               <FlythroughMap
                 route={route}
                 runnerKm={currentSample.isRecovery ? (route.distanceKm || 0) : (kmAtMin(currentSec / 60) ?? currentSample.distKm)}

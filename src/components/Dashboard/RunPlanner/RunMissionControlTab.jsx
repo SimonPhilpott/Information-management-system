@@ -136,10 +136,10 @@ export default function RunMissionControlTab({
           </h2>
           {routeFull && (
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-4">
-              <div className="lg:col-span-3">
+              <div className="lg:col-span-3 min-w-0">
                 <RouteMap route={routeFull} units={units} />
               </div>
-              <div className="lg:col-span-2 flex flex-col gap-3">
+              <div className="lg:col-span-2 min-w-0 flex flex-col gap-3">
                 <div className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'opacity-70 text-slate-300' : 'text-[#2E2B27]'}`}>Elevation Profile</div>
                 <ElevationProfile route={routeFull} units={units} />
                 <p className={`text-[10px] leading-relaxed ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
