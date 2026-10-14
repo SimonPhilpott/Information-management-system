@@ -108,7 +108,7 @@ export async function analyseActivity(id, units = 'km', debrief = null) {
   // estimatePlan is async - await it, or brief() below reads a pending promise and throws
   const safe = async (fn) => { try { return await fn(); } catch (_) { return null; } };
   const fromNow = now.bgFresh && now.bg != null
-    ? await safe(() => estimatePlan({ ...base, startBg: now.bg, iob: now.iob ?? 0, cob: now.cob ?? 0, minutesSinceBolus: now.lastBolusMinutesAgo ?? undefined }))
+    ? await safe(() => estimatePlan({ ...base, startBg: now.bg, trend: now.direction || null, iob: now.iob ?? 0, cob: now.cob ?? 0, minutesSinceBolus: now.lastBolusMinutesAgo ?? undefined }))
     : null;
   const fromTarget = await safe(() => estimatePlan({ ...base, startBg: targets.startTarget, iob: 0 }));
   const sameStart = await safe(() => estimatePlan({ ...base, startBg: st.bgStart ?? targets.startTarget, iob: st.iobStart ?? 0, cob: st.cobStart ?? 0 }));

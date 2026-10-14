@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { RotateCw, Cookie, Droplets, Syringe, BatteryCharging, Timer, Gauge, Sunrise, CloudSun, Route as RouteIcon, Printer, AlertTriangle } from 'lucide-react';
+import { RotateCw, Cookie, Droplets, Syringe, BatteryCharging, Timer, Gauge, Sunrise, CloudSun, Route as RouteIcon, Printer, AlertTriangle, BookOpen, Check } from 'lucide-react';
 import RunPlanChart from './RunPlanChart';
 import SendToPhoneCard from './SendToPhoneCard';
 import { SavedRoutePlans } from './SavedPlans';
@@ -112,6 +112,22 @@ export default function RunPlanDock({ plan, busy, error, isDark, units, waitingF
                   const titled = rest.length && head.length < 40;
                   return <Notice key={w} isDark={isDark} tone={/below|DO NOT|ketones|treat the low/i.test(w) ? 'stop' : 'warn'} title={titled ? head : w}>{titled ? rest.join(': ') : null}</Notice>;
                 })}
+
+                {/* how the plan follows your T1D rulebook and Targets - and where the model goes its own way */}
+                {p.rulebook?.checks?.length > 0 && (
+                  <div className={card}>
+                    <div className="font-black uppercase tracking-wider text-[10px] mb-1.5 flex items-center gap-1.5 text-emerald-600"><BookOpen size={13} /> Your rulebook and Targets</div>
+                    {p.preRun?.rulebook?.trendWords && <div className={`mb-1.5 ${muted}`}>Planned from your current reading, {p.preRun.rulebook.trendWords}.</div>}
+                    <ul className="flex flex-col gap-1">
+                      {p.rulebook.checks.map((c) => (
+                        <li key={c.rule} className="flex gap-1.5 leading-snug">
+                          {c.ok ? <Check size={13} className="text-emerald-500 shrink-0 mt-0.5" /> : <AlertTriangle size={13} className="text-amber-500 shrink-0 mt-0.5" />}
+                          <span><b>{c.rule}:</b> {c.text}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 {/* insulin & carb settings the plan uses */}
                 <div className={card}>

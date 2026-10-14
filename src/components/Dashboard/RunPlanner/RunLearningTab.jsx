@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { GraduationCap, Check, X, Undo2, RotateCw, Info, Route as RouteIcon, Layers, Globe, Link2, ExternalLink, Calendar, Timer } from 'lucide-react';
+import { GraduationCap, Check, X, Undo2, RotateCw, Info, Route as RouteIcon, Layers, Globe, Link2, ExternalLink, Calendar, Timer, BookOpen, Target } from 'lucide-react';
 import RunRetrospective from './RunRetrospective';
 import PostRunReviewPanel from './PostRunReviewPanel';
 
@@ -7,7 +7,7 @@ import PostRunReviewPanel from './PostRunReviewPanel';
 // hills) and all runs. IMS suggests; nothing changes your plans until you accept it, and accepted lessons can
 // be retired at any time. Below, every run with its retrospective (plan against reality, what you took, notes).
 
-const SCOPE = { route: ['This route', RouteIcon], profile: ['This kind of run', Layers], general: ['All runs', Globe] };
+const SCOPE = { route: ['This route', RouteIcon], profile: ['This kind of run', Layers], general: ['All runs', Globe], rulebook: ['Change to your rulebook', BookOpen], targets: ['Change to your Targets', Target] };
 const when = (ms) => (ms ? new Date(ms).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 const STATUS = { armed: 'planned · waiting for run / match', scheduled: 'planned in IMS', started: 'run started · waiting for Strava', linked: 'matched to Strava', no_run: 'no Strava run found', other_route: 'you ran a different route' };
 
@@ -84,6 +84,19 @@ export default function RunLearningTab({ call, send, isDark, panelClass, units =
           <span className={`text-[10px] ${muted}`}>from {l.runs} runs</span>
         </div>
         <p className="leading-snug mb-2">{l.text}</p>
+        {l.kind === 'rulebook' && Array.isArray(l.evidence?.change) && (
+          <div className="flex flex-col gap-1.5 mb-2 text-[11px]">
+            {l.evidence.change.map((c) => (
+              <div key={c.from} className={`rounded-md p-2 ${isDark ? 'bg-white/5' : 'bg-[#FAF7F2]'}`}>
+                <div className="line-through opacity-60 break-words">{c.from.replace(/^[*\s-]+/, '').replace(/\*\*/g, '')}</div>
+                <div className="font-bold break-words">{c.to.replace(/^[*\s-]+/, '').replace(/\*\*/g, '')}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {l.kind === 'target' && l.evidence?.change && (
+          <div className="mb-2 text-[11px]"><span className="line-through opacity-60">{l.evidence.change.from}</span> → <b>{l.evidence.change.to}</b></div>
+        )}
         <div className="flex flex-wrap gap-2">{actions}</div>
       </div>
     );
@@ -148,7 +161,7 @@ export default function RunLearningTab({ call, send, isDark, panelClass, units =
           Each run you plan saves its fuelling strategy. You can send it to your phone or save the plan directly. After the run, IMS matches it to your Strava activity and glucose,
           replays the plan with what really happened, and measures where the planner was wrong. When the same thing shows up again - {data?.minRuns?.route ?? 2} runs on a route,
           {' '}{data?.minRuns?.profile ?? 3} of a kind, {data?.minRuns?.general ?? 4} overall - it's suggested here. Nothing changes your plans until you accept it.
-          Lessons that would mean fewer carbs need an extra run and no lows. Lessons that hold across routes are offered to your T1D Rulebook too. Never insulin.
+          Lessons that would mean fewer carbs need an extra run and no lows. Lessons that hold across routes are offered to your T1D Rulebook too, and when your runs keep disagreeing with a rule in your rulebook or Targets, the change is suggested here with the exact wording. Never insulin.
         </p>
         {error && <div className="text-amber-600 text-xs">{error}</div>}
       </div>
@@ -159,7 +172,7 @@ export default function RunLearningTab({ call, send, isDark, panelClass, units =
           {!data?.suggestions?.length ? <div className={muted}>Nothing to suggest yet. It takes a few runs with glucose data where the model fits clearly{data?.profiles?.length ? '' : ' - none analysed so far'}.</div> : (
             <div className="flex flex-col gap-2">
               {data.suggestions.map((l) => <Lesson key={l.id} l={l} actions={<>
-                <button onClick={() => decide(l.id, 'accept')} className={`${small} bg-emerald-500 text-white border-transparent`}><Check size={12} />Use this in my plans</button>
+                <button onClick={() => decide(l.id, 'accept')} className={`${small} bg-emerald-500 text-white border-transparent`}><Check size={12} />{l.kind === 'rulebook' ? 'Change my rulebook' : l.kind === 'target' ? 'Change my Targets' : 'Use this in my plans'}</button>
                 <button onClick={() => decide(l.id, 'dismiss')} className={small}><X size={12} />Not now</button>
               </>} />)}
             </div>

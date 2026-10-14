@@ -460,6 +460,8 @@ export default function RunPlannerPortal({ theme = 'dark', onThemeToggle, setCur
         iob: form.iob === '' ? null : Number(form.iob),
         cob: form.cob === '' ? null : Number(form.cob),
         minutesSinceBolus: form.minutesSinceBolus === '' ? null : Number(form.minutesSinceBolus),
+        // the trend arrow, when planning from the current reading - the rulebook's start rules use it
+        trend: now?.now?.bgFresh && Number(overrides?.startBg ?? form.startBg) === Number(now.now.bg) ? (now.now.direction || null) : null,
         gainM: routeFull?.gainM,
         lossM: routeFull?.lossM,
         profile: routeFull?.profile,

@@ -2,7 +2,9 @@ import crypto from 'crypto';
 import db, { getSetting } from '../db/database.js';
 import { matchActivity, getLoopSettings } from './runGlucoseService.js';
 import { getRoute, linkedRouteId, linkActivityRoute, listRoutes, saveRouteAsync } from './routeService.js';
-import { estimatePlan, getTargets, replaySimulate, runProfile, personalFit, decodePolyline, shareNear } from './runPlanService.js';
+import { estimatePlan, getTargets, saveTargets, replaySimulate, runProfile, personalFit, decodePolyline, shareNear } from './runPlanService.js';
+import { getRunRules, preRunDecision, fuelLimits, zoneFor, trendKind, TREND_WORDS, editZoneBounds, editFirstGrams, editRate, editBelow } from './runRules.js';
+import { getRulebook, saveRulebook } from './t1dRulebookService.js';
 import { logCarbs, deleteCarbs } from './glucoseHubService.js';
 
 // Run learning: every run teaches the next one.
@@ -39,7 +41,7 @@ const round5 = (x) => Math.round(x / 5) * 5;
 const median = (xs) => { const v = xs.filter(Number.isFinite).sort((a, b) => a - b); return v.length ? (v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2) : null; };
 const parse = (t) => { try { return t ? JSON.parse(t) : null; } catch { return null; } };
 const CGM_LAG = 5; // minutes the sensor trails blood glucose
-const ANALYSIS_VERSION = 4; // bump when the analysis gains fields, so stored ones are redone when opened
+const ANALYSIS_VERSION = 5; // bump when the analysis gains fields, so stored ones are redone when opened
 
 // ---- sessions ----------------------------------------------------------------------------------------
 // The plan as it was sent: enough to show it again and to replay it, without the heavy what-if tables.
@@ -535,6 +537,28 @@ export async function analyseSession(sessionId) {
     const p = bgAt(toRun(n.minute)), tr = trendAt(toRun(n.minute));
     if (p) learn.push(`At ${Math.round(n.minute)} min you noted "${n.text}" - glucose was ${p.bg}${tr != null ? `, ${tr < 0 ? 'falling' : 'rising'} ${Math.abs(tr)} per 10 minutes` : ''}.${/tired|heavy|legs|slow|walk|dizzy|shaky|wobbly|hypo|low/i.test(n.text) && tr != null && tr <= -0.5 ? ' Falling glucose may have played a part.' : ''}`);
   }
+  // against your rulebook: what it said for this start, and the finish line
+  let rulebook = null;
+  try {
+    const rules = getRunRules();
+    const pts = m.series.filter((p) => p.bg != null && p.m >= -15 && p.m <= 0);
+    const slope = pts.length >= 2 && pts.at(-1).m > pts[0].m ? r1(((pts.at(-1).bg - pts[0].bg) / (pts.at(-1).m - pts[0].m)) * 10) : null;
+    const startCarbs = intakes.filter((x) => x.t >= -20 && x.t <= 2).reduce((n, x) => n + x.g, 0);
+    if (st.bgStart != null) {
+      const d = preRunDecision({ startBg: st.bgStart, trend: slope, iob: st.iobStart ?? 0, weightKg: t.weightKg, intensity: profile.intensity, rules });
+      const tk = trendKind(slope);
+      const said = d.doNotRun ? 'not to set off yet' : d.grams ? `${d.grams} g before setting off` : 'no carbs before setting off';
+      const at = `${st.bgStart}${tk ? `, ${TREND_WORDS[tk]}` : ''} (${d.zone?.label || 'no zone'})`;
+      const where = `You started at ${at}`;
+      const why = d.text.length > 1 ? ` (${d.text.slice(1).join(' ')})` : '';
+      rulebook = { zone: d.zone, trend: tk, slope, startCarbs, said: d.grams, doNotRun: d.doNotRun };
+      if (d.doNotRun) watch.push(`Rulebook: ${where} - it says ${said}${why}.`);
+      else if (d.grams && startCarbs < d.grams - 2) watch.push(`Rulebook: ${where} - it says ${said}${why}; you took ${startCarbs ? `${startCarbs} g` : 'none'}.`);
+      else if (!d.grams && startCarbs >= 5) learn.push(`Rulebook: ${where} - it says ${said}; you took ${startCarbs} g.`);
+      else good.push(`Started as your rulebook says: at ${at} - ${said}${startCarbs ? ` (you took ${startCarbs} g)` : ''}.`);
+    }
+    if (rules.finish && st.bgEnd != null && st.bgEnd < rules.finish.below) watch.push(`Rulebook: you finished at ${st.bgEnd}, below its ${rules.finish.below.toFixed(1)} - it says ${rules.finish.grams?.join('-') || '15-20'} g of fast carbs straight away.`);
+  } catch { /* rulebook not readable - the rest of the review stands */ }
   if (s.effort && s.effort >= 8 && fitOk && best.scale >= 1.1) learn.push(`It felt hard (${s.effort}/10), and glucose fell faster than planned - harder efforts burn more.`);
 
   const series = (fn) => { const out = []; for (let x = 0; x <= dur + 120; x += 2) out.push([x, r1(fn(x))]); return out; };
@@ -562,7 +586,7 @@ export async function analyseSession(sessionId) {
     stats: { start: st.bgStart, end: st.bgEnd, lowest: st.bgMin, lowestAt: st.bgMinAtMin, iobStart: st.iobStart, postLowest: st.post?.bgMin ?? null, fastestFall: st.fallPer10Min },
     // effective: the exercise uptake this run showed, in the planner's own units (1.0 = its standard default)
     fit: { scale: best.scale, applied, baseK, effective: r2(baseK * applied * best.scale), rmseModel: r2(err(asModelled, obsRun)), rmseFitted: r2(best.rmse), readings: obsRun.length },
-    postResidual: r1(postResidual), postRun, accuracy: predictionAccuracy(plan, toRun, obsRun, st), timing, onTime, betterPlan,
+    postResidual: r1(postResidual), postRun, rulebook, accuracy: predictionAccuracy(plan, toRun, obsRun, st), timing, onTime, betterPlan,
     findings: { good, watch, learn },
   });
 }
@@ -672,11 +696,12 @@ export function refreshLearnings() {
   const base = personalFit('Run').kEx || 1; // what the planner uses now, before lessons
 
   const upsert = (scope, key, kind, value, rs, text, extra = {}) => {
-    const cur = db.prepare("SELECT * FROM run_learning WHERE scope = ? AND scope_key = ? AND kind = ? AND status IN ('suggested','accepted','dismissed') ORDER BY id DESC").all(scope, key, kind);
-    const accepted = cur.find((x) => x.status === 'accepted');
+    const cur = db.prepare("SELECT * FROM run_learning WHERE scope = ? AND scope_key = ? AND kind = ? AND status IN ('suggested','accepted','applied','dismissed') ORDER BY id DESC").all(scope, key, kind);
+    const accepted = cur.find((x) => x.status === 'accepted' || x.status === 'applied');
+    if (accepted && (kind === 'rulebook' || kind === 'target') && Math.abs(accepted.value - value) < 0.05) { if (pending) db.prepare("UPDATE run_learning SET status = 'superseded' WHERE id = ?").run(pending.id); return; }
     const pending = cur.find((x) => x.status === 'suggested');
     const dismissed = cur.find((x) => x.status === 'dismissed');
-    const evidence = JSON.stringify({ sessions: rs.map((r) => r.id), values: rs.map((r) => extra.valueOf ? extra.valueOf(r) : null), label: extra.label || null });
+    const evidence = JSON.stringify({ sessions: rs.map((r) => r.id), values: rs.map((r) => extra.valueOf ? extra.valueOf(r) : null), label: extra.label || null, ...(extra.change ? { change: extra.change } : {}) });
     if (accepted && Math.abs(accepted.value - value) < (kind === 'uptake' ? 0.15 * accepted.value : 5)) { if (pending) db.prepare("UPDATE run_learning SET status = 'superseded' WHERE id = ?").run(pending.id); return; }
     if (dismissed && !pending && rs.length < dismissed.runs + 2) return; // dismissed: ask again only with more evidence
     if (pending) db.prepare('UPDATE run_learning SET value = ?, runs = ?, evidence = ?, text = ? WHERE id = ?').run(value, rs.length, evidence, text, pending.id);
@@ -709,12 +734,141 @@ export function refreshLearnings() {
       upsert('general', 'all', 'post_carbs', g, post, describe('general', '', 'post_carbs', g, post.length), { valueOf: (r) => r.a.postResidual });
     }
   }
+  try { suggestRuleChanges(runs, upsert); } catch { /* rulebook not readable */ }
   return listLearnings();
+}
+
+// ---- your rulebook and Targets, against your runs --------------------------------------------------------
+// When your own runs keep disagreeing with a rule, suggest changing the rule's numbers (the planner reads them
+// back, so accepting changes your plans). Only with at least 3 runs, two thirds or more pointing the same way;
+// a change that means fewer carbs needs 4 runs and no lows. (Simon, 14 Oct)
+const roundUp5 = (x) => Math.ceil(x * 2 - 1e-9) / 2; // up to the next 0.5
+function runFacts(r) {
+  const a = r.a, act = a.actual || [], dur = a.run?.durationMin || 0;
+  const pre = act.filter(([m]) => m >= -15 && m <= 0);
+  const slope = a.rulebook?.slope ?? (pre.length >= 2 && pre.at(-1)[0] > pre[0][0] ? ((pre.at(-1)[1] - pre[0][1]) / (pre.at(-1)[0] - pre[0][0])) * 10 : null);
+  const ins = a.intakesOnRunClock || [];
+  const startCarbs = a.rulebook?.startCarbs ?? ins.filter((x) => x.minute >= -20 && x.minute <= 2).reduce((n, x) => n + (x.grams || 0), 0);
+  const runCarbs = ins.filter((x) => x.minute > 2 && x.minute <= dur).reduce((n, x) => n + (x.grams || 0), 0);
+  const early = act.filter(([m]) => m >= 0 && m <= 30).map(([, bg]) => bg);
+  const firstHigh = act.filter(([m]) => m >= 0 && m <= 45).map(([, bg]) => bg);
+  return {
+    id: r.id, day: a.run?.day, start: a.stats?.start, slope, startCarbs, runCarbs, dur, perHour: dur > 0 ? runCarbs / (dur / 60) : null,
+    early: early.length ? Math.min(...early) : null, high45: firstHigh.length ? Math.max(...firstHigh) : null,
+    lowest: a.stats?.lowest, end: a.stats?.end, postLowest: a.stats?.postLowest, mealAfter: a.postRun?.mealAfterG ?? 0,
+    floor: a.floor ?? getTargets().floor, intensity: a.profile?.intensity,
+  };
+}
+
+function suggestRuleChanges(runs, upsert) {
+  const rules = getRunRules();
+  const t = getTargets();
+  const facts = runs.map((r) => ({ r, f: runFacts(r) })).filter((x) => x.f.start != null);
+  const most = (xs, test) => xs.length && xs.filter(test).length / xs.length >= 2 / 3;
+  const list = (xs, fn) => xs.map(fn).join(', ');
+  const rb = (key, value, rs, text, change) => upsert('rulebook', key, 'rulebook', value, rs.map((x) => x.r), text, { valueOf: (r) => runFacts(r).start, change });
+  const zones = rules.zones;
+  const green = zones.find((z) => z.kind === 'go');
+  const before = green ? zones.filter((z) => z.kind === 'carbs_before' && z.hi < green.lo).pop() : null;
+
+  // 1. green zone: set off with no carbs - but your runs dipped early
+  if (green && before) {
+    const xs = facts.filter(({ f }) => f.start >= green.lo && f.start <= green.hi && (f.slope == null || f.slope > -0.3) && f.startCarbs < 5 && f.early != null);
+    const dips = xs.filter(({ f }) => f.early < f.floor + 0.5);
+    if (xs.length >= 3 && most(xs, ({ f }) => f.early < f.floor + 0.5)) {
+      const x = Math.min(green.hi - 1, roundUp5(Math.max(...dips.map(({ f }) => f.start)) + 0.1));
+      if (x > green.lo) rb('green_zone_start', x, xs,
+        `${dips.length} of ${xs.length} runs started in your green zone (${green.label}) with a steady arrow and no carbs, and came within half a unit of your floor in the first 30 minutes (lowest ${list(dips, ({ f }) => f.early)}). Your rulebook says set off with no carbs from ${green.lo.toFixed(1)}. Suggested: start the green zone at ${x.toFixed(1)}, and below that take the ${before.label.replace(/\s*\(.*$/, '')} carbs.`,
+        [{ from: before.line, to: editZoneBounds(before.line, before.lo, Math.round((x - 0.1) * 10) / 10) }, { from: green.line, to: editZoneBounds(green.line, x, green.hi) }]);
+    }
+  }
+
+  // 2. the "carbs before" zone: the amount it gives
+  if (before?.grams) {
+    const xs = facts.filter(({ f }) => f.start >= before.lo && f.start <= before.hi && f.startCarbs >= before.grams[0] && f.early != null && f.intensity !== 'hard');
+    const [g0, g1] = before.grams;
+    if (xs.length >= 3 && most(xs, ({ f }) => f.early < f.floor)) {
+      rb('zone_carbs', g0 + 5, xs, `${xs.filter(({ f }) => f.early < f.floor).length} of ${xs.length} runs started at ${before.label} with the rulebook's ${g0 === g1 ? g0 : `${g0}-${g1}`} g and still went below your floor in the first 30 minutes (lowest ${list(xs, ({ f }) => f.early)}). Suggested: ${g0 + 5}${g1 !== g0 ? `-${g1 + 5}` : ''} g at that start.`,
+        [{ from: before.line, to: editFirstGrams(before.line, g0 + 5, g1 + 5 === g0 + 5 ? g0 + 5 : g1 + 5) }]);
+    } else if (xs.length >= 4 && g0 >= 10 && xs.every(({ f }) => f.early >= f.floor + 1.5 && f.lowest >= f.floor) && most(xs, ({ f }) => f.high45 > 10)) {
+      rb('zone_carbs', g0 - 5, xs, `All ${xs.length} runs that started at ${before.label} with the rulebook's ${g0} g stayed well above your floor and mostly went over 10 in the first 45 minutes (highest ${list(xs, ({ f }) => f.high45)}). Suggested: ${g0 - 5}${g1 !== g0 ? `-${g1 - 5}` : ''} g at that start.`,
+        [{ from: before.line, to: editFirstGrams(before.line, g0 - 5, g1 === g0 ? g0 - 5 : g1 - 5) }]);
+    }
+  }
+
+  // 3. the fuelling rate, for the rate line that applies to each run's length
+  const byLine = new Map();
+  for (const x of facts.filter(({ f }) => f.dur >= 45 && f.perHour != null && f.lowest != null)) {
+    const lim = fuelLimits(rules, { durationMin: x.f.dur });
+    if (!lim.line) continue;
+    if (!byLine.has(lim.line)) byLine.set(lim.line, { lim, xs: [] });
+    byLine.get(lim.line).xs.push(x);
+  }
+  for (const { lim, xs } of byLine.values()) {
+    const [lo, hi] = lim.rate;
+    const key = lim.forLonger ? `fuel_over_${lim.forLonger}` : 'fuel';
+    const under = xs.filter(({ f }) => f.perHour < lo);
+    const atRate = xs.filter(({ f }) => f.perHour >= lo);
+    if (under.length >= 4 && under.length === xs.length && xs.every(({ f }) => f.lowest >= f.floor)) {
+      const newLo = Math.max(0, Math.min(hi - 10, Math.floor(Math.max(...under.map(({ f }) => f.perHour)) / 5) * 5));
+      if (newLo < lo) rb(key, newLo, xs, `Your last ${xs.length} runs${lim.forLonger ? ` over ${lim.forLonger} minutes` : ''} took ${list(xs, ({ f }) => `${Math.round(f.perHour)} g`)} an hour - all under the rulebook's ${lo}-${hi} g - and none went below your floor. Suggested: ${newLo}-${hi} g an hour, so the rulebook matches what works for you.`,
+        [{ from: lim.line, to: editRate(lim.line, newLo, hi) }]);
+    } else if (atRate.length >= 3 && most(atRate, ({ f }) => f.lowest < f.floor)) {
+      rb(key, lo + 10, atRate, `${atRate.filter(({ f }) => f.lowest < f.floor).length} of ${atRate.length} runs at the rulebook's ${lo}-${hi} g an hour still went below your floor (lowest ${list(atRate, ({ f }) => f.lowest)}). Suggested: ${lo + 10}-${Math.min(90, hi + 10)} g an hour.`,
+        [{ from: lim.line, to: editRate(lim.line, lo + 10, Math.min(90, hi + 10)) }]);
+    }
+  }
+
+  // 4. the finish line: finished above its threshold, no carbs, and went low afterwards
+  if (rules.finish?.below != null) {
+    const xs = facts.filter(({ f }) => f.end != null && f.end >= rules.finish.below && f.postLowest != null && f.mealAfter < 15);
+    const lows = xs.filter(({ f }) => f.postLowest < f.floor);
+    if (xs.length >= 3 && most(xs, ({ f }) => f.postLowest < f.floor)) {
+      const v = Math.min(9, roundUp5(Math.max(...lows.map(({ f }) => f.end)) + 0.1));
+      if (v > rules.finish.below) rb('finish_below', v, xs, `${lows.length} of ${xs.length} runs finished at or above the rulebook's ${rules.finish.below.toFixed(1)} (so no finish-line carbs) and then went below your floor in the 2 hours after (lowest ${list(lows, ({ f }) => f.postLowest)}). Suggested: take the finish-line carbs whenever you finish below ${v.toFixed(1)}.`,
+        [{ from: rules.finish.line, to: editBelow(rules.finish.line, v) }]);
+    }
+  }
+
+  // 5. your Targets: starting at your start target with no carbs, and still going below your floor
+  const xs = facts.filter(({ f }) => Math.abs(f.start - t.startTarget) <= 1 && f.startCarbs < 5 && f.lowest != null);
+  const lowRuns = xs.filter(({ f }) => f.lowest < t.floor);
+  const cap = rules.startTarget?.range?.[1] ?? 12;
+  if (xs.length >= 3 && most(xs, ({ f }) => f.lowest < t.floor) && t.startTarget + 1 <= cap) {
+    upsert('targets', 'startTarget', 'target', t.startTarget + 1, xs.map((x) => x.r),
+      `${lowRuns.length} of ${xs.length} runs started near your start target (${t.startTarget}) with no carbs and went below your ${t.floor} floor (lowest ${list(lowRuns, ({ f }) => f.lowest)}). Suggested: raise your start target to ${(t.startTarget + 1).toFixed(1)} (still inside the rulebook's ${rules.startTarget?.range?.join('-') || ''} window).`,
+      { valueOf: (r) => runFacts(r).start, change: { field: 'startTarget', from: t.startTarget, to: t.startTarget + 1 } });
+  }
+}
+
+// Accepting a rulebook or Targets suggestion changes them there and then
+function applyRuleChange(l) {
+  const ev = parse(l.evidence) || {};
+  if (l.kind === 'target') {
+    const c = ev.change;
+    if (!c?.field) throw new Error('This suggestion has nothing to change.');
+    saveTargets({ [c.field]: c.to });
+    return;
+  }
+  const edits = Array.isArray(ev.change) ? ev.change : [];
+  if (!edits.length) throw new Error('This suggestion has nothing to change.');
+  let { rulebook } = getRulebook();
+  for (const e of edits) {
+    if (!rulebook.includes(e.from)) throw new Error('Your rulebook has changed since this was suggested - choose "Not now" and it will be worked out again.');
+    rulebook = rulebook.replace(e.from, e.to);
+  }
+  saveRulebook(rulebook);
+  // kept in the rulebook's findings history too
+  try {
+    db.prepare(`INSERT OR REPLACE INTO t1d_rulebook_findings (id, book_id, book_title, type, section_target, title, current_rule, book_recommendation, citation, explanation, suggested_action, proposed_text, status, user_action_at)
+      VALUES (?, NULL, 'Your own runs (IMS learning)', 'refinement', NULL, ?, ?, ?, 'IMS run learning', ?, 'replace', ?, 'accepted', ?)`)
+      .run(`rule_${l.id}`, `From your runs: ${l.scope_key.replace(/_/g, ' ')}`, edits.map((e) => e.from).join('\n'), l.text, `Accepted in the Run Planner's Learning tab, from ${l.runs} runs.`, edits.map((e) => e.to).join('\n'), new Date().toISOString());
+  } catch { /* history only */ }
 }
 
 export function listLearnings() {
   const rows = db.prepare("SELECT * FROM run_learning WHERE status IN ('suggested','accepted') ORDER BY status DESC, created_at DESC").all()
-    .map((r) => ({ ...r, evidence: parse(r.evidence), label: r.scope === 'route' ? (getRoute(Number(r.scope_key))?.name || 'route') : r.scope === 'profile' ? (parse(r.evidence)?.label || r.scope_key.replace(/\|/g, ', ')) : 'all runs' }));
+    .map((r) => ({ ...r, evidence: parse(r.evidence), label: r.scope === 'route' ? (getRoute(Number(r.scope_key))?.name || 'route') : r.scope === 'profile' ? (parse(r.evidence)?.label || r.scope_key.replace(/\|/g, ', ')) : r.scope === 'rulebook' ? 'your T1D rulebook' : r.scope === 'targets' ? 'your Targets' : 'all runs' }));
   const runs = usableRuns();
   const profiles = new Map();
   for (const r of runs) {
@@ -739,7 +893,10 @@ export function listLearnings() {
 export function decideLearning(id, decision) {
   const l = db.prepare('SELECT * FROM run_learning WHERE id = ?').get(Number(id));
   if (!l) throw new Error('Not found.');
-  if (decision === 'accept') {
+  if (decision === 'accept' && (l.kind === 'rulebook' || l.kind === 'target')) {
+    applyRuleChange(l);
+    db.prepare("UPDATE run_learning SET status = 'applied', decided_at = ? WHERE id = ?").run(Date.now(), l.id);
+  } else if (decision === 'accept') {
     db.prepare("UPDATE run_learning SET status = 'superseded', decided_at = ? WHERE scope = ? AND scope_key = ? AND kind = ? AND status = 'accepted'").run(Date.now(), l.scope, l.scope_key, l.kind);
     db.prepare("UPDATE run_learning SET status = 'accepted', decided_at = ? WHERE id = ?").run(Date.now(), l.id);
     proposeRulebookFinding(l);

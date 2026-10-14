@@ -4,6 +4,7 @@ import { getLoopSettings } from './runGlucoseService.js';
 import { getWeather } from './weatherService.js';
 import { getTrainingLoad } from './trainingLoadService.js';
 import { learnedAdjustments, postRunPattern, refuelStatus } from './runLearningService.js';
+import { getRunRules, preRunDecision, fuelLimits, TREND_WORDS } from './runRules.js';
 
 // Run planner: given a distance or a saved route (with its elevation), a pace, and where glucose
 // and insulin on board are right now, estimate how glucose is likely to move during the run and
@@ -509,6 +510,11 @@ export async function estimatePlan(input = {}) {
   const dur = Math.max(1, Math.round(tl.minutes));
   const totalMin = dur + 120;
   const floor = targets.floor, margin = 1.0;
+  // your T1D rulebook decides the start (by zone and trend arrow) and the size of the stops; the model decides
+  // when the stops fall and how big within the rulebook's ranges
+  const rules = getRunRules();
+  const trend = input.trend ?? null; // Nightscout arrow (e.g. 'SingleDown') when planning from the current reading
+  const lim = fuelLimits(rules, { iob, durationMin: dur });
 
   // Retrieve ambient route weather (from request or live Open-Meteo)
   let weather = input.weather || null;
@@ -595,21 +601,25 @@ export async function estimatePlan(input = {}) {
   });
 
   const params = { startBg, iob, cob, isf, cr, kEx: kExRun, sensMult, intensity, effort: combinedEffort, durationMin: dur, totalMin, exShape, insulinBoost };
-  const runPlan = (start, iobStart) => {
+  const runPlan = (start, iobStart, trendNow = null) => {
     const p = { ...params, startBg: start, iob: iobStart };
     const intakes = [];
-    // 1. carbs at the start if the first half hour would otherwise dip toward the floor
+    // 1. carbs at the start: what the rulebook says for this start glucose, trend arrow and insulin on board.
+    // The model's view of the first half hour only chooses the amount within the rulebook's range - a start in
+    // the green zone with a steady arrow gets none, and an early dip is met by the first stop instead.
     let base = simulate({ ...p, intakes });
     const early = min(base, 0, 30);
-    if (early < floor + margin) intakes.push({ t: 0, g: Math.min(40, Math.max(10, round5((floor + margin - early) / effect))), kind: 'start' });
-    // 2. during the run: look 30 minutes ahead at each planned stop
-    for (let t = 15; t < dur - 8; t += 20) {
+    const modelGrams = early < floor + margin ? Math.min(40, Math.max(10, round5((floor + margin - early) / effect))) : 0;
+    const pre = preRunDecision({ startBg: start, trend: trendNow, iob: iobStart, weightKg, modelGrams, intensity, rules });
+    if (pre.grams > 0) intakes.push({ t: 0, g: pre.grams, kind: 'start' });
+    // 2. during the run: look 30 minutes ahead at each planned stop, in the rulebook's increments and hourly ceiling
+    for (let t = 15; t < dur - 8; t += lim.every[0]) {
       base = simulate({ ...p, intakes });
       const ahead = min(base, t, Math.min(t + 30, dur + 10));
       const nowBg = base[t];
       if (ahead < floor + margin && nowBg < 11) {
         const recent = intakes.filter((i) => i.t > t - 60).reduce((a, i) => a + i.g, 0);
-        const g = Math.min(30, Math.max(10, round5((floor + margin - ahead) / effect)), Math.max(0, 75 - recent));
+        const g = Math.min(lim.stepMax, Math.max(lim.stepMin, round5((floor + margin - ahead) / effect)), Math.max(0, lim.perHour - recent));
         if (g >= 10) intakes.push({ t, g, kind: 'run' });
       }
     }
@@ -620,9 +630,9 @@ export async function estimatePlan(input = {}) {
       let lowAt = 0;
       for (let t = 1; t <= dur; t++) if (base[t] < base[lowAt]) lowAt = t;
       const t = Math.round(dur < 30 ? dur / 2 : Math.max(10, Math.min(dur - 8, lowAt - 15)));
-      intakes.push({ t, g: 10, kind: 'run' });
+      intakes.push({ t, g: lim.stepMin, kind: 'run' });
     }
-    return { intakes, bg: simulate({ ...p, intakes }) };
+    return { intakes, bg: simulate({ ...p, intakes }), pre };
   };
 
   // customIntakes: per-stop explicit intake array from the frontend's per-stop steppers.
@@ -630,7 +640,8 @@ export async function estimatePlan(input = {}) {
   // Shape: [{ t: minuteIntoRun, g: grams, kind: 'start'|'run' }, ...]
   const rawCustomIntakes = Array.isArray(input.customIntakes) ? input.customIntakes : null;
   const customCarbs = !rawCustomIntakes && input.customCarbs !== undefined && input.customCarbs !== null && input.customCarbs !== '' ? Math.max(0, Math.round(Number(input.customCarbs))) : null;
-  let main = runPlan(startBg, iob);
+  let main = runPlan(startBg, iob, trend);
+  const pre = main.pre;
   if (rawCustomIntakes !== null) {
     // Use exact per-stop values; filter out zero-gram stops (user zeroed them)
     const exactIntakes = rawCustomIntakes
@@ -671,13 +682,17 @@ export async function estimatePlan(input = {}) {
   const minAfter = min(main.bg, dur, totalMin);
   const basePostCarbs = minAfter < floor + 0.5 ? Math.min(30, Math.max(10, round5((floor + 0.5 - minAfter) / effect))) : 0;
   // learned: you tend to drop more after runs than the model expects
-  const postCarbs = learning.postCarbsExtra ? Math.min(45, basePostCarbs + learning.postCarbsExtra) : basePostCarbs;
+  let postCarbs = learning.postCarbsExtra ? Math.min(45, basePostCarbs + learning.postCarbsExtra) : basePostCarbs;
+  // the rulebook's finish-line rule: finishing below its threshold (or falling) means fast carbs straight away
+  const finishFalling = main.bg[dur] - main.bg[Math.max(0, dur - 10)] <= -0.6;
+  const finishRule = rules.finish && (endBg < rules.finish.below || finishFalling) ? rules.finish : null;
+  if (finishRule?.grams) postCarbs = Math.max(postCarbs, finishRule.grams[0]);
 
   // Put each stop where it is easy to eat: not in the middle of a steep climb.
   const stops = main.intakes.map((it) => {
     let t = it.t, note = '';
     const kmTarget = kmAt(tl.marks, t);
-    if (it.kind === 'start') return { minute: 0, km: 0, grams: it.g, fluidMl: 100, note: 'Just before you set off.' };
+    if (it.kind === 'start') return { minute: 0, km: 0, grams: it.g, fluidMl: 100, note: pre?.leadMin ? `About ${pre.leadMin} minutes before you set off (rulebook).` : pre?.delayMin ? `Wait ${pre.delayMin[0]}-${pre.delayMin[1]} minutes after taking it, then recheck (rulebook).` : 'Just before you set off.' };
     // stops you placed yourself (dragged on the chart) stay exactly where you put them
     if (!rawCustomIntakes && gradeAt(tl.marks, t) >= 6) {
       for (let back = 1; back <= 6; back++) if (gradeAt(tl.marks, t - back) < 4) { t -= back; note = 'Moved earlier, ahead of a steep climb.'; break; }
@@ -759,9 +774,10 @@ export async function estimatePlan(input = {}) {
   }
   const sips = drinks;
   const preRun = {
-    carbsToTargetG: startBg < targets.startTarget - 0.5 ? Math.round((targets.startTarget - startBg) / effect) : 0,
+    carbsToTargetG: pre?.grams || 0,
     startCarbsG: main.intakes.filter((x) => x.kind === 'start').reduce((a, x) => a + x.g, 0),
-    tempTarget: 'Exercise target of 8.0-9.0 mmol/L set 60-90 minutes before, so the loop eases off insulin (rulebook).',
+    rulebook: pre ? { zone: pre.zone, trend: pre.trend, trendWords: pre.trend ? TREND_WORDS[pre.trend] : null, grams: pre.grams, leadMin: pre.leadMin, delayMin: pre.delayMin, steps: pre.text } : null,
+    tempTarget: rules.tempTarget?.range ? `Exercise target of ${rules.tempTarget.range[0].toFixed(1)}-${rules.tempTarget.range[1].toFixed(1)} mmol/L set ${rules.tempTarget.minutes ? `${rules.tempTarget.minutes[0]}-${rules.tempTarget.minutes[1]}` : '60-90'} minutes before, so the loop eases off insulin (rulebook).` : 'Exercise target set 60-90 minutes before, so the loop eases off insulin.',
     iobNote: iob >= 1 ? `${iob} U still on board - each unit takes off about ${(isf * sensMult * insulinBoost).toFixed(1)} mmol/L while running.` : 'Little insulin on board - a good start.',
     // ACSM: 5-7 ml/kg at least 4 hours before (more 2 hours before only if urine is dark); no big drink at the start
     drinkMl: Math.round((bodyKg * 7) / 50) * 50,
@@ -782,11 +798,41 @@ export async function estimatePlan(input = {}) {
   } : null;
 
   const warnings = [];
-  if (startBg < 4) warnings.push('Glucose is below 4.0 - treat the low and recheck before doing anything else.');
-  else if (startBg < 5) warnings.push('ISPAD 2022: at 4.0-4.9 mmol/L delay the run about 20 minutes and take about 0.3 g/kg of fast carbs' + (weightKg ? ` (about ${Math.round(0.3 * weightKg)} g for you)` : '') + ', then recheck.');
-  else if (startBg > 15) warnings.push('Above 15 mmol/L: check ketones first (ISPAD: no exercise at 1.5 mmol/L or more).');
+  // the rulebook's gates before the start (its wording, its numbers)
+  if (pre?.doNotRun) warnings.push(`DO NOT set off yet: ${pre.text.join(' ')}`);
+  else if (pre?.ketones) warnings.push(`Check ketones first: ${pre.text.join(' ')}`);
+  else if (pre?.delayMin) warnings.push(`Wait before you go: ${pre.text.join(' ')}`);
   if (minDuring < floor) warnings.push(`Even with the plan the estimate dips to ${minDuring.toFixed(1)}, below your ${floor} floor - start higher, run easier, or carry more and take it earlier.`);
-  if (totalCarbs / hours > 75) warnings.push('The plan needs more than 75 g an hour, which is at the top of what guidelines suggest guts can absorb - consider starting higher or reducing insulin on board beforehand.');
+  if (totalCarbs / hours > lim.perHour) warnings.push(`The plan needs more than ${lim.perHour} g an hour, the most your rulebook allows for this run${rules.gut?.perHour ? ` (gut ceiling about ${rules.gut.perHour} g an hour)` : ''} - consider starting higher or reducing insulin on board beforehand.`);
+  if (finishRule) warnings.push(`At the finish: the plan ends ${endBg < finishRule.below ? `at about ${Math.round(endBg * 10) / 10}, below the rulebook's ${finishRule.below}` : 'still falling'} - take ${finishRule.grams[0]}-${finishRule.grams[1]} g of fast carbs as soon as you stop.`);
+
+  // how the plan lines up with the rulebook and your Targets - and where the model goes its own way
+  const hourly = Math.round(totalCarbs / hours);
+  const own = rawCustomIntakes !== null || customCarbs !== null;
+  const ruleChecks = [];
+  if (pre) ruleChecks.push({ rule: 'Before you set off', ok: true, text: pre.text.join(' ') });
+  if (dur >= 45 && lim.rate) {
+    const [lo, hi] = lim.rate;
+    ruleChecks.push(hourly < lo
+      ? { rule: 'Fuelling rate', ok: false, text: `${hourly} g an hour - under the rulebook's ${lo}-${hi} g, because the model says this run needs less${own ? ' (or you set your own stops)' : ''}. Your runs will show which is right: run learning suggests a rulebook change if this keeps happening.` }
+      : hourly > hi ? { rule: 'Fuelling rate', ok: hourly <= lim.perHour, text: `${hourly} g an hour - above the rulebook's usual ${lo}-${hi} g${hourly <= lim.perHour ? `, within its ${lim.perHour} g ceiling for this run` : ''}.` }
+        : { rule: 'Fuelling rate', ok: true, text: `${hourly} g an hour, inside the rulebook's ${lo}-${hi} g${lim.forLonger ? ` for runs over ${lim.forLonger} minutes` : ''}.` });
+  }
+  const runStops = main.intakes.filter((x) => x.kind === 'run');
+  if (runStops.length) {
+    const odd = runStops.filter((x) => x.g < lim.stepMin || x.g > lim.stepMax);
+    ruleChecks.push(odd.length
+      ? { rule: 'Stop sizes', ok: false, text: `${odd.map((x) => `${x.g} g`).join(', ')} - outside the rulebook's ${lim.stepMin}-${lim.stepMax} g per stop${own ? ' (your own stops)' : ''}.` }
+      : { rule: 'Stop sizes', ok: true, text: `Every stop is ${lim.stepMin}-${lim.stepMax} g, as the rulebook says.` });
+  }
+  if (rules.finish) ruleChecks.push({ rule: 'At the finish', ok: true, text: finishRule ? `Predicted to finish ${endBg < finishRule.below ? `below ${finishRule.below}` : 'falling'} - ${finishRule.grams[0]}-${finishRule.grams[1]} g straight away.` : `Predicted to finish at ${Math.round(endBg * 10) / 10}, above the rulebook's ${rules.finish.below} - no finish-line carbs needed unless you're falling.` });
+  if (rules.startTarget?.range) {
+    const [lo, hi] = rules.startTarget.range;
+    ruleChecks.push(targets.startTarget < lo || targets.startTarget > hi
+      ? { rule: 'Your Targets', ok: false, text: `Your start target (${targets.startTarget}) is outside the rulebook's ${lo}-${hi} window - one of them needs changing.` }
+      : { rule: 'Your Targets', ok: true, text: `Start target ${targets.startTarget} is inside the rulebook's ${lo}-${hi} window; floor ${floor}.` });
+  }
+  if (rules.missing?.length) ruleChecks.push({ rule: 'Rulebook', ok: false, text: `Couldn't read ${rules.missing.join(', ')} from your rulebook's wording, so the standard rulebook's numbers are used for ${rules.missing.length === 1 ? 'it' : 'them'}.` });
   if (weather?.current?.temperature_c >= 25) warnings.push(`High ambient temperature (${weather.current.temperature_c}°C): thermal strain elevates carbohydrate oxidation and rapid dehydration risk. Ensure ${hydration.fluidPerHourMl}ml/h fluid intake.`);
 
   const insulin = [];
@@ -820,8 +866,9 @@ export async function estimatePlan(input = {}) {
     plan: {
       stops, totalCarbs, carbsPerHour: Math.round(totalCarbs / hours), postCarbs,
       predicted: { minDuring: Math.round(minDuring * 10) / 10, endBg: Math.round(endBg * 10) / 10, minAfter: Math.round(minAfter * 10) / 10, minWithoutCarbs: Math.round(min(noCarb, 0, dur) * 10) / 10 },
-      toReachStartTarget: startBg < targets.startTarget - 0.5 ? Math.round((targets.startTarget - startBg) / effect) : 0,
+      toReachStartTarget: pre?.grams || 0,
     },
+    rulebook: { checks: ruleChecks, limits: lim },
     prediction, withoutCarbs, elevation, splits: kmSplitsFrom(tl, route, distanceKm, hydration),
     startScenarios, iobScenarios, guideline, insulin, warnings,
     basis: { personalRuns: personal.runs, personalFitted: Boolean(personal.kEx), assumed },

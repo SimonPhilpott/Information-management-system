@@ -54,7 +54,7 @@ function planSection(plan, units) {
     ${waterOnly.length ? `<p>Water only: ${waterOnly.map((d) => `${d.ml} ml at ${d.minute} min`).join(', ')}.</p>` : ''}
     <div class="two">
       <div><h3>Before you go</h3><ul>
-        ${p.toReachStartTarget ? `<li>About ${p.toReachStartTarget} g to reach your ${plan.settings.startTarget} start target.</li>` : ''}
+        ${(plan.preRun?.rulebook?.steps || []).map((x) => `<li>${esc(x)}</li>`).join('')}
         ${plan.preRun?.tempTarget ? `<li>${esc(plan.preRun.tempTarget)}</li>` : ''}
         ${plan.preRun?.iobNote ? `<li>${esc(plan.preRun.iobNote)}</li>` : ''}
         ${plan.preRun?.drinkText ? `<li>${esc(plan.preRun.drinkText)}</li>` : ''}
