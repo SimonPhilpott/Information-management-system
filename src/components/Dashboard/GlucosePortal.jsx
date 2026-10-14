@@ -294,6 +294,7 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
   const [evalDays, setEvalDays] = useState(14);
   const [evalData, setEvalData] = useState(null);
   const [evalBusy, setEvalBusy] = useState(false);
+  const [approving, setApproving] = useState(null); // 'section:id' of the suggestion being approved
 
   // Q&A / Ask Insight State
   const [askQuestion, setAskQuestion] = useState('');
@@ -623,6 +624,56 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
     } catch (err) {
       notify(err.message, 'error');
     }
+  };
+
+  // Approve one deep-evaluation suggestion: the change is made in the Insulin profile and saved
+  const approveSuggestion = async (section, block) => {
+    if (!block?.proposal) return;
+    if (profileDirty && !window.confirm('You have unsaved tweaks to your Insulin profile. Approving starts from your saved profile, so those tweaks will be lost. Carry on?')) return;
+    if (!window.confirm(`${block.proposal.text}\n\nThis changes your Insulin profile in IMS. Make the same change in AndroidAPS for your pump to use it.`)) return;
+    setApproving(`${section}:${block.id}`);
+    try {
+      const res = await (await fetch('/api/glucose-hub/profile/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ section, id: block.id })
+      })).json();
+      if (!res.success) throw new Error(res.error);
+      setProfile(res.profile);
+      setProfileDirty(false);
+      setEvalData(res.evaluation);
+      notify(`Insulin profile updated: ${res.change}.`);
+    } catch (err) {
+      notify(err.message, 'error');
+    } finally {
+      setApproving(null);
+    }
+  };
+
+  // The Approve button (or "Approved") under a suggestion
+  const approveRow = (section, block) => {
+    if (block.appliedAt) {
+      return (
+        <div className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+          <CheckCircle2 size={11} /> Approved {new Date(block.appliedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - in your Insulin profile
+        </div>
+      );
+    }
+    if (block.proposal === undefined && !/BALANCED|MATCHED/.test(block.verdict)) {
+      return <div className="mt-2 text-[10px] text-slate-500">Run the evaluation again to approve this.</div>;
+    }
+    if (!block.proposal) return null;
+    const busy = approving === `${section}:${block.id}`;
+    return (
+      <button
+        onClick={() => approveSuggestion(section, block)}
+        disabled={Boolean(approving)}
+        title={block.proposal.text}
+        className="mt-2 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all bg-sky-500 text-white border-sky-400 shadow-lg shadow-sky-500/20 disabled:opacity-50"
+      >
+        {busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Approve
+      </button>
+    );
   };
 
   const runProfileEvaluation = async () => {
@@ -1394,7 +1445,7 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
           <div>
             <div className="flex items-center gap-2">
               <Sliders size={16} className="text-sky-400" />
-              <h2 className="text-sm font-black uppercase tracking-wider">Pump Profile & Fine-Tuning Insights</h2>
+              <h2 className="text-sm font-black uppercase tracking-wider">Insulin profile</h2>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
               Continuously evaluates AndroidAPS telemetry (basal rates, meal boluses, corrective sensitivity) against real glucose data.
@@ -1816,6 +1867,7 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
 
                     <div className="text-[11px] text-slate-400 mt-1 pt-2 border-t border-white/5">
                       <span className="font-medium">{bb.suggestion}</span>
+                      {approveRow('basal', bb)}
                     </div>
                   </div>
                 ))}
@@ -1880,6 +1932,7 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
 
                     <div className="text-[11px] text-slate-400 mt-1 pt-2 border-t border-white/5">
                       <span>{mb.suggestion}</span>
+                      {approveRow('ic', mb)}
                     </div>
                   </div>
                 ))}
@@ -1938,6 +1991,7 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
 
                     <div className="text-[11px] text-slate-400 mt-1 pt-2 border-t border-white/5">
                       <span>{ib.suggestion}</span>
+                      {approveRow('isf', ib)}
                     </div>
                   </div>
                 ))}

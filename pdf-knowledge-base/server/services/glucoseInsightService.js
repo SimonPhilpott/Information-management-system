@@ -226,13 +226,16 @@ export function computeEmpiricalMetrics(days = 14, profile = null) {
     const fallingPct = drifts.length > 0 ? Math.round((drifts.filter((d) => d < -0.4).length / drifts.length) * 100) : 0;
 
     let verdict = 'BALANCED';
+    let proposal = null; // what Approve changes in the Insulin profile
     let suggestion = `Rate of ${avgScheduled} U/h holds stability well.`;
     if (netOffset > 0.12 || meanDrift > 0.45 || risingPct > 55) {
       verdict = 'TOO_LOW';
+      proposal = { kind: 'basal', ranges: [[block.start, block.end]], delta: 0.1, text: `Basal ${block.label}: +0.1 U/h on every hour (average ${avgScheduled} → ${r2(avgScheduled + 0.1)} U/h)` };
       const proposed = r2(avgScheduled + 0.1);
       suggestion = `Basal appears too low. Loop is having to boost delivered basal (avg ${avgDelivered} U/h vs ${avgScheduled} U/h scheduled, drift +${meanDrift} mmol/L/h). Consider testing ${proposed} U/h (+0.1 U/h).`;
     } else if (netOffset < -0.12 || meanDrift < -0.45 || fallingPct > 55) {
       verdict = 'TOO_HIGH';
+      proposal = { kind: 'basal', ranges: [[block.start, block.end]], delta: -0.1, text: `Basal ${block.label}: -0.1 U/h on every hour (average ${avgScheduled} → ${r2(Math.max(0.1, avgScheduled - 0.1))} U/h)` };
       const proposed = r2(Math.max(0.1, avgScheduled - 0.1));
       suggestion = `Basal appears too high. Loop is frequently zero-temping to prevent drops (avg ${avgDelivered} U/h vs ${avgScheduled} U/h scheduled, drift ${meanDrift} mmol/L/h). Consider testing ${proposed} U/h (-0.1 U/h).`;
     }
@@ -249,6 +252,7 @@ export function computeEmpiricalMetrics(days = 14, profile = null) {
       fallingPct,
       verdict,
       suggestion,
+      proposal,
       sampleWindows: drifts.length
     };
   });
@@ -319,13 +323,18 @@ export function computeEmpiricalMetrics(days = 14, profile = null) {
     const measuredIC = empiricalRatios.length > 0 ? r1(empiricalRatios.reduce((a, b) => a + b, 0) / empiricalRatios.length) : scheduledIC;
 
     let verdict = 'BALANCED';
+    let proposal = null;
+    const icRanges = mb.start < mb.end ? [[mb.start, mb.end]] : [[mb.start, 24], [0, mb.end]];
+    const icLabel = mb.name.replace(/^.*\((.*)\)$/, '$1');
     let suggestion = `IC ratio ${scheduledIC} g/U produces stable postprandial return (+${avgExcursion} mmol/L).`;
     if (highPct >= 45 || avgExcursion > 2.5) {
       verdict = 'UNDER_BOLUSED';
+      proposal = { kind: 'ic', ranges: icRanges, to: r1(Math.max(4.0, scheduledIC - 1.0)), text: `Carb ratio ${icLabel}: ${scheduledIC} → ${r1(Math.max(4.0, scheduledIC - 1.0))} g/U` };
       const proposed = r1(Math.max(4.0, scheduledIC - 1.0));
       suggestion = `Ratio is too weak / under-bolusing (${highPct}% of meals remain >${th.high} mmol/L at 2-3h; avg excursion +${avgExcursion} mmol/L). Consider testing a stronger ratio of ${proposed} g/U (giving more insulin per carb).`;
     } else if (lowPct >= 25 || avgExcursion < -2.0) {
       verdict = 'OVER_BOLUSED';
+      proposal = { kind: 'ic', ranges: icRanges, to: r1(scheduledIC + 1.0), text: `Carb ratio ${icLabel}: ${scheduledIC} → ${r1(scheduledIC + 1.0)} g/U` };
       const proposed = r1(scheduledIC + 1.0);
       suggestion = `Ratio is too aggressive / over-bolusing (${lowPct}% post-meal hypos < ${th.low} mmol/L; avg excursion ${avgExcursion} mmol/L). Consider testing a gentler ratio of ${proposed} g/U (giving less insulin per carb).`;
     }
@@ -340,7 +349,8 @@ export function computeEmpiricalMetrics(days = 14, profile = null) {
       highPct,
       lowPct,
       verdict,
-      suggestion
+      suggestion,
+      proposal
     };
   });
 
@@ -384,6 +394,10 @@ export function computeEmpiricalMetrics(days = 14, profile = null) {
     const diff = r1(measuredISF - scheduledISF);
 
     let verdict = 'MATCHED';
+    const isfRanges = win.start < win.end ? [[win.start, win.end]] : [[win.start, 24], [0, win.end]];
+    const isfLabel = win.name.replace(/^.*\((.*)\)$/, '$1');
+    const proposal = Math.abs(diff) > 0.3 && !(diff > 0 && diff <= 0.4) && n > 0
+      ? { kind: 'isf', ranges: isfRanges, to: measuredISF, text: `ISF ${isfLabel}: ${scheduledISF} → ${measuredISF} mmol/L per unit` } : null;
     let suggestion = `Sensitivity is well calibrated with profile ISF ${scheduledISF} (measured ~${measuredISF} mmol/L drop per Unit).`;
     if (diff > 0.4) {
       verdict = 'MORE_SENSITIVE';
@@ -401,7 +415,8 @@ export function computeEmpiricalMetrics(days = 14, profile = null) {
       diff,
       correctionsEvaluated: n,
       verdict,
-      suggestion
+      suggestion,
+      proposal
     };
   });
 
@@ -420,6 +435,46 @@ export function computeEmpiricalMetrics(days = 14, profile = null) {
 /**
  * Runs deep evaluation with both empirical numbers and Gemini Flash clinical synthesis
  */
+const describeSchedule = (entries, unit) => (entries || []).map((e, i, a) => `${e.time}-${a[i + 1]?.time || '24:00'}=${e.value} ${unit}`).join(', ');
+
+// ---- Approve: a suggestion's change, made in the Insulin profile ----
+const hourOf = (t) => Number(String(t).slice(0, 2));
+const hh = (h) => `${String(h).padStart(2, '0')}:00`;
+function valueAt(entries, hour) {
+  let v = entries[0]?.value;
+  for (const e of entries) { if (hourOf(e.time) <= hour) v = e.value; else break; }
+  return v;
+}
+/** A schedule with the change applied over [start, end) hour ranges (split at the range edges if needed; your other entries stay as they are). */
+function changeSchedule(entries, ranges, fn) {
+  let list = [...(entries || [])].sort((a, b) => hourOf(a.time) - hourOf(b.time));
+  for (const [start, end] of ranges) {
+    for (const h of [start, end]) if (h > 0 && h < 24 && !list.some((e) => hourOf(e.time) === h)) list.push({ time: hh(h), value: valueAt(list, h) });
+    list.sort((a, b) => hourOf(a.time) - hourOf(b.time));
+    list = list.map((e) => (hourOf(e.time) >= start && hourOf(e.time) < end ? { ...e, value: fn(e.value) } : e));
+  }
+  return list;
+}
+export function applyProposal(profile, p) {
+  if (!p) throw new Error('This suggestion has nothing to change.');
+  if (p.kind === 'basal') return { ...profile, basal: changeSchedule(profile.basal, p.ranges, (v) => r2(Math.max(0.05, v + p.delta))) };
+  if (p.kind === 'ic') return { ...profile, ic: changeSchedule(profile.ic, p.ranges, () => r1(p.to)) };
+  if (p.kind === 'isf') return { ...profile, isf: changeSchedule(profile.isf, p.ranges, () => r1(p.to)) };
+  throw new Error('Unknown suggestion.');
+}
+/** Approve one suggestion from the last deep evaluation: change the saved Insulin profile and mark it done. */
+export function approveSuggestion(section, id) {
+  const ev = getSavedEvaluation();
+  const key = { basal: 'basalBlocks', ic: 'mealBlocks', isf: 'isfBlocks' }[section];
+  const block = key && ev?.metrics?.[key]?.find((b) => b.id === id);
+  if (!block) throw new Error('That suggestion is no longer in your latest evaluation - run the evaluation again.');
+  if (block.appliedAt) throw new Error('Already approved.');
+  const profile = saveProfile(applyProposal(getProfile(), block.proposal));
+  block.appliedAt = Date.now();
+  setSetting(LAST_EVAL_KEY, JSON.stringify(ev));
+  return { profile, evaluation: ev, change: block.proposal.text };
+}
+
 export async function evaluateProfile(days = 14, customProfile = null) {
   const profile = customProfile || getProfile();
   const metrics = computeEmpiricalMetrics(days, profile);
@@ -442,9 +497,9 @@ TARGET GLYCEMIC BANDS & ATHLETE THRESHOLDS:
 
 DATA ANALYSIS FROM THE LAST ${days} DAYS:
 Active Profile:
-- Scheduled Basal: Total 20.75 U/day, currently scheduled as: 00:00-05:00=1.00 U/h, 05:00-06:00=1.25 U/h, 06:00-08:00=1.50 U/h, 08:00-12:00=1.25 U/h, 12:00-13:00=0.75 U/h, 13:00-23:00=0.50 U/h, 23:00-24:00=0.75 U/h.
-- Scheduled IC Ratio: 00:00=6.0 g/U, 10:00=7.5 g/U, 13:00=7.5 g/U, 23:00=8.5 g/U.
-- Scheduled ISF: Flat 1.6 mmol/l per U across all 24 hours.
+- Scheduled Basal: Total ${r2((profile.basal || []).reduce((t, b, i, a) => t + b.value * ((i + 1 < a.length ? hourOf(a[i + 1].time) : 24) - hourOf(b.time)), 0))} U/day, scheduled as: ${describeSchedule(profile.basal, 'U/h')}.
+- Scheduled IC Ratio: ${describeSchedule(profile.ic, 'g/U')}.
+- Scheduled ISF: ${describeSchedule(profile.isf, 'mmol/l per U')}.
 
 EMPIRICAL FINDINGS:
 1. BASAL RATE DRIFT & DELIVERED OFFSETS BY TIME WINDOW:

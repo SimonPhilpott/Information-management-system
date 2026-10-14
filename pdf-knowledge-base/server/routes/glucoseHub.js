@@ -9,7 +9,7 @@ import {
   listFoodMemory, saveFoodMemory, deleteFoodMemory
 } from '../services/glucoseHubService.js';
 import { lookUpFood } from '../services/foodService.js';
-import { getProfile, saveProfile, resetProfile, getSavedEvaluation, evaluateProfile, askProfileInsightQuestion } from '../services/glucoseInsightService.js';
+import { getProfile, saveProfile, resetProfile, getSavedEvaluation, evaluateProfile, askProfileInsightQuestion, approveSuggestion } from '../services/glucoseInsightService.js';
 import { invalidateDayReportCache } from '../services/morningReportService.js';
 import { generateGlucosePdf, sendGlucosePdfEmail, getEmailStatus } from '../services/glucosePdfService.js';
 
@@ -102,6 +102,10 @@ router.get('/profile/evaluation', (req, res) => {
 router.post('/profile/evaluate', async (req, res) => {
   try { res.json({ success: true, evaluation: await evaluateProfile(req.body?.days, req.body?.profile) }); }
   catch (err) { fail(res, err, 400); }
+});
+// Approve one deep-evaluation suggestion: its change is made in the Insulin profile
+router.post('/profile/approve', (req, res) => {
+  try { res.json({ success: true, ...approveSuggestion(String(req.body?.section || ''), String(req.body?.id || '')) }); } catch (err) { fail(res, err, 400); }
 });
 router.post('/profile/ask', async (req, res) => {
   try { res.json({ success: true, insight: await askProfileInsightQuestion(req.body?.question, req.body?.profile) }); }
