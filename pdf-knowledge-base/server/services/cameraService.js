@@ -147,6 +147,14 @@ export function wakeCamera() {
 export function keepCameraAwake() {
   awakeUntil = Date.now() + AWAKE_MS;
 }
+
+// Camera off for a while, whatever the hours or who's at the desk (POST /api/camera/pause {minutes}; 0 resumes)
+let pausedUntil = 0;
+export function pauseCamera(minutes) {
+  pausedUntil = minutes > 0 ? Date.now() + Math.min(24 * 60, minutes) * 60000 : 0;
+  notifyCameraChange();
+  return pausedUntil ? new Date(pausedUntil).toISOString() : null;
+}
 // Anything that uses the camera counts as a reason to keep it awake.
 export const markInUse = wakeCamera;
 
@@ -170,13 +178,15 @@ export function getCameraStatus() {
   const woken = now < awakeUntil;
   const fullSpeed = now < fullSpeedUntil;
   const deskHours = inDeskHours();
-  const isAwake = (woken || deskHours) && !recording;
+  const paused = now < pausedUntil;
+  const isAwake = (woken || deskHours) && !recording && !paused;
   return {
     attached,
     awake: attached && isAwake,
     deviceAwakeWanted: isAwake,
     idle: isAwake && !fullSpeed, // about one picture a second unless a picture is being used right now
     deskHours,
+    pausedUntil: paused ? new Date(pausedUntil).toISOString() : null,
     sleepsInSeconds: isAwake ? Math.round((awakeUntil - now) / 1000) : 0,
     lastFrameAt: latest.buffer ? new Date(latest.at).toISOString() : null,
     lastHeartbeatAt: heartbeatAt ? new Date(heartbeatAt).toISOString() : null,

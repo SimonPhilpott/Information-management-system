@@ -813,6 +813,12 @@ inline bool isSpeakerActive() {
   return false;
 }
 
+// Ims is in a conversation (checking a wake phrase, listening, thinking or talking) - the camera holds back
+bool imsVoiceBusy() {
+  return currentState == STATE_VERIFYING || currentState == STATE_LISTENING || currentState == STATE_THINKING ||
+         currentState == STATE_SPEAKING || isSpeakerActive();
+}
+
 // Returns true during speaker playback plus acoustic reverberation / enclosure cooldown window
 inline bool isSpeakerCoolingDown() {
   if (isSpeakerActive()) return true;
@@ -2456,7 +2462,12 @@ static void smoothIcon(LovyanGFX &g, const uint8_t *bmp, int x0, int y0, uint16_
     if (okY) offY = o;
   }
   // 13x13 source cells (so an offset grid still fits); cell 0 starts at pixel off-2.
-  static uint8_t g0[13 * 13], g1[26 * 26], g2[52 * 52], g3[104 * 104];
+  // Scratch grids (~14 KB) live in PSRAM, allocated on first use: as static arrays they held 14 KB of the
+  // scarce internal RAM that Wi-Fi and the network need (memory audit, 14 Oct).
+  static uint8_t *scratch = nullptr;
+  if (!scratch) scratch = (uint8_t *)ps_malloc(13 * 13 + 26 * 26 + 52 * 52 + 104 * 104);
+  if (!scratch) return;
+  uint8_t *g0 = scratch, *g1 = g0 + 13 * 13, *g2 = g1 + 26 * 26, *g3 = g2 + 52 * 52;
   for (int r = 0; r < 13; r++)
     for (int c = 0; c < 13; c++) g0[r * 13 + c] = iconBit(bmp, offX - 1 + 2 * c, offY - 1 + 2 * r) ? 1 : 0;
   scale2x(g0, 13, g1); scale2x(g1, 26, g2); scale2x(g2, 52, g3);
@@ -3409,7 +3420,9 @@ bool writeAll(const uint8_t *data, size_t len) {
       startMs = millis();
     } else if (n == 0) {
       // Socket transmit buffer temporarily full (EAGAIN/EWOULDBLOCK) - yield slightly
-      if (millis() - startMs > 1500) {
+      // 5 s, not 1.5: a camera upload or a Wi-Fi hiccup can hold the link up for a second or two, and giving
+      // up meant a reconnect that cut off whatever Ims was saying ("Connecting to IMS backend", 14 Oct)
+      if (millis() - startMs > 5000) {
         Serial.printf("[TCP] writeAll timeout after %u of %u bytes\n", (unsigned)sent, (unsigned)len);
         tcpClient.stop();
         return false;

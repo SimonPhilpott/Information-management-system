@@ -41,6 +41,9 @@ static const char *g_host = nullptr;
 // Desk hours with nobody about, the backend asks for "idle": about one picture a second instead of ~6, enough
 // for desk presence to notice someone arriving, without crowding the Wi-Fi Ims's voice uses
 static volatile bool g_idle = false;
+// Ims's voice comes first: while he's in a conversation, an idle camera sends a picture only every 3 s
+// (a picture he's asked to look at is full speed - the backend says so by ending idle)
+extern bool imsVoiceBusy();
 static uint16_t g_port = 0;
 static bool g_started = false;
 
@@ -278,18 +281,25 @@ static void closeStream() {
   camLogf("[Camera] stream stopped (camera asleep)");
 }
 
+// One connection to the backend, kept open and reused for every picture, heartbeat and log line. A new
+// connection per upload (several a second) starved the Box-3's network stack: Ims's voice link couldn't send
+// for 1.5 s and dropped, about once a minute (13 Oct; none at all with the camera paused). The backend keeps an
+// idle connection for 5 s, so at one picture a second it stays up; after a gap it's simply opened again.
+static WiFiClient g_camClient;
+static HTTPClient g_camHttp;
+
 static bool postBytes(const char *path, const uint8_t *data, size_t len, const char *contentType) {
   if (WiFi.status() != WL_CONNECTED) return false;
-  HTTPClient http;
   String url = String("http://") + g_host + ":" + g_port + path;
-  http.setConnectTimeout(800);
-  http.setTimeout(1200);
-  http.setReuse(true);
-  if (!http.begin(url)) return false;
-  http.addHeader("X-IMS-Key", IMS_DEVICE_KEY);
-  http.addHeader("Content-Type", contentType);
-  int code = http.POST((uint8_t *)data, len);
-  http.end();
+  g_camHttp.setConnectTimeout(800);
+  g_camHttp.setTimeout(1200);
+  g_camHttp.setReuse(true);
+  if (!g_camHttp.begin(g_camClient, url)) return false;
+  g_camHttp.addHeader("X-IMS-Key", IMS_DEVICE_KEY);
+  g_camHttp.addHeader("Content-Type", contentType);
+  int code = g_camHttp.POST((uint8_t *)data, len);
+  g_camHttp.end(); // with reuse on, this keeps the connection for the next upload
+  if (code < 0) g_camClient.stop(); // a broken connection is closed so the next upload opens a fresh one
   return code == 200;
 }
 
@@ -327,7 +337,8 @@ static void cameraManagerTask(void *) {
     }
 
     // Newest frame -> backend, up to ~6 per second while awake and streaming.
-    if (g_streaming && !g_suspended && g_jpgSeq != g_sentSeq && millis() - lastUploadMs > (g_idle ? 1000u : 160u)) {
+    const uint32_t uploadGapMs = !g_idle ? 160u : (imsVoiceBusy() ? 3000u : 1000u);
+    if (g_streaming && !g_suspended && g_jpgSeq != g_sentSeq && millis() - lastUploadMs > uploadGapMs) {
       size_t len = 0;
       if (xSemaphoreTake(g_jpgMux, pdMS_TO_TICKS(15)) == pdTRUE) {
         len = g_jpgLen;
