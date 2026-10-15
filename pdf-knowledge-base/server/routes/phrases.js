@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { listPhrases, addPhrase, updatePhrase, deletePhrase, addRecording, deleteRecording, recordingFile, listWakeCandidates, acceptWakeCandidate, dismissWakeCandidate } from '../services/phrasesService.js';
 import { requestDeviceCapture, stopDeviceCapture, startPhraseSession, endPhraseSession, phraseSessionStatus } from '../services/deviceBus.js';
-import { wakeModelStatus, startTraining, listClipsToReview, labelClip, labelClips, clipFile, loudWav } from '../services/wakeModelService.js';
+import { wakeModelStatus, startTraining, listClipsToReview, labelClip, labelClips, clipFile, loudWav, setModelLive } from '../services/wakeModelService.js';
 
 const router = Router();
 const fail = (res, err, code = 500) => res.status(code).json({ success: false, error: err.message });
@@ -24,6 +24,7 @@ router.post('/session/start', (req, res) => res.json({ success: true, ...startPh
 router.post('/session/end', (req, res) => res.json({ success: true, ...endPhraseSession() }));
 // Simon's own wake-word model (shadow mode beside the Gemini wake check)
 router.get('/model', (req, res) => { try { res.json({ success: true, ...wakeModelStatus() }); } catch (err) { fail(res, err); } });
+router.post('/model/live', (req, res) => { try { res.json({ success: true, ...setModelLive(Boolean(req.body?.on)) }); } catch (err) { fail(res, err, 400); } });
 router.post('/model/train', (req, res) => { try { res.json({ success: true, training: startTraining() }); } catch (err) { fail(res, err, 400); } });
 router.get('/model/review', (req, res) => { try { res.json({ success: true, clips: listClipsToReview() }); } catch (err) { fail(res, err); } });
 router.post('/model/clips/:cid/label', (req, res) => { try { res.json({ success: true, ...labelClip(req.params.cid, Boolean(req.body?.wake)) }); } catch (err) { fail(res, err, 400); } });

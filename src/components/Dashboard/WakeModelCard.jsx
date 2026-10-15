@@ -97,7 +97,13 @@ export default function WakeModelCard({ isDark, notify, panel, onRecorded }) {
       <div className="flex flex-wrap items-center gap-2 mb-1">
         <Brain size={15} className="text-fuchsia-400" />
         <h2 className="text-xs font-black uppercase tracking-wider">Your own wake-word model</h2>
-        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-400 border border-sky-500/30">Watching only - Gemini still wakes Ims</span>
+        {s?.live === 'model+gemini'
+          ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">LIVE - your model can wake Ims (Gemini still can too)</span>
+          : <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-400 border border-sky-500/30">Watching only - Gemini wakes Ims</span>}
+        {s?.model && (
+          <button onClick={async () => { const d = await (await fetch('/api/phrases/model/live', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on: s.live !== 'model+gemini' }) })).json(); if (d.success) { notify(d.live ? 'Your wake-word model can now wake Ims.' : 'Your model is back to watching only.'); load(); } }}
+            className={`ml-auto ${btn}`}>{s.live === 'model+gemini' ? 'Turn off' : 'Make live'}</button>
+        )}
       </div>
       <p className={`text-[11px] ${muted} mb-4`}>
         Right now Gemini turns what you say into words and Ims wakes if the words look like a wake phrase - which is why it keeps mishearing "Hi Ims" as things like "H&M".

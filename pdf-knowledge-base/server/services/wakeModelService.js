@@ -14,7 +14,7 @@ import path from 'path';
 import http from 'http';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
-import db from '../db/database.js';
+import db, { getSetting, setSetting } from '../db/database.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIR = path.join(__dirname, '..', 'data', 'wakeword');
@@ -84,6 +84,7 @@ async function ensureScorer() {
 // page). 'yes' / 'no' = Simon's answers. (15 Oct: asking about clips with nothing written down meant a long
 // list of near-silent clips he couldn't tell apart.)
 function autoLabel({ outcome, transcript, peak }) {
+  if (/^woke \(your model/.test(outcome || '')) return 'model_wake'; // never trained on by itself - it might be a mistake
   if (/^woke/.test(outcome || '')) return 'wake';
   const words = String(transcript || '').trim().split(/\s+/).filter(Boolean);
   if (words.length >= 3) return 'other_speech';
@@ -192,6 +193,28 @@ setInterval(() => {
   } catch (err) { console.warn('[WakeModel] nightly training:', err.message); }
 }, 5 * 60000).unref?.();
 
+// ---- LIVE: the model can wake Ims too ---------------------------------------------------------------
+// Simon switched it on early (15 Oct: "even in an early state it must be better than what we have").
+// Gemini's wakes carry on exactly as before; the model only ADDS a wake when Gemini hasn't, and only for a
+// short sound followed by a pause (a wake phrase on its own - conversation runs on, which is what it got
+// wrong in testing), at a high score. Switch off on /ims/phrases.
+const LIVE_KEY = 'wake_model_live';
+const LIVE_MIN_SCORE = 0.95;
+export const isModelLive = () => getSetting(LIVE_KEY) !== '0' && Boolean(modelMeta());
+export function setModelLive(on) { setSetting(LIVE_KEY, on ? '1' : '0'); return { live: isModelLive() }; }
+
+/** Score a wake check's audio so far. Returns { wake, score, ... } - wake only when every rule passes. */
+export async function scoreForWake(pcm) {
+  if (!isModelLive() || !pcm || pcm.length < 16000) return { wake: false };
+  await ensureScorer();
+  const r = await request('POST', '/score', pcm, 3000);
+  const threshold = Math.max(LIVE_MIN_SCORE, r.threshold ?? 0);
+  const shortSound = r.speechSec != null && r.speechSec >= 0.35 && r.speechSec <= 2.5;
+  const paused = r.quietAfterSec != null && r.quietAfterSec >= 0.3;
+  return { ...r, threshold, wake: r.score != null && r.score >= threshold && shortSound && paused,
+    why: r.score < threshold ? 'score' : !shortSound ? `sound ${r.speechSec} s` : !paused ? 'no pause after' : 'ok' };
+}
+
 // ---- Simon marking clips ------------------------------------------------------------------------------
 export function listClipsToReview(limit = 30) {
   return db.prepare("SELECT id, at, outcome, transcript, peak, label, score FROM wake_clips WHERE label = 'unsure' AND labelled_by = 'auto' ORDER BY at DESC LIMIT ?").all(limit);
@@ -263,6 +286,6 @@ export function wakeModelStatus() {
   return {
     phrases, target: 20, clips: labels, model: modelMeta(), training: trainingStatus(), comparison: cmp,
     recent: scored.slice(0, 15).map((r) => ({ at: r.at, gemini: r.outcome, heard: r.transcript, score: r.score, threshold: r.threshold, label: r.label })),
-    live: 'gemini', // the model only watches until it is switched over
+    live: isModelLive() ? 'model+gemini' : 'gemini',
   };
 }

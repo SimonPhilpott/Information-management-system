@@ -198,8 +198,44 @@ class Scorer:
         p = self.model.predict_proba(w)[:, 1]
         i = int(np.argmax(p))
         lead = max(0, SR * 2 - len(x)) / SR  # padding added in front of short clips
-        return {"score": round(float(p[i]), 4), "at": round((i + WINDOW) * 0.08 - lead, 2),
+        at = (i + WINDOW) * 0.08 - lead
+        speech, quiet_after = utterance_around(x, at)
+        return {"score": round(float(p[i]), 4), "at": round(at, 2), "speechSec": speech, "quietAfterSec": quiet_after,
                 "threshold": self.meta.get("threshold"), "ms": int((time.time() - t0) * 1000)}
+
+
+def utterance_around(x, at):
+    """How long the stretch of speech ending near `at` seconds lasted, and the quiet after it - a wake
+    phrase is short and followed by a pause; ordinary conversation runs on."""
+    f = 320  # 20 ms
+    n = len(x) // f
+    if n < 5:
+        return 0.0, 0.0
+    rms = np.sqrt(np.mean(x[: n * f].astype(np.float64).reshape(n, f) ** 2, axis=1))
+    floor = np.percentile(rms, 20)
+    loud = rms > max(floor * 2.5, floor + 150)
+    # bridge gaps under 300 ms (between words)
+    idx = np.where(loud)[0]
+    if not len(idx):
+        return 0.0, round(n * 0.02, 2)
+    k = int(min(n - 1, max(0, round(at / 0.02))))
+    near = idx[np.argmin(np.abs(idx - k))]
+    start = end = near
+    while True:
+        prev = idx[idx < start]
+        if len(prev) and start - prev[-1] <= 15:
+            start = prev[-1]
+        else:
+            break
+    while True:
+        nxt = idx[idx > end]
+        if len(nxt) and nxt[0] - end <= 15:
+            end = nxt[0]
+        else:
+            break
+    after = idx[idx > end]
+    quiet_after = ((after[0] if len(after) else n) - end - 1) * 0.02
+    return round((end - start + 1) * 0.02, 2), round(quiet_after, 2)
 
 
 def serve(model_dir, port):

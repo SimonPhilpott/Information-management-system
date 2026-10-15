@@ -40,7 +40,7 @@ import { getWeather } from '../services/weatherService.js';
 import { isDeviceMicMuted, setDeviceConnected, setDeviceMicMuted } from '../services/deviceState.js';
 import { lookUpFood } from '../services/foodService.js';
 import { noteWakeCandidate } from '../services/phrasesService.js';
-import { recordWakeCheck } from '../services/wakeModelService.js';
+import { recordWakeCheck, scoreForWake } from '../services/wakeModelService.js';
 import { isPhraseSession } from '../services/deviceBus.js';
 import { pickClip, pickGreeting } from '../services/holdingClips.js';
 import { pickJoke } from '../services/jokeService.js';
@@ -523,18 +523,24 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   const FAST_GREET_QUIET_MS = 300;
   let fastGreet = null; // { at, line, newSpeech }
   let fastGreetTimer = null;
-  const scheduleFastGreeting = (heardAt) => {
+  const scheduleFastGreeting = (heardAt, force = false) => {
     if (fastGreetTimer) clearTimeout(fastGreetTimer);
     const tryNow = () => {
       fastGreetTimer = null;
-      if (fastGreet || isClientClosed || lastModelOutputAt >= heardAt || !isWakeOnly(heardThisTurn) || isRecordingActive() || isDeviceMicMuted()) return;
+      if (fastGreet || isClientClosed || lastModelOutputAt >= heardAt || (!force && !isWakeOnly(heardThisTurn)) || isRecordingActive() || isDeviceMicMuted()) return;
       if (Date.now() - lastLoudMicAt < FAST_GREET_QUIET_MS) { // still saying it
         if (Date.now() - heardAt < 3000) fastGreetTimer = setTimeout(tryNow, 60);
         return;
       }
       let clip = null;
       try { clip = pickGreeting(activePersonaId()); } catch (_) { }
-      if (!clip) return; // none recorded yet: Gemini greets live, as before
+      if (!clip) { // none recorded yet: Gemini greets live, as before (told to, when the wake came from the model)
+        if (force && currentGeminiWs?.readyState === WebSocket.OPEN) {
+          textTurnSent = true; sessionUsed = true; lastActivityAt = Date.now();
+          currentGeminiWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: '(System: Simon has just said your wake phrase - your own wake-word recogniser heard it. Greet him briefly, in a few words, and wait for what he wants.)' }] }], turnComplete: true } }));
+        }
+        return;
+      }
       // endsAt: when the greeting has finished playing - anything he says after that is his reply, even if it's
       // the wake phrase again (12 Oct: "poems" after "Morning." was taken as the old wake phrase and dropped)
       fastGreet = { at: Date.now(), endsAt: Date.now() + Math.round(clip.pcm.length / 48) + 300, line: clip.line, newSpeech: false };
@@ -652,6 +658,25 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   const WAKE_END_QUIET_MS = 500;
   const WAKE_START_RX = /^\W*(hey|hi|hiya|heya|eh|ey|ay|aye|ayup|eyup|i'?m|ims|ems|hymns?|elms|poems|pms)\b/i;
   let wakeCheck = null; // { at, cold, readyAt, spokeAt, ends, endAt, heardAt, extended }
+  // Simon's own wake-word model, LIVE (15 Oct): when he pauses during a wake check and Gemini hasn't woken Ims,
+  // the model scores the audio; a confident score for a short sound followed by a pause wakes Ims the same way a
+  // recognised transcript does. Gemini's own wakes are untouched. Off switch on /ims/phrases.
+  let modelWakeBusy = false;
+  const tryModelWake = () => {
+    const wc = wakeCheck;
+    if (!wc || modelWakeBusy || isConversationActive || isRecordingActive() || isDeviceMicMuted() || isPhraseSession()) return;
+    modelWakeBusy = true;
+    scoreForWake(Buffer.concat(wc.frames || [])).then((r) => {
+      if (r.score == null) return;
+      try { logCapture(`[${new Date().toISOString()}] ${tag} WAKE MODEL (live): score ${r.score} (needs ${r.threshold}), sound ${r.speechSec} s, quiet after ${r.quietAfterSec} s -> ${r.wake ? 'WAKE' : `no (${r.why})`} | ${r.ms} ms\n`); } catch (_) { }
+      if (!r.wake || wakeCheck !== wc || isConversationActive || isRecordingActive() || isDeviceMicMuted()) return;
+      isConversationActive = true;
+      wakeDaemonService.acceptWake('(your wake-word model)', 'own_model');
+      wakeCheckLog(`woke (your model, score ${r.score})`);
+      scheduleFastGreeting(Date.now(), true);
+    }).catch((err) => { try { logCapture(`[${new Date().toISOString()}] ${tag} WAKE MODEL (live): not scored - ${err.message}\n`); } catch (_) { } })
+      .finally(() => { modelWakeBusy = false; });
+  };
   const wakeCheckLog = (outcome) => {
     if (!wakeCheck) return;
     const w = wakeCheck; wakeCheck = null;
@@ -2491,6 +2516,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           if (wakeCheck.endPending && wakeCheck.ends < 3 && Date.now() - lastLoudMicAt >= WAKE_END_QUIET_MS) {
             wakeCheck.endPending = false; wakeCheck.ends++; wakeCheck.endAt = Date.now();
             gWs.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
+            tryModelWake(); // he's paused: let his own wake-word model have its say too
           }
         }
       } else {
