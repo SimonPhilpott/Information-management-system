@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Brain, RotateCw, Play, Check, X, Mic, Square } from 'lucide-react';
+import { Brain, RotateCw, Play, Check, X, Mic, Square, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 
 // Simon's own wake-word model on /ims/phrases: trained on his voice through the Box-3 microphone, and watching
 // every wake check in SHADOW MODE beside the live Gemini check - it never wakes Ims by itself until it's
@@ -12,12 +12,15 @@ export default function WakeModelCard({ isDark, notify, panel, onRecorded }) {
   const [review, setReview] = useState([]);
   const [rec, setRec] = useState(null); // { id, state: 'countdown'|'recording'|'working', n }
   const [lastHeard, setLastHeard] = useState(null); // { id, transcript }
+  const [open, setOpen] = useState(null);         // the phrase whose recordings are shown
+  const [recs, setRecs] = useState({});           // phrase id -> its recordings (newest first)
   const audio = useRef(null);
   const load = useCallback(async () => {
     try {
-      const [m, r] = await Promise.all([(await fetch('/api/phrases/model')).json(), (await fetch('/api/phrases/model/review')).json()]);
+      const [m, r, ph] = await Promise.all([(await fetch('/api/phrases/model')).json(), (await fetch('/api/phrases/model/review')).json(), (await fetch('/api/phrases')).json()]);
       if (m.success) setS(m);
       if (r.success) setReview(r.clips);
+      if (ph.success) setRecs(Object.fromEntries(ph.phrases.map((x) => [x.id, x.recordings || []])));
     } catch (_) { /* shown as loading */ }
   }, []);
   useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, [load]);
@@ -39,7 +42,16 @@ export default function WakeModelCard({ isDark, notify, panel, onRecorded }) {
     } catch (err) { notify(err.message, 'error'); }
     setRec(null);
   };
-  const stop = () => { fetch('/api/phrases/record-device/stop', { method: 'POST' }).catch(() => {}); };
+  const stop = () => {
+    setRec((r) => (r ? { ...r, state: 'working' } : r)); // the recording ends now; saving it takes a few seconds more
+    fetch('/api/phrases/record-device/stop', { method: 'POST' }).catch(() => {});
+  };
+  const deleteRec = async (phraseId, rid) => {
+    if (!window.confirm('Delete this recording?')) return;
+    await fetch(`/api/phrases/recordings/${rid}`, { method: 'DELETE' });
+    setRecs((all) => ({ ...all, [phraseId]: (all[phraseId] || []).filter((x) => x.id !== rid) }));
+    load();
+  };
 
   const train = async () => {
     const d = await (await fetch('/api/phrases/model/train', { method: 'POST' })).json();
@@ -93,8 +105,10 @@ export default function WakeModelCard({ isDark, notify, panel, onRecorded }) {
           {wakePhrases.map((p) => {
             const mine = rec?.id === p.id;
             return (
-              <div key={p.id} className="flex flex-wrap items-center gap-2">
-                <span className="w-28 shrink-0 font-bold">"{p.phrase}"</span>
+              <div key={p.id} className={`flex flex-wrap items-center gap-2 ${open === p.id ? `pb-2 border-b ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}` : ''}`}>
+                <button onClick={() => setOpen(open === p.id ? null : p.id)} className="w-32 shrink-0 font-bold text-left inline-flex items-center gap-1" title="Show the recordings">
+                  {open === p.id ? <ChevronDown size={13} /> : <ChevronRight size={13} />}"{p.phrase}"
+                </button>
                 <div className={`h-1.5 flex-1 min-w-[80px] rounded-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-slate-200'}`}><div className="h-full bg-fuchsia-500" style={{ width: `${Math.min(100, (p.recordings / target) * 100)}%` }} /></div>
                 <span className="tabular-nums w-12 text-right">{p.recordings}/{target}</span>
                 {mine && rec.state === 'recording' ? (
@@ -104,7 +118,22 @@ export default function WakeModelCard({ isDark, notify, panel, onRecorded }) {
                     <Mic size={11} />{mine ? (rec.state === 'countdown' ? rec.n : 'Saving...') : 'Record'}
                   </button>
                 )}
+                {mine && rec.state === 'working' && <span className={`w-full text-[10px] ${muted}`}>Recording stopped - saving it (a few seconds).</span>}
                 {lastHeard?.id === p.id && <span className={`w-full text-[10px] ${muted}`}>Saved. Speech-to-text heard: "{lastHeard.transcript || 'nothing'}" - the model learns from the sound either way.</span>}
+                {open === p.id && (
+                  <div className="w-full flex flex-col gap-1 mt-1">
+                    {!(recs[p.id] || []).length && <span className={muted}>No recordings yet.</span>}
+                    {(recs[p.id] || []).map((r, i, all) => (
+                      <div key={r.id} className="flex flex-wrap items-center gap-2 pl-5">
+                        <span className={`tabular-nums w-6 ${muted}`}>{all.length - i}</span>
+                        <button onClick={() => play(`/api/phrases/recordings/${r.id}/audio`)} className={btn}><Play size={11} />Play</button>
+                        <span className={`tabular-nums ${muted}`}>{when(r.createdAt)}</span>
+                        <span className="flex-1 min-w-0 truncate" title="What speech-to-text wrote down">"{r.transcript || '...'}"</span>
+                        <button onClick={() => deleteRec(p.id, r.id)} className={`${btn} hover:text-rose-500`} title="Delete this recording"><Trash2 size={11} />Delete</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
