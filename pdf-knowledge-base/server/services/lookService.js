@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { GoogleGenerativeAI } from './geminiClient.js';
 import config from '../config.js';
 import db from '../db/database.js';
-import { getFrame, markInUse, wakeCamera } from './cameraService.js';
+import { getFrame, markInUse, wakeCamera, captureBurst } from './cameraService.js';
 import { isRecordingActive } from './recordingService.js';
 import { detectFaces, matchEmbedding } from './faceService.js';
 
@@ -161,6 +161,30 @@ export async function askAboutSnapshot(id, question, opts = {}) {
 export async function askLive(question, opts = {}) {
   const snap = await takeSnapshot();
   return askAboutSnapshot(snap.id, question, opts);
+}
+
+// A question about movement - "what am I doing?", waving, pointing, a thumbs up: a short burst of frames
+// in time order, so Gemini sees the action, not one frozen moment. Kept in the gallery as a snapshot (the last
+// frame, with face recognition) with its answer, like any other look.
+export async function askMotion(question, opts = {}) {
+  const q = String(question || '').trim() || 'What am I doing?';
+  const frames = await captureBurst({ ms: 2500, count: 8 });
+  if (frames.length < 3) return askLive(q, opts); // camera too slow for a burst: one picture is better than none
+  const snap = await takeSnapshot();
+  const row = db.prepare('SELECT * FROM snapshots WHERE id = ?').get(snap.id);
+  const secs = ((frames.at(-1).at - frames[0].at) / 1000).toFixed(1);
+  const prompt = `You are the eyes of IMS, a home desk assistant. These are ${frames.length} photos from the same camera, in time order, over about ${secs} seconds. ` +
+    'Look at what changes between them to tell what the person is doing - any movement or gesture (waving, pointing, nodding, a thumbs up, holding something up to the camera, drinking, typing) - as well as what is in view. ' +
+    'Answer the question directly and accurately in British English; if you cannot tell, say so rather than guessing. ' +
+    describeFaces(loadFaces(row), row.width) + '\n\nQuestion: ' + q;
+  const model = genAI.getGenerativeModel({ model: config.gemini.chatModels.flash });
+  const parts = [{ text: prompt }];
+  frames.forEach((f, i) => { parts.push({ text: `Photo ${i + 1}:` }); parts.push({ inlineData: { mimeType: 'image/jpeg', data: f.buffer.toString('base64') } }); });
+  const result = await model.generateContent(parts);
+  const answer = result.response.text().trim();
+  db.prepare('INSERT INTO snapshot_qa (snapshot_id, question, answer, created_at) VALUES (?, ?, ?, ?)').run(snap.id, `${q} (watched ${secs} s)`, answer, Date.now());
+  markInUse();
+  return getSnapshot(snap.id, opts);
 }
 
 // Who is in front of the camera right now? Uses the latest frame only if it's

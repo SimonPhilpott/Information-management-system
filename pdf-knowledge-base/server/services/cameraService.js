@@ -111,9 +111,14 @@ onRecordingChange((status) => {
   notifyCameraChange();
 });
 
+// The last few seconds of frames, for questions about movement (waving, pointing, nodding): one still can't
+// show an action (15 Oct: "what am I doing right now?" while waving).
+let recentFrames = []; // { buffer, at }
 export function setFrame(buffer, source = 'unknown') {
   if (isRecordingActive()) return;
   latest = { buffer, at: Date.now(), source };
+  recentFrames.push({ buffer, at: latest.at });
+  if (recentFrames.length > 40) recentFrames.shift();
   notifyCameraChange();
 
   if (mjpegClients.size > 0) {
@@ -164,6 +169,19 @@ export function heartbeat({ boot = false } = {}) {
   heartbeatAt = Date.now();
   if (boot) wakeCamera();
   else notifyCameraChange();
+}
+
+/** A burst of frames over the next `ms` (camera at full speed), `count` of them evenly spaced in time order.
+ *  Includes the second or so just before, so a wave that started as he asked is caught too. */
+export async function captureBurst({ ms = 2500, count = 8 } = {}) {
+  if (isRecordingActive()) return [];
+  wakeCamera();
+  const start = Date.now() - 1000;
+  await new Promise((r) => setTimeout(r, ms));
+  const pool = recentFrames.filter((f) => f.at >= start);
+  if (pool.length <= count) return pool;
+  const step = (pool.length - 1) / (count - 1);
+  return Array.from({ length: count }, (_, i) => pool[Math.round(i * step)]);
 }
 
 export function getFrame() {

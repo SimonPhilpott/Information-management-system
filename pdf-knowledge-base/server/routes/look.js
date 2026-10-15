@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import {
   takeSnapshot, listSnapshots, getSnapshot, getSnapshotImagePath, deleteSnapshot,
-  deleteAllSnapshots, deleteSnapshotQa, askAboutSnapshot, askLive
+  deleteAllSnapshots, deleteSnapshotQa, askAboutSnapshot, askLive, askMotion
 } from '../services/lookService.js';
 
 const router = Router();
@@ -56,7 +56,8 @@ router.post('/snapshots/:id/ask', async (req, res) => {
 // Snapshot the live view, then ask about it in one step.
 router.post('/ask', async (req, res) => {
   try {
-    res.json({ success: true, snapshot: await askLive(req.body?.question) });
+    // motion: true watches a couple of seconds (an action or gesture) instead of one still
+    res.json({ success: true, snapshot: await (req.body?.motion ? askMotion(req.body?.question) : askLive(req.body?.question)) });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

@@ -1100,7 +1100,8 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             parameters: {
               type: "OBJECT",
               properties: {
-                question: { type: "STRING", description: "What to find out from the picture, e.g. 'What am I holding?' or 'How do I look?'" }
+                question: { type: "STRING", description: "What to find out from the picture, e.g. 'What am I holding?' or 'How do I look?'" },
+                motion: { type: "BOOLEAN", description: "true when the question is about movement or an action - what he's doing, waving, pointing, nodding, a gesture, showing you something: you then watch for a couple of seconds instead of taking one still" }
               },
               required: ["question"]
             }

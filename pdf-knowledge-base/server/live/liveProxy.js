@@ -16,7 +16,7 @@ import { addToList, cancelScheduledItem, clearList, getHistorySummary, listSched
 import { addTurn, endConversation as endConversationLog, recentTurns, startConversation } from '../services/conversationLog.js';
 import { appendLog, recordDeviceTelemetry, setHardwareSocketSender } from '../services/deviceHealthService.js';
 import { appendRecordingText, isRecordingActive, onRecordingChange, startRecording, stopRecording } from '../services/recordingService.js';
-import { askLive } from '../services/lookService.js';
+import { askLive, askMotion } from '../services/lookService.js';
 import { askProfileInsightQuestion } from '../services/glucoseInsightService.js';
 import { buildMorningReportDirective, getDayReport, isFirstInteractionToday, markMorningReportOffered } from '../services/morningReportService.js';
 import { campaignsForIms } from '../services/campaignsService.js';
@@ -1814,7 +1814,9 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 console.log(`${tag} 📷 lookAtCamera: no fresh camera frame`);
                 respondToToolCall(call, { error: 'The camera is not delivering pictures right now.' });
               } else {
-                askLive(q, { withEmbeddings: true }).then((snap) => {
+                // movement ("what am I doing?", waving, pointing): watch a couple of seconds, not one still
+                const motion = call.args?.motion === true || /\b(doing|wav\w*|mov\w*|gestur\w*|point\w*|nod\w*|thumbs?|action|dancing|showing|holding up|shak\w*)\b/i.test(q);
+                (motion ? askMotion(q, { withEmbeddings: true }) : askLive(q, { withEmbeddings: true })).then((snap) => {
                   const last = snap.qa[snap.qa.length - 1];
                   const recognised = snap.faces.filter((f) => f.match).map((f) => f.match.name);
                   const unknown = snap.faces.filter((f) => !f.match);
