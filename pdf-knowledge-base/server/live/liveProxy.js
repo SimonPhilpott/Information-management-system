@@ -365,9 +365,11 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     // stopped there's still no transcript and no reply - Gemini lost it (often the start was cut by the
     // echo guard). Rather than sit in "thinking" until the silence timeout, ask Ims to check what they
     // said. A reply to the user, never unprompted; once per thing said.
-    // Require at least 45 frames (~1.4s of genuine speech) so natural brief pauses or throat-clears
-    // aren't treated as abandoned speech and prematurely interrupted.
-    if (isHardware && !clarifyNudged && pendingSpeechFrames >= 45 && Date.now() - pendingSpeechLast >= 3500
+    // At least 15 frames (~0.5 s of real speech). It used to need 45 (~1.4 s) so a throat-clear wouldn't
+    // count - but short answers ("Yeah", "Good", "Not bad") are under that, so when Gemini lost one Ims just
+    // went quiet and the Box-3 ended the session 13 s later (15 Oct: "he keeps stopping when I'm having a
+    // conversation"). The 3.5 s of quiet below is what stops it interrupting.
+    if (isHardware && !clarifyNudged && pendingSpeechFrames >= 15 && Date.now() - pendingSpeechLast >= 3500
       && followUpUntil && pendingSpeechStart <= followUpUntil + 1000) {
       clarifyNudged = true;
       const frames = pendingSpeechFrames;
