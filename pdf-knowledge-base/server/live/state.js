@@ -17,4 +17,4 @@ export const live = {
 // for the next conversation Simon starts (it's in the session prompt until then)
 export const thinkDeliverers = new Set();
 
-export const FOLLOW_UP_MS = 10000; // after Ims stops talking, a reply within this long needs no wake phrase
+export const FOLLOW_UP_MS = 15000; // after Ims stops talking, a reply within this long needs no wake phrase (15 s since 15 Oct - proper conversations have pauses)

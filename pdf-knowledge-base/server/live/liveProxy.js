@@ -366,6 +366,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       if (heardNudge === 0 && quietFor >= 2500) {
         heardNudge = 1;
         currentGeminiWs.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
+        keepListening();
         try { logCapture(`[${new Date().toISOString()}] ${tag} HEARD BUT NO REPLY: ended the audio turn ("${heardText.trim().slice(0, 80)}")\n`); } catch (_) { }
         return;
       }
@@ -373,6 +374,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         heardNudge = 2;
         textTurnSent = true; sessionUsed = true; lastActivityAt = Date.now();
         currentGeminiWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `(System: Simon just said "${heardText.trim().slice(0, 240)}" to you and is waiting for your answer. Answer him now.)` }] }], turnComplete: true } }));
+        keepListening();
         try { logCapture(`[${new Date().toISOString()}] ${tag} HEARD BUT NO REPLY: asked him in text to answer\n`); } catch (_) { }
         return;
       }
@@ -392,6 +394,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       clearPendingSpeech();
       textTurnSent = true;
       lastActivityAt = Date.now();
+      keepListening();
       try { logCapture(`[${new Date().toISOString()}] ${tag} NO REPLY TO SPEECH (${frames} speech frames, no transcript) - asking Ims to check what was said\n`); } catch (_) { }
       console.log(`${tag} 🤔 Speech went unanswered - asking Ims to check what was said`);
       currentGeminiWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: '(System: the user just said something to you, but it did not come through clearly - it may have been cut off. Do not stay silent. In one short sentence, ' + inYourVoice() + ', say you did not quite catch it and ask them to say it again. Do not greet them.)' }] }], turnComplete: true } }));
@@ -534,6 +537,15 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // The turn Gemini starts straight after setEmotion's answer is the rest of his reply, not him talking
   // unprompted (15 Oct: dropped mid-conversation, then the session timed out).
   let emotionAnsweredAt = 0;
+  // When his reply (one that was played, not dropped) last finished - a turn starting within 3 s of it is the
+  // rest of that reply (setEmotion, a camera look, a late lookup), never "unprompted" (15 Oct, three times).
+  let replyEndedAt = 0;
+  // Whenever the server nudges Gemini to answer, the Box-3 is told to keep listening long enough to hear the
+  // answer - it doesn't know about the nudge and closed the session 14 s after his last words (15 Oct, camera).
+  const keepListening = (ms = 25000) => {
+    followUpUntil = Math.max(followUpUntil, Date.now() + ms);
+    if (isHardware) paceSend({ json: JSON.stringify({ followUpMs: ms }) });
+  };
   // An answer is owed once a tool's result has gone back to Gemini. His holding line ("let's have a look")
   // finishes as its own turn and clears the turn triggers, so the real answer that follows used to look
   // unsolicited and was dropped (6 Oct: glucose and pre-bolus answers lost) - the next turn is that answer.
@@ -1165,7 +1177,8 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           }
           const startsModelOutput = parsed.serverContent?.modelTurn || parsed.serverContent?.outputTranscription || parsed.toolCall;
           const answersTool = Boolean(startsModelOutput && currentTurnComplete && ((toolAnswerOwedAt && Date.now() - toolAnswerOwedAt < 90000)
-            || (emotionAnsweredAt && Date.now() - emotionAnsweredAt < 90000 && turnCompleteAt && Date.now() - turnCompleteAt < 3000 && (isConversationActive || Date.now() <= followUpUntil))));
+            || (emotionAnsweredAt && Date.now() - emotionAnsweredAt < 90000 && turnCompleteAt && Date.now() - turnCompleteAt < 3000 && (isConversationActive || Date.now() <= followUpUntil))
+            || (replyEndedAt && Date.now() - replyEndedAt < 3000 && (isConversationActive || Date.now() <= followUpUntil))));
           if (answersTool && emotionAnsweredAt) emotionAnsweredAt = 0;
           if (answersTool) { toolAnswerOwedAt = 0; unsolicitedTurn = false; }
           if (startsModelOutput) { lastModelOutputAt = Date.now(); if (wakeKickTimer) { clearTimeout(wakeKickTimer); wakeKickTimer = null; } }
@@ -1422,6 +1435,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               lastImsReply = said;
               followUpMs = (/\?["')\s]*$/.test(said) || said.split(/\s+/).length > 60) ? 25000 : FOLLOW_UP_MS;
               followUpUntil = playEnd + followUpMs;
+              replyEndedAt = Date.now();
               wakeDaemonService.setSilenceTimeout(followUpMs + 5000);
               if (isHardware) paceSend({ json: JSON.stringify({ followUpMs }) }); // the Box-3 keeps listening that long too
               // a look / see request he answered without looking: give him what the camera shows, once
