@@ -361,6 +361,22 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     if (isClientClosed || !currentGeminiWs || currentGeminiWs.readyState !== WebSocket.OPEN) return;
     if (!currentTurnComplete) return; // Ims is thinking or speaking
     if (isHardware && isRecordingActive()) return;
+    if (isHardware && isConversationActive && heardAt > lastModelOutputAt && heardText.trim() && heardNudge < 2) {
+      const quietFor = Date.now() - Math.max(heardAt, lastLoudMicAt);
+      if (heardNudge === 0 && quietFor >= 2500) {
+        heardNudge = 1;
+        currentGeminiWs.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
+        try { logCapture(`[${new Date().toISOString()}] ${tag} HEARD BUT NO REPLY: ended the audio turn ("${heardText.trim().slice(0, 80)}")\n`); } catch (_) { }
+        return;
+      }
+      if (heardNudge === 1 && quietFor >= 4500) {
+        heardNudge = 2;
+        textTurnSent = true; sessionUsed = true; lastActivityAt = Date.now();
+        currentGeminiWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `(System: Simon just said "${heardText.trim().slice(0, 240)}" to you and is waiting for your answer. Answer him now.)` }] }], turnComplete: true } }));
+        try { logCapture(`[${new Date().toISOString()}] ${tag} HEARD BUT NO REPLY: asked him in text to answer\n`); } catch (_) { }
+        return;
+      }
+    }
     // The user spoke in the follow-up window, the mic carried it to Gemini, and 3.5 s after they
     // stopped there's still no transcript and no reply - Gemini lost it (often the start was cut by the
     // echo guard). Rather than sit in "thinking" until the silence timeout, ask Ims to check what they
@@ -511,6 +527,13 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // the Box-3 gives up (4.5 s). Once a wake phrase is heard and the speech has stopped, the server ends the
   // audio turn itself, and if that still gets nothing, tells him in text to answer.
   let lastModelOutputAt = 0;
+  // Heard but not answered (15 Oct: "Who do I live with?" transcribed, then nothing from Gemini for 15 s and
+  // the Box-3 gave up). In a conversation, once he's stopped and 2.5 s pass with no reply, the audio turn is
+  // ended for Gemini; 2 s after that he's asked in text to answer what was said. Once per thing said.
+  let heardAt = 0, heardText = '', heardNudge = 0; // heardNudge: 0 none, 1 audio ended, 2 asked in text
+  // The turn Gemini starts straight after setEmotion's answer is the rest of his reply, not him talking
+  // unprompted (15 Oct: dropped mid-conversation, then the session timed out).
+  let emotionAnsweredAt = 0;
   // An answer is owed once a tool's result has gone back to Gemini. His holding line ("let's have a look")
   // finishes as its own turn and clears the turn triggers, so the real answer that follows used to look
   // unsolicited and was dropped (6 Oct: glucose and pre-bolus answers lost) - the next turn is that answer.
@@ -1079,6 +1102,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             if (!heardStartAt) heardStartAt = speechStartAt && Date.now() - speechStartAt < 60000 ? speechStartAt : Date.now();
             const incomingTranscript = parsed.serverContent.inputTranscription.text;
             heardThisTurn = (heardThisTurn + incomingTranscript).slice(-400);
+            if (/[a-z0-9]/i.test(incomingTranscript)) { if (heardAt <= lastModelOutputAt) { heardText = ''; heardNudge = 0; } heardAt = Date.now(); heardText = (heardText + incomingTranscript).slice(-300); }
             if (wakeCheck && !wakeCheck.heardAt && /[a-z]/i.test(incomingTranscript)) wakeCheck.heardAt = Date.now();
             if (wakeCheck && !wakeCheck.extended && !looksAddressed(heardThisTurn) && WAKE_START_RX.test(heardThisTurn)) {
               wakeCheck.extended = true;
@@ -1140,7 +1164,9 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             }
           }
           const startsModelOutput = parsed.serverContent?.modelTurn || parsed.serverContent?.outputTranscription || parsed.toolCall;
-          const answersTool = Boolean(startsModelOutput && currentTurnComplete && toolAnswerOwedAt && Date.now() - toolAnswerOwedAt < 90000);
+          const answersTool = Boolean(startsModelOutput && currentTurnComplete && ((toolAnswerOwedAt && Date.now() - toolAnswerOwedAt < 90000)
+            || (emotionAnsweredAt && Date.now() - emotionAnsweredAt < 10000 && (isConversationActive || Date.now() <= followUpUntil))));
+          if (answersTool && emotionAnsweredAt) emotionAnsweredAt = 0;
           if (answersTool) { toolAnswerOwedAt = 0; unsolicitedTurn = false; }
           if (startsModelOutput) { lastModelOutputAt = Date.now(); if (wakeKickTimer) { clearTimeout(wakeKickTimer); wakeKickTimer = null; } }
           // he's already greeted (fast greeting): Gemini's own reply to the wake phrase is dropped until Simon speaks again
@@ -1612,6 +1638,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               const emotion = call.args?.emotion || 'neutral';
               turnLog.emotions.push(emotion);
               console.log(`${tag} 🎭 setEmotion(${emotion}) - forwarding to hardware client`);
+              if (!unsolicitedTurn) emotionAnsweredAt = Date.now(); // whatever he says next is still this reply
               if (imsBrain && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify(getDevicePayload(emotion)));
               }
