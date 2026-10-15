@@ -765,8 +765,11 @@ export function refreshLiveContext(text) {
   if (typeof text !== 'string') return text;
   const nowStr = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", dateStyle: "full", timeStyle: "long" }).format(new Date());
   let out = text.replace(/The current date and time is [^\n]*?\.\n/, `The current date and time is ${nowStr}.\n`);
-  const a = out.indexOf('YOUR RECORDS RIGHT NOW'), b = out.indexOf('\n\nWHEN SOMETHING FAILS');
-  if (a >= 0 && b > a) out = out.slice(0, a) + buildRecordsParagraph() + out.slice(b);
+  // The saved setup can have its line breaks collapsed to spaces, so find the next section whatever the
+  // spacing. (It used to look for "\n\nWHEN SOMETHING FAILS", never found it, and every reconnect kept the
+  // records from when the Box-3 last connected - 15 Oct: yesterday's "Omnipod change is DUE TODAY".)
+  const a = out.indexOf('YOUR RECORDS RIGHT NOW'), b = a >= 0 ? out.indexOf('WHEN SOMETHING FAILS', a) : -1;
+  if (a >= 0 && b > a) out = out.slice(0, a) + buildRecordsParagraph() + (out.slice(a, b).match(/\s*$/)[0] || '\n\n') + out.slice(b);
   return out;
 }
 
@@ -1180,7 +1183,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "getDayReport",
-            description: "The morning / day report: weather, calendar, reminders, birthdays, new music, glucose now and overnight, pod or sensor changes, training, last run, goals and news. Call it whenever he asks for his morning or day report, briefing or 'what's my day look like', at any time. Follow the delivery instructions it returns.",
+            description: "The morning / day report: weather, calendar, reminders, birthdays, new music, glucose now and overnight, pod or sensor changes, training, last run, goals and news. Call it whenever he asks for his morning or day report, briefing or 'what's my day look like', at any time. Follow the delivery instructions it returns. While it loads say only a few words (e.g. 'Right, let's have a look') - nothing about his day, his calendar, reminders, pod or sensor until the report itself arrives, so nothing is said twice or from memory that may be out of date.",
             parameters: { type: "OBJECT", properties: {} }
           },
           {

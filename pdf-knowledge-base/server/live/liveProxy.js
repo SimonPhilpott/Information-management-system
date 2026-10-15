@@ -202,7 +202,13 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // An old handle has usually expired on Google's side: presenting it failed the connection ("Requested entity
   // was not found", 1008) and cost a back-off before a fresh session. Only resume recent ones.
   const RESUME_MAX_AGE_MS = 15 * 60000;
-  const freshResumptionHandle = () => (resumptionHandle && Date.now() - resumptionHandleAt < RESUME_MAX_AGE_MS ? resumptionHandle : null);
+  // ...and never one whose chain of resumes began on an earlier day (or over 3 hours ago): a resumed session
+  // keeps the instructions it was first set up with, records and all (15 Oct: a pod change "due today" that
+  // was yesterday's)
+  let resumeChainAt = 0;
+  const londonDayNow = (t = Date.now()) => new Date(t).toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+  const freshResumptionHandle = () => (resumptionHandle && Date.now() - resumptionHandleAt < RESUME_MAX_AGE_MS
+    && resumeChainAt && londonDayNow(resumeChainAt) === londonDayNow() && Date.now() - resumeChainAt < 3 * 3600000 ? resumptionHandle : null);
   let isClientClosed = false;
   const outboundQueue = [];
   const outboundAudioQueue = [];
@@ -874,8 +880,9 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     const sendRaw = gWs.send.bind(gWs);
     gWs.send = (d, ...rest) => {
       if (typeof d === 'string' && d.startsWith('{"setup"')) {
-        try { logCapture(`[${new Date().toISOString()}] ${tag} GEMINI SETUP SENT ${/"sessionResumption":\{"handle"/.test(d) ? '(resuming the last session)' : '(fresh session)'}
-`); } catch (_) { }
+        const resuming = /"sessionResumption":\{"handle"/.test(d);
+        if (!resuming) resumeChainAt = Date.now(); // a new chain of sessions starts here
+        try { logCapture(`[${new Date().toISOString()}] ${tag} GEMINI SETUP SENT ${resuming ? '(resuming the last session)' : '(fresh session)'}\n`); } catch (_) { }
       }
       return sendRaw(d, ...rest);
     };
