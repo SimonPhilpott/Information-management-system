@@ -229,6 +229,7 @@ function PhraseCard({ p, isDark, onChanged, notify }) {
   // shows "Say the phrase now" while it records.
   const record = async () => {
     setLast(null); setState('countdown');
+    fetch('/api/phrases/session/start', { method: 'POST' }).catch(() => {}); // Ims ignores wake phrases while recording
     for (let n = COUNTDOWN; n >= 1; n--) { setLevel(n); await new Promise((r) => setTimeout(r, 1000)); }
     setState('recording'); setLevel(0);
     const tick = setInterval(() => setLevel((n) => n + 1), 1000);

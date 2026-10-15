@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { listPhrases, addPhrase, updatePhrase, deletePhrase, addRecording, deleteRecording, recordingFile, listWakeCandidates, acceptWakeCandidate, dismissWakeCandidate } from '../services/phrasesService.js';
-import { requestDeviceCapture, stopDeviceCapture } from '../services/deviceBus.js';
+import { requestDeviceCapture, stopDeviceCapture, startPhraseSession, endPhraseSession, phraseSessionStatus } from '../services/deviceBus.js';
 import { wakeModelStatus, startTraining, listClipsToReview, labelClip, labelClips, clipFile, loudWav } from '../services/wakeModelService.js';
 
 const router = Router();
@@ -18,6 +18,10 @@ router.delete('/:id', (req, res) => { try { res.json({ success: deletePhrase(req
 router.post('/:id/recordings', (req, res) => fail(res, new Error('Record through the IMS device - recordings must come from the Box-3 microphone.'), 400));
 // Record from the IMS device's own microphone (the one the phrases are really heard on).
 router.post('/record-device/stop', (req, res) => { stopDeviceCapture(); res.json({ success: true }); });
+// Recording session: Ims ignores wake phrases while the phrases are being recorded
+router.get('/session', (req, res) => res.json({ success: true, ...phraseSessionStatus() }));
+router.post('/session/start', (req, res) => res.json({ success: true, ...startPhraseSession() }));
+router.post('/session/end', (req, res) => res.json({ success: true, ...endPhraseSession() }));
 // Simon's own wake-word model (shadow mode beside the Gemini wake check)
 router.get('/model', (req, res) => { try { res.json({ success: true, ...wakeModelStatus() }); } catch (err) { fail(res, err); } });
 router.post('/model/train', (req, res) => { try { res.json({ success: true, training: startTraining() }); } catch (err) { fail(res, err, 400); } });
@@ -28,6 +32,7 @@ router.get('/model/clips/:cid/audio', (req, res) => { const f = clipFile(req.par
 router.post('/:id/record-device', async (req, res) => {
   try {
     // up to 6 s: the page's Stop button usually ends it sooner (POST /record-device/stop)
+    startPhraseSession(); // each recording keeps Ims from waking for 3 more minutes
     const pcm = await requestDeviceCapture(Math.max(2, Math.min(6, Number(req.body?.seconds) || 3)));
     res.json({ success: true, ...(await addRecording(req.params.id, null, pcm)) });
   } catch (err) { fail(res, err, 400); }

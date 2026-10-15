@@ -41,6 +41,7 @@ import { isDeviceMicMuted, setDeviceConnected, setDeviceMicMuted } from '../serv
 import { lookUpFood } from '../services/foodService.js';
 import { noteWakeCandidate } from '../services/phrasesService.js';
 import { recordWakeCheck } from '../services/wakeModelService.js';
+import { isPhraseSession } from '../services/deviceBus.js';
 import { pickClip, pickGreeting } from '../services/holdingClips.js';
 import { pickJoke } from '../services/jokeService.js';
 import { recordUsage } from '../services/geminiClient.js';
@@ -2212,6 +2213,9 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
   ws.on('message', (message, isBinary) => {
     if (isBinary && phraseCapture) { phraseCapture.chunks.push(Buffer.from(message)); return; }
+    // a phrase-recording session: the Box-3's wake checks go nowhere (Gemini never hears them, nothing is kept),
+    // so Ims doesn't answer the phrases being recorded. An open conversation carries on as normal.
+    if (isBinary && isHardware && !isConversationActive && isPhraseSession()) return;
     if (isBinary && isHardware && silenceClosedAt && Date.now() - silenceClosedAt < 2500) return; // don't reopen a session we just closed
     // Hardware firmware debug telemetry ({"debug":"..."}) - log only, never
     // forward to Gemini (it would reject these as malformed clientContent).

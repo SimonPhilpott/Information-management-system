@@ -14,10 +14,14 @@ export default function WakeModelCard({ isDark, notify, panel, onRecorded }) {
   const [lastHeard, setLastHeard] = useState(null); // { id, transcript }
   const [open, setOpen] = useState(null);         // the phrase whose recordings are shown
   const [recs, setRecs] = useState({});           // phrase id -> its recordings (newest first)
+  const [session, setSession] = useState(null);   // { active, until } - Ims ignoring wake phrases while recording
+  const [, tick] = useState(0);
+  useEffect(() => { if (!session?.active) return undefined; const t = setInterval(() => { tick((n) => n + 1); if (Date.now() > session.until) setSession({ active: false }); }, 1000); return () => clearInterval(t); }, [session]);
   const audio = useRef(null);
   const load = useCallback(async () => {
     try {
-      const [m, r, ph] = await Promise.all([(await fetch('/api/phrases/model')).json(), (await fetch('/api/phrases/model/review')).json(), (await fetch('/api/phrases')).json()]);
+      const [m, r, ph, ss] = await Promise.all([(await fetch('/api/phrases/model')).json(), (await fetch('/api/phrases/model/review')).json(), (await fetch('/api/phrases')).json(), (await fetch('/api/phrases/session')).json()]);
+      if (ss.success) setSession(ss);
       if (m.success) setS(m);
       if (r.success) setReview(r.clips);
       if (ph.success) setRecs(Object.fromEntries(ph.phrases.map((x) => [x.id, x.recordings || []])));
@@ -27,8 +31,11 @@ export default function WakeModelCard({ isDark, notify, panel, onRecorded }) {
   useEffect(() => { if (!s?.training?.running) return undefined; const t = setInterval(load, 3000); return () => clearInterval(t); }, [s?.training?.running, load]);
 
   // record one phrase through the Box-3: 3-2-1, then speak, then Stop (or it stops itself after 6 s)
+  const startSession = async () => { try { const d = await (await fetch('/api/phrases/session/start', { method: 'POST' })).json(); if (d.success) setSession(d); } catch (_) { /* recording still works */ } };
+  const endSession = async () => { try { const d = await (await fetch('/api/phrases/session/end', { method: 'POST' })).json(); if (d.success) setSession(d); } catch (_) { /* ends by itself */ } };
   const record = async (p) => {
     setLastHeard(null);
+    await startSession(); // Ims ignores wake phrases from the countdown on
     for (let n = COUNTDOWN; n >= 1; n--) { setRec({ id: p.id, state: 'countdown', n }); await new Promise((r) => setTimeout(r, 1000)); }
     setRec({ id: p.id, state: 'recording', n: 0 });
     try {
@@ -96,6 +103,14 @@ export default function WakeModelCard({ isDark, notify, panel, onRecorded }) {
         Right now Gemini turns what you say into words and Ims wakes if the words look like a wake phrase - which is why it keeps mishearing "Hi Ims" as things like "H&M".
         This model learns the <i>sound</i> of you saying each phrase instead. It only watches for now: once it's proved itself against Gemini (step 3), we switch Ims over to it.
       </p>
+
+      {session?.active && (
+        <div className="mb-3 p-2.5 rounded-xl border border-amber-500/40 bg-amber-500/10 text-xs flex flex-wrap items-center gap-2">
+          <Mic size={13} className="text-amber-500" />
+          <span><b>Recording session</b> - Ims is ignoring wake phrases so he won't answer you. Back to normal {(() => { const sec = Math.max(0, Math.round((session.until - Date.now()) / 1000)); return `in ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; })()} (each recording adds 3 minutes).</span>
+          <button onClick={endSession} className={`${btn} ml-auto`}>End now</button>
+        </div>
+      )}
 
       {/* 1. record */}
       <div className={`${box} mb-3`}>
