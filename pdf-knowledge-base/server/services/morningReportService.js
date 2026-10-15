@@ -673,6 +673,8 @@ async function buildWeatherSection(section, context) {
     if (home.error) return `Weather: unavailable right now (${home.error}). Say so - do not guess.`;
     context.weatherRain = home.today?.rain_probability_percent ?? null;
     const lang = home.description?.language_today;
+    // for the training section: rain judged at the time of the run, in the forecast's own words
+    context.weather = { periods: home.periods || [], todayLevel: home.today?.rain_level || null, use: lang?.rain?.use || [], avoid: lang?.rain?.avoid || [] };
     let line = `Weather at home (${home.location.split(',')[0]}): ${describe(home, { withTomorrow: filters.includeTomorrow !== false })}.`;
     if (lang) line += ` Words that fit today - rain: ${lang.rain.level} (never say ${lang.rain.avoid.slice(-4).join(', ')})`
       + `; temperature: ${lang.temperature.band}${windLevel > 0 ? `; wind: ${lang.wind.band}` : ''}${lang.extras.length ? `; also ${lang.extras.map((e) => e.kind.replace('_', ' ')).join(', ')}` : ''}. Describe it no stronger or weaker than that.`;
@@ -1012,6 +1014,29 @@ async function buildDeviceChangesSection(section, context) {
   }
 }
 
+// Rain and today's run, judged for the part of the day the run is in and worded no stronger than the forecast
+// (15 Oct: "Rain's likely, so fit your run around it" when the evening was only "some chance of a shower" -
+// it went by the day's top percentage, not the forecast's own level)
+const WET = ['light', 'moderate', 'heavy'];
+function runRainNote(w) {
+  const hm = (t) => { const [h, m] = String(t || '').split(':').map(Number); return h * 60 + (m || 0); };
+  let run = null;
+  try {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+    run = getEventsOn(today).find((e) => e.time && /\b(run|running|parkrun|jog)\b/i.test(e.title || ''));
+  } catch (_) { /* no calendar */ }
+  const words = w.use?.length ? ` Say it no stronger than "${w.use[0]}"${w.avoid?.length ? ` - never ${w.avoid.slice(0, 4).map((x) => `"${x}"`).join(', ')}` : ''}.` : '';
+  if (run) {
+    const t = hm(run.time);
+    const period = (w.periods || []).find((x) => x.name !== 'Overnight' && hm(x.from) <= t && t < (x.to === '00:00' ? 1440 : hm(x.to)));
+    if (!period) return '';
+    if (WET.includes(period.rain_level)) return ` Rain is likely around your ${run.time} run (${period.name.toLowerCase()}: ${period.rain_level} rain), so it may need to fit around the weather.`;
+    if (period.rain_level === 'chance') return ` Around your ${run.time} run (${period.name.toLowerCase()}) there's only a chance of a shower - mention it lightly if at all, a jacket at most.${words}`;
+    return ` Your ${run.time} run looks dry.`;
+  }
+  return WET.includes(w.todayLevel) ? ' Rain is likely later today, so a run may need to fit around the weather.' : '';
+}
+
 async function buildTrainingSection(section, context) {
   try {
     const filters = section.subFilters || {};
@@ -1037,9 +1062,7 @@ async function buildTrainingSection(section, context) {
 
         if (bits.length === 0) return null;
         let line = `Training: ${bits.join('; ')}.`;
-        if (filters.includeWeatherCorrelation !== false && context.weatherRain != null && context.weatherRain >= 50) {
-          line += ' Rain is likely today, so if a run is planned it may need to fit around the weather.';
-        }
+        if (filters.includeWeatherCorrelation !== false && context.weather) line += runRainNote(context.weather);
         if (section.customNote?.trim()) line += ` Note: ${section.customNote.trim()}.`;
         return line;
       }
