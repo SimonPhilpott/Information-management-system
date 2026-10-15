@@ -1165,7 +1165,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           }
           const startsModelOutput = parsed.serverContent?.modelTurn || parsed.serverContent?.outputTranscription || parsed.toolCall;
           const answersTool = Boolean(startsModelOutput && currentTurnComplete && ((toolAnswerOwedAt && Date.now() - toolAnswerOwedAt < 90000)
-            || (emotionAnsweredAt && Date.now() - emotionAnsweredAt < 10000 && (isConversationActive || Date.now() <= followUpUntil))));
+            || (emotionAnsweredAt && Date.now() - emotionAnsweredAt < 90000 && turnCompleteAt && Date.now() - turnCompleteAt < 3000 && (isConversationActive || Date.now() <= followUpUntil))));
           if (answersTool && emotionAnsweredAt) emotionAnsweredAt = 0;
           if (answersTool) { toolAnswerOwedAt = 0; unsolicitedTurn = false; }
           if (startsModelOutput) { lastModelOutputAt = Date.now(); if (wakeKickTimer) { clearTimeout(wakeKickTimer); wakeKickTimer = null; } }
@@ -1530,6 +1530,15 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             // an answer is only owed if he hasn't already given one while the tool ran (a slow save like
             // rememberFact finishing after "Aye, I'll remember that" let the same line through twice)
             if (!['setEmotion', 'endConversation', 'noWakeDetected', 'noteWake'].includes(call.name) && (wordsSpoken - wordMark < 10 || call.name === 'lookAtCamera')) { toolAnswerOwedAt = Date.now(); toolAnswerWords = 0; }
+            // A lookup that comes back after he's already answered aloud (15 Oct: askGemini took 13 s, he'd
+            // answered the Power Platform question himself, and his follow-up turn was dropped as unprompted -
+            // then silence). In a conversation the next turn is allowed, and he's told to add only what's new.
+            else if (/^(askGemini|searchLibrary|getNews|getWeather|recallMemory|getCalendarEvents|getUpcomingBirthdays|getTrainingSummary|getScheduleHistory|getNewMusicReleases|getBoardGames|getCampaigns|lookUpFood|readList|listScheduledItems|getDoorbellStatus|getBloodGlucose)$/.test(call.name)
+              && (isConversationActive || Date.now() <= followUpUntil)) {
+              toolAnswerOwedAt = Date.now(); toolAnswerWords = 0;
+              const base = output && typeof output === 'object' && !Array.isArray(output) ? output : { result: output };
+              output = { ...base, alreadyAnswered: 'You have already answered him out loud while this ran. Add only what is genuinely new from this result, in a sentence or two - never repeat what you said. If it adds nothing new, give a short follow-up thought or one question back instead of going quiet.' };
+            }
             if (call.name !== 'setEmotion') turnLog.tools.push({ name: call.name, ms: Date.now() - toolStartedAt, ok: !(output && output.error),
               ...(/^(getWeather|getBloodGlucose|listScheduledItems|getCalendarEvents|getDayReport|getUpcomingBirthdays|getTrainingSummary|getScheduleHistory|getNewMusicReleases)$/.test(call.name) ? { out: JSON.stringify(output).slice(0, 2500) } : {}) });
             // Anything that fails is logged to the dev ideas queue as a prompt for Claude Code.
@@ -1537,7 +1546,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               try {
                 const f = flagToolFailure({ tool: call.name, error: output.error, args: call.args, heard: heardThisTurn, where: isHardware ? 'desk terminal' : 'web app' });
                 console.log(`${tag} 💡 ${call.name} failure ${f.duplicate ? 'already flagged' : 'flagged'} as dev idea #${f.id}`);
-                output = { ...output, flaggedForFixing: `Logged as dev idea #${f.id} for Claude Code. Tell them briefly it didn't work and you've flagged it to be fixed.` };
+                output = { ...output, flaggedForFixing: `Logged as dev idea #${f.id} for Claude Code. Tell them briefly it didn't work and you've flagged it - then still answer: what you know yourself, what you'd guess, or ask them. Never end on just "it didn't work".` };
               } catch (_) { /* never let flagging break the reply */ }
             }
             if (gWs.readyState === WebSocket.OPEN) {
