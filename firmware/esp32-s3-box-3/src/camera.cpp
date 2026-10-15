@@ -162,7 +162,7 @@ static void diagTask(void *) {
       g_diagGone = false;
       camLogf("[USB] a device was removed");
     }
-    if (millis() - lastAlive > 10000) {
+    if (millis() - lastAlive > 60000) { // once a minute (was every 10 s, with every descriptor each time)
       lastAlive = millis();
       usb_host_lib_info_t li = {};
       usb_host_lib_info(&li);
@@ -171,9 +171,10 @@ static void diagTask(void *) {
       esp_err_t addrErr = usb_host_device_addr_list_fill(sizeof(addrs), addrs, &numDevs);
       camLogf("[USB] host: seen=%u lib=%d devs (addrs: %s, cnt=%d) stage=%s",
               (unsigned)g_devicesSeen, li.num_devices, esp_err_to_name(addrErr), numDevs, enum_get_current_stage());
-      for (int i = 0; i < numDevs; i++) {
-        camLogf("[USB] dev addr %u present in pool", (unsigned)addrs[i]);
-        describeDevice(addrs[i]);
+      static int lastNum = -1;
+      if (numDevs != lastNum) { // only describe the devices when what's plugged in changes
+        lastNum = numDevs;
+        for (int i = 0; i < numDevs; i++) describeDevice(addrs[i]);
       }
     }
   }
@@ -230,12 +231,16 @@ static void dumpFormats() {
   free(list);
 }
 
-static bool openAndStart() {
-  // Full-speed USB carries very little, so try small MJPEG modes first-class
-  // and fall back through smaller ones until the camera accepts one.
-  static const struct { unsigned w, h; float fps; } tries[] = {
-      {640, 480, 15}, {320, 240, 15}, {640, 480, 10}, {320, 240, 30}, {160, 120, 15}};
-  for (auto &t : tries) {
+// 320x240 day to day (is someone at the desk?) - about a quarter of the data over Wi-Fi - and 640x480 only when
+// Ims is looking (the backend has asked for full speed). (15 Oct)
+static bool g_streamLarge = false;
+static bool openAndStart(bool large) {
+  struct Mode { unsigned w, h; float fps; };
+  static const Mode bigFirst[] = {{640, 480, 15}, {640, 480, 10}, {320, 240, 15}, {320, 240, 30}, {160, 120, 15}};
+  static const Mode smallFirst[] = {{320, 240, 15}, {320, 240, 30}, {160, 120, 15}, {640, 480, 15}, {640, 480, 10}};
+  const Mode *tries = large ? bigFirst : smallFirst;
+  for (int ti = 0; ti < 5; ti++) {
+    const Mode &t = tries[ti];
     uvc_host_stream_config_t cfg = {};
     cfg.event_cb = streamEventCb;
     cfg.frame_cb = frameCb;
@@ -267,6 +272,7 @@ static bool openAndStart() {
     }
     camLogf("[Camera] streaming MJPEG %ux%u @ %.0f fps", t.w, t.h, t.fps);
     g_streaming = true;
+    g_streamLarge = t.w >= 640;
     return true;
   }
   return false;
@@ -323,8 +329,10 @@ static void cameraManagerTask(void *) {
     }
 
     const bool want = g_present && g_wantAwake && !g_suspended;
+    const bool wantLarge = !g_idle; // the backend wants full speed = Ims is looking
+    if (want && g_stream && g_streaming && wantLarge != g_streamLarge) closeStream(); // switch size, reopened below
     if (want && !g_stream && millis() >= nextTryMs) {
-      if (!openAndStart()) nextTryMs = millis() + 8000; // don't hammer a camera that won't stream
+      if (!openAndStart(wantLarge)) nextTryMs = millis() + 8000; // don't hammer a camera that won't stream
     } else if (!want && g_stream) {
       closeStream();
     }
@@ -337,8 +345,11 @@ static void cameraManagerTask(void *) {
     }
 
     // Newest frame -> backend, up to ~6 per second while awake and streaming.
-    const uint32_t uploadGapMs = !g_idle ? 160u : (imsVoiceBusy() ? 3000u : 1000u);
-    if (g_streaming && !g_suspended && g_jpgSeq != g_sentSeq && millis() - lastUploadMs > uploadGapMs) {
+    // Nothing at all while Ims is checking for a wake phrase, listening, thinking or speaking - the voice link
+    // comes first - unless he's looking through the camera right now (full speed asked for). (15 Oct)
+    const uint32_t uploadGapMs = !g_idle ? 160u : 1000u;
+    const bool holdForVoice = g_idle && imsVoiceBusy();
+    if (g_streaming && !g_suspended && !holdForVoice && g_jpgSeq != g_sentSeq && millis() - lastUploadMs > uploadGapMs) {
       size_t len = 0;
       if (xSemaphoreTake(g_jpgMux, pdMS_TO_TICKS(15)) == pdTRUE) {
         len = g_jpgLen;
@@ -402,7 +413,10 @@ void cameraBegin(const char *backendHost, uint16_t httpPort) {
     camLogf("[Camera] usb_host_install failed: %s", esp_err_to_name(e));
     return;
   }
-  xTaskCreatePinnedToCore(usbDaemonTask, "usb_lib", 4096, nullptr, 5, nullptr, 1);
+  // Priorities (15 Oct): loop() - which carries Ims's voice link - runs on core 1 at priority 1, and these camera
+  // tasks used to sit above it (5, 4, 3, 5), so a busy camera starved the voice link until it dropped. The USB
+  // tasks mostly sleep waiting for events, so 2 is plenty; the uploader runs on core 0 at the lowest priority.
+  xTaskCreatePinnedToCore(usbDaemonTask, "usb_lib", 4096, nullptr, 2, nullptr, 1);
 
   usb_host_client_config_t cc = {};
   cc.is_synchronous = false;
@@ -410,14 +424,14 @@ void cameraBegin(const char *backendHost, uint16_t httpPort) {
   cc.async.client_event_callback = diagClientCb;
   cc.async.callback_arg = nullptr;
   if (usb_host_client_register(&cc, &g_diagClient) == ESP_OK) {
-    xTaskCreatePinnedToCore(diagTask, "usb_diag", 4096, nullptr, 4, nullptr, 1);
+    xTaskCreatePinnedToCore(diagTask, "usb_diag", 4096, nullptr, 1, nullptr, 1);
   } else {
     camLogf("[USB] diagnostic client could not be registered");
   }
 
   uvc_host_driver_config_t dc = {};
   dc.driver_task_stack_size = 4096;
-  dc.driver_task_priority = 5;
+  dc.driver_task_priority = 2;
   dc.xCoreID = 1;
   dc.create_background_task = true;
   dc.event_cb = driverEventCb;
@@ -429,7 +443,8 @@ void cameraBegin(const char *backendHost, uint16_t httpPort) {
   }
 
   g_started = true;
-  xTaskCreatePinnedToCore(cameraManagerTask, "cam_mgr", 8192, nullptr, 3, nullptr, 1);
+  // core 0 (with Wi-Fi), lowest priority: picture uploads only ever use spare time, never the voice link's
+  xTaskCreatePinnedToCore(cameraManagerTask, "cam_mgr", 8192, nullptr, 1, nullptr, 0);
   camLogf("[Camera] host ready, waiting for a camera");
 }
 

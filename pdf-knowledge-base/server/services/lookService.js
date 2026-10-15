@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { GoogleGenerativeAI } from './geminiClient.js';
 import config from '../config.js';
 import db from '../db/database.js';
-import { getFrame, markInUse, wakeCamera, captureBurst } from './cameraService.js';
+import { getFrame, markInUse, wakeCamera, captureBurst, getSharpFrame } from './cameraService.js';
 import { isRecordingActive } from './recordingService.js';
 import { detectFaces, matchEmbedding } from './faceService.js';
 
@@ -104,7 +104,7 @@ export function deleteSnapshotQa(qaId) {
 // Saves the camera's current frame as a snapshot and finds/recognises faces in it.
 export async function takeSnapshot() {
   if (isRecordingActive()) throw new Error('The camera is off while a call or meeting is being recorded.');
-  const frame = getFrame();
+  const frame = await getSharpFrame(3000); // full size for a look (320x240 the rest of the time)
   if (!frame) throw new Error('No camera frame available - start the camera view first.');
   markInUse();
   let faces = [], width = null, height = null, facesError = null;

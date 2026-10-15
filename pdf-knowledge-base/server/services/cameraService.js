@@ -140,7 +140,9 @@ export function setFrame(buffer, source = 'unknown') {
 // for the next minute: someone is using a picture - Ims looking, the live view, a tap on the camera icon.
 // Full speed only then: at ~6 uploads a second all the time the Box-3's Wi-Fi couldn't keep up with Ims's voice
 // link as well, and it dropped and reconnected about once a minute (13 Oct, "Connecting to IMS backend").
-const FULL_SPEED_MS = 60 * 1000;
+// 12 s, not 60 (15 Oct): full speed is for a look, and every second of it competes with Ims's voice link. The
+// Box-3 also switches to 640x480 for it (320x240 otherwise).
+const FULL_SPEED_MS = 12 * 1000;
 let fullSpeedUntil = 0;
 export function wakeCamera() {
   awakeUntil = Date.now() + AWAKE_MS;
@@ -175,13 +177,38 @@ export function heartbeat({ boot = false } = {}) {
  *  Includes the second or so just before, so a wave that started as he asked is caught too. */
 export async function captureBurst({ ms = 2500, count = 8 } = {}) {
   if (isRecordingActive()) return [];
-  wakeCamera();
+  await getSharpFrame(2500); // the switch to full size first
   const start = Date.now() - 1000;
   await new Promise((r) => setTimeout(r, ms));
-  const pool = recentFrames.filter((f) => f.at >= start);
+  let pool = recentFrames.filter((f) => f.at >= start);
+  const sharp = pool.filter((f) => jpegWidth(f.buffer) >= 600); // the Box-3 switches to 640x480 for a look
+  if (sharp.length >= 3) pool = sharp;
   if (pool.length <= count) return pool;
   const step = (pool.length - 1) / (count - 1);
   return Array.from({ length: count }, (_, i) => pool[Math.round(i * step)]);
+}
+
+// A JPEG's width, from its start-of-frame marker (0 if it can't be read)
+export function jpegWidth(buf) {
+  try {
+    for (let i = 2; i + 9 < buf.length;) {
+      if (buf[i] !== 0xff) { i++; continue; }
+      const m = buf[i + 1];
+      if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return buf.readUInt16BE(i + 7);
+      i += 2 + buf.readUInt16BE(i + 2);
+    }
+  } catch (_) { /* not a readable JPEG */ }
+  return 0;
+}
+/** For a look: wake the camera to full size and wait (up to `ms`) for a 640-wide picture; else the latest. */
+export async function getSharpFrame(ms = 3000) {
+  wakeCamera();
+  const asked = Date.now();
+  while (Date.now() - asked < ms) {
+    if (latest.buffer && latest.at > asked && jpegWidth(latest.buffer) >= 600) break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return getFrame();
 }
 
 export function getFrame() {

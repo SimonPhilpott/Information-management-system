@@ -3410,6 +3410,18 @@ void micReadRateTest() {
 // a short payload write tells the peer "expect N bytes", delivers fewer, and
 // desynchronises its parser permanently. With FRAME_MAGIC (below) the peer can
 // now resynchronise from that, but it still shouldn't happen silently.
+// Why the voice link last dropped - reported to the server once it's back ("link_drop ..."), so drops can be
+// fixed from the cause rather than guessed at (15 Oct: an hour of drops, the server only saw ECONNRESET).
+static char g_dropReason[96] = "";
+static uint32_t g_dropAtMs = 0;
+static volatile int g_wifiDropReason = 0;     // Wi-Fi's own reason code for its last disconnect
+static volatile uint32_t g_wifiDropAtMs = 0;
+static void noteDrop(const char *why) {
+  strncpy(g_dropReason, why, sizeof(g_dropReason) - 1);
+  g_dropReason[sizeof(g_dropReason) - 1] = 0;
+  g_dropAtMs = millis();
+}
+
 bool writeAll(const uint8_t *data, size_t len) {
   size_t sent = 0;
   uint32_t startMs = millis();
@@ -3425,6 +3437,9 @@ bool writeAll(const uint8_t *data, size_t len) {
       // up meant a reconnect that cut off whatever Ims was saying ("Connecting to IMS backend", 14 Oct)
       if (millis() - startMs > 5000) {
         Serial.printf("[TCP] writeAll timeout after %u of %u bytes\n", (unsigned)sent, (unsigned)len);
+        char why[96];
+        snprintf(why, sizeof(why), "send_stalled_5s sent=%u/%u", (unsigned)sent, (unsigned)len);
+        noteDrop(why);
         tcpClient.stop();
         return false;
       }
@@ -3943,6 +3958,15 @@ void connectToBackend() {
     char resetDbg[48];
     snprintf(resetDbg, sizeof(resetDbg), "boot_reset_reason=%s", resetReasonName(esp_reset_reason()));
     sendDebug(resetDbg);
+    if (g_dropReason[0]) {
+      char dropDbg[200];
+      snprintf(dropDbg, sizeof(dropDbg), "link_drop reason=%s ago=%lums wifi_last_drop=%d wifi_drop_ago=%lums rssi=%d intHeap=%u",
+               g_dropReason, (unsigned long)(millis() - g_dropAtMs), (int)g_wifiDropReason,
+               g_wifiDropAtMs ? (unsigned long)(millis() - g_wifiDropAtMs) : 0UL, (int)WiFi.RSSI(),
+               (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+      sendDebug(dropDbg);
+      g_dropReason[0] = 0;
+    }
   } else {
     Serial.println("[TCP] Connect failed - will retry");
     connectionAttempts++;
@@ -5146,6 +5170,11 @@ void setup() {
 
   // 3. Wi-Fi Connection
   WiFi.mode(WIFI_STA);
+  // remember Wi-Fi's own reason whenever it drops (reported with the next link_drop)
+  WiFi.onEvent([](arduino_event_id_t, arduino_event_info_t info) {
+    g_wifiDropReason = info.wifi_sta_disconnected.reason;
+    g_wifiDropAtMs = millis();
+  }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("[WiFi] Connecting to ");
   Serial.println(WIFI_SSID);
@@ -5387,6 +5416,11 @@ void loop() {
   bool nowConnected = tcpClient.connected();
   if (!nowConnected && wasConnected) {
     Serial.println("[TCP] Disconnected from IMS Server - Reconnecting...");
+    if (!g_dropAtMs || millis() - g_dropAtMs > 3000) { // not one of ours: the connection itself went
+      char why[96];
+      snprintf(why, sizeof(why), "connection_lost wifi=%s", WiFi.status() == WL_CONNECTED ? "up" : "down");
+      noteDrop(why);
+    }
     currentState = STATE_CONNECTING_SERVER;
     isSetupAcknowledged = false;
     geminiSetupComplete = false;
@@ -5430,6 +5464,7 @@ void loop() {
   // the socket is half-open / dead. Stop it so the reconnect timer below will heal it.
   if (nowConnected && (millis() - tcpClient.getLastRxMs() > 60000)) {
     Serial.println("[TCP] Inactivity watchdog timeout (>60s with no RX) - resetting half-open connection");
+    noteDrop("no_data_from_server_60s");
     tcpClient.stop();
   }
 
@@ -5912,4 +5947,8 @@ void loop() {
     if (!onSettingsScreen || settingsDraggingAxis < 0) delay(200);
     settingsDraggingAxis = -1; // one touch sample = one drag step, not a held state
   }
+  // A 1 ms rest every pass (15 Oct): loop() used to spin flat out, so core 1 never idled - the CPU gauge read
+  // 100% with nothing happening, and lower-priority work on core 1 never ran. Audio is buffered (mic and
+  // playback run on core 0), so 1 ms between passes isn't heard.
+  vTaskDelay(1);
 }
