@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { listPhrases, addPhrase, updatePhrase, deletePhrase, addRecording, deleteRecording, recordingFile, listWakeCandidates, acceptWakeCandidate, dismissWakeCandidate } from '../services/phrasesService.js';
 import { requestDeviceCapture, stopDeviceCapture } from '../services/deviceBus.js';
-import { wakeModelStatus, startTraining, listClipsToReview, labelClip, clipFile } from '../services/wakeModelService.js';
+import { wakeModelStatus, startTraining, listClipsToReview, labelClip, labelClips, clipFile, loudWav } from '../services/wakeModelService.js';
 
 const router = Router();
 const fail = (res, err, code = 500) => res.status(code).json({ success: false, error: err.message });
@@ -23,7 +23,8 @@ router.get('/model', (req, res) => { try { res.json({ success: true, ...wakeMode
 router.post('/model/train', (req, res) => { try { res.json({ success: true, training: startTraining() }); } catch (err) { fail(res, err, 400); } });
 router.get('/model/review', (req, res) => { try { res.json({ success: true, clips: listClipsToReview() }); } catch (err) { fail(res, err); } });
 router.post('/model/clips/:cid/label', (req, res) => { try { res.json({ success: true, ...labelClip(req.params.cid, Boolean(req.body?.wake)) }); } catch (err) { fail(res, err, 400); } });
-router.get('/model/clips/:cid/audio', (req, res) => { const f = clipFile(req.params.cid); return f ? res.type('audio/wav').sendFile(f) : res.status(404).end(); });
+router.post('/model/clips/label', (req, res) => { try { res.json({ success: true, ...labelClips(req.body?.ids, Boolean(req.body?.wake)) }); } catch (err) { fail(res, err, 400); } });
+router.get('/model/clips/:cid/audio', (req, res) => { const f = clipFile(req.params.cid); try { return f ? res.type('audio/wav').send(loudWav(f)) : res.status(404).end(); } catch (_) { return res.status(404).end(); } });
 router.post('/:id/record-device', async (req, res) => {
   try {
     // up to 6 s: the page's Stop button usually ends it sooner (POST /record-device/stop)
@@ -32,6 +33,7 @@ router.post('/:id/record-device', async (req, res) => {
   } catch (err) { fail(res, err, 400); }
 });
 router.delete('/recordings/:rid', (req, res) => { try { res.json({ success: deleteRecording(req.params.rid) }); } catch (err) { fail(res, err); } });
-router.get('/recordings/:rid/audio', (req, res) => { const f = recordingFile(req.params.rid); return f ? res.type('audio/wav').sendFile(f) : res.status(404).end(); });
+router.get('/recordings/:rid/audio', (req, res) => { const f = recordingFile(req.params.rid); try { return f ? res.type('audio/wav').send(loudWav(f)) : res.status(404).end(); } catch (_) { return res.status(404).end(); } }); // louder: the Box-3 records quietly
+router.get('/recordings/:rid/audio-original', (req, res) => { const f = recordingFile(req.params.rid); return f ? res.type('audio/wav').sendFile(f) : res.status(404).end(); });
 
 export default router;

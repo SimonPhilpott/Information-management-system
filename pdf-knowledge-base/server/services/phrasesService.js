@@ -159,7 +159,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS wake_candidates (
   text TEXT PRIMARY KEY, count INTEGER NOT NULL DEFAULT 1, first_at INTEGER NOT NULL, last_at INTEGER NOT NULL, dismissed INTEGER NOT NULL DEFAULT 0
 )`);
 export function noteWakeCandidate(text) {
-  const t = norm(text);
+  return; // no longer collected - Simon didn't want the list (15 Oct); his own wake-word model learns from the audio instead
+  const t = norm(text); // eslint-disable-line no-unreachable
   if (!t || t.split(' ').length > 3 || t.length > 24 || BARE_GREETING.test(t) || matchesWake(t)) return;
   const now = Date.now();
   db.prepare(`INSERT INTO wake_candidates (text, count, first_at, last_at) VALUES (?, 1, ?, ?)

@@ -79,13 +79,29 @@ async function ensureScorer() {
 
 // ---- collecting clips from every wake check -------------------------------------------------------------
 // Labels: 'wake' (Gemini woke Ims), 'other_speech' (3+ words heard, not a wake), 'noise' (nothing heard,
-// quiet), 'unsure' (anything else - e.g. a short mishearing that might have been him). 'yes' / 'no' = Simon's.
+// quiet), 'unheard' (nothing written down but loud - could be anything, even him: kept, never trained on and
+// never asked about), 'unsure' (one or two words that weren't a wake phrase - asked about on the Phrases
+// page). 'yes' / 'no' = Simon's answers. (15 Oct: asking about clips with nothing written down meant a long
+// list of near-silent clips he couldn't tell apart.)
 function autoLabel({ outcome, transcript, peak }) {
   if (/^woke/.test(outcome || '')) return 'wake';
   const words = String(transcript || '').trim().split(/\s+/).filter(Boolean);
   if (words.length >= 3) return 'other_speech';
-  if (!words.length && (peak || 0) < 700) return 'noise';
+  if (!words.length) return (peak || 0) < 700 ? 'noise' : 'unheard';
   return 'unsure';
+}
+try { db.prepare("UPDATE wake_clips SET label = 'unheard' WHERE label = 'unsure' AND labelled_by = 'auto' AND TRIM(COALESCE(transcript, '')) = ''").run(); } catch (_) { /* first run */ }
+
+// The Box-3 mic records quietly (speech peaks around 3% of full scale), so clips are made louder to play back
+export function loudWav(file) {
+  const buf = fs.readFileSync(file);
+  if (buf.length <= 44) return buf;
+  const pcm = Buffer.from(buf.subarray(44));
+  let peak = 1;
+  for (let i = 0; i + 1 < pcm.length; i += 2) peak = Math.max(peak, Math.abs(pcm.readInt16LE(i)));
+  const gain = Math.min(30, (0.8 * 32767) / peak);
+  if (gain > 1.05) for (let i = 0; i + 1 < pcm.length; i += 2) pcm.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(pcm.readInt16LE(i) * gain))), i);
+  return Buffer.concat([buf.subarray(0, 44), pcm]);
 }
 
 /** Called after every wake check (liveProxy): keeps the clip and scores it in shadow mode. Never blocks. */
@@ -123,6 +139,11 @@ function prune() {
 // ---- Simon marking clips ------------------------------------------------------------------------------
 export function listClipsToReview(limit = 30) {
   return db.prepare("SELECT id, at, outcome, transcript, peak, label, score FROM wake_clips WHERE label = 'unsure' AND labelled_by = 'auto' ORDER BY at DESC LIMIT ?").all(limit);
+}
+export function labelClips(ids, isWake) {
+  let n = 0;
+  for (const id of ids || []) n += db.prepare("UPDATE wake_clips SET label = ?, labelled_by = 'simon' WHERE id = ?").run(isWake ? 'yes' : 'no', Number(id)).changes;
+  return { labelled: n };
 }
 export function labelClip(id, isWake) {
   const ok = db.prepare("UPDATE wake_clips SET label = ?, labelled_by = 'simon' WHERE id = ?").run(isWake ? 'yes' : 'no', Number(id)).changes > 0;
