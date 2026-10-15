@@ -203,6 +203,14 @@ const LIVE_MIN_SCORE = 0.95;
 export const isModelLive = () => getSetting(LIVE_KEY) !== '0' && Boolean(modelMeta());
 export function setModelLive(on) { setSetting(LIVE_KEY, on ? '1' : '0'); return { live: isModelLive() }; }
 
+/** The raw score for some audio (the background-sound guard's pre-check), whether or not the model is live.
+ *  null when there's no trained model. */
+export async function scoreClip(pcm) {
+  if (!modelMeta() || !pcm || pcm.length < 16000) return null;
+  await ensureScorer();
+  return request('POST', '/score', pcm, 3000);
+}
+
 /** Score a wake check's audio so far. Returns { wake, score, ... } - wake only when every rule passes. */
 export async function scoreForWake(pcm) {
   if (!isModelLive() || !pcm || pcm.length < 16000) return { wake: false };

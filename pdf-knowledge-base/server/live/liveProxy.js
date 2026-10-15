@@ -40,7 +40,7 @@ import { getWeather } from '../services/weatherService.js';
 import { isDeviceMicMuted, setDeviceConnected, setDeviceMicMuted } from '../services/deviceState.js';
 import { lookUpFood } from '../services/foodService.js';
 import { noteWakeCandidate } from '../services/phrasesService.js';
-import { recordWakeCheck, scoreForWake } from '../services/wakeModelService.js';
+import { recordWakeCheck, scoreForWake, scoreClip } from '../services/wakeModelService.js';
 import { isPhraseSession } from '../services/deviceBus.js';
 import { pickClip, pickGreeting } from '../services/holdingClips.js';
 import { pickJoke } from '../services/jokeService.js';
@@ -662,6 +662,43 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // the model scores the audio; a confident score for a short sound followed by a pause wakes Ims the same way a
   // recognised transcript does. Gemini's own wakes are untouched. Off switch on /ims/phrases.
   let modelWakeBusy = false;
+  // ---- Background sound guard (15 Oct: music set off 454 wake checks in an hour, each one streamed to Gemini).
+  // When 5+ wake checks in 2 minutes have all come to nothing, it's music or noise: further wake checks are
+  // GATED - nothing goes to Gemini (no cost, no session churn). His own wake-word model listens first; if it
+  // hears anything wake-like (score >= GATE_PASS), the held audio goes to Gemini and the check carries on as
+  // normal. It lifts by itself once the checks stop piling up.
+  const GATE_WINDOW_MS = 2 * 60000, GATE_MIN_CHECKS = 5, GATE_PASS = 0.3;
+  let recentChecks = []; // { at, woke }
+  let guardOn = false;
+  let lastCheckSentNothing = false;
+  const backgroundSound = () => {
+    const since = Date.now() - GATE_WINDOW_MS;
+    recentChecks = recentChecks.filter((c) => c.at > since);
+    const on = recentChecks.length >= GATE_MIN_CHECKS && !recentChecks.some((c) => c.woke);
+    if (on !== guardOn) {
+      guardOn = on;
+      try { logCapture(`[${new Date().toISOString()}] ${tag} BACKGROUND SOUND GUARD ${on ? `ON (${recentChecks.length} wake checks in 2 min, none for Ims) - wake checks go to his own model first, Gemini only if it hears something wake-like` : 'OFF - wake checks go to Gemini again'}\n`); } catch (_) { }
+    }
+    return on;
+  };
+  let gateBusy = false;
+  const gatePreCheck = () => {
+    const wc = wakeCheck;
+    if (!wc?.gated || gateBusy) return;
+    gateBusy = true;
+    scoreClip(Buffer.concat(wc.frames || [])).then((r) => {
+      if (wakeCheck !== wc || !wc.gated) return;
+      const pass = r && r.score != null && r.score >= GATE_PASS;
+      try { logCapture(`[${new Date().toISOString()}] ${tag} BACKGROUND SOUND GUARD: own model ${r?.score ?? 'n/a'} -> ${pass ? 'wake-like, sending it to Gemini' : 'not a wake phrase, Gemini not asked'}\n`); } catch (_) { }
+      if (!pass) return;
+      wc.gated = false; // from here on the check runs as normal
+      const g = currentGeminiWs;
+      if (g && g.readyState === WebSocket.OPEN && geminiSetupAcknowledged) {
+        for (const f of wc.frames || []) { g.send(JSON.stringify({ realtimeInput: { audio: { mimeType: 'audio/pcm;rate=16000', data: f.toString('base64') } } })); wc.sent = (wc.sent || 0) + 1; }
+        g.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
+      }
+    }).catch(() => { /* stays gated */ }).finally(() => { gateBusy = false; });
+  };
   const tryModelWake = () => {
     const wc = wakeCheck;
     if (!wc || modelWakeBusy || isConversationActive || isRecordingActive() || isDeviceMicMuted() || isPhraseSession()) return;
@@ -680,6 +717,9 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   const wakeCheckLog = (outcome) => {
     if (!wakeCheck) return;
     const w = wakeCheck; wakeCheck = null;
+    recentChecks.push({ at: w.at, woke: /^woke/.test(outcome) });
+    lastCheckSentNothing = !(w.sent > 0) && !/^woke/.test(outcome);
+    if (w.gated) outcome = `${outcome} (background sound guard - Gemini not asked)`;
     // the last 20 wake checks' audio, kept to check what the Box-3 actually sent (11 Oct, Gemini heard nothing)
     try {
       const dir = path.join(__dirname, 'audio_captures', 'wake_checks');
@@ -2323,6 +2363,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           if (isHardware && maybeJson.debug === 'verifying_start' && !isConversationActive) {
             const ready = Boolean(currentGeminiWs && currentGeminiWs.readyState === WebSocket.OPEN && geminiSetupAcknowledged);
             wakeCheck = { frames: recentMicFrames.filter((f) => Date.now() - f.at < 2000).map((f) => f.buf), at: Date.now(), cold: !ready, readyAt: ready ? Date.now() : 0, spokeAt: 0, ends: 0, endAt: 0, heardAt: 0, extended: false };
+            if (imsBrain && backgroundSound()) wakeCheck.gated = true; // music / noise: his own model listens first
             // is the link to Google really alive? (a connection can look open while nothing gets through)
             if (ready) {
               const wc = wakeCheck, sock = currentGeminiWs;
@@ -2375,7 +2416,9 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           try {
             logCapture(`[${new Date().toISOString()}] ${tag} SESSION CLOSED BY DEVICE\n`);
           } catch (_) { }
-          if (currentGeminiWs && currentGeminiWs.readyState === WebSocket.OPEN) {
+          // a gated check never used the session - keep it rather than closing and reopening it every few seconds
+          if (lastCheckSentNothing && guardOn) { lastCheckSentNothing = false; }
+          else if (currentGeminiWs && currentGeminiWs.readyState === WebSocket.OPEN) {
             currentGeminiWs.close(1000, "Device session closed");
             currentGeminiWs = null;
           }
@@ -2507,6 +2550,15 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           }
         }
       });
+      if (wakeCheck?.gated && isHardware && !isConversationActive) {
+        if (lastLoudMicAt > wakeCheck.at && lastLoudMicAt > wakeCheck.spokeAt) { wakeCheck.spokeAt = lastLoudMicAt; wakeCheck.endPending = true; }
+        if (wakeCheck.endPending && wakeCheck.ends < 3 && Date.now() - lastLoudMicAt >= WAKE_END_QUIET_MS) {
+          wakeCheck.endPending = false; wakeCheck.ends++; wakeCheck.endAt = Date.now();
+          gatePreCheck();
+          tryModelWake();
+        }
+        return; // nothing goes to Gemini unless his model hears something wake-like
+      }
       sessionUsed = true; // mic audio went into this session (a wake check or a conversation)
       if (gWs && gWs.readyState === WebSocket.OPEN && geminiSetupAcknowledged) {
         gWs.send(realtimePayload);
