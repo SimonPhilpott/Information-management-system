@@ -8,6 +8,24 @@ import {
 } from 'lucide-react';
 import PortalShell from './PortalShell';
 
+// A ring gauge for one core's load (0-100%)
+function CoreGauge({ pct, label, isDark }) {
+  const v = Math.max(0, Math.min(100, Number(pct) || 0));
+  const r = 34, c = 2 * Math.PI * r;
+  const color = v >= 85 ? '#f43f5e' : v >= 60 ? '#f59e0b' : '#10b981';
+  return (
+    <div className="flex flex-col items-center">
+      <svg width="88" height="88" viewBox="0 0 88 88">
+        <circle cx="44" cy="44" r={r} fill="none" stroke={isDark ? 'rgba(255,255,255,0.08)' : 'rgba(46,43,39,0.1)'} strokeWidth="9" />
+        <circle cx="44" cy="44" r={r} fill="none" stroke={color} strokeWidth="9" strokeLinecap="round"
+          strokeDasharray={`${(v / 100) * c} ${c}`} transform="rotate(-90 44 44)" style={{ transition: 'stroke-dasharray 0.6s' }} />
+        <text x="44" y="49" textAnchor="middle" fontSize="18" fontWeight="900" fill={color}>{pct == null ? '--' : `${v}%`}</text>
+      </svg>
+      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-0.5">{label}</span>
+    </div>
+  );
+}
+
 function Sparkline({ data = [], color = '#06b6d4', width = 120, height = 32, isDark = true }) {
   if (!data || data.length < 2) {
     return (
@@ -455,6 +473,47 @@ export default function DeviceHealthPortal({ theme = 'dark', onThemeToggle, setC
             <div className="mt-3 pt-3 border-t border-inherit flex items-center justify-between">
               <span className={`text-[9px] uppercase font-bold tracking-wider ${textMuted}`}>Link Drops</span>
               <Sparkline data={sparklines.reconnectCount} color="#f43f5e" width={110} height={28} isDark={isDark} />
+            </div>
+          </div>
+        </div>
+
+        {/* CPU load per core: core 0 runs Wi-Fi and the mic/speaker; core 1 runs the main loop (the voice link,
+            screen) and the camera's USB and upload tasks. Updated every 5 s from the Box-3. */}
+        <div className={`p-5 rounded-2xl border ${bgCard}`}>
+          <div className="flex items-center gap-2 font-bold text-sm mb-3">
+            <Cpu size={16} className="text-fuchsia-400" />
+            <span>Processor load</span>
+            <span className={`text-[10px] font-normal ${textMuted}`}>{data?.cpu ? `updated ${Math.max(0, Math.round((Date.now() - data.cpu.at) / 1000))} s ago` : 'waiting for the Box-3 (needs the firmware with load reporting)'}</span>
+          </div>
+          <div className="flex flex-wrap items-start gap-6">
+            <div className="flex gap-4">
+              <CoreGauge pct={data?.cpu?.c0} label="Core 0" isDark={isDark} />
+              <CoreGauge pct={data?.cpu?.c1} label="Core 1" isDark={isDark} />
+            </div>
+            <div className="flex-1 min-w-[220px] text-xs">
+              <div className={`text-[10px] uppercase font-bold tracking-wider mb-1.5 ${textMuted}`}>Busiest tasks (last 5 s)</div>
+              {!(data?.cpu?.top || []).length ? <div className={textMuted}>No task above 1%.</div> : (
+                <div className="flex flex-col gap-1">
+                  {data.cpu.top.map((t) => (
+                    <div key={t.name} className="flex items-center gap-2">
+                      <span className="font-mono w-28 truncate" title={t.name}>{t.name}</span>
+                      <span className={`text-[10px] w-14 ${textMuted}`}>{t.core == null ? 'any core' : `core ${t.core}`}</span>
+                      <div className={`h-1.5 flex-1 rounded-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-slate-200'}`}><div className="h-full bg-fuchsia-500" style={{ width: `${Math.min(100, t.pct)}%` }} /></div>
+                      <span className="tabular-nums w-9 text-right">{t.pct}%</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {data?.cpu?.history?.length > 1 && (
+                <div className="mt-3 flex items-center gap-3">
+                  <span className={`text-[9px] uppercase font-bold tracking-wider ${textMuted}`}>Last 10 min</span>
+                  <Sparkline data={data.cpu.history.map((h) => h.c0)} color="#10b981" width={110} height={28} isDark={isDark} />
+                  <span className={`text-[9px] ${textMuted}`}>core 0</span>
+                  <Sparkline data={data.cpu.history.map((h) => h.c1)} color="#d946ef" width={110} height={28} isDark={isDark} />
+                  <span className={`text-[9px] ${textMuted}`}>core 1</span>
+                </div>
+              )}
+              <p className={`text-[10px] mt-2 ${textMuted}`}>Core 0: Wi-Fi, microphone and speaker. Core 1: the main loop (voice link to the server, screen) and the camera's USB and upload tasks.</p>
             </div>
           </div>
         </div>

@@ -14,7 +14,7 @@ import { addIdea as addDevIdea, flagToolFailure } from '../services/devIdeasServ
 import { addMemory, deleteMemory } from '../db/database.js';
 import { addToList, cancelScheduledItem, clearList, getHistorySummary, listScheduledItems, readList, removeFromList, scheduleItem, stopAllRinging } from '../services/remindersService.js';
 import { addTurn, endConversation as endConversationLog, recentTurns, startConversation } from '../services/conversationLog.js';
-import { appendLog, recordDeviceTelemetry, setHardwareSocketSender } from '../services/deviceHealthService.js';
+import { appendLog, recordDeviceTelemetry, setHardwareSocketSender, recordCpuLoad } from '../services/deviceHealthService.js';
 import { appendRecordingText, isRecordingActive, onRecordingChange, startRecording, stopRecording } from '../services/recordingService.js';
 import { askLive, askMotion } from '../services/lookService.js';
 import { askProfileInsightQuestion } from '../services/glucoseInsightService.js';
@@ -2400,6 +2400,13 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 intFreeHeap: parseInt(repMatch[3], 10),
                 intMinFreeHeap: parseInt(repMatch[4], 10)
               });
+            }
+            // per-core CPU load (device health gauges): "cpu c0=35 c1=82 top=loopTask/1/40;cam_mgr/1/25"
+            const cpuMatch = maybeJson.debug.match(/^cpu\s+c0=(\d+)\s+c1=(\d+)(?:\s+top=(\S*))?/);
+            if (cpuMatch) {
+              const top = String(cpuMatch[3] || '').split(';').filter(Boolean).map((t) => { const [name, core, pct] = t.split('/'); return { name, core: core === 'a' ? null : Number(core), pct: Number(pct) }; });
+              recordCpuLoad({ c0: Number(cpuMatch[1]), c1: Number(cpuMatch[2]), top });
+              return;
             }
             const hbMatch = maybeJson.debug.match(/^heartbeat\s+state=(\d+)\s+heap=(\d+)\s+minHeap=(\d+)\s+rssi=(-?\d+)(?:\s+intHeap=(\d+)\s+intMin=(\d+))?/);
             if (hbMatch) {

@@ -140,6 +140,16 @@ let previousReconnectCount = 0;
 let lastAutoDevIdeaTime = 0;
 let activeSocketSender = null; // hook to send control messages directly to hardware socket
 
+// CPU load per core from the Box-3 (its "cpu c0=.. c1=.. top=.." line every 5 s): the latest, plus the last
+// 10 minutes for the device health gauges' trend. top = the busiest tasks: { name, core (0/1/null), pct }.
+let cpuLatest = null;
+const cpuHistory = [];
+export function recordCpuLoad({ c0, c1, top = [] }) {
+  cpuLatest = { c0, c1, top, at: Date.now() };
+  cpuHistory.push({ at: cpuLatest.at, c0, c1 });
+  while (cpuHistory.length > 120) cpuHistory.shift();
+}
+
 export function setHardwareSocketSender(senderFn) {
   activeSocketSender = typeof senderFn === 'function' ? senderFn : null;
 }
@@ -355,6 +365,7 @@ export function getDeviceHealthSummary(hours = 24) {
   };
 
   return {
+    cpu: cpuLatest && Date.now() - cpuLatest.at < 30000 ? { ...cpuLatest, history: cpuHistory.slice() } : null,
     latest: {
       wifiRssi: current.rssi,
       freeHeap: current.freeHeap,

@@ -22,6 +22,7 @@
 #include <driver/i2c.h> // for the I2C_NUM_0 port-number type only
 #include <esp_system.h> // esp_reset_reason() - see connectToBackend()
 #include <esp_heap_caps.h> // heap_caps_get_free_size() - see the heartbeat in loop()
+#include <freertos/task.h> // uxTaskGetSystemState() - the per-core CPU load report (reportCpuLoad)
 // Migrated from the legacy driver/i2s.h (deprecated, and only capable of a
 // software channel-select "fake mono" over a physically stereo frame) to
 // the newer channel-based i2s_std driver, which supports a genuine hardware
@@ -3513,6 +3514,61 @@ void logf(const char *fmt, ...) {
 // Sends a debug telemetry string to the backend over the existing TCP
 // connection (backend just logs and drops it - see hardwareClientService/
 // index.js). Core 1 only, same as every other tcpClient/sendFrame call.
+void sendDebug(const char *text);
+
+// ---- CPU load per core, for the device health gauges (15 Oct) ----
+// The camera's tasks share core 1 with loop() (which carries the voice link), at higher priority; this shows
+// how busy each core really is and which tasks use the time. Each call reports the time since the last one,
+// from FreeRTOS run-time stats (enabled in this build): a core's load is 100% minus its idle task's share.
+// Sent as a debug line: "cpu c0=35 c1=82 top=loopTask/1/40;cam_mgr/1/25;..." (core 'a' = not pinned).
+static void reportCpuLoad() {
+  static const int MAXT = 48;
+  static TaskStatus_t *st = nullptr;
+  static TaskHandle_t prevH[MAXT];
+  static uint32_t prevRt[MAXT];
+  static int prevN = 0;
+  static uint32_t prevTotal = 0;
+  if (!st) st = (TaskStatus_t *)heap_caps_malloc(sizeof(TaskStatus_t) * MAXT, MALLOC_CAP_SPIRAM);
+  if (!st) return;
+  uint32_t total = 0;
+  int n = (int)uxTaskGetSystemState(st, MAXT, &total);
+  if (n <= 0) return;
+  uint32_t elapsed = total - prevTotal;
+  bool havePrev = prevTotal != 0;
+  TaskHandle_t idle0 = xTaskGetIdleTaskHandleForCore(0), idle1 = xTaskGetIdleTaskHandleForCore(1);
+  struct Use { const char *name; int core; uint32_t d; } top[6];
+  int nTop = 0;
+  uint32_t idleD[2] = {0, 0};
+  for (int i = 0; i < n; i++) {
+    uint32_t rt = (uint32_t)st[i].ulRunTimeCounter, d = 0;
+    for (int j = 0; j < prevN; j++) if (prevH[j] == st[i].xHandle) { d = rt - prevRt[j]; break; }
+    if (st[i].xHandle == idle0) { idleD[0] = d; continue; }
+    if (st[i].xHandle == idle1) { idleD[1] = d; continue; }
+    int core = (st[i].xCoreID == 0 || st[i].xCoreID == 1) ? (int)st[i].xCoreID : -1;
+    // keep the six busiest
+    int at = nTop;
+    while (at > 0 && top[at - 1].d < d) at--;
+    if (at < 6) {
+      for (int k = (nTop < 6 ? nTop : 5); k > at; k--) top[k] = top[k - 1];
+      top[at] = {st[i].pcTaskName, core, d};
+      if (nTop < 6) nTop++;
+    }
+  }
+  prevN = n < MAXT ? n : MAXT;
+  for (int i = 0; i < prevN; i++) { prevH[i] = st[i].xHandle; prevRt[i] = (uint32_t)st[i].ulRunTimeCounter; }
+  prevTotal = total;
+  if (!havePrev || elapsed == 0) return;
+  auto pct = [&](uint32_t d) { uint64_t v = (uint64_t)d * 100 / elapsed; return (int)(v > 100 ? 100 : v); };
+  char line[240];
+  int len = snprintf(line, sizeof(line), "cpu c0=%d c1=%d top=", 100 - pct(idleD[0]), 100 - pct(idleD[1]));
+  for (int k = 0; k < nTop && len < (int)sizeof(line) - 40; k++) {
+    if (pct(top[k].d) < 1) break;
+    char c = top[k].core < 0 ? 'a' : (char)('0' + top[k].core);
+    len += snprintf(line + len, sizeof(line) - len, "%s%s/%c/%d", k ? ";" : "", top[k].name, c, pct(top[k].d));
+  }
+  sendDebug(line);
+}
+
 void sendDebug(const char *text) {
   if (!tcpClient.connected()) return;
   String msg = "{\"debug\":\"" + String(text) + "\"}";
@@ -5445,6 +5501,7 @@ void loop() {
              (int)currentState, (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap(),
              (int)WiFi.RSSI(), hb2);
     sendDebug(hb);
+    reportCpuLoad(); // core 0 / core 1 load since the last heartbeat (device health gauges)
   }
 
   renderScreen();
