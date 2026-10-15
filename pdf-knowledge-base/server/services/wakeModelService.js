@@ -136,6 +136,62 @@ function prune() {
   }
 }
 
+// ---- sorting the "unheard" clips ----------------------------------------------------------------------
+// Most clips the live check wrote nothing down for are ordinary conversation - exactly what the model must
+// learn to ignore (15 Oct: with only room noise as "not you" it learned "someone is talking" and would have
+// woken for "I'll see you when I get home"). A careful transcription sorts them: everyday talk becomes
+// 'other_speech', anything that sounds like a wake phrase goes to Simon ('unsure'), silence stays 'unheard'.
+const WAKE_LIKE = /\b(i\.?\s?m\.?\s?s|ims|imz|ems|eems|emms|hims|aims|hms|h\s*&\s*m|m\s*&\s*m|m'?s|hymns?|pims|mims|elms)\b|\b(hey|hi|hiya|eh up|ay up|ayup)\b/i;
+let sorting = false;
+export async function sortUnheardClips({ limit = 200 } = {}) {
+  if (sorting) return { busy: true };
+  sorting = true;
+  const done = { checked: 0, otherSpeech: 0, maybeWake: 0, nothing: 0 };
+  try {
+    const { GoogleGenerativeAI } = await import('./geminiClient.js');
+    const config = (await import('../config.js')).default;
+    const model = new GoogleGenerativeAI(config.gemini.apiKey).getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const rows = db.prepare("SELECT id, file FROM wake_clips WHERE label = 'unheard' AND labelled_by = 'auto' ORDER BY at DESC LIMIT ?").all(limit);
+    for (const r of rows) {
+      let text = '';
+      try {
+        const data = fs.readFileSync(path.join(CLIPS, r.file)).toString('base64');
+        const g = await model.generateContent([{ inlineData: { mimeType: 'audio/wav', data } },
+          'Transcribe exactly what is said, word for word (British English). If no words are spoken, reply only: (nothing)']);
+        text = g.response.text().trim();
+      } catch (_) { continue; }
+      done.checked++;
+      const words = text.replace(/\(nothing\)|\[[^\]]*\]|\([^)]*\)/gi, ' ').trim().split(/\s+/).filter((w) => /[a-z]/i.test(w));
+      let label = 'unheard';
+      if (WAKE_LIKE.test(text)) { label = 'unsure'; done.maybeWake++; }
+      else if (words.length >= 2) { label = 'other_speech'; done.otherSpeech++; }
+      else done.nothing++;
+      db.prepare('UPDATE wake_clips SET label = ?, transcript = ? WHERE id = ?').run(label, words.join(' ').slice(0, 200), r.id);
+    }
+  } finally { sorting = false; }
+  return done;
+}
+
+// Keeps itself learning: every hour new "unheard" clips are sorted, and at 03:30 it retrains if there's new
+// data since the last training - so real wakes and everyday conversation keep teaching it.
+let lastAutoTrainDay = null;
+setInterval(async () => {
+  try { await sortUnheardClips({ limit: 60 }); } catch (err) { console.warn('[WakeModel] sorting:', err.message); }
+}, 60 * 60000).unref?.();
+setInterval(() => {
+  try {
+    const now = new Date();
+    const day = now.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+    const [h, mi] = now.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' }).split(':').map(Number);
+    if (lastAutoTrainDay === day || h !== 3 || mi < 30) return;
+    lastAutoTrainDay = day;
+    const meta = modelMeta();
+    const newer = db.prepare("SELECT COUNT(*) n FROM wake_clips WHERE at > ? AND label IN ('wake','yes','other_speech','no')").get(meta?.trainedAt || 0).n
+      + db.prepare('SELECT COUNT(*) n FROM phrase_recordings WHERE created_at > ?').get(meta?.trainedAt || 0).n;
+    if (meta && newer >= 5) startTraining();
+  } catch (err) { console.warn('[WakeModel] nightly training:', err.message); }
+}, 5 * 60000).unref?.();
+
 // ---- Simon marking clips ------------------------------------------------------------------------------
 export function listClipsToReview(limit = 30) {
   return db.prepare("SELECT id, at, outcome, transcript, peak, label, score FROM wake_clips WHERE label = 'unsure' AND labelled_by = 'auto' ORDER BY at DESC LIMIT ?").all(limit);
