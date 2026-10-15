@@ -114,9 +114,20 @@ export default function WakeModelCard({ isDark, notify, panel, onRecorded }) {
       {/* 2. train */}
       <div className={`${box} mb-3`}>
         {step(2, 'Train it', Boolean(m))}
-        <p className={`${muted} mb-2`}>
-          It learns your voice from your recordings and every time Ims really wakes, and what <i>isn't</i> you from the other speech and room noise the Box-3 picks up ({(s?.clips?.noise || 0) + (s?.clips?.other_speech || 0) + (s?.clips?.no || 0)} clips so far, collected automatically). Train again whenever you've added recordings.
-        </p>
+        <p className={`${muted} mb-2`}>It learns from two piles of sound. Train again whenever you've added recordings.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+          <div>
+            <div className="font-bold">You saying a wake phrase: {recorded + (s?.clips?.wake || 0) + (s?.clips?.yes || 0)}</div>
+            <div className={`text-[10px] ${muted}`}>{recorded} you recorded above{s?.clips?.wake ? `, ${s.clips.wake} real wakes that worked` : ''}{s?.clips?.yes ? `, ${s.clips.yes} you said were you` : ''}.</div>
+          </div>
+          <div>
+            <div className="font-bold">Sounds that are NOT a wake phrase: {(s?.clips?.noise || 0) + (s?.clips?.other_speech || 0) + (s?.clips?.no || 0)}</div>
+            <div className={`text-[10px] ${muted}`}>
+              Collected automatically when a sound made Ims check but it wasn't you waking him: {s?.clips?.noise || 0} room noise (nothing said, quiet), {s?.clips?.other_speech || 0} other talk (three or more words that weren't a wake phrase){s?.clips?.no ? `, ${s.clips.no} you said weren't you` : ''}.
+              Anything unclear is left out.
+            </div>
+          </div>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={train} disabled={!s || t?.running || recorded < 5} className={primary}><RotateCw size={11} className={t?.running ? 'animate-spin' : ''} />{t?.running ? 'Training...' : m ? 'Train again' : 'Train it'}</button>
           {recorded < 5 && <span className={muted}>Record at least 5 first.</span>}
