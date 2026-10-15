@@ -81,7 +81,7 @@ import { getStandbyOverride } from './services/faceDesignService.js';
 import boardgamesRoutes from './routes/boardgames.js';
 import peopleRoutes from './routes/people.js';
 import lookRoutes from './routes/look.js';
-import { getCameraStatus, setFrame, heartbeat, appendDeviceLog } from './services/cameraService.js';
+import { getCameraStatus, setFrame, heartbeat, appendDeviceLog, pauseCamera } from './services/cameraService.js';
 import { startPresence, onPresence } from './services/presenceService.js';
 import { startWakeGate } from './services/wakeGateService.js';
 import { live, thinkDeliverers } from './live/state.js';
@@ -1124,6 +1124,7 @@ HardwareTcpClient.CLOSED = HardwareTcpClient.prototype.CLOSED = 3;
 
 // Why each Box-3 connection ended, in audio_captures/debug.log: the device drops and reconnects a few times an
 // hour and a drop mid-reply cuts the reply off (13 Oct, the day report) - this says which side ended it.
+let linkDrops = []; // times the Box-3's link dropped, for the link watchdog below
 const tcpLog = (line) => { try { writeDebugLog(`[${new Date().toISOString()}] [HardwareTCP] ${line}\n`); } catch (_) { } };
 
 const hardwareTcpServer = net.createServer((socket) => {
@@ -1143,6 +1144,19 @@ const hardwareTcpServer = net.createServer((socket) => {
   socket.on('error', (err) => { endedBy = endedBy || `error ${err.code || err.message}`; });
   socket.on('close', (hadError) => {
     tcpLog(`CONNECTION CLOSED ${peer}: ${endedBy || (hadError ? 'error' : 'closed')} - open ${Math.round((Date.now() - openedAt) / 1000)} s, last data from device ${Date.now() - lastRxAt} ms before, ${socket.bytesRead} bytes in / ${socket.bytesWritten} out`);
+    // Link watchdog (15 Oct): the Box-3's link dropped about once a minute for an hour - every drop cut off
+    // whatever Ims was doing and wake phrases came through garbled - and pausing the camera stopped it at once.
+    // So 3 drops within 10 minutes pause the camera for 30 minutes by themselves. (It wakes again after that.)
+    try {
+      const now = Date.now();
+      linkDrops.push(now);
+      while (linkDrops.length && now - linkDrops[0] > 10 * 60000) linkDrops.shift();
+      if (linkDrops.length >= 3 && !getCameraStatus().pausedUntil) {
+        pauseCamera(30);
+        tcpLog(`LINK WATCHDOG: ${linkDrops.length} drops in 10 min - camera paused for 30 min to keep Ims's voice link up`);
+        linkDrops = [];
+      }
+    } catch (_) { /* never let the watchdog break a reconnect */ }
   });
   const client = new HardwareTcpClient(socket);
   handleLiveProxyConnection(client, true);
