@@ -387,7 +387,10 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     // count - but short answers ("Yeah", "Good", "Not bad") are under that, so when Gemini lost one Ims just
     // went quiet and the Box-3 ended the session 13 s later (15 Oct: "he keeps stopping when I'm having a
     // conversation"). The 3.5 s of quiet below is what stops it interrupting.
-    if (isHardware && !clarifyNudged && pendingSpeechFrames >= 15 && Date.now() - pendingSpeechLast >= 3500
+    // Only in a conversation he's having with Ims, and only once until something he says is actually transcribed:
+    // re-arming on every reply let room noise set off "didn't catch that" over and over, with no wake phrase
+    // (15 Oct, four times in two minutes).
+    if (isHardware && isConversationActive && !clarifyNudged && pendingSpeechFrames >= 15 && Date.now() - pendingSpeechLast >= 3500
       && followUpUntil && pendingSpeechStart <= followUpUntil + 1000) {
       clarifyNudged = true;
       const frames = pendingSpeechFrames;
@@ -1111,6 +1114,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           if (parsed.serverContent?.inputTranscription?.text) {
             clearPendingSpeech();
             userTranscriptSeen = true; unsolicitedTurn = false;
+            if (/[a-z]{2}/i.test(parsed.serverContent.inputTranscription.text)) clarifyNudged = false; // he was heard: the safety net re-arms
             if (!heardStartAt) heardStartAt = speechStartAt && Date.now() - speechStartAt < 60000 ? speechStartAt : Date.now();
             const incomingTranscript = parsed.serverContent.inputTranscription.text;
             heardThisTurn = (heardThisTurn + incomingTranscript).slice(-400);
@@ -1272,7 +1276,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 turnLog.firstAudioAt = Date.now();
                 if (lastLoudMicAt && lastLoudMicAt < turnLog.firstAudioAt && turnLog.firstAudioAt - lastLoudMicAt < 20000 && !turnLog.system) turnLog.userEndAt = lastLoudMicAt;
               }
-              clearPendingSpeech(); clarifyNudged = false;
+              clearPendingSpeech(); // (clarifyNudged re-arms only on a real transcript of what he says)
               // currentTurnComplete was true -> this chunk starts a NEW turn,
               // so reset the opener-fingerprint tracker (see the
               // outputTranscription handler below) before flipping it false.
