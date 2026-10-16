@@ -128,7 +128,9 @@ function ideasForCriticals(results) {
   for (const [key, { advisory: a, where }] of byAdvisory) {
     const id = (key.match(/GHSA-[\w-]+/) || [a.package])[0];
     const tag = `[Dependency watch] Critical ${id}`;
-    if (db.prepare(`SELECT id FROM dev_ideas WHERE status IN ('new', 'picked_up') AND text LIKE ?`).get(`${tag}%`)) continue;
+    // Once per advisory, ever: an item that was dismissed or done is not added again by the next weekly run
+    // (16 Oct - only open items were checked, so dismissed advisories came back every week)
+    if (db.prepare(`SELECT id FROM dev_ideas WHERE text LIKE ?`).get(`${tag}%`)) continue;
     const lines = [...where.entries()].map(([name, e]) => `- ${e.project.kind === 'ims' ? `IMS (${name})` : `GitHub repo ${name}`}: via ${[...e.via].join(', ')}${e.fixes.size ? `; fix: ${[...e.fixes].join('; ')}` : ''}`);
     const idea = addIdea({
       text: `${tag}: ${a.title} in ${a.package} (${a.range || 'all versions'})${a.url ? `\n${a.url}` : ''}\nAffects ${where.size} project${where.size === 1 ? '' : 's'}:\n${lines.join('\n')}\nFound by the weekly npm audit (Code Repo > Dependencies).`,
