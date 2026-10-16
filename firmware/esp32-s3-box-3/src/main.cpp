@@ -1582,7 +1582,23 @@ static int pfQLen = 0;
 static unsigned long pfQAt = 0, pfShapeAt = 0;
 static const uint8_t *pfShownPtr = nullptr;
 static bool pfLidsDrawn = false;
-static int pfBorder = -2;
+// Each face frame is put together off screen (the JPEG, then any blink lids) and copied to the display in one
+// go - decoding straight onto the screen painted every mouth movement and blink in visible tiles, which showed
+// as the Orc and Chronicler faces flickering (16 Oct).
+static LGFX_Sprite pfSprite(&tft);
+static bool pfSpriteReady = false, pfSpriteTried = false;
+
+// Fills a rectangle except where a face pack is showing, so a full repaint never blanks the face
+static void fillAroundFace(int x, int y, int w, int h, uint16_t c) {
+  if (!packReady) { tft.fillRect(x, y, w, h, c); return; }
+  const int fx0 = PF_X0, fy0 = PF_Y0, fx1 = PF_X0 + PF_W, fy1 = PF_Y0 + PF_H, x1 = x + w, y1 = y + h;
+  if (fx1 <= x || fx0 >= x1 || fy1 <= y || fy0 >= y1) { tft.fillRect(x, y, w, h, c); return; }
+  if (fy0 > y) tft.fillRect(x, y, w, fy0 - y, c);
+  if (y1 > fy1) tft.fillRect(x, fy1, w, y1 - fy1, c);
+  const int my0 = max(y, fy0), my1 = min(y1, fy1);
+  if (fx0 > x) tft.fillRect(x, my0, fx0 - x, my1 - my0, c);
+  if (x1 > fx1) tft.fillRect(fx1, my0, x1 - fx1, my1 - my0, c);
+}
 
 // Starts a download when the backend names a pack we don't have, and swaps a finished one in.
 // Returns true when the face area needs a full repaint (loop() then calls renderScreen(true)).
@@ -1596,7 +1612,7 @@ static bool facePackPoll() {
       packBuf = nb;
       strlcpy(packLoadedId, packNewId, sizeof(packLoadedId));
       packReady = true;
-      pfExpr = -1; pfQLen = 0; pfShownPtr = nullptr; pfBorder = -2;
+      pfExpr = -1; pfQLen = 0; pfShownPtr = nullptr;
       Serial.printf("[FacePack] Showing %s (%u KB)\n", packLoadedId, (unsigned)(packNewLen / 1024));
       repaint = true;
     } else {
@@ -1631,8 +1647,8 @@ static const PackFrame *pfLookFrame(int e, int shape, int look) {
   return pfFrame(e, shape);
 }
 
-// Draws the face pack in place of the dots. Repaints only when the frame, the lids or the frame colour change.
-static void drawPortraitFace(bool forceFull, int onR, int onG, int onB, bool stateColoured) {
+// Draws the face pack in place of the dots. Repaints only when the frame or the lids change.
+static void drawPortraitFace(bool forceFull) {
   unsigned long now = millis();
   // which expression: the emotion Ims set (a designed face's name too), sleepy while asleep
   int want = imsAsleep() ? EMOTION_SLEEPY : emotionFromName(emotionName(currentEmotion));
@@ -1669,43 +1685,31 @@ static void drawPortraitFace(bool forceFull, int onR, int onG, int onB, bool sta
     if (!imsAsleep() && trackedGaze(tgx, tgy) && tgx) fr = pfLookFrame(pfExpr, pfShape, tgx);
     else fr = pfFrame(pfExpr, pfShape);
   }
-  auto pfDraw = [](const PackFrame *f) { tft.drawJpg(f->p, f->n, PF_X0, PF_Y0); };
-  bool drew = false;
-  if (forceFull) {
-    tft.fillRect(PF_X0, PF_Y0, PF_W, PF_H, packBg565);
-    pfShownPtr = nullptr; pfBorder = -2;
-  }
-  if (fr->p != pfShownPtr) {
-    pfDraw(fr);
-    pfShownPtr = fr->p; pfLidsDrawn = false; drew = true;
-  }
   // blinks: lids over the eye openings of this expression (shut while asleep)
-  int ee = pfExpr;
-  bool lids = !morphing && packEyeCount[ee] && (imsAsleep() || blinkingNow());
-  if (lids && !pfLidsDrawn) {
+  const int ee = pfExpr;
+  const bool lids = !morphing && packEyeCount[ee] && (imsAsleep() || blinkingNow());
+  if (!forceFull && fr->p == pfShownPtr && lids == pfLidsDrawn) return;
+  if (!pfSpriteTried) {
+    pfSpriteTried = true;
+    pfSprite.setColorDepth(16);
+    pfSprite.setPsram(true);
+    pfSpriteReady = pfSprite.createSprite(PF_W, PF_H) != nullptr;
+    if (!pfSpriteReady) Serial.println("[FacePack] No memory for the face buffer - drawing straight to the screen");
+  }
+  // No frame round the face any more: the status word under it already says listening / thinking / muted
+  LovyanGFX &g = pfSpriteReady ? (LovyanGFX &)pfSprite : (LovyanGFX &)tft;
+  const int ox = pfSpriteReady ? 0 : PF_X0, oy = pfSpriteReady ? 0 : PF_Y0;
+  g.drawJpg(fr->p, fr->n, ox, oy);
+  if (lids)
     for (int k = 0; k < packEyeCount[ee]; k++) {
       const PackEye &e = packEyes[ee][k];
       if (!e.open) continue;
-      tft.fillEllipse(PF_X0 + e.x, PF_Y0 + e.y, e.w / 2 + 1, e.h / 2 + 1, e.top);
-      tft.drawFastHLine(PF_X0 + e.x - e.w / 2, PF_Y0 + e.y + e.h / 2, e.w, e.bot);
+      g.fillEllipse(ox + e.x, oy + e.y, e.w / 2 + 1, e.h / 2 + 1, e.top);
+      g.drawFastHLine(ox + e.x - e.w / 2, oy + e.y + e.h / 2, e.w, e.bot);
     }
-    pfLidsDrawn = true; drew = true;
-  } else if (!lids && pfLidsDrawn) {
-    pfDraw(fr);
-    pfLidsDrawn = false; drew = true;
-  }
-  // thin frame in the state colour (none at rest), redrawn over a new frame
-  int border = stateColoured ? (int)tft.color565(onR, onG, onB) : -1;
-  if (drew || border != pfBorder) {
-    if (border >= 0) {
-      tft.drawRoundRect(PF_X0, PF_Y0, PF_W, PF_H, 6, (uint16_t)border);
-      tft.drawRoundRect(PF_X0 + 1, PF_Y0 + 1, PF_W - 2, PF_H - 2, 5, (uint16_t)border);
-    } else if (pfBorder >= 0 && !drew) {
-      pfDraw(fr); // take the old frame off
-      if (pfLidsDrawn) pfLidsDrawn = false;
-    }
-    pfBorder = border;
-  }
+  if (pfSpriteReady) pfSprite.pushSprite(PF_X0, PF_Y0);
+  pfShownPtr = fr->p;
+  pfLidsDrawn = lids;
 }
 
 static void drawFaceInternal(bool forceFull) {
@@ -1751,16 +1755,7 @@ static void drawFaceInternal(bool forceFull) {
     onR = (standbyFaceRGB >> 16) & 0xFF; onG = (standbyFaceRGB >> 8) & 0xFF; onB = standbyFaceRGB & 0xFF;
   }
   if (packReady) {
-    // state colours show as a frame round the face; at rest (and in an emotion) there's no frame
-    bool stateColoured = isMicHardwareMuted || recordingActive || currentState == STATE_CONNECTING_WIFI ||
-                         currentState == STATE_CONNECTING_SERVER || currentState == STATE_LISTENING || currentState == STATE_THINKING;
-    int r = onR, g = onG, b = onB;
-    if (isMicHardwareMuted) { r = 255; g = 71; b = 87; }
-    else if (recordingActive) { r = 200; g = 30; b = 30; }
-    else if (currentState == STATE_CONNECTING_WIFI || currentState == STATE_CONNECTING_SERVER) { r = 255; g = 165; b = 2; }
-    else if (currentState == STATE_LISTENING) { r = 46; g = 213; b = 115; }
-    else if (currentState == STATE_THINKING) { r = 112; g = 161; b = 255; }
-    drawPortraitFace(forceFull, r, g, b, stateColoured);
+    drawPortraitFace(forceFull);
     return;
   }
   const int offR = 12, offG = 20, offB = 16;
@@ -2865,8 +2860,9 @@ void renderScreen(bool forceRedraw = false) {
   lastRenderedEmotion = currentEmotion;
 
   tft.startWrite();
-  // Clear entire 320x240 frame buffer with dark theme background
-  tft.fillScreen(tft.color565(11, 14, 21));
+  // Clear entire 320x240 frame buffer with dark theme background - all but a painted face, which is redrawn
+  // in place below (blanking it first flashed the Orc / Chronicler face on every state change)
+  fillAroundFace(0, 0, 320, 240, tft.color565(11, 14, 21));
 
   // Text datum persists across calls/frames, and the status label below
   // switches it to top_center - reset it here so every left-anchored
@@ -2911,7 +2907,7 @@ void renderScreen(bool forceRedraw = false) {
   // this darker body colour, which is what made the header icon/title look
   // bottom-cropped/misaligned even though the header bar and its content were
   // both actually being drawn at the correct, matching height.
-  tft.fillRect(0, HEADER_H, 320, 204 - HEADER_H, tft.color565(11, 14, 21));
+  fillAroundFace(0, HEADER_H, 320, 204 - HEADER_H, tft.color565(11, 14, 21));
 
   // Status Pill and Waveform area
   uint32_t statusColor;
