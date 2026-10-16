@@ -1201,6 +1201,11 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             }
           },
           {
+            name: "practiceMode",
+            description: "Turn practice mode on when Simon wants to rehearse something out loud - a job interview, a talk or presentation, a difficult conversation, a pitch - and off when he's finished. While it's on he has longer to think and his pauses won't be interrupted.",
+            parameters: { type: "OBJECT", properties: { on: { type: "BOOLEAN", description: "true to start practising, false when finished" }, scenario: { type: "STRING", description: "What's being practised and who you're playing, e.g. 'solution architect interview - you are the hiring manager'" } }, required: ["on"] }
+          },
+          {
             name: "startBackgroundTask",
             description: "Starts a research task that runs on its own with web search while you carry on - for anything that needs looking into ('look into...', 'find out and let me know', 'research...', 'in the background'). Write the task out in full with every detail they gave. Use kind 'think' for a hard question that deserves careful reasoning (a strategy, a design, a deep 'why') - say you'll have a proper think and get back to him, then call it.",
             parameters: { type: "OBJECT", properties: { task: { type: "STRING", description: "The task or question, in full." }, kind: { type: "STRING", enum: ["research", "think"], description: "'research' (default) to look something up; 'think' to reason a hard question through properly." } }, required: ["task"] }

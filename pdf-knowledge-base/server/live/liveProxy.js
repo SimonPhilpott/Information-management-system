@@ -363,14 +363,15 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     if (isHardware && isRecordingActive()) return;
     if (isHardware && isConversationActive && heardAt > lastModelOutputAt && heardText.trim() && heardNudge < 2) {
       const quietFor = Date.now() - Math.max(heardAt, lastLoudMicAt);
-      if (heardNudge === 0 && quietFor >= 2500) {
+      const nudgeAfter = inPractice() ? 10000 : 2500; // a pause in a rehearsed answer is his, not a lost reply
+      if (heardNudge === 0 && quietFor >= nudgeAfter) {
         heardNudge = 1;
         currentGeminiWs.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
         keepListening();
         try { logCapture(`[${new Date().toISOString()}] ${tag} HEARD BUT NO REPLY: ended the audio turn ("${heardText.trim().slice(0, 80)}")\n`); } catch (_) { }
         return;
       }
-      if (heardNudge === 1 && quietFor >= 4500) {
+      if (heardNudge === 1 && quietFor >= nudgeAfter + 2000) {
         heardNudge = 2;
         textTurnSent = true; sessionUsed = true; lastActivityAt = Date.now();
         currentGeminiWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `(System: Simon just said "${heardText.trim().slice(0, 240)}" to you and is waiting for your answer. Answer him now.)` }] }], turnComplete: true } }));
@@ -390,7 +391,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     // Only in a conversation he's having with Ims, and only once until something he says is actually transcribed:
     // re-arming on every reply let room noise set off "didn't catch that" over and over, with no wake phrase
     // (15 Oct, four times in two minutes).
-    if (isHardware && isConversationActive && !clarifyNudged && pendingSpeechFrames >= 15 && Date.now() - pendingSpeechLast >= 3500
+    if (isHardware && isConversationActive && !clarifyNudged && pendingSpeechFrames >= 15 && Date.now() - pendingSpeechLast >= (inPractice() ? 10000 : 3500)
       && followUpUntil && pendingSpeechStart <= followUpUntil + 1000) {
       clarifyNudged = true;
       const frames = pendingSpeechFrames;
@@ -543,6 +544,11 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // When his reply (one that was played, not dropped) last finished - a turn starting within 3 s of it is the
   // rest of that reply (setEmotion, a camera look, a late lookup), never "unprompted" (15 Oct, three times).
   let replyEndedAt = 0;
+  // Practice mode (practiceMode tool): rehearsing an interview, a talk or a hard conversation. He waits longer for
+  // Simon to start, never jumps into a pause, and the Box-3 doesn't close the session while Simon gathers his
+  // thoughts. Ends when Ims turns it off, or after 45 minutes.
+  let practice = null; // { scenario, at }
+  const inPractice = () => Boolean(practice && Date.now() - practice.at < 45 * 60000);
   // Whenever the server nudges Gemini to answer, the Box-3 is told to keep listening long enough to hear the
   // answer - it doesn't know about the nudge and closed the session 14 s after his last words (15 Oct, camera).
   const keepListening = (ms = 25000) => {
@@ -1192,7 +1198,10 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             if (!unsolicitedTurn) { try { logCapture(`[${new Date().toISOString()}] ${tag} FAST GREETING: Gemini's own greeting dropped\n`); } catch (_) { } }
             unsolicitedTurn = true;
           }
-          if (startsModelOutput && currentTurnComplete && !unsolicitedTurn && !turnHasTrigger() && !answersTool) {
+          // The "unprompted" filter only guards standby. In a conversation he's having with Simon, everything
+          // Gemini says is part of it - filtering there kept dropping real replies (four kinds on 15 Oct) and cost
+          // Gemini Live its natural turn-taking. (Simon, 16 Oct: "we should benefit from the use of Gemini Live")
+          if (startsModelOutput && currentTurnComplete && !unsolicitedTurn && !turnHasTrigger() && !answersTool && !isConversationActive) {
             // Allow a continuation turn within 120 s of a getDayReport tool response:
             // Gemini sometimes fires turnComplete after the first batch of audio
             // (e.g. after device-changes) then starts a new turn to continue the
@@ -1437,7 +1446,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 } catch (err) { console.warn(`${tag} pronunciation save failed:`, err.message); }
               }
               lastImsReply = said;
-              followUpMs = (/\?["')\s]*$/.test(said) || said.split(/\s+/).length > 60) ? 25000 : FOLLOW_UP_MS;
+              followUpMs = inPractice() ? 30000 : (/\?["')\s]*$/.test(said) || said.split(/\s+/).length > 60) ? 25000 : FOLLOW_UP_MS;
               followUpUntil = playEnd + followUpMs;
               replyEndedAt = Date.now();
               wakeDaemonService.setSilenceTimeout(followUpMs + 5000);
@@ -1958,6 +1967,13 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                   respondToToolCall(call, { status: 'logged', grams: e.grams, food: e.food, sentToNightscout: e.nightscout.sent, ...(e.nightscout.sent ? { note: 'It will show in AAPS once it syncs.' } : { nightscoutProblem: e.nightscout.reason }) });
                 }).catch((err) => respondToToolCall(call, { error: err.message }));
               }
+            } else if (call.name === 'practiceMode') {
+              const on = call.args?.on !== false;
+              practice = on ? { scenario: String(call.args?.scenario || 'practice').slice(0, 200), at: Date.now() } : null;
+              if (on) keepListening(30000);
+              try { logCapture(`[${new Date().toISOString()}] ${tag} PRACTICE MODE ${on ? `ON: ${practice.scenario}` : 'OFF'}\n`); } catch (_) { }
+              respondToToolCall(call, { status: on ? 'practice mode on' : 'practice mode off',
+                note: on ? 'Play the role now and stay in it. He has time to think: pauses are his. Step out only when he asks how it went, wants to stop, or asks you something as yourself.' : 'Back to normal conversation.' });
             } else if (call.name === 'askGemini') {
               import('./services/imsFallbackService.js').then((m) => m.askGeneral({ question: call.args?.question, context: call.args?.context || '' })).then((answer) => {
                 console.log(`${tag} 💡 askGemini(${String(call.args?.question || '').slice(0, 60)})`);
