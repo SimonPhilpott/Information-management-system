@@ -726,7 +726,10 @@ async function buildWeatherSection(section, context) {
       + `; temperature: ${lang.temperature.band}${windLevel > 0 ? `; wind: ${lang.wind.band}` : ''}${lang.extras.length ? `; also ${lang.extras.map((e) => e.kind.replace('_', ' ')).join(', ')}` : ''}. Describe it no stronger or weaker than that.`;
     line += windLevel === 0 ? ' Do not mention the wind at all.' : windLevel < 3 ? ' Mention the wind ONCE for the whole forecast - not for each part of the day.' : '';
     // the facts above are plain English for accuracy; the weather must be SPOKEN in Yorkshire dialect
-    if (home.sounds_like?.rest_of_today) line += ` Say the weather in broad Yorkshire dialect in your own words - never read the facts out as listed - something like (style only, vary it${windLevel < 3 ? '; it mentions the wind in every part - you must not' : ''}): "${home.sounds_like.rest_of_today}${filters.includeTomorrow !== false && home.sounds_like.tomorrow ? ` ${home.sounds_like.tomorrow}` : ''}"`;
+    // Yorkshire dialect only for a persona that speaks it (16 Oct: Rindewind told the weather with "parky" and
+    // "wi' a gentle breeze" - the example was always the Yorkshire one, whoever was speaking)
+    if (home.sounds_like?.rest_of_today && !usesYorkshireWeatherPhrasing()) line += ` Say the weather in your own persona's voice and words (${dialectLabel()}) - never read the facts out as listed, and no Yorkshire dialect.${windLevel < 3 ? ' Do not mention the wind in every part of the day.' : ''}`;
+    else if (home.sounds_like?.rest_of_today) line += ` Say the weather in broad Yorkshire dialect in your own words - never read the facts out as listed - something like (style only, vary it${windLevel < 3 ? '; it mentions the wind in every part - you must not' : ''}): "${home.sounds_like.rest_of_today}${filters.includeTomorrow !== false && home.sounds_like.tomorrow ? ` ${home.sounds_like.tomorrow}` : ''}"`;
     if (filters.altLocation) {
       const alt = await getWeather({ location: filters.altLocation, days: 2 });
       line += alt.error ? ` ${filters.altLocation}: forecast unavailable.` : ` Also in ${filters.altLocation}: ${describe(alt, { withTomorrow: filters.includeTomorrow !== false })}.`;
@@ -1561,7 +1564,7 @@ export async function getDayReport() {
 import { GoogleGenerativeAI as _GenAI } from './geminiClient.js';
 import _config from '../config.js';
 import { loadPersonaRules as _persona } from './hardwareClientService.js';
-import { accentLabel, signOffs } from './personaService.js';
+import { accentLabel, signOffs, usesYorkshireWeatherPhrasing, dialectLabel } from './personaService.js';
 export async function sampleSection(section) {
   let line = await buildSectionLine(section, { hour: londonNow().hour, weatherRain: null, markNews: false });
   // Nothing real to say today (no birthdays coming, no new releases...): make up realistic example data so the
