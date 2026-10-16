@@ -149,6 +149,51 @@ export async function getOrBuildReportCache({ forceRefresh = false, markNews = t
 
 // Hourly pre-warming is run by the scheduler ('morning_report_prewarm' in index.js).
 
+// ---- Getting ready for the start of Simon's day ----
+// 15 minutes before his day starts, last night's Garmin data is pulled and the report is pre-built (weather,
+// news, calendar...), so it's ready and complete when he asks. Glucose is never pre-built - it's read live when
+// the report is read out. If Garmin hasn't got last night yet, it tries again 5 minutes before. (Simon, 16 Oct:
+// Mon-Thu 08:30, Fri 07:00, Sat-Sun 09:00)
+const DAY_START_KEY = 'day_start_times';
+const DAY_START_DEFAULT = { mon: '08:30', tue: '08:30', wed: '08:30', thu: '08:30', fri: '07:00', sat: '09:00', sun: '09:00' };
+const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+export function getDayStartTimes() {
+  try { return { ...DAY_START_DEFAULT, ...JSON.parse(getSetting(DAY_START_KEY) || '{}') }; } catch (_) { return { ...DAY_START_DEFAULT }; }
+}
+export function setDayStartTimes(times = {}) {
+  const next = getDayStartTimes();
+  for (const d of DAYS) if (times[d] !== undefined) {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(times[d]))) throw new Error(`${d}: use a time like 08:30.`);
+    next[d] = String(times[d]);
+  }
+  setSetting(DAY_START_KEY, JSON.stringify(next));
+  return next;
+}
+let dayStartDone = { date: null, passes: 0 };
+/** Called every minute by the scheduler: the prep runs once in the 15 minutes before today's start (and once
+ *  more 5 minutes before if last night's Garmin data still isn't in). */
+export async function dayStartPrep() {
+  const now = new Date();
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now).map((x) => [x.type, x.value]));
+  const date = `${p.year}-${p.month}-${p.day}`;
+  const day = p.weekday.slice(0, 3).toLowerCase();
+  const [sh, sm] = (getDayStartTimes()[day] || '08:30').split(':').map(Number);
+  const minsToStart = sh * 60 + sm - (Number(p.hour) * 60 + Number(p.minute));
+  if (dayStartDone.date !== date) dayStartDone = { date, passes: 0 };
+  if (minsToStart > 15 || minsToStart < 0) return { skipped: true, minsToStart };
+  const { isGarminConnected, syncGarminDay, getGarminDay } = await import('./garminService.js');
+  const haveSleep = () => { const g = getGarminDay(date); return Boolean(g && (g.sleepScore != null || g.sleepS)); };
+  if (dayStartDone.passes >= 2 || (dayStartDone.passes === 1 && (minsToStart > 5 || haveSleep()))) return { skipped: true, done: true };
+  dayStartDone.passes++;
+  let garmin = 'not connected';
+  if (isGarminConnected()) {
+    try { const r = await syncGarminDay(date); garmin = r?.ok === false ? `failed: ${r.error}` : haveSleep() ? 'last night synced' : 'synced, no sleep yet'; } catch (err) { garmin = `failed: ${err.message}`; }
+  }
+  await prewarmDayReportCache({ markNews: false });
+  console.log(`[DayStart] ${date} ${day} start ${sh}:${String(sm).padStart(2, '0')} - pass ${dayStartDone.passes}: Garmin ${garmin}, report pre-built`);
+  return { date, pass: dayStartDone.passes, garmin, reportBuilt: true };
+}
+
 // True only for the FIRST hardware session that starts on a given London
 // calendar day - checked (and immediately marked, so it never fires twice)
 // when a hardware WS connection is established. Deliberately not gated by

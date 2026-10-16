@@ -663,6 +663,15 @@ schedulerService.registerJob({
 });
 
 schedulerService.registerJob({
+  name: 'day_start_prep',
+  description: "15 min before Simon's day starts: pull last night's Garmin data and pre-build the report (glucose stays live)",
+  category: 'sync',
+  intervalMs: 60 * 1000,
+  initialDelayMs: 30000,
+  action: async () => { const { dayStartPrep } = await import('./services/morningReportService.js'); return dayStartPrep(); }
+});
+
+schedulerService.registerJob({
   name: 'morning_report_prewarm',
   description: 'Pre-warm daily morning briefing cache for sub-5ms instant delivery',
   category: 'maintenance',

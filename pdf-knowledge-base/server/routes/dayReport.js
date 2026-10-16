@@ -12,6 +12,10 @@ import {
 
 const router = express.Router();
 
+// When Simon's day starts (per weekday) - the Garmin sync and report prep run 15 minutes before
+router.get('/day-start', async (req, res) => { try { const m = await import('../services/morningReportService.js'); res.json({ success: true, times: m.getDayStartTimes() }); } catch (err) { res.status(500).json({ success: false, error: err.message }); } });
+router.put('/day-start', async (req, res) => { try { const m = await import('../services/morningReportService.js'); res.json({ success: true, times: m.setDayStartTimes(req.body?.times || req.body || {}) }); } catch (err) { res.status(400).json({ success: false, error: err.message }); } });
+
 // GET /api/day-report/config
 // Returns current sections, catalog of available services, and sub-filter schemas
 router.get('/config', async (req, res) => {
