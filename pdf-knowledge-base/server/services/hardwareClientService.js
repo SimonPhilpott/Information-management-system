@@ -517,7 +517,7 @@ export function buildMemoryParagraph() {
         otherMemories.map((m) => `- [${m.category}] ${m.fact}`).join("\n"));
     }
     // what Ims has built up about Simon and himself (nightly profiles), then the latest conversation notes
-    try { const prof = profilesForPrompt(); if (prof) parts.push(prof); } catch { /* none yet */ }
+    try { let other = false; try { other = activePersonaId() !== 'yorkshire'; } catch (_) { } const prof = profilesForPrompt({ accentFree: other }); if (prof) parts.push(prof); } catch { /* none yet */ }
     if (relEntries.length > 0) {
       const recent = relEntries.slice(-8); // up to 40 are kept; the profiles hold the long view
       const older = recent.slice(0, -2), latest = recent.slice(-2);

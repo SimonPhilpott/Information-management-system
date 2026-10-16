@@ -9,7 +9,7 @@ import config from '../config.js';
 import fs from 'fs';
 import { DAEMON_STATES, wakeDaemonService } from '../services/wakeDaemonService.js';
 import { WebSocket } from 'ws';
-import { activePersonaId, inYourVoice, languageCode as personaLanguageCode, signOffs as personaSignOffs } from '../services/personaService.js';
+import { activePersonaId, inYourVoice, languageCode as personaLanguageCode, signOffs as personaSignOffs, onPersonaChange } from '../services/personaService.js';
 import { addIdea as addDevIdea, flagToolFailure } from '../services/devIdeasService.js';
 import { addMemory, deleteMemory } from '../db/database.js';
 import { addToList, cancelScheduledItem, clearList, getHistorySummary, listScheduledItems, readList, removeFromList, scheduleItem, stopAllRinging } from '../services/remindersService.js';
@@ -203,6 +203,20 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
   let currentGeminiWs = null;
   let cachedSetupMsg = null;
+  // The setup rebuilt from the current persona/personality (hardware and web Ims; not voice auditions, and not the
+  // silent transcriber used while a call is being recorded)
+  const freshSetup = (msgStr) => {
+    if (!msgStr || (!isHardware && !imsWeb) || isRecordingActive()) return msgStr;
+    try {
+      const parsed = JSON.parse(msgStr);
+      if (!parsed.setup || parsed.setup.previewVoice) return msgStr;
+      const fresh = isHardware ? getHardwareSetupPayload(null, null) : getWebSetupPayload();
+      parsed.setup.tools = fresh.setup.tools;
+      parsed.setup.systemInstruction = fresh.setup.systemInstruction;
+      parsed.setup.generationConfig = fresh.setup.generationConfig;
+      return JSON.stringify(parsed);
+    } catch (_) { return msgStr; }
+  };
   let liveModel = null; // the voice model this session was set up with (Model Switcher), for usage logging
   let resumptionHandle = null; // latest Gemini session-resumption handle for this device connection
   let resumptionHandleAt = 0;
@@ -715,6 +729,21 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // the model scores the audio; a confident score for a short sound followed by a pause wakes Ims the same way a
   // recognised transcript does. Gemini's own wakes are untouched. Off switch on /ims/phrases.
   let modelWakeBusy = false;
+  let personaSwitchTimer = null;
+  const stopPersonaWatch = onPersonaChange((id) => {
+    if (!isHardware && !imsWeb) return;
+    resumptionHandle = null; // a resumed session would keep the old persona's instructions and voice
+    const apply = () => {
+      personaSwitchTimer = null;
+      if (isClientClosed) return;
+      if (isConversationActive || !currentTurnComplete) { personaSwitchTimer = setTimeout(apply, 5000); return; } // after this conversation
+      cachedSetupMsg = freshSetup(cachedSetupMsg);
+      try { logCapture(`[${new Date().toISOString()}] ${tag} PERSONA SWITCHED to ${id} - starting a fresh session with its voice and accent\n`); } catch (_) { }
+      try { if (currentGeminiWs && currentGeminiWs.readyState === WebSocket.OPEN) currentGeminiWs.close(1000, 'Persona changed'); } catch (_) { } // the close handler reconnects
+    };
+    if (personaSwitchTimer) clearTimeout(personaSwitchTimer);
+    apply();
+  });
   // ---- Background sound guard (15 Oct: music set off 454 wake checks in an hour, each one streamed to Gemini).
   // When 5+ wake checks in 2 minutes have all come to nothing, it's music or noise: further wake checks are
   // GATED - nothing goes to Gemini (no cost, no session churn). His own wake-word model listens first; if it
@@ -1078,6 +1107,10 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       const hasQueuedSetup = outboundQueue.some(m => typeof m === 'string' && m.includes('"setup"'));
       if (cachedSetupMsg && !hasQueuedSetup) {
         console.log(`${tag} Replaying cached setup handshake to Gemini...`);
+        // A new session (not a resumed one) is set up from the persona, personality and records as they are NOW -
+        // the setup saved when the Box-3 connected kept the old persona after a switch (16 Oct: Rindewind active,
+        // still the Yorkshire voice and accent all morning).
+        if (!freshResumptionHandle()) cachedSetupMsg = freshSetup(cachedSetupMsg);
         gWs.send(pinSavedVoice(cachedSetupMsg, tag, freshResumptionHandle()));
         if (freshResumptionHandle()) console.log(`${tag} 🔁 Resuming previous Gemini session (context preserved)`);
       }
@@ -2808,6 +2841,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
   ws.on('close', (code, reason) => {
     isClientClosed = true;
+    try { stopPersonaWatch(); if (personaSwitchTimer) clearTimeout(personaSwitchTimer); } catch (_) { }
     thinkDeliverers.delete(deliverThink);
     try { if (connectionLogStream) connectionLogStream.end(); } catch (_) { }
     convRecordTurn();
@@ -2848,6 +2882,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
   ws.on('error', (err) => {
     isClientClosed = true;
+    try { stopPersonaWatch(); if (personaSwitchTimer) clearTimeout(personaSwitchTimer); } catch (_) { }
     console.error(`${tag} Client WebSocket error:`, err.message);
     try {
       logCapture(
