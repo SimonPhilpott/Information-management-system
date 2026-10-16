@@ -377,6 +377,32 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   let lastActivityAt = Date.now();
   let silenceClosedAt = 0; // mic frames still in flight when the session closed are dropped
   let webAudioEndAt = 0;
+  // A jammed session: Gemini goes on transcribing what Simon says but never answers - not even when asked
+  // outright in text - and every session after it resumed the same jammed conversation (16 Oct, 14:06-14:28:
+  // every question stuck on "thinking" while a fresh session answered at once). When a text ask gets no reply in
+  // 6 s, the resume ticket is thrown away and a fresh session (with the recent turns restored) answers instead.
+  let jamTimer = null;
+  let jamAsk = null; // { text, at } - what Simon asked, put to the fresh session
+  const jamResets = [];
+  const watchForJam = (said) => {
+    if (!isHardware) return;
+    const askedAt = Date.now();
+    if (jamTimer) clearTimeout(jamTimer);
+    jamTimer = setTimeout(() => {
+      jamTimer = null;
+      const g = currentGeminiWs;
+      if (isClientClosed || !g || g.readyState !== WebSocket.OPEN || lastModelOutputAt >= askedAt || isRecordingActive()) return;
+      while (jamResets.length && Date.now() - jamResets[0] > 5 * 60000) jamResets.shift();
+      if (jamResets.length >= 2) return; // twice in 5 minutes - leave it rather than loop
+      jamResets.push(Date.now());
+      resumptionHandle = null;
+      jamAsk = { text: String(said || '').trim().slice(0, 240), at: Date.now() };
+      live.lastConversationEnd = { at: Date.now(), reason: 'stale' }; // the fresh session gets the recent turns back
+      try { logCapture(`[${new Date().toISOString()}] ${tag} JAMMED SESSION: no reply 6 s after asking in text - dropping the resume ticket and starting fresh ("${jamAsk.text.slice(0, 80)}")\n`); } catch (_) { }
+      keepListening(25000);
+      try { g.close(1000, 'No reply - starting a fresh session'); } catch (_) { } // the close handler reconnects
+    }, 6000);
+  };
   const silenceTimer = imsBrain ? setInterval(() => {
     if (isClientClosed || !currentGeminiWs || currentGeminiWs.readyState !== WebSocket.OPEN) return;
     if (!currentTurnComplete) return; // Ims is thinking or speaking
@@ -398,6 +424,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         currentGeminiWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `(System: Simon just said "${heardText.trim().slice(0, 240)}" to you and is waiting for your answer. Answer him now.)` }] }], turnComplete: true } }));
         keepListening();
         try { logCapture(`[${new Date().toISOString()}] ${tag} HEARD BUT NO REPLY: asked him in text to answer\n`); } catch (_) { }
+        watchForJam(heardText);
         return;
       }
     }
@@ -1192,6 +1219,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                   textTurnSent = true; sessionUsed = true; lastActivityAt = Date.now();
                   gWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `(System: Simon just said "${heardThisTurn.trim().slice(0, 200)}" to you - that is your wake phrase, misheard by speech recognition. Answer him now: if he only said the wake phrase, greet him; otherwise answer what he said.)` }] }], turnComplete: true } }));
                   try { logCapture(`[${new Date().toISOString()}] ${tag} WAKE KICK 2: asked him to answer in text\n`); } catch (_) { }
+                  watchForJam(heardThisTurn);
                 }
               };
               wakeKickTimer = setTimeout(() => kick(1), 400);
@@ -2133,6 +2161,16 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 }
               } catch (err) { console.error(`${tag} [Conversation] restore failed:`, err.message); }
               live.lastConversationEnd = { at: 0, reason: null }; // once
+            }
+            // after a jammed session: the fresh one answers what he asked
+            if (isHardware && jamAsk && gWs && gWs.readyState === WebSocket.OPEN) {
+              const ask = jamAsk; jamAsk = null;
+              if (Date.now() - ask.at < 20000 && ask.text && !isRecordingActive()) {
+                textTurnSent = true; sessionUsed = true; lastActivityAt = Date.now();
+                gWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `(System: Simon just said "${ask.text}" to you and is waiting for your answer. Answer him now.)` }] }], turnComplete: true } }));
+                keepListening(25000);
+                try { logCapture(`[${new Date().toISOString()}] ${tag} JAMMED SESSION: fresh session asked to answer\n`); } catch (_) { }
+              }
             }
             while (outboundAudioQueue.length > 0) {
               const audioPayload = outboundAudioQueue.shift();
