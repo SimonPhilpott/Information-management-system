@@ -193,8 +193,15 @@ export function buildPersonalityParagraph(personality) {
     const key = Object.keys(PERSONALITY_AXES).find((k) => PERSONALITY_AXES[k] === axis);
     return `${axis.label}: ${describeAxis(axis, p[key])}.`;
   });
+  // How often he's funny follows the humour slider (Simon, 16 Oct): the slider already sets the kind of humour
+  // (cheerful - dry - dark); this sets how much of it, and asks him to actually land something now and then.
+  const h = Math.max(0, Math.min(100, Number(p.humor) || 0));
+  const timing = h < 25 ? 'rare - at most one light remark in a conversation, and only when something is plainly funny'
+    : h < 60 ? 'spare and organic - about one dry remark every 4-6 exchanges, or when an absurdity presents itself'
+      : 'regular but never constant - about one every 3-4 exchanges in relaxed chat';
+  const laugh = h < 25 ? '' : ' In relaxed chat, aim to genuinely make him laugh once in a conversation - a properly funny line, built from the moment and his world, still dry and unannounced. Skip it when he is busy, stressed, or the topic is technical or about his health.';
   return "Your personality is tuned across five independent dimensions, set by the user and adjustable at any time - embody all five simultaneously, as one coherent character, not as separate modes you switch between. " + lines.join(" ") +
-    " COMEDIC STANCE: Grounded, sharp, and dry. Always deliver humour unannounced with a straight face (never 'Haha', punchline emojis, or canned jokes). Non-disruptive: never compromise technical clarity, code correctness, step-by-step reasoning, or action confirmations (alarms, timers, carbs). An occasional quiet wry breath or quiet amused snort is natural when situations are genuinely absurd, but never theatrical laughter. Timing: spare and organic (~1 in 4-6 turns, or only when absurdity presents itself).";
+    " COMEDIC STANCE: Grounded, sharp, and dry. Always deliver humour unannounced with a straight face (never 'Haha', punchline emojis, or canned jokes). Non-disruptive: never compromise technical clarity, code correctness, step-by-step reasoning, or action confirmations (alarms, timers, carbs). An occasional quiet wry breath or quiet amused snort is natural when situations are genuinely absurd, but never theatrical laughter. How often: " + timing + "." + laugh;
 }
 
 // ---------------------------------------------------------------------------
@@ -747,6 +754,31 @@ function buildRecordsParagraph() {
     const soon = getUpcomingReleases().slice(0, 6).map((r) => `${r.mbName || r.artist} - "${r.title}" ${r.date || ''}`.trim());
     return [wants.length ? `want list: ${wants.join('; ')}` : 'want list empty', soon.length ? `coming out: ${soon.join('; ')}` : ''].filter(Boolean).join('. ');
   });
+  // Everyone he's saved and who they are to him - not just the next 60 days' birthdays (16 Oct: asked who he lives
+  // with, Ims missed his son, whose birthday is in August)
+  safe('PEOPLE IN HIS LIFE (saved birthdays and who they are to him)', () => {
+    const rows = db.prepare('SELECT name, relationship FROM birthdays WHERE deleted_at IS NULL ORDER BY (relationship IS NULL), name').all();
+    return rows.length ? rows.map((r) => `${r.name}${r.relationship ? ` (${r.relationship})` : ''}`).join('; ') : 'none saved';
+  });
+  // Plans he's mentioned: coming up in the next week, and ones in the last few days to ask how they went
+  safe('HIS PLANS (from what he has told you - ask how one went, once, when it fits; never in a greeting)', () => {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+    const dayMs = 86400000, t0 = Date.parse(`${today}T12:00:00Z`);
+    const rows = db.prepare("SELECT fact FROM ims_memories WHERE category IN ('plan', 'feeling') AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 40").all();
+    const coming = [], done = [], feelings = [];
+    for (const r of rows) {
+      const m = String(r.fact).match(/^(\d{4}-\d{2}-\d{2})\s*[:-]\s*(.+)$/);
+      if (!m) { feelings.push(r.fact); continue; }
+      const days = Math.round((Date.parse(`${m[1]}T12:00:00Z`) - t0) / dayMs);
+      if (days >= 0 && days <= 7) coming.push(`${days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`}: ${m[2]}`);
+      else if (days < 0 && days >= -4) done.push(`${-days === 1 ? 'yesterday' : `${-days} days ago`}: ${m[2]}`);
+    }
+    const out = [];
+    if (coming.length) out.push(`coming up - ${coming.join('; ')}`);
+    if (done.length) out.push(`just happened (ask how it went) - ${done.join('; ')}`);
+    if (feelings.length) out.push(`how he feels about things - ${feelings.slice(0, 5).join('; ')}`);
+    return out.length ? out.join(' | ') : 'nothing noted';
+  });
   safe('SAVED MEMORIES', () => { const n = db.prepare('SELECT COUNT(*) c FROM ims_memories').get().c; return `${n} saved (listed under what you remember) - recallMemory to search`; });
   safe('CARD GAME CAMPAIGNS (Campaign Manager, /campaigns/lotr and /campaigns/ahlcg) - getCampaigns for every play, notable moment and the chronicle text', () => describeCampaignsForIms());
   safe('CARD GAME DECKS (on /campaigns/lotr/decks and /campaigns/ahlcg/decks)', () => String(describeDecksForIms() || '').replace(/(\d+ cards) - [^;]*/g, '$1'));
@@ -1046,7 +1078,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "rememberFact",
-            description: "Saves a fact permanently whenever Simon says 'remember that', 'don't forget', notes a fact, or corrects how to pronounce a word/phrase (e.g. 'remember that reet rhymes with fleet').",
+            description: "Saves a fact permanently whenever Simon says 'remember that', 'don't forget', notes a fact, or corrects how to pronounce a word/phrase (e.g. 'remember that reet rhymes with fleet'). Also save, without being asked and without announcing it, anything that matters to him coming up - an interview, a trip, an appointment, a race, a deadline, a visit - as category 'plan', starting with its date as YYYY-MM-DD (e.g. '2026-10-19: job interview for a solution architect role - nervous about the system design part'), and how he feels about something important in his life as 'feeling'. That's how you can ask him how it went afterwards.",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -1056,7 +1088,7 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
                 },
                 category: {
                   type: "STRING",
-                  enum: ["general", "preference", "pronunciation", "phrase", "item_location", "personal", "work", "date"],
+                  enum: ["general", "preference", "pronunciation", "phrase", "item_location", "personal", "work", "date", "plan", "feeling"],
                   description: "The category of the memory. Use 'pronunciation' when Simon is telling you how a word, name, or dialect phrase sounds or rhymes. Use 'phrase' when he gives you a new word or phrase to use: the phrase in quotes, then when to use it in his words, e.g. \"'It's a reet scorcher' - when it's hot out, for weather and runs\"."
                 }
               },

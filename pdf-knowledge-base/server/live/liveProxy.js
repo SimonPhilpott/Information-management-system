@@ -42,6 +42,7 @@ import { lookUpFood } from '../services/foodService.js';
 import { noteWakeCandidate } from '../services/phrasesService.js';
 import { recordWakeCheck, scoreForWake, scoreClip } from '../services/wakeModelService.js';
 import { isPhraseSession } from '../services/deviceBus.js';
+import { getSetting } from '../db/database.js';
 import { pickClip, pickGreeting } from '../services/holdingClips.js';
 import { pickJoke } from '../services/jokeService.js';
 import { recordUsage } from '../services/geminiClient.js';
@@ -188,7 +189,12 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     return;
   }
 
-  const geminiUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+  // Gemini Live's own judgement (16 Oct): proactive audio - the model itself decides whether speech was meant for
+  // it and stays quiet when it wasn't - only exists on v1alpha; longer sessions (context window compression) on
+  // both. Emotional tone (enableAffectiveDialog) is accepted at setup but this model rejects the session once audio
+  // flows, so it stays off. Setting ims_proactive_audio = '0' goes back to v1beta without proactive audio.
+  const proactiveAudio = (() => { try { return getSetting('ims_proactive_audio') !== '0'; } catch (_) { return true; } })();
+  const geminiUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.${proactiveAudio ? 'v1alpha' : 'v1beta'}.GenerativeService.BidiGenerateContent?key=${apiKey}`;
   console.log(`${tag} Connecting to Gemini Live with key prefix: ${apiKey ? apiKey.slice(0, 6) : 'MISSING'}, url length: ${geminiUrl.length}`);
   try {
     logCapture(
@@ -361,7 +367,8 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     if (isClientClosed || !currentGeminiWs || currentGeminiWs.readyState !== WebSocket.OPEN) return;
     if (!currentTurnComplete) return; // Ims is thinking or speaking
     if (isHardware && isRecordingActive()) return;
-    if (isHardware && isConversationActive && heardAt > lastModelOutputAt && heardText.trim() && heardNudge < 2) {
+    const clearlyForIms = () => !proactiveAudio || looksAddressed(heardText) || /\?["')\s]*$/.test(lastImsReply || '');
+    if (isHardware && isConversationActive && heardAt > lastModelOutputAt && heardText.trim() && heardNudge < 2 && clearlyForIms()) {
       const quietFor = Date.now() - Math.max(heardAt, lastLoudMicAt);
       const nudgeAfter = inPractice() ? 10000 : 2500; // a pause in a rehearsed answer is his, not a lost reply
       if (heardNudge === 0 && quietFor >= nudgeAfter) {
@@ -2726,6 +2733,8 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             // Ask Gemini for resumable-session handles from the very first setup, so a
             // later upstream reconnect can resume with context (see pinSavedVoice()).
             parsed.setup.sessionResumption = {};
+            parsed.setup.contextWindowCompression = { slidingWindow: {} }; // sessions that last instead of expiring
+            if (proactiveAudio) parsed.setup.proactivity = { proactiveAudio: true };
             msgStr = JSON.stringify(parsed);
             console.log(`${tag} 🔧 Augmented hardware setup handshake with searchLibrary/noWakeDetected/endConversation tools, wake-phrase-gated system prompt, and outputAudioTranscription`);
           }
@@ -2738,6 +2747,8 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             parsed.setup.outputAudioTranscription = {};
             parsed.setup.inputAudioTranscription = {};
             parsed.setup.sessionResumption = {};
+            parsed.setup.contextWindowCompression = { slidingWindow: {} }; // sessions that last instead of expiring
+            if (proactiveAudio) parsed.setup.proactivity = { proactiveAudio: true };
             delete parsed.setup.imsWeb;
             msgStr = JSON.stringify(parsed);
             console.log(`${tag} 🧠 Web Ims session: same persona, memory and tools as the desk terminal`);
