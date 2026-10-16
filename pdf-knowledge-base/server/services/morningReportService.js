@@ -76,7 +76,7 @@ export async function prewarmDayReportCache({ markNews = false } = {}) {
   if (isPrewarming) return memoryReportCache;
   isPrewarming = true;
   try {
-    const { whoLine, parts, hour } = await buildReportParts({ markNews });
+    const { whoLine, parts, ids, hour } = await buildReportParts({ markNews });
     const reportText = parts.join('  ');
     const sectionCount = parts.length;
     const cacheData = {
@@ -84,6 +84,7 @@ export async function prewarmDayReportCache({ markNews = false } = {}) {
       hour,
       whoLine,
       parts,
+      ids,
       reportText,
       sectionCount
     };
@@ -1288,7 +1289,10 @@ async function buildGarminRecoverySection(section, context) {
     const { getGarminDay, getLatestGarminDay, isGarminConnected } = await import('./garminService.js');
     const filters = section.subFilters || {};
     const dateStr = londonNow().dateStr;
-    const g = getGarminDay(dateStr) || getLatestGarminDay();
+    // Only today's record is last night's sleep. Falling back to the latest record read the night before's sleep
+    // out as last night's (16 Oct: score 81, 7 h 20 - Garmin's 84, 6 h 52 synced two minutes later).
+    const today = getGarminDay(dateStr);
+    const g = today && (today.sleepScore != null || today.sleepS) ? today : null;
 
     if (!g) {
       if (!isGarminConnected()) return null;
@@ -1410,6 +1414,7 @@ export async function buildSectionLine(section, context = { hour: londonNow().ho
 export async function buildReportParts({ markNews = true, sections = null } = {}) {
   const parts = [];
   const titles = [];
+  const ids = [];
   const hour = londonNow().hour;
   const context = { hour, weatherRain: null, markNews };
 
@@ -1446,13 +1451,14 @@ export async function buildReportParts({ markNews = true, sections = null } = {}
       if (partLine && typeof partLine === 'string' && partLine.trim()) {
         parts.push(partLine.trim());
         titles.push(section.title);
+        ids.push(section.id);
       }
     } catch (err) {
       console.warn(`[MorningReport] Section "${section.id}" (${section.title}) failed:`, err.message);
     }
   }
 
-  return { whoLine, parts, titles, hour };
+  return { whoLine, parts, titles, ids, hour };
 }
 
 // How the report is delivered: in the active persona's accent and sign-offs (never a fixed accent).
@@ -1464,12 +1470,32 @@ export async function buildMorningReportDirective() {
   const cached = await getOrBuildReportCache({ markNews: false });
   const hour = cached.hour || londonNow().hour;
   const name = hour < 12 ? 'morning report' : 'day report';
-  return (cached.whoLine || '') + `This is the user's first conversation with you today. If the user asked for their ${name} or daily briefing directly in their opening turn, DELIVER IT IMMEDIATELY using the contents below without asking first. If they only greeted you, briefly offer their ${name} in one short sentence as part of your greeting, and deliver it when they say yes. ` + DELIVERY() + 'CONTENTS: ' + cached.parts.join(' ');
+  // No report contents here (16 Oct): this is built when the Box-3 connects, and a session can run for an hour -
+  // the copy it carried was read out 54 minutes later with old glucose and the previous night's sleep.
+  return (cached.whoLine || '') + `This is the user's first conversation with you today. If the user asked for their ${name} or daily briefing directly in their opening turn, call getDayReport straight away and deliver it without asking first. If they only greeted you, briefly offer their ${name} in one short sentence as part of your greeting, and when they say yes, call getDayReport - it always has the latest readings - and deliver it. ` + DELIVERY();
 }
 
 // For the getDayReport tool, any time of day.
+// Sections that change by the minute (glucose now, last night's sleep once Garmin syncs): rebuilt when the
+// report is read out, whatever the rest of the cache's age - it said 4.9 mmol/L from a report built 54 minutes
+// earlier, when he was 5.3 (16 Oct). They're local reads, so this costs almost nothing.
+const LIVE_SECTIONS = ['glucose_now', 'glucose_overnight', 'garmin_recovery'];
+async function withLiveSections(cached) {
+  if (!cached?.ids?.length || Date.now() - cached.cachedAt < 60000) return cached;
+  const config = getReportConfig();
+  const parts = cached.parts.slice();
+  const context = { hour: londonNow().hour, weatherRain: null, markNews: false };
+  for (const id of LIVE_SECTIONS) {
+    const i = cached.ids.indexOf(id);
+    const section = config.find((x) => x.id === id);
+    if (i < 0 || !section) continue;
+    try { const line = await buildSectionLine(section, context); if (line && String(line).trim()) parts[i] = String(line).trim(); } catch (_) { /* keep the cached one */ }
+  }
+  return { ...cached, parts, reportText: parts.join('  ') };
+}
+
 export async function getDayReport() {
-  const cached = await getOrBuildReportCache({ markNews: true });
+  const cached = await withLiveSections(await getOrBuildReportCache({ markNews: true }));
   const hour = cached.hour || londonNow().hour;
   // IMPORTANT: report is a single concatenated string, NOT an array.
   // Sending it as an array caused Gemini to treat each element as a
