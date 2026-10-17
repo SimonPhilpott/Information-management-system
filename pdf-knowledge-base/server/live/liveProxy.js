@@ -439,6 +439,9 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     // Only in a conversation he's having with Ims, and only once until something he says is actually transcribed:
     // re-arming on every reply let room noise set off "didn't catch that" over and over, with no wake phrase
     // (15 Oct, four times in two minutes).
+    // At most ~5 s of it, too: a lost answer is short - 25 s of sound with no words in it is the room (17 Oct:
+    // "didn't catch that" after the day report, from 776 frames of background noise).
+    if (isHardware && isConversationActive && pendingSpeechFrames > 160) clearPendingSpeech();
     if (isHardware && isConversationActive && !clarifyNudged && pendingSpeechFrames >= 15 && Date.now() - pendingSpeechLast >= (inPractice() ? 10000 : 3500)
       && followUpUntil && pendingSpeechStart <= followUpUntil + 1000) {
       clarifyNudged = true;
@@ -658,6 +661,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
   // what he said in his previous reply - the context for a pronunciation correction that follows it
   let lastImsReply = '';
+  let repeatChecked = false; // this turn's opening has been compared with the last reply
   // "it's pronounced...", "say it like...": a correction he must keep (saved by the server if he doesn't)
   const PRONUNCIATION_FIX = /\b(pronounc\w*|say it (?:like|as)|said like|it'?s said|sounds like)\b/i;
   let visionAsk = null; // { at, toolCalled, result: Promise }
@@ -1406,6 +1410,21 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           if (isHardware && morningOfferPending) { morningOfferPending = false; markMorningReportOffered(); }
           turnReplyText = stripToolText(turnReplyText + spokenText);
           turnLog.ims += spokenText;
+          // The same reply again with nothing new said: Gemini answering its own tool result (setEmotion) a second
+          // time - "Greetings, traveller" twice, "cycled through the lot" twelve times (16 Oct). Dropped once its
+          // first five words match the last reply and nothing new has been heard since that reply ended.
+          if (!unsolicitedTurn && lastImsReply && replyEndedAt && heardAt < replyEndedAt && !repeatChecked) {
+            const words = (t) => t.toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').split(/\s+/).filter(Boolean);
+            const now5 = words(turnReplyText);
+            if (now5.length >= 5) {
+              repeatChecked = true;
+              if (now5.slice(0, 5).join(' ') === words(lastImsReply).slice(0, 5).join(' ')) {
+                unsolicitedTurn = true;
+                paceFlush();
+                try { logCapture(`[${new Date().toISOString()}] ${tag} REPEAT DROPPED: "${turnReplyText.trim().slice(0, 80)}" (same as his last reply, nothing new said)\n`); } catch (_) { }
+              }
+            }
+          }
           { const n = spokenText.split(/\s+/).filter(Boolean).length; wordsSpoken += n; if (toolAnswerOwedAt) toolAnswerWords += n; }
           if (dayReportSentAt && Date.now() - dayReportSentAt < 180000) { dayReportWords += spokenText.split(/\s+/).filter(Boolean).length; dayReportSpoken = (dayReportSpoken + spokenText).slice(-600); }
           // I4: the face follows a turn in a long reply - timed to when those words are actually heard
@@ -1572,6 +1591,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             turnOpenerSaved = true;
           }
           if (imsBrain && turnReplyText.trim()) { recordReplyText(turnReplyText); turnReplyText = ''; }
+          repeatChecked = false;
           if (!parsed.toolCall) convRecordTurn();
         }
 
