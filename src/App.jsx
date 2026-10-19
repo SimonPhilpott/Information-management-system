@@ -44,6 +44,7 @@ const ActivitiesPortal = React.lazy(() => import('./components/Dashboard/Activit
 const GlucosePortal = React.lazy(() => import('./components/Dashboard/GlucosePortal'));
 const NewsPortal = React.lazy(() => import('./components/Dashboard/NewsPortal'));
 const TasksPortal = React.lazy(() => import('./components/Dashboard/TasksPortal'));
+const InstructionsPortal = React.lazy(() => import('./components/Dashboard/InstructionsPortal'));
 const SystemArchitecturePortal = React.lazy(() => import('./components/Dashboard/SystemArchitecturePortal'));
 const DevIdeasPortal = React.lazy(() => import('./components/Dashboard/DevIdeasPortal'));
 const BackupsPortal = React.lazy(() => import('./components/Dashboard/BackupsPortal'));
@@ -1562,6 +1563,16 @@ export default function App() {
   if (currentPath.startsWith('/ims/architecture')) {
     return (
       <SystemArchitecturePortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/instructions' || currentPath.startsWith('/ims/instructions')) {
+    return (
+      <InstructionsPortal
         theme={state.theme}
         onThemeToggle={actions.toggleTheme}
         setCurrentPath={setCurrentPath}

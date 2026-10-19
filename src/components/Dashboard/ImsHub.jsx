@@ -1,6 +1,6 @@
 import AccountChip from './AccountChip';
 import React from 'react';
-import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight , Droplets , Newspaper , ListChecks , MessageSquareQuote , Network , Lightbulb , Layers , DatabaseBackup, SunMedium, Code2, CloudSun, HardDrive, BrainCircuit, PoundSterling } from 'lucide-react';
+import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight , Droplets , Newspaper , ListChecks , MessageSquareQuote , Network , Lightbulb , Layers , DatabaseBackup, SunMedium, Code2, CloudSun, HardDrive, BrainCircuit, PoundSterling, ClipboardList } from 'lucide-react';
 
 // Each entry here is one card on the hub. Add a new one whenever a new
 // /ims/* page is built - this is the single place that needs to know about
@@ -54,6 +54,14 @@ const LINKS = [
     icon: PenLine,
     gradient: 'from-emerald-500 to-teal-600',
     glow: 'rgba(16,185,129,0.3)'
+  },
+  {
+    path: '/ims/instructions',
+    title: 'Instructions',
+    description: "Things you've asked Ims to do later - like reminders, but for him.",
+    icon: ClipboardList,
+    gradient: 'from-indigo-500 to-violet-600',
+    glow: 'rgba(99,102,241,0.3)'
   },
   {
     path: '/ims/birthday',
@@ -266,7 +274,7 @@ const LINKS = [
 ];
 
 const SECTIONS = [
-  ['Core functions', ['/ims/weather', '/ims/doorbell', '/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings', '/ims/tasks']],
+  ['Core functions', ['/ims/weather', '/ims/doorbell', '/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/instructions', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings', '/ims/tasks']],
   ['Vision & camera', ['/ims/look', '/ims/faces']],
   ['Personal', ['/ims/code-repo', '/ims/dayreport', '/ims/musicscan', '/ims/boardgames', '/campaigns', '/ims/news']],
   ['Health and fitness', ['/ims/glucose', '/ims/activities', '/ims/runplanner']],

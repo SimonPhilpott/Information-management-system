@@ -49,6 +49,7 @@ import { recordUsage } from '../services/geminiClient.js';
 import { stripMedicalDisclaimers } from '../services/disclaimerSanitizer.js';
 import { transcribeWake } from '../services/wakeGateService.js';
 import { live, thinkDeliverers, FOLLOW_UP_MS } from './state.js';
+import { addInstruction, listInstructions, updateInstruction, cancelInstruction, completeInstruction, getInstruction, forPeople as instructionsForPeople, markFired as markInstructionFired, carryOutPrompt, describe as describeInstruction } from '../services/imsInstructionsService.js';
 import { stripToolText, looksLikeVisionAsk, looksAddressed, heardLikeWake, faceFromWords, BARE_GREETING_RX, isWakeOnly } from './textMatching.js';
 import { withVoiceReminder, toSilentSetup, pinSavedVoice } from './setupMessages.js';
 import { writeDebugLog, IDF_NOISE } from './debugLog.js';
@@ -56,6 +57,14 @@ import { writeDebugLog, IDF_NOISE } from './debugLog.js';
 // index.js's status push to the Box-3 (set at start-up - index.js imports this module, not the other way)
 let pushScheduleStatus = () => {};
 export function setPushScheduleStatus(fn) { pushScheduleStatus = fn; }
+
+// Ims's instructions that come due while he's in a conversation are given to him there (index.js calls this;
+// false = nobody's talking to him, so the desk is asked to say it instead)
+const instructionDeliverers = new Set();
+export function deliverInstructionsNow(rows) {
+  for (const d of instructionDeliverers) { try { if (d(rows)) return true; } catch (_) { } }
+  return false;
+}
 
 export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   const imsWeb = Boolean(opts.imsWeb);
@@ -685,6 +694,19 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     return true;
   };
   thinkDeliverers.add(deliverThink);
+  // Instructions being carried out in the turn he's about to give: marked done once he's said it
+  let instructionDelivery = null; // { ids, at }
+  const deliverInstructions = (rows) => {
+    const g = currentGeminiWs;
+    if (!isHardware || isClientClosed || !isConversationActive || !currentTurnComplete || !g || g.readyState !== WebSocket.OPEN || isRecordingActive()) return false;
+    textTurnSent = true; sessionUsed = true; lastActivityAt = Date.now();
+    instructionDelivery = { ids: rows.map((r) => r.id), at: Date.now() };
+    g.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `(System: now is the moment to do what Simon asked you to do earlier - ${carryOutPrompt(rows)} Do it now, naturally, in character ${inYourVoice()}. Don't mention instructions, numbers or the system.)` }] }], turnComplete: true } }));
+    keepListening(25000);
+    try { logCapture(`[${new Date().toISOString()}] ${tag} INSTRUCTION CARRIED OUT IN CONVERSATION #${instructionDelivery.ids.join(', #')}\n`); } catch (_) { }
+    return true;
+  };
+  instructionDeliverers.add(deliverInstructions);
   const newTurnLog = () => ({ user: '', ims: '', system: '', emotions: [], tools: [], userEndAt: 0, firstAudioAt: 0, cueSent: false });
   let turnLog = newTurnLog();
   const convEnd = (reason) => {
@@ -1533,6 +1555,11 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 } catch (err) { console.warn(`${tag} pronunciation save failed:`, err.message); }
               }
               lastImsReply = said;
+              if (instructionDelivery && Date.now() - instructionDelivery.at < 120000 && said) {
+                for (const id of instructionDelivery.ids) { try { completeInstruction(id, `Done - said: "${said.slice(0, 240)}"`); } catch (_) { } }
+                try { logCapture(`[${new Date().toISOString()}] ${tag} INSTRUCTION DONE #${instructionDelivery.ids.join(', #')}\n`); } catch (_) { }
+                instructionDelivery = null;
+              }
               followUpMs = inPractice() ? 30000 : (/\?["')\s]*$/.test(said) || said.split(/\s+/).length > 60) ? 25000 : FOLLOW_UP_MS;
               followUpUntil = playEnd + followUpMs;
               replyEndedAt = Date.now();
@@ -2083,6 +2110,33 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                   databaseNowPercent: r.dbSize?.pct ?? null,
                 });
               }).catch((err) => respondToToolCall(call, { error: err.message }));
+            } else if (call.name === 'addInstruction') {
+              try {
+                const r = addInstruction({ ...(call.args || {}), origin: isHardware ? 'desk' : 'web' });
+                console.log(`${tag} 📌 addInstruction #${r.id}: ${describeInstruction(r)}`);
+                try { logCapture(`[${new Date().toISOString()}] ${tag} INSTRUCTION SAVED #${r.id}: ${describeInstruction(r)}\n`); } catch (_) { }
+                respondToToolCall(call, { status: 'saved', id: r.id, readBack: describeInstruction(r),
+                  note: "Read it back to him in a short sentence, exactly as saved (when / who, and the exact words), so he can correct it - e.g. 'Right - between half eight and nine tonight, when Rowan's on camera, I'll say \"Hello Rowan, isn't it time for bed?\"'. If any of it is wrong, fix it with updateInstruction." });
+              } catch (err) { respondToToolCall(call, { error: err.message, note: 'Ask him the one thing that is missing, then try again.' }); }
+            } else if (call.name === 'getInstructions') {
+              try {
+                const rows = listInstructions({ status: call.args?.status === 'finished' ? 'finished' : 'pending' });
+                respondToToolCall(call, { instructions: rows.map((r) => ({ id: r.id, what: describeInstruction(r), status: r.status, outcome: r.outcome || undefined })) });
+              } catch (err) { respondToToolCall(call, { error: err.message }); }
+            } else if (call.name === 'updateInstruction') {
+              try {
+                const { id, ...fields } = call.args || {};
+                const r = updateInstruction(id, fields);
+                respondToToolCall(call, { status: 'updated', id: r.id, readBack: describeInstruction(r), note: 'Read the corrected version back to him in a short sentence.' });
+              } catch (err) { respondToToolCall(call, { error: err.message }); }
+            } else if (call.name === 'cancelInstruction') {
+              try { const r = cancelInstruction(call.args?.id); respondToToolCall(call, { status: 'cancelled', id: r.id, was: describeInstruction(r) }); } catch (err) { respondToToolCall(call, { error: err.message }); }
+            } else if (call.name === 'completeInstruction') {
+              try {
+                const r = completeInstruction(call.args?.id, call.args?.outcome || 'Done');
+                if (instructionDelivery) instructionDelivery.ids = instructionDelivery.ids.filter((x) => x !== r.id);
+                respondToToolCall(call, { status: r.status, id: r.id });
+              } catch (err) { respondToToolCall(call, { error: err.message }); }
             } else if (call.name === 'startBackgroundTask') {
               const thinkIt = call.args?.kind === 'think';
               createTask({ request: call.args?.task, origin: isHardware ? 'desk' : 'web', kind: thinkIt ? 'think' : 'research' }).then((t) => {
@@ -2199,7 +2253,11 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               }
             }
           }
-          if (parsed?.serverContent?.turnComplete && !parsed.toolCall) {
+          // Not for a turn that was dropped: the Box-3 had nothing of it to play, and a turnComplete landing after
+          // it has gone back to listening switches its mic off while the screen still says LISTENING - deaf for
+          // 30 s (19 Oct: Gemini's own greeting, dropped for the fast greeting, finished 1 s after it; the day
+          // report Simon then asked for never reached Gemini)
+          if (parsed?.serverContent?.turnComplete && !parsed.toolCall && !unsolicitedTurn) {
             paceSend({ json: JSON.stringify({ turnComplete: true }) });
           }
         } else {
@@ -2772,6 +2830,33 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           textTurnSent = true; sessionUsed = true; lastActivityAt = Date.now(); lastUserInputAt = Date.now();
           const said = parsedCtrl.clientContent.turns.flatMap((t) => (t.parts || []).map((p) => p.text || '')).join(' ').trim();
           if (said) { turnLog.system = said.slice(0, 600); turnLog.userEndAt = Date.now(); }
+          let instead = null;
+          const fired = isHardware && /^Your instruction for "#(\d+)/.exec(said);
+          const satDown = isHardware && !fired && /^(.+?) has just sat down at the desk in front of you\./.exec(said);
+          if (fired) {
+            const r = getInstruction(fired[1]);
+            if (!r || r.status !== 'pending') { // cancelled or done since: nothing to say
+              try { ws.send(JSON.stringify({ readyForWake: true })); } catch (_) { }
+              return;
+            }
+            instructionDelivery = { ids: [r.id], at: Date.now() };
+            instead = `(System: it's time to do what Simon asked you to do earlier - ${carryOutPrompt([r])} Do it now, briefly and naturally, in character ${inYourVoice()}. Don't mention instructions, numbers or the system.)`;
+            try { logCapture(`[${new Date().toISOString()}] ${tag} INSTRUCTION GOING OFF #${r.id}: ${r.instruction.slice(0, 100)}\n`); } catch (_) { }
+          } else if (satDown) {
+            const names = satDown[1].split(/\s+and\s+/i).map((n) => n.trim()).filter(Boolean);
+            const rows = instructionsForPeople(names);
+            if (rows.length) {
+              rows.forEach((r) => markInstructionFired(r.id));
+              instructionDelivery = { ids: rows.map((r) => r.id), at: Date.now() };
+              instead = `${satDown[1]} has just sat down at the desk in front of you. Say a short, natural hello to ${satDown[1]} by name, in character, in your own persona's voice and accent - and as part of it, do what Simon asked you to do for them: ${carryOutPrompt(rows)} Don't mention the camera, health, blood sugar or running, and don't mention instructions or numbers.`;
+              try { logCapture(`[${new Date().toISOString()}] ${tag} INSTRUCTION FOR ${satDown[1]} IN THE HELLO #${instructionDelivery.ids.join(', #')}\n`); } catch (_) { }
+            }
+          }
+          if (instead) {
+            parsedCtrl.clientContent.turns = [{ role: 'user', parts: [{ text: instead }] }];
+            msgStr = JSON.stringify(parsedCtrl);
+            turnLog.system = instead.slice(0, 600);
+          }
         }
         if (parsedCtrl.clientContent && Array.isArray(parsedCtrl.clientContent.turns) && parsedCtrl.clientContent.turns.length === 0) {
           console.warn(`${tag} ⚠️ Suppressed empty clientContent turns to prevent Gemini 1007 rejection.`);
@@ -2901,6 +2986,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     isClientClosed = true;
     try { stopPersonaWatch(); if (personaSwitchTimer) clearTimeout(personaSwitchTimer); } catch (_) { }
     thinkDeliverers.delete(deliverThink);
+    instructionDeliverers.delete(deliverInstructions);
     try { if (connectionLogStream) connectionLogStream.end(); } catch (_) { }
     convRecordTurn();
     convEnd('disconnect');

@@ -28,6 +28,7 @@ import { collectionSummary } from "./boardgamesService.js";
 import { getUpcomingReleases, getWants as getMusicWants } from "./musicScanService.js";
 import { searchCodeSnippets } from "./codeRepoService.js";
 import { describeTraining, getSummary as getStravaSummary } from "./stravaService.js";
+import { instructionsForPrompt } from './imsInstructionsService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -761,6 +762,7 @@ function buildRecordsParagraph() {
     return rows.length ? rows.map((r) => `${r.name}${r.relationship ? ` (${r.relationship})` : ''}`).join('; ') : 'none saved';
   });
   // Plans he's mentioned: coming up in the next week, and ones in the last few days to ask how they went
+  safe("YOUR INSTRUCTIONS FROM SIMON (things he's asked you to do - #id for updateInstruction / cancelInstruction / completeInstruction)", () => instructionsForPrompt());
   safe('HIS PLANS (from what he has told you - ask how one went, once, when it fits; never in a greeting)', () => {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
     const dayMs = 86400000, t0 = Date.parse(`${today}T12:00:00Z`);
@@ -1236,6 +1238,58 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             name: "practiceMode",
             description: "Turn practice mode on when Simon wants to rehearse something out loud - a job interview, a talk or presentation, a difficult conversation, a pitch - and off when he's finished. While it's on he has longer to think and his pauses won't be interrupted.",
             parameters: { type: "OBJECT", properties: { on: { type: "BOOLEAN", description: "true to start practising, false when finished" }, scenario: { type: "STRING", description: "What's being practised and who you're playing, e.g. 'solution architect interview - you are the hiring manager'" } }, required: ["on"] }
+          },
+          {
+            name: "addInstruction",
+            description: "Saves something Simon asks YOU to do later, or to keep doing - an instruction for you, kept until it's done: say something to someone when they're at the desk ('if you see Rowan, tell him...'), tell or ask Simon something at a time ('at six, tell me to...'), ask him something next time you talk, or a standing rule ('from now on...', 'always...', 'never...'). Not for his own reminders ('remind me to...' is scheduleItem). Never just promise to remember an instruction - save it, or it won't happen. Be precise: put the exact words he wants said in 'say', word for word; who it's for; when; and any time window he gives ('he'll be here about 8:30 to 9' -> person trigger, notBefore 20:15, notAfter 21:30 - widen a rough time a little). If he says when someone will be there, that's the window: never do it outside it. If something essential is missing or unclear - who, when, or what to say - ask him that one thing first. Once saved, read it back exactly (the result gives you the words).",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                instruction: { type: "STRING", description: "What you will do, as a precise, self-contained instruction to yourself, e.g. 'Say goodnight to Rowan and tell him it's time for bed'." },
+                say: { type: "STRING", description: "The exact words to say, word for word as Simon gave them, if he gave any." },
+                simonSaid: { type: "STRING", description: "Simon's own words when he asked." },
+                trigger: { type: "STRING", enum: ["time", "person", "next_conversation", "standing"], description: "time: at a set time. person: when that person is at the desk (on camera). next_conversation: the next time Simon talks to you. standing: a rule you keep until cancelled." },
+                person: { type: "STRING", description: "For a person trigger: their name, e.g. 'Rowan'." },
+                time: { type: "STRING", description: "For a time trigger: London time, 24-hour HH:MM, e.g. '18:00'." },
+                date: { type: "STRING", description: "For a time trigger: 'today', 'tomorrow' or YYYY-MM-DD (default: the next time that clock time comes round)." },
+                notBefore: { type: "STRING", description: "Optional: don't do it before this London time (HH:MM), e.g. '20:15'." },
+                notAfter: { type: "STRING", description: "Optional: don't do it after this London time (HH:MM), e.g. '21:30'. Once it passes, the instruction expires." },
+                notBeforeDate: { type: "STRING", description: "Optional: the date of the window, 'today', 'tomorrow' or YYYY-MM-DD (default today)." },
+                repeat: { type: "STRING", enum: ["once", "daily", "every_time"], description: "once (default); daily: every day at that time / in that window; every_time: every time the person is seen (at most once every half hour)." }
+              },
+              required: ["instruction", "trigger"]
+            }
+          },
+          {
+            name: "getInstructions",
+            description: "Lists the instructions Simon has given you that are still waiting (or, with status 'finished', ones done, cancelled or expired, with what happened) - for 'what have I asked you to do?', 'did you tell Rowan?', or before changing or cancelling one.",
+            parameters: { type: "OBJECT", properties: { status: { type: "STRING", enum: ["pending", "finished"], description: "pending (default) or finished." } } }
+          },
+          {
+            name: "updateInstruction",
+            description: "Changes one of your instructions (by its #id from your records or getInstructions) when Simon corrects or changes it - only the fields that change.",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                id: { type: "NUMBER", description: "The instruction's id." },
+                instruction: { type: "STRING" }, say: { type: "STRING" },
+                trigger: { type: "STRING", enum: ["time", "person", "next_conversation", "standing"] },
+                person: { type: "STRING" }, time: { type: "STRING" }, date: { type: "STRING" },
+                notBefore: { type: "STRING" }, notAfter: { type: "STRING" }, notBeforeDate: { type: "STRING" },
+                repeat: { type: "STRING", enum: ["once", "daily", "every_time"] }
+              },
+              required: ["id"]
+            }
+          },
+          {
+            name: "cancelInstruction",
+            description: "Cancels one of your instructions (by #id) when Simon says not to bother, or it no longer applies.",
+            parameters: { type: "OBJECT", properties: { id: { type: "NUMBER", description: "The instruction's id." } }, required: ["id"] }
+          },
+          {
+            name: "completeInstruction",
+            description: "Marks one of your instructions (by #id) done, with what happened - call it once you've carried out a 'next time we talk' instruction, or if Simon tells you it's been done. (Ones you're prompted to carry out at their time are marked done for you.)",
+            parameters: { type: "OBJECT", properties: { id: { type: "NUMBER", description: "The instruction's id." }, outcome: { type: "STRING", description: "What happened, briefly." } }, required: ["id"] }
           },
           {
             name: "startBackgroundTask",

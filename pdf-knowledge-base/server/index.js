@@ -82,10 +82,12 @@ import boardgamesRoutes from './routes/boardgames.js';
 import peopleRoutes from './routes/people.js';
 import lookRoutes from './routes/look.js';
 import { getCameraStatus, setFrame, heartbeat, appendDeviceLog, pauseCamera } from './services/cameraService.js';
-import { startPresence, onPresence } from './services/presenceService.js';
+import { startPresence, onPresence, getPresence } from './services/presenceService.js';
+import { dueNow as instructionsDue, forPeople as instructionsForPeople, markFired as markInstructionFired } from './services/imsInstructionsService.js';
+import imsInstructionsRoutes from './routes/imsInstructions.js';
 import { startWakeGate } from './services/wakeGateService.js';
 import { live, thinkDeliverers } from './live/state.js';
-import { handleLiveProxyConnection, setPushScheduleStatus } from './live/liveProxy.js';
+import { handleLiveProxyConnection, setPushScheduleStatus, deliverInstructionsNow } from './live/liveProxy.js';
 import { writeDebugLog } from './live/debugLog.js';
 import { validateConfiguredModels } from './services/modelService.js';
 import { isDeviceMicMuted } from './services/deviceState.js';
@@ -267,6 +269,7 @@ app.use('/api/memories', memoriesRoutes);
 app.use('/api/glucose-hub', glucoseHubRoutes);
 app.use('/api/news', newsRoutes);
 app.use('/api/tasks', tasksRoutes);
+app.use('/api/ims-instructions', imsInstructionsRoutes);
 app.use('/api/dev-ideas', devIdeasRoutes);
 app.use('/api/decks/campaigns', campaignsRoutes);  // campaign tracking - part of the deck builder, so guests can use it
 app.use('/api/decks', decksRoutes);
@@ -1225,6 +1228,38 @@ schedulerService.registerJob({
   category: 'realtime',
   intervalMs: 1000,
   action: pollDueReminders
+});
+
+// Ims's instructions (things Simon asked him to do later): a time one that's due, or one for someone who's been at
+// the desk a while and whose window has just opened. Mid-conversation it goes straight into the conversation;
+// otherwise the desk is asked to say it, as a reminder is. One at a time; tried again if it couldn't be said.
+// (Someone just sitting down is handled by the hello - the 'greet' prompt carries their instructions.)
+function pollImsInstructions() {
+  if (isRecordingActive()) return;
+  let due = [];
+  try { due = instructionsDue(); } catch (err) { console.error('[Instructions] due check failed:', err.message); return; }
+  try {
+    const p = getPresence();
+    if (p.present && p.names.length && p.since && Date.now() - p.since > 30000) due = due.concat(instructionsForPeople(p.names));
+  } catch (_) { /* presence is optional */ }
+  if (!due.length) return;
+  const r = due[0];
+  if (deliverInstructionsNow([r])) { markInstructionFired(r.id); return; }
+  const ws = live.hardwareSession?.clientWs;
+  if (ws?.readyState !== WebSocket.OPEN) return;
+  markInstructionFired(r.id);
+  console.log(`[Instructions] #${r.id} due - asking the desk to do it: ${r.instruction.slice(0, 80)}`);
+  try {
+    ws.send(JSON.stringify({ reminderFired: { type: 'instruction', label: `#${r.id} ${r.say || r.instruction}`.slice(0, 90), alertMode: 'vocal' } }));
+  } catch (err) { console.error('[Instructions] Failed to notify device:', err.message); }
+}
+
+schedulerService.registerJob({
+  name: 'ims_instructions_poll',
+  description: "Carries out Ims's instructions when their time comes or their person is at the desk",
+  category: 'realtime',
+  intervalMs: 5000,
+  action: pollImsInstructions
 });
 
 schedulerService.registerJob({

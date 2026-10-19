@@ -4636,7 +4636,9 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
     }
     if (doc["turnComplete"].as<bool>() || doc["turnComplete"].is<JsonObject>()) {
       modelTurnActive = false;
-      micStreamingActive = false;
+      // Only while he's talking: once playback has finished and he's back to LISTENING, the mic stays on - a late
+      // turnComplete used to switch it off with the screen still saying LISTENING, deaf until the idle timeout (19 Oct)
+      if (currentState != STATE_LISTENING) micStreamingActive = false;
       // Note: State transition back to STATE_STANDBY is handled cleanly in loop()
       // once audioPlaybackQueue drains and the speaker finishes playing.
     }
@@ -4662,7 +4664,7 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
       }
       if (serverContent["turnComplete"].as<bool>()) {
         modelTurnActive = false;
-        micStreamingActive = false;
+        if (currentState != STATE_LISTENING) micStreamingActive = false; // as above
         // Note: State transition back to STATE_STANDBY is handled cleanly in loop()
         // once audioPlaybackQueue drains and the speaker finishes playing.
       }

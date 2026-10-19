@@ -142,7 +142,8 @@ function normaliseTime(raw) {
   return { hh, mm };
 }
 
-function computeFireAt({ whenSeconds, time, date }) {
+// (exported for Ims's instructions, which take times the same way)
+export function computeFireAt({ whenSeconds, time, date }) {
   const now = Date.now();
   const secs = Number(whenSeconds); // Gemini sometimes sends the number as text ("3600")
   if (Number.isFinite(secs) && secs > 0) {
