@@ -29,7 +29,7 @@ export function profilesForPrompt({ accentFree = false } = {}) {
   const h = simon?.reportsOnly?.length ? `Health and training (for reports, or when he asks - never small talk): ${simon.reportsOnly.join('; ')}` : '';
   const b = self ? [line('Your opinions', self.opinions), line('Running jokes between you', self.runningJokes), line("Things he's told you off for - don't repeat them", self.toldOffFor)].filter(Boolean) : [];
   return [
-    a.length || h ? `WHAT YOU KNOW ABOUT SIMON:\n${[...a, h].filter(Boolean).map((x) => `- ${x}`).join('\n')}` : '',
+    a.length || h ? `WHAT YOU KNOW ABOUT SIMON (built up from past conversations - how he does things, not what is happening today: times and examples in it are from then; today's runs, plans and appointments come only from his records and tools):\n${[...a, h].filter(Boolean).map((x) => `- ${x}`).join('\n')}` : '',
     b.length ? `ABOUT YOU, FROM PAST CONVERSATIONS (stay consistent):\n${b.map((x) => `- ${x}`).join('\n')}` : '',
   ].filter(Boolean).join('\n\n');
 }

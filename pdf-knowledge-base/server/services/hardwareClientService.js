@@ -530,7 +530,7 @@ export function buildMemoryParagraph() {
     }
     try {
       const opinions = JSON.parse(getSetting(OPINIONS_KEY) || "[]");
-      if (opinions.length) parts.push("YOUR OWN OPINIONS (things you've said before - stay consistent with them):\n" + opinions.slice(-12).map((o) => `- ${o}`).join("\n"));
+      if (opinions.length) parts.push("YOUR OWN OPINIONS (things you've said before, on earlier days - stay consistent with them; they're opinions, not facts or news, and any 'today', 'tonight' or 'tomorrow' in them meant then, not now):\n" + opinions.slice(-12).map((o) => `- ${o}`).join("\n"));
     } catch { /* none */ }
     if (parts.length === 0) return "";
     return parts.join("\n\n");

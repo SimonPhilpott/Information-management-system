@@ -567,6 +567,10 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // 120-second grace window after dispatching the report tool-response so the
   // continuation is not dropped.
   let dayReportSentAt = 0;
+  // A day report given from memory: asked for, and 25 words into one without having called getDayReport (19 Oct:
+  // "a run tonight at quarter past seven" and Max Richter "out tomorrow", from his notes, then the real report)
+  let dayReportAskedAt = 0, dayReportFetchAt = 0, dayReportRedirected = false;
+  const DAY_REPORT_ASK = /\b(day|morning|daily) (report|briefing)\b|\bmy report\b|\bbrief me\b/i;
   // Gemini sometimes speaks a few items of the report and stops (6 Oct: three calendar items, no weather,
   // health or news). Words spoken since the report went out are counted; a reply that ends far short of a
   // full report gets one "carry on" note, so he finishes it without being asked twice.
@@ -1218,6 +1222,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             const incomingTranscript = parsed.serverContent.inputTranscription.text;
             heardThisTurn = (heardThisTurn + incomingTranscript).slice(-400);
             if (/[a-z0-9]/i.test(incomingTranscript)) { if (heardAt <= lastModelOutputAt) { heardText = ''; heardNudge = 0; } heardAt = Date.now(); heardText = (heardText + incomingTranscript).slice(-300); }
+            if (DAY_REPORT_ASK.test(heardThisTurn) && Date.now() - dayReportAskedAt > 60000) { dayReportAskedAt = Date.now(); dayReportRedirected = false; }
             if (wakeCheck && !wakeCheck.heardAt && /[a-z]/i.test(incomingTranscript)) wakeCheck.heardAt = Date.now();
             if (wakeCheck && !wakeCheck.extended && !looksAddressed(heardThisTurn) && WAKE_START_RX.test(heardThisTurn)) {
               wakeCheck.extended = true;
@@ -1432,6 +1437,15 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           if (isHardware && morningOfferPending) { morningOfferPending = false; markMorningReportOffered(); }
           turnReplyText = stripToolText(turnReplyText + spokenText);
           turnLog.ims += spokenText;
+          if (!unsolicitedTurn && !dayReportRedirected && dayReportAskedAt && Date.now() - dayReportAskedAt < 30000 && dayReportFetchAt < dayReportAskedAt
+            && gWs.readyState === WebSocket.OPEN && turnReplyText.split(/\s+/).filter(Boolean).length >= 25) {
+            dayReportRedirected = true;
+            paceFlush();
+            textTurnSent = true; sessionUsed = true; lastActivityAt = Date.now();
+            gWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: '(System: stop - that day report was from memory, and it is wrong. Call getDayReport now and read out what it returns. Never give a day report without it. Just carry on with the real one - no apology.)' }] }], turnComplete: true } }));
+            keepListening(25000);
+            try { logCapture(`[${new Date().toISOString()}] ${tag} DAY REPORT FROM MEMORY STOPPED - asked him to fetch the real one ("${turnReplyText.trim().slice(0, 80)}")\n`); } catch (_) { }
+          }
           // The same reply again with nothing new said: Gemini answering its own tool result (setEmotion) a second
           // time - "Greetings, traveller" twice, "cycled through the lot" twelve times (16 Oct). Dropped once its
           // first five words match the last reply and nothing new has been heard since that reply ended.
@@ -2047,6 +2061,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 }
               }
             } else if (call.name === 'getDayReport') {
+              dayReportFetchAt = Date.now();
               getDayReport().then((r) => {
                 console.log(`${tag} 📰 getDayReport -> ${r.sectionCount} sections, ${r.report.length} chars`);
                 dayReportSentAt = Date.now();
