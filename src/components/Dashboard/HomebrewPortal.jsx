@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useFocusItem } from '../../hooks/useFocusItem';
-import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, BookOpen, ExternalLink, Copy } from 'lucide-react';
+import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, BookOpen, ExternalLink, Copy, ChevronUp, ChevronDown } from 'lucide-react';
 import PortalShell from './PortalShell';
 
 // Homebrew: Simon's meads, braggots and other brews - the recipe, what happened to each batch, how it tasted as
@@ -14,6 +14,46 @@ const when = (t) => (t ? new Date(t).toLocaleString('en-GB', { timeZone: 'Europe
 const g3 = (g) => (g ? Number(g).toFixed(3) : '-');
 const EMPTY_BREW = { name: '', category: 'mead', style: 'Traditional mead', sourceName: '', sourceUrl: '', status: 'planning', batchLitres: '', startedOn: '', bottledOn: '', targetOg: '', targetFg: '', og: '', fg: '', sweetness: '', carbonation: '', yeast: '', yeastNotes: '', nutrients: '', water: '', method: '', notes: '', ingredients: [] };
 const PROFILE_KEYS = [['sweetness', 'Sweetness'], ['body', 'Body'], ['acidity', 'Acidity'], ['alcoholHeat', 'Alcohol heat'], ['aromaIntensity', 'Aroma'], ['tannin', 'Tannin']];
+
+// The method as separate steps - edit, add, delete and reorder them (arrows, or drag a step by its number).
+// Still kept as numbered lines ("1. ...\n2. ..."), so older brews, Ims and the insights read it as before.
+const parseSteps = (method) => String(method || '').split('\n').map((l) => l.replace(/^\s*(\d+[.)]|[-*•])\s*/, '').trim()).filter(Boolean);
+const joinSteps = (steps) => steps.map((s) => s.trim()).filter(Boolean).map((s, i) => `${i + 1}. ${s}`).join('\n');
+
+function StepsEditor({ value, onChange, field, border, isDark }) {
+  // local list so a step being typed (even emptied) isn't dropped mid-edit; synced when the brew changes
+  const [steps, setSteps] = useState(() => parseSteps(value));
+  const [dragFrom, setDragFrom] = useState(null);
+  useEffect(() => { if (joinSteps(steps) !== value) setSteps(parseSteps(value)); }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  const commit = (next) => { setSteps(next); onChange(joinSteps(next)); };
+  const move = (from, to) => {
+    if (to < 0 || to >= steps.length || from === to) return;
+    const next = steps.slice(); const [s] = next.splice(from, 1); next.splice(to, 0, s); commit(next);
+  };
+  const iconBtn = `p-1 rounded-md border ${border} text-slate-500 hover:text-amber-500 disabled:opacity-30 disabled:hover:text-slate-500`;
+  return (
+    <div className="flex flex-col gap-2">
+      {steps.map((s, i) => (
+        <div key={i} draggable onDragStart={() => setDragFrom(i)} onDragOver={(e) => e.preventDefault()} onDrop={() => { if (dragFrom !== null) move(dragFrom, i); setDragFrom(null); }}
+          className={`flex gap-2 items-start rounded-xl border ${border} p-2 ${dragFrom === i ? 'opacity-50' : ''} ${isDark ? 'bg-slate-950/40' : 'bg-white'}`}>
+          <span title="Drag to move" className="cursor-grab select-none w-6 h-6 shrink-0 rounded-full bg-gradient-to-r from-amber-500 to-orange-600 text-white text-[11px] font-bold flex items-center justify-center mt-1">{i + 1}</span>
+          <textarea rows={Math.max(1, Math.ceil(s.length / 70))} value={s} onChange={(e) => { const next = steps.slice(); next[i] = e.target.value.replace(/\n/g, ' '); setSteps(next); onChange(joinSteps(next)); }}
+            className={`${field} resize-y flex-1 min-w-0`} placeholder="What to do - with temperatures and timings" />
+          <div className="flex flex-col gap-1 shrink-0">
+            <button type="button" onClick={() => move(i, i - 1)} disabled={i === 0} title="Move up" className={iconBtn}><ChevronUp size={12} /></button>
+            <button type="button" onClick={() => move(i, i + 1)} disabled={i === steps.length - 1} title="Move down" className={iconBtn}><ChevronDown size={12} /></button>
+          </div>
+          <div className="flex flex-col gap-1 shrink-0">
+            <button type="button" onClick={() => { const next = steps.slice(); next.splice(i + 1, 0, ''); setSteps(next); }} title="Add a step after this one" className={iconBtn}><Plus size={12} /></button>
+            <button type="button" onClick={() => commit(steps.filter((_, j) => j !== i))} title="Delete this step" className={`${iconBtn} hover:text-red-500`}><Trash2 size={12} /></button>
+          </div>
+        </div>
+      ))}
+      <button type="button" onClick={() => setSteps([...steps, ''])} className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border ${border} self-start`}><Plus size={13} /> Step</button>
+      {!steps.length && <p className="text-[11px] text-slate-500">No steps yet - add the first.</p>}
+    </div>
+  );
+}
 
 function Bars({ values, compare, isDark }) {
   return (
@@ -234,8 +274,11 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                   <button onClick={() => setForm({ ...form, ingredients: [...form.ingredients, { type: 'honey', name: '', amount: '', unit: 'kg', stage: 'primary' }] })} className={`${btn} self-start`}><Plus size={13} /> Ingredient</button>
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
-                <div><span className={label}>Method</span><textarea rows={Math.min(14, Math.max(4, (form.method || '').split('\n').length + 1))} value={form.method || ''} onChange={set('method')} placeholder="How you made it - steps, temperatures, timings" className={`${field} resize-y`} /></div>
+              <div className="mt-4">
+                <span className={label}>Method</span>
+                <StepsEditor value={form.method || ''} onChange={(m) => setForm({ ...form, method: m })} field={field} border={border} isDark={isDark} />
+              </div>
+              <div className="grid grid-cols-1 gap-3 mt-4">
                 <div><span className={label}>Notes</span><textarea rows={Math.min(14, Math.max(4, Math.ceil((form.notes || '').length / 60)))} value={form.notes || ''} onChange={set('notes')} placeholder="Anything else worth remembering" className={`${field} resize-y`} /></div>
               </div>
               <div className="flex gap-2 mt-4">
