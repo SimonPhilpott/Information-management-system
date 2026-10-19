@@ -1267,6 +1267,29 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             parameters: { type: "OBJECT", properties: {} }
           },
           {
+            name: "getBrews",
+            description: "His homebrews (mead, braggot...) from the Homebrew page: what's on the go, the latest gravity and ABV, the 1/3 sugar break, his last tasting and what's next - for 'how's the mead doing?', 'what's the ABV of the braggot?', 'what did I think of the last batch?'.",
+            parameters: { type: "OBJECT", properties: { brew: { type: "STRING", description: "Which brew, if he said (its name or style, e.g. 'braggot') - otherwise the one on the go." } } }
+          },
+          {
+            name: "logBrew",
+            description: "Logs something about one of his brews on the Homebrew page: a gravity reading (with temperature if he says), a nutrient dose, degassing, an addition, racking, stabilising, backsweetening, bottling, a note - or a tasting (how it tastes, a rating out of 10, what to change next time). Read back what you logged and anything worth knowing (the ABV now, whether it's past the 1/3 break).",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                brew: { type: "STRING", description: "Which brew (name or style); leave out for the one on the go." },
+                kind: { type: "STRING", enum: ["reading", "nutrient", "degas", "addition", "rack", "stabilise", "backsweeten", "bottle", "note", "tasting"], description: "What it is." },
+                gravity: { type: "NUMBER", description: "A gravity reading, e.g. 1.042 (convert 'ten forty-two' to 1.042)." },
+                tempC: { type: "NUMBER", description: "Temperature in °C, if he says." },
+                text: { type: "STRING", description: "What happened, in his words (e.g. '2 g Fermaid-O', 'added 300 g raspberries')." },
+                rating: { type: "NUMBER", description: "For a tasting: out of 10." },
+                aroma: { type: "STRING" }, flavour: { type: "STRING" },
+                changeNext: { type: "STRING", description: "For a tasting: what he'd change next time." }
+              },
+              required: ["kind"]
+            }
+          },
+          {
             name: "tellStory",
             description: "Writes a complete story for you to tell aloud - call it whenever Simon asks for a story, a tale or a yarn (never make one up as you go: told on the fly they come out short and flat). It takes about ten seconds, so first say a few words in character ('Give us a sec, I'll think one up'). Then tell the WHOLE story it returns, in your own voice and accent, all the way to the end without stopping, asking or summarising - perform it.",
             parameters: {

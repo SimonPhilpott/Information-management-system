@@ -45,6 +45,7 @@ const GlucosePortal = React.lazy(() => import('./components/Dashboard/GlucosePor
 const NewsPortal = React.lazy(() => import('./components/Dashboard/NewsPortal'));
 const TasksPortal = React.lazy(() => import('./components/Dashboard/TasksPortal'));
 const InstructionsPortal = React.lazy(() => import('./components/Dashboard/InstructionsPortal'));
+const HomebrewPortal = React.lazy(() => import('./components/Dashboard/HomebrewPortal'));
 const SystemArchitecturePortal = React.lazy(() => import('./components/Dashboard/SystemArchitecturePortal'));
 const DevIdeasPortal = React.lazy(() => import('./components/Dashboard/DevIdeasPortal'));
 const BackupsPortal = React.lazy(() => import('./components/Dashboard/BackupsPortal'));
@@ -1563,6 +1564,16 @@ export default function App() {
   if (currentPath.startsWith('/ims/architecture')) {
     return (
       <SystemArchitecturePortal
+        theme={state.theme}
+        onThemeToggle={actions.toggleTheme}
+        setCurrentPath={setCurrentPath}
+      />
+    );
+  }
+
+  if (currentPath === '/ims/homebrew' || currentPath.startsWith('/ims/homebrew')) {
+    return (
+      <HomebrewPortal
         theme={state.theme}
         onThemeToggle={actions.toggleTheme}
         setCurrentPath={setCurrentPath}

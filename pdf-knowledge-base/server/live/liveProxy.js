@@ -24,6 +24,7 @@ import { clearOldNightscout, describeForIms as describeGlucoseForIms, dosingCont
 import { createEvent, describeEvents, getUpcomingEvents } from '../services/calendarService.js';
 import { createTask, describeTasksForIms, markReported, owedThinkTasks, saveDraft } from '../services/tasksService.js';
 import { getDayWrapUp } from '../services/dayWrapUpService.js';
+import { findBrew, brewsForIms, addLog as addBrewLog, addTasting as addBrewTasting } from '../services/homebrewService.js';
 import { childrenAtDesk, childrenAmong, childNote } from '../services/deskCompanyService.js';
 import { describeCollectionForIms } from '../services/boardgamesService.js';
 import { describeTraining, getStatus as getStravaStatus } from '../services/stravaService.js';
@@ -2197,6 +2198,23 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 const d = saveDraft({ title: call.args?.title, text, request: lastPiece?.request || '', origin: isHardware ? 'desk' : 'web' });
                 console.log(`${tag} 💾 saveDraft #${d.id}: ${d.title}`);
                 respondToToolCall(call, { status: 'saved', title: d.title, where: 'the Tasks page in IMS (/ims/tasks), to copy', note: 'Tell him in a few words it is saved on his Tasks page.' });
+              } catch (err) { respondToToolCall(call, { error: err.message }); }
+            } else if (call.name === 'getBrews') {
+              try { respondToToolCall(call, { brews: brewsForIms({ brew: call.args?.brew || '' }), note: 'Answer from these in your own words; gravities as "ten forty-two". Nothing logged yet = say so and that he can add a brew on the Homebrew page.' }); }
+              catch (err) { respondToToolCall(call, { error: err.message }); }
+            } else if (call.name === 'logBrew') {
+              try {
+                const a = call.args || {};
+                const b = findBrew(a.brew || '');
+                if (!b) respondToToolCall(call, { error: 'No brew found', note: 'Tell him there is no brew by that name yet - he can add it on the Homebrew page in IMS (Personal).' });
+                else {
+                  const r = a.kind === 'tasting'
+                    ? addBrewTasting(b.id, { rating: a.rating, aroma: a.aroma, flavour: a.flavour || a.text, changeNext: a.changeNext, verdict: a.text, source: 'desk' })
+                    : addBrewLog(b.id, { kind: a.kind, gravity: a.gravity, tempC: a.tempC, text: a.text, source: 'desk' });
+                  const c = r.brew.calc;
+                  console.log(`${tag} 🍯 logBrew ${a.kind} on "${b.name}"`);
+                  respondToToolCall(call, { status: 'logged', brew: b.name, kind: a.kind, abvNow: c.abv, latestGravity: c.latestGravity, og: r.brew.og, thirdBreak: c.thirdBreak, pastThirdBreak: c.latestGravity && c.thirdBreak ? c.latestGravity <= c.thirdBreak : null, attenuation: c.attenuation, sweetnessIfItStoppedHere: c.sweetnessClass });
+                }
               } catch (err) { respondToToolCall(call, { error: err.message }); }
             } else if (call.name === 'getDayWrapUp') {
               getDayWrapUp().then((w) => respondToToolCall(call, { ...w, say: 'Give him the wrap-up in a few natural sentences: what got done today (lead with that, and be generous about it), what is still going, then what is lined up for tomorrow. Skip anything empty. No lists read out, no health or running.' }))

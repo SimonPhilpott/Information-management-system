@@ -85,6 +85,7 @@ import { getCameraStatus, setFrame, heartbeat, appendDeviceLog, pauseCamera } fr
 import { startPresence, onPresence, getPresence } from './services/presenceService.js';
 import { dueNow as instructionsDue, forPeople as instructionsForPeople, markFired as markInstructionFired } from './services/imsInstructionsService.js';
 import imsInstructionsRoutes from './routes/imsInstructions.js';
+import homebrewRoutes from './routes/homebrew.js';
 import { startWakeGate } from './services/wakeGateService.js';
 import { live, thinkDeliverers } from './live/state.js';
 import { handleLiveProxyConnection, setPushScheduleStatus, deliverInstructionsNow } from './live/liveProxy.js';
@@ -270,6 +271,7 @@ app.use('/api/glucose-hub', glucoseHubRoutes);
 app.use('/api/news', newsRoutes);
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/ims-instructions', imsInstructionsRoutes);
+app.use('/api/homebrew', homebrewRoutes);
 app.use('/api/dev-ideas', devIdeasRoutes);
 app.use('/api/decks/campaigns', campaignsRoutes);  // campaign tracking - part of the deck builder, so guests can use it
 app.use('/api/decks', decksRoutes);

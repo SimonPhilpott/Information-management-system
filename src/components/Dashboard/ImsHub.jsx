@@ -1,6 +1,6 @@
 import AccountChip from './AccountChip';
 import React from 'react';
-import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight , Droplets , Newspaper , ListChecks , MessageSquareQuote , Network , Lightbulb , Layers , DatabaseBackup, SunMedium, Code2, CloudSun, HardDrive, BrainCircuit, PoundSterling, ClipboardList } from 'lucide-react';
+import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight , Droplets , Newspaper , ListChecks , MessageSquareQuote , Network , Lightbulb , Layers , DatabaseBackup, SunMedium, Code2, CloudSun, HardDrive, BrainCircuit, PoundSterling, ClipboardList, FlaskConical } from 'lucide-react';
 
 // Each entry here is one card on the hub. Add a new one whenever a new
 // /ims/* page is built - this is the single place that needs to know about
@@ -54,6 +54,14 @@ const LINKS = [
     icon: PenLine,
     gradient: 'from-emerald-500 to-teal-600',
     glow: 'rgba(16,185,129,0.3)'
+  },
+  {
+    path: '/ims/homebrew',
+    title: 'Homebrew',
+    description: 'Your meads, braggots and brews - recipes, readings, tastings, and what to tweak next time.',
+    icon: FlaskConical,
+    gradient: 'from-amber-500 to-orange-600',
+    glow: 'rgba(245,158,11,0.3)'
   },
   {
     path: '/ims/instructions',
@@ -276,7 +284,7 @@ const LINKS = [
 const SECTIONS = [
   ['Core functions', ['/ims/weather', '/ims/doorbell', '/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/instructions', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings', '/ims/tasks']],
   ['Vision & camera', ['/ims/look', '/ims/faces']],
-  ['Personal', ['/ims/code-repo', '/ims/dayreport', '/ims/musicscan', '/ims/boardgames', '/campaigns', '/ims/news']],
+  ['Personal', ['/ims/code-repo', '/ims/dayreport', '/ims/musicscan', '/ims/boardgames', '/campaigns', '/ims/homebrew', '/ims/news']],
   ['Health and fitness', ['/ims/glucose', '/ims/activities', '/ims/runplanner']],
   ['Customisation and system settings', ['/ims/device-health', '/ims/storage', '/ims/models', '/ims/costs', '/ims/facedesigner', '/ims/persona', '/ims/phrases', '/ims/wifi', '/ims/devideas', '/ims/backups', '/ims/architecture']],
 ];
