@@ -63,8 +63,23 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_brew_tastings_brew ON brew_tastings(brew_id, at);
 `);
+// the kind of drink; recipe-book entries (common recipes and ones he keeps) and where a recipe came from
+for (const col of ['category TEXT', 'is_recipe INTEGER NOT NULL DEFAULT 0', 'source_name TEXT', 'source_url TEXT', 'from_recipe INTEGER']) {
+  try { db.exec(`ALTER TABLE brews ADD COLUMN ${col}`); } catch (_) { /* already there */ }
+}
 
-export const STYLES = ['Traditional mead', 'Melomel (fruit mead)', 'Metheglin (spiced mead)', 'Cyser (apple mead)', 'Pyment (grape mead)', 'Braggot (malt mead)', 'Bochet (caramelised honey)', 'Beer', 'Cider', 'Wine', 'Other'];
+// The kinds of drink, each with its styles - all made from scratch (no kits)
+export const CATEGORIES = [
+  { id: 'white_wine', label: 'White wine', styles: ['Grape (white)', 'Elderflower', 'Gooseberry', 'Dandelion', 'Apple', 'Pear (perry-style)', 'Parsnip', 'Other white'] },
+  { id: 'red_wine', label: 'Red wine', styles: ['Grape (red)', 'Blackberry', 'Elderberry', 'Damson', 'Plum', 'Blackcurrant', 'Other red'] },
+  { id: 'rose_wine', label: 'Rosé & other wines', styles: ['Rosé', 'Rhubarb', 'Strawberry', 'Raspberry', 'Fortified / port-style', 'Sparkling', 'Other wine'] },
+  { id: 'mead', label: 'Mead', styles: ['Traditional mead', 'Melomel (fruit mead)', 'Metheglin (spiced mead)', 'Cyser (apple mead)', 'Pyment (grape mead)', 'Braggot (malt mead)', 'Bochet (caramelised honey)', 'Other mead'] },
+  { id: 'beer', label: 'Beer', styles: ['Bitter', 'Pale ale / IPA', 'Golden ale', 'Mild', 'Brown ale', 'Lager', 'Wheat beer', 'Herb / foraged beer', 'Other beer'] },
+  { id: 'stout', label: 'Stout', styles: ['Dry stout', 'Sweet / milk stout', 'Oatmeal stout', 'Imperial stout', 'Porter', 'Other stout'] },
+  { id: 'cider', label: 'Cider', styles: ['Cider', 'Perry', 'Fruit cider', 'Other cider'] },
+];
+export const STYLES = CATEGORIES.flatMap((c) => c.styles);
+const categoryOfStyle = (style) => (CATEGORIES.find((c) => c.styles.includes(style)) || {}).id || null;
 export const STATUSES = ['planning', 'fermenting', 'conditioning', 'bottled', 'finished', 'dumped'];
 export const LOG_KINDS = ['reading', 'nutrient', 'degas', 'addition', 'rack', 'stabilise', 'backsweeten', 'bottle', 'note'];
 
@@ -89,7 +104,7 @@ function present(r, { full = false } = {}) {
   const fgNow = r.fg || latest;
   const a = abv(og, r.fg || latest);
   const out = {
-    id: r.id, name: r.name, style: r.style, status: r.status, batchLitres: r.batch_litres, startedOn: r.started_on, bottledOn: r.bottled_on,
+    id: r.id, name: r.name, style: r.style, category: r.category || categoryOfStyle(r.style), isRecipe: Boolean(r.is_recipe), sourceName: r.source_name, sourceUrl: r.source_url, fromRecipe: r.from_recipe, status: r.status, batchLitres: r.batch_litres, startedOn: r.started_on, bottledOn: r.bottled_on,
     ingredients: json(r.ingredients, []), yeast: r.yeast, yeastNotes: r.yeast_notes, nutrients: r.nutrients, water: r.water,
     targetOg: r.target_og, targetFg: r.target_fg, og: r.og, fg: r.fg, sweetness: r.sweetness, carbonation: r.carbonation,
     method: r.method, notes: r.notes, createdAt: r.created_at, updatedAt: r.updated_at,
@@ -110,10 +125,11 @@ function present(r, { full = false } = {}) {
   return out;
 }
 
-export const listBrews = () => db.prepare('SELECT * FROM brews ORDER BY COALESCE(started_on, date(created_at / 1000, \'unixepoch\')) DESC, id DESC').all().map((r) => present(r));
+export const listBrews = () => db.prepare('SELECT * FROM brews WHERE is_recipe = 0 ORDER BY COALESCE(started_on, date(created_at / 1000, \'unixepoch\')) DESC, id DESC').all().map((r) => present(r));
+export const listRecipes = () => db.prepare('SELECT * FROM brews WHERE is_recipe = 1 ORDER BY category, name').all().map((r) => present(r));
 export const getBrew = (id) => present(db.prepare('SELECT * FROM brews WHERE id = ?').get(Number(id)), { full: true });
 
-const FIELDS = { name: 'name', style: 'style', status: 'status', batchLitres: 'batch_litres', startedOn: 'started_on', bottledOn: 'bottled_on', yeast: 'yeast', yeastNotes: 'yeast_notes',
+const FIELDS = { name: 'name', style: 'style', category: 'category', sourceName: 'source_name', sourceUrl: 'source_url', status: 'status', batchLitres: 'batch_litres', startedOn: 'started_on', bottledOn: 'bottled_on', yeast: 'yeast', yeastNotes: 'yeast_notes',
   nutrients: 'nutrients', water: 'water', targetOg: 'target_og', targetFg: 'target_fg', og: 'og', fg: 'fg', sweetness: 'sweetness', carbonation: 'carbonation', method: 'method', notes: 'notes' };
 const NUMERIC = new Set(['batch_litres', 'target_og', 'target_fg', 'og', 'fg']);
 
@@ -122,6 +138,9 @@ export function saveBrew(id, body = {}) {
   for (const [k, col] of Object.entries(FIELDS)) if (body[k] !== undefined) set[col] = NUMERIC.has(col) ? num(body[k]) : (String(body[k] ?? '').trim() || null);
   if (body.ingredients !== undefined) set.ingredients = JSON.stringify((Array.isArray(body.ingredients) ? body.ingredients : []).filter((i) => i && String(i.name || '').trim()));
   if (set.status && !STATUSES.includes(set.status)) throw new Error(`status must be one of ${STATUSES.join(', ')}`);
+  if (set.category && !CATEGORIES.some((c) => c.id === set.category)) throw new Error('Unknown category');
+  if (set.style && !set.category && !id) set.category = categoryOfStyle(set.style);
+  if (body.isRecipe !== undefined) set.is_recipe = body.isRecipe ? 1 : 0;
   const now = Date.now();
   if (!id) {
     if (!set.name) throw new Error('Give the brew a name.');
@@ -135,6 +154,19 @@ export function saveBrew(id, body = {}) {
   db.prepare(`UPDATE brews SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`).run(...cols.map((c) => set[c]), Number(id));
   return getBrew(id);
 }
+
+const COPY = ['name', 'style', 'category', 'batch_litres', 'ingredients', 'yeast', 'yeast_notes', 'nutrients', 'water', 'target_og', 'target_fg', 'sweetness', 'carbonation', 'method', 'notes', 'source_name', 'source_url'];
+function copyBrew(id, { asRecipe }) {
+  const r = db.prepare('SELECT * FROM brews WHERE id = ?').get(Number(id));
+  if (!r) throw new Error(`No brew #${id}`);
+  const now = Date.now();
+  const vals = COPY.map((c) => r[c]);
+  const nid = db.prepare(`INSERT INTO brews (${COPY.join(', ')}, is_recipe, status, from_recipe, created_at, updated_at) VALUES (${COPY.map(() => '?').join(', ')}, ?, ?, ?, ?, ?)`)
+    .run(...vals, asRecipe ? 1 : 0, 'planning', asRecipe ? null : r.id, now, now).lastInsertRowid;
+  return getBrew(nid);
+}
+export const startFromRecipe = (id) => copyBrew(id, { asRecipe: false });
+export const saveAsRecipe = (id) => copyBrew(id, { asRecipe: true });
 
 export function deleteBrew(id) {
   db.prepare('DELETE FROM brew_logs WHERE brew_id = ?').run(Number(id));

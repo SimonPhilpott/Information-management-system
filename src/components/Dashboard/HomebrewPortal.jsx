@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useFocusItem } from '../../hooks/useFocusItem';
-import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2 } from 'lucide-react';
+import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, BookOpen, ExternalLink, Copy } from 'lucide-react';
 import PortalShell from './PortalShell';
 
 // Homebrew: Simon's meads, braggots and other brews - the recipe, what happened to each batch, how it tasted as
@@ -12,7 +12,7 @@ const KIND_LABEL = { reading: 'Reading', nutrient: 'Nutrient', degas: 'Degas', a
 const STATUS_CLS = { planning: 'text-slate-500', fermenting: 'text-amber-500', conditioning: 'text-sky-500', bottled: 'text-emerald-500', finished: 'text-emerald-600', dumped: 'text-red-500' };
 const when = (t) => (t ? new Date(t).toLocaleString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 const g3 = (g) => (g ? Number(g).toFixed(3) : '-');
-const EMPTY_BREW = { name: '', style: 'Traditional mead', status: 'planning', batchLitres: '', startedOn: '', bottledOn: '', targetOg: '', targetFg: '', og: '', fg: '', sweetness: '', carbonation: '', yeast: '', yeastNotes: '', nutrients: '', water: '', method: '', notes: '', ingredients: [] };
+const EMPTY_BREW = { name: '', category: 'mead', style: 'Traditional mead', sourceName: '', sourceUrl: '', status: 'planning', batchLitres: '', startedOn: '', bottledOn: '', targetOg: '', targetFg: '', og: '', fg: '', sweetness: '', carbonation: '', yeast: '', yeastNotes: '', nutrients: '', water: '', method: '', notes: '', ingredients: [] };
 const PROFILE_KEYS = [['sweetness', 'Sweetness'], ['body', 'Body'], ['acidity', 'Acidity'], ['alcoholHeat', 'Alcohol heat'], ['aromaIntensity', 'Aroma'], ['tannin', 'Tannin']];
 
 function Bars({ values, compare, isDark }) {
@@ -58,7 +58,10 @@ function GravityChart({ logs, og, thirdBreak, isDark }) {
 export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
   const isDark = theme === 'dark';
   const [brews, setBrews] = useState([]);
-  const [meta, setMeta] = useState({ styles: [], statuses: [], logKinds: [] });
+  const [meta, setMeta] = useState({ styles: [], statuses: [], logKinds: [], categories: [] });
+  const [recipes, setRecipes] = useState([]);
+  const [view, setView] = useState('brews'); // 'brews' | 'recipes'
+  const [cat, setCat] = useState('all');
   useFocusItem(brews.length);
   const [selId, setSelId] = useState(null);
   const [brew, setBrew] = useState(null);
@@ -86,7 +89,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
     return d;
   };
   const loadList = useCallback(async () => {
-    try { const d = await api('/api/homebrew'); setBrews(d.brews); setMeta({ styles: d.styles, statuses: d.statuses, logKinds: d.logKinds }); } catch (err) { notify(err.message, 'error'); }
+    try { const d = await api('/api/homebrew'); setBrews(d.brews); setRecipes(d.recipes || []); setMeta({ styles: d.styles, statuses: d.statuses, logKinds: d.logKinds, categories: d.categories || [] }); } catch (err) { notify(err.message, 'error'); }
   }, []);
   const loadBrew = useCallback(async (id) => {
     if (!id) { setBrew(null); setForm(EMPTY_BREW); return; }
@@ -102,7 +105,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
 
   const run = async (key, fn, ok) => { setBusy(key); try { await fn(); if (ok) notify(ok); } catch (err) { notify(err.message, 'error'); } finally { setBusy(''); } };
   const saveBrew = () => run('save', async () => {
-    const d = await api(brew ? `/api/homebrew/${brew.id}` : '/api/homebrew', brew ? 'PUT' : 'POST', form);
+    const d = await api(brew ? `/api/homebrew/${brew.id}` : '/api/homebrew', brew ? 'PUT' : 'POST', brew ? form : { ...form, isRecipe: view === 'recipes' });
     await loadList(); setSelId(d.brew.id); setBrew(d.brew);
   }, 'Brew saved.');
   const removeBrew = () => { if (!window.confirm(`Delete "${brew.name}" and everything logged for it?`)) return; run('del', async () => { await api(`/api/homebrew/${brew.id}`, 'DELETE'); setSelId(null); await loadList(); }, 'Deleted.'); };
@@ -117,7 +120,12 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
   const askWhatIf = () => run('whatif', async () => { const d = await api(`/api/homebrew/${brew.id}/what-if`, 'POST', { change }); setWhatIf(d.result); });
   const pitched = () => { if (!window.confirm('Set reminders for the staggered nutrient doses - 24, 48 and 72 hours from now, and a 1/3-break check on day 6?')) return; run('remind', async () => { await api(`/api/homebrew/${brew.id}/nutrient-reminders`, 'POST', {}); loadBrew(brew.id); }, 'Nutrient reminders set - see Reminders.'); };
 
+  const startFrom = () => run('start', async () => { const d = await api(`/api/homebrew/${brew.id}/start`, 'POST', {}); await loadList(); setView('brews'); setSelId(d.brew.id); setTab('recipe'); }, 'New brew started from the recipe - edit it to suit, then log as you go.');
+  const keepAsRecipe = () => run('keep', async () => { await api(`/api/homebrew/${brew.id}/save-as-recipe`, 'POST', {}); await loadList(); }, 'Saved to your recipe book.');
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const catLabel = (id) => (meta.categories.find((x) => x.id === id) || {}).label || '';
+  const stylesFor = (id) => (meta.categories.find((x) => x.id === id) || {}).styles || meta.styles;
+  const shown = (view === 'recipes' ? recipes : brews).filter((b) => cat === 'all' || b.category === cat);
   const setIng = (i, k, v) => setForm({ ...form, ingredients: form.ingredients.map((x, j) => (j === i ? { ...x, [k]: v } : x)) });
   const c = brew?.calc || {};
   const ins = brew?.insight;
@@ -128,25 +136,47 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
       isDark={isDark} onThemeToggle={onThemeToggle} setCurrentPath={setCurrentPath} notification={notification} maxWidth="max-w-6xl">
       <div className="grid grid-cols-1 lg:grid-cols-[17rem_minmax(0,1fr)] gap-5 items-start">
         <div className={panel}>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-black uppercase tracking-wider">Brews ({brews.length})</h2>
-            <button onClick={() => { setSelId(null); setBrew(null); setForm(EMPTY_BREW); setTab('recipe'); }} className={primary}><Plus size={13} /> New</button>
+          <div className="flex gap-2 mb-3">
+            {[['brews', `My brews (${brews.length})`], ['recipes', `Recipe book (${recipes.length})`]].map(([v, l]) => (
+              <button key={v} onClick={() => { setView(v); setSelId(null); setBrew(null); setForm(EMPTY_BREW); setTab('recipe'); }} className={`${btn} flex-1 justify-center ${view === v ? `bg-gradient-to-r ${GRADIENT} text-white border-transparent` : ''}`}>{v === 'recipes' && <BookOpen size={12} />}{l}</button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {[['all', 'All'], ...meta.categories.map((c) => [c.id, c.label])].map(([id, l]) => (
+              <button key={id} onClick={() => setCat(id)} className={`px-2 py-1 rounded-full text-[10px] font-bold border ${border} ${cat === id ? (isDark ? 'bg-amber-500/20 border-amber-500/50' : 'bg-amber-100 border-amber-400/60') : ''}`}>{l}</button>
+            ))}
+          </div>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xs font-black uppercase tracking-wider">{view === 'recipes' ? 'Recipes' : 'Brews'} ({shown.length})</h2>
+            <button onClick={() => { setSelId(null); setBrew(null); setForm({ ...EMPTY_BREW, ...(cat !== 'all' ? { category: cat, style: stylesFor(cat)[0] } : {}) }); setTab('recipe'); }} className={primary}><Plus size={13} /> New</button>
           </div>
           <div className="flex flex-col gap-2">
-            {brews.map((b) => (
+            {shown.map((b) => (
               <button key={b.id} id={`brew-${b.id}`} onClick={() => { setSelId(b.id); setWhatIf(null); }}
                 className={`text-left rounded-xl border px-3 py-2.5 ${border} ${selId === b.id ? (isDark ? 'bg-amber-500/10 border-amber-500/40' : 'bg-amber-50 border-amber-400/50') : isDark ? 'bg-slate-950/40' : 'bg-white'}`}>
                 <div className="text-xs font-bold break-words">{b.name}</div>
-                <div className="text-[11px] text-slate-500">{b.style || 'Brew'}{b.startedOn ? ` · ${b.startedOn}` : ''}</div>
-                <div className="text-[11px] flex gap-2 mt-0.5"><span className={`font-semibold ${STATUS_CLS[b.status] || ''}`}>{b.status}</span>{b.calc.abv ? <span>{b.calc.abv}%{b.calc.abvFinal ? '' : ' so far'}</span> : null}{b.rating ? <span>★ {b.rating}/10</span> : null}</div>
+                <div className="text-[11px] text-slate-500">{catLabel(b.category)}{b.style ? ` · ${b.style}` : ''}{b.startedOn && !b.isRecipe ? ` · ${b.startedOn}` : ''}</div>
+                <div className="text-[11px] flex gap-2 mt-0.5">{b.isRecipe ? <span className="text-slate-500">{b.batchLitres ? `${b.batchLitres} L` : ''}{b.sourceName ? ` · ${b.sourceName.slice(0, 30)}` : ''}</span> : <span className={`font-semibold ${STATUS_CLS[b.status] || ''}`}>{b.status}</span>}{b.calc.abv ? <span>{b.calc.abv}%{b.calc.abvFinal ? '' : ' so far'}</span> : null}{b.rating ? <span>★ {b.rating}/10</span> : null}</div>
               </button>
             ))}
-            {!brews.length && <p className="text-xs text-slate-500">No brews yet - add your first with New.</p>}
+            {!shown.length && <p className="text-xs text-slate-500">{view === 'recipes' ? 'No recipes here yet.' : 'No brews here yet - add one with New, or start one from the recipe book.'}</p>}
           </div>
         </div>
 
         <div className="flex flex-col gap-5 min-w-0">
-          {brew && (
+          {brew && brew.isRecipe && (
+            <div className={panel}>
+              <div className="flex flex-wrap items-center gap-3">
+                <BookOpen size={16} className="text-amber-500 shrink-0" />
+                <div className="min-w-0 flex-1 text-xs">
+                  <p className="font-bold">From your recipe book{brew.calc.potentialAbv ? ` · about ${brew.calc.potentialAbv}%` : ''}</p>
+                  {brew.sourceName && <p className="text-slate-500">Source: {brew.sourceUrl ? <a href={brew.sourceUrl} target="_blank" rel="noreferrer" className="text-sky-500 hover:underline inline-flex items-center gap-1">{brew.sourceName}<ExternalLink size={10} /></a> : brew.sourceName}</p>}
+                </div>
+                <button onClick={startFrom} disabled={busy === 'start'} className={primary}><Plus size={13} /> Start a brew from this</button>
+              </div>
+            </div>
+          )}
+          {brew && !brew.isRecipe && (
             <div className={panel}>
               <div className="flex flex-wrap gap-2 text-[11px]">
                 {[['ABV', c.abv ? `${c.abv}%${c.abvFinal ? '' : ' so far'}` : '-'], ['Potential', c.potentialAbv ? `${c.potentialAbv}%` : '-'], ['OG', g3(brew.og)], ['Latest', g3(c.latestGravity)],
@@ -159,16 +189,18 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                   <button key={t} onClick={() => setTab(t)} className={`${btn} ${tab === t ? `bg-gradient-to-r ${GRADIENT} text-white border-transparent` : ''}`}>{t[0].toUpperCase() + t.slice(1)}</button>
                 ))}
                 {(brew.status === 'planning' || brew.status === 'fermenting') && <button onClick={pitched} disabled={busy === 'remind'} className={`${btn} ml-auto`}><Bell size={13} /> I've just pitched</button>}
+                <button onClick={keepAsRecipe} disabled={busy === 'keep'} className={`${btn} ${(brew.status === 'planning' || brew.status === 'fermenting') ? '' : 'ml-auto'}`}><Copy size={13} /> Save as recipe</button>
               </div>
             </div>
           )}
 
-          {(!brew || tab === 'recipe') && (
+          {(!brew || brew.isRecipe || tab === 'recipe') && (
             <div className={panel}>
-              <h2 className="text-xs font-black uppercase tracking-wider mb-3">{brew ? 'Recipe' : 'New brew'}</h2>
+              <h2 className="text-xs font-black uppercase tracking-wider mb-3">{brew ? 'Recipe' : view === 'recipes' ? 'New recipe' : 'New brew'}</h2>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2"><span className={label}>Name</span><input value={form.name} onChange={set('name')} placeholder="e.g. Christmas braggot for Dad" className={field} /></div>
-                <div><span className={label}>Style</span><select value={form.style || ''} onChange={set('style')} className={field}>{meta.styles.map((s) => <option key={s}>{s}</option>)}</select></div>
+                <div><span className={label}>Type</span><select value={form.category || ''} onChange={(e) => setForm({ ...form, category: e.target.value, style: stylesFor(e.target.value)[0] })} className={field}>{meta.categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select></div>
+                <div><span className={label}>Style</span><select value={form.style || ''} onChange={set('style')} className={field}>{(stylesFor(form.category).includes(form.style) || !form.style ? stylesFor(form.category) : [form.style, ...stylesFor(form.category)]).map((s) => <option key={s}>{s}</option>)}</select></div>
                 <div><span className={label}>Status</span><select value={form.status} onChange={set('status')} className={field}>{meta.statuses.map((s) => <option key={s}>{s}</option>)}</select></div>
                 <div><span className={label}>Batch (litres)</span><input type="number" step="0.1" value={form.batchLitres ?? ''} onChange={set('batchLitres')} className={field} /></div>
                 <div><span className={label}>Pitched on</span><input type="date" value={form.startedOn || ''} onChange={set('startedOn')} className={field} /></div>
@@ -183,6 +215,8 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                 <div className="sm:col-span-3"><span className={label}>Yeast - how it was pitched</span><input value={form.yeastNotes || ''} onChange={set('yeastNotes')} placeholder="rehydrated with Go-Ferm at 40°C, pitched at 20°C" className={field} /></div>
                 <div className="sm:col-span-3"><span className={label}>Nutrients</span><input value={form.nutrients || ''} onChange={set('nutrients')} placeholder="Fermaid-O, TOSNA 4 doses of 1.5 g" className={field} /></div>
                 <div className="sm:col-span-3"><span className={label}>Water</span><input value={form.water || ''} onChange={set('water')} placeholder="tap, Campden-treated / bottled spring" className={field} /></div>
+                <div className="sm:col-span-2"><span className={label}>Recipe source</span><input value={form.sourceName || ''} onChange={set('sourceName')} placeholder="where the recipe came from" className={field} /></div>
+                <div><span className={label}>Source link</span><input value={form.sourceUrl || ''} onChange={set('sourceUrl')} placeholder="https://..." className={field} /></div>
               </div>
               <div className="mt-4">
                 <span className={label}>Ingredients</span>
@@ -201,8 +235,8 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
-                <div><span className={label}>Method</span><textarea rows={4} value={form.method || ''} onChange={set('method')} placeholder="How you made it - steps, temperatures, timings" className={`${field} resize-y`} /></div>
-                <div><span className={label}>Notes</span><textarea rows={4} value={form.notes || ''} onChange={set('notes')} placeholder="Anything else worth remembering" className={`${field} resize-y`} /></div>
+                <div><span className={label}>Method</span><textarea rows={Math.min(14, Math.max(4, (form.method || '').split('\n').length + 1))} value={form.method || ''} onChange={set('method')} placeholder="How you made it - steps, temperatures, timings" className={`${field} resize-y`} /></div>
+                <div><span className={label}>Notes</span><textarea rows={Math.min(14, Math.max(4, Math.ceil((form.notes || '').length / 60)))} value={form.notes || ''} onChange={set('notes')} placeholder="Anything else worth remembering" className={`${field} resize-y`} /></div>
               </div>
               <div className="flex gap-2 mt-4">
                 <button onClick={saveBrew} disabled={!form.name.trim() || busy === 'save'} className={primary}>{busy === 'save' ? <RotateCw size={13} className="animate-spin" /> : <Save size={13} />} Save</button>
@@ -211,7 +245,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
             </div>
           )}
 
-          {brew && tab === 'log' && (
+          {brew && !brew.isRecipe && tab === 'log' && (
             <div className={panel}>
               <h2 className="text-xs font-black uppercase tracking-wider mb-3">Fermentation log</h2>
               <GravityChart logs={brew.logs} og={brew.og} thirdBreak={c.thirdBreak} isDark={isDark} />
@@ -241,7 +275,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
             </div>
           )}
 
-          {brew && tab === 'tastings' && (
+          {brew && !brew.isRecipe && tab === 'tastings' && (
             <div className={panel}>
               <h2 className="text-xs font-black uppercase tracking-wider mb-3">How it tasted</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -274,7 +308,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
             </div>
           )}
 
-          {brew && tab === 'insights' && (
+          {brew && !brew.isRecipe && tab === 'insights' && (
             <>
               <div className={panel}>
                 <div className="flex items-center justify-between mb-3 gap-2">
