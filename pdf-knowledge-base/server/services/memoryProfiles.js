@@ -22,7 +22,7 @@ export const lastUserMood = () => readJson(MOOD_KEY, null);
 // the Yorkshire persona should sound ('sound properly Yorkshire', 'reet'), or they pull the new voice back to Leeds
 export function profilesForPrompt({ accentFree = false } = {}) {
   const { simon, self } = getProfiles();
-  const accentLesson = /yorkshire|leeds|accent|dialect|reet|how do|'ow do|aye/i;
+  const accentLesson = /yorkshire|leeds|accent|dialect|\breet\b|how do\b|'ow do|\baye\b/i;
   if (accentFree && self?.toldOffFor?.length) self.toldOffFor = self.toldOffFor.filter((x) => !accentLesson.test(x));
   const line = (label, arr) => (arr?.length ? `${label}: ${arr.join('; ')}` : '');
   const a = simon ? [line('People', simon.people), line('Projects', simon.projects), line('Plans', simon.plans), line('Likes', simon.likes), line('Dislikes', simon.dislikes), line('Goals', simon.goals)].filter(Boolean) : [];

@@ -165,7 +165,7 @@ export async function startKomootSync() {
 // Komoot routes saved since the last sync - a new route planned for the next run turns up in the finder,
 // described and matched. Checked every 10 minutes; runs once per day.
 
-const RUN_EVENT = /(run|runs|running|jog|jogging|parkrun|long run|tempo|intervals)/i;
+const RUN_EVENT = /\b(run|runs|running|jog|jogging|parkrun|long run|tempo|intervals)\b/i;
 const SYNC_DAY_KEY = 'komoot_evening_sync_day';
 const londonNow = () => {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false })

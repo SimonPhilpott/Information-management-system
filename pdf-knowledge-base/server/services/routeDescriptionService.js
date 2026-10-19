@@ -154,7 +154,7 @@ const TRAIL = /\b(way|path|trod|line|lines|trail|greenway|walk|loop|track)\b/i;
 export function landmarkSentence(landmarks, description = '') {
   const desc = String(description || '').toLowerCase();
   // names saved before 'Recreation Ground' stopped getting 'park' added
-  const names = (landmarks || []).map((n) => n.replace(/(ground|field|fields|common|green) park$/i, '$1')).filter((n) => !STREETY.test(n) || NATURAL.test(n.replace(STREETY, '')) && /park|wood|lake|pond/i.test(n));
+  const names = (landmarks || []).map((n) => n.replace(/\b(ground|field|fields|common|green) park$/i, '$1')).filter((n) => !STREETY.test(n) || NATURAL.test(n.replace(STREETY, '')) && /park|wood|lake|pond/i.test(n));
   const plain = new Set(names.map((n) => n.toLowerCase()));
   const kept = names.filter((n) => !/^ywt\s+/i.test(n) || !plain.has(n.replace(/^ywt\s+/i, '').toLowerCase()))
     .filter((n) => !desc.includes(n.toLowerCase().replace(/ (woods|park|lake)$/, '')))
