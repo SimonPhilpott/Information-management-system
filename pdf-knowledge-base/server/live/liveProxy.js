@@ -22,7 +22,9 @@ import { buildMorningReportDirective, getDayReport, isFirstInteractionToday, mar
 import { campaignsForIms } from '../services/campaignsService.js';
 import { clearOldNightscout, describeForIms as describeGlucoseForIms, dosingContext, logCarbs, recentCarbs } from '../services/glucoseHubService.js';
 import { createEvent, describeEvents, getUpcomingEvents } from '../services/calendarService.js';
-import { createTask, describeTasksForIms, markReported, owedThinkTasks } from '../services/tasksService.js';
+import { createTask, describeTasksForIms, markReported, owedThinkTasks, saveDraft } from '../services/tasksService.js';
+import { getDayWrapUp } from '../services/dayWrapUpService.js';
+import { childrenAtDesk, childrenAmong, childNote } from '../services/deskCompanyService.js';
 import { describeCollectionForIms } from '../services/boardgamesService.js';
 import { describeTraining, getStatus as getStravaStatus } from '../services/stravaService.js';
 import { doorbellService } from '../services/doorbellService.js';
@@ -414,6 +416,19 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   };
   const silenceTimer = imsBrain ? setInterval(() => {
     if (isClientClosed || !currentGeminiWs || currentGeminiWs.readyState !== WebSocket.OPEN) return;
+    // A child at the desk (the camera sees Rowan): Ims is told, and told again when they've gone - child-safe
+    // whatever the humour slider says (19 Oct, Simon: "Rowan mode")
+    if (isHardware && isConversationActive && currentTurnComplete && !isRecordingActive()) {
+      const kids = childrenAtDesk();
+      const key = kids.map((k) => k.name).sort().join(',');
+      if (key !== kidsNoted) {
+        const was = kidsNoted; kidsNoted = key;
+        if (key || was) {
+          currentGeminiWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `(System: ${childNote(kids)})` }] }], turnComplete: false } }));
+          try { logCapture(`[${new Date().toISOString()}] ${tag} CHILD AT THE DESK: ${key || 'gone'}\n`); } catch (_) { }
+        }
+      }
+    }
     if (!currentTurnComplete) return; // Ims is thinking or speaking
     if (isHardware && isRecordingActive()) return;
     const clearlyForIms = () => !proactiveAudio || looksAddressed(heardText) || /\?["')\s]*$/.test(lastImsReply || '');
@@ -576,6 +591,8 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   let dayReportAskedAt = 0, dayReportFetchAt = 0, dayReportRedirected = false;
   // A story from tellStory being told: if he stops partway (with nothing said by Simon since), he's given the rest
   let storyState = null; // { words: [...], spoken, nudges, promptAt }
+  let lastPiece = null; // { kind, text, request } - the last thing writePiece wrote, for changes and saveDraft
+  let kidsNoted = ''; // the children this Gemini session has been told are at the desk
   const DAY_REPORT_ASK = /\b(day|morning|daily) (report|briefing)\b|\bmy report\b|\bbrief me\b/i;
   // Gemini sometimes speaks a few items of the report and stops (6 Oct: three calendar items, no weather,
   // health or news). Words spoken since the report went out are counted; a reply that ends far short of a
@@ -2153,6 +2170,37 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 try { logCapture(`[${new Date().toISOString()}] ${tag} STORY WRITTEN (${storyState.words.length} words): ${story.slice(0, 120)}\n`); } catch (_) { }
                 respondToToolCall(call, { story, say: 'Tell this whole story now, ' + inYourVoice() + ' - every part of it, to the very end, in one go. Perform it; keep its words and details (light touches of your own phrasing are fine). No introduction beyond what you have already said, no summary, no asking if he wants more.' });
               }).catch((err) => respondToToolCall(call, { error: err.message, say: 'Tell him a good story yourself, a complete one with a proper ending.' }));
+            } else if (call.name === 'writePiece') {
+              keepListening(30000);
+              const args = call.args || {};
+              const revising = Boolean(args.change && lastPiece);
+              const kind = args.kind || (revising ? lastPiece.kind : 'explanation');
+              let campaign = '';
+              if (kind === 'recap') { try { campaign = JSON.stringify(campaignsForIms({ name: args.campaign || '', chronicle: true })); } catch (_) { } }
+              import('../services/speechWriterService.js').then((m) => m.writePiece({ kind, request: args.request || (revising ? lastPiece.request : ''), forWhom: args.forWhom, tone: args.tone, length: args.length,
+                previous: revising ? lastPiece.text : '', change: args.change || '', campaign }).then((text) => ({ text, performed: m.PERFORMED.has(kind) }))).then(({ text, performed }) => {
+                lastPiece = { kind, text, request: args.request || lastPiece?.request || '' };
+                console.log(`${tag} ✍️ writePiece(${kind}${revising ? ', changed' : ''}): ${text.split(/\s+/).length} words`);
+                try { logCapture(`[${new Date().toISOString()}] ${tag} PIECE WRITTEN (${kind}, ${text.split(/\s+/).length} words): ${text.slice(0, 120)}\n`); } catch (_) { }
+                const simons = ['toast', 'speech', 'poem', 'card', 'message'].includes(kind);
+                if (kind !== 'recipe') storyState = { words: text.split(/\s+/).filter(Boolean), spoken: 0, nudges: 0, promptAt: Date.now() };
+                const say = kind === 'recipe'
+                  ? 'Cook along with him: first the ingredients, briefly, and ask if he has everything. Then ONE step at a time - say it, and wait for "next" / "done" / "what now". When a step has [timer N min], set a timer for it with scheduleItem (labelled with the step) and tell him you have. If he asks to go back or repeat, do. Do not read ahead.'
+                  : simons
+                    ? 'Read it to him now, all of it, exactly as written - these are his words to give or send, so say them plainly and well (keep your own accent, but no dialect changes to the text). Then ask in a few words if he wants anything changed (writePiece with change) or saved (saveDraft).'
+                    : 'Say this now, ' + inYourVoice() + ' - all of it, in one go, to the end. Keep its facts and details (light touches of your own phrasing are fine). No introduction beyond what you have already said, no summary, no asking if he wants more.';
+                respondToToolCall(call, { kind, text, say });
+              }).catch((err) => respondToToolCall(call, { error: err.message, say: 'Do your best yourself - a complete answer, not a fragment.' }));
+            } else if (call.name === 'saveDraft') {
+              try {
+                const text = call.args?.text || lastPiece?.text;
+                const d = saveDraft({ title: call.args?.title, text, request: lastPiece?.request || '', origin: isHardware ? 'desk' : 'web' });
+                console.log(`${tag} 💾 saveDraft #${d.id}: ${d.title}`);
+                respondToToolCall(call, { status: 'saved', title: d.title, where: 'the Tasks page in IMS (/ims/tasks), to copy', note: 'Tell him in a few words it is saved on his Tasks page.' });
+              } catch (err) { respondToToolCall(call, { error: err.message }); }
+            } else if (call.name === 'getDayWrapUp') {
+              getDayWrapUp().then((w) => respondToToolCall(call, { ...w, say: 'Give him the wrap-up in a few natural sentences: what got done today (lead with that, and be generous about it), what is still going, then what is lined up for tomorrow. Skip anything empty. No lists read out, no health or running.' }))
+                .catch((err) => respondToToolCall(call, { error: err.message }));
             } else if (call.name === 'addInstruction') {
               try {
                 const r = addInstruction({ ...(call.args || {}), origin: isHardware ? 'desk' : 'web' });
@@ -2264,6 +2312,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           }
           if (parsed?.setupComplete) {
             geminiSetupAcknowledged = true;
+            kidsNoted = '';
             if (wakeCheck && !wakeCheck.readyAt) wakeCheck.readyAt = Date.now();
             paceFlush();
             ws.send(JSON.stringify({ setupComplete: {} }));
@@ -2888,12 +2937,14 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           } else if (satDown) {
             const names = satDown[1].split(/\s+and\s+/i).map((n) => n.trim()).filter(Boolean);
             const rows = instructionsForPeople(names);
+            const kids = childrenAmong(names);
             if (rows.length) {
               rows.forEach((r) => markInstructionFired(r.id));
               instructionDelivery = { ids: rows.map((r) => r.id), at: Date.now() };
               instead = `${satDown[1]} has just sat down at the desk in front of you. Say a short, natural hello to ${satDown[1]} by name, in character, in your own persona's voice and accent - and as part of it, do what Simon asked you to do for them: ${carryOutPrompt(rows)} Don't mention the camera, health, blood sugar or running, and don't mention instructions or numbers.`;
               try { logCapture(`[${new Date().toISOString()}] ${tag} INSTRUCTION FOR ${satDown[1]} IN THE HELLO #${instructionDelivery.ids.join(', #')}\n`); } catch (_) { }
             }
+            if (kids.length) { instead = `${instead || said} (${childNote(kids)})`; kidsNoted = kids.map((k) => k.name).sort().join(','); }
           }
           if (instead) {
             parsedCtrl.clientContent.turns = [{ role: 'user', parts: [{ text: instead }] }];

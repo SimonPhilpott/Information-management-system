@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useFocusItem } from '../../hooks/useFocusItem';
-import { ListChecks, Plus, RotateCw, Trash2, ChevronDown, ChevronRight, ExternalLink, CheckCircle2, XCircle, Loader2, Clock } from 'lucide-react';
+import { ListChecks, Plus, RotateCw, Trash2, ChevronDown, ChevronRight, ExternalLink, CheckCircle2, XCircle, Loader2, Clock, FileText, Copy } from 'lucide-react';
 import PortalShell from './PortalShell';
 import Prose from './Prose';
 
@@ -14,7 +14,8 @@ const when = (t) => (t ? new Date(t).toLocaleString('en-GB', { timeZone: 'Europe
 
 function TaskRow({ task, isDark, onRerun, onDelete }) {
   const [open, setOpen] = useState(false);
-  const st = STATUS[task.status] || STATUS.queued;
+  const draft = task.kind === 'draft'; // a toast, card, message... written with Ims, kept here to copy
+  const st = draft ? { label: 'Draft', icon: FileText, cls: 'text-indigo-500' } : (STATUS[task.status] || STATUS.queued);
   const Icon = st.icon;
   const border = isDark ? 'border-white/10' : 'border-[#2E2B27]/10';
   return (
@@ -45,7 +46,8 @@ function TaskRow({ task, isDark, onRerun, onDelete }) {
           {task.status === 'failed' && <p className="text-xs text-red-500">{task.error}</p>}
           {(task.status === 'queued' || task.status === 'running') && <p className="text-xs text-slate-500">Still working - this usually takes under a minute. The page updates by itself.</p>}
           <div className="flex gap-2">
-            {(task.status === 'done' || task.status === 'failed') && (
+            {draft && <button onClick={() => navigator.clipboard?.writeText(task.result || '')} className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border ${border}`}><Copy size={12} /> Copy</button>}
+            {!draft && (task.status === 'done' || task.status === 'failed') && (
               <button onClick={() => onRerun(task.id)} className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border ${border}`}><RotateCw size={12} /> Run again</button>
             )}
             <button onClick={() => onDelete(task)} className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border ${border} text-red-500`}><Trash2 size={12} /> Delete</button>

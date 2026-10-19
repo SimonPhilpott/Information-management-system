@@ -121,6 +121,18 @@ export async function createTask({ request, title, origin = 'page', kind = 'rese
   return present(db.prepare('SELECT * FROM tasks WHERE id = ?').get(info.lastInsertRowid));
 }
 
+// A finished piece Ims wrote with Simon (a toast, a card, a message...), kept on the Tasks page to copy - not
+// research, so nothing runs and it never goes into the day report
+export function saveDraft({ title, text, request = '', origin = 'desk' }) {
+  const body = String(text || '').trim();
+  if (!body) throw new Error('Nothing to save yet.');
+  const t = String(title || '').trim().slice(0, 80) || body.split('\n')[0].slice(0, 60);
+  const now = Date.now();
+  const info = db.prepare("INSERT INTO tasks (title, request, status, summary, result, origin, created_at, finished_at, reported_at, kind) VALUES (?, ?, 'done', ?, ?, ?, ?, ?, ?, 'draft')")
+    .run(t, String(request || t).slice(0, 2000), 'A draft written with Ims - ready to copy.', body, origin, now, now, now);
+  return present(db.prepare('SELECT * FROM tasks WHERE id = ?').get(info.lastInsertRowid));
+}
+
 export const listTasks = (limit = 50) => db.prepare('SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?').all(limit).map(present);
 export const getTask = (id) => present(db.prepare('SELECT * FROM tasks WHERE id = ?').get(Number(id)));
 export const deleteTask = (id) => db.prepare('DELETE FROM tasks WHERE id = ?').run(Number(id)).changes > 0;

@@ -1240,6 +1240,33 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             parameters: { type: "OBJECT", properties: { on: { type: "BOOLEAN", description: "true to start practising, false when finished" }, scenario: { type: "STRING", description: "What's being practised and who you're playing, e.g. 'solution architect interview - you are the hiring manager'" } }, required: ["on"] }
           },
           {
+            name: "writePiece",
+            description: "Writes a longer piece properly first, for you to say - never make these up as you go (on the fly they come out short and thin). Kinds: explanation ('how does X work', 'explain...' - anything that needs more than a few sentences); toast, speech, poem, card (words for Simon to give or write - a birthday toast, a card for his dad); message (an email or Teams message he dictates the gist of); recipe (to cook along with, one step at a time); recap ('previously on' for a board game campaign); teach (teaching a board game's rules). Takes about ten seconds: say a few words first ('Give us a sec'). To change the last one ('make it funnier', 'shorter', 'mention the mead'), call it again with 'change' - the last version is passed in for you.",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                kind: { type: "STRING", enum: ["explanation", "toast", "speech", "poem", "card", "message", "recipe", "recap", "teach"], description: "What it is." },
+                request: { type: "STRING", description: "What he asked for, in full - the topic, the dish and servings, the game, the gist of the message, and any details he gave." },
+                forWhom: { type: "STRING", description: "Who it's for or about, and anything known about them (e.g. 'his dad Dave, turning 83, likes his homebrew')." },
+                tone: { type: "STRING", description: "Any tone he asked for (funny, formal, short and sweet...)." },
+                length: { type: "STRING", enum: ["short", "normal", "long"], description: "normal unless he says." },
+                campaign: { type: "STRING", description: "For a recap: the campaign's name, if he named one." },
+                change: { type: "STRING", description: "Only to change the last piece: what to change." }
+              },
+              required: ["kind", "request"]
+            }
+          },
+          {
+            name: "saveDraft",
+            description: "Saves the last piece you wrote with writePiece (a toast, card, message, poem, speech, recipe...) to his Tasks page in IMS, where he can copy it - when he says 'save it', 'keep that', 'I'll copy it later'.",
+            parameters: { type: "OBJECT", properties: { title: { type: "STRING", description: "A short title, e.g. 'Toast for Dad's 83rd'." } } }
+          },
+          {
+            name: "getDayWrapUp",
+            description: "The end-of-day wrap-up - for 'what did I get done today?', 'wrap up my day', 'what's on tomorrow?': today's finished background tasks, drafts, dev ideas and instructions you carried out, and tomorrow's calendar, alarms and reminders.",
+            parameters: { type: "OBJECT", properties: {} }
+          },
+          {
             name: "tellStory",
             description: "Writes a complete story for you to tell aloud - call it whenever Simon asks for a story, a tale or a yarn (never make one up as you go: told on the fly they come out short and flat). It takes about ten seconds, so first say a few words in character ('Give us a sec, I'll think one up'). Then tell the WHOLE story it returns, in your own voice and accent, all the way to the end without stopping, asking or summarising - perform it.",
             parameters: {
