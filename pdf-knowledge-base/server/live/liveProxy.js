@@ -451,7 +451,11 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     // At most ~5 s of it, too: a lost answer is short - 25 s of sound with no words in it is the room (17 Oct:
     // "didn't catch that" after the day report, from 776 frames of background noise).
     if (isHardware && isConversationActive && pendingSpeechFrames > 160) clearPendingSpeech();
-    if (isHardware && isConversationActive && !clarifyNudged && pendingSpeechFrames >= 15 && Date.now() - pendingSpeechLast >= (inPractice() ? 10000 : 3500)
+    // And only as the answer to a question he's just asked: a lost answer comes within a few seconds of it. A
+    // cough, a chair or the telly after a hello, a statement or mid-story is not something he missed (19 Oct:
+    // five times in a morning, twice after the sit-down hello and once into the start of a story).
+    const askedJustNow = /\?["')\s]*$/.test(lastImsReply || '') && replyEndedAt && pendingSpeechStart && pendingSpeechStart - replyEndedAt < 8000;
+    if (isHardware && isConversationActive && !clarifyNudged && askedJustNow && pendingSpeechFrames >= 15 && Date.now() - pendingSpeechLast >= (inPractice() ? 10000 : 3500)
       && followUpUntil && pendingSpeechStart <= followUpUntil + 1000) {
       clarifyNudged = true;
       const frames = pendingSpeechFrames;
@@ -570,6 +574,8 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // A day report given from memory: asked for, and 25 words into one without having called getDayReport (19 Oct:
   // "a run tonight at quarter past seven" and Max Richter "out tomorrow", from his notes, then the real report)
   let dayReportAskedAt = 0, dayReportFetchAt = 0, dayReportRedirected = false;
+  // A story from tellStory being told: if he stops partway (with nothing said by Simon since), he's given the rest
+  let storyState = null; // { words: [...], spoken, nudges, promptAt }
   const DAY_REPORT_ASK = /\b(day|morning|daily) (report|briefing)\b|\bmy report\b|\bbrief me\b/i;
   // Gemini sometimes speaks a few items of the report and stops (6 Oct: three calendar items, no weather,
   // health or news). Words spoken since the report went out are counted; a reply that ends far short of a
@@ -1223,6 +1229,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             heardThisTurn = (heardThisTurn + incomingTranscript).slice(-400);
             if (/[a-z0-9]/i.test(incomingTranscript)) { if (heardAt <= lastModelOutputAt) { heardText = ''; heardNudge = 0; } heardAt = Date.now(); heardText = (heardText + incomingTranscript).slice(-300); }
             if (DAY_REPORT_ASK.test(heardThisTurn) && Date.now() - dayReportAskedAt > 60000) { dayReportAskedAt = Date.now(); dayReportRedirected = false; }
+            if (storyState && /\b(go on|carry on|keep going|continue|and then|what happened)\b/i.test(incomingTranscript)) storyState.promptAt = Date.now() + 1;
             if (wakeCheck && !wakeCheck.heardAt && /[a-z]/i.test(incomingTranscript)) wakeCheck.heardAt = Date.now();
             if (wakeCheck && !wakeCheck.extended && !looksAddressed(heardThisTurn) && WAKE_START_RX.test(heardThisTurn)) {
               wakeCheck.extended = true;
@@ -1462,6 +1469,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             }
           }
           { const n = spokenText.split(/\s+/).filter(Boolean).length; wordsSpoken += n; if (toolAnswerOwedAt) toolAnswerWords += n; }
+          if (storyState) storyState.spoken += spokenText.split(/\s+/).filter(Boolean).length;
           if (dayReportSentAt && Date.now() - dayReportSentAt < 180000) { dayReportWords += spokenText.split(/\s+/).filter(Boolean).length; dayReportSpoken = (dayReportSpoken + spokenText).slice(-600); }
           // I4: the face follows a turn in a long reply - timed to when those words are actually heard
           // (no face set yet: from the first ~8 words; already set: on a later turn in a reply past 12 words)
@@ -1569,6 +1577,18 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 } catch (err) { console.warn(`${tag} pronunciation save failed:`, err.message); }
               }
               lastImsReply = said;
+              if (storyState) {
+                const st = storyState;
+                if (st.spoken >= st.words.length * 0.85 || Date.now() - st.promptAt > 15 * 60000) storyState = null; // told
+                else if (heardAt < st.promptAt && st.nudges < 8 && isConversationActive && gWs.readyState === WebSocket.OPEN && !(isHardware && isRecordingActive())) {
+                  st.nudges++; st.promptAt = Date.now();
+                  const rest = st.words.slice(Math.max(0, st.spoken - 4)).join(' ');
+                  textTurnSent = true; sessionUsed = true; lastActivityAt = Date.now();
+                  gWs.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: `(System: you stopped partway through the story. Carry straight on from where you left off - no recap, no "where was I" - and tell the rest to the very end, in your own voice: ${rest})` }] }], turnComplete: true } }));
+                  keepListening(25000);
+                  try { logCapture(`[${new Date().toISOString()}] ${tag} STORY CONTINUED (${st.spoken} of ${st.words.length} words told)\n`); } catch (_) { }
+                }
+              }
               if (instructionDelivery && Date.now() - instructionDelivery.at < 120000 && said) {
                 for (const id of instructionDelivery.ids) { try { completeInstruction(id, `Done - said: "${said.slice(0, 240)}"`); } catch (_) { } }
                 try { logCapture(`[${new Date().toISOString()}] ${tag} INSTRUCTION DONE #${instructionDelivery.ids.join(', #')}\n`); } catch (_) { }
@@ -2105,12 +2125,12 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               respondToToolCall(call, { status: on ? 'practice mode on' : 'practice mode off',
                 note: on ? 'Play the role now and stay in it. He has time to think: pauses are his. Step out only when he asks how it went, wants to stop, or asks you something as yourself.' : 'Back to normal conversation.' });
             } else if (call.name === 'askGemini') {
-              import('./services/imsFallbackService.js').then((m) => m.askGeneral({ question: call.args?.question, context: call.args?.context || '' })).then((answer) => {
+              import('../services/imsFallbackService.js').then((m) => m.askGeneral({ question: call.args?.question, context: call.args?.context || '' })).then((answer) => {
                 console.log(`${tag} 💡 askGemini(${String(call.args?.question || '').slice(0, 60)})`);
                 respondToToolCall(call, { answer, say: 'Retell this briefly ' + inYourVoice() + ', adding anything you already know that fits. Do not read it word for word or mention Gemini unless asked.' });
               }).catch((err) => respondToToolCall(call, { error: err.message, say: 'Answer as best you can yourself, briefly, in your own voice.' }));
             } else if (call.name === 'addRunNote') {
-              import('./services/runLearningService.js').then((m) => m.noteOnLatestRun({ text: call.args?.text, minute: call.args?.minute ?? null })).then((r) => {
+              import('../services/runLearningService.js').then((m) => m.noteOnLatestRun({ text: call.args?.text, minute: call.args?.minute ?? null })).then((r) => {
                 console.log(`${tag} 🏃 addRunNote on ${r.run}`);
                 respondToToolCall(call, { status: 'noted', run: r.run, note: 'It will be lined up with their glucose in the run retrospective (Run Planner, Flythrough).' });
               }).catch((err) => respondToToolCall(call, { error: err.message }));
@@ -2125,6 +2145,14 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                   databaseNowPercent: r.dbSize?.pct ?? null,
                 });
               }).catch((err) => respondToToolCall(call, { error: err.message }));
+            } else if (call.name === 'tellStory') {
+              keepListening(30000);
+              import('../services/storyService.js').then((m) => m.writeStory({ request: call.args?.request, length: call.args?.length })).then((story) => {
+                storyState = { words: story.split(/\s+/).filter(Boolean), spoken: 0, nudges: 0, promptAt: Date.now() };
+                console.log(`${tag} 📖 tellStory: ${storyState.words.length} words`);
+                try { logCapture(`[${new Date().toISOString()}] ${tag} STORY WRITTEN (${storyState.words.length} words): ${story.slice(0, 120)}\n`); } catch (_) { }
+                respondToToolCall(call, { story, say: 'Tell this whole story now, ' + inYourVoice() + ' - every part of it, to the very end, in one go. Perform it; keep its words and details (light touches of your own phrasing are fine). No introduction beyond what you have already said, no summary, no asking if he wants more.' });
+              }).catch((err) => respondToToolCall(call, { error: err.message, say: 'Tell him a good story yourself, a complete one with a proper ending.' }));
             } else if (call.name === 'addInstruction') {
               try {
                 const r = addInstruction({ ...(call.args || {}), origin: isHardware ? 'desk' : 'web' });

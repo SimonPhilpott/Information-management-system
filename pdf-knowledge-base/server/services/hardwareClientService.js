@@ -1240,6 +1240,18 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
             parameters: { type: "OBJECT", properties: { on: { type: "BOOLEAN", description: "true to start practising, false when finished" }, scenario: { type: "STRING", description: "What's being practised and who you're playing, e.g. 'solution architect interview - you are the hiring manager'" } }, required: ["on"] }
           },
           {
+            name: "tellStory",
+            description: "Writes a complete story for you to tell aloud - call it whenever Simon asks for a story, a tale or a yarn (never make one up as you go: told on the fly they come out short and flat). It takes about ten seconds, so first say a few words in character ('Give us a sec, I'll think one up'). Then tell the WHOLE story it returns, in your own voice and accent, all the way to the end without stopping, asking or summarising - perform it.",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                request: { type: "STRING", description: "What he asked for, in full - the kind of story, anything it should have in it, who it's for." },
+                length: { type: "STRING", enum: ["short", "normal", "long"], description: "short (about 2 minutes), normal (about 4, the default) or long (about 7) - 'a long one' is long." }
+              },
+              required: ["request"]
+            }
+          },
+          {
             name: "addInstruction",
             description: "Saves something Simon asks YOU to do later, or to keep doing - an instruction for you, kept until it's done: say something to someone when they're at the desk ('if you see Rowan, tell him...'), tell or ask Simon something at a time ('at six, tell me to...'), ask him something next time you talk, or a standing rule ('from now on...', 'always...', 'never...'). Not for his own reminders ('remind me to...' is scheduleItem). Never just promise to remember an instruction - save it, or it won't happen. Be precise: put the exact words he wants said in 'say', word for word; who it's for; when; and any time window he gives ('he'll be here about 8:30 to 9' -> person trigger, notBefore 20:15, notAfter 21:30 - widen a rough time a little). If he says when someone will be there, that's the window: never do it outside it. If something essential is missing or unclear - who, when, or what to say - ask him that one thing first. Once saved, read it back exactly (the result gives you the words).",
             parameters: {
