@@ -1330,8 +1330,13 @@ const sendToHardware = (msg) => {
 };
 onPresence('gaze', (gaze) => sendToHardware({ gaze }));
 onPresence('greet', ({ names }) => {
+  // Only Simon is greeted. Anyone else - even someone whose face is saved - gets no reaction at all, unless Simon
+  // has asked Ims to do something for them (a person instruction that's due now): then the hello carries it out.
+  // (Simon, 19 Oct: "Ims should never react if he sees someone other than me.")
+  const allowed = names.filter((n) => /^simon\b/i.test(String(n).trim()) || instructionsForPeople([n]).length);
+  if (allowed.length < names.length) console.log(`[Presence] Not greeting ${names.filter((n) => !allowed.includes(n)).join(', ')} - only Simon, or someone he's asked Ims to talk to`);
   // First names only, and nothing that could break the device's prompt string.
-  const first = names.map((n) => String(n).trim().split(/\s+/)[0].replace(/["\\]/g, '').slice(0, 24)).filter(Boolean);
+  const first = allowed.map((n) => String(n).trim().split(/\s+/)[0].replace(/["\\]/g, '').slice(0, 24)).filter(Boolean);
   if (first.length) sendToHardware({ greet: { names: first.join(' and ') } });
 });
 startPresence();
