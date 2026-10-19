@@ -869,7 +869,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   const othersAtDesk = () => { try { const p = getPresence(); return Boolean(p.present && p.names.some((n) => !/^simon\b/i.test(String(n).trim()))); } catch (_) { return false; } };
   // A wake phrase said TO him: it opens with a greeting and the name ("Hey Ims, ..."), or is just that.
   // "Ims says hello to you guys" mentions him but isn't said to him.
-  const STRICT_OPENING = /^\W*(hey|hi|hiya|heya|hello|oi|eh\s*up|ey\s*up|ay\s*up|ayup|eyup)/i;
+  const STRICT_OPENING = /^\W*(hey|hi|hiya|heya|hello|oi|eh\s*up|ey\s*up|ay\s*up|ayup|eyup)\b/i;
   const saidToIms = (t) => {
     const x = String(t || '').trim();
     if (!x) return false;
