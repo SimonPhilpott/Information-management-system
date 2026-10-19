@@ -2759,6 +2759,10 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           heardThisTurn = '';
           if (wakeKickTimer) { clearTimeout(wakeKickTimer); wakeKickTimer = null; }
           resetTurnTriggers();
+          // The conversation's over, so its follow-up window is too: the 15 s left after his "Righto, see you"
+          // let Rowan's next words count as talking to Ims (19 Oct, "can you go away, Ims" - then he answered
+          // "¿Qué?" four seconds later). From here only a wake phrase starts him again.
+          followUpUntil = 0; replyEndedAt = 0; emotionAnsweredAt = 0; toolAnswerOwedAt = 0;
           wakeDaemonService.forceStandby('device_session_closed');
           try {
             logCapture(`[${new Date().toISOString()}] ${tag} SESSION CLOSED BY DEVICE\n`);
