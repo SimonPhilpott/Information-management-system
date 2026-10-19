@@ -35,5 +35,5 @@ export function childrenAtDesk() {
 }
 
 export const childNote = (kids) => kids.length
-  ? `${kids.map((k) => `${k.name} (${k.age})`).join(' and ')} ${kids.length === 1 ? 'is' : 'are'} at the desk - a child. Until they've gone, follow the CHILD AT THE DESK rules: child-safe, whatever your humour setting.`
+  ? `${kids.map((k) => `${k.name} (${k.age})`).join(' and ')} ${kids.length === 1 ? 'is' : 'are'} at the desk - a child. CHILD AT THE DESK - until they've gone, follow your how-to for when a child is at the desk: child-safe, whatever your humour setting.`
   : 'No children at the desk now - back to your usual self.';

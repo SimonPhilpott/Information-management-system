@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useFocusItem } from '../../hooks/useFocusItem';
-import { ClipboardList, Plus, RotateCw, Trash2, Pencil, Check, X, ChevronDown, ChevronRight, Clock, User, MessageCircle, Repeat, Ban } from 'lucide-react';
+import { ClipboardList, Plus, RotateCw, Trash2, Pencil, Check, X, ChevronDown, ChevronRight, Clock, User, MessageCircle, Repeat, Ban, BookOpen } from 'lucide-react';
 import PortalShell from './PortalShell';
 
 // Ims's instructions: things Simon has asked Ims to do later - like reminders, but for Ims. Ims saves them
@@ -10,6 +10,7 @@ const TRIGGERS = [
   { value: 'person', label: 'When someone is at the desk', icon: User },
   { value: 'next_conversation', label: 'Next time we talk', icon: MessageCircle },
   { value: 'standing', label: 'Always (a standing rule)', icon: Repeat },
+  { value: 'how_to', label: 'How to do something (when it comes up)', icon: BookOpen },
 ];
 const REPEATS = [
   { value: 'once', label: 'Once' },
@@ -24,9 +25,9 @@ const STATUS = {
 const when = (t) => (t ? new Date(t).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 const hhmm = (t) => (t ? new Date(t).toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' }) : '');
 const ymd = (t) => (t ? new Date(t).toLocaleDateString('en-CA', { timeZone: 'Europe/London' }) : '');
-const EMPTY = { instruction: '', say: '', trigger: 'time', person: '', time: '', date: '', notBefore: '', notAfter: '', notBeforeDate: '', repeat: 'once' };
+const EMPTY = { instruction: '', say: '', trigger: 'time', person: '', situation: '', time: '', date: '', notBefore: '', notAfter: '', notBeforeDate: '', repeat: 'once' };
 const fromItem = (i) => ({
-  instruction: i.instruction, say: i.say || '', trigger: i.trigger, person: i.person || '',
+  instruction: i.instruction, say: i.say || '', trigger: i.trigger, person: i.person || '', situation: i.situation || '',
   time: hhmm(i.at), date: ymd(i.at), notBefore: hhmm(i.notBefore), notAfter: hhmm(i.notAfter), notBeforeDate: ymd(i.notBefore), repeat: i.repeat || 'once',
 });
 
@@ -38,7 +39,7 @@ function InstructionForm({ form, setForm, isDark, onSave, onCancel, saving, save
     <div className="flex flex-col gap-3">
       <div>
         <span className={label}>What should Ims do?</span>
-        <textarea rows={2} value={form.instruction} onChange={set('instruction')} placeholder="e.g. Tell Rowan it's time for bed" className={`${field} resize-none`} />
+        <textarea rows={form.trigger === 'how_to' ? 6 : 2} value={form.instruction} onChange={set('instruction')} placeholder={form.trigger === 'how_to' ? 'e.g. 1) Check how many it is for. 2) Give the oven temperature first...' : "e.g. Tell Rowan it's time for bed"} className={`${field} resize-y`} />
       </div>
       <div>
         <span className={label}>Exact words to say (optional)</span>
@@ -51,7 +52,10 @@ function InstructionForm({ form, setForm, isDark, onSave, onCancel, saving, save
             {TRIGGERS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </div>
-        {form.trigger !== 'standing' && form.trigger !== 'next_conversation' && (
+        {form.trigger === 'how_to' && (
+          <div><span className={label}>When does it apply?</span><input value={form.situation} onChange={set('situation')} placeholder="e.g. he asks for a recipe" className={field} /></div>
+        )}
+        {form.trigger !== 'standing' && form.trigger !== 'next_conversation' && form.trigger !== 'how_to' && (
           <div>
             <span className={label}>Repeat</span>
             <select value={form.repeat} onChange={set('repeat')} className={field}>
@@ -69,7 +73,7 @@ function InstructionForm({ form, setForm, isDark, onSave, onCancel, saving, save
           <div><span className={label}>Who</span><input value={form.person} onChange={set('person')} placeholder="e.g. Rowan" className={field} /></div>
         )}
       </div>
-      {form.trigger !== 'time' && (
+      {form.trigger !== 'time' && form.trigger !== 'how_to' && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div><span className={label}>Not before (optional)</span><input type="time" value={form.notBefore} onChange={set('notBefore')} className={field} /></div>
           <div><span className={label}>Not after (optional)</span><input type="time" value={form.notAfter} onChange={set('notAfter')} className={field} /></div>
@@ -99,9 +103,32 @@ function PendingRow({ item, isDark, onEdit, onDone, onCancel }) {
       <div className="flex flex-wrap gap-2 pl-6 items-center">
         <span className="text-[11px] text-slate-500 mr-auto">Added {when(item.createdAt)}{item.origin === 'desk' ? ' on the desk' : item.origin === 'web' ? ' here' : ''}{item.doneCount ? ` · done ${item.doneCount}×, last ${when(item.lastDoneAt)}` : ''}</span>
         <button onClick={() => onEdit(item)} className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 border ${border}`}><Pencil size={11} /> Edit</button>
-        {item.trigger !== 'standing' && <button onClick={() => onDone(item)} className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 border ${border} text-emerald-500`}><Check size={11} /> Done</button>}
+        {item.trigger !== 'standing' && item.trigger !== 'how_to' && <button onClick={() => onDone(item)} className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 border ${border} text-emerald-500`}><Check size={11} /> Done</button>}
         <button onClick={() => onCancel(item)} className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 border ${border} text-red-500`}><Ban size={11} /> Cancel</button>
       </div>
+    </div>
+  );
+}
+
+function HowToRow({ item, isDark, onEdit, onCancel }) {
+  const [open, setOpen] = useState(false);
+  const border = isDark ? 'border-white/10' : 'border-[#2E2B27]/10';
+  return (
+    <div id={`instruction-${item.id}`} className={`rounded-xl border ${border} ${isDark ? 'bg-slate-950/40' : 'bg-white'}`}>
+      <div className="px-3 py-2.5 flex items-center gap-2 text-xs cursor-pointer" onClick={() => setOpen(!open)}>
+        {open ? <ChevronDown size={14} className="opacity-60 shrink-0" /> : <ChevronRight size={14} className="opacity-60 shrink-0" />}
+        <BookOpen size={14} className="shrink-0 text-indigo-500" />
+        <span className="font-semibold min-w-0 flex-1 break-words">When {item.situation}</span>
+      </div>
+      {open && (
+        <div className={`px-3 pb-3 pt-2 border-t ${border} flex flex-col gap-2`}>
+          <p className="text-xs leading-relaxed whitespace-pre-line">{item.instruction.replace(/ (\d+)\) /g, '\n$1) ')}</p>
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => onEdit(item)} className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 border ${border}`}><Pencil size={11} /> Edit</button>
+            <button onClick={() => onCancel(item)} className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 border ${border} text-red-500`}><Ban size={11} /> Remove</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -111,6 +138,8 @@ export default function InstructionsPortal({ theme = 'dark', onThemeToggle, setC
   const [pending, setPending] = useState([]);
   const [finished, setFinished] = useState([]);
   useFocusItem(pending.length); // Ctrl+K search results land on #<item>
+  const howTos = pending.filter((i) => i.trigger === 'how_to');
+  const waiting = pending.filter((i) => i.trigger !== 'how_to');
   const [form, setForm] = useState(EMPTY);
   const [editing, setEditing] = useState(null); // id
   const [editForm, setEditForm] = useState(EMPTY);
@@ -133,8 +162,9 @@ export default function InstructionsPortal({ theme = 'dark', onThemeToggle, setC
     const b = { instruction: f.instruction, say: f.say, trigger: f.trigger, repeat: f.repeat };
     if (f.trigger === 'time') { b.time = f.time; if (f.date) b.date = f.date; }
     if (f.trigger === 'person') b.person = f.person;
-    if (f.trigger !== 'time') { b.notBefore = f.notBefore || null; b.notAfter = f.notAfter || null; if (f.notBeforeDate) b.notBeforeDate = f.notBeforeDate; }
-    if (f.trigger === 'standing' || f.trigger === 'next_conversation') b.repeat = 'once';
+    if (f.trigger === 'how_to') b.situation = f.situation;
+    if (f.trigger !== 'time' && f.trigger !== 'how_to') { b.notBefore = f.notBefore || null; b.notAfter = f.notAfter || null; if (f.notBeforeDate) b.notBeforeDate = f.notBeforeDate; }
+    if (f.trigger === 'standing' || f.trigger === 'next_conversation' || f.trigger === 'how_to') b.repeat = 'once';
     return b;
   };
   const call = async (url, method, payload) => {
@@ -167,12 +197,22 @@ export default function InstructionsPortal({ theme = 'dark', onThemeToggle, setC
         <InstructionForm form={form} setForm={setForm} isDark={isDark} onSave={add} saving={saving} saveLabel="Save" />
       </div>
       <div className={panel}>
-        <h2 className="text-xs font-black uppercase tracking-wider mb-3">Waiting ({pending.length})</h2>
+        <h2 className="text-xs font-black uppercase tracking-wider mb-3">Waiting ({waiting.length})</h2>
         <div className="flex flex-col gap-2">
-          {pending.map((i) => (editing === i.id
+          {waiting.map((i) => (editing === i.id
             ? <div key={i.id} className={`rounded-xl border ${border} p-3`}><InstructionForm form={editForm} setForm={setEditForm} isDark={isDark} onSave={saveEdit} onCancel={() => setEditing(null)} saving={saving} saveLabel="Save changes" /></div>
             : <PendingRow key={i.id} item={i} isDark={isDark} onEdit={(x) => { setEditing(x.id); setEditForm(fromItem(x)); }} onDone={done} onCancel={cancel} />))}
-          {!pending.length && <p className="text-xs text-slate-500">Nothing waiting.</p>}
+          {!waiting.length && <p className="text-xs text-slate-500">Nothing waiting.</p>}
+        </div>
+      </div>
+      <div className={panel}>
+        <h2 className="text-xs font-black uppercase tracking-wider mb-1">How-tos ({howTos.length})</h2>
+        <p className="text-[11px] text-slate-500 mb-3">How Ims handles each kind of request - stories, recipes, a child at the desk... He follows these in every conversation; edit one to change how he does it, or tell him ("from now on, when I ask for a recipe, give me the oven temperature first").</p>
+        <div className="flex flex-col gap-2">
+          {howTos.map((i) => (editing === i.id
+            ? <div key={i.id} className={`rounded-xl border ${border} p-3`}><InstructionForm form={editForm} setForm={setEditForm} isDark={isDark} onSave={saveEdit} onCancel={() => setEditing(null)} saving={saving} saveLabel="Save changes" /></div>
+            : <HowToRow key={i.id} item={i} isDark={isDark} onEdit={(x) => { setEditing(x.id); setEditForm(fromItem(x)); }} onCancel={cancel} />))}
+          {!howTos.length && <p className="text-xs text-slate-500">None yet.</p>}
         </div>
       </div>
       <div className={panel}>

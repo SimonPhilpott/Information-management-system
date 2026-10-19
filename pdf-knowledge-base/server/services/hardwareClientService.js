@@ -1280,14 +1280,15 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "addInstruction",
-            description: "Saves something Simon asks YOU to do later, or to keep doing - an instruction for you, kept until it's done: say something to someone when they're at the desk ('if you see Rowan, tell him...'), tell or ask Simon something at a time ('at six, tell me to...'), ask him something next time you talk, or a standing rule ('from now on...', 'always...', 'never...'). Not for his own reminders ('remind me to...' is scheduleItem). Never just promise to remember an instruction - save it, or it won't happen. Be precise: put the exact words he wants said in 'say', word for word; who it's for; when; and any time window he gives ('he'll be here about 8:30 to 9' -> person trigger, notBefore 20:15, notAfter 21:30 - widen a rough time a little). If he says when someone will be there, that's the window: never do it outside it. If something essential is missing or unclear - who, when, or what to say - ask him that one thing first. Once saved, read it back exactly (the result gives you the words).",
+            description: "Saves something Simon asks YOU to do later, or to keep doing - an instruction for you, kept until it's done: say something to someone when they're at the desk ('if you see Rowan, tell him...'), tell or ask Simon something at a time ('at six, tell me to...'), ask him something next time you talk, a standing rule ('from now on...', 'always...', 'never...'), or a how-to - how he wants a kind of thing done whenever it comes up ('when I ask for a recipe, give me the oven temperature first'). Not for his own reminders ('remind me to...' is scheduleItem). Never just promise to remember an instruction - save it, or it won't happen. Be precise: put the exact words he wants said in 'say', word for word; who it's for; when; and any time window he gives ('he'll be here about 8:30 to 9' -> person trigger, notBefore 20:15, notAfter 21:30 - widen a rough time a little). If he says when someone will be there, that's the window: never do it outside it. If something essential is missing or unclear - who, when, or what to say - ask him that one thing first. Once saved, read it back exactly (the result gives you the words).",
             parameters: {
               type: "OBJECT",
               properties: {
                 instruction: { type: "STRING", description: "What you will do, as a precise, self-contained instruction to yourself, e.g. 'Say goodnight to Rowan and tell him it's time for bed'." },
                 say: { type: "STRING", description: "The exact words to say, word for word as Simon gave them, if he gave any." },
                 simonSaid: { type: "STRING", description: "Simon's own words when he asked." },
-                trigger: { type: "STRING", enum: ["time", "person", "next_conversation", "standing"], description: "time: at a set time. person: when that person is at the desk (on camera). next_conversation: the next time Simon talks to you. standing: a rule you keep until cancelled." },
+                trigger: { type: "STRING", enum: ["time", "person", "next_conversation", "standing", "how_to"], description: "time: at a set time. person: when that person is at the desk (on camera). next_conversation: the next time Simon talks to you. standing: a rule you keep until cancelled. how_to: how to do a kind of thing whenever it comes up (give 'situation')." },
+                situation: { type: "STRING", description: "For a how-to: the situation it's for, e.g. 'he asks for a recipe'. To change an existing how-to (they're in your records), use updateInstruction on its #id instead." },
                 person: { type: "STRING", description: "For a person trigger: their name, e.g. 'Rowan'." },
                 time: { type: "STRING", description: "For a time trigger: London time, 24-hour HH:MM, e.g. '18:00'." },
                 date: { type: "STRING", description: "For a time trigger: 'today', 'tomorrow' or YYYY-MM-DD (default: the next time that clock time comes round)." },
@@ -1306,14 +1307,14 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
           },
           {
             name: "updateInstruction",
-            description: "Changes one of your instructions (by its #id from your records or getInstructions) when Simon corrects or changes it - only the fields that change.",
+            description: "Changes one of your instructions or how-tos (by its #id from your records or getInstructions) when Simon corrects or changes it ('when you tell me a story, make them shorter') - only the fields that change; for a how-to, the whole new 'instruction' text with his change worked in.",
             parameters: {
               type: "OBJECT",
               properties: {
                 id: { type: "NUMBER", description: "The instruction's id." },
                 instruction: { type: "STRING" }, say: { type: "STRING" },
-                trigger: { type: "STRING", enum: ["time", "person", "next_conversation", "standing"] },
-                person: { type: "STRING" }, time: { type: "STRING" }, date: { type: "STRING" },
+                trigger: { type: "STRING", enum: ["time", "person", "next_conversation", "standing", "how_to"] },
+                person: { type: "STRING" }, situation: { type: "STRING" }, time: { type: "STRING" }, date: { type: "STRING" },
                 notBefore: { type: "STRING" }, notAfter: { type: "STRING" }, notBeforeDate: { type: "STRING" },
                 repeat: { type: "STRING", enum: ["once", "daily", "every_time"] }
               },

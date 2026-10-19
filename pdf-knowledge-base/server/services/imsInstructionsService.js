@@ -10,6 +10,8 @@
 //   person            - when that person is seen at the desk (optionally only within a time window)
 //   next_conversation - the next time Simon talks to him
 //   standing          - a rule he keeps until it's cancelled (shown in his records, never "done")
+//   how_to            - how to do a kind of thing when it comes up ("when I ask for a story...", "when Rowan's at
+//                       the desk...") - Simon's way of doing it, kept in his records like a standing rule
 import db from '../db/database.js';
 import { computeFireAt } from './remindersService.js';
 
@@ -38,8 +40,11 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_ims_instructions_status ON ims_instructions(status);
 `);
+// how-tos: the situation they're for ("he asks for a story")
+try { db.exec('ALTER TABLE ims_instructions ADD COLUMN situation TEXT'); } catch (_) { /* already there */ }
 
-export const TRIGGERS = ['time', 'person', 'next_conversation', 'standing'];
+export const TRIGGERS = ['time', 'person', 'next_conversation', 'standing', 'how_to'];
+const ONGOING = new Set(['standing', 'how_to']); // kept until cancelled, never marked done
 export const REPEATS = ['once', 'daily', 'every_time'];
 const DAY_MS = 86400000;
 const RETRY_MS = 2 * 60000;   // a time instruction the desk couldn't say is tried again after this
@@ -55,7 +60,7 @@ const rowOut = (r) => r && ({
   trigger: r.trigger, person: r.person || null, at: r.at || null, notBefore: r.not_before || null, notAfter: r.not_after || null,
   repeat: r.repeat, status: r.status, origin: r.origin || null, createdAt: r.created_at, updatedAt: r.updated_at || null,
   firedAt: r.fired_at || null, attempts: r.attempts, doneCount: r.done_count, lastDoneAt: r.last_done_at || null,
-  outcome: r.outcome || null, missedFrom: r.missed_from || null,
+  outcome: r.outcome || null, missedFrom: r.missed_from || null, situation: r.situation || null,
 });
 
 // A London time ("20:30", "8:30pm") and date ("today", "tomorrow", "YYYY-MM-DD") as epoch ms - the same parsing
@@ -81,11 +86,12 @@ export function describe(r) {
   const rep = x.repeat === 'daily' ? ', every day' : x.repeat === 'every_time' ? ', every time' : '';
   if (x.trigger === 'time') return `At ${londonWhen(x.at)}${rep}: ${what}`;
   if (x.trigger === 'person') return `When ${x.person} is at the desk${win}${rep}: ${what}`;
+  if (x.trigger === 'how_to') return `When ${x.situation || 'it comes up'}: ${what}`;
   if (x.trigger === 'next_conversation') return `Next time Simon talks to me${win}: ${what}${x.missedFrom ? ` (it was due ${londonWhen(x.missedFrom)} but couldn't be said then)` : ''}`;
   return `Always${win}: ${what}`;
 }
 
-export function addInstruction({ instruction, say, simonSaid, trigger, person, time, date, notBefore, notAfter, notBeforeDate, notAfterDate, repeat = 'once', origin = 'desk' } = {}) {
+export function addInstruction({ instruction, say, simonSaid, trigger, person, situation, time, date, notBefore, notAfter, notBeforeDate, notAfterDate, repeat = 'once', origin = 'desk' } = {}) {
   const text = String(instruction || '').trim();
   if (!text) throw new Error('instruction is required - what exactly should Ims do?');
   const trig = String(trigger || '').trim();
@@ -93,6 +99,8 @@ export function addInstruction({ instruction, say, simonSaid, trigger, person, t
   const rep = REPEATS.includes(repeat) ? repeat : 'once';
   const who = trig === 'person' ? String(person || '').trim() : null;
   if (trig === 'person' && !who) throw new Error('person is required for a person trigger - who should he do it for?');
+  const when = trig === 'how_to' ? String(situation || '').trim() : null;
+  if (trig === 'how_to' && !when) throw new Error('situation is required for a how-to - when does it apply?');
   const at = trig === 'time' ? whenMs(time, date) : null;
   if (trig === 'time' && !at) throw new Error('time is required for a time trigger - when should he do it?');
   const nb = whenMs(notBefore, notBeforeDate, { allowPast: true });
@@ -100,9 +108,9 @@ export function addInstruction({ instruction, say, simonSaid, trigger, person, t
   if (nb && na && na <= nb) na += DAY_MS; // "between 11pm and 1am"
   if (na && na < Date.now()) throw new Error('that time window has already passed');
   const now = Date.now();
-  const id = db.prepare(`INSERT INTO ims_instructions (instruction, say, simon_said, trigger, person, at, not_before, not_after, repeat, origin, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(text, String(say || '').trim() || null, String(simonSaid || '').trim() || null, trig, who, at, nb, na, rep, origin, now, now).lastInsertRowid;
+  const id = db.prepare(`INSERT INTO ims_instructions (instruction, say, simon_said, trigger, person, situation, at, not_before, not_after, repeat, origin, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(text, String(say || '').trim() || null, String(simonSaid || '').trim() || null, trig, who, when, at, nb, na, ONGOING.has(trig) ? 'once' : rep, origin, now, now).lastInsertRowid;
   return getInstruction(id);
 }
 
@@ -127,6 +135,7 @@ export function updateInstruction(id, fields = {}) {
   if (fields.say !== undefined) set.say = String(fields.say || '').trim() || null;
   if (fields.trigger !== undefined) { if (!TRIGGERS.includes(fields.trigger)) throw new Error(`trigger must be one of ${TRIGGERS.join(', ')}`); set.trigger = fields.trigger; }
   if (fields.person !== undefined) set.person = String(fields.person || '').trim() || null;
+  if (fields.situation !== undefined) set.situation = String(fields.situation || '').trim() || null;
   if (fields.repeat !== undefined && REPEATS.includes(fields.repeat)) set.repeat = fields.repeat;
   if (fields.time !== undefined || fields.date !== undefined) set.at = fields.time ? whenMs(fields.time, fields.date) : null;
   if (fields.notBefore !== undefined) set.not_before = fields.notBefore ? whenMs(fields.notBefore, fields.notBeforeDate, { allowPast: true }) : null;
@@ -135,6 +144,7 @@ export function updateInstruction(id, fields = {}) {
   const trig = set.trigger || cur.trigger;
   if (trig === 'time' && !(set.at !== undefined ? set.at : cur.at)) throw new Error('a time instruction needs a time');
   if (trig === 'person' && !(set.person !== undefined ? set.person : cur.person)) throw new Error('a person instruction needs a person');
+  if (trig === 'how_to' && !(set.situation !== undefined ? set.situation : cur.situation)) throw new Error('a how-to needs the situation it is for');
   if ((set.not_before ?? cur.not_before) && (set.not_after ?? cur.not_after) && (set.not_after ?? cur.not_after) <= (set.not_before ?? cur.not_before)) set.not_after = (set.not_after ?? cur.not_after) + DAY_MS;
   set.updated_at = Date.now();
   if (set.at !== undefined || set.trigger !== undefined || set.status === 'pending') { set.fired_at = null; set.attempts = 0; }
@@ -158,7 +168,7 @@ export function completeInstruction(id, outcome = '') {
   const r = db.prepare('SELECT * FROM ims_instructions WHERE id = ?').get(Number(id));
   if (!r) throw new Error(`No instruction #${id}`);
   if (r.status !== 'pending') return rowOut(r);
-  if (r.trigger === 'standing') return rowOut(r); // a rule, never "done"
+  if (ONGOING.has(r.trigger)) return rowOut(r); // a rule or a how-to, never done
   const now = Date.now();
   const note = String(outcome || '').trim().slice(0, 400) || null;
   if (r.repeat === 'daily') {
@@ -226,10 +236,12 @@ export function instructionsForPrompt(now = Date.now()) {
   if (!rows.length) return '';
   const line = (r) => `#${r.id} ${describe(r)}`;
   const standing = rows.filter((r) => r.trigger === 'standing' && inWindow(r, now));
+  const howTos = rows.filter((r) => r.trigger === 'how_to');
   const nextTalk = rows.filter((r) => r.trigger === 'next_conversation' && inWindow(r, now));
   const later = rows.filter((r) => r.trigger === 'time' || r.trigger === 'person');
   const out = [];
   if (standing.length) out.push(`standing rules (keep to these every time) - ${standing.map(line).join('; ')}`);
+  if (howTos.length) out.push(`HOW TO DO THINGS - Simon's way; when one of these situations comes up, follow its how-to - ${howTos.map(line).join(' || ')}`);
   if (nextTalk.length) out.push(`do in this conversation, once it's under way (not in a greeting), then call completeInstruction - ${nextTalk.map(line).join('; ')}`);
   if (later.length) out.push(`waiting for their moment (you'll be told when - don't do them early) - ${later.map(line).join('; ')}`);
   return out.join(' | ');
