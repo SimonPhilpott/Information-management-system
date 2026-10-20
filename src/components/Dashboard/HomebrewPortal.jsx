@@ -1557,12 +1557,12 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
   const [mobileUX, setMobileUX] = useState(() => {
     try {
       const saved = localStorage.getItem('ims_homebrew_mobile_ux');
-      if (saved === 'phase1' || saved === 'phase2') {
-        localStorage.setItem('ims_homebrew_mobile_ux', 'phase3');
-        return 'phase3';
+      if (saved === 'phase1' || saved === 'phase2' || saved === 'phase3') {
+        localStorage.setItem('ims_homebrew_mobile_ux', 'phase4');
+        return 'phase4';
       }
-      return saved || 'phase3';
-    } catch (_) { return 'phase3'; }
+      return saved || 'phase4';
+    } catch (_) { return 'phase4'; }
   });
   const switchMobileUX = (mode) => {
     setMobileUX(mode);
@@ -1968,6 +1968,14 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
         className={`px-2.5 py-1 rounded-xl transition ${mobileUX === 'phase3' ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-amber-500'}`}
       >
         Phase 3
+      </button>
+      <button
+        type="button"
+        onClick={() => switchMobileUX('phase4')}
+        title="Phase 4: Sticky Bottom Action Bar (Thumb Zone on mobile)"
+        className={`px-2.5 py-1 rounded-xl transition ${mobileUX === 'phase4' ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-amber-500'}`}
+      >
+        Phase 4
       </button>
       <button
         type="button"
@@ -2794,6 +2802,137 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
     );
   };
 
+  const renderPhase4StickyBottomBar = (b, forceInsideFrame = false) => {
+    if (!b) return null;
+    const isRec = b.isRecipe;
+
+    return (
+      <div
+        className={`${forceInsideFrame ? 'absolute' : 'fixed sm:hidden'} bottom-0 inset-x-0 z-40 p-2.5 sm:p-3 border-t backdrop-blur-md shadow-2xl transition-all ${isDark ? 'bg-slate-900/95 border-white/10 text-white' : 'bg-white/95 border-[#2E2B27]/10 text-[#2E2B27]'}`}
+        style={{ paddingBottom: forceInsideFrame ? '0.75rem' : 'max(0.75rem, env(safe-area-inset-bottom))' }}
+      >
+        <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
+          {/* Quick Secondary Action Buttons */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {isRec ? (
+              <>
+                <button
+                  type="button"
+                  onClick={shareLink}
+                  disabled={busy === 'share'}
+                  title="Share recipe link"
+                  className={`p-2 rounded-xl transition border ${border} ${isDark ? 'bg-slate-950/40 hover:bg-white/10' : 'bg-white hover:bg-black/5'} text-slate-500 hover:text-amber-500 active:scale-95`}
+                >
+                  {busy === 'share' ? <RotateCw size={14} className="animate-spin" /> : <Share2 size={14} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={downloadPdf}
+                  disabled={busy === 'pdf-save'}
+                  title="Download recipe PDF"
+                  className={`p-2 rounded-xl transition border ${border} ${isDark ? 'bg-slate-950/40 hover:bg-white/10' : 'bg-white hover:bg-black/5'} text-slate-500 hover:text-amber-500 active:scale-95`}
+                >
+                  {busy === 'pdf-save' ? <RotateCw size={14} className="animate-spin" /> : <FileDown size={14} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={printLabels}
+                  disabled={busy === 'labels'}
+                  title="Bottle labels"
+                  className={`p-2 rounded-xl transition border ${border} ${isDark ? 'bg-slate-950/40 hover:bg-white/10' : 'bg-white hover:bg-black/5'} text-slate-500 hover:text-amber-500 active:scale-95`}
+                >
+                  {busy === 'labels' ? <RotateCw size={14} className="animate-spin" /> : <Printer size={14} />}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={printLabels}
+                  disabled={busy === 'labels'}
+                  title="Bottle labels"
+                  className={`p-2 rounded-xl transition border ${border} ${isDark ? 'bg-slate-950/40 hover:bg-white/10' : 'bg-white hover:bg-black/5'} text-slate-500 hover:text-amber-500 active:scale-95`}
+                >
+                  {busy === 'labels' ? <RotateCw size={14} className="animate-spin" /> : <Printer size={14} />}
+                </button>
+                {(b.status === 'fermenting' || b.status === 'conditioning') && isOwner && (
+                  <button
+                    type="button"
+                    onClick={stepReminders}
+                    disabled={busy === 'steps'}
+                    title="Reminders"
+                    className={`p-2 rounded-xl transition border ${border} ${isDark ? 'bg-slate-950/40 hover:bg-white/10' : 'bg-white hover:bg-black/5'} text-slate-500 hover:text-amber-500 active:scale-95`}
+                  >
+                    {busy === 'steps' ? <RotateCw size={14} className="animate-spin" /> : <Bell size={14} />}
+                  </button>
+                )}
+                {isOwner && (
+                  <button
+                    type="button"
+                    onClick={keepAsRecipe}
+                    disabled={busy === 'keep'}
+                    title="Save as recipe"
+                    className={`p-2 rounded-xl transition border ${border} ${isDark ? 'bg-slate-950/40 hover:bg-white/10' : 'bg-white hover:bg-black/5'} text-slate-500 hover:text-amber-500 active:scale-95`}
+                  >
+                    {busy === 'keep' ? <RotateCw size={14} className="animate-spin" /> : <Copy size={14} />}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Primary Action Button (Thumb Zone) */}
+          <div className="flex-1 min-w-0">
+            {isRec ? (
+              isOwner ? (
+                <button
+                  type="button"
+                  onClick={startFrom}
+                  disabled={busy === 'start'}
+                  className="w-full py-2 px-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-extrabold text-xs shadow-lg shadow-amber-500/25 active:scale-98 transition flex items-center justify-center gap-1.5 truncate"
+                >
+                  {busy === 'start' ? <RotateCw size={14} className="animate-spin shrink-0" /> : <Plus size={14} className="shrink-0" />}
+                  <span className="truncate">Start brew</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={downloadPdf}
+                  disabled={busy === 'pdf-save'}
+                  className="w-full py-2 px-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-extrabold text-xs shadow-lg shadow-amber-500/25 active:scale-98 transition flex items-center justify-center gap-1.5 truncate"
+                >
+                  <FileDown size={14} className="shrink-0" />
+                  <span className="truncate">Download PDF</span>
+                </button>
+              )
+            ) : (
+              (b.status === 'planning' || b.status === 'fermenting') && isOwner ? (
+                <button
+                  type="button"
+                  onClick={pitched}
+                  disabled={busy === 'remind'}
+                  className="w-full py-2 px-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-extrabold text-xs shadow-lg shadow-amber-500/25 active:scale-98 transition flex items-center justify-center gap-1.5 truncate"
+                >
+                  {busy === 'remind' ? <RotateCw size={14} className="animate-spin shrink-0" /> : <Bell size={14} className="shrink-0" />}
+                  <span className="truncate">Pitch yeast</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setTab('log')}
+                  className="w-full py-2 px-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-extrabold text-xs shadow-lg shadow-amber-500/25 active:scale-98 transition flex items-center justify-center gap-1.5 truncate"
+                >
+                  <Activity size={14} className="shrink-0" />
+                  <span className="truncate">Log reading &amp; step</span>
+                </button>
+              )
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <PortalShell title="Homebrew" subtitle="/ims/homebrew • your meads, braggots and brews"
       icon={FlaskConical} gradient={GRADIENT} glow="rgba(245,158,11,0.3)"
@@ -2912,8 +3051,8 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
             )}
           </div>}
 
-          {/* Phase 3 Mobile Filter Bar vs Desktop / Classic Accordion */}
-          {mobileUX === 'phase3' ? (
+          {/* Phase 3 & Phase 4 Mobile Filter Bar vs Desktop / Classic Accordion */}
+          {(mobileUX === 'phase3' || mobileUX === 'phase4') ? (
             <>
               {renderPhase3MobileFilterBar(false)}
               <div className={`hidden sm:flex ${tile} p-4 flex-col gap-3.5 ${isDark ? 'bg-slate-900/40' : 'bg-white/70'}`}>
@@ -3022,7 +3161,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
       )}
 
       {open && (
-        <div className="flex flex-col gap-5 min-w-0">
+        <div className={`flex flex-col gap-5 min-w-0 ${mobileUX === 'phase4' ? 'pb-24 sm:pb-0' : ''}`}>
           {pictureOpen && brew && <PictureDialog brew={brew} isDark={isDark} border={border} onClose={() => setPictureOpen(false)} onPicked={(b) => { setPictureOpen(false); setBrew(b); loadList(); notify('Picture changed.'); }} />}
           {labelsOpen && brew && <LabelsDialog brew={brew} isDark={isDark} border={border} onClose={() => setLabelsOpen(false)} onDone={labelsMade} />}
           {/* styled like the IMS Hub button in the page header (PortalShell) */}
@@ -3038,36 +3177,37 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                   <div className="flex items-center gap-1.5 text-amber-500 font-extrabold uppercase tracking-wider text-[11px]">
                     <Columns2 size={14} /> Side-by-Side Mobile UX Comparison
                   </div>
-                  <span className="text-[11px] text-slate-400">Comparing Classic vs Phase 1 in responsive 390px mobile viewports</span>
+                  <span className="text-[11px] text-slate-400">Comparing Classic vs Phase 4 (Sticky Thumb Bar) in 390px mobile viewports</span>
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
                   {/* Left: Classic Frame */}
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between text-xs px-2">
                       <span className="font-bold px-2.5 py-0.5 rounded-full bg-slate-500/15 text-slate-600 dark:text-slate-300">
-                        Option A: Classic Mobile (Vertical Stack)
+                        Option A: Classic Mobile
                       </span>
-                      <span className="text-[11px] text-slate-400">~420px height</span>
+                      <span className="text-[11px] text-slate-400">Actions scroll off-screen</span>
                     </div>
                     <div className="w-full max-w-[420px] mx-auto border-2 border-slate-400/20 rounded-3xl overflow-hidden shadow-xl bg-slate-950/10">
                       {renderClassicHeader(brew, true)}
                     </div>
                   </div>
-                  {/* Right: Phase 1/2 Frame */}
+                  {/* Right: Phase 4 Frame */}
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between text-xs px-2">
                       <span className="font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                        Option B: Phase 1, 2 &amp; 3 (Compact Horizontal)
+                        Option B: Phase 4 (Sticky Thumb Bar)
                       </span>
-                      <span className="text-[11px] text-emerald-500 font-bold">-48% scroll tax (~220px)</span>
+                      <span className="text-[11px] text-emerald-500 font-bold">Actions pinned to thumb zone</span>
                     </div>
-                    <div className="w-full max-w-[420px] mx-auto border-2 border-amber-500/30 rounded-3xl overflow-hidden shadow-xl bg-slate-950/10">
+                    <div className="relative w-full max-w-[420px] mx-auto border-2 border-amber-500/30 rounded-3xl overflow-hidden shadow-xl bg-slate-950/10 pb-16">
                       {renderPhase1Header(brew, true)}
+                      {renderPhase4StickyBottomBar(brew, true)}
                     </div>
                   </div>
                 </div>
               </div>
-            ) : (mobileUX === 'phase1' || mobileUX === 'phase2' || mobileUX === 'phase3') ? (
+            ) : (mobileUX === 'phase1' || mobileUX === 'phase2' || mobileUX === 'phase3' || mobileUX === 'phase4') ? (
               renderPhase1Header(brew, false)
             ) : (
               renderClassicHeader(brew, false)
@@ -3317,6 +3457,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
               </div>
             </>
           )}
+          {mobileUX === 'phase4' && renderPhase4StickyBottomBar(brew, false)}
         </div>
       )}
       <HomebrewInviteModal isOpen={inviteOpen} onClose={() => setInviteOpen(false)} isDark={isDark} toast={notify} />
