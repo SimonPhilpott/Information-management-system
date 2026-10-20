@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useFocusItem } from '../../hooks/useFocusItem';
-import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, ExternalLink, Copy, ChevronUp, ChevronDown, ArrowLeft, ScrollText, Activity, Wine, Star, Heart, Share2, Send, FileDown, Link2, Printer, Image as ImageIcon, UserPlus, Users, Mail, User, Check, RefreshCw, Filter, Search, Smartphone, Columns2 } from 'lucide-react';
+import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, ExternalLink, Copy, ChevronUp, ChevronDown, ChevronRight, ArrowLeft, ScrollText, Activity, Wine, Star, Heart, Share2, Send, FileDown, Link2, Printer, Image as ImageIcon, UserPlus, Users, Mail, User, Check, RefreshCw, Filter, Search, Smartphone, Columns2, LayoutGrid, List } from 'lucide-react';
 import PortalShell from './PortalShell';
 import { glossMatches, glossTerms } from './brewGlossary';
 import { useAuth } from '../../AuthGate';
@@ -1555,12 +1555,13 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
   const [notification, setNotification] = useState(null);
   const notify = (msg, type = 'success') => { setNotification({ msg, type }); setTimeout(() => setNotification(null), 3500); };
   const [mobileUX, setMobileUX] = useState(() => {
-    try { return localStorage.getItem('ims_homebrew_mobile_ux') || 'phase1'; } catch (_) { return 'phase1'; }
+    try { return localStorage.getItem('ims_homebrew_mobile_ux') || 'phase2'; } catch (_) { return 'phase2'; }
   });
   const switchMobileUX = (mode) => {
     setMobileUX(mode);
     try { localStorage.setItem('ims_homebrew_mobile_ux', mode); } catch (_) {}
   };
+  const [shelfLayout, setShelfLayout] = useState('list');
 
   const panel = `rounded-2xl border p-5 min-w-0 ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/70 border-[#2E2B27]/10 shadow-sm'}`;
   const border = isDark ? 'border-white/10' : 'border-[#2E2B27]/10';
@@ -1918,7 +1919,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
       <button
         type="button"
         onClick={() => switchMobileUX('classic')}
-        title="Classic stacked mobile layout"
+        title="Classic original layout"
         className={`px-2.5 py-1 rounded-xl transition ${mobileUX === 'classic' ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-amber-500'}`}
       >
         Classic
@@ -1933,12 +1934,218 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
       </button>
       <button
         type="button"
+        onClick={() => switchMobileUX('phase2')}
+        title="Phase 2: High-density catalog list + compact hero header"
+        className={`px-2.5 py-1 rounded-xl transition ${mobileUX === 'phase2' ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-amber-500'}`}
+      >
+        Phase 2
+      </button>
+      <button
+        type="button"
         onClick={() => switchMobileUX('compare')}
-        title="Compare Classic vs Phase 1 side by side in phone viewports"
+        title="Compare Classic vs Phase 2 side by side in phone viewports"
         className={`hidden sm:inline-flex px-2.5 py-1 rounded-xl transition items-center gap-1 ${mobileUX === 'compare' ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-xs' : 'text-slate-500 hover:text-amber-500'}`}
       >
         <Columns2 size={12} /> Side-by-Side
       </button>
+    </div>
+  );
+
+  const renderClassicShelfGrid = (items, forceMobile = false) => (
+    <div className={`grid gap-3 sm:gap-4 ${forceMobile ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'}`}>
+      {items.map(({ key, members, rep: b }) => {
+        const L = look(b.category);
+        const progress = b.calc.attenuation != null ? Math.max(0, Math.min(100, b.calc.attenuation)) : null;
+        const many = members.length > 1;
+        const wine = colourOf(b);
+        const sweetTags = SWEETNESS.filter((s) => members.some((m) => sweetOf(m) === s.id));
+        const books = [...new Set(members.map((m) => (m.variant || m.sourceName || '').split(' · ')[0]).filter(Boolean))];
+        return (
+          <a key={key} id={`brew-${b.id}`} href={brewPath(b)} onClick={(e) => { if (!plainClick(e)) return; e.preventDefault(); setCreating(false); setSelId(b.id); setWhatIf(null); setTab('recipe'); }}
+            className={`hb-card no-underline text-inherit cursor-pointer text-left ${tile} overflow-hidden flex flex-col hover:shadow-xl hover:shadow-amber-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${isDark ? 'bg-slate-900/50' : 'bg-white/80'}`}>
+            <div className={`relative isolate flex items-end justify-center pt-5 bg-gradient-to-b ${L.tint}`}>
+              {b.banner && (
+                <img src={`/api/homebrew/picture/${b.banner}`} alt="" aria-hidden="true" loading="lazy"
+                  className="absolute inset-0 -z-10 w-full h-full object-cover object-right pointer-events-none select-none"
+                  style={{ opacity: isDark ? 0.33 : 0.45, mixBlendMode: isDark ? 'screen' : 'multiply' }} />
+              )}
+              <span className="absolute top-2 left-3 text-2xl leading-none">{L.emoji}</span>
+              <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFav(b); }} title={b.favourite ? 'Remove from favourites' : 'Add to favourites'}
+                className={`absolute top-9 right-2.5 p-1.5 rounded-full transition ${b.favourite ? 'text-rose-500' : 'text-slate-400 hover:text-rose-500'} ${isDark ? 'bg-slate-950/40' : 'bg-white/70'}`}>
+                <Heart size={15} fill={b.favourite ? 'currentColor' : 'none'} />
+              </button>
+              {b.isRecipe
+                ? <span className="absolute top-2.5 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${L.liquid}40`, color: isDark ? L.liquid : shade(L.liquid, 0.5) }}>{many ? `${members.length} versions` : 'Recipe'}</span>
+                : <span className={`absolute top-2.5 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_PILL[b.status] || ''}`}>{STATUS_WORD[b.status] || b.status}</span>}
+              <Vessel category={b.category} status={b.status} isRecipe={b.isRecipe} size={72} isDark={isDark} wine={wine} liquid={b.liquid} pics={b.mainPics} ingredients={b.ingredients} fizz={b.fizz} />
+              {(() => {
+                const vals = members.map(strengthOf).filter((v) => v != null);
+                if (!vals.length) return null;
+                const lo = Math.min(...vals), hi = Math.max(...vals);
+                const est = members.every((m) => !m.calc.abv && !m.calc.potentialAbv);
+                return <span className="absolute bottom-2 right-3 text-lg font-black" title={est ? 'Likely strength, estimated from the sugar and yeast' : undefined}>{est ? '~' : ''}{lo === hi ? lo : `${lo}–${hi}`}<span className="text-xs">%</span></span>;
+              })()}
+            </div>
+            <div className="p-3 flex flex-col gap-1 flex-1">
+              <div className="text-sm font-bold break-words leading-snug">{many ? b.family : b.name}</div>
+              <div className="text-[11px] text-slate-500">{b.style || catLabel(b.category)}</div>
+              {(wine || sweetTags.length > 0 || members.some((m) => (m.flavours || []).length)) && (
+                <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                  {wine && <span className="h-6 text-xs font-bold px-2.5 rounded-full flex items-center gap-1.5 bg-slate-500/10 text-slate-500"><span className={`w-2.5 h-2.5 rounded-full ${WINE_COLOURS.find((w) => w.id === wine).dot}`} />{WINE_COLOURS.find((w) => w.id === wine).label}</span>}
+                  {sweetTags.map((s) => {
+                    const est = members.filter((m) => sweetOf(m) === s.id).every((m) => m.sweetnessBasis === 'estimate');
+                    return <span key={s.id} title={est ? 'Estimated - the book doesn\'t say' : undefined} className={`h-6 inline-flex items-center text-xs font-bold px-2.5 rounded-full ${SWEET_PILL[s.id]}`}>{s.label}{est ? ' ~' : ''}</span>;
+                  })}
+                  {(() => {
+                    const fl = FLAVOUR_TAGS.filter((f) => members.some((m) => (m.flavours || []).includes(f.id)));
+                    return fl.length ? <span className="text-2xl leading-none ml-0.5 flex gap-0.5" title={fl.map((f) => f.label).join(', ')}>{fl.map((f) => <span key={f.id}>{f.emoji}</span>)}</span> : null;
+                  })()}
+                </div>
+              )}
+              {(() => {
+                const sumText = b.shortSummary || b.summary || members.find((m) => m.shortSummary || m.summary)?.summary;
+                const cardSum = shortSummary(sumText);
+                return cardSum ? (
+                  <p className={`text-xs leading-snug line-clamp-2 mt-1 break-words ${isDark ? 'text-slate-300/85' : 'text-slate-600'}`} title={sumText}>
+                    {cardSum}
+                  </p>
+                ) : null;
+              })()}
+              {hitMap.get(b.id)?.hits.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {hitMap.get(b.id).hits.slice(0, 3).map((g, i) => (
+                    <span key={i} className={`text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 ${isDark ? 'text-amber-400' : 'text-amber-700'} break-words`}><AbbrText text={ingText(g)} /></span>
+                  ))}
+                </div>
+              )}
+              <div className="mt-auto pt-2 flex items-center gap-2 text-[11px] text-slate-500">
+                {b.isRecipe
+                  ? <span className="truncate" title={many ? books.join(', ') : bottlesOf(b.batchLitres, b.category)?.hint}>{many ? `${books.slice(0, 2).join(', ')}${books.length > 2 ? ` +${books.length - 2}` : ''}` : [b.batchLitres && `${b.batchLitres} L`, bottlesOf(b.batchLitres, b.category)?.text, b.sourceName].filter(Boolean).join(' · ')}</span>
+                  : <span>{b.calc.daysSinceStart != null ? `Day ${b.calc.daysSinceStart}` : b.startedOn || 'Not started yet'}</span>}
+                {b.rating ? <span className="ml-auto flex items-center gap-0.5 text-amber-500 font-bold"><Star size={11} fill="currentColor" />{b.rating}</span> : null}
+              </div>
+              {!b.isRecipe && b.status === 'fermenting' && progress != null && (
+                <div className={`h-1.5 rounded-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-[#2E2B27]/10'}`} title={`${progress}% of the sugar eaten so far`}>
+                  <div className={`h-full bg-gradient-to-r ${GRADIENT}`} style={{ width: `${progress}%` }} />
+                </div>
+              )}
+            </div>
+          </a>
+        );
+      })}
+      {!forceMobile && (
+        <button onClick={() => startNew(cat)} className={`rounded-2xl border-2 border-dashed ${border} min-h-[14rem] flex flex-col items-center justify-center gap-2 text-slate-500 hover:text-amber-500 hover:border-amber-500/50 transition`}>
+          <span className="text-3xl">{view === 'recipes' ? '📝' : '🫙'}</span>
+          <span className="text-sm font-bold">{view === 'recipes' ? 'Add a recipe' : 'Start a new brew'}</span>
+        </button>
+      )}
+    </div>
+  );
+
+  const renderPhase2ShelfList = (items, forceMobile = false) => (
+    <div className={`flex flex-col gap-2 ${forceMobile ? 'w-full' : 'sm:grid sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3'}`}>
+      {items.map(({ key, members, rep: b }) => {
+        const L = look(b.category);
+        const progress = b.calc.attenuation != null ? Math.max(0, Math.min(100, b.calc.attenuation)) : null;
+        const many = members.length > 1;
+        const wine = colourOf(b);
+        const sweetTags = SWEETNESS.filter((s) => members.some((m) => sweetOf(m) === s.id));
+        const vals = members.map(strengthOf).filter((v) => v != null);
+        const lo = vals.length ? Math.min(...vals) : null;
+        const hi = vals.length ? Math.max(...vals) : null;
+        const est = members.every((m) => !m.calc.abv && !m.calc.potentialAbv);
+        const sumText = b.shortSummary || b.summary || members.find((m) => m.shortSummary || m.summary)?.summary;
+        const cardSum = shortSummary(sumText);
+
+        return (
+          <a key={key} id={`brew-p2-${b.id}`} href={brewPath(b)}
+            onClick={(e) => { if (!plainClick(e)) return; e.preventDefault(); setCreating(false); setSelId(b.id); setWhatIf(null); setTab('recipe'); }}
+            className={`group no-underline text-inherit cursor-pointer text-left rounded-2xl border p-2.5 sm:p-3 flex items-center gap-3 transition-all hover:border-amber-500/50 hover:shadow-md ${border} ${isDark ? 'bg-slate-900/60 hover:bg-slate-800/70' : 'bg-white/85 hover:bg-white'}`}>
+            {/* Left: Vessel Mini-Badge */}
+            <div className={`relative w-12 h-12 sm:w-14 sm:h-14 rounded-xl overflow-hidden shrink-0 flex items-center justify-center bg-gradient-to-br ${L.tint} border ${isDark ? 'border-white/5' : 'border-black/5'}`}>
+              {b.banner && (
+                <img src={`/api/homebrew/picture/${b.banner}`} alt="" aria-hidden="true" loading="lazy"
+                  className="absolute inset-0 -z-10 w-full h-full object-cover pointer-events-none select-none"
+                  style={{ opacity: isDark ? 0.35 : 0.45, mixBlendMode: isDark ? 'screen' : 'multiply' }} />
+              )}
+              <Vessel category={b.category} status={b.status} isRecipe={b.isRecipe} size={36} isDark={isDark} wine={wine} liquid={b.liquid} pics={b.mainPics} ingredients={b.ingredients} fizz={b.fizz} />
+            </div>
+
+            {/* Center Info */}
+            <div className="flex-1 min-w-0 flex flex-col justify-center">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-sm font-black truncate group-hover:text-amber-500 transition leading-snug">
+                  {many ? b.family : b.name}
+                </span>
+                {many ? (
+                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full shrink-0" style={{ background: `${L.liquid}30`, color: isDark ? L.liquid : shade(L.liquid, 0.4) }}>
+                    {members.length} ver.
+                  </span>
+                ) : !b.isRecipe ? (
+                  <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${STATUS_PILL[b.status] || ''}`}>
+                    {STATUS_WORD[b.status] || b.status}
+                  </span>
+                ) : null}
+              </div>
+
+              {/* Subtitle: Category · ABV · Yield/Day */}
+              <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-0.5">
+                <span className="inline-flex items-center gap-1">
+                  <span>{L.emoji}</span>
+                  <span className="font-medium">{b.style || catLabel(b.category)}</span>
+                </span>
+                {vals.length > 0 && (
+                  <span className="font-bold text-slate-700 dark:text-slate-300">
+                    · {est ? '~' : ''}{lo === hi ? lo : `${lo}–${hi}`}%
+                  </span>
+                )}
+                {b.isRecipe ? (
+                  b.batchLitres && <span>· {b.batchLitres} L</span>
+                ) : (
+                  <span>· {b.calc.daysSinceStart != null ? `Day ${b.calc.daysSinceStart}` : b.startedOn || 'Planning'}</span>
+                )}
+                {b.rating ? (
+                  <span className="inline-flex items-center gap-0.5 text-amber-500 font-bold ml-auto sm:ml-0">
+                    <Star size={10} fill="currentColor" /> {b.rating}
+                  </span>
+                ) : null}
+              </div>
+
+              {/* Line 3: Compact Tags & Short Summary */}
+              <div className="flex items-center gap-1 mt-0.5 overflow-hidden">
+                {wine && (
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: WINE_COLOURS.find((w) => w.id === wine)?.dot }} title={wine} />
+                )}
+                {sweetTags.slice(0, 1).map((s) => (
+                  <span key={s.id} className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full ${SWEET_PILL[s.id]}`}>
+                    {s.label}
+                  </span>
+                ))}
+                {b.fizz === 'sparkling' && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-sky-500/15 text-sky-600 dark:text-sky-300">
+                    🫧
+                  </span>
+                )}
+                {cardSum ? (
+                  <span className="text-[11px] text-slate-500 truncate min-w-0" title={sumText}>
+                    · {cardSum}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Right: Actions */}
+            <div className="shrink-0 flex items-center gap-1.5 pl-1">
+              <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFav(b); }}
+                title={b.favourite ? 'Remove from favourites' : 'Add to favourites'}
+                className={`p-1.5 rounded-full transition ${b.favourite ? 'text-rose-500' : 'text-slate-300 hover:text-rose-500'} ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}>
+                <Heart size={15} fill={b.favourite ? 'currentColor' : 'none'} />
+              </button>
+              <ChevronRight size={15} className="text-slate-400 group-hover:text-amber-500 group-hover:translate-x-0.5 transition" />
+            </div>
+          </a>
+        );
+      })}
     </div>
   );
 
@@ -2475,93 +2682,74 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
           </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {cards.map(({ key, members, rep: b }) => {
-              const L = look(b.category);
-              const progress = b.calc.attenuation != null ? Math.max(0, Math.min(100, b.calc.attenuation)) : null;
-              const many = members.length > 1;
-              const wine = colourOf(b);
-              const sweetTags = SWEETNESS.filter((s) => members.some((m) => sweetOf(m) === s.id));
-              const books = [...new Set(members.map((m) => (m.variant || m.sourceName || '').split(' · ')[0]).filter(Boolean))];
-              return (
-                <a key={key} id={`brew-${b.id}`} href={brewPath(b)} onClick={(e) => { if (!plainClick(e)) return; e.preventDefault(); setCreating(false); setSelId(b.id); setWhatIf(null); setTab('recipe'); }}
-                  className={`hb-card no-underline text-inherit cursor-pointer text-left ${tile} overflow-hidden flex flex-col hover:shadow-xl hover:shadow-amber-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${isDark ? 'bg-slate-900/50' : 'bg-white/80'}`}>
-                  <div className={`relative isolate flex items-end justify-center pt-5 bg-gradient-to-b ${L.tint}`}>
-                    {/* the header's faint picture, cropped to its right-hand side */}
-                    {b.banner && (
-                      <img src={`/api/homebrew/picture/${b.banner}`} alt="" aria-hidden="true" loading="lazy"
-                        className="absolute inset-0 -z-10 w-full h-full object-cover object-right pointer-events-none select-none"
-                        style={{ opacity: isDark ? 0.33 : 0.45, mixBlendMode: isDark ? 'screen' : 'multiply' }} />
-                    )}
-                    <span className="absolute top-2 left-3 text-2xl leading-none">{L.emoji}</span>
-                    <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFav(b); }} title={b.favourite ? 'Remove from favourites' : 'Add to favourites'}
-                      className={`absolute top-9 right-2.5 p-1.5 rounded-full transition ${b.favourite ? 'text-rose-500' : 'text-slate-400 hover:text-rose-500'} ${isDark ? 'bg-slate-950/40' : 'bg-white/70'}`}>
-                      <Heart size={15} fill={b.favourite ? 'currentColor' : 'none'} />
-                    </button>
-                    {b.isRecipe
-                      ? <span className="absolute top-2.5 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${L.liquid}40`, color: isDark ? L.liquid : shade(L.liquid, 0.5) }}>{many ? `${members.length} versions` : 'Recipe'}</span>
-                      : <span className={`absolute top-2.5 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_PILL[b.status] || ''}`}>{STATUS_WORD[b.status] || b.status}</span>}
-                    <Vessel category={b.category} status={b.status} isRecipe={b.isRecipe} size={72} isDark={isDark} wine={wine} liquid={b.liquid} pics={b.mainPics} ingredients={b.ingredients} fizz={b.fizz} />
-                    {(() => {
-                      const vals = members.map(strengthOf).filter((v) => v != null);
-                      if (!vals.length) return null;
-                      const lo = Math.min(...vals), hi = Math.max(...vals);
-                      const est = members.every((m) => !m.calc.abv && !m.calc.potentialAbv);
-                      return <span className="absolute bottom-2 right-3 text-lg font-black" title={est ? 'Likely strength, estimated from the sugar and yeast' : undefined}>{est ? '~' : ''}{lo === hi ? lo : `${lo}–${hi}`}<span className="text-xs">%</span></span>;
-                    })()}
+          {/* Phase 2 View Bar: Item count and List / Grid Switcher */}
+          {mobileUX === 'phase2' && (
+            <div className="flex items-center justify-between px-1 text-xs -mb-2">
+              <span className="text-slate-500 font-bold">
+                Showing {cards.length} {view === 'recipes' ? 'drinks' : 'brews'} · <span className="text-amber-500 font-extrabold">Phase 2 Compact Catalog</span>
+              </span>
+              <div className={`inline-flex items-center p-0.5 rounded-xl border ${border} ${isDark ? 'bg-slate-900/60' : 'bg-white/80'}`}>
+                <button
+                  type="button"
+                  onClick={() => setShelfLayout('list')}
+                  title="Compact List View (~72px high-density items)"
+                  className={`px-2 py-1 rounded-lg flex items-center gap-1 text-xs font-bold transition ${shelfLayout === 'list' ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-amber-500'}`}
+                >
+                  <List size={13} /> <span className="hidden sm:inline">List</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShelfLayout('grid')}
+                  title="Cards Grid View (~320px cards)"
+                  className={`px-2 py-1 rounded-lg flex items-center gap-1 text-xs font-bold transition ${shelfLayout === 'grid' ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-amber-500'}`}
+                >
+                  <LayoutGrid size={13} /> <span className="hidden sm:inline">Cards</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {mobileUX === 'compare' ? (
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between text-xs font-bold text-slate-500 px-1 gap-2">
+                <div className="flex items-center gap-1.5 text-amber-500 font-extrabold uppercase tracking-wider text-[11px]">
+                  <Columns2 size={14} /> Shelf Catalog Comparison (Mobile Viewports)
+                </div>
+                <span className="text-[11px] text-slate-400">Comparing Classic Cards vs Phase 2 Compact List in 390px mobile screens</span>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+                {/* Left: Classic Cards Phone Frame */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between text-xs px-2">
+                    <span className="font-bold px-2.5 py-0.5 rounded-full bg-slate-500/15 text-slate-600 dark:text-slate-300">
+                      Option A: Classic Cards
+                    </span>
+                    <span className="text-[11px] text-slate-400">~320px / card · ~1.5 visible</span>
                   </div>
-                  <div className="p-3 flex flex-col gap-1 flex-1">
-                    <div className="text-sm font-bold break-words leading-snug">{many ? b.family : b.name}</div>
-                    <div className="text-[11px] text-slate-500">{b.style || catLabel(b.category)}</div>
-                    {(wine || sweetTags.length > 0 || members.some((m) => (m.flavours || []).length)) && (
-                      <div className="flex flex-wrap items-center gap-1 mt-0.5">
-                        {wine && <span className="h-6 text-xs font-bold px-2.5 rounded-full flex items-center gap-1.5 bg-slate-500/10 text-slate-500"><span className={`w-2.5 h-2.5 rounded-full ${WINE_COLOURS.find((w) => w.id === wine).dot}`} />{WINE_COLOURS.find((w) => w.id === wine).label}</span>}
-                        {sweetTags.map((s) => {
-                          const est = members.filter((m) => sweetOf(m) === s.id).every((m) => m.sweetnessBasis === 'estimate');
-                          return <span key={s.id} title={est ? 'Estimated - the book doesn\'t say' : undefined} className={`h-6 inline-flex items-center text-xs font-bold px-2.5 rounded-full ${SWEET_PILL[s.id]}`}>{s.label}{est ? ' ~' : ''}</span>;
-                        })}
-                        {(() => {
-                          const fl = FLAVOUR_TAGS.filter((f) => members.some((m) => (m.flavours || []).includes(f.id)));
-                          return fl.length ? <span className="text-2xl leading-none ml-0.5 flex gap-0.5" title={fl.map((f) => f.label).join(', ')}>{fl.map((f) => <span key={f.id}>{f.emoji}</span>)}</span> : null;
-                        })()}
-                      </div>
-                    )}
-                    {(() => {
-                      const sumText = b.shortSummary || b.summary || members.find((m) => m.shortSummary || m.summary)?.summary;
-                      const cardSum = shortSummary(sumText);
-                      return cardSum ? (
-                        <p className={`text-xs leading-snug line-clamp-2 mt-1 break-words ${isDark ? 'text-slate-300/85' : 'text-slate-600'}`} title={sumText}>
-                          {cardSum}
-                        </p>
-                      ) : null;
-                    })()}
-                    {hitMap.get(b.id)?.hits.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {hitMap.get(b.id).hits.slice(0, 3).map((g, i) => (
-                          <span key={i} className={`text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 ${isDark ? 'text-amber-400' : 'text-amber-700'} break-words`}><AbbrText text={ingText(g)} /></span>
-                        ))}
-                      </div>
-                    )}
-                    <div className="mt-auto pt-2 flex items-center gap-2 text-[11px] text-slate-500">
-                      {b.isRecipe
-                        ? <span className="truncate" title={many ? books.join(', ') : bottlesOf(b.batchLitres, b.category)?.hint}>{many ? `${books.slice(0, 2).join(', ')}${books.length > 2 ? ` +${books.length - 2}` : ''}` : [b.batchLitres && `${b.batchLitres} L`, bottlesOf(b.batchLitres, b.category)?.text, b.sourceName].filter(Boolean).join(' · ')}</span>
-                        : <span>{b.calc.daysSinceStart != null ? `Day ${b.calc.daysSinceStart}` : b.startedOn || 'Not started yet'}</span>}
-                      {b.rating ? <span className="ml-auto flex items-center gap-0.5 text-amber-500 font-bold"><Star size={11} fill="currentColor" />{b.rating}</span> : null}
-                    </div>
-                    {!b.isRecipe && b.status === 'fermenting' && progress != null && (
-                      <div className={`h-1.5 rounded-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-[#2E2B27]/10'}`} title={`${progress}% of the sugar eaten so far`}>
-                        <div className={`h-full bg-gradient-to-r ${GRADIENT}`} style={{ width: `${progress}%` }} />
-                      </div>
-                    )}
+                  <div className="w-full max-w-[420px] mx-auto border-2 border-slate-400/20 rounded-3xl overflow-hidden shadow-xl bg-slate-950/10 p-3 max-h-[640px] overflow-y-auto">
+                    {renderClassicShelfGrid(cards, true)}
                   </div>
-                </a>
-              );
-            })}
-            <button onClick={() => startNew(cat)} className={`rounded-2xl border-2 border-dashed ${border} min-h-[14rem] flex flex-col items-center justify-center gap-2 text-slate-500 hover:text-amber-500 hover:border-amber-500/50 transition`}>
-              <span className="text-3xl">{view === 'recipes' ? '📝' : '🫙'}</span>
-              <span className="text-sm font-bold">{view === 'recipes' ? 'Add a recipe' : 'Start a new brew'}</span>
-            </button>
-          </div>
+                </div>
+
+                {/* Right: Phase 2 Compact List Phone Frame */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between text-xs px-2">
+                    <span className="font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                      Option B: Phase 2 Compact List
+                    </span>
+                    <span className="text-[11px] text-emerald-500 font-bold">~72px / item · 7–8 visible (+380% density)</span>
+                  </div>
+                  <div className="w-full max-w-[420px] mx-auto border-2 border-amber-500/30 rounded-3xl overflow-hidden shadow-xl bg-slate-950/10 p-3 max-h-[640px] overflow-y-auto">
+                    {renderPhase2ShelfList(cards, true)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : mobileUX === 'phase2' ? (
+            shelfLayout === 'list' ? renderPhase2ShelfList(cards, false) : renderClassicShelfGrid(cards, false)
+          ) : (
+            renderClassicShelfGrid(cards, false)
+          )}
           {!shown.length && wanted.length > 0 && <p className="text-xs text-slate-500 text-center">Nothing {view === 'recipes' ? 'in the recipe book' : 'in your brews'} uses {wanted.join(' or ')}{cat !== 'all' ? ` in ${catLabel(cat)} - try Everything` : ''}.</p>}
           {!shown.length && !wanted.length && <p className="text-xs text-slate-500 text-center">{view === 'recipes' ? 'No recipes in here yet.' : 'Nothing brewing in here yet - start one, or pick something from the recipe book.'}</p>}
         </div>
@@ -2599,11 +2787,11 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                       {renderClassicHeader(brew, true)}
                     </div>
                   </div>
-                  {/* Right: Phase 1 Frame */}
+                  {/* Right: Phase 1/2 Frame */}
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between text-xs px-2">
                       <span className="font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                        Option B: Phase 1 (Compact Horizontal)
+                        Option B: Phase 1 &amp; 2 (Compact Horizontal)
                       </span>
                       <span className="text-[11px] text-emerald-500 font-bold">-48% scroll tax (~220px)</span>
                     </div>
@@ -2613,7 +2801,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                   </div>
                 </div>
               </div>
-            ) : mobileUX === 'phase1' ? (
+            ) : (mobileUX === 'phase1' || mobileUX === 'phase2') ? (
               renderPhase1Header(brew, false)
             ) : (
               renderClassicHeader(brew, false)
