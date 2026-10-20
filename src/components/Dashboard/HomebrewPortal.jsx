@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useFocusItem } from '../../hooks/useFocusItem';
 import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, ExternalLink, Copy, ChevronUp, ChevronDown, ArrowLeft, ScrollText, Activity, Wine, Star, Heart, Share2, Send, FileDown, Link2 } from 'lucide-react';
 import PortalShell from './PortalShell';
+import { glossMatches, glossTerms } from './brewGlossary';
 
 // Homebrew: Simon's meads, braggots and other brews - the recipe, what happened to each batch, how it tasted as
 // it aged, and insights (the flavour profile it's heading for, what to tweak, what a change would do).
@@ -11,7 +12,7 @@ const ING_STAGES = ['primary', 'secondary', 'backsweeten', 'bottling'];
 const KIND_LABEL = { reading: 'Reading', nutrient: 'Nutrient', degas: 'Degas', addition: 'Addition', rack: 'Racked', stabilise: 'Stabilised', backsweeten: 'Backsweetened', bottle: 'Bottled', note: 'Note' };
 const when = (t) => (t ? new Date(t).toLocaleString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 const g3 = (g) => (g ? Number(g).toFixed(3) : '-');
-const EMPTY_BREW = { name: '', category: 'mead', style: 'Traditional mead', sourceName: '', sourceUrl: '', status: 'planning', batchLitres: '', startedOn: '', bottledOn: '', targetOg: '', targetFg: '', og: '', fg: '', sweetness: '', colour: '', carbonation: '', yeast: '', yeastNotes: '', nutrients: '', water: '', method: '', notes: '', ingredients: [] };
+const EMPTY_BREW = { name: '', category: 'mead', style: 'Traditional mead', sourceName: '', sourceUrl: '', status: 'planning', batchLitres: '', startedOn: '', bottledOn: '', targetOg: '', targetFg: '', og: '', fg: '', summary: '', sweetness: '', colour: '', carbonation: '', yeast: '', yeastNotes: '', nutrients: '', water: '', method: '', notes: '', ingredients: [] };
 const PROFILE_KEYS = [['sweetness', 'Sweetness'], ['body', 'Body'], ['acidity', 'Acidity'], ['alcoholHeat', 'Alcohol heat'], ['aromaIntensity', 'Aroma'], ['tannin', 'Tannin']];
 
 // The method as separate steps - edit, add, delete and reorder them (arrows, or drag a step by its number).
@@ -277,6 +278,9 @@ const ABBR = {
   OG: 'Original gravity - how much sugar is in the wort or must before it ferments',
   FG: 'Final gravity - the gravity once fermentation has finished',
   SG: 'Specific gravity - the density of the liquid compared with water',
+  'S.G.': 'Specific gravity - the density of the liquid compared with water (1.000); it falls as sugar becomes alcohol',
+  'CO₂': 'Carbon dioxide - the gas that makes it fizzy',
+  ICV: 'Institut Coopératif du Vin - the French wine institute behind the D-47 and other Lalvin yeast strains',
   ABV: 'Alcohol by volume',
   IBU: 'International Bitterness Units - how bitter the hops make it',
   AA: 'Alpha acid - the bittering strength of a hop variety',
@@ -289,6 +293,14 @@ const ABBR = {
   ppm: 'Parts per million',
   pH: 'How acidic it is - lower is more acidic',
   bbl: 'US beer barrel - about 117 litres',
+  EBC: 'European Brewery Convention colour scale - how dark a beer or malt is (pale lager about 8, stout 80+)',
+  SRM: 'Standard Reference Method - the American beer colour scale (pale lager about 4, stout 40+); about half the EBC number',
+  IPA: 'India Pale Ale - a strong, very hoppy pale ale',
+  AG: 'All-grain - brewed from grain with a mash, not from malt extract',
+  LW: 'A brand of brewing water salts (LW Mild Ale Crystals)',
+  BJCP: 'Beer Judge Certification Program - the style guidelines used in beer competitions',
+  UK: 'United Kingdom - imperial measures (a UK gallon is 4.546 litres)',
+  NZ: 'New Zealand',
   '1/3 break': 'The one-third sugar break - the gravity at which a third of the sugar has been eaten; the last nutrient dose is due by then',
   '°P': 'Degrees Plato - a sugar-content scale; 1°P is about 0.004 of gravity',
   '°L': 'Degrees Lovibond - the colour of a malt; higher is darker',
@@ -332,6 +344,53 @@ function AbbrText({ text }) {
   }
   if (at < s.length) parts.push(s.slice(at));
   return <>{parts}</>;
+}
+// A brewing term with its plain-English meaning: hover on a computer, tap on a phone (tap again or elsewhere to close).
+function Term({ text, meaning }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline group">
+      <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }} onBlur={() => setOpen(false)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen((o) => !o); } if (e.key === 'Escape') setOpen(false); }}
+        className="cursor-help border-b border-dotted border-amber-500/80 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-500 rounded-sm">{text}</span>
+      <span role="tooltip" className={`absolute left-0 top-full z-40 mt-1 w-64 max-w-[80vw] rounded-lg px-3 py-2 text-xs leading-snug font-normal normal-case tracking-normal shadow-xl bg-slate-900 text-slate-100 ring-1 ring-white/10 ${open ? 'block' : 'hidden group-hover:block'}`}>
+        <b className="block text-amber-400 mb-0.5">{text}</b>{meaning}
+      </span>
+    </span>
+  );
+}
+// Text with every brewing term and abbreviation in it explained on hover / tap
+function RichText({ text }) {
+  const s = String(text ?? '');
+  const marks = [
+    ...glossMatches(s).map((g) => ({ index: g.index, length: g.length, el: (k) => <Term key={k} text={s.slice(g.index, g.index + g.length)} meaning={g.meaning} /> })),
+    ...abbrMatches(s).map((a) => ({ index: a.index, length: a.key.length, el: (k) => <Ab key={k} k={a.key} /> })),
+  ].sort((a, b) => a.index - b.index || b.length - a.length);
+  const parts = [];
+  let at = 0;
+  for (const m of marks) {
+    if (m.index < at) continue; // overlaps an earlier, longer term
+    if (m.index > at) parts.push(s.slice(at, m.index));
+    parts.push(m.el(m.index));
+    at = m.index + m.length;
+  }
+  if (at < s.length) parts.push(s.slice(at));
+  return <>{parts}</>;
+}
+// Every brewing term and abbreviation a recipe uses, with what it means - readable without hovering
+function TermsPanel({ texts, border }) {
+  const terms = glossTerms(...texts);
+  const abbrs = [...new Set(texts.flatMap((t) => abbrMatches(t).map((m) => m.key)))].filter((k) => !ABBR_UNITS.has(k) && !['°C', '°F'].includes(k));
+  if (!terms.length && !abbrs.length) return null;
+  return (
+    <details className={`mt-4 pt-3 border-t ${border} group/terms`} open>
+      <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-wider text-slate-500 select-none">Terms in this recipe - what they mean ({terms.length + abbrs.length})</summary>
+      <dl className="mt-2 grid gap-x-4 gap-y-1.5 sm:grid-cols-2 text-xs">
+        {terms.map((t) => <div key={t.term}><dt className="inline font-bold text-amber-600">{t.term}: </dt><dd className="inline text-slate-500">{t.meaning}</dd></div>)}
+        {abbrs.map((k) => <div key={k}><dt className="inline font-bold text-amber-600">{k}: </dt><dd className="inline text-slate-500">{ABBR[k]}</dd></div>)}
+      </dl>
+    </details>
+  );
 }
 // every abbreviation used in a recipe, as hoverable chips
 function AbbrStrip({ texts, border }) {
@@ -399,6 +458,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
   const [fizzes, setFizzes] = useState([]); // still / sparkling
   const [flavs, setFlavs] = useState([]); // flavours it must have - each one picked narrows it further
   const [sweets, setSweets] = useState([]); // sweetness to show (none picked = all)
+  const [editRecipe, setEditRecipe] = useState(false); // a recipe opens to read; this switches to the edit form
   const [shareInfo, setShareInfo] = useState(null); // the share link just made: { id, url, reachable }
   const [pdfReady, setPdfReady] = useState(null); // a PDF made but waiting for a tap to send it
   const [abvPick, setAbvPick] = useState(null); // strength range picked on the slider, [low, high] - null = any
@@ -442,12 +502,12 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
     } catch (err) { notify(err.message, 'error'); }
   }, []);
   useEffect(() => { loadList(); }, [loadList]);
-  useEffect(() => { loadBrew(selId); }, [selId, loadBrew]);
+  useEffect(() => { loadBrew(selId); setEditRecipe(false); }, [selId, loadBrew]);
 
   const run = async (key, fn, ok) => { setBusy(key); try { await fn(); if (ok) notify(ok); } catch (err) { notify(err.message, 'error'); } finally { setBusy(''); } };
   const saveBrew = () => run('save', async () => {
     const d = await api(brew ? `/api/homebrew/${brew.id}` : '/api/homebrew', brew ? 'PUT' : 'POST', brew ? form : { ...form, isRecipe: view === 'recipes' });
-    await loadList(); setCreating(false); setSelId(d.brew.id); setBrew(d.brew);
+    await loadList(); setCreating(false); setSelId(d.brew.id); setBrew(d.brew); setEditRecipe(false);
   }, 'Brew saved.');
   const removeBrew = () => { if (!window.confirm(`Delete "${brew.name}" and everything logged for it?`)) return; run('del', async () => { await api(`/api/homebrew/${brew.id}`, 'DELETE'); setSelId(null); setCreating(false); await loadList(); }, 'Deleted.'); };
   const addLog = () => run('log', async () => {
@@ -906,9 +966,68 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
             </div>
           )}
 
-          {(!brew || brew.isRecipe || tab === 'recipe') && (
+          {brew?.isRecipe && !editRecipe && (
             <div className={panel}>
-              <h2 className="text-xs font-black uppercase tracking-wider mb-3">{brew ? 'Recipe' : view === 'recipes' ? 'New recipe' : 'New brew'}</h2>
+              <div className="flex items-center gap-2 mb-3">
+                <h2 className="text-xs font-black uppercase tracking-wider">Recipe</h2>
+                <span className="text-[11px] text-slate-500">Dotted words: hover or tap for what they mean</span>
+                <button onClick={() => setEditRecipe(true)} className={`${btn} ml-auto`}><Wand2 size={13} /> Edit recipe</button>
+              </div>
+              {brew.summary && <p className={`text-sm leading-relaxed mb-4 p-3 rounded-xl ${isDark ? 'bg-amber-500/10' : 'bg-amber-50'}`}><RichText text={brew.summary} /></p>}
+              {(brew.yeast || brew.batchLitres) && (
+                <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs mb-4">
+                  {brew.batchLitres ? <span><b className="text-slate-500 font-bold uppercase text-[10px] tracking-wider mr-1">Makes</b>{brew.batchLitres} L · {bottlesOf(brew.batchLitres, brew.category)?.text} bottles</span> : null}
+                  {brew.yeast && <span><b className="text-slate-500 font-bold uppercase text-[10px] tracking-wider mr-1">Yeast</b><RichText text={brew.yeast} /></span>}
+                </div>
+              )}
+              {(brew.ingredients || []).length > 0 && (
+                <>
+                  <h3 className="text-[11px] font-black uppercase tracking-wider text-amber-600 mb-2">Ingredients</h3>
+                  {ING_STAGES.map((stage) => [stage, (brew.ingredients || []).filter((g) => (g.stage || 'primary') === stage && g.name)]).filter(([, l]) => l.length).map(([stage, list], _, all) => (
+                    <div key={stage} className="mb-3">
+                      {all.length > 1 && <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{{ primary: 'To start', secondary: 'Later, in secondary', backsweeten: 'To back-sweeten', bottling: 'At bottling' }[stage]}</div>}
+                      <ul className={`rounded-xl border ${border} divide-y ${isDark ? 'divide-white/5' : 'divide-[#2E2B27]/10'}`}>
+                        {list.map((g, i) => (
+                          <li key={i} className="flex gap-3 px-3 py-1.5 text-sm">
+                            <span className="w-24 shrink-0 font-bold tabular-nums"><RichText text={[g.amount, g.unit].filter(Boolean).join(' ')} /></span>
+                            <span className="min-w-0"><RichText text={g.name} /></span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </>
+              )}
+              {parseSteps(brew.method).length > 0 && (
+                <>
+                  <h3 className="text-[11px] font-black uppercase tracking-wider text-amber-600 mt-4 mb-2">Method</h3>
+                  <ol className="flex flex-col gap-2">
+                    {parseSteps(brew.method).map((s, i) => (
+                      <li key={i} className="flex gap-3 text-sm leading-relaxed">
+                        <span className="w-6 h-6 shrink-0 rounded-full bg-gradient-to-r from-amber-500 to-orange-600 text-white text-[11px] font-bold flex items-center justify-center mt-0.5">{i + 1}</span>
+                        <span className="min-w-0"><RichText text={s} /></span>
+                      </li>
+                    ))}
+                  </ol>
+                </>
+              )}
+              {brew.notes && (
+                <>
+                  <h3 className="text-[11px] font-black uppercase tracking-wider text-amber-600 mt-4 mb-2">Notes</h3>
+                  <p className="text-sm leading-relaxed whitespace-pre-line text-slate-500"><RichText text={brew.notes} /></p>
+                </>
+              )}
+              <TermsPanel border={border} texts={[brew.summary, brew.method, brew.notes, brew.yeast, ...(brew.ingredients || []).map(ingText)]} />
+            </div>
+          )}
+
+          {(!brew || (brew.isRecipe ? editRecipe : tab === 'recipe')) && (
+            <div className={panel}>
+              <div className="flex items-center gap-2 mb-3">
+                <h2 className="text-xs font-black uppercase tracking-wider">{brew ? (brew.isRecipe ? 'Edit recipe' : 'Recipe') : view === 'recipes' ? 'New recipe' : 'New brew'}</h2>
+                {brew?.isRecipe && <button onClick={() => setEditRecipe(false)} className={`${btn} ml-auto`}><ScrollText size={13} /> Back to reading it</button>}
+              </div>
+              <div className="mb-3"><span className={label}>Summary</span><textarea rows={Math.min(6, Math.max(2, Math.ceil((form.summary || '').length / 90)))} value={form.summary || ''} onChange={set('summary')} placeholder="What it is and what it's like - a line or two" className={`${field} resize-y`} /></div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2"><span className={label}>Name</span><input value={form.name} onChange={set('name')} placeholder="e.g. Christmas braggot for Dad" className={field} /></div>
                 <div><span className={label}>Type</span><select value={form.category || ''} onChange={(e) => setForm({ ...form, category: e.target.value, style: stylesFor(e.target.value)[0] })} className={field}>{meta.categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select></div>
@@ -955,7 +1074,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
               <div className="grid grid-cols-1 gap-3 mt-4">
                 <div><span className={label}>Notes</span><textarea rows={Math.min(14, Math.max(4, Math.ceil((form.notes || '').length / 60)))} value={form.notes || ''} onChange={set('notes')} placeholder="Anything else worth remembering" title={abbrTitle(form.notes)} className={`${field} resize-y`} /></div>
               </div>
-              <AbbrStrip border={border} texts={[form.method, form.notes, form.yeast, form.yeastNotes, form.nutrients, form.water, ...form.ingredients.map(ingText),
+              <TermsPanel border={border} texts={[form.summary, form.method, form.notes, form.yeast, form.yeastNotes, form.nutrients, form.water, ...form.ingredients.map(ingText),
                 form.targetOg || form.og ? 'OG' : '', form.targetFg || form.fg ? 'FG' : '']} />
               <div className="flex gap-2 mt-4">
                 <button onClick={saveBrew} disabled={!form.name.trim() || busy === 'save'} className={primary}>{busy === 'save' ? <RotateCw size={13} className="animate-spin" /> : <Save size={13} />} Save</button>

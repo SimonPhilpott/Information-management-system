@@ -72,7 +72,7 @@ db.exec(`
 // the kind of drink; recipe-book entries (common recipes and ones he keeps) and where a recipe came from
 for (const col of ['category TEXT', 'is_recipe INTEGER NOT NULL DEFAULT 0', 'source_name TEXT', 'source_url TEXT', 'from_recipe INTEGER', 'favourite INTEGER NOT NULL DEFAULT 0',
   // recipe families (same drink from different books, one card), version label, wine colour tag, where the sweetness came from
-  'family TEXT', 'variant TEXT', 'colour TEXT', 'sweetness_basis TEXT']) {
+  'family TEXT', 'variant TEXT', 'colour TEXT', 'sweetness_basis TEXT', 'summary TEXT']) {
   try { db.exec(`ALTER TABLE brews ADD COLUMN ${col}`); } catch (_) { /* already there */ }
 }
 
@@ -172,7 +172,7 @@ function present(r, { full = false } = {}) {
     ingredients: json(r.ingredients, []), yeast: r.yeast, yeastNotes: r.yeast_notes, nutrients: r.nutrients, water: r.water,
     targetOg: r.target_og, targetFg: r.target_fg, og: r.og, fg: r.fg, sweetness: r.sweetness, carbonation: r.carbonation,
     shared: Boolean(r.share_token), sweetnessTag: normSweetness(r.sweetness), sweetnessBasis: r.sweetness_basis, abvEstimate: r.is_recipe && !r.target_og ? estimateAbv(r) : null, ...profileOf(r), colour: r.colour || COLOUR_OF_CAT[r.category] || null, family: r.family, variant: r.variant,
-    method: r.method, notes: r.notes, createdAt: r.created_at, updatedAt: r.updated_at,
+    method: r.method, notes: r.notes, summary: r.summary || null, createdAt: r.created_at, updatedAt: r.updated_at,
     calc: {
       latestGravity: latest, abv: a, abvFinal: Boolean(r.fg), potentialAbv: abv(og || r.target_og, r.target_fg || 1.0),
       thirdBreak: thirdBreak(og || r.target_og, r.target_fg || 1.0), attenuation: attenuation(og, latest),
@@ -195,7 +195,7 @@ export const listRecipes = () => (tagRecipes(db), db.prepare('SELECT * FROM brew
 export const getBrew = (id) => present(db.prepare('SELECT * FROM brews WHERE id = ?').get(Number(id)), { full: true });
 
 const FIELDS = { name: 'name', style: 'style', category: 'category', sourceName: 'source_name', sourceUrl: 'source_url', status: 'status', batchLitres: 'batch_litres', startedOn: 'started_on', bottledOn: 'bottled_on', yeast: 'yeast', yeastNotes: 'yeast_notes',
-  nutrients: 'nutrients', water: 'water', targetOg: 'target_og', targetFg: 'target_fg', og: 'og', fg: 'fg', sweetness: 'sweetness', carbonation: 'carbonation', method: 'method', notes: 'notes', colour: 'colour' };
+  nutrients: 'nutrients', water: 'water', targetOg: 'target_og', targetFg: 'target_fg', og: 'og', fg: 'fg', sweetness: 'sweetness', carbonation: 'carbonation', method: 'method', notes: 'notes', colour: 'colour', summary: 'summary' };
 const NUMERIC = new Set(['batch_litres', 'target_og', 'target_fg', 'og', 'fg']);
 
 export function saveBrew(id, body = {}) {
@@ -229,7 +229,7 @@ export function saveBrew(id, body = {}) {
   return getBrew(id);
 }
 
-const COPY = ['name', 'style', 'category', 'batch_litres', 'ingredients', 'yeast', 'yeast_notes', 'nutrients', 'water', 'target_og', 'target_fg', 'sweetness', 'sweetness_basis', 'colour', 'carbonation', 'method', 'notes', 'source_name', 'source_url'];
+const COPY = ['name', 'style', 'category', 'batch_litres', 'ingredients', 'yeast', 'yeast_notes', 'nutrients', 'water', 'target_og', 'target_fg', 'sweetness', 'sweetness_basis', 'colour', 'carbonation', 'method', 'notes', 'summary', 'source_name', 'source_url'];
 function copyBrew(id, { asRecipe }) {
   const r = db.prepare('SELECT * FROM brews WHERE id = ?').get(Number(id));
   if (!r) throw new Error(`No brew #${id}`);

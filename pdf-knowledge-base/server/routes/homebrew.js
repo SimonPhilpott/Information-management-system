@@ -24,9 +24,9 @@ router.post('/:id/save-as-recipe', wrap((req) => ({ brew: saveAsRecipe(req.param
 router.post('/:id/favourite', wrap((req) => ({ brew: setFavourite(req.params.id, req.body?.favourite !== false) })));
 router.post('/:id/what-if', wrap(async (req) => ({ result: await whatIf(req.params.id, req.body?.change) })));
 // share a recipe as a link anyone can open (WhatsApp etc.), stop sharing it, or get it as a PDF
-router.post('/:id/share', wrap((req) => {
+router.post('/:id/share', wrap(async (req) => {
   const token = shareRecipe(req.params.id);
-  const { base, reachable } = publicBase(req);
+  const { base, reachable } = await publicBase(req);
   return { token, url: `${base}/api/share/recipe/${token}`, pdfUrl: `${base}/api/share/recipe/${token}/pdf`, reachable };
 }));
 router.delete('/:id/share', wrap((req) => ({ stopped: unshareRecipe(req.params.id) })));
