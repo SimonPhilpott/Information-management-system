@@ -82,6 +82,7 @@ import boardgamesRoutes from './routes/boardgames.js';
 import peopleRoutes from './routes/people.js';
 import lookRoutes from './routes/look.js';
 import { getCameraStatus, setFrame, heartbeat, appendDeviceLog, pauseCamera } from './services/cameraService.js';
+import { startBrewColours } from './services/homebrewColours.js';
 import { startPresence, onPresence, getPresence } from './services/presenceService.js';
 import { dueNow as instructionsDue, forPeople as instructionsForPeople, markFired as markInstructionFired } from './services/imsInstructionsService.js';
 import imsInstructionsRoutes from './routes/imsInstructions.js';
@@ -237,8 +238,11 @@ const requireAdmin = (req, res, next) => {
   // a recipe Simon has shared (WhatsApp etc.): that one recipe, found by its unguessable token (routes/recipeShare.js)
   if (req.path.startsWith('/api/share/recipe/')) return next();
   if (isApprovedSession(req)) return next();
-  // Invited guests: the deck builder only, never invites or anything else in IMS.
-  if (isGuestSession(req) && req.path.startsWith('/api/decks/') && !req.path.startsWith('/api/decks/invites')) return next();
+  // Invited guests: campaign decks and homebrew only, never invites or anything else in IMS.
+  if (isGuestSession(req)) {
+    if (req.path.startsWith('/api/decks/') && !req.path.startsWith('/api/decks/invites')) return next();
+    if (req.path.startsWith('/api/homebrew') && !req.path.startsWith('/api/homebrew/invites')) return next();
+  }
   return res.status(401).json({ error: 'Sign in with your Google account to use this.', signInRequired: true });
 };
 
@@ -1346,6 +1350,7 @@ onPresence('greet', ({ names }) => {
   if (first.length) sendToHardware({ greet: { names: first.join(' and ') } });
 });
 startPresence();
+startBrewColours(); // demijohn colours for every recipe and brew (homebrewColours.js)
 startWakeGate(); // load the local wake-check model now, not on the first "Hey Ims"
 
 // Ring Doorbell Direct API Service: Wire real-time alerts to ESP32-S3-BOX-3 and Gemini spoken announcements

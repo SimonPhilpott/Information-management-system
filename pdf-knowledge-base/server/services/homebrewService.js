@@ -5,6 +5,7 @@ import { getModelFor } from './modelRegistry.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { expectedColour, fillColours } from './homebrewColours.js';
 import { tagRecipes, splitName, variantLabel, normSweetness, COLOUR_OF_CAT, estimateAbv, profileOf } from './homebrewTags.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -171,7 +172,7 @@ function present(r, { full = false } = {}) {
     id: r.id, name: r.name, style: r.style, category: r.category || categoryOfStyle(r.style), isRecipe: Boolean(r.is_recipe), favourite: Boolean(r.favourite), sourceName: r.source_name, sourceUrl: r.source_url, fromRecipe: r.from_recipe, status: r.status, batchLitres: r.batch_litres, startedOn: r.started_on, bottledOn: r.bottled_on,
     ingredients: json(r.ingredients, []), yeast: r.yeast, yeastNotes: r.yeast_notes, nutrients: r.nutrients, water: r.water,
     targetOg: r.target_og, targetFg: r.target_fg, og: r.og, fg: r.fg, sweetness: r.sweetness, carbonation: r.carbonation,
-    shared: Boolean(r.share_token), sweetnessTag: normSweetness(r.sweetness), sweetnessBasis: r.sweetness_basis, abvEstimate: r.is_recipe && !r.target_og ? estimateAbv(r) : null, ...profileOf(r), colour: r.colour || COLOUR_OF_CAT[r.category] || null, family: r.family, variant: r.variant,
+    shared: Boolean(r.share_token), sweetnessTag: normSweetness(r.sweetness), sweetnessBasis: r.sweetness_basis, abvEstimate: !r.target_og ? estimateAbv(r) : null, /* brews too: a likely strength until readings give the real one */ ...profileOf(r), colour: r.colour || COLOUR_OF_CAT[r.category] || null, liquid: expectedColour(r.id), family: r.family, variant: r.variant,
     method: r.method, notes: r.notes, summary: r.summary || null, createdAt: r.created_at, updatedAt: r.updated_at,
     calc: {
       latestGravity: latest, abv: a, abvFinal: Boolean(r.fg), potentialAbv: abv(og || r.target_og, r.target_fg || 1.0),
@@ -226,6 +227,7 @@ export function saveBrew(id, body = {}) {
   set.updated_at = now;
   const cols = Object.keys(set);
   db.prepare(`UPDATE brews SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`).run(...cols.map((c) => set[c]), Number(id));
+  fillColours().catch(() => {}); // an edited recipe's demijohn colour is worked out again straight away
   return getBrew(id);
 }
 
@@ -363,6 +365,46 @@ export function brewsForIms({ brew = '' } = {}) {
 
 // "I've just pitched": the staggered (TOSNA) nutrient doses as reminders - 24, 48 and 72 hours after pitching,
 // and a check for the 1/3 sugar break (the last dose, no later than day 7)
+// Step reminders: the method's timed steps (rack on to the camomile, take it off after 4 days, stabilise, back-sweeten,
+// bottle...) as reminders, worked out by Gemini from the method, the log so far and today's date. Set when he pitches
+// ("I've just pitched"), and again whenever he asks - planning again cancels this brew's earlier step reminders.
+db.exec('CREATE TABLE IF NOT EXISTS brew_step_reminders (brew_id INTEGER NOT NULL, reminder_id INTEGER NOT NULL)');
+const londonDate = (ms) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date(ms)); // YYYY-MM-DD
+export async function setStepReminders(id, { justPitched = false, dryRun = false } = {}) { // dryRun: the plan only, nothing set (testing)
+  const b = getBrew(id);
+  if (!b) throw new Error(`No brew #${id}`);
+  if (!String(b.method || '').trim()) throw new Error('This brew has no method steps to remind you about.');
+  const { scheduleItem, cancelScheduledItem } = await import('./remindersService.js');
+  const today = londonDate(Date.now());
+  const out = await askJson(KNOW + ' Reply with JSON only.',
+    `THE BREW:\n${brewForPrompt(b)}\n\nToday is ${today} (${new Date().toLocaleDateString('en-GB', { timeZone: 'Europe/London', weekday: 'long' })}).${justPitched ? ' He has just pitched the yeast today.' : ''}\n\n` +
+    'Turn the METHOD into reminders for the steps still to come, at the day each one falls due - from the method\'s own timings ("leave 4 days", "rack after a week") and, where it doesn\'t say, the usual timing for this kind of brew and its log so far ' +
+    '(e.g. primary ferment of a mead ~2-4 weeks; check the gravity is steady over 3 days before racking or stabilising). ' +
+    'Skip steps already done (see the log and status) and anything done on brew day itself. Leave out nutrient doses - those have their own reminders. ' +
+    'A step that depends on how it\'s going is a check, not an order: "check the gravity - if it\'s steady at about 1.000, rack on to the 8 camomile teabags". ' +
+    'Each label starts with the brew name and says exactly what to do, with the amounts from the recipe. At most 8 reminders, in date order. ' +
+    'Time of day: 18:30 on weekdays, 10:00 at weekends, unless a step needs another time. ' +
+    'Return {"reminders": [{"date": "YYYY-MM-DD", "time": "HH:MM", "label": "..."}]}.');
+  const wanted = (out?.reminders || []).filter((r) => r && /^\d{4}-\d{2}-\d{2}$/.test(r.date) && r.date >= today && String(r.label || '').trim()).slice(0, 8);
+  if (!wanted.length) throw new Error('No steps still to come that need a reminder.');
+  if (dryRun) return wanted;
+  // the brew's earlier step reminders make way for the new plan
+  for (const { reminder_id: rid } of db.prepare('SELECT reminder_id FROM brew_step_reminders WHERE brew_id = ?').all(b.id)) {
+    try { cancelScheduledItem(rid); } catch (_) { /* already gone off or cancelled */ }
+  }
+  db.prepare('DELETE FROM brew_step_reminders WHERE brew_id = ?').run(b.id);
+  const made = [];
+  for (const r of wanted) {
+    try {
+      const m = scheduleItem({ type: 'reminder', label: String(r.label).trim().slice(0, 300), time: /^\d{2}:\d{2}$/.test(r.time) ? r.time : '18:30', date: r.date, alertMode: 'both' });
+      db.prepare('INSERT INTO brew_step_reminders (brew_id, reminder_id) VALUES (?, ?)').run(b.id, m.id);
+      made.push({ id: m.id, date: r.date, label: m.label, goesOffAt: m.goesOffAt });
+    } catch (err) { console.warn(`[Homebrew] Step reminder not set: ${err.message}`); } // e.g. today's time already gone
+  }
+  addLog(b.id, { kind: 'note', text: `Step reminders set:\n${made.map((m) => `- ${m.date}: ${m.label}`).join('\n')}` });
+  return made;
+}
+
 export async function setNutrientReminders(id) {
   const b = getBrew(id);
   if (!b) throw new Error(`No brew #${id}`);

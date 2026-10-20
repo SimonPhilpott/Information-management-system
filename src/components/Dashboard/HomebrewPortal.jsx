@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useFocusItem } from '../../hooks/useFocusItem';
-import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, ExternalLink, Copy, ChevronUp, ChevronDown, ArrowLeft, ScrollText, Activity, Wine, Star, Heart, Share2, Send, FileDown, Link2 } from 'lucide-react';
+import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, ExternalLink, Copy, ChevronUp, ChevronDown, ArrowLeft, ScrollText, Activity, Wine, Star, Heart, Share2, Send, FileDown, Link2, UserPlus, Users, Mail, User, Check, RefreshCw } from 'lucide-react';
 import PortalShell from './PortalShell';
 import { glossMatches, glossTerms } from './brewGlossary';
+import { useAuth } from '../../AuthGate';
 
 // Homebrew: Simon's meads, braggots and other brews - the recipe, what happened to each batch, how it tasted as
 // it aged, and insights (the flavour profile it's heading for, what to tweak, what a change would do).
@@ -19,6 +20,43 @@ const PROFILE_KEYS = [['sweetness', 'Sweetness'], ['body', 'Body'], ['acidity', 
 // Still kept as numbered lines ("1. ...\n2. ..."), so older brews, Ims and the insights read it as before.
 const parseSteps = (method) => String(method || '').split('\n').map((l) => l.replace(/^\s*(\d+[.)]|[-*•])\s*/, '').trim()).filter(Boolean);
 const joinSteps = (steps) => steps.map((s) => s.trim()).filter(Boolean).map((s, i) => `${i + 1}. ${s}`).join('\n');
+
+// Small round photos of the main ingredients beside the name (the marigolds and camomile of a camomile and marigold
+// mead; for beers the malts, hops or adjuncts that make it unusual). Made the first time a recipe is opened - it
+// asks again every few seconds until they're ready - then kept, and shared with every recipe using the same thing.
+// The same call also gives the drink's expected colour, for the demijohn.
+function useMainIngredients(id) {
+  const [main, setMain] = useState({ items: [], colour: null });
+  useEffect(() => {
+    let stop = false, timer = null, tries = 0;
+    setMain({ items: [], colour: null });
+    if (!id) return undefined;
+    const load = async () => {
+      try {
+        const d = await (await fetch(`/api/homebrew/${id}/main-ingredients`)).json();
+        if (stop) return;
+        setMain({ items: d.items || [], colour: d.colour || null });
+        if (d.pending && ++tries < 30) timer = setTimeout(load, 4000);
+      } catch (_) { /* pictures are optional */ }
+    };
+    load();
+    return () => { stop = true; clearTimeout(timer); };
+  }, [id]);
+  return main;
+}
+
+function MainIngredientPics({ items, isDark }) {
+  const shown = items.filter((i) => i.ready);
+  if (!shown.length) return null;
+  return (
+    <div className="flex items-center gap-2 shrink-0">
+      {shown.map((i) => (
+        <img key={i.key} src={`/api/homebrew/picture/${i.key}`} alt={i.name} title={i.name} loading="lazy"
+          className={`w-14 h-14 rounded-full object-cover shadow-sm ring-2 ${isDark ? 'ring-slate-950/60' : 'ring-white'}`} />
+      ))}
+    </div>
+  );
+}
 
 function StepsEditor({ value, onChange, field, border, isDark }) {
   // local list so a step being typed (even emptied) isn't dropped mid-edit; synced when the brew changes
@@ -216,25 +254,42 @@ const PRODUCE_GROUPS = [
 
 // A demijohn showing the brew: the liquid in its colour, bubbles while it ferments, clearing as it
 // conditions, a twinkle once bottled, empty while it's still a plan.
-function Vessel({ category, status, isRecipe, size = 96, isDark, wine }) {
+// liquid: the drink's expected colour when known (the recipe header), else the wine colour or the category's
+function Vessel({ category, status, isRecipe, size = 96, isDark, wine, liquid }) {
   const id = React.useId().replace(/:/g, '');
-  const colour = status === 'dumped' ? '#94a3b8' : (WINE_COLOURS.find((w) => w.id === wine) || look(category)).liquid;
-  const fill = isRecipe ? 0.55 : ({ planning: 0, dumped: 0.15 }[status] ?? 0.8);
+  const colour = status === 'dumped' ? '#94a3b8' : liquid || (WINE_COLOURS.find((w) => w.id === wine) || look(category)).liquid;
+  // a recipe's (and a planned brew's) demijohn is filled to the shoulder in its expected colour, as a full batch would be
+  const fill = isRecipe || status === 'planning' ? 0.83 : status === 'dumped' ? 0.15 : 0.8;
   const top = 122 - fill * 84;
   const glass = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(46,43,39,0.35)';
   const body = 'M42 20 H58 V32 C58 40 86 44 86 70 V112 Q86 122 76 122 H24 Q14 122 14 112 V70 C14 44 42 40 42 32 Z';
   const bubbling = !isRecipe && status === 'fermenting';
   return (
-    <svg viewBox="0 0 100 130" width={size} height={size * 1.3} aria-hidden="true" className="shrink-0 drop-shadow-sm">
+    // role="img": a drawing, not an outline icon - the page-wide icon rule (index.css) would otherwise empty its fills
+    <svg viewBox="0 0 100 130" width={size} height={size * 1.3} role="img" aria-hidden="true" className="shrink-0 drop-shadow-sm">
       <defs>
         <clipPath id={`c${id}`}><path d={body} /></clipPath>
         <linearGradient id={`g${id}`} x1="0" x2="0" y1="0" y2="1">
           <stop offset="0" stopColor={colour} stopOpacity={status === 'conditioning' ? 0.75 : 0.95} />
           <stop offset="1" stopColor={colour} stopOpacity="1" />
         </linearGradient>
+        {/* round glass: shaded at the sides, lit just left of centre */}
+        <linearGradient id={`r${id}`} x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0" stopColor="#000" stopOpacity="0.32" />
+          <stop offset="0.3" stopColor="#fff" stopOpacity="0.18" />
+          <stop offset="0.55" stopColor="#fff" stopOpacity="0" />
+          <stop offset="1" stopColor="#000" stopOpacity="0.38" />
+        </linearGradient>
+        <linearGradient id={`e${id}`} x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0" stopColor={isDark ? '#fff' : '#2E2B27'} stopOpacity="0.1" />
+          <stop offset="0.3" stopColor="#fff" stopOpacity={isDark ? 0.08 : 0.5} />
+          <stop offset="1" stopColor={isDark ? '#fff' : '#2E2B27'} stopOpacity="0.14" />
+        </linearGradient>
       </defs>
       <g clipPath={`url(#c${id})`}>
+        <rect x="0" y="0" width="100" height="130" fill={`url(#e${id})`} />
         <rect x="0" y={top} width="100" height="130" fill={`url(#g${id})`} />
+        {fill > 0 && <rect x="0" y={top} width="100" height="130" fill={`url(#r${id})`} />}
         {fill > 0 && <rect x="0" y={top} width="100" height="3" fill="#fff" opacity={bubbling ? 0.55 : 0.25} />}
         {bubbling && [22, 34, 48, 61, 72, 40, 66].map((cx, i) => (
           <circle key={i} className="hb-bubble" cx={cx} cy={118 - (i % 3) * 6} r={1.6 + (i % 3) * 0.7} fill="#fff" opacity="0.8" style={{ animationDelay: `${(i * 0.37) % 2.6}s` }} />
@@ -246,7 +301,7 @@ function Vessel({ category, status, isRecipe, size = 96, isDark, wine }) {
       <rect x="39" y="14" width="22" height="9" rx="2" fill="#a0703c" />
       <rect x="47" y="3" width="6" height="12" rx="2" fill="none" stroke={glass} strokeWidth="2" />
       {bubbling && <circle className="hb-airlock" cx="50" cy="7" r="2.2" fill={colour} />}
-      {isRecipe && <g transform="translate(62 84)"><rect width="22" height="28" rx="2" fill="#fff8e7" stroke="#d6b77a" /><path d="M5 8 H17 M5 14 H17 M5 20 H13" stroke="#b08b4f" strokeWidth="1.6" /></g>}
+      {isRecipe && <g transform="translate(62 84)"><rect width="22" height="28" rx="2" fill="#fff" stroke="#d6b77a" /><path d="M5 8 H17 M5 14 H17 M5 20 H13" stroke="#b08b4f" strokeWidth="1.6" /></g>}
       {!isRecipe && (status === 'bottled' || status === 'finished') && [[80, 22], [20, 30], [88, 46]].map(([x, y], i) => (
         <path key={i} className="hb-star" d={`M${x} ${y - 5} L${x + 1.5} ${y - 1.5} L${x + 5} ${y} L${x + 1.5} ${y + 1.5} L${x} ${y + 5} L${x - 1.5} ${y + 1.5} L${x - 5} ${y} L${x - 1.5} ${y - 1.5} Z`} fill="#fbbf24" style={{ animationDelay: `${i * 0.6}s` }} />
       ))}
@@ -255,16 +310,19 @@ function Vessel({ category, status, isRecipe, size = 96, isDark, wine }) {
 }
 
 // Where a brew is in its life: planning → fermenting → clearing → bottled → finished.
-function StatusTrack({ status, isDark }) {
+// Tap a step to move the brew on (or back) to it.
+function StatusTrack({ status, isDark, onPick, busy }) {
   const at = TRACK.indexOf(status);
   return (
     <div className="flex items-center gap-1 w-full">
       {TRACK.map((s, i) => (
         <React.Fragment key={s}>
-          <div className="flex flex-col items-center gap-1 min-w-0">
-            <span className={`w-3 h-3 rounded-full ${i <= at ? `bg-gradient-to-r ${GRADIENT}` : isDark ? 'bg-white/10' : 'bg-[#2E2B27]/10'} ${i === at ? 'ring-4 ring-amber-500/25' : ''}`} />
-            <span className={`text-[10px] truncate ${i === at ? 'font-bold text-amber-500' : 'text-slate-500'}`}>{STATUS_WORD[s]}</span>
-          </div>
+          <button type="button" onClick={() => s !== status && onPick?.(s)} disabled={!onPick || busy || s === status}
+            title={s === status ? `It's ${STATUS_WORD[s].toLowerCase()} now` : `Move it to ${STATUS_WORD[s]}`}
+            className={`group flex flex-col items-center gap-1 min-w-0 disabled:cursor-default ${s === status ? '' : 'cursor-pointer'}`}>
+            <span className={`w-3 h-3 rounded-full transition ${i <= at ? `bg-gradient-to-r ${GRADIENT}` : isDark ? 'bg-white/10 group-hover:bg-amber-500/50' : 'bg-[#2E2B27]/10 group-hover:bg-amber-500/50'} ${i === at ? 'ring-4 ring-amber-500/25' : 'group-hover:ring-4 group-hover:ring-amber-500/15'}`} />
+            <span className={`text-[10px] truncate transition ${i === at ? 'font-bold text-amber-500' : 'text-slate-500 group-hover:text-amber-500'}`}>{STATUS_WORD[s]}</span>
+          </button>
           {i < TRACK.length - 1 && <div className={`flex-1 h-0.5 mb-4 rounded-full ${i < at ? 'bg-amber-500' : isDark ? 'bg-white/10' : 'bg-[#2E2B27]/10'}`} />}
         </React.Fragment>
       ))}
@@ -453,10 +511,286 @@ const fromPath = (p) => {
   if (m) return { id: Number(m[2]), view: m[1] === 'recipe' ? 'recipes' : 'brews' };
   return { id: null, view: /^\/ims\/homebrew\/recipes\b/.test(p) ? 'recipes' : 'brews' };
 };
-// a plain click opens it here; ctrl/cmd/shift/middle click is left to the browser (new tab or window)
-const plainClick = (e) => !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0);
+function HomebrewInviteModal({ isOpen, onClose, isDark, toast }) {
+  const [list, setList] = useState([]);
+  const [signIns, setSignIns] = useState([]);
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/homebrew/invites');
+      const d = await res.json();
+      if (d.success) {
+        setList(d.invites || []);
+        setSignIns(d.signIns || []);
+      }
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) load();
+  }, [isOpen, load]);
+
+  if (!isOpen) return null;
+
+  const link = `${window.location.origin}/ims/homebrew?invite=1`;
+
+  const addInvite = async (targetEmail) => {
+    const e = (targetEmail || email).trim();
+    if (!e) return;
+    setBusy(true);
+    try {
+      const res = await fetch('/api/homebrew/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: e }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        setEmail('');
+        load();
+        if (toast) toast(`${d.invite.email} can now sign in to Homebrew.`);
+      } else {
+        if (toast) toast(d.error || 'Failed to send invite', 'error');
+      }
+    } catch (err) {
+      if (toast) toast(err.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revoke = async (e) => {
+    if (!window.confirm(`Stop ${e} accessing Homebrew?`)) return;
+    try {
+      const res = await fetch(`/api/homebrew/invites/${encodeURIComponent(e)}`, { method: 'DELETE' });
+      const d = await res.json();
+      if (d.success) {
+        load();
+        if (toast) toast(`Access withdrawn for ${e}`);
+      }
+    } catch (err) {
+      if (toast) toast(err.message, 'error');
+    }
+  };
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(link).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      if (toast) toast('Homebrew invite link copied to clipboard.');
+    });
+  };
+
+  const mailtoInvite = (e) => `mailto:${e}?subject=${encodeURIComponent('Join my Homebrew Portal')}&body=${encodeURIComponent(`Hi,\n\nI've added you to my Homebrew Portal on IMS. Open this link and sign in with your Google account (${e}):\n\n${link}\n\nYou'll get access to all my meads, wines, beers, and 140+ craft recipes with what-if flavour predictions.\n\nCheers,\nSimon`)}`;
+
+  const mailtoDaniel = (e = 'daniel.philpott@gmail.com') => `mailto:${e}?subject=${encodeURIComponent('Join my Homebrew Portal')}&body=${encodeURIComponent(`Hi Daniel,\n\nI've added you to my Homebrew Portal. Open this link and sign in with your Google account (${e}):\n\n${link}\n\nYou can browse all my mead, cider and wine batches, explore the recipe book, and try out the flavour predictor.\n\nCheers,\nSimon`)}`;
+
+  const isDanielInvited = list.some((x) => x.email?.toLowerCase().includes('daniel') && !x.revokedAt);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className={`relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-3xl border p-6 shadow-2xl ${isDark ? 'bg-slate-900 border-white/10 text-slate-100' : 'bg-white border-slate-200 text-slate-900'}`}>
+        <button onClick={onClose} className={`absolute top-5 right-5 p-2 rounded-xl transition-colors ${isDark ? 'bg-white/5 hover:bg-white/10 text-slate-400' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>
+          <X size={18} />
+        </button>
+
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-2xl bg-amber-500/15 flex items-center justify-center text-amber-500">
+            <UserPlus size={20} />
+          </div>
+          <div>
+            <h2 className="text-lg font-black tracking-tight">Share Homebrew Service</h2>
+            <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Invite friends & family to your Homebrew Portal via basic Google sign-in</p>
+          </div>
+        </div>
+
+        {/* Quick invite preset for Daniel Philpott */}
+        <div className={`p-4 rounded-2xl border mb-5 ${isDark ? 'bg-amber-950/20 border-amber-500/20' : 'bg-amber-50 border-amber-200'}`}>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-sm font-bold flex items-center gap-1.5 text-amber-500">
+                <User size={15} /> Daniel Philpott
+              </div>
+              <div className={`text-xs mt-0.5 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                {isDanielInvited ? 'Active guest access granted' : 'Quick one-click invite for your brother'}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <a href={mailtoDaniel()} className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 ${isDark ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300' : 'bg-amber-100 hover:bg-amber-200 text-amber-800'}`}>
+                <Mail size={13} /> Email Daniel
+              </a>
+              {!isDanielInvited && (
+                <button
+                  disabled={busy}
+                  onClick={() => addInvite('daniel.philpott@gmail.com')}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1.5 shadow-md shadow-amber-500/20"
+                >
+                  <UserPlus size={13} /> Authorise Daniel
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Invite by Email */}
+        <div className="mb-5">
+          <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+            Invite by Email
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addInvite()}
+              placeholder="friend.or.family@gmail.com"
+              className={`flex-1 px-4 py-2.5 rounded-xl text-sm border outline-none transition-all ${
+                isDark ? 'bg-slate-950/60 border-white/10 text-white focus:border-amber-500' : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500'
+              }`}
+            />
+            <button
+              onClick={() => addInvite()}
+              disabled={busy || !email.trim()}
+              className="px-5 py-2.5 rounded-xl text-sm font-bold bg-amber-500 hover:bg-amber-600 active:scale-95 text-white disabled:opacity-40 transition-all flex items-center gap-2 shadow-lg shadow-amber-500/20"
+            >
+              <UserPlus size={16} /> Invite
+            </button>
+          </div>
+          <p className={`text-[11px] mt-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+            They sign in with Google (email and display name only). Nothing else in IMS is exposed to them.
+          </p>
+        </div>
+
+        {/* Service Invite Link */}
+        <div className={`p-4 rounded-2xl border mb-5 ${isDark ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'}`}>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="text-xs font-bold flex items-center gap-1.5 text-slate-400">
+              <Link2 size={13} /> Direct Service Link
+            </div>
+            <button
+              onClick={copyLink}
+              className={`text-xs font-bold flex items-center gap-1.5 px-3 py-1 rounded-lg transition-colors ${
+                copied ? 'bg-emerald-500/20 text-emerald-400' : isDark ? 'bg-white/10 hover:bg-white/15 text-white' : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+              }`}
+            >
+              {copied ? <Check size={12} /> : <Copy size={12} />}
+              {copied ? 'Copied' : 'Copy link'}
+            </button>
+          </div>
+          <code className={`block text-xs font-mono break-all p-2 rounded-lg ${isDark ? 'bg-black/40 text-amber-300' : 'bg-white text-amber-700 border border-slate-200'}`}>
+            {link}
+          </code>
+        </div>
+
+        {/* Current Invited Guests */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+              <Users size={14} /> Invited Guests ({list.length})
+            </h3>
+            <button onClick={load} className={`p-1.5 rounded-lg text-slate-400 hover:text-white ${isDark ? 'hover:bg-white/10' : 'hover:bg-slate-100'}`} title="Refresh">
+              <RefreshCw size={13} />
+            </button>
+          </div>
+
+          {list.length === 0 ? (
+            <div className={`text-center py-6 border border-dashed rounded-2xl ${isDark ? 'border-white/10 text-slate-400' : 'border-slate-200 text-slate-500'}`}>
+              <Users size={24} className="mx-auto mb-2 opacity-40" />
+              <p className="text-xs">No guest invites yet. Authorise someone above to grant access.</p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+              {list.map((inv) => (
+                <div
+                  key={inv.email}
+                  className={`p-3 rounded-2xl border flex items-center justify-between gap-3 ${
+                    inv.revokedAt
+                      ? isDark ? 'bg-white/2 border-white/5 opacity-50' : 'bg-slate-50 border-slate-200 opacity-50'
+                      : isDark ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold truncate flex items-center gap-2">
+                      {inv.name || inv.email}
+                      {inv.revokedAt ? (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">Revoked</span>
+                      ) : (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">Active</span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-slate-400 truncate">
+                      {inv.name ? `${inv.email} · ` : ''}
+                      {inv.lastSignInAt
+                        ? `Last in ${new Date(inv.lastSignInAt).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}`
+                        : 'Not signed in yet'}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {!inv.revokedAt ? (
+                      <>
+                        <a
+                          href={mailtoInvite(inv.email)}
+                          title="Email invite"
+                          className={`p-2 rounded-xl text-xs font-semibold ${isDark ? 'bg-white/10 hover:bg-white/15 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
+                        >
+                          <Mail size={13} />
+                        </a>
+                        <button
+                          onClick={() => revoke(inv.email)}
+                          title="Withdraw access"
+                          className="p-2 rounded-xl text-xs font-semibold text-red-400 hover:bg-red-500/10"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => addInvite(inv.email)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold ${isDark ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300' : 'bg-amber-100 hover:bg-amber-200 text-amber-800'}`}
+                      >
+                        Re-invite
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Recent sign-in attempts */}
+        {signIns.length > 0 && (
+          <div className="mt-5 pt-4 border-t border-white/10">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Recent Sign-in Attempts</span>
+              <button onClick={load} className={`p-1 rounded ${isDark ? 'hover:bg-white/10' : 'hover:bg-slate-100'}`} title="Refresh">
+                <RefreshCw size={11} className="text-slate-400" />
+              </button>
+            </div>
+            <div className="space-y-1">
+              {signIns.slice(0, 5).map((x, i) => (
+                <div key={i} className="text-[11px] py-0.5 flex gap-2">
+                  <span className="text-slate-400">{new Date(x.at).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                  <span className={x.outcome === 'signed-in' ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>{x.outcome}</span>
+                  <span className="truncate text-slate-300">{x.email || '(unknown)'}{x.detail ? <span className="text-slate-400"> · {x.detail}</span> : null}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
+  const { user } = useAuth();
+  const isOwner = !user?.guest;
+  const [inviteOpen, setInviteOpen] = useState(false);
   const isDark = theme === 'dark';
   const [brews, setBrews] = useState([]);
   const [meta, setMeta] = useState({ styles: [], statuses: [], logKinds: [], categories: [] });
@@ -478,6 +812,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
   const [selId, setSelId] = useState(() => fromPath(window.location.pathname).id);
   const [creating, setCreating] = useState(false); // the new-brew form is open
   const [brew, setBrew] = useState(null);
+  const main = useMainIngredients(brew?.id);
   const [form, setForm] = useState(EMPTY_BREW);
   const [tab, setTab] = useState('recipe');
   const [busy, setBusy] = useState('');
@@ -553,7 +888,37 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
   const delTaste = (id) => run('dtaste', async () => { await api(`/api/homebrew/tastings/${id}`, 'DELETE'); loadBrew(brew.id); });
   const getInsight = () => run('insight', async () => { const d = await api(`/api/homebrew/${brew.id}/insight`, 'POST', {}); setBrew(d.brew); });
   const askWhatIf = () => run('whatif', async () => { const d = await api(`/api/homebrew/${brew.id}/what-if`, 'POST', { change }); setWhatIf(d.result); });
-  const pitched = () => { if (!window.confirm('Set reminders for the staggered nutrient doses - 24, 48 and 72 hours from now, and a 1/3-break check on day 6?')) return; run('remind', async () => { await api(`/api/homebrew/${brew.id}/nutrient-reminders`, 'POST', {}); loadBrew(brew.id); }, 'Nutrient reminders set - see Reminders.'); };
+  const pitched = () => {
+    if (!window.confirm('Set reminders for the staggered nutrient doses (24, 48 and 72 hours from now, and a 1/3-break check on day 6), and for each step of the method still to come?')) return;
+    run('remind', async () => {
+      await api(`/api/homebrew/${brew.id}/nutrient-reminders`, 'POST', {});
+      let steps = 0;
+      try { steps = (await api(`/api/homebrew/${brew.id}/step-reminders`, 'POST', { justPitched: true })).reminders.length; } catch (_) { /* no method steps to time */ }
+      loadBrew(brew.id);
+      notify(`Nutrient reminders set${steps ? `, and ${steps} for the steps to come` : ''} - see Reminders.`);
+    });
+  };
+  // a tap on the progress track: move it on (or back). The start and bottling dates are filled in with today if
+  // they're empty, the move goes in the log, and starting it off offers the pitching reminders.
+  const moveTo = (status) => run('stage', async () => {
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date());
+    const body = { status };
+    if (status === 'fermenting' && !brew.startedOn) body.startedOn = today;
+    if (status === 'bottled' && !brew.bottledOn) body.bottledOn = today;
+    const from = brew.status;
+    // the log first: a log entry on a planned brew starts it off by itself, so the status is set after it
+    await api(`/api/homebrew/${brew.id}/logs`, 'POST', { kind: 'note', text: `${STATUS_WORD[from] || from} → ${STATUS_WORD[status]}` });
+    await api(`/api/homebrew/${brew.id}`, 'PUT', body);
+    await loadBrew(brew.id); await loadList();
+    notify(`${brew.name}: ${STATUS_WORD[status].toLowerCase()}.`);
+    if (from === 'planning' && status === 'fermenting') pitched();
+  });
+  // the method's steps still to come as reminders, planned again from today (replaces this brew's earlier step reminders)
+  const stepReminders = () => run('steps', async () => {
+    const d = await api(`/api/homebrew/${brew.id}/step-reminders`, 'POST', {});
+    loadBrew(brew.id);
+    notify(`${d.reminders.length} step reminder${d.reminders.length === 1 ? '' : 's'} set - the first on ${d.reminders[0].goesOffAt}. See the Log for the list.`);
+  });
 
   const startFrom = () => run('start', async () => { const d = await api(`/api/homebrew/${brew.id}/start`, 'POST', {}); await loadList(); setView('brews'); setSelId(d.brew.id); setTab('recipe'); }, 'New brew started from the recipe - edit it to suit, then log as you go.');
   const keepAsRecipe = () => run('keep', async () => { await api(`/api/homebrew/${brew.id}/save-as-recipe`, 'POST', {}); await loadList(); }, 'Saved to your recipe book.');
@@ -683,7 +1048,14 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
             <button onClick={() => setFavOnly(!favOnly)} title="Show only your favourites" className={`px-4 py-2.5 rounded-2xl text-sm font-bold flex items-center gap-2 border transition ${favOnly ? 'bg-rose-500 border-rose-500 text-white shadow-lg shadow-rose-500/20' : `${border} ${isDark ? 'bg-slate-900/60' : 'bg-white/70'} text-slate-500 hover:text-rose-500`}`}>
               <Heart size={15} fill={favOnly ? 'currentColor' : 'none'} /> Favourites<span className={`text-[10px] px-1.5 rounded-full ${favOnly ? 'bg-white/25' : isDark ? 'bg-white/10' : 'bg-[#2E2B27]/10'}`}>{pool.filter((b) => b.favourite).length}</span>
             </button>
-            <button onClick={() => startNew(cat)} className={`${primary} ml-auto !px-4 !py-2.5 !text-sm shadow-lg shadow-amber-500/20`}><Plus size={15} /> {view === 'recipes' ? 'New recipe' : 'New brew'}</button>
+            {isOwner && (
+              <button onClick={() => setInviteOpen(true)} title="Share your homebrew service with guests" className={`px-4 py-2.5 rounded-2xl text-sm font-bold flex items-center gap-2 border transition ${border} ${isDark ? 'bg-slate-900/60 hover:bg-slate-800 text-amber-400' : 'bg-white/70 hover:bg-amber-50 text-amber-700'}`}>
+                <UserPlus size={15} /> Invite & Share
+              </button>
+            )}
+            {isOwner && (
+              <button onClick={() => startNew(cat)} className={`${primary} ml-auto !px-4 !py-2.5 !text-sm shadow-lg shadow-amber-500/20`}><Plus size={15} /> {view === 'recipes' ? 'New recipe' : 'New brew'}</button>
+            )}
           </div>
 
           {view === 'brews' && (
@@ -829,10 +1201,10 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                     {b.isRecipe
                       ? <span className="absolute top-2.5 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600">{many ? `${members.length} versions` : 'Recipe'}</span>
                       : <span className={`absolute top-2.5 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_PILL[b.status] || ''}`}>{STATUS_WORD[b.status] || b.status}</span>}
-                    <Vessel category={b.category} status={b.status} isRecipe={b.isRecipe} size={72} isDark={isDark} wine={wine} />
+                    <Vessel category={b.category} status={b.status} isRecipe={b.isRecipe} size={72} isDark={isDark} wine={wine} liquid={b.liquid} />
                     {(() => {
                       const vals = members.map(strengthOf).filter((v) => v != null);
-                      if (!vals.length || (!b.isRecipe && !b.calc.abv && !b.calc.potentialAbv)) return null;
+                      if (!vals.length) return null;
                       const lo = Math.min(...vals), hi = Math.max(...vals);
                       const est = members.every((m) => !m.calc.abv && !m.calc.potentialAbv);
                       return <span className="absolute bottom-2 right-3 text-lg font-black" title={est ? 'Likely strength, estimated from the sugar and yeast' : undefined}>{est ? '~' : ''}{lo === hi ? lo : `${lo}–${hi}`}<span className="text-xs">%</span></span>;
@@ -888,17 +1260,31 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
 
       {open && (
         <div className="flex flex-col gap-5 min-w-0">
-          <button onClick={backToShelf} className="self-start text-xs font-bold text-slate-500 hover:text-amber-500 flex items-center gap-1.5"><ArrowLeft size={14} /> {view === 'recipes' ? 'Back to the recipe book' : 'Back to all brews'}</button>
+          {/* styled like the IMS Hub button in the page header (PortalShell) */}
+          <button onClick={backToShelf} className={`self-start p-2 rounded-xl flex items-center gap-2 text-xs font-bold transition-all active:scale-95 ${isDark ? 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5' : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 text-[#2E2B27] border border-[#2E2B27]/10'}`}><ArrowLeft size={16} /> {view === 'recipes' ? 'Back to the recipe book' : 'Back to all brews'}</button>
 
           {brew && (
             <div className={`rounded-3xl border overflow-hidden ${isDark ? 'border-white/5 bg-slate-900/40' : 'border-[#2E2B27]/10 bg-white/70 shadow-sm'}`}>
               <div className={`flex flex-col sm:flex-row gap-5 p-5 bg-gradient-to-br ${look(brew.category).tint}`}>
-                <div className="flex justify-center"><Vessel category={brew.category} status={brew.status} isRecipe={brew.isRecipe} size={110} isDark={isDark} wine={colourOf(brew)} /></div>
+                <div className="flex flex-col items-center gap-1">
+                  <Vessel category={brew.category} status={brew.status} isRecipe={brew.isRecipe} size={110} isDark={isDark} wine={colourOf(brew)} liquid={brew.liquid || main.colour} />
+                  {(() => {
+                    // its strength, big, under the demijohn: measured, or from the target gravities, or (~) estimated
+                    const a = brew.calc.abv || brew.calc.potentialAbv || brew.abvEstimate;
+                    if (!a) return null;
+                    const est = !brew.calc.abv && !brew.calc.potentialAbv;
+                    const word = brew.calc.abv ? (brew.calc.abvFinal ? 'Strength' : 'Strength so far') : est ? 'Likely strength, estimated from the sugar and yeast' : 'Strength expected from the target gravities';
+                    return <span className="text-3xl font-black leading-none" title={word}>{est ? '~' : ''}{a}<span className="text-base">%</span></span>;
+                  })()}
+                </div>
                 <div className="flex-1 min-w-0 flex flex-col gap-3">
                   <div>
-                    <div className="text-xs text-slate-500">{look(brew.category).emoji} {catLabel(brew.category)}{brew.style ? ` · ${brew.style}` : ''}</div>
+                    <div className="text-xs text-slate-500 flex items-center gap-1.5"><span className="text-2xl leading-none">{look(brew.category).emoji}</span>{catLabel(brew.category)}{brew.style ? ` · ${brew.style}` : ''}</div>
                     <div className="flex items-start gap-2">
-                      <h2 className="text-2xl font-black break-words leading-tight mt-0.5 flex-1 min-w-0">{brew.name}</h2>
+                      <div className="flex-1 min-w-0 flex flex-wrap items-center gap-x-4 gap-y-2">
+                        <h2 className="text-2xl font-black break-words leading-tight mt-0.5 min-w-0">{brew.name}</h2>
+                        <MainIngredientPics items={main.items} isDark={isDark} />
+                      </div>
                       <button onClick={() => toggleFav(brew)} title={brew.favourite ? 'Remove from favourites' : 'Add to favourites'} className={`p-2 rounded-full shrink-0 transition ${brew.favourite ? 'text-rose-500' : 'text-slate-400 hover:text-rose-500'} ${isDark ? 'bg-slate-950/40' : 'bg-white/80'}`}>
                         <Heart size={18} fill={brew.favourite ? 'currentColor' : 'none'} />
                       </button>
@@ -932,7 +1318,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                   {brew.isRecipe ? (
                     <div className="flex flex-wrap items-center gap-3 text-xs">
                       <div className="min-w-0 flex-1">
-                        <p className="font-bold">From your recipe book{brew.calc.potentialAbv ? ` · about ${brew.calc.potentialAbv}%` : brew.abvEstimate ? ` · ~${brew.abvEstimate}%` : ''}
+                        <p className="font-bold">From your recipe book
                           {brew.batchLitres ? <span title={bottlesOf(brew.batchLitres, brew.category)?.hint}> · {brew.batchLitres} L makes {bottlesOf(brew.batchLitres, brew.category)?.text} bottles</span> : null}</p>
                         {brew.sourceName && <p className="text-slate-500">Source: {brew.sourceUrl ? <a href={brew.sourceUrl} target="_blank" rel="noreferrer" className="text-sky-500 hover:underline inline-flex items-center gap-1">{brew.sourceName}<ExternalLink size={10} /></a> : brew.sourceName}</p>}
                         {(colourOf(brew) || sweetOf(brew)) && (
@@ -948,7 +1334,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                           {FLAVOUR_TAGS.filter((f) => (brew.flavours || []).includes(f.id)).map((f) => <span key={f.id} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-500">{f.emoji} {f.label}</span>)}
                         </div>
                       </div>
-                      <button onClick={startFrom} disabled={busy === 'start'} className={primary}><Plus size={13} /> Start a brew from this</button>
+                      {isOwner && <button onClick={startFrom} disabled={busy === 'start'} className={primary}><Plus size={13} /> Start a brew from this</button>}
                     </div>
                   ) : null}
                   {brew.isRecipe && familyOf(brew).length > 1 ? (
@@ -973,9 +1359,9 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                   ) : null}
                   {brew.isRecipe ? null : (
                     <>
-                      <StatusTrack status={brew.status} isDark={isDark} />
+                      <StatusTrack status={brew.status} isDark={isDark} onPick={moveTo} busy={busy === 'stage'} />
                       <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                        {[['ABV', c.abv ? `${c.abv}%${c.abvFinal ? '' : ' so far'}` : '-'], ['Potential', c.potentialAbv ? `${c.potentialAbv}%` : '-'], ['Day', c.daysSinceStart ?? '-'], ['OG', g3(brew.og)], ['Latest', g3(c.latestGravity)],
+                        {[['ABV', c.abv ? `${c.abv}%${c.abvFinal ? '' : ' so far'}` : brew.abvEstimate ? `~${brew.abvEstimate}% likely` : '-'], ['Potential', c.potentialAbv ? `${c.potentialAbv}%` : '-'], ['Day', c.daysSinceStart ?? '-'], ['OG', g3(brew.og)], ['Latest', g3(c.latestGravity)],
                           ['1/3 break', g3(c.thirdBreak)], ['Attenuation', c.attenuation != null ? `${c.attenuation}%` : '-'], ['Sweetness', c.sweetnessClass || '-'], ['Strength', c.strengthClass || '-']].map(([k, v], i) => (
                           <div key={k} className={`rounded-xl px-3 py-2 min-w-0 ${i === 0 ? `bg-gradient-to-br ${GRADIENT} text-white` : isDark ? 'bg-slate-950/50' : 'bg-white/85'}`}>
                             <div className={`text-[10px] font-bold uppercase tracking-wider ${i === 0 ? 'text-white/80' : 'text-slate-500'}`}><AbbrText text={k} /></div>
@@ -992,8 +1378,9 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                   {[['recipe', 'Recipe', <ScrollText size={14} />], ['log', 'Log', <Activity size={14} />], ['tastings', 'Tastings', <Wine size={14} />], ['insights', 'Insights', <Sparkles size={14} />]].map(([t, l, icon]) => (
                     <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${tab === t ? `bg-gradient-to-r ${GRADIENT} text-white shadow-md shadow-amber-500/20` : 'text-slate-500 hover:text-amber-500'}`}>{icon} {l}</button>
                   ))}
-                  {(brew.status === 'planning' || brew.status === 'fermenting') && <button onClick={pitched} disabled={busy === 'remind'} className={`${btn} ml-auto`}><Bell size={13} /> I've just pitched</button>}
-                  <button onClick={keepAsRecipe} disabled={busy === 'keep'} className={`${btn} ${(brew.status === 'planning' || brew.status === 'fermenting') ? '' : 'ml-auto'}`}><Copy size={13} /> Save as recipe</button>
+                  {(brew.status === 'planning' || brew.status === 'fermenting') && isOwner && <button onClick={pitched} disabled={busy === 'remind'} className={`${btn} ml-auto`}><Bell size={13} /> I've just pitched</button>}
+                  {(brew.status === 'fermenting' || brew.status === 'conditioning') && isOwner && <button onClick={stepReminders} disabled={busy === 'steps'} title="Reminders for each step of the method still to come, planned from today and the log so far - replaces this brew's earlier step reminders" className={btn}>{busy === 'steps' ? <RotateCw size={13} className="animate-spin" /> : <Bell size={13} />} Step reminders</button>}
+                  {isOwner && <button onClick={keepAsRecipe} disabled={busy === 'keep'} className={`${btn} ${['planning', 'fermenting', 'conditioning'].includes(brew.status) ? '' : 'ml-auto'}`}><Copy size={13} /> Save as recipe</button>}
                 </div>
               )}
             </div>
@@ -1004,7 +1391,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
               <div className="flex items-center gap-2 mb-3">
                 <h2 className="text-xs font-black uppercase tracking-wider">Recipe</h2>
                 <span className="text-[11px] text-slate-500">Dotted words: hover or tap for what they mean</span>
-                <button onClick={() => setEditRecipe(true)} className={`${btn} ml-auto`}><Wand2 size={13} /> Edit recipe</button>
+                {isOwner && <button onClick={() => setEditRecipe(true)} className={`${btn} ml-auto`}><Wand2 size={13} /> Edit recipe</button>}
               </div>
               {brew.summary && <p className={`text-sm leading-relaxed mb-4 p-3 rounded-xl ${isDark ? 'bg-amber-500/10' : 'bg-amber-50'}`}><RichText text={brew.summary} /></p>}
               {(brew.yeast || brew.batchLitres) && (
@@ -1244,6 +1631,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
           )}
         </div>
       )}
+      <HomebrewInviteModal isOpen={inviteOpen} onClose={() => setInviteOpen(false)} isDark={isDark} toast={notify} />
     </PortalShell>
   );
 }

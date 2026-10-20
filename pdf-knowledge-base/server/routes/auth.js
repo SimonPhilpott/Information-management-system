@@ -96,9 +96,11 @@ router.get('/callback', async (req, res) => {
       if (!full && isInvited(userEmail)) {
         req.session.user = { email: userEmail, name: userInfo.data.name, picture: userInfo.data.picture, role: 'guest' };
         rememberPerson({ email: userEmail, name: userInfo.data.name, picture: userInfo.data.picture });
-        req.session.returnTo = '/campaigns';
-        console.log(`[Auth] Deck builder sign-in (guest): ${userEmail}`);
-        logSignIn(userEmail, 'signed-in', 'Deck builder guest');
+        if (!req.session.returnTo || req.session.returnTo === '/') {
+          req.session.returnTo = '/campaigns';
+        }
+        console.log(`[Auth] Guest sign-in: ${userEmail} -> ${req.session.returnTo}`);
+        logSignIn(userEmail, 'signed-in', 'Invited guest');
         return res.redirect(backTo(req, 'auth=success'));
       }
       console.warn(`[Auth] Sign-in refused: ${userEmail}`);
