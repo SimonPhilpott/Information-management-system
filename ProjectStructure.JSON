@@ -1,6 +1,33 @@
 {
   "name": "Information Management System",
   "modules": {
+    "src/components/Dashboard/ProjectBuilder/ProjectBuilderPage.jsx": {
+      "description": "Full-screen New Project page (/ims/code-repo/new-project): describe it, find my code (editable changes), review (summary, folder map, build order) and build (Antigravity prompt, Create project with GitHub scaffolding).",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx",
+        "pdf-knowledge-base/server/routes/codeRepo.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/projectBuilderService.js": {
+      "description": "New Project builder: setup suggestion from a brief, own-code matching with changes to make, plan and prompt, project folder creation (files, GitHub scaffolding, git commit, optional private GitHub repo), and the one-off code library tidy.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/codeRepoService.js",
+        "pdf-knowledge-base/server/services/codeStacks.js",
+        "pdf-knowledge-base/server/services/embeddingService.js",
+        "pdf-knowledge-base/server/services/modelRegistry.js",
+        "pdf-knowledge-base/server/db/database.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/codeStacks.js": {
+      "description": "Groups saved code snippets into the builder stacks (SPFx, React, Next.js, ...) by keyword, shared by the Code Best Practices filter and the New Project builder.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/projectBuilderPresets.json"
+      ]
+    },
+    "pdf-knowledge-base/server/services/projectBuilderPresets.json": {
+      "description": "Editable options for the New Project builder: projects folder, stacks (starter commands, CI type), looks and house rules in plain English.",
+      "dependencies": []
+    },
     "src/AuthGate.jsx": {
       "description": "Authentication gate and invite routing wrapper with lazy-loaded DecksPortal guest fallback.",
       "dependencies": [
@@ -10,6 +37,7 @@
     "src/App.jsx": {
       "description": "Main entrypoint managing state, layout config, node authorities, and view transformations with comprehensive React.lazy dynamic import code-splitting for low-latency network tunnels.",
       "dependencies": [
+        "src/components/Dashboard/ProjectBuilder/ProjectBuilderPage.jsx",
         "src/components/KnowledgeMesh/MeshCanvas.jsx",
         "src/components/KnowledgeMesh/SpatialCanvas.jsx",
         "src/components/KnowledgeMesh/InstancedSpatialCanvas.jsx",
@@ -23,7 +51,8 @@
         "src/components/Admin/AdminPanel.jsx",
         "src/components/Editor/IntelligenceDrawer.jsx",
         "src/components/Dashboard/CatalogBrowser.jsx",
-        "src/components/Dashboard/HnswIndexModal.jsx"
+        "src/components/Dashboard/HnswIndexModal.jsx",
+        "src/components/Dashboard/CostsPortal.jsx"
       ]
     },
     "src/components/Dashboard/Layout.jsx": {
@@ -71,6 +100,12 @@
     "src/components/Dashboard/MemoriesPortal.jsx": {
       "description": "Dedicated web management hub for IMS persistent memories at /ims/memories featuring Oatmeal/dark styling, live search, category filtering, inline editing, and deletion with confirmation safeguards.",
       "dependencies": []
+    },
+    "src/components/Dashboard/CostsPortal.jsx": {
+      "description": "Costs portal at /ims/costs displaying token usage, breakdown by model and session type, recurring subscriptions, pricing config, and direct external navigation links to Google AI Studio, Google Cloud Billing, and service provider management consoles.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx"
+      ]
     },
     "src/components/Dashboard/ImsHub.jsx": {
       "description": "Central visual navigation hub for all IMS subsystems at /ims featuring responsive cards for Memories and Persona management.",
@@ -1174,9 +1209,32 @@
       "dependencies": [
         "pdf-knowledge-base/server/services/garminService.js"
       ]
+    },
+    "pdf-knowledge-base/server/live/liveProxy.js": {
+      "description": "Gemini Live WebSocket voice proxy managing client audio transport, local wake verification, Yorkshire persona delivery, tool routing, and incremental delta token usage logging.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/geminiClient.js",
+        "pdf-knowledge-base/server/services/modelRegistry.js",
+        "pdf-knowledge-base/server/services/wakeDaemonService.js"
+      ]
+    },
+    "pdf-knowledge-base/server/services/modelAudit.js": {
+      "description": "Model Switcher test and assessment runner executing automated text, TTS, and Gemini Live speech benchmarks with incremental delta token logging.",
+      "dependencies": [
+        "pdf-knowledge-base/server/services/geminiClient.js",
+        "pdf-knowledge-base/server/services/modelRegistry.js"
+      ]
+    },
+    "src/components/Dashboard/CostsPortal.jsx": {
+      "description": "Financial overview portal tracking Gemini API token usage, projected vs actual costs, monthly budget caps, third-party subscriptions, and external navigation links to Google AI Studio, Google Cloud Billing, Generative Language API metrics, and pricing tables.",
+      "dependencies": [
+        "src/components/Dashboard/PortalShell.jsx",
+        "src/components/Dashboard/RunPlanner/Notice.jsx"
+      ]
     }
   }
 }
+
 
 
 

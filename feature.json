@@ -513,7 +513,11 @@
         "Redesigned GitHub Access Tokens modal adhering to System Architecture aesthetic with direct links to generate personal and professional PATs with pre-configured scopes",
         "Visual Interaction & Architecture Infographics for all code patterns detailing 4-stage processing pipelines (Trigger -> Guard -> Core -> Sink) and connected downstream integrations, accompanied by mini flow badges on catalog cards",
         "Private and organisation repository discovery with automated pagination across user/repos, user/orgs, and target enterprise namespaces, backed by visual private lock badges and SAML SSO configuration guidance",
-        "Refined top bar layout with generous padding and contained action controls for GitHub tokens and repository synchronisation"
+        "Refined top bar layout with generous padding and contained action controls for GitHub tokens and repository synchronisation",
+        "Search index fix: code vectors stored in the compact format with real embeddings (the old index stored a whole object per embedding, so every match score was NaN); rebuilt automatically when out of date",
+        "Scanner hygiene: local repos read from git ls-files (tracked files only); downloaded frameworks, examples and hidden tool folders skipped; one record per piece of a file (no duplicates on rescan)",
+        "Tidy & re-index button: removes duplicates and code that is not Simon's (backed up to data/backups), flags forks via the GitHub API, rebuilds the index",
+        "Kind-of-project filter: snippets grouped into the 8 builder stacks (codeStacks.js) instead of ~70 free-text technology spellings; cards show the stack name"
       ]
     },
     "Running with T1D Glucose Rulebook & Adaptive Coach Integration": {
@@ -978,16 +982,20 @@
         "devIdeasService and REST routes (/api/dev-ideas) supporting image persistence on create and edit"
       ]
     },
-    "Antigravity Project Scaffolder & Prompt Generator": {
+    "New Project Builder (brief to project folder)": {
       "status": "enabled",
-      "description": "Interactive project scaffold configurator and implementation plan generator in the Best Practice Code Repository portal (/ims/code-repo) with framework selectors, CSS stack presets, precondition matrix, vector-similarity best practice suggestions, and one-click clipboard export for initiating new projects in Antigravity.",
+      "description": "Full-screen New Project page (/ims/code-repo/new-project, replacing the Antigravity scaffolder pop-up) that turns a short brief into a ready project folder built on Simon's own best code. Four steps: Describe it (AI pre-selects what it's built with, how it looks and the house rules, each with a plain reason, all changeable), Find my code (matching code from his repositories grouped by the job it does, each with an editable list of the hard-coded names and values to change), Review (summary, folder map with the reused code placed, build order) and Build (the Antigravity prompt, and Create project: README, PROMPT.md, house rules, his code with the changes made, GitHub CI/Dependabot/PR and issue templates, first commit, and optionally a private GitHub repo it's pushed to). Options live in projectBuilderPresets.json; about 5p of AI per project.",
+      "renderingEngine": "React 19 / Tailwind CSS / Node.js / Gemini Flash / git / GitHub REST API",
       "subFeatures": [
-        "Dedicated 'Scaffold in Antigravity' workbench and modal in CodeRepoPortal.jsx with scaffold presets (React/Vite, SvelteKit, Next.js, SharePoint SPFx, Vue 3, SolidJS, Express API, ESP32 PlatformIO)",
-        "Curated CSS framework selector (Tailwind CSS v4, Fluent UI 2, Modern Vanilla CSS, SCSS Modular) with automatic init CLI commands and configuration rules",
-        "Configurable precondition matrix (SPFx context, TypeScript strict, WebSockets, SQLite MCP, Offline cache) and custom constraint additions",
-        "Intelligent AI best-practice suggestion service in codeRepoService.js matching repository code blueprints and contracts against user project descriptions using vector similarity",
-        "Multi-phase implementation plan generator outputting atomic phases (Scaffolding, Typed Contracts, UI/State, Verification), reference code blueprints with typed Inputs/Outputs, and Antigravity Invariants/DoD",
-        "Real-time markdown preview workbench with copy-to-clipboard feedback and snippet count indicators"
+        "Plain-English options: What it's built with (8 common stacks, with a \"you have N examples\" badge), How it looks (5), House rules (11) - editable in projectBuilderPresets.json without a code change",
+        "Brief to setup: one AI call pre-selects the three choices with a one-sentence reason each; examples of his own are a tie-breaker only",
+        "Find my code: vector search over the code library (stack, look and fork weighting), then one AI call keeps the useful pieces, groups them by job and lists what to change (now -> suggested), editable per row",
+        "Review: AI summary, folder layout tree with reused code chips, build order and the starter command",
+        "Antigravity prompt: written from the choices (brief, setup, house rules, layout, his code with change tables, build order, definition of done)",
+        "Create project: exact name/value replacement first (word-boundary for names, longest first), AI only for what is left; README checklist ticks only changes actually made",
+        "GitHub scaffolding: CI that passes until the framework is created then lints/builds/tests, Dependabot, PR and issue templates, CODEOWNERS, .gitignore per stack, .editorconfig, .env.example, house rules in .agents/rules and AGENTS.md",
+        "Optional private GitHub repo: created on the personal account after a confirmation, pushed with a one-off auth header so the token is never stored in the project",
+        "Draft kept in this browser so a refresh does not lose the work"
       ]
     },
     "IMS Main Screen Live Telemetry & Audio Visualizer Widget": {
@@ -1597,6 +1605,7 @@
         "Dynamic 5-Axis Slider Calibration: hardwareClientService.js dynamically modulates comedic stance, deadpan frequency (~1 in 4-6 turns), and audio delivery across the continuous 0-100 Humor slider",
         "Subtle Audio Delivery: Instructs Gemini Live voice model to use occasional quiet wry breaths or amused snorts for absurd situations rather than theatrical laughter or bracketed directions",
         "PersonaPortal UI Descriptors: PersonaPortal.jsx slider UI updated with matching 3-tier descriptors for Cheerful (15), Dry (50), and Dark (85)"
+      ]
     },
     "Acoustic Post-Turn Echo Suppression Grace Calibration": {
       "status": "enabled",
@@ -1607,6 +1616,7 @@
         "Fast Follow-Up Turn-Taking: Permits immediate monosyllabic responses without swallowing audio",
         "Acoustic Reflection Margin: Retains ~200-250ms of dead-band following physical speaker playback completion",
         "Secondary Defence Synergy: Integrates with VAD threshold, unsolicitedTurn guards, and half-duplex suppression"
+      ]
     },
     "Phonetic Pronunciation Memory & Dialect Correction System": {
       "status": "enabled",
@@ -1630,6 +1640,30 @@
         "Phonetic Contraction Recognition: Expands WAKE_RX in textMatching.js with i['’]?m to recognize 'Hi I'm' and 'Hey I'm' as valid wake phrases when cloud STT mishears 'IMS'",
         "Partial Greeting Stream Buffering: Deploys BARE_GREETING_RX in liveProxy.js to hold synthesized audio for up to 1.5s when streaming transcripts emit partial opening words ('Hi', 'Hey', 'Eh up'), preventing premature turn cancellation while speaker completes the utterance",
         "Database Variant Synchronization: Migrates SQLite voice_phrases table with phonetic contraction spellings for Hi IMS and Hey IMS"
+      ]
+    },
+    "Gemini Live Delta Usage Telemetry & Cost Deduplication": {
+      "status": "enabled",
+      "description": "Precision session-level incremental delta token tracking in liveProxy.js and modelAudit.js to eliminate multi-turn/tool-call prompt token duplication in Gemini Live sessions, alongside idempotent SQLite deduplication migration in database.js correcting historical 7.9x cost inflation from £20.75 down to £5.41.",
+      "renderingEngine": "Node.js WebSocket Proxy / Better-SQLite3 / Cost Telemetry",
+      "subFeatures": [
+        "Incremental Prompt Delta Logging: Tracks lastLoggedPromptTokens per connection in liveProxy.js, recording only Math.max(0, current - last) on each incoming usageMetadata packet to prevent re-logging system prompts across conversation turns and tool calls",
+        "Model Switcher Audit Delta Tracking: Applies matching incremental token delta tracking to liveSay and deskWakeTest in modelAudit.js, eliminating duplicate prompt logging during synthetic voice assessments",
+        "Upstream Reconnect State Reset: Automatically resets session prompt token tracking upon non-resumed WebSocket reconnections or upstream session resets",
+        "Zero-Token Suppression: Filters out redundant zero-delta usage metadata emissions to eliminate empty row pollution in token_usage",
+        "Idempotent Database Remediation: Implements a migration in database.js converting historical cumulative prompt token rows into precise turn deltas and re-pricing records against list rates"
+      ]
+    },
+    "Costs Portal External Billing & Quota Navigation": {
+      "status": "enabled",
+      "description": "Comprehensive external billing and quota portal navigation integrated into CostsPortal.jsx (/ims/costs). Provides direct deep links to Google AI Studio (Plan & Token Quotas), Google Cloud Billing (Invoices & Spend), Generative Language API Metrics (Traffic & Error Rates), official pricing documentation (ai.google.dev/pricing), and third-party service portals across subscriptions and free dependencies.",
+      "renderingEngine": "React 19 / Lucide Icons / Tailwind CSS",
+      "subFeatures": [
+        "Quick Links Action Strip: Header action strip providing one-click links to Google AI Studio, Google Cloud Billing, API Metrics, and Price Rates",
+        "Billing & Quota Guidance Hub: 4-card overview section explaining where to inspect pay-as-you-go tiers, quotas, invoices, and API traffic metrics",
+        "Direct Inline Billing Citations: Contextual hyperlinks within calculation notes directing users to Google Cloud Billing and Google AI Studio",
+        "Subscription & Service Portal Links: Integrated external link badges in the Subscriptions table and Free services inventory mapping to Heroku, MongoDB Atlas, Ring, ngrok, Strava, GitHub, and Open-Meteo",
+        "Official Pricing Table Linkage: Direct header link to ai.google.dev/pricing in the editable token rates table"
       ]
     }
   }

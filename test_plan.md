@@ -1,9 +1,10 @@
 # Test Plan & Verification Matrix
 
 ## Executive Summary
-- Total Registered Features: 133
+- Total Registered Features: 135
 - Verified Features: 131
 - Awaiting On-Device Check: 3
+- Awaiting UI Check: 1
 - Pending Features: 0
 
 ## Section 1: Feature Matrix
@@ -86,7 +87,7 @@
 | FEAT-075 | Board Game Collection Updates Drawer & Direct BGG Link Inspection | [BoardgamesPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/BoardgamesPortal.jsx) | Show List Updates button, update count badge, aggregation modal drawer, ThumbnailHoverPreview, and direct BGG links | PASS |
 | FEAT-076 | Universal Board Game Expansion Box Art & Thumbnail Sync | [BoardgamesPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/BoardgamesPortal.jsx) | Universal expansion thumbnail fetching, startThumbnailBackfill progress, and Add modal box art rendering | PASS |
 | FEAT-077 | Dev Ideas Screenshot Clipboard Paste & Antigravity Prompt Integration | [DevIdeasPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/DevIdeasPortal.jsx) | Clipboard paste listener (Ctrl+V), image column migration, Copy Screenshot binary write, and Copy Prompt generation | PASS |
-| FEAT-078 | Antigravity Project Scaffolder & Implementation Plan Generator | [CodeRepoPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/CodeRepoPortal.jsx) | Scaffold presets, CSS framework matrix, precondition selection, vector-based best practice suggestion engine, and 1-click clipboard implementation prompt export | PASS |
+| FEAT-078 | New Project Builder (brief to project folder) | [ProjectBuilderPage.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/ProjectBuilder/ProjectBuilderPage.jsx) | Brief -> pre-selected setup with reasons, own-code matching with editable changes, review map, Antigravity prompt, Create project with GitHub scaffolding and first commit (backend verified; page awaiting Simon's look; GitHub repo option untested) | PENDING (UI check) |
 | FEAT-079 | IMS Main Screen Live Telemetry & Audio Visualizer Widget | [ImsPanel.jsx](file:///d:/Information%20management%20system/src/components/Ims/ImsPanel.jsx) | Real-time 24-bar FFT frequency spectrum canvas, RMS volume gauge, and Box-3 state mirroring | PASS |
 | FEAT-080 | IMS Desktop Global Command Palette | [CommandPalette.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/CommandPalette.jsx) | Ctrl+K global quick launcher, fuzzy portal routing across 26 sub-pages, quick note & dev idea capture | PASS |
 | FEAT-081 | Course Elevation & Weather Integration for Run Planner | [RunMissionControlTab.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/RunPlanner/RunMissionControlTab.jsx) | Open-Meteo elevation auto-enrichment, live weather retrieval, dynamic hydration (ml/h, ml/km, electrolytes), thermal/aerodynamic carb scaling | PASS |
@@ -143,6 +144,8 @@
 | FEAT-131 | Acoustic Post-Turn Echo Suppression Grace Calibration | [liveProxy.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/live/liveProxy.js) | Calibration of POST_TURN_ECHO_GRACE_MS to 450ms, fast follow-up capture & acoustic damping verification | PASS |
 | FEAT-132 | Phonetic Pronunciation Memory & Dialect Correction System | [yorkshire.md](file:///d:/Information%20management%20system/personas/yorkshire.md) | Yorkshire dialect rhyming guidance ('reet' -> 'fleet'), rememberFact 'pronunciation' category, and MemoriesPortal UI | PASS |
 | FEAT-133 | Instant Recorded Wake Greeting & Phonetic Wake Contraction Handling | [liveProxy.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/live/liveProxy.js) | Instant Yorkshire audio greeting for wake-only utterances, holdingClips.js pre-recording, WAKE_RX i'm/im contraction matching, and BARE_GREETING_RX partial stream buffering | PASS |
+| FEAT-134 | Gemini Live Delta Usage Telemetry & Cost Deduplication | [liveProxy.js](file:///d:/Information%20management%20system/pdf-knowledge-base/server/live/liveProxy.js) | Session delta prompt token calculation, liveProxy & modelAudit delta recording, and SQLite token_usage deduplication | PASS |
+| FEAT-135 | Costs Portal External Billing & Quota Navigation | [CostsPortal.jsx](file:///d:/Information%20management%20system/src/components/Dashboard/CostsPortal.jsx) | External billing quick action strip, 4-tile quota guidance hub, subscription portal badges, and clean Vite production build verification | PASS |
 
 ## Section 2: Detailed Scenarios
 ### Suite 31: Observability Device Health Panel & Service (FEAT-086)
@@ -445,6 +448,10 @@
 11. **Visual Interaction & Architecture Infographics:** Inspect the pattern overview column; verify each snippet features a high-fidelity visual interaction diagram inspired by the System Architecture portal, displaying a 4-stage execution pipeline (Trigger -> Boundary Guard -> Core Unit -> State/Sink) with color-coded node badges, data flow arrows, and downstream system integrations, supplemented by mini 3-stage flow pills on each card in the catalog grid.
 12. **Private Repository Discovery & Visual Lock Badge:** Verify `discoverGitHubRepositories` traverses authenticated endpoints (`/user/repos?visibility=all`, `/user/orgs`, and organisation repos) across multiple pages, correctly populating private repositories for TurnTown and personal accounts with distinct amber `Private` lock badges next to repository names.
 13. **Targeted TurnTown Discovery, Identity Verification & Unrelated Repo Exclusion:** Verify `discoverGitHubRepositories` actively purges and excludes unrelated organisation-wide coding challenges (`turner-townsend/*`), enforces canonical tracking of Simon's 9 SPFx work repositories (`spfx-webparts-combined`, `spfx-browser-translation`, `spfx-process-model`, `spfx-button-filter`, `SPFX-Dynamic-Filter`, `spfx-tag-webpart`, `spfx-dropdown-filter`, `spfx-fullwidth-container`, `SPFX-Content-section`), and validates PAT account ownership via `/user`, surfacing `turntownMismatch` warnings if a personal token is supplied for the TurnTown account.
+14. **Search index integrity:** Verify `data/vectors/code_snippets.json` holds compact vectors (`q`/`qs`) for every snippet and `codeIndexIsCurrent()` is true; a search returns real similarity scores (not NaN).
+15. **Tidy & re-index:** Click **Tidy & re-index**; verify duplicates and snippets from third-party folders (`.esphome`, `examples`, `node_modules`...) are removed and backed up to `data/backups/code_snippets_removed_*.json`, forks are flagged, and a toast reports the counts.
+16. **Kind-of-project filter:** Verify the filter lists stacks with counts (e.g. *SharePoint web part (SPFx) (69)*) instead of free-text technologies, filtering uses `?stack=`, and cards show the stack name (full technology on hover).
+17. **Scanner hygiene:** Rescan a repo twice; verify no duplicate snippets appear and no files from untracked or third-party folders are evaluated.
 
 ### Suite 41: Running with T1D Glucose Rulebook & Adaptive Coach Integration (FEAT-041)
 1. **Rulebook Endpoints & SQLite Persistence:** Verify `GET /api/planner/rulebook` returns the structured rulebook object (`rulebook`, `updatedAt`, `isDefault`); send `PUT /api/planner/rulebook` with modified text; confirm persistence in SQLite settings under `t1d_running_rulebook`; verify `POST /api/planner/rulebook/reset` restores factory evidence-based defaults.
@@ -932,22 +939,16 @@
 6. **Editing & Inline Replacement:** Click the **Edit** button on any idea. Paste a new screenshot or click **Replace Image**. Save changes and verify the updated screenshot persists across server reloads.
 7. **Defensive Invariant 87 (5MB Image Gate & Safe Schema Migration):** In `DevIdeasPortal.jsx`, files larger than 5MB are rejected before reading into memory to prevent localStorage / memory bloat. In `devIdeasService.js`, SQLite `dev_ideas` schema upgrades dynamically apply `ALTER TABLE dev_ideas ADD COLUMN image TEXT DEFAULT NULL` on startup without data loss.
 
-### Suite 78: Antigravity Project Scaffolder & Implementation Plan Generator (FEAT-078)
-1. **Workbench Access:** Navigate to `/ims/code-repo`. Verify the header toolbar displays the gradient button **Scaffold in Antigravity** with a rocket icon (`Rocket`).
-2. **Modal Configuration & Rich Hover Previews:** Click **Scaffold in Antigravity**. Verify the modal opens with interactive hover popovers across all options:
-   - **Framework Scaffolds:** Hover over any framework (e.g. *React 18 + Vite*, *SvelteKit 2.0*, *Next.js 15*, *SharePoint SPFx Web Part*, *ESP32-S3 FreeRTOS*). Verify a glassmorphic floating popover card appears showing full architecture explanation, 4 key capability bullets, and exact CLI init command.
-   - **CSS & UI Frameworks:** Hover over any styling choice (e.g. *Tailwind CSS v4*, *Fluent UI 2 / Griffel*, *Vanilla Modern CSS*, *SCSS Modules*). Verify a popover displays architecture details, design tokens, and styling features.
-   - **Preconditions Matrix:** Hover over any precondition (e.g. *TypeScript strict mode*, *Defensive module boundaries*, *Triple Registry compliance*, *SPFx Context*, *WebSocket bidirectional telemetry*, *SQLite persistence*). Verify a popover reveals clear invariant specifications and Antigravity guarantees.
-   - **Reference Blueprints:** Hover over any snippet card or AI suggestion pill. Verify a floating card displays full snippet title, technology badge, relative repository file path, 5-principle alignment tags, and typed Inputs/Outputs contract previews.
-3. **AI Best Practice Suggestions:** Without manually checking snippets, enter a project description (e.g. *"Build an ESP32 voice terminal with WebSocket streaming and I2S audio"* or *"A modern SPFx dashboard with Fluent UI and SQLite backend"*). Click **Suggest Best Practices**. Verify:
-   - The backend runs vector embedding similarity search against indexed snippets.
-   - Matching snippets are automatically selected with green badges indicating match similarity % and relevance summary.
-4. **Manual Best Practice Selection:** Scroll to the snippet checklist. Verify snippets can be toggled on/off across personal and TurnTown repositories.
-5. **Implementation Plan & Prompt Generation:** Click **Generate Antigravity Prompt**. Verify:
-   - A structured, comprehensive kick-off prompt is rendered in the live markdown preview.
-   - The prompt contains exact CLI scaffolding commands, CSS setup rules, typed inputs/outputs contracts for selected snippets, an atomic 4-phase implementation plan, and Antigravity Invariants/DoD.
-6. **Copy to Clipboard:** Click **Copy Prompt to Clipboard**. Verify the toast confirms the copy, and the prompt pastes cleanly into a blank project folder for Antigravity execution.
-7. **Defensive Invariant 88 (Vector Fallback & Clean Modal Lifecycle):** In `codeRepoService.js`, `suggestBestPractices()` gracefully falls back to keyword matching if vector embeddings are temporarily unavailable. In `CodeRepoPortal.jsx`, hover popovers use safe debounce and `pointer-events-none` to guarantee zero UI interference or modal dismissal issues.
+### Suite 78: New Project Builder (FEAT-078)
+1. **Entry point:** On `/ims/code-repo`, verify the header shows **New Project** (rocket icon) and it opens the full-screen page at `/ims/code-repo/new-project`; **Code library** returns to `/ims/code-repo`.
+2. **Describe it:** Enter a name and brief (e.g. *"A SharePoint web part showing who is on leave this month from the Leave Requests list, with a department filter, highlighting clashes"*). Click **Suggest a setup**; verify *SharePoint web part (SPFx)* and *Fluent UI* are selected with a "Suggested:" reason, the house rules are ticked with reasons, and every choice can still be changed. Stacks with code of his own show "You have N examples".
+3. **Find my code:** Click **Check my repositories**; verify matches are grouped by job (e.g. *Department filter*), each with a strength badge, a reason, **Show the code**, and a **What to change** table whose "Change to" cells are editable and whose rows can be unticked.
+4. **Review:** Verify the summary, the four cards (Built with, How it looks, House rules, My code to reuse), the folder map with reused-code chips, the build order and the starter command. Changing anything earlier and returning shows "You've changed things since the plan was made".
+5. **Prompt:** On **Build**, verify **Copy prompt** copies a prompt containing the brief, setup, house rules, folder layout, each reused piece with its change table and code, the build order and "Done when".
+6. **Create project:** With the default folder (`D:\Projects\<name>`) and **Make the code changes for me** on, click **Create project**; verify within ~30 s the folder holds README.md, PROMPT.md, AGENTS.md, `.agents/rules/house-rules.md`, `reuse/<repo>/...`, `.github/workflows/ci.yml`, `.github/dependabot.yml`, PR/issue templates, `.gitignore`, `.editorconfig`, `.env.example`, and `git log` shows one commit. Names that appear word for word are renamed (e.g. `DropdownFilterWebPart` -> `TeamLeavePlannerWebPart`) and only those are ticked in the README checklist.
+7. **Existing folder guard:** Creating into a folder that already has files is refused with a clear message.
+8. **GitHub repo (optional):** Tick **Also create a private GitHub repo and push**; verify a confirmation appears, then a private repo is created on the personal account, `main` is pushed, the link is shown, and `.git/config` holds no token.
+9. **Draft:** Refresh mid-way; verify the name, brief, choices and matches are still there; **Start again** clears them.
 
 ### Suite 79: IMS Main Screen Live Telemetry & Audio Visualizer Widget (FEAT-079)
 1. **Live Visualizer & Header Mount:** On the home chat interface with Ims tab active, start a Live voice session (tap microphone). Verify:
@@ -1381,6 +1382,25 @@
 2. **Partial Stream Buffering:** In `liveProxy.js`, verify `BARE_GREETING_RX` holds incoming model responses (`judgePendingUntil = Date.now() + 1500`) when `heardThisTurn` holds an isolated greeting word ("Hi", "Hey", "Eh up") so partial streaming transcripts do not prematurely trigger `unsolicitedTurn` drops.
 3. **Instant Local Audio Greeting:** In `holdingClips.js` and `liveProxy.js`, verify `isWakeOnly` triggers instant pre-recorded greeting playback (under 150ms) across time-of-day slots (anytime, morning, afternoon, evening) for the active Yorkshire persona, bypassing cloud speech latency.
 4. **Cloud Greeting Suppression:** Verify that upon local greeting playback, the server instructs Gemini Live that Ims has already greeted the user and suppresses duplicate cloud-generated greetings until the user speaks their follow-up query.
+
+### Suite 42: Gemini Live Delta Usage Telemetry & Cost Deduplication (FEAT-134)
+1. **Incremental Delta Logging Inspection:** In `pdf-knowledge-base/server/live/liveProxy.js`, verify `recordLiveUsage` computes `promptDelta = Math.max(0, currentPrompt - lastLoggedPromptTokens)` and logs only incremental deltas to `recordUsage()`.
+2. **Multi-Turn Session Token Stability:** Simulate a multi-turn Gemini Live WebSocket session where Google emits cumulative `promptTokenCount` (20,732 -> 23,549 -> 24,064). Verify that `token_usage` records 20,732 on turn 1, 2,817 on turn 2, and 515 on turn 3, resulting in `SUM(prompt_tokens) == 24,064` rather than the prior inflated sum of 68,345 tokens.
+3. **Model Switcher Benchmark Delta Logging:** Inspect `pdf-knowledge-base/server/services/modelAudit.js` in `liveSay` and `deskWakeTest`. Verify that `lastPromptTokens` tracks cumulative metadata and logs only delta token increments under `modelTest`.
+4. **Idempotent Database Remediation:** Verify the migration in `pdf-knowledge-base/server/db/database.js` runs idempotently with `gemini_live_token_dedup_applied` flag in `settings`, correcting historical cumulative rows in `token_usage` and restoring accurate spend figures (£5.41 vs inflated £20.75).
+5. **Cost Portal Parity:** Query `GET /api/costs?period=30d`. Verify `gemini-3.8-live` reports accurate token counts (~3.97M prompt tokens) and correct list pricing ($7.21 = £5.41 at 0.75 USD/GBP).
+
+### Suite 43: Costs Portal External Billing & Quota Navigation (FEAT-135)
+1. **Quick Action Strip Navigation:** Navigate to `/ims/costs`. Verify the top quick action bar renders direct links with `ExternalLink` icons to Google AI Studio, Google Cloud Billing, API Metrics, and Gemini Price Rates. Verify all links include `target="_blank"` and `rel="noreferrer"`.
+2. **Dedicated Quota & Billing Information Card:** Verify the 4-tile card "Where to see these costs & quotas" displays:
+   - Google AI Studio Plan & Quotas (`https://aistudio.google.com/app/plan_information`)
+   - Google Cloud Console Invoices (`https://console.cloud.google.com/billing`)
+   - Generative Language API Telemetry (`https://console.cloud.google.com/apis/api/generativelanguage.googleapis.com/metrics`)
+   - Official Gemini API Pricing (`https://ai.google.dev/pricing`)
+3. **Contextual Disclaimer & Rate Card Integration:** Verify the "Where these numbers come from" explanation box embeds clickable anchor links directly into the prose. Verify the "Rates used in this portal" card header contains an explicit external link to the Google Price Table.
+4. **Subscription Portal Badging:** In the Subscriptions and Free Tiers tables, verify services with known management portals (Google AI Studio, Ring Protect, Heroku, ngrok, Strava, GitHub) render external link badges linking to their respective account/billing dashboards.
+5. **Production Build Integrity:** Execute `npm run build` and ensure complete compilation without syntax or module resolution errors.
+
 
 
 
