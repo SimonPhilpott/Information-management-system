@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { PoundSterling, Plus, Trash2, Save, Target } from 'lucide-react';
+import { PoundSterling, Plus, Trash2, Save, Target, ExternalLink } from 'lucide-react';
 import PortalShell from './PortalShell';
 import Notice from './RunPlanner/Notice';
 
@@ -58,6 +58,24 @@ export default function CostsPortal({ theme = 'dark', onThemeToggle, setCurrentP
   const paid = fixed.filter((c) => c.category !== 'Free service');
   const free = fixed.filter((c) => c.category === 'Free service');
 
+  const SERVICE_URLS = {
+    'google-ai-pro': 'https://gemini.google.com/',
+    'heroku-nightscout': 'https://dashboard.heroku.com/',
+    'nightscout-db': 'https://cloud.mongodb.com/',
+    'ring-protect': 'https://ring.com/account/plans',
+    'ngrok': 'https://dashboard.ngrok.com/',
+    'strava': 'https://www.strava.com/settings/billing',
+    'komoot': 'https://www.komoot.com/account',
+    'github': 'https://github.com/settings/billing',
+    'open-meteo': 'https://open-meteo.com/',
+    'ntfy': 'https://ntfy.sh/',
+    'card-dbs': 'https://boardgamegeek.com/',
+    'off': 'https://world.openfoodfacts.org/',
+    'bbc': 'https://www.bbc.co.uk/news',
+    'osm': 'https://www.openstreetmap.org/',
+    'google-apis': 'https://console.cloud.google.com/apis/dashboard',
+  };
+
   const Tile = ({ label, value, sub }) => (
     <div className={`rounded-xl border p-4 ${card}`}>
       <div className={`text-xs font-bold uppercase tracking-wide ${body}`}>{label}</div>
@@ -68,7 +86,17 @@ export default function CostsPortal({ theme = 'dark', onThemeToggle, setCurrentP
 
   const FixedRow = (c, i) => (
     <tr key={c.id} className={`border-t ${line}`}>
-      <td className="py-1.5 pr-2"><input className={`${input} w-full font-semibold`} value={c.name} onChange={(e) => setRow(i, 'name', e.target.value)} /><div className={`text-[11px] mt-0.5 ${body}`}>{c.usedFor}</div></td>
+      <td className="py-1.5 pr-2">
+        <div className="flex items-center gap-1.5">
+          <input className={`${input} w-full font-semibold`} value={c.name} onChange={(e) => setRow(i, 'name', e.target.value)} />
+          {SERVICE_URLS[c.id] && (
+            <a href={SERVICE_URLS[c.id]} target="_blank" rel="noreferrer" className="text-sky-500 hover:text-sky-400 p-1 shrink-0" title={`Open ${c.name} account portal`}>
+              <ExternalLink size={12} />
+            </a>
+          )}
+        </div>
+        <div className={`text-[11px] mt-0.5 ${body}`}>{c.usedFor}</div>
+      </td>
       <td className="py-1.5 pr-2 whitespace-nowrap">
         <select className={input} value={c.currency} onChange={(e) => setRow(i, 'currency', e.target.value)}><option value="GBP">£</option><option value="USD">US$</option></select>
         <input className={`${input} w-20 ml-1 tabular-nums`} type="number" min="0" step="0.01" value={c.amount} onChange={(e) => setRow(i, 'amount', e.target.value)} />
@@ -90,10 +118,26 @@ export default function CostsPortal({ theme = 'dark', onThemeToggle, setCurrentP
       gradient="from-emerald-600 to-teal-700" glow="rgba(16,185,129,0.3)" isDark={isDark} onThemeToggle={onThemeToggle} setCurrentPath={setCurrentPath} notification={note}>
       {!data ? <div className={`p-8 ${body}`}>Adding it up...</div> : (
         <div className="space-y-5">
-          <div className="flex flex-wrap gap-2">
-            {PERIODS.map(([k, label]) => (
-              <button key={k} onClick={() => setPeriod(k)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${period === k ? 'bg-emerald-700 border-emerald-700 text-white' : btn}`}>{label}</button>
-            ))}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              {PERIODS.map(([k, label]) => (
+                <button key={k} onClick={() => setPeriod(k)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${period === k ? 'bg-emerald-700 border-emerald-700 text-white' : btn}`}>{label}</button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <a href="https://aistudio.google.com/app/plan_information" target="_blank" rel="noreferrer" className={btn} title="Google AI Studio: Quotas, rate limits, tier & API keys">
+                <ExternalLink size={12} className="text-emerald-500" />Google AI Studio
+              </a>
+              <a href="https://console.cloud.google.com/billing" target="_blank" rel="noreferrer" className={btn} title="Google Cloud Console: Monthly bills, invoices & daily spend">
+                <ExternalLink size={12} className="text-sky-500" />Cloud Billing
+              </a>
+              <a href="https://console.cloud.google.com/apis/api/generativelanguage.googleapis.com/metrics" target="_blank" rel="noreferrer" className={btn} title="Google Cloud: Request volume, error rates & latency">
+                <ExternalLink size={12} className="text-indigo-400" />API Metrics
+              </a>
+              <a href="https://ai.google.dev/pricing" target="_blank" rel="noreferrer" className={btn} title="Google Gemini API list prices per 1M tokens">
+                <ExternalLink size={12} className="text-amber-400" />Price Rates
+              </a>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -136,13 +180,61 @@ export default function CostsPortal({ theme = 'dark', onThemeToggle, setCurrentP
           })()}
 
           <Notice isDark={isDark} tone="info" title="Where these numbers come from">
-            Gemini API costs are measured: every call's real token counts (thinking tokens included, and Live voice per turn) priced at the rates below. Before {data.trackingSince ? new Date(data.trackingSince).toLocaleDateString('en-GB', { dateStyle: 'medium' }) : 'today'} only library chat, search and indexing were recorded, so earlier periods understate it. Your Google AI Pro subscription pays for the Gemini app, not API calls - those are billed to the Google Cloud project behind IMS's API key (free within limits on the API's free tier, in which case the API figures are what it would cost). Subscription amounts start as typical list prices marked "Estimate" until you confirm them against a bill.
+            Gemini API costs are measured: every call's real token counts (thinking tokens included, and Live voice per turn) priced at the rates below. Before {data.trackingSince ? new Date(data.trackingSince).toLocaleDateString('en-GB', { dateStyle: 'medium' }) : 'today'} only library chat, search and indexing were recorded, so earlier periods understate it. Your Google AI Pro subscription pays for the Gemini app, not API calls - those are billed to the Google Cloud project behind IMS's API key (<a href="https://console.cloud.google.com/billing" target="_blank" rel="noreferrer" className="underline font-bold text-sky-400 hover:text-sky-300">Google Cloud Billing</a>, or check your tier in <a href="https://aistudio.google.com/app/plan_information" target="_blank" rel="noreferrer" className="underline font-bold text-emerald-400 hover:text-emerald-300">Google AI Studio</a>; free within limits on the API's free tier). Subscription amounts start as typical list prices marked "Estimate" until you confirm them against a bill.
           </Notice>
           {api.unpricedModels.length > 0 && (
             <Notice isDark={isDark} tone="warn" title={`${tokens(api.unpricedTokens)} tokens on models with no price set`}>
-              {api.unpricedModels.join(', ')} - not counted in the totals. Add their prices under Prices below (ai.google.dev/pricing).
+              {api.unpricedModels.join(', ')} - not counted in the totals. Add their prices under Prices below (<a href="https://ai.google.dev/pricing" target="_blank" rel="noreferrer" className="underline font-bold hover:text-amber-200">ai.google.dev/pricing</a>).
             </Notice>
           )}
+
+          <section className={`rounded-xl border p-4 ${card}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h2 className={`text-sm font-black uppercase tracking-wide ${strong}`}>Where to see these costs & quotas</h2>
+              <span className={`text-[11px] ${body}`}>Direct portals for Google AI, Cloud billing and telemetry</span>
+            </div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <a href="https://aistudio.google.com/app/plan_information" target="_blank" rel="noreferrer"
+                className={`p-3 rounded-lg border transition-all hover:scale-[1.01] ${isDark ? 'bg-white/5 border-white/10 hover:border-emerald-500/60 hover:bg-white/10' : 'bg-slate-50 border-slate-200 hover:border-emerald-500/60 hover:bg-slate-100'}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-xs font-bold ${strong}`}>Google AI Studio</span>
+                  <ExternalLink size={13} className="text-emerald-500" />
+                </div>
+                <div className="text-[11px] font-semibold text-emerald-500 mb-1">Plan & Token Quotas</div>
+                <p className={`text-[11px] leading-relaxed ${body}`}>Check tier status (Free vs Pay-as-you-go), per-minute RPM rate limits, token quotas, and active project API keys.</p>
+              </a>
+
+              <a href="https://console.cloud.google.com/billing" target="_blank" rel="noreferrer"
+                className={`p-3 rounded-lg border transition-all hover:scale-[1.01] ${isDark ? 'bg-white/5 border-white/10 hover:border-sky-500/60 hover:bg-white/10' : 'bg-slate-50 border-slate-200 hover:border-sky-500/60 hover:bg-slate-100'}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-xs font-bold ${strong}`}>Google Cloud Billing</span>
+                  <ExternalLink size={13} className="text-sky-500" />
+                </div>
+                <div className="text-[11px] font-semibold text-sky-500 mb-1">Actual Invoices & Bills</div>
+                <p className={`text-[11px] leading-relaxed ${body}`}>Real monthly invoices, payment methods, daily spend graphs, and hard billing budget alerts for the Google Cloud project.</p>
+              </a>
+
+              <a href="https://console.cloud.google.com/apis/api/generativelanguage.googleapis.com/metrics" target="_blank" rel="noreferrer"
+                className={`p-3 rounded-lg border transition-all hover:scale-[1.01] ${isDark ? 'bg-white/5 border-white/10 hover:border-indigo-500/60 hover:bg-white/10' : 'bg-slate-50 border-slate-200 hover:border-indigo-500/60 hover:bg-slate-100'}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-xs font-bold ${strong}`}>Generative Language API</span>
+                  <ExternalLink size={13} className="text-indigo-400" />
+                </div>
+                <div className="text-[11px] font-semibold text-indigo-400 mb-1">Traffic & Error Metrics</div>
+                <p className={`text-[11px] leading-relaxed ${body}`}>Real-time traffic telemetry, HTTP status codes (200, 429 quota exhaustion, 500), and latency percentiles.</p>
+              </a>
+
+              <a href="https://ai.google.dev/pricing" target="_blank" rel="noreferrer"
+                className={`p-3 rounded-lg border transition-all hover:scale-[1.01] ${isDark ? 'bg-white/5 border-white/10 hover:border-amber-500/60 hover:bg-white/10' : 'bg-slate-50 border-slate-200 hover:border-amber-500/60 hover:bg-slate-100'}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-xs font-bold ${strong}`}>Official Pricing Table</span>
+                  <ExternalLink size={13} className="text-amber-400" />
+                </div>
+                <div className="text-[11px] font-semibold text-amber-400 mb-1">ai.google.dev/pricing</div>
+                <p className={`text-[11px] leading-relaxed ${body}`}>Google's current list prices per 1M tokens for Gemini 2.5, 3.8 Flash, Live bidirectional audio, and embeddings.</p>
+              </a>
+            </div>
+          </section>
 
           <section className={`rounded-xl border p-4 ${card}`}>
             <h2 className={`text-sm font-black uppercase tracking-wide mb-3 ${strong}`}>Gemini API by service</h2>
@@ -209,7 +301,17 @@ export default function CostsPortal({ theme = 'dark', onThemeToggle, setCurrentP
             </div>
             <h3 className={`text-xs font-black uppercase tracking-wide mt-4 mb-1.5 ${strong}`}>Free services IMS relies on</h3>
             <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1">
-              {free.map((c) => <div key={c.id} className={`text-xs ${body}`}><span className={`font-bold ${strong}`}>{c.name}</span> - {c.usedFor}</div>)}
+              {free.map((c) => (
+                <div key={c.id} className={`text-xs ${body}`}>
+                  <span className={`font-bold ${strong}`}>{c.name}</span>
+                  {SERVICE_URLS[c.id] && (
+                    <a href={SERVICE_URLS[c.id]} target="_blank" rel="noreferrer" className="text-sky-500 hover:text-sky-400 inline-flex items-center gap-0.5 ml-1" title={`Open ${c.name}`}>
+                      <ExternalLink size={10} />
+                    </a>
+                  )}
+                  {' '}- {c.usedFor}
+                </div>
+              ))}
             </div>
           </section>
 
@@ -217,6 +319,9 @@ export default function CostsPortal({ theme = 'dark', onThemeToggle, setCurrentP
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <h2 className={`text-sm font-black uppercase tracking-wide ${strong}`}>Prices (US$ per million tokens)</h2>
               <div className="flex items-center gap-2">
+                <a href="https://ai.google.dev/pricing" target="_blank" rel="noreferrer" className={btn} title="View official Google Gemini API rates">
+                  <ExternalLink size={12} className="text-amber-400" />Google Price Table
+                </a>
                 <label className={`text-xs font-bold ${body}`}>US$1 = £<input className={`${input} w-16 ml-1`} type="number" step="0.01" min="0.1" max="2" value={fx} onChange={(e) => { setFx(e.target.value); setDirty((d) => ({ ...d, prices: true })); }} /></label>
                 <button className={primary} disabled={!dirty.prices} onClick={() => put('/api/costs/prices', { prices, usdToGbp: fx }, 'Prices')}><Save size={13} />Save</button>
               </div>
