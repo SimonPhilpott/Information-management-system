@@ -1555,7 +1555,14 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
   const [notification, setNotification] = useState(null);
   const notify = (msg, type = 'success') => { setNotification({ msg, type }); setTimeout(() => setNotification(null), 3500); };
   const [mobileUX, setMobileUX] = useState(() => {
-    try { return localStorage.getItem('ims_homebrew_mobile_ux') || 'phase2'; } catch (_) { return 'phase2'; }
+    try {
+      const saved = localStorage.getItem('ims_homebrew_mobile_ux');
+      if (saved === 'phase2') {
+        localStorage.setItem('ims_homebrew_mobile_ux', 'phase1');
+        return 'phase1';
+      }
+      return saved || 'phase1';
+    } catch (_) { return 'phase1'; }
   });
   const switchMobileUX = (mode) => {
     setMobileUX(mode);
