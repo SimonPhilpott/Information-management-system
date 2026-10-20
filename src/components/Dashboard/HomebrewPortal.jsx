@@ -332,10 +332,6 @@ function LookPicker({ form, setForm, categories, stylesFor, brew, isDark, border
         </div>
       </div>}
       <div>
-        <span className={label}>Picture <span className="normal-case font-normal text-slate-500">- shown faintly behind its header and card, and on its labels</span></span>
-        <PicturePicker choice={form.bannerChoice || null} onPick={(k) => setForm((f) => ({ ...f, bannerChoice: k }))} brew={brew} isDark={isDark} border={border} />
-      </div>
-      <div>
         <span className={label}>Drink colour <span className="normal-case font-normal text-slate-500">- the liquid in its demijohn and on its labels</span></span>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => setForm({ ...form, liquidChoice: '' })}
