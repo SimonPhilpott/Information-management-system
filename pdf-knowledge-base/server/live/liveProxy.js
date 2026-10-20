@@ -527,6 +527,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       const item = paceQueue[0];
       if (item.bin && paceSentMs - (now - paceStart) > PACE_LEAD_MS) break;
       if (judgePendingUntil && now < judgePendingUntil) break; // waiting to confirm he was addressed
+      if (repeatHoldUntil && now < repeatHoldUntil) break; // waiting to check it isn't his last reply again
       paceQueue.shift();
       if (ws.readyState !== WebSocket.OPEN) continue;
       if (item.bin) { ws.send(item.bin, { binary: true }); paceSentMs += item.bin.length / PCM_BYTES_PER_MS; lastAudioSentAt = Date.now(); }
@@ -700,6 +701,13 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   // what he said in his previous reply - the context for a pronunciation correction that follows it
   let lastImsReply = '';
   let repeatChecked = false; // this turn's opening has been compared with the last reply
+  // A reply Gemini starts with nothing new heard since his last one may be that reply again. Its audio is held here
+  // until its first words have been compared: up to 15 s of audio goes to the Box-3 ahead of playback, so dropping it
+  // once the words matched was too late - the whole repeat was already on the device and played (20 Oct, the
+  // reminder confirmation said twice). Capped, so a short or slow reply is never held for long.
+  const REPEAT_HOLD_MS = 2500;
+  let repeatHoldUntil = 0, repeatHeld = false;
+  const releaseRepeatHold = () => { if (repeatHoldUntil) { repeatHoldUntil = 0; pacePump(); } };
   // "it's pronounced...", "say it like...": a correction he must keep (saved by the server if he doesn't)
   const PRONUNCIATION_FIX = /\b(pronounc\w*|say it (?:like|as)|said like|it'?s said|sounds like)\b/i;
   let visionAsk = null; // { at, toolCalled, result: Promise }
@@ -1359,6 +1367,10 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           if (answersTool && emotionAnsweredAt) emotionAnsweredAt = 0;
           if (answersTool) { toolAnswerOwedAt = 0; unsolicitedTurn = false; }
           if (startsModelOutput) { lastModelOutputAt = Date.now(); if (wakeKickTimer) { clearTimeout(wakeKickTimer); wakeKickTimer = null; } }
+          if (isHardware && startsModelOutput && !repeatHeld && !repeatChecked && !unsolicitedTurn && lastImsReply && replyEndedAt && heardAt < replyEndedAt) {
+            repeatHeld = true;
+            repeatHoldUntil = Date.now() + REPEAT_HOLD_MS;
+          }
           // he's already greeted (fast greeting): Gemini's own reply to the wake phrase is dropped until Simon speaks again
           if (fastGreet && (fastGreet.newSpeech || Date.now() - fastGreet.at > 15000)) fastGreet = null;
           if (startsModelOutput && fastGreet) {
@@ -1524,9 +1536,11 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               repeatChecked = true;
               if (now5.slice(0, 5).join(' ') === words(lastImsReply).slice(0, 5).join(' ')) {
                 unsolicitedTurn = true;
-                paceFlush();
-                try { logCapture(`[${new Date().toISOString()}] ${tag} REPEAT DROPPED: "${turnReplyText.trim().slice(0, 80)}" (same as his last reply, nothing new said)\n`); } catch (_) { }
-              }
+                const held = repeatHoldUntil > 0;
+                repeatHoldUntil = 0;
+                paceFlush(); // with the hold, none of it has reached the Box-3
+                try { logCapture(`[${new Date().toISOString()}] ${tag} REPEAT DROPPED: "${turnReplyText.trim().slice(0, 80)}" (same as his last reply, nothing new said${held ? '; held back, never played' : ''})\n`); } catch (_) { }
+              } else releaseRepeatHold();
             }
           }
           { const n = spokenText.split(/\s+/).filter(Boolean).length; wordsSpoken += n; if (toolAnswerOwedAt) toolAnswerWords += n; }
@@ -1714,6 +1728,8 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           }
           if (imsBrain && turnReplyText.trim()) { recordReplyText(turnReplyText); turnReplyText = ''; }
           repeatChecked = false;
+          repeatHeld = false;
+          releaseRepeatHold(); // a reply too short to compare plays as soon as it ends
           if (!parsed.toolCall) convRecordTurn();
         }
 
