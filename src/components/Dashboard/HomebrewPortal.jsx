@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useFocusItem } from '../../hooks/useFocusItem';
-import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, ExternalLink, Copy, ChevronUp, ChevronDown, ChevronRight, ArrowLeft, ScrollText, Activity, Wine, Star, Heart, Share2, Send, FileDown, Link2, Printer, Image as ImageIcon, UserPlus, Users, Mail, User, Check, RefreshCw, Filter, Search, Smartphone, Columns2, LayoutGrid, List } from 'lucide-react';
+import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, ExternalLink, Copy, ChevronUp, ChevronDown, ChevronRight, ArrowLeft, ScrollText, Activity, Wine, Star, Heart, Share2, Send, FileDown, Link2, Printer, Image as ImageIcon, UserPlus, Users, Mail, User, Check, RefreshCw, Filter, Search, Smartphone, Columns2, LayoutGrid, List, SlidersHorizontal, RotateCcw } from 'lucide-react';
 import PortalShell from './PortalShell';
 import { glossMatches, glossTerms } from './brewGlossary';
 import { useAuth } from '../../AuthGate';
@@ -1557,18 +1557,31 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
   const [mobileUX, setMobileUX] = useState(() => {
     try {
       const saved = localStorage.getItem('ims_homebrew_mobile_ux');
-      if (saved === 'phase2') {
-        localStorage.setItem('ims_homebrew_mobile_ux', 'phase1');
-        return 'phase1';
+      if (saved === 'phase1' || saved === 'phase2') {
+        localStorage.setItem('ims_homebrew_mobile_ux', 'phase3');
+        return 'phase3';
       }
-      return saved || 'phase1';
-    } catch (_) { return 'phase1'; }
+      return saved || 'phase3';
+    } catch (_) { return 'phase3'; }
   });
   const switchMobileUX = (mode) => {
     setMobileUX(mode);
     try { localStorage.setItem('ims_homebrew_mobile_ux', mode); } catch (_) {}
   };
-  const [shelfLayout, setShelfLayout] = useState('list');
+  const [shelfLayout, setShelfLayout] = useState('grid');
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+
+  useEffect(() => {
+    if (!filterSheetOpen) return;
+    const onKey = (e) => { if (e.key === 'Escape') setFilterSheetOpen(false); };
+    window.addEventListener('keydown', onKey);
+    const orig = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = orig;
+    };
+  }, [filterSheetOpen]);
 
   const panel = `rounded-2xl border p-5 min-w-0 ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/70 border-[#2E2B27]/10 shadow-sm'}`;
   const border = isDark ? 'border-white/10' : 'border-[#2E2B27]/10';
@@ -1696,6 +1709,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
   const abvLo = abvPick ? Math.max(abvMin, Math.min(abvPick[0], abvMax)) : abvMin;
   const abvHi = abvPick ? Math.min(abvMax, Math.max(abvPick[1], abvMin)) : abvMax;
   const abvOn = Boolean(abvPick) && (abvLo > abvMin || abvHi < abvMax);
+  const activeFilterCount = (cat !== 'all' ? 1 : 0) + sweets.length + acids.length + fizzes.length + flavs.length + (abvOn ? 1 : 0) + wanted.length;
   const strengthOk = (b) => { if (!abvOn) return true; const v = strengthOf(b); return v != null && v >= abvLo && v <= abvHi; };
   const inCat = (b) => inTile(b, cat) && (!favOnly || b.favourite) && tagsOk(b) && strengthOk(b);
   const shownHits = wanted.length ? finds((view === 'recipes' ? recipes : brews).filter(inCat)) : null;
@@ -1949,8 +1963,16 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
       </button>
       <button
         type="button"
+        onClick={() => switchMobileUX('phase3')}
+        title="Phase 3: Floating Bottom Sheet Filter Drawer (Zero vertical displacement)"
+        className={`px-2.5 py-1 rounded-xl transition ${mobileUX === 'phase3' ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-amber-500'}`}
+      >
+        Phase 3
+      </button>
+      <button
+        type="button"
         onClick={() => switchMobileUX('compare')}
-        title="Compare Classic vs Phase 2 side by side in phone viewports"
+        title="Compare side by side in phone viewports"
         className={`hidden sm:inline-flex px-2.5 py-1 rounded-xl transition items-center gap-1 ${mobileUX === 'compare' ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-xs' : 'text-slate-500 hover:text-amber-500'}`}
       >
         <Columns2 size={12} /> Side-by-Side
@@ -2486,6 +2508,292 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
     );
   };
 
+  const renderFilterControlsContent = (inDrawer = false) => (
+    <>
+      {/* Type category tiles */}
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <span className={`text-[10px] font-black uppercase tracking-wider ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>Type</span>
+          {cat !== 'all' && (
+            <button type="button" onClick={() => setCat('all')} className="text-[10px] font-bold text-slate-500 hover:text-amber-500 flex items-center gap-0.5">
+              Show all types
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-1.5 sm:gap-2">
+          {[{ id: 'all', label: 'Everything' }, ...meta.categories].map((k) => {
+            const L = k.id === 'all' ? { emoji: '✨', liquid: '#f59e0b' } : look(k.id);
+            const on = cat === k.id;
+            return (
+              <button key={k.id} onClick={() => setCat(k.id)} className={`rounded-xl sm:rounded-2xl border px-1.5 py-2 sm:px-3 sm:py-3 flex flex-col items-center gap-0.5 sm:gap-1 min-w-0 transition ${on ? 'border-amber-500 shadow-lg shadow-amber-500/20' : border} ${isDark ? 'bg-slate-900/50 hover:bg-slate-800/60' : 'bg-white/80 hover:bg-white'}`}>
+                <span className="text-xl sm:text-2xl leading-none">{L.emoji}</span>
+                <span className="text-[10px] sm:text-xs font-bold text-center leading-tight">{k.label}</span>
+                <span className="h-1 w-8 rounded-full" style={{ background: L.liquid, opacity: on ? 1 : 0.45 }} />
+                <span className="text-[10px] text-slate-500">{countIn(k.id)}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Sweetness, Acidity, Fizz */}
+      <div className="flex flex-col gap-2.5 pt-1 border-t border-black/5 dark:border-white/5">
+        {[['Sweetness', 'sweet', SWEETNESS, sweets, setSweets, (o) => (b) => sweetOf(b) === o.id, 'From the book where it says, otherwise estimated from the sugar, yeast and method'],
+          ['Acidity', 'acid', ACIDITY, acids, setAcids, (o) => (b) => b.acidity === o.id, 'How tart and fresh it is - judged from sharp fruit, added acid and citrus, or a sour style'],
+          ['Fizz', 'fizz', FIZZ, fizzes, setFizzes, (o) => (b) => b.fizz === o.id, 'Still, or sparkling (bottle-conditioned or carbonated)']].map(([title, group, opts, on, setOn, test, help]) => (
+          <div key={title} className="flex flex-wrap items-center gap-1.5" title={help}>
+            <span className={`text-[10px] font-black uppercase tracking-wider mr-1 w-20 shrink-0 ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>{title}</span>
+            {opts.map((o) => {
+              const picked = on.includes(o.id);
+              return (
+                <button key={o.id} onClick={() => toggleIn(on, setOn, o.id)} title={o.hint}
+                  className={`px-2.5 py-1 rounded-full text-xs font-semibold border flex items-center gap-1.5 transition ${picked ? 'bg-amber-500 border-amber-500 text-white' : `${border} ${isDark ? 'bg-slate-900/50' : 'bg-white/80'} hover:border-amber-500/60`}`}>
+                  {o.emoji ? <span className="leading-none">{o.emoji}</span> : null}{o.label}
+                  <span className={`text-[10px] ${picked ? 'text-white/80' : 'text-slate-500'}`}>{countTag(group, test(o))}</span>
+                </button>
+              );
+            })}
+          </div>
+        ))}
+
+        {/* Strength (ABV) */}
+        {abvMax > abvMin && (
+          <div className="flex items-center gap-2 w-full sm:w-[36rem]" title="Strength - measured, from the target gravities, or estimated from the sugar and yeast where the book doesn't say">
+            <span className={`text-[10px] font-black uppercase tracking-wider w-20 shrink-0 ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>Strength</span>
+            <span className={`text-xs font-bold tabular-nums w-9 text-right ${abvOn ? 'text-amber-500' : ''}`}>{abvLo}%</span>
+            <div className="relative flex-1 h-4">
+              <div className={`absolute top-1/2 -translate-y-1/2 inset-x-0 h-1.5 rounded-full ${isDark ? 'bg-white/10' : 'bg-[#2E2B27]/10'}`} />
+              <div className={`absolute top-1/2 -translate-y-1/2 h-1.5 rounded-full bg-gradient-to-r ${GRADIENT}`}
+                style={{ left: `${((abvLo - abvMin) / (abvMax - abvMin)) * 100}%`, right: `${100 - ((abvHi - abvMin) / (abvMax - abvMin)) * 100}%` }} />
+              <input type="range" aria-label="Weakest" className="hb-range" style={{ zIndex: abvLo >= abvHi - 0.5 && abvHi > abvMin ? 3 : 2 }} min={abvMin} max={abvMax} step={0.5} value={abvLo}
+                onChange={(e) => setAbvPick([Math.min(Number(e.target.value), abvHi), abvHi])} />
+              <input type="range" aria-label="Strongest" className="hb-range" min={abvMin} max={abvMax} step={0.5} value={abvHi}
+                onChange={(e) => setAbvPick([abvLo, Math.max(Number(e.target.value), abvLo)])} />
+            </div>
+            <span className={`text-xs font-bold tabular-nums w-9 ${abvOn ? 'text-amber-500' : ''}`}>{abvHi}%</span>
+          </div>
+        )}
+      </div>
+
+      {/* Aromas & Flavours */}
+      <div className="flex flex-wrap items-center gap-1.5" title="Aromas and flavours, from what goes in - pick more than one to find drinks with all of them">
+        <span className={`text-[10px] font-black uppercase tracking-wider mr-1 ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>Aromas &amp; flavours</span>
+        {FLAVOUR_TAGS.map((o) => {
+          const picked = flavs.includes(o.id);
+          return (
+            <button key={o.id} onClick={() => toggleIn(flavs, setFlavs, o.id)} title={o.hint}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition ${picked ? 'bg-amber-500 border-amber-500 text-white shadow-md shadow-amber-500/20' : `${border} ${isDark ? 'bg-slate-900/50' : 'bg-white/80'} hover:border-amber-500/60`}`}>
+              <span className="text-base leading-none">{o.emoji}</span>{o.label}
+              <span className={`text-[10px] ${picked ? 'text-white/80' : 'text-slate-500'}`}>{countTag('flav', (b) => [...flavs, o.id].every((f) => (b.flavours || []).includes(f)))}</span>
+            </button>
+          );
+        })}
+        {(cat !== 'all' || tasteOn || abvOn) && !inDrawer && (
+          <button onClick={() => { setCat('all'); clearTaste(); setAbvPick([abvMin, abvMax]); }} className="ml-auto text-xs font-bold text-slate-500 hover:text-amber-500 flex items-center gap-1">
+            <X size={12} /> Clear filters
+          </button>
+        )}
+      </div>
+    </>
+  );
+
+  const renderPhase3MobileFilterBar = (forceMobile = false) => (
+    <div className={`${forceMobile ? 'flex' : 'sm:hidden flex'} flex-col gap-2 p-3 rounded-2xl border ${border} ${isDark ? 'bg-slate-900/60' : 'bg-white/80'} shadow-sm`}>
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setFilterSheetOpen(true)}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500 text-white font-bold text-xs shadow-xs active:scale-95 transition"
+        >
+          <SlidersHorizontal size={14} />
+          <span>Filters</span>
+          {activeFilterCount > 0 && (
+            <span className="w-5 h-5 rounded-full bg-white/25 text-white text-[10px] flex items-center justify-center font-extrabold">
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
+        <span className="text-xs text-slate-500 font-bold truncate">
+          {cards.length} {view === 'recipes' ? 'recipes' : 'brews'}
+        </span>
+        {activeFilterCount > 0 && (
+          <button
+            type="button"
+            onClick={() => { setCat('all'); clearTaste(); setAbvPick([abvMin, abvMax]); setWanted([]); }}
+            className="text-[11px] font-bold text-slate-400 hover:text-amber-500 flex items-center gap-0.5 ml-auto"
+          >
+            <RotateCcw size={11} /> Reset
+          </button>
+        )}
+      </div>
+
+      {/* Active Filter Chips (Scrollable row) */}
+      {activeFilterCount > 0 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          {cat !== 'all' && (
+            <button
+              type="button"
+              onClick={() => setCat('all')}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0"
+            >
+              <span>{look(cat).emoji} {catLabel(cat)}</span>
+              <X size={12} />
+            </button>
+          )}
+          {sweets.map((id) => {
+            const s = SWEETNESS.find((x) => x.id === id);
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => toggleIn(sweets, setSweets, id)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0"
+              >
+                <span>{s?.label || id}</span>
+                <X size={12} />
+              </button>
+            );
+          })}
+          {acids.map((id) => {
+            const a = ACIDITY.find((x) => x.id === id);
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => toggleIn(acids, setAcids, id)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0"
+              >
+                <span>{a?.label || id}</span>
+                <X size={12} />
+              </button>
+            );
+          })}
+          {fizzes.map((id) => {
+            const f = FIZZ.find((x) => x.id === id);
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => toggleIn(fizzes, setFizzes, id)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0"
+              >
+                <span>{f?.label || id}</span>
+                <X size={12} />
+              </button>
+            );
+          })}
+          {abvOn && (
+            <button
+              type="button"
+              onClick={() => setAbvPick([abvMin, abvMax])}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0"
+            >
+              <span>{abvLo}–{abvHi}% ABV</span>
+              <X size={12} />
+            </button>
+          )}
+          {flavs.map((id) => {
+            const fl = FLAVOUR_TAGS.find((x) => x.id === id);
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => toggleIn(flavs, setFlavs, id)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0"
+              >
+                <span>{fl?.emoji} {fl?.label || id}</span>
+                <X size={12} />
+              </button>
+            );
+          })}
+          {wanted.map((w) => (
+            <button
+              key={w}
+              type="button"
+              onClick={() => togglePick(w)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0"
+            >
+              <span>{w}</span>
+              <X size={12} />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderFilterBottomSheet = () => {
+    if (!filterSheetOpen) return null;
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col justify-end">
+        {/* Backdrop */}
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+          onClick={() => setFilterSheetOpen(false)}
+        />
+
+        {/* Slide-up Sheet */}
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Filter drinks"
+          className={`relative z-10 w-full max-w-lg mx-auto rounded-t-3xl border-t border-x overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-in slide-in-from-bottom duration-300 ${isDark ? 'bg-slate-900 border-white/10 text-white' : 'bg-[#FAF8F5] border-[#2E2B27]/15 text-[#2E2B27]'}`}
+        >
+          {/* Grab handle */}
+          <div className="w-12 h-1.5 rounded-full bg-slate-400/40 mx-auto mt-3 mb-1 shrink-0" />
+
+          {/* Header */}
+          <div className={`p-4 border-b flex items-center justify-between shrink-0 ${border}`}>
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal size={18} className="text-amber-500" />
+              <h3 className="text-base font-black">Filter {view === 'recipes' ? 'Recipes' : 'Brews'}</h3>
+              {activeFilterCount > 0 && (
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-500">
+                  {activeFilterCount} active
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {activeFilterCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setCat('all'); clearTaste(); setAbvPick([abvMin, abvMax]); setWanted([]); }}
+                  className="text-xs font-bold text-slate-400 hover:text-amber-500 px-2 py-1"
+                >
+                  Reset all
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setFilterSheetOpen(false)}
+                className={`p-1.5 rounded-full transition text-slate-400 hover:text-slate-600 ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
+                aria-label="Close filters"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+
+          {/* Scrollable Filter Options */}
+          <div className="overflow-y-auto p-4 flex flex-col gap-4">
+            {renderFilterControlsContent(true)}
+          </div>
+
+          {/* Sticky Bottom Action Bar */}
+          <div className={`p-3 border-t shrink-0 flex items-center gap-3 backdrop-blur-md ${isDark ? 'bg-slate-900/95 border-white/10' : 'bg-white/95 border-[#2E2B27]/10'}`}>
+            <button
+              type="button"
+              onClick={() => setFilterSheetOpen(false)}
+              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-extrabold text-sm shadow-md active:scale-98 transition flex items-center justify-center gap-2"
+            >
+              <span>Show {cards.length} {view === 'recipes' ? 'Recipes' : 'Brews'}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <PortalShell title="Homebrew" subtitle="/ims/homebrew • your meads, braggots and brews"
       icon={FlaskConical} gradient={GRADIENT} glow="rgba(245,158,11,0.3)"
@@ -2604,90 +2912,27 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
             )}
           </div>}
 
-          <div className={`${tile} p-3 sm:p-4 flex flex-col gap-3 ${isDark ? 'bg-slate-900/40' : 'bg-white/70'}`}>
-          {/* on a phone the filters fold away behind this bar */}
-          <button type="button" onClick={() => setFiltersOpen(!filtersOpen)} className="sm:hidden flex items-center gap-2 text-sm font-bold">
-            <Filter size={15} className="text-amber-500" /> Filters
-            {(() => { const n = (cat !== 'all' ? 1 : 0) + sweets.length + acids.length + fizzes.length + flavs.length + (abvOn ? 1 : 0); return n ? <span className="text-[10px] px-1.5 rounded-full bg-amber-500 text-white">{n} on</span> : null; })()}
-            {filtersOpen ? <ChevronUp size={16} className="ml-auto text-slate-500" /> : <ChevronDown size={16} className="ml-auto text-slate-500" />}
-          </button>
-          <div className={`${filtersOpen ? 'flex' : 'hidden'} sm:flex flex-col gap-3.5`}>
-            {/* the types: smaller on a phone, three to a row */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className={`text-[10px] font-black uppercase tracking-wider ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>Type</span>
-                {cat !== 'all' && (
-                  <button type="button" onClick={() => setCat('all')} className="text-[10px] font-bold text-slate-500 hover:text-amber-500 flex items-center gap-0.5">
-                    Show all types
-                  </button>
-                )}
+          {/* Phase 3 Mobile Filter Bar vs Desktop / Classic Accordion */}
+          {mobileUX === 'phase3' ? (
+            <>
+              {renderPhase3MobileFilterBar(false)}
+              <div className={`hidden sm:flex ${tile} p-4 flex-col gap-3.5 ${isDark ? 'bg-slate-900/40' : 'bg-white/70'}`}>
+                {renderFilterControlsContent(false)}
               </div>
-              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-1.5 sm:gap-2">
-                {[{ id: 'all', label: 'Everything' }, ...meta.categories].map((k) => {
-                  const L = k.id === 'all' ? { emoji: '✨', liquid: '#f59e0b' } : look(k.id);
-                  const on = cat === k.id;
-                  return (
-                    <button key={k.id} onClick={() => setCat(k.id)} className={`rounded-xl sm:rounded-2xl border px-1.5 py-2 sm:px-3 sm:py-3 flex flex-col items-center gap-0.5 sm:gap-1 min-w-0 transition ${on ? 'border-amber-500 shadow-lg shadow-amber-500/20' : border} ${isDark ? 'bg-slate-900/50 hover:bg-slate-800/60' : 'bg-white/80 hover:bg-white'}`}>
-                      <span className="text-xl sm:text-2xl leading-none">{L.emoji}</span>
-                      <span className="text-[10px] sm:text-xs font-bold text-center leading-tight">{k.label}</span>
-                      <span className="h-1 w-8 rounded-full" style={{ background: L.liquid, opacity: on ? 1 : 0.45 }} />
-                      <span className="text-[10px] text-slate-500">{countIn(k.id)}</span>
-                    </button>
-                  );
-                })}
+            </>
+          ) : (
+            <div className={`${tile} p-3 sm:p-4 flex flex-col gap-3 ${isDark ? 'bg-slate-900/40' : 'bg-white/70'}`}>
+              {/* on a phone the filters fold away behind this bar */}
+              <button type="button" onClick={() => setFiltersOpen(!filtersOpen)} className="sm:hidden flex items-center gap-2 text-sm font-bold">
+                <Filter size={15} className="text-amber-500" /> Filters
+                {activeFilterCount > 0 && <span className="text-[10px] px-1.5 rounded-full bg-amber-500 text-white">{activeFilterCount} on</span>}
+                {filtersOpen ? <ChevronUp size={16} className="ml-auto text-slate-500" /> : <ChevronDown size={16} className="ml-auto text-slate-500" />}
+              </button>
+              <div className={`${filtersOpen ? 'flex' : 'hidden'} sm:flex flex-col gap-3.5`}>
+                {renderFilterControlsContent(false)}
               </div>
             </div>
-          <div className="flex flex-col gap-2.5 pt-1 border-t border-black/5 dark:border-white/5">
-            {[['Sweetness', 'sweet', SWEETNESS, sweets, setSweets, (o) => (b) => sweetOf(b) === o.id, 'From the book where it says, otherwise estimated from the sugar, yeast and method'],
-              ['Acidity', 'acid', ACIDITY, acids, setAcids, (o) => (b) => b.acidity === o.id, 'How tart and fresh it is - judged from sharp fruit, added acid and citrus, or a sour style'],
-              ['Fizz', 'fizz', FIZZ, fizzes, setFizzes, (o) => (b) => b.fizz === o.id, 'Still, or sparkling (bottle-conditioned or carbonated)']].map(([title, group, opts, on, setOn, test, help]) => (
-              <div key={title} className="flex flex-wrap items-center gap-1.5" title={help}>
-                <span className={`text-[10px] font-black uppercase tracking-wider mr-1 w-20 shrink-0 ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>{title}</span>
-                {opts.map((o) => {
-                  const picked = on.includes(o.id);
-                  return (
-                    <button key={o.id} onClick={() => toggleIn(on, setOn, o.id)} title={o.hint}
-                      className={`px-2.5 py-1 rounded-full text-xs font-semibold border flex items-center gap-1.5 transition ${picked ? 'bg-amber-500 border-amber-500 text-white' : `${border} ${isDark ? 'bg-slate-900/50' : 'bg-white/80'} hover:border-amber-500/60`}`}>
-                      {o.emoji ? <span className="leading-none">{o.emoji}</span> : null}{o.label}
-                      <span className={`text-[10px] ${picked ? 'text-white/80' : 'text-slate-500'}`}>{countTag(group, test(o))}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-            {abvMax > abvMin && (
-              <div className="flex items-center gap-2 w-full sm:w-[36rem]" title="Strength - measured, from the target gravities, or estimated from the sugar and yeast where the book doesn't say">
-                <span className={`text-[10px] font-black uppercase tracking-wider w-20 shrink-0 ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>Strength</span>
-                <span className={`text-xs font-bold tabular-nums w-9 text-right ${abvOn ? 'text-amber-500' : ''}`}>{abvLo}%</span>
-                <div className="relative flex-1 h-4">
-                  <div className={`absolute top-1/2 -translate-y-1/2 inset-x-0 h-1.5 rounded-full ${isDark ? 'bg-white/10' : 'bg-[#2E2B27]/10'}`} />
-                  <div className={`absolute top-1/2 -translate-y-1/2 h-1.5 rounded-full bg-gradient-to-r ${GRADIENT}`}
-                    style={{ left: `${((abvLo - abvMin) / (abvMax - abvMin)) * 100}%`, right: `${100 - ((abvHi - abvMin) / (abvMax - abvMin)) * 100}%` }} />
-                  <input type="range" aria-label="Weakest" className="hb-range" style={{ zIndex: abvLo >= abvHi - 0.5 && abvHi > abvMin ? 3 : 2 }} min={abvMin} max={abvMax} step={0.5} value={abvLo}
-                    onChange={(e) => setAbvPick([Math.min(Number(e.target.value), abvHi), abvHi])} />
-                  <input type="range" aria-label="Strongest" className="hb-range" min={abvMin} max={abvMax} step={0.5} value={abvHi}
-                    onChange={(e) => setAbvPick([abvLo, Math.max(Number(e.target.value), abvLo)])} />
-                </div>
-                <span className={`text-xs font-bold tabular-nums w-9 ${abvOn ? 'text-amber-500' : ''}`}>{abvHi}%</span>
-              </div>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5" title="Aromas and flavours, from what goes in - pick more than one to find drinks with all of them">
-            <span className={`text-[10px] font-black uppercase tracking-wider mr-1 ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>Aromas &amp; flavours</span>
-            {FLAVOUR_TAGS.map((o) => {
-              const picked = flavs.includes(o.id);
-              return (
-                <button key={o.id} onClick={() => toggleIn(flavs, setFlavs, o.id)} title={o.hint}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition ${picked ? 'bg-amber-500 border-amber-500 text-white shadow-md shadow-amber-500/20' : `${border} ${isDark ? 'bg-slate-900/50' : 'bg-white/80'} hover:border-amber-500/60`}`}>
-                  <span className="text-base leading-none">{o.emoji}</span>{o.label}
-                  <span className={`text-[10px] ${picked ? 'text-white/80' : 'text-slate-500'}`}>{countTag('flav', (b) => [...flavs, o.id].every((f) => (b.flavours || []).includes(f)))}</span>
-                </button>
-              );
-            })}
-            {(cat !== 'all' || tasteOn || abvOn) && <button onClick={() => { setCat('all'); clearTaste(); }} className="ml-auto text-xs font-bold text-slate-500 hover:text-amber-500 flex items-center gap-1"><X size={12} /> Clear filters</button>}
-          </div>
-          </div>
-          </div>
+          )}
 
           {/* Phase 2 View Bar: Item count and List / Grid Switcher */}
           {mobileUX === 'phase2' && (
@@ -2720,34 +2965,47 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
             <div className="flex flex-col gap-3">
               <div className="flex flex-wrap items-center justify-between text-xs font-bold text-slate-500 px-1 gap-2">
                 <div className="flex items-center gap-1.5 text-amber-500 font-extrabold uppercase tracking-wider text-[11px]">
-                  <Columns2 size={14} /> Shelf Catalog Comparison (Mobile Viewports)
+                  <Columns2 size={14} /> Shelf Catalog &amp; Filter Comparison (Mobile Viewports)
                 </div>
-                <span className="text-[11px] text-slate-400">Comparing Classic Cards vs Phase 2 Compact List in 390px mobile screens</span>
+                <span className="text-[11px] text-slate-400">Comparing Classic Accordion vs Phase 3 Bottom Sheet Filter in 390px mobile screens</span>
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-                {/* Left: Classic Cards Phone Frame */}
+                {/* Left: Classic Accordion Phone Frame */}
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between text-xs px-2">
                     <span className="font-bold px-2.5 py-0.5 rounded-full bg-slate-500/15 text-slate-600 dark:text-slate-300">
-                      Option A: Classic Cards
+                      Option A: Classic (In-Line Accordion)
                     </span>
-                    <span className="text-[11px] text-slate-400">~320px / card · ~1.5 visible</span>
+                    <span className="text-[11px] text-rose-500 font-semibold">~550px filter pushes cards down</span>
                   </div>
-                  <div className="w-full max-w-[420px] mx-auto border-2 border-slate-400/20 rounded-3xl overflow-hidden shadow-xl bg-slate-950/10 p-3 max-h-[640px] overflow-y-auto">
+                  <div className="w-full max-w-[420px] mx-auto border-2 border-slate-400/20 rounded-3xl overflow-hidden shadow-xl bg-slate-950/10 p-3 max-h-[640px] overflow-y-auto flex flex-col gap-3">
+                    <div className={`${tile} p-3 flex flex-col gap-2.5 ${isDark ? 'bg-slate-900/60' : 'bg-white/85'}`}>
+                      <button type="button" onClick={() => setFiltersOpen(!filtersOpen)} className="flex items-center gap-2 text-xs font-bold">
+                        <Filter size={14} className="text-amber-500" /> Filters
+                        {activeFilterCount > 0 && <span className="text-[9px] px-1.5 rounded-full bg-amber-500 text-white">{activeFilterCount} on</span>}
+                        {filtersOpen ? <ChevronUp size={14} className="ml-auto text-slate-500" /> : <ChevronDown size={14} className="ml-auto text-slate-500" />}
+                      </button>
+                      {filtersOpen && (
+                        <div className="flex flex-col gap-3 pt-2 border-t border-black/5 dark:border-white/5">
+                          {renderFilterControlsContent(false)}
+                        </div>
+                      )}
+                    </div>
                     {renderClassicShelfGrid(cards, true)}
                   </div>
                 </div>
 
-                {/* Right: Phase 2 Compact List Phone Frame */}
+                {/* Right: Phase 3 Bottom Sheet Phone Frame */}
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between text-xs px-2">
                     <span className="font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                      Option B: Phase 2 Compact List
+                      Option B: Phase 3 (Bottom Sheet Drawer)
                     </span>
-                    <span className="text-[11px] text-emerald-500 font-bold">~72px / item · 7–8 visible (+380% density)</span>
+                    <span className="text-[11px] text-emerald-500 font-bold">0px displacement · Cards right at top</span>
                   </div>
-                  <div className="w-full max-w-[420px] mx-auto border-2 border-amber-500/30 rounded-3xl overflow-hidden shadow-xl bg-slate-950/10 p-3 max-h-[640px] overflow-y-auto">
-                    {renderPhase2ShelfList(cards, true)}
+                  <div className="w-full max-w-[420px] mx-auto border-2 border-amber-500/30 rounded-3xl overflow-hidden shadow-xl bg-slate-950/10 p-3 max-h-[640px] overflow-y-auto flex flex-col gap-3">
+                    {renderPhase3MobileFilterBar(true)}
+                    {renderClassicShelfGrid(cards, true)}
                   </div>
                 </div>
               </div>
@@ -2757,6 +3015,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
           ) : (
             renderClassicShelfGrid(cards, false)
           )}
+          {renderFilterBottomSheet()}
           {!shown.length && wanted.length > 0 && <p className="text-xs text-slate-500 text-center">Nothing {view === 'recipes' ? 'in the recipe book' : 'in your brews'} uses {wanted.join(' or ')}{cat !== 'all' ? ` in ${catLabel(cat)} - try Everything` : ''}.</p>}
           {!shown.length && !wanted.length && <p className="text-xs text-slate-500 text-center">{view === 'recipes' ? 'No recipes in here yet.' : 'Nothing brewing in here yet - start one, or pick something from the recipe book.'}</p>}
         </div>
@@ -2798,7 +3057,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between text-xs px-2">
                       <span className="font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                        Option B: Phase 1 &amp; 2 (Compact Horizontal)
+                        Option B: Phase 1, 2 &amp; 3 (Compact Horizontal)
                       </span>
                       <span className="text-[11px] text-emerald-500 font-bold">-48% scroll tax (~220px)</span>
                     </div>
@@ -2808,7 +3067,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                   </div>
                 </div>
               </div>
-            ) : (mobileUX === 'phase1' || mobileUX === 'phase2') ? (
+            ) : (mobileUX === 'phase1' || mobileUX === 'phase2' || mobileUX === 'phase3') ? (
               renderPhase1Header(brew, false)
             ) : (
               renderClassicHeader(brew, false)
