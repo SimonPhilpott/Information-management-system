@@ -3,6 +3,7 @@ import db from '../db/database.js';
 import { getFrame, keepCameraAwake } from './cameraService.js';
 import { detectFacesFast, matchEmbedding } from './faceService.js';
 import { isRecordingActive } from './recordingService.js';
+import logger from './loggerService.js';
 
 // Desk presence: watches the live camera frames (locally - the same YuNet +
 // SFace engine as /ims/faces, nothing leaves this machine) to know whether
@@ -26,11 +27,14 @@ const GAZE_LOST_MS = 1500;              // no face this long -> eyes go back to 
 const GAZE_REPEAT_MS = 3000;            // the device forgets a gaze it isn't reminded of
 const LEAVE_MS = 30000;                 // no sign of anyone this long -> they've left the desk
 // Still here without a face square-on to the camera: turned side-on, leaning back or face half out of the picture
-// (a face the detector is less sure of), or moving about. Either keeps someone "at the desk", and they also restart
-// the away clock - so a hello only ever follows a desk that's been seen properly empty, not someone who looked away.
+// (a face the detector is less sure of), or moving about. Either keeps a sitting going, so looking away never ends
+// it. Once the desk is empty only the side-on face restarts the away clock (movement there is the window, not him).
 // share of the picture that must change between frames to count as someone moving - measured at the desk camera
 // (20 Oct): sitting still reads 0-0.006, any shifting about 0.03-0.5, so 0.012 clears camera grain with room to spare
 const MOTION_MIN = 0.012;
+// on an empty desk only a side-on face counts, and only when seen in this many frames close together
+const PARTIAL_FRAMES_TO_STAY = 3;
+const PARTIAL_WINDOW_MS = 10000;
 const AWAY_BEFORE_GREET_MS = 5 * 60000; // must have been seen away this long to be greeted on return
 const RECOGNISE_WINDOW_MS = 20000;      // after sitting down, how long recognition may take
 const MATCHES_TO_GREET = 2;             // matches needed in that window (one stray match never greets)
@@ -61,7 +65,8 @@ let lastFreshAt = 0;
 let lastFaceAt = 0;
 let lastPersonAt = 0;      // last sign of anyone at all: a face, a side-on face, head and shoulders, or movement
 let lastFrameAt = 0;
-let session = null;        // { id, startedAt, greetEligible, matches: Map(name -> count), greeted }
+let partialSeen = [];      // when side-on faces were seen on an empty desk (recent ones only)
+let session = null;       // { id, startedAt, greetEligible, matches: Map(name -> count), greeted }
 
 let smoothX = 0, smoothY = 0;
 let gaze = null;           // { x: -1..1, y: -1..1 } as last sent, or null
@@ -124,7 +129,11 @@ function onFaces(out, frameAt) {
     if (present !== true) {
       // Sat down. Only a return after being SEEN away for a while earns a hello.
       const greetEligible = present === false && now - absentSince >= AWAY_BEFORE_GREET_MS;
+      logger.info('Presence', present === false
+        ? `Sat down after ${Math.round((now - absentSince) / 1000)} s seen away${greetEligible ? ' - will say hello' : ''}`
+        : 'Sat down (not seen leaving - no hello)');
       present = true;
+      partialSeen = [];
       const id = db.prepare('INSERT INTO desk_presence (started_at, last_seen_at) VALUES (?, ?)').run(frameAt, frameAt).lastInsertRowid;
       session = { id, startedAt: frameAt, greetEligible, matches: new Map(), greeted: false, savedAt: frameAt };
     }
@@ -160,15 +169,25 @@ function onFaces(out, frameAt) {
   // No face square-on in this frame - but someone may still be there.
   if (frameAt - lastFaceAt > GAZE_LOST_MS) sendGaze(null);
   const h = out.hints || {};
-  const someone = h.partial > 0 || h.motion >= MOTION_MIN;
-  if (someone) {
+  if (present === true && (h.partial > 0 || h.motion >= MOTION_MIN)) { // still in the same sitting
     lastPersonAt = frameAt;
     keepCameraAwake();
-    if (present === true && session && frameAt - session.savedAt > 30000) { // still in the same sitting
+    if (session && frameAt - session.savedAt > 30000) {
       session.savedAt = frameAt;
       db.prepare('UPDATE desk_presence SET last_seen_at = ? WHERE id = ?').run(frameAt, session.id);
     }
-    if (present === false) absentSince = frameAt; // not empty after all: the away clock starts again
+    return;
+  }
+  // An empty desk: movement doesn't count - the window behind the desk (clouds, sun, the camera re-exposing once
+  // nobody's in front of it) moves the picture, and one blip anywhere in five minutes restarted the away clock, so
+  // Simon was never greeted (20 Oct). Only a side-on face seen in several frames means he never really left.
+  if (present === false && h.partial > 0) {
+    partialSeen = partialSeen.filter((t) => frameAt - t < PARTIAL_WINDOW_MS).concat(frameAt);
+    if (partialSeen.length >= PARTIAL_FRAMES_TO_STAY) {
+      if (frameAt - absentSince > 60000) logger.info('Presence', `Side-on face at the desk - away clock restarted after ${Math.round((frameAt - absentSince) / 1000)} s`);
+      lastPersonAt = frameAt;
+      absentSince = frameAt;
+    }
     return;
   }
   if (present === null) {
@@ -176,8 +195,10 @@ function onFaces(out, frameAt) {
     absentSince = frameAt;
   } else if (present === true && frameAt - lastPersonAt > LEAVE_MS) {
     endSession(lastPersonAt);
+    logger.info('Presence', 'Left the desk');
     present = false;
     absentSince = lastPersonAt;
+    partialSeen = [];
   }
 }
 
