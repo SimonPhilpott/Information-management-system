@@ -4,13 +4,14 @@ IMS is a personal knowledge and home-assistant system built around **Ims**, a Yo
 
 - a **voice terminal** (custom firmware) that talks to Gemini Live through a local proxy,
 - a **web app** for chatting with your PDF library (RAG over Google Drive + Gemini),
-- a set of **`/ims` services** for the things Ims knows about and can do: memories, persona, music releases, code repository best practices (Personal & TurnTown), alarms/timers/reminders, birthdays, calendar, blood sugar (Nightscout), Strava activities, a T1D run planner with a comprehensive glucose rulebook, pre-run glucose readiness card, morning and day reports, news, background tasks, board games, dev ideas, Box-3 device health monitoring, voice latency telemetry, Gemini spend budget breakdowns, **Look** visual Q&A, and **Faces** local biometric identification,
+- a set of **`/ims` services** for the things Ims knows about and can do: memories, personas, **instructions** (things Ims does later, for you or for whoever is at the desk), music releases, code repository best practices with a project builder (Personal & TurnTown), alarms/timers/reminders, birthdays, calendar, blood sugar (Nightscout), Strava and Garmin activities, a T1D run planner with a comprehensive glucose rulebook, pre-run glucose readiness card, morning and day reports, news, background tasks, board games, **homebrew** (recipes, brews, tastings, reminders and printable bottle labels), dev ideas, Box-3 device health monitoring, voice latency telemetry, Gemini costs and model switching, backups, **Look** visual Q&A, and **Faces** local biometric identification,
 - the **Campaign Manager** (`/campaigns`) for card-game campaigns - a tab per game: **Lord of the Rings LCG** and **Arkham Horror LCG** - with decks, maps, rule checks, and an illustrated, narrated chronicle,
+- **invited guests** (basic Google sign-in only) who can use the Campaign Manager and Homebrew and nothing else,
 - a **System Architecture** page (`/ims/architecture`) with a live test box that lights up every part of the system a prompt uses, plus a dedicated **Voice Latency & Tools Telemetry** dashboard with turn-stage waterfalls and 1800ms target budget analysis, backed by a 5-phase **Modernisation & Reliability Plan** (`docs/SYSTEM_ARCHITECTURE_PLAN.md`),
 - a **Direct Ring Doorbell API Service** (`/ims/doorbell`) with persistent 2FA refresh token storage, real-time SIP/WebSocket event streaming (dings and motions), ESP32-S3-BOX-3 chime alerts, and Yorkshire vocal announcements,
-- a **Desk Camera & Vision Subsystem** (Logitech C270 via ESP32-S3-BOX-3 USB Host) delivering real-time multipart MJPEG video (`/api/camera/stream`), on-demand snapshot analysis via Gemini Flash (`/ims/look`), 100% on-device face detection and recognition with YuNet + SFace (`/ims/faces`), and desk presence tracking with automated sit-down greetings.
+- a **Desk Camera & Vision Subsystem** (Logitech C270 via ESP32-S3-BOX-3 USB Host) delivering real-time multipart MJPEG video (`/api/camera/stream`), on-demand snapshot analysis via Gemini Flash (`/ims/look`), 100% on-device face detection and recognition with YuNet + SFace (`/ims/faces`), and desk presence tracking - Ims's eyes follow you, and he says hello when you sit back down after at least five minutes away.
 
-Everything runs on your own machine. Cloud services used: Google (Drive, Calendar, Gemini) plus data sources such as GitHub (Personal & TurnTown repos), Nightscout, Strava, Komoot, Ring, BoardGameGeek, MusicBrainz, Open-Meteo, Open Food Facts, RingsDB, Hall of Beorn, ArkhamDB and the news feeds.
+Everything runs on your own machine. Cloud services used: Google (Drive, Calendar, Gemini) plus data sources such as GitHub (Personal & TurnTown repos), Nightscout, Strava, Garmin Connect, Komoot, Ring, BoardGameGeek, MusicBrainz, Open-Meteo, Open Food Facts, Pixabay (homebrew photos), RingsDB, Hall of Beorn, ArkhamDB and the news feeds. The whole of IMS is copied to the home NAS every night (`scripts/nas-backup/`).
 
 > **Status:** the voice terminal, web app, and all active `/ims` services are operational.
 > **Commit History:** Inspect detailed commit activity and build changelogs at [GitHub Commits](https://github.com/SimonPhilpott/Information-management-system/commits/main).
@@ -55,14 +56,15 @@ Everything runs on your own machine. Cloud services used: Google (Drive, Calenda
  |   - /api/* for every /ims service (SQLite + JSON files)           |
  |   - Look & Faces vision: multipart MJPEG stream, Gemini Flash Q&A,|
  |     YuNet / SFace on-device biometrics, desk presence & gaze      |
- |   - schedulers: alarms/timers, nightly music scan, morning report |
- |   - python helpers: music scanner, face recognition tool          |
+ |   - one scheduler for 25 background jobs (alarms, syncs, backups) |
+ |   - python helpers: music scanner, face tool, Garmin, wake model  |
  +---------+---------------------------+-----------------+-----------+
            |                           |                 |
            v                           v                 v
    Gemini Live / TTS /         Google Drive         MusicBrainz, BGG,
-   generateContent API         (PDF library)        Open-Meteo, Nightscout,
-           ^                                        GitHub, Ring
+   generateContent API         (PDF library,        Open-Meteo, Nightscout,
+           ^                    nightly backup)     Strava, Garmin, Komoot,
+           |                                        GitHub, Ring, Pixabay
            |
  +---------+-------------------+
  |  Web app (Vite + React :6001) |  main dashboard and every /ims page
@@ -79,8 +81,9 @@ The web app talks to the backend through the Vite dev proxy. The device never to
 |---|---|
 | `src/` | The main React app: dashboard, chat, and all `/ims/*` pages (`src/components/Dashboard/`) |
 | `pdf-knowledge-base/server/` | The backend: `index.js` (Gemini Live proxy + device servers), `routes/`, `services/`, `db/` |
-| `pdf-knowledge-base/server/python/` | Local Python helpers: `ims_scan_service.py` (music scanner engine) |
-| `pdf-knowledge-base/client/` | The original standalone PDF Knowledge Base UI (`:5173`) |
+| `pdf-knowledge-base/server/python/` | Local Python helpers: `ims_scan_service.py` (music scanner engine), `face_tool.py` (YuNet + SFace faces and desk presence) |
+| `pdf-knowledge-base/client-fixed/` | The original standalone PDF Knowledge Base UI (`:5173`) |
+| `scripts/nas-backup/` | The nightly disaster-recovery copy of IMS to the NAS (03:30 Windows task) - `RESTORE.md` says how to rebuild from it |
 | `firmware/esp32-s3-box-3/` | ESP32-S3-BOX-3 firmware (PlatformIO, Arduino): `src/main.cpp`, `include/config.h` |
 | `personas/` | Ims's personas - one Markdown file each (settings header: voice, accent, dialect words, sign-offs, doorbell lines; then the character sections) plus `_house_rules.md` shared by all. The active persona drives every place Ims speaks. Editable at `/ims/persona` |
 | `imspersonality.md` | Design notes for the personality-slider system |
@@ -96,7 +99,8 @@ The web app talks to the backend through the Vite dev proxy. The device never to
 | `6001` | Main IMS web app (Vite) - the one you open |
 | `3001` | Backend HTTP API and the browser Gemini Live WebSocket |
 | `3002` | Raw TCP endpoint the ESP32 connects to (Gemini Live proxy) |
-| `3003` | Plain HTTP for the device: `/device/personality` |
+| `3003` | Plain HTTP for the device: camera frames, face packs, `/device/personality` |
+| `3232` | The device's own Wi-Fi OTA port (firmware updates) |
 | `5173` | Original PDF Knowledge Base client (optional) |
 
 ## Prerequisites
@@ -178,8 +182,10 @@ The **IMS Hub** (`/ims`) links to every service below, listed alphabetically und
 | `/ims/code-repo` | **Code Repository Best Practices.** Curated architectural and implementation standards across Personal and TurnTown GitHub repositories. Categorised by functional domains (Authentication & Security, Data & Database, API & Integration, Architecture & Orchestration, UI & Frontend, Testing & Quality, Cloud & Deployment) with search, function/repo/technology filters, actionable code snippets, and direct links. **Dependencies**: a weekly `npm audit` and `npm outdated` across IMS (web app, server, library client) and every scanned repo - critical and high advisories with fixes, packages a major version or more behind, and one dev idea per critical advisory listing every project it affects |
 | `/ims/musicscan` | **Music scanner.** Nightly (default 01:00 London time) scan of your music library against MusicBrainz. Shows scan progress, and per artist every album/EP with an exact release date, coloured **green = owned**, **red = not owned**, **grey = owned but not on MusicBrainz**. Views for Day / Week / Month / 6 Months / Year plus an All Artists list; collapsible artists with owned / not-owned counts; a "Released today" list (this count drives the vinyl icon on the device); per-artist search-name and pseudonym editing with an instant rescan |
 | `/ims/alarms`, `/ims/timers`, `/ims/reminders` | Create, edit and cancel entries; changes reach the device within ~15 s. Ims chimes/speaks them when they fire. An **Archive** tab keeps everything that has finished, with when it was set, when it went off, and whether it was acknowledged, went unanswered or was cancelled, plus a full event timeline. Ask Ims "did my reminder go off?" or "what alarms did I set yesterday?" |
+| `/ims/instructions` | **Instructions.** Things you've asked Ims to do later - like reminders, but for him: at a time, or when a particular person is next at the desk - carried out precisely, with the tools they need. Also holds your **how-tos**: your way of doing each kind of request, which Ims follows (`addInstruction`, `getInstructions`, `updateInstruction`, `cancelInstruction`, `completeInstruction`) |
 | `/ims/birthday` | Names, day/month and optional birth year. A cake icon appears on the device within 7 days (yellow), or green on the day (green wins if both apply). Deleting archives; the Archive tab lists deleted birthdays (restorable) and those that passed in the last 30 days |
 | `/ims/boardgames` | Your BoardGameGeek collection, with expandable expansions (owned vs not owned) and a **want-to-sell tick** per game/expansion. Needs a BGG API token (see below) |
+| `/ims/homebrew` | **Homebrew** (Personal). Your meads, wines, beers, ciders and sodas. **Recipe book** of about 1,000 recipes from your brewing books, grouped into families of versions, with taste filters (sweetness, acidity, fizz, flavours), a strength slider, an ingredient finder ("apples, rhubarb"), plain-English glossary hovers, sharing by link (WhatsApp etc.) and PDFs. **Brews**: start one from a recipe, log readings, nutrients, racking and tastings, and follow it on a clickable progress track (Planning → Bubbling away → Clearing → Bottle → Finished) with an animated demijohn for each stage. Each recipe shows its main ingredients as photos, its expected drink colour (beers by estimated SRM), a faint photo banner of its type and ingredients, and its likely ABV. **Step reminders** turn the method's timed steps into reminders. **Print labels** makes A4 sheets of 10 bottle labels (99 x 57 mm, a 6 mm margin, faint cut lines) as a PDF, from a window with a live preview: the name (multi-line, or a name just for these labels with the recipe's underneath), dragged anywhere on the label and aligned left, centre or right, its size and colour; 11 wine and beer fonts or your own uploaded `.ttf` / `.otf` / `.woff` fonts (kept for later); nine borders (fine line, double, classic, vintage, art deco, Greek key, scallop, dotted) with their own colour and opacity; and a QR code to the recipe's shared page. A brew can have its own picture (upload one), used on its card, header and labels. Gemini insights and "what if" changes; Ims can read and log brews (`getBrews`, `logBrew`). Photos are found on Pixabay, never generated. Invited guests can use it too |
 | `/ims/glucose` | **Blood sugar.** Nightscout readings every minute, time in range, overnight summary and carb logging (carbs are posted to Nightscout as a Meal Bolus and picked up by AndroidAPS - insulin is never sent). Old Nightscout data can be auto-cleared after 3 months. **Clinic AGP Report**: a 14- or 90-day Ambulatory Glucose Profile PDF for your diabetes team (time in ranges against the consensus targets, GMI, CV, coverage, the 24-hour percentile profile, daily traces with pod and sensor change markers, hypo events, and the first 24 hours after each change), beside *Download PDF Report*. Also shows training load and recovery |
 | `/ims/news` | **News sources.** RSS feeds with tags and an importance weighting (1-5) used by the morning report and `getNews`; UK tour news for bands in your music library |
 | `/ims/tasks` | **Background tasks.** Research Ims runs on its own (with Google Search) and reports on later, or in the next day report |
@@ -189,13 +195,16 @@ The **IMS Hub** (`/ims`) links to every service below, listed alphabetically und
 | `/ims/faces` | **Faces (Biometric Identity).** 100% on-device face detection and recognition using OpenCV YuNet and SFace models. Manage enrolled individuals, view biometric samples, and track desk presence with automated sit-down greetings. Supports live conversational enrolment: when Ims describes an unfamiliar person in view, exchanging names triggers the `enrolPerson` tool to register them and their face sample into SQLite (`people` and `face_samples`). Includes full management: individual person deletion, biometric sample inspection and removal, bulk clear, and uncommitted sample discard |
 | `/ims/doorbell` | **Ring Doorbell.** Direct Ring API integration (`ring-client-api`) with persistent 2FA refresh token persistence, real-time SIP/WebSocket streaming for dings and motion, live snapshot previews, Box-3 hardware chime pushes, and Gemini Live Yorkshire spoken announcements |
 | `/ims/device-health` | **Device Health & Observability.** Minute-by-minute ESP32-S3-BOX-3 hardware telemetry (Wi-Fi RSSI, free heap, uptime, reconnect count, audio buffer underruns, last error) with live SVG sparklines, historical log, and automatic Dev Ideas logging on reconnect/reboot spikes |
-| `/ims/spend` | **Gemini Spend Budget & Breakdown.** Token usage and cost breakdown per service per day/month, soft monthly spend budget warnings (≥ 80% and ≥ 95%), and high-cost prompt candidate identification for model optimization or caching |
-| `/ims/architecture` | **System Architecture & Voice Latency.** Visual architecture map with real-time prompt telemetry, plus dedicated **Voice Latency & Tools Telemetry** tracking turn stages (`wake` → `Gemini connect` → `first audio` → `finished`), tool execution durations, and standby dropout diagnosis with an 1800ms target budget. Features architectural findings and links to the [System Architecture Implementation Plan](docs/SYSTEM_ARCHITECTURE_PLAN.md) covering 5 modernisation phases across database resilience, schedulers, push events, AI SDKs, and modularisation |
+| `/ims/costs` | **Costs.** Gemini API costs per service and day, a monthly budget (warnings at 80% and 95%), the costliest calls, plus subscriptions and the other services IMS relies on, with links to each one's billing and quota pages |
+| `/ims/models` | **Model Switcher.** Choose the language and voice model for each service - why each exists, its cost, depth, speed and reliability - with one-click roll back. New Gemini models are found and tried in every service automatically |
+| `/ims/storage` | **Storage.** Exact megabytes of PDFs and vector embeddings per subject, and space savers (identical PDFs are stored once) |
+| `/ims/backups` | **Backups.** All service data backed up each night after 03:00 to this PC and Google Drive (or back up now), with a weekly integrity drill and restore. The separate NAS copy of the whole of IMS is in `scripts/nas-backup/` |
+| `/ims/architecture` | **System Architecture & Voice Latency.** Visual architecture map (owner and access, clients, AI models per service, the conversation pipeline, external connections, data stores and all 97 tables, services, environment, background jobs, guardrails, the desk terminal and its hardware) with real-time prompt telemetry, plus dedicated **Voice Latency & Tools Telemetry** tracking turn stages (`wake` → `Gemini connect` → `first audio` → `finished`), tool execution durations, and standby dropout diagnosis with an 1800ms target budget. Features architectural findings and links to the [System Architecture Implementation Plan](docs/SYSTEM_ARCHITECTURE_PLAN.md) covering 5 modernisation phases across database resilience, schedulers, push events, AI SDKs, and modularisation |
 | `/campaigns` | **Campaign Manager** - see below |
 
 ### Campaign Manager (`/campaigns`)
 
-A tab per game, each with its **campaigns first and decks second**, and entirely separate data. Invited guests (e.g. Daniel) sign in with a basic Google sign-in and can use the whole Campaign Manager and nothing else.
+A tab per game, each with its **campaigns first and decks second**, and entirely separate data. Invited guests (e.g. Daniel) sign in with a basic Google sign-in and can use the whole Campaign Manager and Homebrew, and nothing else.
 
 **Lord of the Rings LCG** (`/campaigns/lotr`)
 - **Decks** from RingsDB (import by link, including shared private decks), card images on hover, owned-pack tracking, test hands, AI insights (synergies, swaps, focus areas, scenario and partner-deck tuning using Hall of Beorn's encounter cards) and a Q&A per deck; CSV/JSON export.
@@ -222,7 +231,7 @@ The first time you talk to Ims each day (London date), it offers your morning re
 
 ### Ims tools during a conversation
 
-Ims has 37 tools: camera vision (`lookAtCamera`), biometric face enrolment (`enrolPerson`), library search, weather (home, saved or named places, now or any day up to 16 days ahead - "in a fortnight" - described from graded facts and the weather phrases), calendar (read and add), blood glucose and carbs (Nightscout), food carb look-ups, training (Strava), timers/alarms/reminders and their history, lists, memories, birthdays, new music, news, the day report, background tasks, dev ideas, board games, card-game campaigns, jokes, and recording. Every conversation also starts with a **snapshot of everything saved** - next birthday and reminder, every birthday, alarms and reminders, lists, the next 14 days of calendar, tasks, dev ideas, carbs today, music want list and upcoming releases, memories, board games, campaigns and decks - and Ims treats that snapshot as authoritative when a tool looks less far ahead.
+Ims has 51 tools: camera vision (`lookAtCamera`), biometric face enrolment (`enrolPerson`), library search, weather (home, saved or named places, now or any day up to 16 days ahead - "in a fortnight" - described from graded facts and the weather phrases), calendar (read and add), blood glucose and carbs (Nightscout), food carb look-ups, training (Strava) and run notes, timers/alarms/reminders and their history, lists, memories, instructions (five tools), birthdays, new music, news, the day report and day wrap-up, background tasks, dev ideas, board games, card-game campaigns, brews (read and log), stories, writing practice and drafts, jokes, the doorbell, asking Gemini when his own sources fall short, and recording. Every conversation also starts with a **snapshot of everything saved** - next birthday and reminder, every birthday, alarms and reminders, lists, the next 14 days of calendar, tasks, dev ideas, carbs today, music want list and upcoming releases, memories, board games, campaigns and decks - and Ims treats that snapshot as authoritative when a tool looks less far ahead.
 
 **Jokes.** Ask for a joke and Ims calls `tellJoke`, which picks from about 80,000 jokes from the [r/Jokes dataset](https://github.com/orionw/rJokesData) (Reddit terms apply; kept in the git-ignored `server/data/jokes`). The Humor slider on IMS Personality is a style axis (Cheerful - Dry - Dark), so the jokes scale with it: clean and wholesome at the low end, short dry one-liners in the middle, dark and twisted towards the top, always preferring better-scored jokes and not repeating one until they are used up. **Core rule: never a racist or sexist joke.** Anything about race, nationality, religion, gender or wives/girlfriends, plus hate, sexual, self-harm and real-tragedy material, is filtered out at import and never stored. Set it up with `node scripts/importJokes.js` (about 90 seconds; downloads the data if it is missing).
 
@@ -268,7 +277,7 @@ platformio run --target upload       # flash over USB
 
 ### Wake phrases
 
-Ims speaks **only inside an active conversation**. A conversation starts when you say **"Hey IMS"**, **"Hi IMS"** or **"Eh up IMS"** (or touch the screen). It ends when you say a goodbye or stop phrase ("thanks IMS bye", "bye IMS", "goodbye IMS", "stop IMS"), or **automatically after about 15 seconds with no follow-up**. When it ends, the face and status return to **STANDBY** and Ims produces no speech or other output until the next wake phrase. As a safeguard the device also drops any audio that arrives while it is idle, so a stray Gemini reply can never make Ims speak over a conversation you're having with someone else.
+Ims speaks **only inside an active conversation** - the one exception is saying hello when you sit back down at the desk after at least five minutes away. A conversation starts when you say **"Hey IMS"**, **"Hi IMS"** or **"Eh up IMS"** (or touch the screen); a wake phrase said on its own gets an instant recorded greeting. Wake phrases are checked by your own wake-word model (trained on your recordings at `/ims/phrases`, retrained nightly) alongside Gemini. It ends when you say a goodbye or stop phrase ("thanks IMS bye", "bye IMS", "goodbye IMS", "stop IMS"), or **automatically after about 15 seconds with no follow-up**. When it ends, the face and status return to **STANDBY** and Ims produces no speech or other output until the next wake phrase. As a safeguard the device also drops any audio that arrives while it is idle, so a stray Gemini reply can never make Ims speak over a conversation you're having with someone else.
 
 ## Voice, persona and conversation behaviour
 
@@ -288,8 +297,13 @@ Long conversations survive Gemini cycling its upstream session (it does after ~3
 | Board-game collection cache, BGG token | `server/data/boardgames_*.json` | token never returned to the browser |
 | Music scan state | `D:\Music scanner\ims_scan_*.json` | config, artist overrides, status, results |
 | Audio captures / debug logs | `pdf-knowledge-base/server/audio_captures/` | toggle "capture logging" on the device's Preferences screen |
+| Conversations, instructions, brews, desk presence | SQLite (`app.db`, 97 tables) | git-ignored; transcripts pruned after the retention period |
+| Homebrew photos and banners | `pdf-knowledge-base/server/data/homebrew_pictures/` | found on Pixabay (source and photographer kept in `found_photos`), plus your own uploads |
+| Label fonts you upload | `pdf-knowledge-base/server/data/label_fonts/` | listed in `label_fonts`; built into each labels PDF |
+| Wake-word clips and model | `server/data/wakeword/` (clips, model) and `server/data/phrase_recordings/` | your own recordings, from the desk mic only |
+| Nightly backups | Google Drive "IMS Backups" (last 10) and the NAS (`\\Sideburnt\NorthField\IMS BACKUP`) | the NAS copy includes the `.env` files - keep it private |
 
-**Access control - read this before exposing the app.** `/api/*` is protected by a single admin check that passes once the server itself is authorised against your Google account (and `ADMIN_EMAIL` matches); it is not a per-visitor login, and `/api/memories` is deliberately not gated. The device-only endpoints on `:3003` are unauthenticated plain HTTP for the LAN. So: keep the backend on your LAN, and if you tunnel the web app with ngrok, treat the tunnel URL as a secret.
+**Access control - read this before exposing the app.** Every `/api` call needs this browser to be signed in with Google: the owner (`ADMIN_EMAIL`) gets everything; invited guests get only the Campaign Manager and Homebrew (`/api/decks`, `/api/homebrew`, never their invite lists). Open without sign-in: the sign-in routes, a shared recipe link (found by its unguessable token - the QR code on bottle labels opens it; making labels, or previewing them, shares the recipe), a phone notification's one-time Start-run link, the device's health reports, and **requests from the PC itself (127.0.0.1)**. Through the ngrok tunnel the visitor's real address is passed on, so remote visitors must sign in - but the web app reaches the backend through the Vite proxy, so anyone on your home network opening `http://<PC address>:6001` arrives as 127.0.0.1 and skips sign-in. The device-only endpoints on `:3003` are unauthenticated plain HTTP for the LAN. So: keep the backend on a home network you trust, and treat the tunnel URL as private.
 
 ## Configuration reference
 
@@ -305,10 +319,14 @@ Long conversations survive Gemini cycling its upstream session (it does after ~3
 | `CLIENT_URL` | CORS origin for the original client |
 | `NGROK_AUTHTOKEN` / `NGROK_DOMAIN` | Optional tunnel |
 | `BGG_API_TOKEN` | Optional: BoardGameGeek token (or paste it on the page) |
+| `PIXABAY_API_KEY` | Homebrew photos (free key from pixabay.com/api/docs) |
+| `PEXELS_API_KEY` | Optional second photo source for homebrew (pexels.com/api - new keys currently paused) |
 
 **Firmware:** `firmware/esp32-s3-box-3/include/secrets.h` (Wi-Fi) and `include/config.h` (backend host, pins).
 
-**Runtime settings (edited in the UI, not by hand):** personality sliders and voice (device screen), persona rules (`/ims/persona`), music-scan schedule and library path (`/ims/musicscan`), BGG username/token (`/ims/boardgames`).
+**Runtime settings (edited in the UI, not by hand):** personality sliders and voice (device screen), persona rules (`/ims/persona`), music-scan schedule and library path (`/ims/musicscan`), BGG username/token (`/ims/boardgames`), camera hours (`/ims/look`), the model per service (`/ims/models`), monthly budget (`/ims/costs`).
+
+**Settings switches (in the `settings` table):** `homebrew_images` - Gemini picture-making for homebrew, **off** unless set to `on` (photos are found instead); `homebrew_banner_fill` - set to `off` to pause the background photo finding for recipe banners.
 
 ## Troubleshooting
 
