@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useFocusItem } from '../../hooks/useFocusItem';
-import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, ExternalLink, Copy, ChevronUp, ChevronDown, ChevronRight, ArrowLeft, ScrollText, Activity, Wine, Star, Heart, Share2, Send, FileDown, Link2, Printer, Image as ImageIcon, UserPlus, Users, Mail, User, Check, RefreshCw, Filter, Search, Smartphone, Columns2, LayoutGrid, List, SlidersHorizontal, RotateCcw } from 'lucide-react';
+import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, ExternalLink, Copy, ChevronUp, ChevronDown, ChevronRight, ArrowLeft, ScrollText, Activity, Wine, Star, Heart, Share2, Send, FileDown, Link2, Printer, Image as ImageIcon, UserPlus, Users, Mail, User, Check, RefreshCw, Filter, Search, Smartphone, Columns2, LayoutGrid, List, SlidersHorizontal, RotateCcw, ArrowUpDown } from 'lucide-react';
 import PortalShell from './PortalShell';
 import { glossMatches, glossTerms } from './brewGlossary';
 import { useAuth } from '../../AuthGate';
@@ -1570,6 +1570,17 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
   };
   const [shelfLayout, setShelfLayout] = useState('grid');
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [brewSort, setBrewSort] = useState(() => {
+    try {
+      return localStorage.getItem('ims_homebrew_sort') || 'started-desc';
+    } catch (_) {
+      return 'started-desc';
+    }
+  });
+  const changeBrewSort = (val) => {
+    setBrewSort(val);
+    try { localStorage.setItem('ims_homebrew_sort', val); } catch (_) {}
+  };
 
   useEffect(() => {
     if (!filterSheetOpen) return;
@@ -1712,8 +1723,51 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
   const activeFilterCount = (cat !== 'all' ? 1 : 0) + sweets.length + acids.length + fizzes.length + flavs.length + (abvOn ? 1 : 0) + wanted.length;
   const strengthOk = (b) => { if (!abvOn) return true; const v = strengthOf(b); return v != null && v >= abvLo && v <= abvHi; };
   const inCat = (b) => inTile(b, cat) && (!favOnly || b.favourite) && tagsOk(b) && strengthOk(b);
-  const shownHits = wanted.length ? finds((view === 'recipes' ? recipes : brews).filter(inCat)) : null;
-  const shown = shownHits ? shownHits.map((x) => x.b) : (view === 'recipes' ? recipes : brews).filter(inCat);
+  const filteredBrews = brews.filter(inCat);
+  const sortedBrews = React.useMemo(() => {
+    return [...filteredBrews].sort((a, b) => {
+      if (brewSort === 'started-desc') {
+        const aStarted = a.startedOn || '';
+        const bStarted = b.startedOn || '';
+        if (aStarted && !bStarted) return -1;
+        if (!aStarted && bStarted) return 1;
+        if (aStarted && bStarted) {
+          const diff = bStarted.localeCompare(aStarted);
+          if (diff !== 0) return diff;
+        }
+        const aTime = a.createdAt || a.id || 0;
+        const bTime = b.createdAt || b.id || 0;
+        return bTime - aTime;
+      }
+      if (brewSort === 'started-asc') {
+        const aStarted = a.startedOn || '';
+        const bStarted = b.startedOn || '';
+        if (aStarted && !bStarted) return -1;
+        if (!aStarted && bStarted) return 1;
+        if (aStarted && bStarted) {
+          const diff = aStarted.localeCompare(bStarted);
+          if (diff !== 0) return diff;
+        }
+        const aTime = a.createdAt || a.id || 0;
+        const bTime = b.createdAt || b.id || 0;
+        return aTime - bTime;
+      }
+      if (brewSort === 'name') {
+        return (a.name || '').localeCompare(b.name || '');
+      }
+      if (brewSort === 'status') {
+        const statusOrder = { fermenting: 1, conditioning: 2, bottled: 3, finished: 4, planning: 5 };
+        return (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
+      }
+      if (brewSort === 'rating') {
+        return (b.rating || 0) - (a.rating || 0);
+      }
+      return 0;
+    });
+  }, [filteredBrews, brewSort]);
+
+  const shownHits = wanted.length ? finds((view === 'recipes' ? recipes.filter(inCat) : sortedBrews)) : null;
+  const shown = shownHits ? shownHits.map((x) => x.b) : (view === 'recipes' ? recipes.filter(inCat) : sortedBrews);
   const hitMap = new Map((shownHits || []).map((x) => [x.b.id, x]));
   // in the recipe book each drink is one card, holding every version that passes the filters (best match first)
   const groupCards = (list) => {
@@ -2581,6 +2635,28 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
             <span className={`text-xs font-bold tabular-nums w-9 ${abvOn ? 'text-amber-500' : ''}`}>{abvHi}%</span>
           </div>
         )}
+
+        {/* Sort selector in filter controls for My Brews */}
+        {view === 'brews' && (
+          <div className="flex items-center gap-2">
+            <span className={`text-[10px] font-black uppercase tracking-wider w-20 shrink-0 ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>Sort by</span>
+            <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold ${border} ${isDark ? 'bg-slate-950/60 text-slate-300' : 'bg-white text-[#2E2B27]'}`}>
+              <ArrowUpDown size={13} className="text-amber-500 shrink-0" />
+              <select
+                value={brewSort}
+                onChange={(e) => changeBrewSort(e.target.value)}
+                aria-label="Sort brews"
+                className="bg-transparent border-none text-xs font-bold outline-none cursor-pointer"
+              >
+                <option value="started-desc" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Started (newest first)</option>
+                <option value="started-asc" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Started (oldest first)</option>
+                <option value="name" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Name (A–Z)</option>
+                <option value="status" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Stage / Status</option>
+                <option value="rating" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Rating</option>
+              </select>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Aromas & Flavours */}
@@ -2956,6 +3032,24 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
             <button onClick={() => setFavOnly(!favOnly)} title="Show only your favourites" className={`px-4 py-2.5 rounded-2xl text-sm font-bold flex items-center gap-2 border transition ${favOnly ? 'bg-rose-500 border-rose-500 text-white shadow-lg shadow-rose-500/20' : `${border} ${isDark ? 'bg-slate-900/60' : 'bg-white/70'} text-slate-500 hover:text-rose-500`}`}>
               <Heart size={15} fill={favOnly ? 'currentColor' : 'none'} /> Favourites<span className={`text-[10px] px-1.5 rounded-full ${favOnly ? 'bg-white/25' : isDark ? 'bg-white/10' : 'bg-[#2E2B27]/10'}`}>{pool.filter((b) => b.favourite).length}</span>
             </button>
+            {view === 'brews' && (
+              <div className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-2xl border text-xs font-bold ${border} ${isDark ? 'bg-slate-900/60 text-slate-300' : 'bg-white/70 text-[#2E2B27]'}`}>
+                <ArrowUpDown size={14} className="text-amber-500 shrink-0" />
+                <span className="text-[10px] uppercase tracking-wider text-slate-500 hidden sm:inline">Sort:</span>
+                <select
+                  value={brewSort}
+                  onChange={(e) => changeBrewSort(e.target.value)}
+                  aria-label="Sort brews"
+                  className="bg-transparent border-none text-xs font-bold outline-none cursor-pointer pr-1"
+                >
+                  <option value="started-desc" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Started (newest)</option>
+                  <option value="started-asc" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Started (oldest)</option>
+                  <option value="name" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Name (A–Z)</option>
+                  <option value="status" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Stage / Status</option>
+                  <option value="rating" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Rating</option>
+                </select>
+              </div>
+            )}
             {/* Invite & Share is in the page header now; the new button takes its place here */}
             {isOwner && (
               <button onClick={() => startNew(cat)} className={`${primary} !px-4 !py-2.5 !text-sm shadow-lg shadow-amber-500/20`}><Plus size={15} /> {view === 'recipes' ? 'New recipe' : 'New brew'}</button>

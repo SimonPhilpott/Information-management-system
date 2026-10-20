@@ -192,7 +192,7 @@ function present(r, { full = false } = {}) {
   return out;
 }
 
-export const listBrews = () => db.prepare('SELECT * FROM brews WHERE is_recipe = 0 ORDER BY COALESCE(started_on, date(created_at / 1000, \'unixepoch\')) DESC, id DESC').all().map((r) => present(r));
+export const listBrews = () => db.prepare("SELECT * FROM brews WHERE is_recipe = 0 ORDER BY CASE WHEN started_on IS NOT NULL AND length(started_on) > 0 THEN 0 ELSE 1 END, started_on DESC, created_at DESC, id DESC").all().map((r) => present(r));
 export const listRecipes = () => (tagRecipes(db), db.prepare('SELECT * FROM brews WHERE is_recipe = 1 ORDER BY category, name').all().map((r) => present(r)));
 export const getBrew = (id) => present(db.prepare('SELECT * FROM brews WHERE id = ?').get(Number(id)), { full: true });
 
