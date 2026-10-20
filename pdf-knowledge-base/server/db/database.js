@@ -280,6 +280,58 @@ try {
     console.log('[DB] token_usage: operation CHECK removed - all services can now log usage');
   }
 } catch (err) { console.error('[DB] token_usage migration failed:', err.message); }
+
+// Deduplicate cumulative prompt tokens historically logged for Gemini Live (gemini-3.8-live, imsVoice, browserVoice).
+// Google's Live WebSocket sends cumulative session prompt tokens on each chunk rather than per-turn deltas,
+// which previously caused prompt tokens to be summed repeatedly across turns in a session (7.9x inflation).
+try {
+  const alreadyMigrated = db.prepare("SELECT value FROM settings WHERE key = 'gemini_live_token_dedup_applied'").get();
+  if (!alreadyMigrated) {
+    const liveRows = db.prepare(`
+      SELECT id, timestamp, model, operation, prompt_tokens, completion_tokens
+      FROM token_usage
+      WHERE model = 'gemini-3.8-live' OR operation IN ('imsVoice', 'browserVoice')
+      ORDER BY id ASC
+    `).all();
+
+    if (liveRows.length > 0) {
+      const updateStmt = db.prepare(`
+        UPDATE token_usage
+        SET prompt_tokens = ?, total_tokens = ?, estimated_cost = ?
+        WHERE id = ?
+      `);
+
+      const price = { input: 0.75, output: 12.0 };
+      let lastPrompt = 0;
+      let lastTime = 0;
+
+      db.transaction(() => {
+        for (const r of liveRows) {
+          const t = new Date(r.timestamp).getTime();
+          const gapSec = (t - lastTime) / 1000;
+          if (gapSec > 180 || r.prompt_tokens < lastPrompt * 0.8) {
+            lastPrompt = 0;
+          }
+          const promptDelta = Math.max(0, r.prompt_tokens - lastPrompt);
+          lastPrompt = r.prompt_tokens;
+          lastTime = t;
+
+          if (promptDelta !== r.prompt_tokens) {
+            const newTotal = promptDelta + r.completion_tokens;
+            const newCost = (promptDelta / 1e6) * price.input + (r.completion_tokens / 1e6) * price.output;
+            updateStmt.run(promptDelta, newTotal, newCost, r.id);
+          }
+        }
+        db.prepare("INSERT INTO settings (key, value) VALUES ('gemini_live_token_dedup_applied', '1')").run();
+      })();
+      console.log('[DB] Deduplicated cumulative prompt tokens in token_usage for Gemini Live');
+    } else {
+      db.prepare("INSERT INTO settings (key, value) VALUES ('gemini_live_token_dedup_applied', '1')").run();
+    }
+  }
+} catch (err) {
+  console.error('[DB] Live token deduplication migration notice:', err.message);
+}
 try { db.exec(`ALTER TABLE ims_memories ADD COLUMN deleted_at TEXT`); } catch (_) { }
 try { db.exec(`ALTER TABLE ims_memories ADD COLUMN updated_at TEXT`); } catch (_) { }
 

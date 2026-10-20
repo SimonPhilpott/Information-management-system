@@ -55,6 +55,7 @@ export function liveSay(model, text, { tools = null, system = null, persona = nu
     const chunks = [];
     let transcript = '';
     const called = [];
+    let lastPromptTokens = 0;
     const done = (err) => { clearTimeout(t); try { ws.close(); } catch { } if (err) reject(err); else resolve({ audio: chunks.length ? `data:audio/wav;base64,${wav(Buffer.concat(chunks)).toString('base64')}` : null, transcript: transcript.trim(), seconds: Buffer.concat(chunks).length / 48000, tools: called }); };
     const t = setTimeout(() => (chunks.length ? done() : done(new Error(`No reply within ${Math.round(timeoutMs / 1000)} s`))), timeoutMs);
     ws.on('open', () => ws.send(JSON.stringify({ setup: {
@@ -67,7 +68,15 @@ export function liveSay(model, text, { tools = null, system = null, persona = nu
     ws.on('message', (d) => {
       let m; try { m = JSON.parse(d.toString()); } catch { return; }
       if (m.setupComplete) ws.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text }] }], turnComplete: true } }));
-      if (m.usageMetadata) recordUsage(model, m.usageMetadata, 'modelTest');
+      if (m.usageMetadata) {
+        const currentPrompt = m.usageMetadata.promptTokenCount || 0;
+        const promptDelta = Math.max(0, currentPrompt - lastPromptTokens);
+        lastPromptTokens = currentPrompt;
+        const comp = (m.usageMetadata.candidatesTokenCount || 0) + (m.usageMetadata.thoughtsTokenCount || 0);
+        if (promptDelta > 0 || comp > 0) {
+          recordUsage(model, { promptTokenCount: promptDelta, candidatesTokenCount: comp, thoughtsTokenCount: 0 }, 'modelTest');
+        }
+      }
       for (const p of m.serverContent?.modelTurn?.parts || []) if (p.inlineData?.data) chunks.push(Buffer.from(p.inlineData.data, 'base64'));
       if (m.serverContent?.outputTranscription?.text) transcript += m.serverContent.outputTranscription.text;
       // with Ims's real tools declared, answer any call (setEmotion etc.) so he carries on speaking
@@ -171,6 +180,7 @@ export function deskWakeTest(model) {
     const tools = [];
     const chunks = [];
     let finished = false;
+    let lastPromptTokens = 0;
     const done = (err) => {
       if (finished) return; finished = true;
       clearTimeout(t); try { ws.close(); } catch { }
@@ -193,7 +203,15 @@ export function deskWakeTest(model) {
           await new Promise((x) => setTimeout(x, 40)); // real time, like the Box-3
         }
       }
-      if (m.usageMetadata) recordUsage(model, m.usageMetadata, 'modelTest');
+      if (m.usageMetadata) {
+        const currentPrompt = m.usageMetadata.promptTokenCount || 0;
+        const promptDelta = Math.max(0, currentPrompt - lastPromptTokens);
+        lastPromptTokens = currentPrompt;
+        const comp = (m.usageMetadata.candidatesTokenCount || 0) + (m.usageMetadata.thoughtsTokenCount || 0);
+        if (promptDelta > 0 || comp > 0) {
+          recordUsage(model, { promptTokenCount: promptDelta, candidatesTokenCount: comp, thoughtsTokenCount: 0 }, 'modelTest');
+        }
+      }
       if (m.serverContent?.inputTranscription?.text) { heard += m.serverContent.inputTranscription.text; if (!firstHeardAt) firstHeardAt = Date.now(); }
       if (m.serverContent?.outputTranscription?.text) said += m.serverContent.outputTranscription.text;
       for (const p of m.serverContent?.modelTurn?.parts || []) if (p.inlineData?.data) { chunks.push(Buffer.from(p.inlineData.data, 'base64')); if (!firstAudioAt) firstAudioAt = Date.now(); }
