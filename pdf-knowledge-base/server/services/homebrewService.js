@@ -5,7 +5,8 @@ import { getModelFor } from './modelRegistry.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { expectedColour, fillColours } from './homebrewColours.js';
+import { expectedColour, fillColours, colourByYou } from './homebrewColours.js';
+import { readyPictures, readyBanner, bannerChoiceOf } from './homebrewPictures.js';
 import { tagRecipes, splitName, variantLabel, normSweetness, COLOUR_OF_CAT, estimateAbv, profileOf } from './homebrewTags.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -172,7 +173,7 @@ function present(r, { full = false } = {}) {
     id: r.id, name: r.name, style: r.style, category: r.category || categoryOfStyle(r.style), isRecipe: Boolean(r.is_recipe), favourite: Boolean(r.favourite), sourceName: r.source_name, sourceUrl: r.source_url, fromRecipe: r.from_recipe, status: r.status, batchLitres: r.batch_litres, startedOn: r.started_on, bottledOn: r.bottled_on,
     ingredients: json(r.ingredients, []), yeast: r.yeast, yeastNotes: r.yeast_notes, nutrients: r.nutrients, water: r.water,
     targetOg: r.target_og, targetFg: r.target_fg, og: r.og, fg: r.fg, sweetness: r.sweetness, carbonation: r.carbonation,
-    shared: Boolean(r.share_token), sweetnessTag: normSweetness(r.sweetness), sweetnessBasis: r.sweetness_basis, abvEstimate: !r.target_og ? estimateAbv(r) : null, /* brews too: a likely strength until readings give the real one */ ...profileOf(r), colour: r.colour || COLOUR_OF_CAT[r.category] || null, liquid: expectedColour(r.id), family: r.family, variant: r.variant,
+    shared: Boolean(r.share_token), sweetnessTag: normSweetness(r.sweetness), sweetnessBasis: r.sweetness_basis, abvEstimate: !r.target_og ? estimateAbv(r) : null, /* brews too: a likely strength until readings give the real one */ ...profileOf(r), colour: r.colour || COLOUR_OF_CAT[r.category] || null, liquid: expectedColour(r.id, r.from_recipe), mainPics: readyPictures(r.id, r.from_recipe), banner: readyBanner(r.id, r.from_recipe), bannerChoice: bannerChoiceOf(r.id), liquidChoice: colourByYou(r.id) || '', family: r.family, variant: r.variant,
     method: r.method, notes: r.notes, summary: r.summary || null, createdAt: r.created_at, updatedAt: r.updated_at,
     calc: {
       latestGravity: latest, abv: a, abvFinal: Boolean(r.fg), potentialAbv: abv(og || r.target_og, r.target_fg || 1.0),

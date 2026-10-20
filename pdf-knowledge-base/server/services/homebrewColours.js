@@ -23,6 +23,16 @@ db.exec(`
     srm REAL
   );
 `);
+// a colour Simon has given himself ("it's more orangey than that") - kept, never worked out again
+try { db.exec('ALTER TABLE brew_colour ADD COLUMN by_you INTEGER NOT NULL DEFAULT 0'); } catch (_) { /* already there */ }
+// his colour, if he's set one (shown on the recipe form); clearing it lets the colour be worked out again
+export const colourByYou = (id) => db.prepare('SELECT colour FROM brew_colour WHERE brew_id = ? AND by_you = 1').get(Number(id))?.colour || null;
+export function clearColourByYou(id) { db.prepare('DELETE FROM brew_colour WHERE brew_id = ? AND by_you = 1').run(Number(id)); }
+export function setColourByYou(id, hex) {
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) throw new Error('Give the colour as #rrggbb.');
+  db.prepare('INSERT INTO brew_colour (brew_id, sig, colour, srm, by_you) VALUES (?, \'\', ?, NULL, 1) ON CONFLICT(brew_id) DO UPDATE SET colour = excluded.colour, srm = NULL, by_you = 1')
+    .run(Number(id), hex.toLowerCase());
+}
 
 // The standard SRM -> colour chart (SRM 1-40); darker than 40 is shown as 40
 const SRM_HEX = ['#FFE699', '#FFD878', '#FFCA5A', '#FFBF42', '#FBB123', '#F8A600', '#F39C00', '#EA8F00', '#E58500', '#DE7C00',
@@ -36,8 +46,14 @@ const PROMPT_VERSION = 2;
 const sigOf = (r) => crypto.createHash('sha1').update(JSON.stringify([PROMPT_VERSION, r.name, r.style, r.category, r.colour, r.ingredients])).digest('hex').slice(0, 16);
 const isBeer = (r) => r.category === 'beer' || /\b(ale|lager|stout|porter|ipa|bitter|beer|bock|pils|saison|braggot|wheat)\b/i.test(`${r.style || ''}`);
 
-const getStmt = db.prepare('SELECT colour FROM brew_colour WHERE brew_id = ?');
-export const expectedColour = (id) => getStmt.get(id)?.colour || null;
+const getStmt = db.prepare('SELECT colour, by_you FROM brew_colour WHERE brew_id = ?');
+// A brew made from a recipe shows the recipe's colour (worked out separately the two came out differently - 20 Oct,
+// Apple Pie Cider), unless he's given the brew its own.
+export function expectedColour(id, fromRecipe = null) {
+  const own = getStmt.get(id);
+  if (own?.by_you || !fromRecipe) return own?.colour || null;
+  return getStmt.get(fromRecipe)?.colour || own?.colour || null;
+}
 
 function describe(r) {
   let ings = [];
@@ -65,8 +81,8 @@ export async function fillColours() {
   filling = true;
   let done = 0;
   try {
-    const known = new Map(db.prepare('SELECT brew_id, sig FROM brew_colour').all().map((x) => [x.brew_id, x.sig]));
-    const todo = db.prepare('SELECT id, name, style, category, colour, ingredients, batch_litres FROM brews').all().filter((r) => known.get(r.id) !== sigOf(r));
+    const known = new Map(db.prepare('SELECT brew_id, sig, by_you FROM brew_colour').all().map((x) => [x.brew_id, x.by_you ? 'yours' : x.sig]));
+    const todo = db.prepare('SELECT id, name, style, category, colour, ingredients, batch_litres FROM brews').all().filter((r) => known.get(r.id) !== 'yours' && known.get(r.id) !== sigOf(r));
     for (let i = 0; i < todo.length; i += BATCH) {
       const rows = todo.slice(i, i + BATCH);
       let out;

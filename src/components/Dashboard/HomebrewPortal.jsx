@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useFocusItem } from '../../hooks/useFocusItem';
-import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, ExternalLink, Copy, ChevronUp, ChevronDown, ArrowLeft, ScrollText, Activity, Wine, Star, Heart, Share2, Send, FileDown, Link2, UserPlus, Users, Mail, User, Check, RefreshCw } from 'lucide-react';
+import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, ExternalLink, Copy, ChevronUp, ChevronDown, ArrowLeft, ScrollText, Activity, Wine, Star, Heart, Share2, Send, FileDown, Link2, Printer, Image as ImageIcon, UserPlus, Users, Mail, User, Check, RefreshCw } from 'lucide-react';
 import PortalShell from './PortalShell';
 import { glossMatches, glossTerms } from './brewGlossary';
 import { useAuth } from '../../AuthGate';
@@ -13,7 +13,7 @@ const ING_STAGES = ['primary', 'secondary', 'backsweeten', 'bottling'];
 const KIND_LABEL = { reading: 'Reading', nutrient: 'Nutrient', degas: 'Degas', addition: 'Addition', rack: 'Racked', stabilise: 'Stabilised', backsweeten: 'Backsweetened', bottle: 'Bottled', note: 'Note' };
 const when = (t) => (t ? new Date(t).toLocaleString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 const g3 = (g) => (g ? Number(g).toFixed(3) : '-');
-const EMPTY_BREW = { name: '', category: 'mead', style: 'Traditional mead', sourceName: '', sourceUrl: '', status: 'planning', batchLitres: '', startedOn: '', bottledOn: '', targetOg: '', targetFg: '', og: '', fg: '', summary: '', sweetness: '', colour: '', carbonation: '', yeast: '', yeastNotes: '', nutrients: '', water: '', method: '', notes: '', ingredients: [] };
+const EMPTY_BREW = { name: '', category: 'mead', style: 'Traditional mead', sourceName: '', sourceUrl: '', status: 'planning', batchLitres: '', startedOn: '', bottledOn: '', targetOg: '', targetFg: '', og: '', fg: '', summary: '', sweetness: '', colour: '', carbonation: '', yeast: '', yeastNotes: '', nutrients: '', water: '', method: '', notes: '', ingredients: [], bannerChoice: null, liquidChoice: '' };
 const PROFILE_KEYS = [['sweetness', 'Sweetness'], ['body', 'Body'], ['acidity', 'Acidity'], ['alcoholHeat', 'Alcohol heat'], ['aromaIntensity', 'Aroma'], ['tannin', 'Tannin']];
 
 // The method as separate steps - edit, add, delete and reorder them (arrows, or drag a step by its number).
@@ -26,16 +26,16 @@ const joinSteps = (steps) => steps.map((s) => s.trim()).filter(Boolean).map((s, 
 // asks again every few seconds until they're ready - then kept, and shared with every recipe using the same thing.
 // The same call also gives the drink's expected colour, for the demijohn.
 function useMainIngredients(id) {
-  const [main, setMain] = useState({ items: [], colour: null });
+  const [main, setMain] = useState({ items: [], colour: null, banner: null });
   useEffect(() => {
     let stop = false, timer = null, tries = 0;
-    setMain({ items: [], colour: null });
+    setMain({ items: [], colour: null, banner: null });
     if (!id) return undefined;
     const load = async () => {
       try {
         const d = await (await fetch(`/api/homebrew/${id}/main-ingredients`)).json();
         if (stop) return;
-        setMain({ items: d.items || [], colour: d.colour || null });
+        setMain({ items: d.items || [], colour: d.colour || null, banner: d.banner?.ready ? d.banner.key : null });
         if (d.pending && ++tries < 30) timer = setTimeout(load, 4000);
       } catch (_) { /* pictures are optional */ }
     };
@@ -54,6 +54,396 @@ function MainIngredientPics({ items, isDark }) {
         <img key={i.key} src={`/api/homebrew/picture/${i.key}`} alt={i.name} title={i.name} loading="lazy"
           className={`w-14 h-14 rounded-full object-cover shadow-sm ring-2 ${isDark ? 'ring-slate-950/60' : 'ring-white'}`} />
       ))}
+    </div>
+  );
+}
+
+// The picture behind a recipe's or brew's header, card and labels: the one made for it (from its type and ingredients
+// - a brew's comes from its recipe), shown first as the default, or a photo of his own. Used in the recipe form and the header's
+// Change picture.
+function PicturePicker({ choice, onPick, brew, isDark, border }) {
+  const [uploads, setUploads] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const own = [...new Set([...(choice ? [choice] : []), ...uploads])]; // his photo(s), and whatever he picked before
+  const upload = async (file) => {
+    if (!file) return;
+    setBusy(true); setErr('');
+    try {
+      const res = await fetch('/api/homebrew/picture', { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
+      const d = await res.json();
+      if (!res.ok || !d.key) throw new Error(d.error || 'Couldn\'t use that picture.');
+      setUploads((u) => [...new Set([d.key, ...u])]);
+      onPick(d.key);
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const tile = (on) => `relative shrink-0 w-28 h-16 rounded-xl overflow-hidden border-2 transition ${on ? 'border-amber-500 shadow-md shadow-amber-500/20' : `${border} hover:border-amber-500/50`}`;
+  const auto = brew && !brew.bannerChoice ? brew.banner : null; // what "made for it" shows now
+  return (
+    <div>
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        <button type="button" onClick={() => onPick(null)} className={tile(!choice)} title={brew && !brew.isRecipe ? 'The picture of the recipe it was made from' : 'A picture made for it from its type and main ingredients'}>
+          {auto ? <img src={`/api/homebrew/picture/${auto}`} alt="" className="absolute inset-0 w-full h-full object-cover" /> : <span className={`absolute inset-0 ${isDark ? 'bg-slate-800' : 'bg-amber-50'}`} />}
+          <span className="absolute inset-x-0 bottom-0 text-[10px] font-bold text-white bg-black/45 px-1.5 py-0.5 flex items-center gap-1"><Sparkles size={10} /> {brew && !brew.isRecipe ? "Its recipe's" : 'Made for it'}</span>
+        </button>
+        {own.map((k) => (
+          <button key={k} type="button" onClick={() => onPick(k)} className={tile(choice === k)} title="Your own picture">
+            <img src={`/api/homebrew/picture/${k}`} alt="" className="absolute inset-0 w-full h-full object-cover" />
+            <span className="absolute inset-x-0 bottom-0 text-[10px] font-bold text-white bg-black/45 px-1.5 py-0.5">Your picture</span>
+          </button>
+        ))}
+        <label className={`${tile(false)} cursor-pointer flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-amber-500 ${isDark ? 'bg-slate-900/50' : 'bg-white/80'}`} title="Use a photo of your own">
+          {busy ? <RotateCw size={16} className="animate-spin" /> : <Plus size={16} />}
+          <span className="text-[10px] font-bold">Upload your own</span>
+          <input type="file" accept="image/*" className="hidden" onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
+        </label>
+      </div>
+      {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
+    </div>
+  );
+}
+
+// The recipe form's Look: its type (as tiles, like the type cards), its picture (PicturePicker) and the drink's
+// colour (worked out for it, or his own). Saved with the rest of the form (bannerChoice, liquidChoice).
+function LookPicker({ form, setForm, categories, stylesFor, brew, isDark, border, label }) {
+  return (
+    <div className="flex flex-col gap-3 mb-4">
+      {/* the type is chosen when it's created; an existing recipe or brew doesn't show it again */}
+      {!brew && <div>
+        <span className={label}>Type</span>
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+          {categories.map((c) => {
+            const on = form.category === c.id;
+            return (
+              <button key={c.id} type="button" onClick={() => setForm({ ...form, category: c.id, style: stylesFor(c.id)[0] })}
+                className={`rounded-2xl border px-2 py-2.5 flex flex-col items-center gap-1 min-w-0 transition ${on ? 'border-amber-500 shadow-lg shadow-amber-500/20' : border} ${isDark ? 'bg-slate-900/50 hover:bg-slate-800/60' : 'bg-white/80 hover:bg-white'}`}>
+                <span className="text-2xl leading-none">{look(c.id).emoji}</span>
+                <span className="text-[11px] font-bold text-center leading-tight">{c.label}</span>
+                <span className="h-1 w-8 rounded-full" style={{ background: look(c.id).liquid, opacity: on ? 1 : 0.45 }} />
+              </button>
+            );
+          })}
+        </div>
+      </div>}
+      <div>
+        <span className={label}>Picture <span className="normal-case font-normal text-slate-500">- shown faintly behind its header and card, and on its labels</span></span>
+        <PicturePicker choice={form.bannerChoice || null} onPick={(k) => setForm((f) => ({ ...f, bannerChoice: k }))} brew={brew} isDark={isDark} border={border} />
+      </div>
+      <div>
+        <span className={label}>Drink colour <span className="normal-case font-normal text-slate-500">- the liquid in its demijohn and on its labels</span></span>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => setForm({ ...form, liquidChoice: '' })}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${!form.liquidChoice ? 'border-amber-500 text-amber-600' : `${border} text-slate-500 hover:text-amber-500`}`}>
+            <Sparkles size={11} /> Worked out for it
+            {!form.liquidChoice && brew?.liquid ? <span className="inline-block w-3 h-3 rounded-full border border-black/10" style={{ background: brew.liquid }} /> : null}
+          </button>
+          <label className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer flex items-center gap-1.5 ${form.liquidChoice ? 'border-amber-500 text-amber-600' : `${border} text-slate-500 hover:text-amber-500`}`}>
+            <input type="color" value={form.liquidChoice || brew?.liquid || look(form.category).liquid} onChange={(e) => setForm({ ...form, liquidChoice: e.target.value })} className="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer" />
+            {form.liquidChoice ? 'Your colour' : 'Choose your own'}
+          </label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Change picture (the header button): the picture choices on their own, saved as soon as one is picked
+function PictureDialog({ brew, isDark, border, onClose, onPicked }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const pick = async (key) => {
+    setBusy(true); setErr('');
+    try {
+      const res = await fetch(`/api/homebrew/${brew.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bannerChoice: key }) });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Couldn\'t change the picture.');
+      onPicked(d.brew);
+    } catch (e) { setErr(e.message); setBusy(false); }
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+      <div className={`w-full max-w-3xl rounded-3xl border ${border} p-5 flex flex-col gap-3 shadow-2xl ${isDark ? 'bg-slate-950 text-slate-100' : 'bg-[#fbf8f3] text-[#2E2B27]'}`} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-black uppercase tracking-wider">Change picture</h2>
+          {busy && <RotateCw size={14} className="animate-spin text-amber-500" />}
+          <button onClick={onClose} title="Close" className="ml-auto p-1.5 rounded-lg text-slate-500 hover:text-amber-500"><X size={16} /></button>
+        </div>
+        <p className="text-xs text-slate-500">{brew.isRecipe ? 'Shown faintly behind this recipe\'s header and card, and on its labels.' : 'For this brew only - its header, card and labels. The recipe keeps its own picture.'}</p>
+        <PicturePicker choice={brew.bannerChoice || null} onPick={pick} brew={brew} isDark={isDark} border={border} />
+        {err && <p className="text-xs text-red-500">{err}</p>}
+      </div>
+    </div>
+  );
+}
+
+// Print labels: a live preview of one label, the name to put on them (the brew's, or another just for these labels),
+// where the name sits, its size and colour, a border (and its colour), the lettering - built in, or his own uploaded fonts - - classic wine and mead faces or craft-beer ones, each shown
+// in its own letters - and how many (10 to an A4 sheet). The preview is the label itself, drawn by the server the same
+// way as the PDF.
+const BEERISH = ['beer', 'stout', 'cider', 'soda'];
+const NAME_POSITIONS = [['top-left', 'Top left'], ['top-center', 'Top centre'], ['middle-left', 'Middle left'], ['middle-center', 'Middle centre']];
+const BORDERS = [['none', 'None'], ['line', 'Fine line'], ['double', 'Double'], ['classic', 'Classic'], ['vintage', 'Vintage'], ['deco', 'Art deco'], ['greek', 'Greek key'], ['scallop', 'Scallop'], ['dotted', 'Dotted']];
+const LABEL_PX = [374, 215]; // 99 x 57 mm at 96 dpi
+const remembered = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
+function LabelsDialog({ brew, isDark, border, onClose, onDone }) {
+  const [fonts, setFonts] = useState([]);
+  const [font, setFont] = useState(() => remembered('hbLabelFont', ''));
+  const [name, setName] = useState(brew.name);
+  const [pos, setPos] = useState(() => remembered('hbLabelPos', 'top-left')); // (older choice: only its alignment is used now)
+  const [align, setAlign] = useState(() => remembered('hbLabelAlign', remembered('hbLabelPos', 'top-left').endsWith('center') ? 'center' : 'left'));
+  const [place, setPlace] = useState(null); // { x, y } in mm once he's dragged the name, else its usual place
+  const frameRef = useRef(null);
+  const drag = useRef(null);
+  const [size, setSize] = useState(() => Number(remembered('hbLabelSize', '1')) || 1);
+  const [colour, setColour] = useState(() => remembered('hbLabelColour', '')); // '' = the usual dark
+  const [frame, setFrame] = useState(() => remembered('hbLabelBorder', 'none')); // the border style
+  const [borderColour, setBorderColour] = useState(() => remembered('hbLabelBorderColour', '')); // '' = the same as the name
+  const [borderAlpha, setBorderAlpha] = useState(() => Number(remembered('hbLabelBorderAlpha', '1')) || 1); // how solid the border is
+  const [fontBusy, setFontBusy] = useState(false);
+  const [count, setCount] = useState(() => String(bottlesOf(brew.batchLitres, brew.category)?.n || 10));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [previewSrc, setPreviewSrc] = useState('');
+  const [scale, setScale] = useState(1.5);
+  const box = useRef(null);
+  const showOwnFonts = (list) => list.filter((f) => f.url && !document.getElementById(`hb-font-${f.id}`)).forEach((f) => {
+    const st = document.createElement('style');
+    st.id = `hb-font-${f.id}`;
+    st.textContent = `@font-face { font-family: '${f.family}'; src: url(${f.url}); font-display: swap; }`;
+    document.head.appendChild(st);
+  });
+  const loadFonts = () => fetch('/api/homebrew/label-fonts').then((r) => r.json()).then((d) => { const list = d.fonts || []; setFonts(list); showOwnFonts(list); return list; });
+  const uploadFont = async (file) => {
+    if (!file) return;
+    setFontBusy(true); setErr('');
+    try {
+      const res = await fetch(`/api/homebrew/label-fonts?name=${encodeURIComponent(file.name)}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
+      const d = await res.json();
+      if (!res.ok || !d.font) throw new Error(d.error || 'Couldn\'t use that font.');
+      await loadFonts();
+      setFont(d.font.id);
+    } catch (e) { setErr(e.message); } finally { setFontBusy(false); }
+  };
+  const removeFont = async (f) => {
+    if (!window.confirm(`Remove "${f.label}" from your fonts?`)) return;
+    await fetch(`/api/homebrew/label-fonts/${f.id}`, { method: 'DELETE' }).catch(() => {});
+    const list = await loadFonts();
+    if (font === f.id) setFont(list[0]?.id || '');
+  };
+  useEffect(() => {
+    fetch('/api/homebrew/label-fonts').then((r) => r.json()).then((d) => {
+      const list = d.fonts || [];
+      setFonts(list);
+      showOwnFonts(list);
+      setFont((f) => (list.some((x) => x.id === f) ? f : (list.find((x) => x.kind === (BEERISH.includes(brew.category) ? 'beer' : 'wine')) || list[0])?.id || ''));
+      // the faces themselves, so each choice is shown in its own lettering
+      if (list.length && !document.getElementById('hb-label-fonts')) {
+        const link = document.createElement('link');
+        link.id = 'hb-label-fonts'; link.rel = 'stylesheet';
+        link.href = `https://fonts.googleapis.com/css2?${list.filter((x) => x.css).map((x) => `family=${x.css}`).join('&')}&display=swap`;
+        document.head.appendChild(link);
+      }
+    }).catch(() => setErr('Couldn\'t load the fonts.'));
+  }, [brew.category]);
+  // the preview fills the window's width
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return undefined;
+    const fit = () => setScale(el.clientWidth / LABEL_PX[0]);
+    fit();
+    const ro = new ResizeObserver(fit); ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const flat = (t) => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const ownName = name.trim() && flat(name) !== flat(brew.name) ? name.trim() : '';
+  const broken = name.includes('\n'); // he's put in his own line breaks
+  const query = () => new URLSearchParams({ font, pos: align === 'center' ? 'top-center' : 'top-left', align, ...(place ? { x: String(place.x), y: String(place.y) } : {}), size: String(size), border: frame, ...(colour ? { colour } : {}), ...(borderColour ? { borderColour } : {}), ...(borderAlpha < 1 ? { borderAlpha: String(borderAlpha) } : {}), ...(ownName || broken ? { name: name.trim() } : {}) });
+  // redrawn a moment after the last change
+  useEffect(() => {
+    if (!font) return undefined;
+    const t = setTimeout(() => setPreviewSrc(`/api/homebrew/${brew.id}/labels/preview?${query()}`), 300);
+    return () => clearTimeout(t);
+  }, [font, name, align, place, size, colour, frame, borderColour, borderAlpha, brew.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const n = Math.max(1, Math.min(200, parseInt(count, 10) || 10));
+  const make = async () => {
+    setBusy(true); setErr('');
+    try {
+      try { localStorage.setItem('hbLabelFont', font); localStorage.setItem('hbLabelAlign', align); localStorage.setItem('hbLabelSize', String(size)); localStorage.setItem('hbLabelColour', colour); localStorage.setItem('hbLabelBorder', frame); localStorage.setItem('hbLabelBorderColour', borderColour); localStorage.setItem('hbLabelBorderAlpha', String(borderAlpha)); } catch { /* fine */ }
+      const q = query(); q.set('count', String(n));
+      const res = await fetch(`/api/homebrew/${brew.id}/labels?${q}`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Couldn\'t make the labels.');
+      onDone(new File([await res.blob()], `${(name.replace(/\s+/g, ' ').trim() || brew.name).replace(/[\\/:*?"<>|]+/g, '').trim() || 'Brew'} labels.pdf`, { type: 'application/pdf' }), n);
+    } catch (e) { setErr(e.message); setBusy(false); }
+  };
+  const small = 'text-[10px] font-bold uppercase tracking-wider text-slate-500';
+  const chip = (on) => `px-2.5 py-1.5 rounded-xl text-xs font-bold border transition ${on ? 'border-amber-500 text-amber-600' : `${border} text-slate-500 hover:text-amber-500`}`;
+  // the same colour choices for the name and the border (sameAs: the border's "same as the name")
+  const colours = (value, set, sameAs) => (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {sameAs && <button type="button" onClick={() => set('')} className={chip(!value)}>Same as the name</button>}
+      <button type="button" onClick={() => set(sameAs ? '#2e2b27' : '')} className={`${chip(sameAs ? value === '#2e2b27' : !value)} flex items-center gap-1.5`}><span className="w-3 h-3 rounded-full bg-[#2e2b27]" /> Dark</button>
+      <button type="button" onClick={() => set('#ffffff')} className={`${chip(value === '#ffffff')} flex items-center gap-1.5`}><span className="w-3 h-3 rounded-full bg-white border border-black/20" /> White</button>
+      {brew.liquid && <button type="button" onClick={() => set(brew.liquid)} className={`${chip(value === brew.liquid)} flex items-center gap-1.5`}><span className="w-3 h-3 rounded-full" style={{ background: brew.liquid }} /> The drink's</button>}
+      <label className={`${chip(value && !['#ffffff', '#2e2b27', brew.liquid].includes(value))} flex items-center gap-1.5 cursor-pointer`}>
+        <input type="color" value={value || '#2e2b27'} onChange={(e) => set(e.target.value)} className="w-4 h-4 p-0 border-0 bg-transparent cursor-pointer" /> Pick
+      </label>
+    </div>
+  );
+  const group = (kind, title) => (
+    <div>
+      <div className={`${small} mb-1.5`}>{title}</div>
+      <div className="grid grid-cols-2 xl:grid-cols-3 gap-2">
+        {fonts.filter((f) => f.kind === kind).map((f) => (
+          <div key={f.id} role="button" tabIndex={0} onClick={() => setFont(f.id)} onKeyDown={(e) => e.key === 'Enter' && setFont(f.id)}
+            className={`relative cursor-pointer text-left rounded-xl border-2 px-3 py-2 transition ${font === f.id ? 'border-amber-500 shadow-md shadow-amber-500/20' : `${border} hover:border-amber-500/50`} ${isDark ? 'bg-slate-900/60' : 'bg-white'}`}>
+            <div className="truncate leading-normal py-1 px-1 -mx-1" style={{ fontFamily: `'${f.family}', Georgia, serif`, fontWeight: f.weight, fontSize: `${Math.round(17 * f.size)}px` }}>{name.replace(/\s+/g, ' ').trim() || brew.name}</div>
+            <div className="text-[10px] text-slate-500 mt-0.5 truncate pr-4">{f.label}</div>
+            {kind === 'yours' && <button type="button" onClick={(e) => { e.stopPropagation(); removeFont(f); }} title="Remove this font" className="absolute top-1 right-1 p-0.5 rounded text-slate-400 hover:text-red-500"><X size={12} /></button>}
+          </div>
+        ))}
+        {kind === 'yours' && (
+          <label className={`cursor-pointer rounded-xl border-2 border-dashed ${border} px-3 py-2 flex items-center justify-center gap-1.5 text-xs font-bold text-slate-500 hover:text-amber-500 hover:border-amber-500/50`} title="A .ttf, .otf, .woff or .woff2 font - kept for later labels too">
+            {fontBusy ? <RotateCw size={13} className="animate-spin" /> : <Plus size={13} />} Upload a font
+            <input type="file" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2" className="hidden" onChange={(e) => { uploadFont(e.target.files?.[0]); e.target.value = ''; }} />
+          </label>
+        )}
+      </div>
+    </div>
+  );
+  // Dragging the name on the preview: the name inside the preview moves as he drags; when he lets go its spot (mm)
+  // is kept and the preview is drawn again by the server, exactly as it will print.
+  const MM = 99 / LABEL_PX[0];
+  const where = (e) => { const r = box.current.getBoundingClientRect(); return [(e.clientX - r.left) / scale, (e.clientY - r.top) / scale]; };
+  const nameEl = () => { try { return frameRef.current?.contentDocument?.querySelector('.head'); } catch { return null; } };
+  const onName = (el, x, y) => { if (!el) return false; const r = el.getBoundingClientRect(); return x >= r.left - 4 && x <= r.right + 4 && y >= r.top - 4 && y <= r.bottom + 4; };
+  const dragStart = (e) => {
+    const el = nameEl(); const [x, y] = where(e);
+    if (!onName(el, x, y)) return;
+    const r = el.getBoundingClientRect();
+    drag.current = { el, dx: x - r.left, dy: y - r.top, w: r.width, left: r.left, top: r.top };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const dragMove = (e) => {
+    const [x, y] = where(e);
+    if (!drag.current) { e.currentTarget.style.cursor = onName(nameEl(), x, y) ? 'move' : 'default'; return; }
+    const d = drag.current;
+    d.left = Math.max(0, Math.min(LABEL_PX[0] - 10, x - d.dx)); d.top = Math.max(0, Math.min(LABEL_PX[1] - 10, y - d.dy));
+    Object.assign(d.el.style, { position: 'absolute', zIndex: 1, left: `${d.left}px`, top: `${d.top}px`, transform: 'none', width: 'max-content', margin: 0 });
+  };
+  const dragEnd = () => {
+    const d = drag.current; drag.current = null;
+    if (!d) return;
+    const round = (v) => Math.round(v * 2) / 2;
+    setPlace({ x: round((align === 'center' ? d.left + d.w / 2 : align === 'right' ? d.left + d.w : d.left) * MM), y: round(d.top * MM), w: d.w * MM });
+  };
+  // a new alignment after he's dragged it: the name stays where it is, only the point it's measured from changes
+  const realign = (id) => {
+    if (place?.w) {
+      const off = { left: 0, center: 0.5, right: 1 };
+      const left = place.x - off[align] * place.w;
+      setPlace({ ...place, x: Math.round((left + off[id] * place.w) * 2) / 2 });
+    }
+    setAlign(id);
+  };
+  // a titled panel for one group of settings
+  const panel = (title, children, extra = '') => (
+    <section className={`rounded-2xl border ${border} p-4 flex flex-col gap-3 ${isDark ? 'bg-slate-900/40' : 'bg-white/70'} ${extra}`}>
+      <h3 className="text-xs font-black uppercase tracking-wider">{title}</h3>
+      {children}
+    </section>
+  );
+  const field = `rounded-xl border ${border} px-3 py-2 text-sm ${isDark ? 'bg-slate-900' : 'bg-white'}`;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+      <div className={`w-full max-w-6xl max-h-[92vh] overflow-y-auto rounded-3xl border ${border} p-5 flex flex-col gap-4 shadow-2xl ${isDark ? 'bg-slate-950 text-slate-100' : 'bg-[#fbf8f3] text-[#2E2B27]'}`} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2">
+          <Printer size={16} className="text-amber-500" />
+          <h2 className="text-sm font-black uppercase tracking-wider">Print labels</h2>
+          <button onClick={onClose} title="Close" className="ml-auto p-1.5 rounded-lg text-slate-500 hover:text-amber-500"><X size={16} /></button>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+          {/* right: what it looks like, its border, and the sheet (first on a phone) */}
+          <div className="lg:order-2 flex flex-col gap-4 min-w-0">
+            {panel('Preview', <>
+              <div ref={box} className="relative w-full shrink-0 rounded-xl overflow-hidden shadow-md bg-white" style={{ aspectRatio: `${LABEL_PX[0]} / ${LABEL_PX[1]}` }}>
+                {previewSrc
+                  ? <iframe ref={frameRef} title="Label preview" src={previewSrc} className="absolute top-0 left-0 border-0 pointer-events-none origin-top-left" style={{ width: LABEL_PX[0], height: LABEL_PX[1], transform: `scale(${scale})` }} />
+                  : <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-500">Drawing the label...</div>}
+                <div className="absolute inset-0 touch-none select-none" onPointerDown={dragStart} onPointerMove={dragMove} onPointerUp={dragEnd} onPointerCancel={dragEnd} />
+              </div>
+              <span className="text-[10px] text-slate-500 text-center">Drag the name to move it - as it will print, 99 x 57 mm on the sheet</span>
+            </>)}
+            {panel('Border', <>
+              <div className="flex flex-col gap-1">
+                <span className={small}>Style</span>
+                <div className="grid grid-cols-3 gap-1.5">{BORDERS.map(([id, l]) => <button key={id} type="button" onClick={() => setFrame(id)} className={chip(frame === id)}>{l}</button>)}</div>
+              </div>
+              {frame !== 'none' && (
+                <div className="flex flex-col gap-1">
+                  <span className={small}>Colour</span>
+                  {colours(borderColour, setBorderColour, true)}
+                </div>
+              )}
+              {frame !== 'none' && (
+                <label className="flex flex-col gap-1">
+                  <span className={small}>Opacity - {Math.round(borderAlpha * 100)}%</span>
+                  <input type="range" min="0.1" max="1" step="0.05" value={borderAlpha} onChange={(e) => setBorderAlpha(Number(e.target.value))} className="accent-amber-500" />
+                </label>
+              )}
+            </>)}
+            {panel('Sheet', <>
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="flex flex-col gap-1 w-32">
+                  <span className={small}>How many labels</span>
+                  <input type="number" min="1" max="200" value={count} onChange={(e) => setCount(e.target.value)} className={field} />
+                </label>
+                <span className="text-xs text-slate-500 pb-2">{Math.ceil(n / 10)} A4 sheet{n > 10 ? 's' : ''}, 10 to a sheet</span>
+              </div>
+              {err && <p className="text-xs text-red-500">{err}</p>}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] text-slate-500">Print at 100% (actual size), not "fit to page".</span>
+                <button onClick={make} disabled={busy || !font}
+                  className="ml-auto px-4 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-amber-500 to-orange-600 shadow-md shadow-amber-500/20 flex items-center gap-1.5 disabled:opacity-60">
+                  {busy ? <RotateCw size={13} className="animate-spin" /> : <FileDown size={13} />} Make the labels
+                </button>
+              </div>
+            </>)}
+          </div>
+          {/* left: the name and its lettering */}
+          <div className="lg:order-1 flex flex-col gap-4 min-w-0">
+            {panel('The name', <>
+              <label className="flex flex-col gap-1">
+                <span className={small}>Text</span>
+                <textarea rows={Math.min(3, Math.max(2, name.split('\n').length))} value={name} placeholder={brew.name} className={`${field} resize-none leading-snug`}
+                  onChange={(e) => setName(e.target.value.split('\n').slice(0, 3).join('\n').slice(0, 100))} />
+                <span className="text-[10px] text-slate-500">Press Enter where you want it to break onto the next line (up to three lines).</span>
+                {ownName && <span className="text-[10px] text-slate-500">Just for these labels - the {brew.isRecipe ? 'recipe' : 'brew'} keeps its name, and it goes under yours. <button type="button" onClick={() => setName(brew.name)} className="text-amber-600 hover:underline">Use "{brew.name}"</button></span>}
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <span className={small}>Position</span>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[['left', 'Left'], ['center', 'Centre'], ['right', 'Right']].map(([id, l]) => <button key={id} type="button" onClick={() => realign(id)} className={chip(align === id)}>{l}</button>)}
+                  </div>
+                  <span className="text-[10px] text-slate-500">{place ? <>Placed where you dragged it. <button type="button" onClick={() => setPlace(null)} className="text-amber-600 hover:underline">Reset position</button></> : 'Drag the name on the preview to move it.'}</span>
+                </div>
+                <label className="flex flex-col gap-1">
+                  <span className={small}>Size - {Math.round(size * 100)}%</span>
+                  <input type="range" min="0.6" max="1.8" step="0.05" value={size} onChange={(e) => setSize(Number(e.target.value))} className="accent-amber-500 mt-2" />
+                  <button type="button" onClick={() => setSize(1)} className="self-start text-[10px] text-amber-600 hover:underline">Back to 100%</button>
+                </label>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className={small}>Colour</span>
+                {colours(colour, setColour)}
+              </div>
+            </>)}
+            {panel('Lettering', fonts.length
+              ? <>{group('yours', 'Your fonts')}{group('wine', 'Wine and mead')}{group('beer', 'Beer, cider and soda')}</>
+              : <div className="text-xs text-slate-500">Loading the fonts...</div>)}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -107,6 +497,8 @@ const CAT_LOOK = {
   cider: { emoji: '🍏', liquid: '#c4d45a', tint: 'from-lime-400/30 to-green-500/10' },
   soda: { emoji: '🫧', liquid: '#cfe3a0', tint: 'from-lime-300/30 to-sky-300/10' },
 };
+// a darker shade of a #rrggbb colour (f = how much darker, 0-1): readable text in a type's own colour
+const shade = (hex, f) => `#${[1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - f)).toString(16).padStart(2, '0')).join('')}`;
 const look = (cat) => CAT_LOOK[cat] || { emoji: '🧪', liquid: '#f59e0b', tint: 'from-amber-400/20 to-orange-500/10' };
 
 // Wine colour and sweetness are tags, filtered like the ingredients: a blackberry wine is Fruit & vegetable and red.
@@ -152,10 +544,18 @@ const bottlesOf = (litres, category) => {
 // recipes of the same drink from different books share a family - one card, each book's version an alternative
 const famKey = (b) => `${WINE_CATS.includes(b.category) ? 'wine' : b.category}::${String(b.family || b.name).toLowerCase()}`;
 const STATUS_PILL = { planning: 'bg-slate-500/15 text-slate-500', fermenting: 'bg-amber-500/15 text-amber-500', conditioning: 'bg-sky-500/15 text-sky-500', bottled: 'bg-emerald-500/15 text-emerald-500', finished: 'bg-emerald-600/15 text-emerald-600', dumped: 'bg-red-500/15 text-red-500' };
-const STATUS_WORD = { planning: 'Planning', fermenting: 'Bubbling away', conditioning: 'Clearing', bottled: 'Bottled', finished: 'Finished', dumped: 'Dumped' };
+const STATUS_WORD = { planning: 'Planning', fermenting: 'Bubbling away', conditioning: 'Clearing', bottled: 'Bottle', finished: 'Finished', dumped: 'Dumped' };
 const TRACK = ['planning', 'fermenting', 'conditioning', 'bottled', 'finished'];
 const VESSEL_CSS = `
-@keyframes hb-rise { 0% { transform: translateY(0); opacity: 0 } 15% { opacity: .9 } 100% { transform: translateY(-62px); opacity: 0 } }
+@keyframes hb-rise { 0% { transform: translate(0, 0); opacity: 0 } 12% { opacity: 1 } 50% { transform: translate(var(--sway), calc(var(--rise) * .5)) } 88% { opacity: 1 } 100% { transform: translate(0, var(--rise)); opacity: 0 } }
+@keyframes hb-fall { 0% { transform: translateY(0); opacity: 0 } 15% { opacity: .6 } 85% { opacity: .6 } 100% { transform: translateY(var(--fall)); opacity: 0 } }
+@keyframes hb-bob { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-.5px) } }
+@keyframes hb-sweep { 0%, 70% { transform: translateX(0) } 100% { transform: translateX(150px) } }
+@keyframes hb-swing { 0%, 100% { transform: rotate(-5deg) } 50% { transform: rotate(5deg) } }
+.hb-speck { animation: hb-fall 8s ease-in infinite; transform-box: fill-box; }
+.hb-foam { animation: hb-bob 1.8s ease-in-out infinite; }
+.hb-glint { animation: hb-sweep 7s ease-in-out infinite; }
+.hb-tag { animation: hb-swing 3.2s ease-in-out infinite; }
 @keyframes hb-blip { 0%, 70%, 100% { transform: scale(1) } 80% { transform: scale(1.35) } }
 @keyframes hb-twinkle { 0%, 100% { opacity: .2; transform: scale(.7) } 50% { opacity: 1; transform: scale(1.1) } }
 .hb-bubble { animation: hb-rise 2.6s ease-in infinite; transform-box: fill-box; }
@@ -168,7 +568,7 @@ const VESSEL_CSS = `
 .hb-range::-moz-range-track { background: transparent; }
 .hb-card { transition: translate .18s ease, box-shadow .18s ease; }
 .hb-card:hover { translate: 0 -4px; }
-@media (prefers-reduced-motion: reduce) { .hb-bubble, .hb-airlock, .hb-star { animation: none } .hb-card:hover { transform: none } }
+@media (prefers-reduced-motion: reduce) { .hb-bubble, .hb-airlock, .hb-star, .hb-speck, .hb-foam, .hb-glint, .hb-tag { animation: none } .hb-card:hover { transform: none } }
 `;
 
 // The ingredient finder: "apples, rhubarb" finds what you can brew with them. A word matches at the start of a
@@ -220,7 +620,7 @@ const PRODUCE_GROUPS = [
   { id: 'herbs', label: 'Herbs & flowers', icon: '🌿', items: [
     ['basil', '🌿'], ['bay', '🌿'], ['broom', '🌼'], ['burdock', '🌿'], ['chamomile', '🌼'], ['clover', '☘️'], ['cowslip', '🌼'], ['dandelion', '🌼'], ['elderflower', '🌸'], ['fennel', '🌿'], ['gorse', '🌼'], ['ground ivy', '🌿'],
     ['heather', '🌸'], ['hibiscus', '🌺'], ['horehound', '🌿'], ['hyssop', '🌿'], ['jasmine', '🌸'], ['lavender', '🪻'], ['lemon balm', '🌿'], ['lemongrass', '🌿'],
-    ['lilac', '🌸'], ['marigold', '🌼'], ['mint', '🌿'], ['mugwort', '🌿'], ['nettle', '🌱'], ['oregano', '🌿'], ['pineapple weed', '🌼'], ['primrose', '🌼'], ['rose', '🌹'],
+    ['lilac', '🌸'], ['marigold', '🌼'], ['mint', '🌿'], ['mugwort', '🌿'], ['nettle', '🌿'], ['oregano', '🌿'], ['pineapple weed', '🌼'], ['primrose', '🌼'], ['rose', '🌹'],
     ['rosemary', '🌿'], ['sage', '🌿'], ['sagebrush', '🌿'], ['tarragon', '🌿'], ['thyme', '🌿'], ['violet', '🌸'], ['wormwood', '🌿'], ['yarrow', '🌼'],
     ['yerba santa', '🌿'],
   ] },
@@ -252,25 +652,59 @@ const PRODUCE_GROUPS = [
   ] },
 ].map((g) => ({ ...g, items: g.items.map(([w, icon]) => ({ w, icon, re: wordRe(w) })) }));
 
-// A demijohn showing the brew: the liquid in its colour, bubbles while it ferments, clearing as it
-// conditions, a twinkle once bottled, empty while it's still a plan.
-// liquid: the drink's expected colour when known (the recipe header), else the wine colour or the category's
-function Vessel({ category, status, isRecipe, size = 96, isDark, wine, liquid }) {
+// A demijohn showing the brew, always in the drink's own colour: piles of its main ingredients beside it while it's
+// planned, bubbles rising to a froth while it ferments, sediment falling on to the lees while it clears, empty bottles
+// standing ready once it's bottling, and full bottles once it's finished. Sizes are true to life: a 4.5 L demijohn
+// is ~37 cm tall (108 units here), a 75 cl wine bottle ~30 cm, a 500 ml beer bottle ~24 cm.
+// liquid: the drink's expected colour when known, else the wine colour or the category's
+// pics: the main-ingredient pictures ([{ key, name }]) for the planning piles; ingredients: the fallback when there are none
+const PILE_TYPE_COLOUR = { fruit: '#b83b3b', malt: '#d4a24c', hops: '#7cb342', spice: '#8d5524', honey: '#f2b630', sugar: '#eadfc8', other: '#8fbf5a' };
+const NOT_A_PILE = /water|yeast|nutrient|campden|pectic|acid blend|tannin|finings|potassium|sorbate|metabisulphite|bentonite|isinglass|gelatin/i;
+const BEER_GLASS = ['beer', 'stout', 'cider', 'soda'];
+const PILES = [[89, 42, 27], [118, 34, 20], [139, 23, 13]]; // [left x, width, height] - the biggest at the back, smaller in front
+
+function Vessel({ category, status, isRecipe, size = 96, isDark, wine, liquid, pics = [], ingredients = [], fizz }) {
   const id = React.useId().replace(/:/g, '');
   const colour = status === 'dumped' ? '#94a3b8' : liquid || (WINE_COLOURS.find((w) => w.id === wine) || look(category)).liquid;
-  // a recipe's (and a planned brew's) demijohn is filled to the shoulder in its expected colour, as a full batch would be
-  const fill = isRecipe || status === 'planning' ? 0.83 : status === 'dumped' ? 0.15 : 0.8;
+  const stage = isRecipe ? 'recipe' : status;
+  const bubbling = stage === 'fermenting';
+  const clearing = stage === 'conditioning';
+  const finished = stage === 'finished';
+  const besides = ['planning', 'bottled', 'finished'].includes(stage); // things on the table beside it
+  const vbW = besides ? 162 : 100; // the demijohn stays the same size; the picture just gets wider
+  // empty while it's planned (the ingredients are still in piles beside it) and once finished (it's in the bottles);
+  // full to the shoulder otherwise; a little left if dumped
+  const fill = finished || stage === 'planning' ? 0 : stage === 'dumped' ? 0.15 : isRecipe ? 0.83 : 0.8;
   const top = 122 - fill * 84;
   const glass = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(46,43,39,0.35)';
   const body = 'M42 20 H58 V32 C58 40 86 44 86 70 V112 Q86 122 76 122 H24 Q14 122 14 112 V70 C14 44 42 40 42 32 Z';
-  const bubbling = !isRecipe && status === 'fermenting';
+  const bubbles = [[26, 114, 1.6, 0, 2.6, 1.2], [33, 104, 1.1, 1.3, 3.1, -1], [40, 117, 2, 0.6, 2.4, 0.8], [47, 96, 1.2, 2.1, 2.9, -0.8], [53, 110, 1.8, 0.9, 2.7, 1],
+    [60, 100, 1.3, 1.8, 3.3, -1.2], [66, 116, 2.1, 0.3, 2.5, 0.9], [72, 106, 1.2, 2.5, 3, -0.7], [37, 90, 1, 1.6, 2.2, 0.6], [57, 92, 1.1, 0.1, 2.3, -0.6]];
+  const specks = [[27, top + 6, 1.4, 0, 7], [35, top + 14, 1.1, 2.4, 8.5], [43, top + 4, 1.6, 4.1, 7.5], [50, top + 20, 1.2, 1.2, 9], [57, top + 9, 1.5, 5.6, 8],
+    [64, top + 17, 1.1, 3.3, 7.2], [71, top + 7, 1.4, 6.4, 8.8], [31, top + 24, 1.2, 5, 6.8], [46, top + 28, 1.1, 7.1, 7.8], [68, top + 26, 1.3, 0.7, 9.4],
+    [39, top + 11, 1, 3.8, 8.2], [61, top + 3, 1.2, 2, 7.6]];
+  // planning: a pile of each main ingredient (its photo shaped into a heap), else heaps coloured by ingredient type
+  const piles = stage !== 'planning' ? [] : pics?.length
+    ? pics.slice(0, 3).map((p) => ({ key: p.key, name: p.name }))
+    : [...new Map((ingredients || []).filter((i) => i?.name && !NOT_A_PILE.test(i.name)).map((i) => [i.type || 'other', i])).values()].slice(0, 3)
+      .map((i) => ({ colour: PILE_TYPE_COLOUR[i.type] || PILE_TYPE_COLOUR.other, name: i.name }));
+  // bottling / finished: three bottles of the right kind - 500 ml beer bottles in brown glass, 75 cl wine bottles
+  const beerBottle = BEER_GLASS.includes(category);
+  const bottleTint = beerBottle ? '#7a4a12' : category === 'red_wine' ? '#3f6b3a' : null;
+  const bottlePath = (cx) => (beerBottle
+    ? `M${cx - 10} 118 Q${cx - 10} 122 ${cx - 6} 122 H${cx + 6} Q${cx + 10} 122 ${cx + 10} 118 V86 C${cx + 10} 78 ${cx + 3} 76 ${cx + 3} 66 V53 H${cx - 3} V66 C${cx - 3} 76 ${cx - 10} 78 ${cx - 10} 86 Z`
+    : `M${cx - 11} 118 Q${cx - 11} 122 ${cx - 7} 122 H${cx + 7} Q${cx + 11} 122 ${cx + 11} 118 V72 C${cx + 11} 62 ${cx + 3.5} 60 ${cx + 3.5} 52 V37 H${cx - 3.5} V52 C${cx - 3.5} 60 ${cx - 11} 62 ${cx - 11} 72 Z`);
+  const bottleTop = beerBottle ? 53 : 37;
+  // a full bottle is filled to the base of the neck, with clear glass above it, as a real one is
+  const fillTop = beerBottle ? 64 : 54;
+  const bottles = stage === 'bottled' || finished ? [100, 122, 144] : [];
   return (
     // role="img": a drawing, not an outline icon - the page-wide icon rule (index.css) would otherwise empty its fills
-    <svg viewBox="0 0 100 130" width={size} height={size * 1.3} role="img" aria-hidden="true" className="shrink-0 drop-shadow-sm">
+    <svg viewBox={`0 0 ${vbW} 130`} width={size * vbW / 100} height={size * 1.3} role="img" aria-hidden="true" className="shrink-0 drop-shadow-sm">
       <defs>
         <clipPath id={`c${id}`}><path d={body} /></clipPath>
         <linearGradient id={`g${id}`} x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0" stopColor={colour} stopOpacity={status === 'conditioning' ? 0.75 : 0.95} />
+          <stop offset="0" stopColor={colour} stopOpacity="0.95" />
           <stop offset="1" stopColor={colour} stopOpacity="1" />
         </linearGradient>
         {/* round glass: shaded at the sides, lit just left of centre */}
@@ -285,24 +719,110 @@ function Vessel({ category, status, isRecipe, size = 96, isDark, wine, liquid })
           <stop offset="0.3" stopColor="#fff" stopOpacity={isDark ? 0.08 : 0.5} />
           <stop offset="1" stopColor={isDark ? '#fff' : '#2E2B27'} stopOpacity="0.14" />
         </linearGradient>
+        {/* the label turning away round the side of the glass */}
+        <linearGradient id={`w${id}`} x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0" stopColor="#000" stopOpacity="0.04" />
+          <stop offset="0.35" stopColor="#fff" stopOpacity="0" />
+          <stop offset="1" stopColor="#000" stopOpacity="0.2" />
+        </linearGradient>
+        {/* a heap: lit on top, shaded round its foot */}
+        <linearGradient id={`p${id}`} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stopColor="#fff" stopOpacity="0.18" />
+          <stop offset="0.6" stopColor="#000" stopOpacity="0" />
+          <stop offset="1" stopColor="#000" stopOpacity="0.3" />
+        </linearGradient>
+        {piles.map((p, i) => p.key && (
+          <pattern key={i} id={`i${id}${i}`} patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+            <image href={`/api/homebrew/picture/${p.key}`} width="1" height="1" preserveAspectRatio="xMidYMid slice" />
+          </pattern>
+        ))}
+        {bottles.map((cx, i) => <clipPath key={i} id={`b${id}${i}`}><path d={bottlePath(cx)} /></clipPath>)}
       </defs>
+
+      {/* planning: piles of the main ingredients on the table, the biggest at the back */}
+      {piles.map((p, i) => {
+        const [x, w, h] = PILES[i];
+        const d = `M${x} 122 C${x + w * 0.15} ${122 - h * 0.9} ${x + w * 0.35} ${122 - h * 1.05} ${x + w / 2} ${122 - h} C${x + w * 0.65} ${122 - h * 1.05} ${x + w * 0.85} ${122 - h * 0.9} ${x + w} 122 Z`;
+        return (
+          <g key={i}>
+            <title>{p.name}</title>
+            <ellipse cx={x + w / 2} cy="122.5" rx={w / 2 + 1} ry="1.6" fill="#000" opacity="0.22" />
+            <path d={d} fill={p.key ? `url(#i${id}${i})` : p.colour} />
+            <path d={d} fill={`url(#p${id})`} stroke={glass} strokeWidth="1.2" strokeLinejoin="round" />
+            {!p.key && [0.3, 0.5, 0.7, 0.42, 0.6].map((f, j) => <circle key={j} cx={x + w * f} cy={122 - h * (j < 3 ? 0.35 : 0.65)} r="0.9" fill="#fff" opacity="0.35" />)}
+          </g>
+        );
+      })}
+
       <g clipPath={`url(#c${id})`}>
         <rect x="0" y="0" width="100" height="130" fill={`url(#e${id})`} />
-        <rect x="0" y={top} width="100" height="130" fill={`url(#g${id})`} />
+        {fill > 0 && <rect x="0" y={top} width="100" height="130" fill={`url(#g${id})`} />}
         {fill > 0 && <rect x="0" y={top} width="100" height="130" fill={`url(#r${id})`} />}
-        {fill > 0 && <rect x="0" y={top} width="100" height="3" fill="#fff" opacity={bubbling ? 0.55 : 0.25} />}
-        {bubbling && [22, 34, 48, 61, 72, 40, 66].map((cx, i) => (
-          <circle key={i} className="hb-bubble" cx={cx} cy={118 - (i % 3) * 6} r={1.6 + (i % 3) * 0.7} fill="#fff" opacity="0.8" style={{ animationDelay: `${(i * 0.37) % 2.6}s` }} />
+        {fill > 0 && <rect x="0" y={top} width="100" height="2.5" fill="#fff" opacity={bubbling ? 0.5 : 0.25} />}
+        {bubbling && bubbles.map(([cx, cy, r, delay, dur, sway], i) => (
+          <circle key={i} className="hb-bubble" cx={cx} cy={cy} r={r} fill="#fff" stroke="#fff" strokeOpacity="0.9" strokeWidth="0.4" fillOpacity="0.55"
+            style={{ '--rise': `${top + 2 - cy}px`, '--sway': `${sway}px`, animationDelay: `${delay}s`, animationDuration: `${dur}s` }} />
         ))}
-        {!isRecipe && status === 'conditioning' && <rect x="0" y="116" width="100" height="8" fill="#6b4f2a" opacity="0.45" />}
+        {/* a thin froth on the surface while it ferments */}
+        {bubbling && (
+          <g className="hb-foam">
+            <rect x="0" y={top - 1.6} width="100" height="3.2" fill="#fff" opacity="0.6" />
+            {Array.from({ length: 16 }, (_, i) => <circle key={i} cx={16 + i * 4.4} cy={top - 1.2 + (i % 2) * 0.6} r={1.3 + (i % 3) * 0.45} fill="#fff" opacity="0.88" />)}
+          </g>
+        )}
+        {bubbling && <path d="M10 122 V119.5 Q50 117 90 119.5 V122 Z" fill="#4a3522" opacity="0.45" />}
+        {/* clearing: sediment falling from the top half of the liquid on to a thick layer of lees */}
+        {clearing && specks.map(([cx, cy, r, delay, dur], i) => (
+          <circle key={i} className="hb-speck" cx={cx} cy={cy} r={r} fill="#3d2b1a" stroke="#f5e6c8" strokeWidth="0.3" strokeOpacity="0.5" style={{ '--fall': `${115 - cy}px`, animationDelay: `${delay}s`, animationDuration: `${dur}s` }} />
+        ))}
+        {clearing && (
+          <g>
+            <path d="M10 122 V115.5 C26 111.5 40 110.5 50 110.5 C60 110.5 74 111.5 90 115.5 V122 Z" fill="#4a3522" opacity="0.92" />
+            <path d="M10 116 C26 112 40 111 50 111 C60 111 74 112 90 116" stroke="#c9a978" strokeWidth="0.8" fill="none" opacity="0.7" />
+            {[[24, 117], [31, 115], [38, 118.5], [45, 114], [52, 117.5], [59, 114.5], [66, 118], [73, 116], [80, 118.5], [34, 120], [56, 120.5], [70, 120]].map(([x, y], i) => (
+              <circle key={i} cx={x} cy={y} r="0.8" fill="#c9a978" opacity="0.55" />
+            ))}
+          </g>
+        )}
+        {(stage === 'planning' || stage === 'bottled') && <g transform="skewX(-18)"><rect className="hb-glint" x="-20" y="0" width="9" height="130" fill="#fff" opacity="0.28" /></g>}
         <path d="M22 60 C24 50 30 46 36 44" stroke="#fff" strokeWidth="3" fill="none" opacity="0.35" strokeLinecap="round" />
       </g>
       <path d={body} fill="none" stroke={glass} strokeWidth="2.5" />
       <rect x="39" y="14" width="22" height="9" rx="2" fill="#a0703c" />
       <rect x="47" y="3" width="6" height="12" rx="2" fill="none" stroke={glass} strokeWidth="2" />
       {bubbling && <circle className="hb-airlock" cx="50" cy="7" r="2.2" fill={colour} />}
-      {isRecipe && <g transform="translate(62 84)"><rect width="22" height="28" rx="2" fill="#fff" stroke="#d6b77a" /><path d="M5 8 H17 M5 14 H17 M5 20 H13" stroke="#b08b4f" strokeWidth="1.6" /></g>}
-      {!isRecipe && (status === 'bottled' || status === 'finished') && [[80, 22], [20, 30], [88, 46]].map(([x, y], i) => (
+      {/* the label, wrapped round the glass: its edges and lines curve with the body, and it shades off to the right
+          where it turns away round the side */}
+      <g transform="translate(61 84)">
+        <path d="M0 0.4 Q10.5 2.6 22 0.2 L21.3 27.4 Q10.5 30.4 0 28.2 Z" fill="#fff" stroke="#d6b77a" strokeLinejoin="round" />
+        <path d="M0 0.4 Q10.5 2.6 22 0.2 L21.3 27.4 Q10.5 30.4 0 28.2 Z" fill={`url(#w${id})`} />
+        <path d="M4.5 8.6 Q10.5 9.9 16.5 8.8 M4.5 14.6 Q10.5 15.9 16.5 14.8 M4.5 20.6 Q8.5 21.6 12.5 21.1" stroke="#b08b4f" strokeWidth="1.6" fill="none" strokeLinecap="round" />
+      </g>
+
+      {/* bottling: empty bottles standing ready; finished: the same bottles full, capped and labelled */}
+      {bottles.map((cx, i) => (
+        <g key={i}>
+          <ellipse cx={cx} cy="122.5" rx={beerBottle ? 11 : 12} ry="1.6" fill="#000" opacity="0.22" />
+          <g clipPath={`url(#b${id}${i})`}>
+            <rect x={cx - 12} y="30" width="24" height="95" fill={`url(#e${id})`} />
+            {bottleTint && <rect x={cx - 12} y="30" width="24" height="95" fill={bottleTint} opacity={finished ? 0.25 : 0.32} />}
+            {finished && <rect x={cx - 12} y={fillTop} width="24" height="95" fill={colour} />}
+            {finished && <rect x={cx - 12} y={fillTop} width="24" height="95" fill={`url(#r${id})`} />}
+            {finished && <rect x={cx - 12} y={fillTop} width="24" height="0.8" fill="#fff" opacity="0.35" />}
+            {finished && fizz === 'sparkling' && [[-4, 116, 0], [1, 110, 0.9], [5, 118, 1.7], [-1, 104, 2.4]].map(([dx, cy, d], j) => (
+              <circle key={j} className="hb-bubble" cx={cx + dx} cy={cy} r="0.7" fill="#fff" fillOpacity="0.7" style={{ '--rise': `${fillTop + 2 - cy}px`, '--sway': '0.4px', animationDelay: `${d + i * 0.5}s`, animationDuration: '3.4s' }} />
+            ))}
+            {!finished && <g transform="skewX(-18)"><rect className="hb-glint" x={cx - 30} y="30" width="5" height="95" fill="#fff" opacity="0.45" style={{ animationDelay: `${0.25 * i}s` }} /></g>}
+            <rect x={cx - 6} y="66" width="2.4" height="50" rx="1.2" fill="#fff" opacity="0.4" />
+          </g>
+          <path d={bottlePath(cx)} fill="none" stroke={glass} strokeWidth="1.2" />
+          {finished && (beerBottle
+            ? <rect x={cx - 3.8} y={bottleTop - 2.5} width="7.6" height="3" rx="0.8" fill="#c9a227" />
+            : <rect x={cx - 4} y={bottleTop - 1} width="8" height="9" rx="1" fill="#7a1f2b" />)}
+          {finished && <g transform={`translate(${cx - (beerBottle ? 7 : 8)} ${beerBottle ? 92 : 84})`}><rect width={beerBottle ? 14 : 16} height={beerBottle ? 14 : 16} rx="1.5" fill="#fff" stroke="#d6b77a" strokeWidth="0.8" /><path d={`M3 5 H${beerBottle ? 11 : 13} M3 9 H${beerBottle ? 9 : 11}`} stroke="#b08b4f" strokeWidth="1.1" /></g>}
+        </g>
+      ))}
+      {finished && [[80, 22], [20, 30], [150, 40]].map(([x, y], i) => (
         <path key={i} className="hb-star" d={`M${x} ${y - 5} L${x + 1.5} ${y - 1.5} L${x + 5} ${y} L${x + 1.5} ${y + 1.5} L${x} ${y + 5} L${x - 1.5} ${y + 1.5} L${x - 5} ${y} L${x - 1.5} ${y - 1.5} Z`} fill="#fbbf24" style={{ animationDelay: `${i * 0.6}s` }} />
       ))}
     </svg>
@@ -1001,6 +1521,12 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
     else { saveFile(file); notify('This browser can\'t send files - the PDF has been downloaded instead.'); }
   });
   const downloadPdf = () => run('pdf-save', async () => saveFile(await pdfFile()));
+  // bottle labels to print: A4 sheets of 10 (2 x 5); asks how many, suggesting a label for each bottle the batch fills
+  // bottle labels to print (A4 sheets of 10): the name, lettering and how many are chosen in LabelsDialog
+  const [labelsOpen, setLabelsOpen] = useState(false);
+  const [pictureOpen, setPictureOpen] = useState(false);
+  const printLabels = () => setLabelsOpen(true);
+  const labelsMade = (file, n) => { setLabelsOpen(false); saveFile(file); notify(`${n} label${n === 1 ? '' : 's'} ready to print - ${Math.ceil(n / 10)} A4 sheet${n > 10 ? 's' : ''}.`); };
   const stopSharing = () => run('unshare', async () => { await api(`/api/homebrew/${brew.id}/share`, 'DELETE'); setShareInfo(null); setBrew((b) => (b ? { ...b, shared: false } : b)); }, 'Stopped sharing - the old link no longer works.');
   const toggleFav = (b) => run('fav', async () => { await api(`/api/homebrew/${b.id}/favourite`, 'POST', { favourite: !b.favourite }); if (brew?.id === b.id) setBrew({ ...brew, favourite: !b.favourite }); await loadList(); });
   const togglePick = (w) => {
@@ -1192,16 +1718,22 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
               return (
                 <a key={key} id={`brew-${b.id}`} href={brewPath(b)} onClick={(e) => { if (!plainClick(e)) return; e.preventDefault(); setCreating(false); setSelId(b.id); setWhatIf(null); setTab('recipe'); }}
                   className={`hb-card no-underline text-inherit cursor-pointer text-left ${tile} overflow-hidden flex flex-col hover:shadow-xl hover:shadow-amber-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${isDark ? 'bg-slate-900/50' : 'bg-white/80'}`}>
-                  <div className={`relative flex items-end justify-center pt-5 bg-gradient-to-b ${L.tint}`}>
+                  <div className={`relative isolate flex items-end justify-center pt-5 bg-gradient-to-b ${L.tint}`}>
+                    {/* the header's faint picture, cropped to its right-hand side */}
+                    {b.banner && (
+                      <img src={`/api/homebrew/picture/${b.banner}`} alt="" aria-hidden="true" loading="lazy"
+                        className="absolute inset-0 -z-10 w-full h-full object-cover object-right pointer-events-none select-none"
+                        style={{ opacity: isDark ? 0.22 : 0.3, mixBlendMode: isDark ? 'screen' : 'multiply' }} />
+                    )}
                     <span className="absolute top-2 left-3 text-2xl leading-none">{L.emoji}</span>
                     <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFav(b); }} title={b.favourite ? 'Remove from favourites' : 'Add to favourites'}
                       className={`absolute top-9 right-2.5 p-1.5 rounded-full transition ${b.favourite ? 'text-rose-500' : 'text-slate-400 hover:text-rose-500'} ${isDark ? 'bg-slate-950/40' : 'bg-white/70'}`}>
                       <Heart size={15} fill={b.favourite ? 'currentColor' : 'none'} />
                     </button>
                     {b.isRecipe
-                      ? <span className="absolute top-2.5 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600">{many ? `${members.length} versions` : 'Recipe'}</span>
+                      ? <span className="absolute top-2.5 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${L.liquid}40`, color: isDark ? L.liquid : shade(L.liquid, 0.5) }}>{many ? `${members.length} versions` : 'Recipe'}</span>
                       : <span className={`absolute top-2.5 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_PILL[b.status] || ''}`}>{STATUS_WORD[b.status] || b.status}</span>}
-                    <Vessel category={b.category} status={b.status} isRecipe={b.isRecipe} size={72} isDark={isDark} wine={wine} liquid={b.liquid} />
+                    <Vessel category={b.category} status={b.status} isRecipe={b.isRecipe} size={72} isDark={isDark} wine={wine} liquid={b.liquid} pics={b.mainPics} ingredients={b.ingredients} fizz={b.fizz} />
                     {(() => {
                       const vals = members.map(strengthOf).filter((v) => v != null);
                       if (!vals.length) return null;
@@ -1260,14 +1792,23 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
 
       {open && (
         <div className="flex flex-col gap-5 min-w-0">
+          {pictureOpen && brew && <PictureDialog brew={brew} isDark={isDark} border={border} onClose={() => setPictureOpen(false)} onPicked={(b) => { setPictureOpen(false); setBrew(b); loadList(); notify('Picture changed.'); }} />}
+          {labelsOpen && brew && <LabelsDialog brew={brew} isDark={isDark} border={border} onClose={() => setLabelsOpen(false)} onDone={labelsMade} />}
           {/* styled like the IMS Hub button in the page header (PortalShell) */}
           <button onClick={backToShelf} className={`self-start p-2 rounded-xl flex items-center gap-2 text-xs font-bold transition-all active:scale-95 ${isDark ? 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5' : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 text-[#2E2B27] border border-[#2E2B27]/10'}`}><ArrowLeft size={16} /> {view === 'recipes' ? 'Back to the recipe book' : 'Back to all brews'}</button>
 
           {brew && (
             <div className={`rounded-3xl border overflow-hidden ${isDark ? 'border-white/5 bg-slate-900/40' : 'border-[#2E2B27]/10 bg-white/70 shadow-sm'}`}>
-              <div className={`flex flex-col sm:flex-row gap-5 p-5 bg-gradient-to-br ${look(brew.category).tint}`}>
+              <div className={`relative isolate flex flex-col sm:flex-row gap-5 p-5 bg-gradient-to-br ${look(brew.category).tint}`}>
+                {/* a faint picture of its type and main ingredients behind it all (orchards for a cider, hives for a mead...) -
+                    stronger to the right, fading out under the demijohn and the name */}
+                {(brew.bannerChoice ? brew.banner : main.banner || brew.banner) && (
+                  <img src={`/api/homebrew/picture/${brew.bannerChoice ? brew.banner : main.banner || brew.banner}`} alt="" aria-hidden="true"
+                    className="absolute inset-0 -z-10 w-full h-full object-cover pointer-events-none select-none"
+                    style={{ opacity: isDark ? 0.22 : 0.3, mixBlendMode: isDark ? 'screen' : 'multiply', WebkitMaskImage: 'linear-gradient(to right, rgba(0,0,0,0.25), #000 75%)', maskImage: 'linear-gradient(to right, rgba(0,0,0,0.25), #000 75%)' }} />
+                )}
                 <div className="flex flex-col items-center gap-1">
-                  <Vessel category={brew.category} status={brew.status} isRecipe={brew.isRecipe} size={110} isDark={isDark} wine={colourOf(brew)} liquid={brew.liquid || main.colour} />
+                  <Vessel category={brew.category} status={brew.status} isRecipe={brew.isRecipe} size={110} isDark={isDark} wine={colourOf(brew)} liquid={brew.liquid || main.colour} pics={brew.mainPics?.length ? brew.mainPics : main.items.filter((i) => i.ready)} ingredients={brew.ingredients} fizz={brew.fizz} />
                   {(() => {
                     // its strength, big, under the demijohn: measured, or from the target gravities, or (~) estimated
                     const a = brew.calc.abv || brew.calc.potentialAbv || brew.abvEstimate;
@@ -1285,6 +1826,9 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                         <h2 className="text-2xl font-black break-words leading-tight mt-0.5 min-w-0">{brew.name}</h2>
                         <MainIngredientPics items={main.items} isDark={isDark} />
                       </div>
+                      <button onClick={() => setPictureOpen(true)} title={brew.isRecipe ? 'Change the picture behind this recipe' : 'Change the picture behind this brew - just for this brew, its card and labels'} className={`p-2 rounded-full shrink-0 transition text-slate-400 hover:text-amber-500 ${isDark ? 'bg-slate-950/40' : 'bg-white/80'}`}>
+                        <ImageIcon size={18} />
+                      </button>
                       <button onClick={() => toggleFav(brew)} title={brew.favourite ? 'Remove from favourites' : 'Add to favourites'} className={`p-2 rounded-full shrink-0 transition ${brew.favourite ? 'text-rose-500' : 'text-slate-400 hover:text-rose-500'} ${isDark ? 'bg-slate-950/40' : 'bg-white/80'}`}>
                         <Heart size={18} fill={brew.favourite ? 'currentColor' : 'none'} />
                       </button>
@@ -1299,6 +1843,9 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                         </button>
                         <button onClick={downloadPdf} disabled={busy === 'pdf-save'} title="Download the recipe as a PDF" className={`${btn} ${isDark ? 'bg-slate-950/40' : 'bg-white/85'} hover:text-amber-500`}>
                           {busy === 'pdf-save' ? <RotateCw size={13} className="animate-spin" /> : <FileDown size={13} />} Download PDF
+                        </button>
+                        <button onClick={printLabels} disabled={busy === 'labels'} title="Bottle labels to print - A4 sheets of 10" className={`${btn} ${isDark ? 'bg-slate-950/40' : 'bg-white/85'} hover:text-amber-500`}>
+                          {busy === 'labels' ? <RotateCw size={13} className="animate-spin" /> : <Printer size={13} />} Print labels
                         </button>
                         {pdfReady && <button onClick={() => run('pdf-send', () => sendFile(pdfReady))} className={primary}><Send size={13} /> PDF ready - tap to send</button>}
                       </div>
@@ -1323,15 +1870,15 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                         {brew.sourceName && <p className="text-slate-500">Source: {brew.sourceUrl ? <a href={brew.sourceUrl} target="_blank" rel="noreferrer" className="text-sky-500 hover:underline inline-flex items-center gap-1">{brew.sourceName}<ExternalLink size={10} /></a> : brew.sourceName}</p>}
                         {(colourOf(brew) || sweetOf(brew)) && (
                           <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                            {colourOf(brew) && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 bg-slate-500/10 text-slate-500"><span className={`w-2 h-2 rounded-full ${WINE_COLOURS.find((w) => w.id === colourOf(brew)).dot}`} />{WINE_COLOURS.find((w) => w.id === colourOf(brew)).label}</span>}
-                            {sweetOf(brew) && <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${SWEET_PILL[sweetOf(brew)]}`}>{SWEETNESS.find((s) => s.id === sweetOf(brew)).label}</span>}
-                            {sweetOf(brew) && brew.sweetnessBasis && <span className="text-[10px] text-slate-500">{BASIS_WORD[brew.sweetnessBasis]}</span>}
+                            {colourOf(brew) && <span className="h-7 inline-flex items-center gap-1.5 text-xs font-bold px-2.5 rounded-full bg-slate-500/10 text-slate-500"><span className={`w-2 h-2 rounded-full ${WINE_COLOURS.find((w) => w.id === colourOf(brew)).dot}`} />{WINE_COLOURS.find((w) => w.id === colourOf(brew)).label}</span>}
+                            {sweetOf(brew) && <span className={`h-7 inline-flex items-center gap-1.5 text-xs font-bold px-2.5 rounded-full ${SWEET_PILL[sweetOf(brew)]}`}>{SWEETNESS.find((s) => s.id === sweetOf(brew)).label}</span>}
+                            {sweetOf(brew) && brew.sweetnessBasis && <span className="text-xs text-slate-500">{BASIS_WORD[brew.sweetnessBasis]}</span>}
                           </div>
                         )}
                         <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                          {brew.acidity && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-lime-500/15 text-lime-700" title={ACIDITY.find((a) => a.id === brew.acidity)?.hint}>{ACIDITY.find((a) => a.id === brew.acidity)?.label} acidity</span>}
-                          {brew.fizz && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-600">{brew.fizz === 'sparkling' ? '🫧 Sparkling' : 'Still'}</span>}
-                          {FLAVOUR_TAGS.filter((f) => (brew.flavours || []).includes(f.id)).map((f) => <span key={f.id} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-500">{f.emoji} {f.label}</span>)}
+                          {brew.acidity && <span className="h-7 inline-flex items-center gap-1.5 text-xs font-bold px-2.5 rounded-full bg-lime-500/15 text-lime-700" title={ACIDITY.find((a) => a.id === brew.acidity)?.hint}>{ACIDITY.find((a) => a.id === brew.acidity)?.label} acidity</span>}
+                          {brew.fizz && <span className="h-7 inline-flex items-center gap-1.5 text-xs font-bold px-2.5 rounded-full bg-sky-500/15 text-sky-600">{brew.fizz === 'sparkling' ? <><span className="text-2xl leading-none">🫧</span>Sparkling</> : 'Still'}</span>}
+                          {FLAVOUR_TAGS.filter((f) => (brew.flavours || []).includes(f.id)).map((f) => <span key={f.id} className="h-7 inline-flex items-center gap-1.5 text-xs font-bold px-2.5 rounded-full bg-slate-500/10 text-slate-500"><span className="text-2xl leading-none">{f.emoji}</span>{f.label}</span>)}
                         </div>
                       </div>
                       {isOwner && <button onClick={startFrom} disabled={busy === 'start'} className={primary}><Plus size={13} /> Start a brew from this</button>}
@@ -1381,6 +1928,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                   {(brew.status === 'planning' || brew.status === 'fermenting') && isOwner && <button onClick={pitched} disabled={busy === 'remind'} className={`${btn} ml-auto`}><Bell size={13} /> I've just pitched</button>}
                   {(brew.status === 'fermenting' || brew.status === 'conditioning') && isOwner && <button onClick={stepReminders} disabled={busy === 'steps'} title="Reminders for each step of the method still to come, planned from today and the log so far - replaces this brew's earlier step reminders" className={btn}>{busy === 'steps' ? <RotateCw size={13} className="animate-spin" /> : <Bell size={13} />} Step reminders</button>}
                   {isOwner && <button onClick={keepAsRecipe} disabled={busy === 'keep'} className={`${btn} ${['planning', 'fermenting', 'conditioning'].includes(brew.status) ? '' : 'ml-auto'}`}><Copy size={13} /> Save as recipe</button>}
+                  <button onClick={printLabels} disabled={busy === 'labels'} title="Bottle labels to print - A4 sheets of 10" className={btn}>{busy === 'labels' ? <RotateCw size={13} className="animate-spin" /> : <Printer size={13} />} Print labels</button>
                 </div>
               )}
             </div>
@@ -1447,10 +1995,10 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                 <h2 className="text-xs font-black uppercase tracking-wider">{brew ? (brew.isRecipe ? 'Edit recipe' : 'Recipe') : view === 'recipes' ? 'New recipe' : 'New brew'}</h2>
                 {brew?.isRecipe && <button onClick={() => setEditRecipe(false)} className={`${btn} ml-auto`}><ScrollText size={13} /> Back to reading it</button>}
               </div>
+              <LookPicker form={form} setForm={setForm} categories={meta.categories} stylesFor={stylesFor} brew={brew} isDark={isDark} border={border} label={label} />
               <div className="mb-3"><span className={label}>Summary</span><textarea rows={Math.min(6, Math.max(2, Math.ceil((form.summary || '').length / 90)))} value={form.summary || ''} onChange={set('summary')} placeholder="What it is and what it's like - a line or two" className={`${field} resize-y`} /></div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2"><span className={label}>Name</span><input value={form.name} onChange={set('name')} placeholder="e.g. Christmas braggot for Dad" className={field} /></div>
-                <div><span className={label}>Type</span><select value={form.category || ''} onChange={(e) => setForm({ ...form, category: e.target.value, style: stylesFor(e.target.value)[0] })} className={field}>{meta.categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select></div>
                 <div><span className={label}>Style</span><select value={form.style || ''} onChange={set('style')} className={field}>{(stylesFor(form.category).includes(form.style) || !form.style ? stylesFor(form.category) : [form.style, ...stylesFor(form.category)]).map((s) => <option key={s}>{s}</option>)}</select></div>
                 <div><span className={label}>Status</span><select value={form.status} onChange={set('status')} className={field}>{meta.statuses.map((s) => <option key={s}>{s}</option>)}</select></div>
                 <div><span className={label}>Batch (litres)</span><input type="number" step="0.1" value={form.batchLitres ?? ''} onChange={set('batchLitres')} className={field} />

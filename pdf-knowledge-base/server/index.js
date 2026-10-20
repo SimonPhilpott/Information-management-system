@@ -83,6 +83,7 @@ import peopleRoutes from './routes/people.js';
 import lookRoutes from './routes/look.js';
 import { getCameraStatus, setFrame, heartbeat, appendDeviceLog, pauseCamera } from './services/cameraService.js';
 import { startBrewColours } from './services/homebrewColours.js';
+import { startBannerFill } from './services/homebrewPictures.js';
 import { startPresence, onPresence, getPresence } from './services/presenceService.js';
 import { dueNow as instructionsDue, forPeople as instructionsForPeople, markFired as markInstructionFired } from './services/imsInstructionsService.js';
 import imsInstructionsRoutes from './routes/imsInstructions.js';
@@ -1351,6 +1352,7 @@ onPresence('greet', ({ names }) => {
 });
 startPresence();
 startBrewColours(); // demijohn colours for every recipe and brew (homebrewColours.js)
+startBannerFill(); // every recipe its own header banner, in the background (homebrewPictures.js)
 startWakeGate(); // load the local wake-check model now, not on the first "Hey Ims"
 
 // Ring Doorbell Direct API Service: Wire real-time alerts to ESP32-S3-BOX-3 and Gemini spoken announcements
