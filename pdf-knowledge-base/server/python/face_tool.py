@@ -72,6 +72,40 @@ def analyse(img, thumbs=True):
     return {"width": w, "height": h, "faces": faces}
 
 
+# --- Still at the desk without a face to the camera ---------------------------------------------------------
+# For desk presence: when no face is square-on, is someone still there - turned to one side, leaning back, or
+# face half out of the picture? The same YuNet detector, much less strict (a face turned away or half in shot
+# scores well under the 0.8 needed to recognise someone, but it's still a face), and how much of the picture
+# moved since the last frame. All local, nothing extra to download. (OpenCV 5 has no Haar cascades or HOG.)
+HINT_SCORE = 0.45
+_last_grey = {}
+
+
+def person_hints(img):
+    h, w = img.shape[:2]
+    scale = 640.0 / max(w, h) if max(w, h) > 640 else 1.0
+    small_img = cv2.resize(img, (int(w * scale), int(h * scale))) if scale != 1.0 else img
+    if "loose" not in _models:
+        _models["loose"] = cv2.FaceDetectorYN.create(YUNET, "", (small_img.shape[1], small_img.shape[0]), HINT_SCORE, 0.3, 5000)
+    loose = _models["loose"]
+    loose.setInputSize((small_img.shape[1], small_img.shape[0]))
+    _, dets = loose.detect(small_img)
+    partial = 0 if dets is None else int(len(dets))
+    grey = cv2.cvtColor(small_img, cv2.COLOR_BGR2GRAY)
+    gh, gw = grey.shape[:2]
+    # movement: share of the picture that changed since the last frame, ignoring sensor noise (blur + threshold)
+    # and whole-picture changes (lights, the camera re-exposing), which aren't a person
+    small = cv2.GaussianBlur(cv2.resize(grey, (160, int(160 * gh / gw))), (5, 5), 0)
+    motion = 0.0
+    prev = _last_grey.get("g")
+    if prev is not None and prev.shape == small.shape:
+        diff = cv2.absdiff(small, prev)
+        changed = float(np.count_nonzero(diff > 22)) / diff.size
+        motion = 0.0 if changed > 0.6 else changed
+    _last_grey["g"] = small
+    return {"partial": partial, "motion": round(motion, 4)}
+
+
 def main(path):
     img = cv2.imread(path)
     if img is None:
@@ -93,6 +127,10 @@ def serve():
             buf = np.frombuffer(base64.b64decode(req["jpeg"]), dtype=np.uint8)
             img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
             out = analyse(img, thumbs=False) if img is not None else {"error": "Could not read image"}
+            # the other signs someone is at the desk (used when no face is square-on); worked out every frame so the
+            # movement baseline stays current
+            if img is not None and req.get("hints"):
+                out["hints"] = person_hints(img)
         except Exception as e:  # one bad frame must not end the worker
             out = {"error": str(e)}
         out["id"] = rid

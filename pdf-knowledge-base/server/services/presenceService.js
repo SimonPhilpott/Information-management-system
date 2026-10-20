@@ -24,7 +24,13 @@ const FRESH_MS = 2500;                  // older frames are not looked at (idle 
 const BLIND_MS = 20000;                 // no fresh frames this long -> state unknown
 const GAZE_LOST_MS = 1500;              // no face this long -> eyes go back to their own glances
 const GAZE_REPEAT_MS = 3000;            // the device forgets a gaze it isn't reminded of
-const LEAVE_MS = 30000;                 // no face this long -> they've left the desk
+const LEAVE_MS = 30000;                 // no sign of anyone this long -> they've left the desk
+// Still here without a face square-on to the camera: turned side-on, leaning back or face half out of the picture
+// (a face the detector is less sure of), or moving about. Either keeps someone "at the desk", and they also restart
+// the away clock - so a hello only ever follows a desk that's been seen properly empty, not someone who looked away.
+// share of the picture that must change between frames to count as someone moving - measured at the desk camera
+// (20 Oct): sitting still reads 0-0.006, any shifting about 0.03-0.5, so 0.012 clears camera grain with room to spare
+const MOTION_MIN = 0.012;
 const AWAY_BEFORE_GREET_MS = 5 * 60000; // must have been seen away this long to be greeted on return
 const RECOGNISE_WINDOW_MS = 20000;      // after sitting down, how long recognition may take
 const MATCHES_TO_GREET = 2;             // matches needed in that window (one stray match never greets)
@@ -53,6 +59,7 @@ let present = null;        // null = unknown (not watching), false = nobody, tru
 let absentSince = 0;       // when the desk was last seen to empty (only meaningful while present === false)
 let lastFreshAt = 0;
 let lastFaceAt = 0;
+let lastPersonAt = 0;      // last sign of anyone at all: a face, a side-on face, head and shoulders, or movement
 let lastFrameAt = 0;
 let session = null;        // { id, startedAt, greetEligible, matches: Map(name -> count), greeted }
 
@@ -104,6 +111,7 @@ function onFaces(out, frameAt) {
   const faces = out.faces || [];
   if (faces.length) {
     lastFaceAt = frameAt;
+    lastPersonAt = frameAt;
     keepCameraAwake(); // someone's here: stay awake (at the idle rate - see cameraService)
     // Eyes: follow the biggest (nearest) face.
     const [x, y, w, h] = faces[0].box;
@@ -149,15 +157,27 @@ function onFaces(out, frameAt) {
     return;
   }
 
-  // Nobody in this frame.
+  // No face square-on in this frame - but someone may still be there.
   if (frameAt - lastFaceAt > GAZE_LOST_MS) sendGaze(null);
+  const h = out.hints || {};
+  const someone = h.partial > 0 || h.motion >= MOTION_MIN;
+  if (someone) {
+    lastPersonAt = frameAt;
+    keepCameraAwake();
+    if (present === true && session && frameAt - session.savedAt > 30000) { // still in the same sitting
+      session.savedAt = frameAt;
+      db.prepare('UPDATE desk_presence SET last_seen_at = ? WHERE id = ?').run(frameAt, session.id);
+    }
+    if (present === false) absentSince = frameAt; // not empty after all: the away clock starts again
+    return;
+  }
   if (present === null) {
     present = false;
     absentSince = frameAt;
-  } else if (present === true && frameAt - lastFaceAt > LEAVE_MS) {
-    endSession(lastFaceAt);
+  } else if (present === true && frameAt - lastPersonAt > LEAVE_MS) {
+    endSession(lastPersonAt);
     present = false;
-    absentSince = lastFaceAt;
+    absentSince = lastPersonAt;
   }
 }
 
@@ -177,7 +197,7 @@ async function tick() {
     if (frame.at === lastFrameAt) return; // nothing new since the last look
     lastFrameAt = frame.at;
     let out;
-    try { out = await detectFacesFast(frame.buffer); } catch { return; } // busy or a bad frame: try the next one
+    try { out = await detectFacesFast(frame.buffer, { hints: true }); } catch { return; } // busy or a bad frame: try the next one
     if (isRecordingActive()) return goBlind(); // a recording started while it was looking
     onFaces(out, frame.at);
   } finally {
@@ -234,6 +254,7 @@ export function getPresence() {
     since: present === true ? session?.startedAt ?? null : present === false ? absentSince || null : null,
     names: session ? [...session.matches].filter(([, n]) => n >= MATCHES_TO_GREET).map(([name]) => name) : [],
     lastSeenAt: lastFaceAt || null,
+    lastSignAt: lastPersonAt || null, // any sign of someone, face or not
   };
 }
 

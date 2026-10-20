@@ -92,7 +92,8 @@ function ensureWorker() {
   return worker;
 }
 
-export function detectFacesFast(buffer) {
+// hints: when no face is square-on, also report side-on faces, head-and-shoulders and movement (desk presence)
+export function detectFacesFast(buffer, { hints = false } = {}) {
   return new Promise((resolve, reject) => {
     if (workerPending) return reject(new Error('busy'));
     const w = ensureWorker();
@@ -104,7 +105,7 @@ export function detectFacesFast(buffer) {
       try { w.kill(); } catch (_) { } // a stuck worker is replaced on the next call
     }, 15000);
     workerPending = { id, resolve, reject, timer };
-    w.stdin.write(JSON.stringify({ id, jpeg: buffer.toString('base64') }) + '\n');
+    w.stdin.write(JSON.stringify({ id, jpeg: buffer.toString('base64'), hints }) + '\n');
   });
 }
 
