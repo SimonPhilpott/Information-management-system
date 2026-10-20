@@ -46,7 +46,12 @@ robocopy $Source (Join-Path $Dest 'project') /E /COPY:DAT /DCOPY:DAT /XJ /MT:16 
 $code = $LASTEXITCODE
 $summary = Get-Content $rc -Tail 12 | Where-Object { $_ -match '^\s*(Dirs|Files|Bytes)\s*:' }
 $summary | ForEach-Object { Say "  $($_.Trim())" }
-if ($code -ge 8) { $Problems += "project copy (robocopy exit $code - see $rc)" } else { Say "  project copy ok (robocopy exit $code)" }
+# Ims deletes short-lived files (e.g. wake-check recordings) while he runs; a file that vanished mid-copy isn't a problem
+$failed = @(Get-Content $rc | ForEach-Object { if ($_ -match 'ERROR \d+ \(0x[0-9A-Fa-f]+\) Copying File (.+)$') { $Matches[1].Trim() } } | Sort-Object -Unique)
+$realFails = @($failed | Where-Object { Test-Path -LiteralPath $_ })
+if ($code -ge 8 -and $failed.Count -gt 0 -and $realFails.Count -eq 0) {
+  Say "  project copy ok (robocopy exit $code - $($failed.Count) file(s) deleted during the copy, nothing lost)"
+} elseif ($code -ge 8) { $Problems += "project copy (robocopy exit $code - see $rc)" } else { Say "  project copy ok (robocopy exit $code)" }
 
 # 3. Git history as a single restorable file
 $GitDir = Join-Path $Dest 'git'
