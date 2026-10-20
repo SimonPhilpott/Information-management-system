@@ -73,14 +73,15 @@ function useMainIngredients(id) {
   return main;
 }
 
-function MainIngredientPics({ items, isDark }) {
+function MainIngredientPics({ items, isDark, size = 'md' }) {
   const shown = items.filter((i) => i.ready);
   if (!shown.length) return null;
+  const dim = size === 'inline' ? 'w-9 h-9 sm:w-11 sm:h-11' : 'w-11 h-11 sm:w-14 sm:h-14';
   return (
-    <div className="flex items-center gap-2 shrink-0">
+    <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
       {shown.map((i) => (
         <img key={i.key} src={`/api/homebrew/picture/${i.key}`} alt={i.name} title={i.name} loading="lazy"
-          className={`w-14 h-14 rounded-full object-cover shadow-sm ring-2 ${isDark ? 'ring-slate-950/60' : 'ring-white'}`} />
+          className={`${dim} rounded-full object-cover shadow-sm ring-2 ${isDark ? 'ring-slate-950/60' : 'ring-white'}`} />
       ))}
     </div>
   );
@@ -2129,13 +2130,26 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                 </div>
               </div>
 
-              <h2 className={`font-black break-words leading-tight mt-0.5 ${forceMobile ? 'text-lg' : 'text-lg sm:text-2xl'}`}>{b.name}</h2>
-
-              {main.items?.length > 0 && (
-                <div className="mt-1">
-                  <MainIngredientPics items={main.items} isDark={isDark} />
-                </div>
-              )}
+              {/* Title & Ingredient pics: to right of title unless >2 items */}
+              {(() => {
+                const readyPics = (main.items || []).filter((i) => i.ready);
+                const tooManyPics = readyPics.length > 2;
+                return (
+                  <>
+                    <div className="flex flex-wrap items-center gap-x-2.5 sm:gap-x-3 gap-y-1 mt-0.5">
+                      <h2 className={`font-black break-words leading-tight ${forceMobile ? 'text-lg' : 'text-lg sm:text-2xl'}`}>{b.name}</h2>
+                      {readyPics.length > 0 && !tooManyPics && (
+                        <MainIngredientPics items={main.items} isDark={isDark} size="inline" />
+                      )}
+                    </div>
+                    {readyPics.length > 0 && tooManyPics && (
+                      <div className="mt-1.5">
+                        <MainIngredientPics items={main.items} isDark={isDark} size="md" />
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
 
               {/* Book & Yield Subtitle */}
               {b.isRecipe && (
@@ -2150,6 +2164,19 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                       · {b.batchLitres} L ({bottlesOf(b.batchLitres, b.category)?.text})
                     </span>
                   )}
+                </div>
+              )}
+
+              {/* Active Brew Quick Metadata */}
+              {!b.isRecipe && (b.batchLitres || b.startedOn) && (
+                <div className="text-[11px] sm:text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  {b.batchLitres && (
+                    <span title={bottlesOf(b.batchLitres, b.category)?.hint} className="font-semibold text-slate-600 dark:text-slate-400">
+                      {b.batchLitres} L ({bottlesOf(b.batchLitres, b.category)?.text})
+                    </span>
+                  )}
+                  {b.startedOn && <span>· Started {b.startedOn}</span>}
+                  {b.bottledOn && <span>· Bottled {b.bottledOn}</span>}
                 </div>
               )}
 
@@ -2176,45 +2203,45 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                   {pdfReady && <button onClick={() => run('pdf-send', () => sendFile(pdfReady))} className={`${primary} !py-1.5 !px-3 !text-xs`}><Send size={12} /> Send PDF</button>}
                 </div>
               )}
+
+              {/* Shared Link Banner if active */}
+              {b.isRecipe && (b.shared || shareInfo?.id === b.id) && (
+                <div className={`mt-2 flex flex-wrap items-center gap-2 text-xs rounded-xl px-3 py-2 border ${border} ${isDark ? 'bg-slate-950/40' : 'bg-white/85'}`}>
+                  <Link2 size={13} className="text-amber-500 shrink-0" />
+                  {shareInfo?.id === b.id
+                    ? <a href={shareInfo.url} target="_blank" rel="noreferrer" className="text-sky-500 hover:underline break-all min-w-0 flex-1">{shareInfo.url}</a>
+                    : <span className="text-slate-500 flex-1 min-w-0">Shared - anyone with the link can see this recipe.</span>}
+                  {shareInfo?.id === b.id && <button onClick={() => navigator.clipboard?.writeText(shareInfo.url).then(() => notify('Link copied.'))} className="font-bold text-slate-500 hover:text-amber-500 flex items-center gap-1"><Copy size={12} /> Copy</button>}
+                  <button onClick={stopSharing} disabled={busy === 'unshare'} title="Turn link off" className="font-bold text-slate-500 hover:text-red-500 flex items-center gap-1"><X size={12} /> Stop</button>
+                </div>
+              )}
+
+              {/* Property Badges Ribbon - indented inside right column under Start brew */}
+              {renderHeaderProperties(b)}
+
+              {/* Family Alternative Versions */}
+              {b.isRecipe && familyOf(b).length > 1 && (
+                <div className="flex flex-col gap-1.5 mt-2 pt-2 border-t border-black/5 dark:border-white/5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{familyOf(b).length} versions of {b.family} - pick one</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {familyOf(b).map((v) => {
+                      const on = v.id === b.id;
+                      const vs = sweetOf(v);
+                      return (
+                        <a key={v.id} href={brewPath(v)} onClick={(e) => { if (!plainClick(e)) return; e.preventDefault(); if (!on) { setSelId(v.id); setWhatIf(null); } }} title={v.name}
+                          className={`px-2.5 py-1 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition ${on ? 'bg-amber-500 border-amber-500 text-white' : `${border} ${isDark ? 'bg-slate-950/40' : 'bg-white/85'} hover:border-amber-500/60`}`}>
+                          {colourOf(v) && <span className={`w-2 h-2 rounded-full ${WINE_COLOURS.find((w) => w.id === colourOf(v)).dot}`} />}
+                          {v.variant || v.sourceName || v.name}
+                          {vs && <span className={`text-[10px] px-1.5 rounded-full ${on ? 'bg-white/25' : SWEET_PILL[vs]}`}>{SWEETNESS.find((s) => s.id === vs).label}{v.sweetnessBasis === 'estimate' ? ' ~' : ''}</span>}
+                          {v.favourite && <Heart size={11} fill="currentColor" className={on ? '' : 'text-rose-500'} />}
+                        </a>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-
-          {/* Shared Link Banner if active */}
-          {b.isRecipe && (b.shared || shareInfo?.id === b.id) && (
-            <div className={`mt-2 flex flex-wrap items-center gap-2 text-xs rounded-xl px-3 py-2 border ${border} ${isDark ? 'bg-slate-950/40' : 'bg-white/85'}`}>
-              <Link2 size={13} className="text-amber-500 shrink-0" />
-              {shareInfo?.id === b.id
-                ? <a href={shareInfo.url} target="_blank" rel="noreferrer" className="text-sky-500 hover:underline break-all min-w-0 flex-1">{shareInfo.url}</a>
-                : <span className="text-slate-500 flex-1 min-w-0">Shared - anyone with the link can see this recipe.</span>}
-              {shareInfo?.id === b.id && <button onClick={() => navigator.clipboard?.writeText(shareInfo.url).then(() => notify('Link copied.'))} className="font-bold text-slate-500 hover:text-amber-500 flex items-center gap-1"><Copy size={12} /> Copy</button>}
-              <button onClick={stopSharing} disabled={busy === 'unshare'} title="Turn link off" className="font-bold text-slate-500 hover:text-red-500 flex items-center gap-1"><X size={12} /> Stop</button>
-            </div>
-          )}
-
-          {/* Property Badges Ribbon */}
-          {renderHeaderProperties(b)}
-
-          {/* Family Alternative Versions */}
-          {b.isRecipe && familyOf(b).length > 1 && (
-            <div className="flex flex-col gap-1.5 mt-2 pt-2 border-t border-black/5 dark:border-white/5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{familyOf(b).length} versions of {b.family} - pick one</span>
-              <div className="flex flex-wrap gap-1.5">
-                {familyOf(b).map((v) => {
-                  const on = v.id === b.id;
-                  const vs = sweetOf(v);
-                  return (
-                    <a key={v.id} href={brewPath(v)} onClick={(e) => { if (!plainClick(e)) return; e.preventDefault(); if (!on) { setSelId(v.id); setWhatIf(null); } }} title={v.name}
-                      className={`px-2.5 py-1 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition ${on ? 'bg-amber-500 border-amber-500 text-white' : `${border} ${isDark ? 'bg-slate-950/40' : 'bg-white/85'} hover:border-amber-500/60`}`}>
-                      {colourOf(v) && <span className={`w-2 h-2 rounded-full ${WINE_COLOURS.find((w) => w.id === colourOf(v)).dot}`} />}
-                      {v.variant || v.sourceName || v.name}
-                      {vs && <span className={`text-[10px] px-1.5 rounded-full ${on ? 'bg-white/25' : SWEET_PILL[vs]}`}>{SWEETNESS.find((s) => s.id === vs).label}{v.sweetnessBasis === 'estimate' ? ' ~' : ''}</span>}
-                      {v.favourite && <Heart size={11} fill="currentColor" className={on ? '' : 'text-rose-500'} />}
-                    </a>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {/* Active Brew Elements: StatusTrack & Metric Grid */}
           {!b.isRecipe && (
