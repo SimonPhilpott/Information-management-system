@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useFocusItem } from '../../hooks/useFocusItem';
 import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, ExternalLink, Copy, ChevronUp, ChevronDown, ArrowLeft, ScrollText, Activity, Wine, Star, Heart, Share2, Send, FileDown, Link2 } from 'lucide-react';
 import PortalShell from './PortalShell';
@@ -444,12 +444,24 @@ function GravityChart({ logs, og, thirdBreak, isDark }) {
   );
 }
 
+// Every brew and recipe has its own address - /ims/homebrew/recipe/412-broom-wine - so it can be opened in a new tab
+const slug = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+const brewPath = (b) => `/ims/homebrew/${b.isRecipe ? 'recipe' : 'brew'}/${b.id}${slug(b.name) ? `-${slug(b.name)}` : ''}`;
+const shelfPath = (view) => (view === 'recipes' ? '/ims/homebrew/recipes' : '/ims/homebrew');
+const fromPath = (p) => {
+  const m = String(p).match(/^\/ims\/homebrew\/(recipe|brew)\/(\d+)/);
+  if (m) return { id: Number(m[2]), view: m[1] === 'recipe' ? 'recipes' : 'brews' };
+  return { id: null, view: /^\/ims\/homebrew\/recipes\b/.test(p) ? 'recipes' : 'brews' };
+};
+// a plain click opens it here; ctrl/cmd/shift/middle click is left to the browser (new tab or window)
+const plainClick = (e) => !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0);
+
 export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
   const isDark = theme === 'dark';
   const [brews, setBrews] = useState([]);
   const [meta, setMeta] = useState({ styles: [], statuses: [], logKinds: [], categories: [] });
   const [recipes, setRecipes] = useState([]);
-  const [view, setView] = useState('brews'); // 'brews' | 'recipes'
+  const [view, setView] = useState(() => fromPath(window.location.pathname).view); // 'brews' | 'recipes'
   const [cat, setCat] = useState('all');
   const [have, setHave] = useState(''); // the ingredient finder - what Simon has to use up
   const [pickGroup, setPickGroup] = useState('fruit'); // which group of the ingredient picker is open
@@ -463,7 +475,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
   const [pdfReady, setPdfReady] = useState(null); // a PDF made but waiting for a tap to send it
   const [abvPick, setAbvPick] = useState(null); // strength range picked on the slider, [low, high] - null = any
   useFocusItem(brews.length);
-  const [selId, setSelId] = useState(null);
+  const [selId, setSelId] = useState(() => fromPath(window.location.pathname).id);
   const [creating, setCreating] = useState(false); // the new-brew form is open
   const [brew, setBrew] = useState(null);
   const [form, setForm] = useState(EMPTY_BREW);
@@ -497,12 +509,34 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
     try {
       const d = await api(`/api/homebrew/${id}`);
       setBrew(d.brew);
+      setView(d.brew.isRecipe ? 'recipes' : 'brews');
       const b = d.brew;
       setForm({ ...EMPTY_BREW, ...Object.fromEntries(Object.keys(EMPTY_BREW).map((k) => [k, b[k] ?? EMPTY_BREW[k]])), ingredients: b.ingredients || [] });
     } catch (err) { notify(err.message, 'error'); }
   }, []);
   useEffect(() => { loadList(); }, [loadList]);
   useEffect(() => { loadBrew(selId); setEditRecipe(false); }, [selId, loadBrew]);
+  const fromPop = useRef(false);
+  useEffect(() => {
+    if (selId != null && brew?.id !== selId) return; // wait for it to load so the address has its name
+    const target = selId != null ? brewPath(brew) : shelfPath(view);
+    const here = window.location.pathname;
+    if (target !== here) {
+      const sameItem = selId != null && fromPath(here).id === selId; // only the name part changed
+      if (fromPop.current || sameItem) window.history.replaceState(null, '', target); else window.history.pushState(null, '', target);
+    }
+    fromPop.current = false;
+  }, [selId, brew, view]);
+  useEffect(() => {
+    const onPop = () => {
+      const r = fromPath(window.location.pathname);
+      fromPop.current = true;
+      setCreating(false); setWhatIf(null); setView(r.view); setSelId(r.id);
+      if (r.id == null) setBrew(null);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   const run = async (key, fn, ok) => { setBusy(key); try { await fn(); if (ok) notify(ok); } catch (err) { notify(err.message, 'error'); } finally { setBusy(''); } };
   const saveBrew = () => run('save', async () => {
@@ -681,7 +715,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                     const chosen = g.items.filter((i) => wanted.includes(i.w)).length;
                     return (
                       <button key={g.id} onClick={() => setPickGroup(on ? '' : g.id)} className={`px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition ${on ? `bg-gradient-to-r ${GRADIENT} text-white border-transparent` : `${border} ${isDark ? 'bg-slate-900/50' : 'bg-white/80'} hover:border-amber-500/60`}`}>
-                        <span className="text-sm leading-none">{g.icon}</span>{g.label}
+                        <span className="text-2xl leading-none">{g.icon}</span>{g.label}
                         <span className={`text-[10px] px-1.5 rounded-full ${on ? 'bg-white/25' : isDark ? 'bg-white/10' : 'bg-[#2E2B27]/10'}`}>{chosen ? `${chosen} ✓` : g.items.length}</span>
                       </button>
                     );
@@ -693,7 +727,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                       const on = wanted.includes(i.w);
                       return (
                         <button key={i.w} onClick={() => togglePick(i.w)} title={`Used in ${i.n} recipe${i.n === 1 ? '' : 's'} or brew${i.n === 1 ? '' : 's'}`} className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition ${on ? 'bg-amber-500 border-amber-500 text-white' : `${border} ${isDark ? 'bg-slate-900/50' : 'bg-white/80'} hover:border-amber-500/60`}`}>
-                          <span className="mr-1">{i.icon}</span>{i.w}<span className={`ml-1 text-[10px] ${on ? 'text-white/80' : 'text-slate-500'}`}>{i.n}</span>
+                          <span className="text-2xl leading-none mr-1 align-middle">{i.icon}</span>{i.w}<span className={`ml-1 text-[10px] ${on ? 'text-white/80' : 'text-slate-500'}`}>{i.n}</span>
                         </button>
                       );
                     })}
@@ -784,12 +818,11 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
               const sweetTags = SWEETNESS.filter((s) => members.some((m) => sweetOf(m) === s.id));
               const books = [...new Set(members.map((m) => (m.variant || m.sourceName || '').split(' · ')[0]).filter(Boolean))];
               return (
-                <div key={key} id={`brew-${b.id}`} role="button" tabIndex={0} onClick={() => { setCreating(false); setSelId(b.id); setWhatIf(null); setTab('recipe'); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCreating(false); setSelId(b.id); setWhatIf(null); setTab('recipe'); } }}
-                  className={`hb-card cursor-pointer text-left ${tile} overflow-hidden flex flex-col hover:shadow-xl hover:shadow-amber-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${isDark ? 'bg-slate-900/50' : 'bg-white/80'}`}>
+                <a key={key} id={`brew-${b.id}`} href={brewPath(b)} onClick={(e) => { if (!plainClick(e)) return; e.preventDefault(); setCreating(false); setSelId(b.id); setWhatIf(null); setTab('recipe'); }}
+                  className={`hb-card no-underline text-inherit cursor-pointer text-left ${tile} overflow-hidden flex flex-col hover:shadow-xl hover:shadow-amber-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${isDark ? 'bg-slate-900/50' : 'bg-white/80'}`}>
                   <div className={`relative flex items-end justify-center pt-5 bg-gradient-to-b ${L.tint}`}>
-                    <span className="absolute top-2 left-3 text-xl">{L.emoji}</span>
-                    <button onClick={(e) => { e.stopPropagation(); toggleFav(b); }} title={b.favourite ? 'Remove from favourites' : 'Add to favourites'}
+                    <span className="absolute top-2 left-3 text-2xl leading-none">{L.emoji}</span>
+                    <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFav(b); }} title={b.favourite ? 'Remove from favourites' : 'Add to favourites'}
                       className={`absolute top-9 right-2.5 p-1.5 rounded-full transition ${b.favourite ? 'text-rose-500' : 'text-slate-400 hover:text-rose-500'} ${isDark ? 'bg-slate-950/40' : 'bg-white/70'}`}>
                       <Heart size={15} fill={b.favourite ? 'currentColor' : 'none'} />
                     </button>
@@ -810,14 +843,14 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                     <div className="text-[11px] text-slate-500">{b.style || catLabel(b.category)}</div>
                     {(wine || sweetTags.length > 0 || members.some((m) => (m.flavours || []).length)) && (
                       <div className="flex flex-wrap items-center gap-1 mt-0.5">
-                        {wine && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 bg-slate-500/10 text-slate-500"><span className={`w-2 h-2 rounded-full ${WINE_COLOURS.find((w) => w.id === wine).dot}`} />{WINE_COLOURS.find((w) => w.id === wine).label}</span>}
+                        {wine && <span className="h-6 text-xs font-bold px-2.5 rounded-full flex items-center gap-1.5 bg-slate-500/10 text-slate-500"><span className={`w-2.5 h-2.5 rounded-full ${WINE_COLOURS.find((w) => w.id === wine).dot}`} />{WINE_COLOURS.find((w) => w.id === wine).label}</span>}
                         {sweetTags.map((s) => {
                           const est = members.filter((m) => sweetOf(m) === s.id).every((m) => m.sweetnessBasis === 'estimate');
-                          return <span key={s.id} title={est ? 'Estimated - the book doesn\'t say' : undefined} className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${SWEET_PILL[s.id]}`}>{s.label}{est ? ' ~' : ''}</span>;
+                          return <span key={s.id} title={est ? 'Estimated - the book doesn\'t say' : undefined} className={`h-6 inline-flex items-center text-xs font-bold px-2.5 rounded-full ${SWEET_PILL[s.id]}`}>{s.label}{est ? ' ~' : ''}</span>;
                         })}
                         {(() => {
                           const fl = FLAVOUR_TAGS.filter((f) => members.some((m) => (m.flavours || []).includes(f.id)));
-                          return fl.length ? <span className="text-sm leading-none ml-0.5 tracking-tight" title={fl.map((f) => f.label).join(', ')}>{fl.map((f) => f.emoji).join('')}</span> : null;
+                          return fl.length ? <span className="text-2xl leading-none ml-0.5 flex gap-0.5" title={fl.map((f) => f.label).join(', ')}>{fl.map((f) => <span key={f.id}>{f.emoji}</span>)}</span> : null;
                         })()}
                       </div>
                     )}
@@ -840,7 +873,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                       </div>
                     )}
                   </div>
-                </div>
+                </a>
               );
             })}
             <button onClick={() => startNew(cat)} className={`rounded-2xl border-2 border-dashed ${border} min-h-[14rem] flex flex-col items-center justify-center gap-2 text-slate-500 hover:text-amber-500 hover:border-amber-500/50 transition`}>
@@ -926,13 +959,13 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                           const on = v.id === brew.id;
                           const vs = sweetOf(v);
                           return (
-                            <button key={v.id} onClick={() => { if (!on) { setSelId(v.id); setWhatIf(null); } }} title={v.name}
+                            <a key={v.id} href={brewPath(v)} onClick={(e) => { if (!plainClick(e)) return; e.preventDefault(); if (!on) { setSelId(v.id); setWhatIf(null); } }} title={v.name}
                               className={`px-2.5 py-1 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition ${on ? 'bg-amber-500 border-amber-500 text-white' : `${border} ${isDark ? 'bg-slate-950/40' : 'bg-white/85'} hover:border-amber-500/60`}`}>
                               {colourOf(v) && <span className={`w-2 h-2 rounded-full ${WINE_COLOURS.find((w) => w.id === colourOf(v)).dot}`} />}
                               {v.variant || v.sourceName || v.name}
                               {vs && <span className={`text-[10px] px-1.5 rounded-full ${on ? 'bg-white/25' : SWEET_PILL[vs]}`}>{SWEETNESS.find((s) => s.id === vs).label}{v.sweetnessBasis === 'estimate' ? ' ~' : ''}</span>}
                               {v.favourite && <Heart size={11} fill="currentColor" className={on ? '' : 'text-rose-500'} />}
-                            </button>
+                            </a>
                           );
                         })}
                       </div>

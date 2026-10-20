@@ -26,7 +26,11 @@ export const sourceShort = (s) => (SOURCE_SHORT.find(([re]) => re.test(s || ''))
 const AUTHOR = /^(glover|wise|merrydown|beechum|shockey|boots|proulx & nichols|farmers weekly|raffald.*)$/i;
 // words for the same thing - so "Red currant" and "Redcurrant" are one family
 const SPELL = [[/\bred ?currants?\b/gi, 'Redcurrant'], [/\bblack ?currants?\b/gi, 'Blackcurrant'], [/\bwhite ?currants?\b/gi, 'Whitecurrant'],
-  [/\bhawthorn ?berry\b|\bhawthornberry\b/gi, 'Hawthorn berry'], [/\bpea[- ]pod\b/gi, 'Pea pod'], [/\b(dandelion|cowslip) flower\b/gi, '$1']];
+  [/\bhawthorn ?berry\b|\bhawthornberry\b/gi, 'Hawthorn berry'], [/\bpea[- ]pod\b/gi, 'Pea pod'], [/\b(dandelion|cowslip|broom) flower\b/gi, '$1'],
+  [/\bcrab ?apples?\b/gi, 'crab apple'], [/\brose ?hips?\b/gi, 'rosehip'],
+  // the same two fruits named the other way round: keep the order most of the books use
+  [/^apple (?:and|&) (blackberry|elderberry)\b/i, '$1 and apple'], [/^elderberry[- ]apple\b/i, 'Elderberry and apple'],
+  [/^blackberry (?:and|&) elderberry\b/i, 'Elderberry and blackberry']];
 const SWEET_WORD = /^(dry|sweet|medium|medium[- ]sweet|medium[- ]dry|semi-?sweet|off-dry)$/i;
 const LEAD_WINE = /^(dry|sweet|medium(?:[- ](?:sweet|dry))?|semi-?sweet|spiced|country|quick|simple)\s+/i;
 const LEAD_ANY = /^(dry|sweet|medium(?:[- ](?:sweet|dry))?|semi-?sweet)\s+/i;
