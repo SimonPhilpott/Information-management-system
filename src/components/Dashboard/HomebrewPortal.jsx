@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useFocusItem } from '../../hooks/useFocusItem';
-import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, ExternalLink, Copy, ChevronUp, ChevronDown, ArrowLeft, ScrollText, Activity, Wine, Star, Heart, Share2, Send, FileDown, Link2, Printer, Image as ImageIcon, UserPlus, Users, Mail, User, Check, RefreshCw } from 'lucide-react';
+import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, ExternalLink, Copy, ChevronUp, ChevronDown, ArrowLeft, ScrollText, Activity, Wine, Star, Heart, Share2, Send, FileDown, Link2, Printer, Image as ImageIcon, UserPlus, Users, Mail, User, Check, RefreshCw, Filter, Search } from 'lucide-react';
 import PortalShell from './PortalShell';
 import { glossMatches, glossTerms } from './brewGlossary';
 import { useAuth } from '../../AuthGate';
@@ -20,6 +20,34 @@ const PROFILE_KEYS = [['sweetness', 'Sweetness'], ['body', 'Body'], ['acidity', 
 // Still kept as numbered lines ("1. ...\n2. ..."), so older brews, Ims and the insights read it as before.
 const parseSteps = (method) => String(method || '').split('\n').map((l) => l.replace(/^\s*(\d+[.)]|[-*•])\s*/, '').trim()).filter(Boolean);
 const joinSteps = (steps) => steps.map((s) => s.trim()).filter(Boolean).map((s, i) => `${i + 1}. ${s}`).join('\n');
+
+// Short summary for cards: extracts a concise, punchy descriptor from the recipe's full summary
+// (skips book/author attributions like "From Craig Gravina...", extracts the core descriptor clause)
+const shortSummary = (text) => {
+  if (!text) return '';
+  const clean = String(text).replace(/\r?\n+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!clean) return '';
+  const safe = clean.replace(/(\d)\.(\d)/g, '$1\u2024$2');
+  const rawSents = safe.match(/[^.!?]+[.!?]*/g) || [safe];
+  const sents = rawSents.map((s) => s.replace(/\u2024/g, '.').trim()).filter(Boolean);
+  const nonAttr = sents.filter((s) => !/^(from\s+[A-Z]|adapted\s+from|by\s+[A-Z]|recipe\s+from|source:)/i.test(s));
+  const pool = nonAttr.length ? nonAttr : sents;
+  let best = pool.find((s) => !/^(when I|one summer|early in my|in my early|my son|i had thought|i once|i bought|i process|i loved)/i.test(s) && /\b(bodied|flavour|flavor|taste|dry|sweet|tart|crisp|mild|ale|beer|wine|cider|mead|stout|lager|colour|color|classic|pale|strong|ferments|aroma|sparkling|rosé|rose)\b/i.test(s));
+  if (!best) best = pool.find((s) => !/^(when I|one summer|early in my|my son)/i.test(s)) || pool[0];
+  let out = (best || '').trim();
+  if (out.length > 80) {
+    const semi = out.split(/;\s*|\s+--\s+|\s+—\s+|\s+-\s+/)[0];
+    if (semi && semi.length >= 25 && semi.length <= 80) {
+      out = semi.trim();
+    } else {
+      const clause = out.split(/,\s+(?=brewed\b|exported\b|made\b|using\b|which\b|where\b|and\b|aiming\b|with\b|giving\b|producing\b|as\b|because\b)/i)[0];
+      if (clause && clause.length >= 25 && clause.length <= 90) out = clause.trim();
+    }
+  }
+  out = out.replace(/[,;:\s-]+$/, '').trim();
+  if (!/[.!?]$/.test(out)) out += '.';
+  return out;
+};
 
 // Small round photos of the main ingredients beside the name (the marigolds and camomile of a camomile and marigold
 // mead; for beers the malts, hops or adjuncts that make it unusual). Made the first time a recipe is opened - it
@@ -65,7 +93,15 @@ function PicturePicker({ choice, onPick, brew, isDark, border }) {
   const [uploads, setUploads] = useState([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [showPixabay, setShowPixabay] = useState(false);
+  const [pixabayQuery, setPixabayQuery] = useState('');
+  const [pixabayResults, setPixabayResults] = useState([]);
+  const [pixabayBusy, setPixabayBusy] = useState(false);
+  const [pixabayErr, setPixabayErr] = useState('');
+  const [pickingId, setPickingId] = useState(null);
+
   const own = [...new Set([...(choice ? [choice] : []), ...uploads])]; // his photo(s), and whatever he picked before
+
   const upload = async (file) => {
     if (!file) return;
     setBusy(true); setErr('');
@@ -77,8 +113,63 @@ function PicturePicker({ choice, onPick, brew, isDark, border }) {
       onPick(d.key);
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
+
+  const defaultTerm = () => {
+    if (brew?.name) {
+      const clean = brew.name.replace(/\b(batch|recipe|no\.?\s*\d+|v\d+|#\d+)\b/gi, '').replace(/[^\w\s-]/g, ' ').replace(/\s+/g, ' ').trim();
+      if (clean) return clean;
+    }
+    return (brew?.category || 'mead').replace(/_/g, ' ');
+  };
+
+  const searchPixabay = async (q) => {
+    const term = (q !== undefined ? q : pixabayQuery).trim();
+    if (!term) return;
+    setPixabayBusy(true); setPixabayErr('');
+    try {
+      const res = await fetch(`/api/homebrew/pixabay/search?q=${encodeURIComponent(term)}`);
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Couldn\'t search Pixabay.');
+      setPixabayResults(d.hits || []);
+      if (!d.hits?.length) setPixabayErr(`No photos found for "${term}". Try another word like honey, hops, orchard...`);
+    } catch (e) { setPixabayErr(e.message); } finally { setPixabayBusy(false); }
+  };
+
+  const pickPixabay = async (hit) => {
+    setPickingId(hit.id); setPixabayErr('');
+    try {
+      const res = await fetch('/api/homebrew/pixabay/pick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: hit.url, id: hit.id, credit: hit.credit, page: hit.page, tags: hit.tags, query: pixabayQuery || hit.tags }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.key) throw new Error(d.error || 'Couldn\'t use that photo.');
+      setUploads((u) => [...new Set([d.key, ...u])]);
+      onPick(d.key);
+    } catch (e) { setPixabayErr(e.message); } finally { setPickingId(null); }
+  };
+
+  // Suggestion chips: category, main words in name, or ingredients
+  const suggestions = Array.from(new Set([
+    brew?.category ? brew.category.replace(/_/g, ' ') : null,
+    ...(brew?.ingredients || []).map((i) => i.name).filter(Boolean).slice(0, 3),
+    brew?.name ? brew.name.split(/\s+/).filter((w) => w.length > 3 && !/batch|recipe|traditional/i.test(w)).slice(0, 2) : [],
+  ].flat().filter(Boolean))).slice(0, 4);
+
+  const togglePixabay = () => {
+    const next = !showPixabay;
+    setShowPixabay(next);
+    if (next && !pixabayResults.length) {
+      const init = pixabayQuery || defaultTerm();
+      setPixabayQuery(init);
+      searchPixabay(init);
+    }
+  };
+
   const tile = (on) => `relative shrink-0 w-28 h-16 rounded-xl overflow-hidden border-2 transition ${on ? 'border-amber-500 shadow-md shadow-amber-500/20' : `${border} hover:border-amber-500/50`}`;
   const auto = brew && !brew.bannerChoice ? brew.banner : null; // what "made for it" shows now
+
   return (
     <div>
       <div className="flex gap-2 overflow-x-auto pb-1">
@@ -97,8 +188,122 @@ function PicturePicker({ choice, onPick, brew, isDark, border }) {
           <span className="text-[10px] font-bold">Upload your own</span>
           <input type="file" accept="image/*" className="hidden" onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
         </label>
+        <button type="button" onClick={togglePixabay} className={`${tile(showPixabay)} flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-amber-500 ${isDark ? 'bg-slate-900/50' : 'bg-white/80'}`} title="Search photos on Pixabay">
+          <Search size={16} className={showPixabay ? 'text-amber-500' : ''} />
+          <span className="text-[10px] font-bold">Search Pixabay</span>
+        </button>
       </div>
       {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
+
+      {showPixabay && (
+        <div className={`mt-2 p-3 rounded-2xl border ${border} ${isDark ? 'bg-slate-900/60' : 'bg-amber-50/40'} flex flex-col gap-2.5`}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-xs font-bold">
+              <Search size={13} className="text-amber-500" />
+              <span>Search Pixabay</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <a href="https://pixabay.com" target="_blank" rel="noopener noreferrer" className="text-[10px] text-slate-400 hover:text-amber-500 flex items-center gap-1">
+                pixabay.com <ExternalLink size={9} />
+              </a>
+              <button type="button" onClick={() => setShowPixabay(false)} className="p-1 text-slate-400 hover:text-amber-500 rounded-lg">
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+
+          <form onSubmit={(e) => { e.preventDefault(); searchPixabay(); }} className="flex gap-2">
+            <div className="relative flex-1">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={pixabayQuery}
+                onChange={(e) => setPixabayQuery(e.target.value)}
+                placeholder="Search photos (e.g. honey, hops, apples, vineyard)..."
+                className={`w-full text-xs pl-8 pr-7 py-2 rounded-xl border ${border} outline-none focus:border-amber-500 ${isDark ? 'bg-slate-950 text-slate-100 placeholder-slate-500' : 'bg-white text-slate-900 placeholder-slate-400'}`}
+              />
+              {pixabayQuery && (
+                <button type="button" onClick={() => setPixabayQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+            <button
+              type="submit"
+              disabled={pixabayBusy || !pixabayQuery.trim()}
+              className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 transition shrink-0 cursor-pointer"
+            >
+              {pixabayBusy ? <RotateCw size={13} className="animate-spin" /> : <Search size={13} />}
+              <span>Search</span>
+            </button>
+          </form>
+
+          {suggestions.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Try:</span>
+              {suggestions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => { setPixabayQuery(s); searchPixabay(s); }}
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${border} text-slate-500 hover:text-amber-500 hover:border-amber-500 transition capitalize ${isDark ? 'bg-slate-800/60' : 'bg-white'}`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {pixabayBusy && (
+            <div className="flex items-center justify-center py-6 text-xs text-slate-400 gap-2">
+              <RotateCw size={14} className="animate-spin text-amber-500" />
+              <span>Searching Pixabay for photos...</span>
+            </div>
+          )}
+
+          {pixabayErr && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 py-1">{pixabayErr}</p>
+          )}
+
+          {!pixabayBusy && pixabayResults.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                Results ({pixabayResults.length} photos) - click a thumbnail to use as your picture
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 max-h-56 overflow-y-auto p-1">
+                {pixabayResults.map((p) => {
+                  const isPicking = pickingId === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      disabled={Boolean(pickingId)}
+                      onClick={() => pickPixabay(p)}
+                      title={`Photo by ${p.credit} on Pixabay: ${p.tags}`}
+                      className="group relative aspect-[16/9] rounded-xl overflow-hidden border border-black/10 dark:border-white/10 hover:border-amber-500 hover:shadow-md transition text-left cursor-pointer bg-black/5"
+                    >
+                      <img
+                        src={p.previewUrl}
+                        alt={p.tags}
+                        loading="lazy"
+                        className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                      />
+                      <span className="absolute inset-x-0 bottom-0 bg-black/60 text-white text-[9px] px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                        {p.credit}
+                      </span>
+                      {isPicking && (
+                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                          <RotateCw size={16} className="animate-spin text-amber-400" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -199,6 +404,7 @@ function LabelsDialog({ brew, isDark, border, onClose, onDone }) {
   const [frame, setFrame] = useState(() => remembered('hbLabelBorder', 'none')); // the border style
   const [borderColour, setBorderColour] = useState(() => remembered('hbLabelBorderColour', '')); // '' = the same as the name
   const [borderAlpha, setBorderAlpha] = useState(() => Number(remembered('hbLabelBorderAlpha', '1')) || 1); // how solid the border is
+  const [imageAlpha, setImageAlpha] = useState(() => { const v = Number(remembered('hbLabelImageAlpha', '0.64')); return Number.isFinite(v) ? v : 0.64; }); // the background picture
   const [fontBusy, setFontBusy] = useState(false);
   const [count, setCount] = useState(() => String(bottlesOf(brew.batchLitres, brew.category)?.n || 10));
   const [busy, setBusy] = useState(false);
@@ -257,18 +463,18 @@ function LabelsDialog({ brew, isDark, border, onClose, onDone }) {
   const flat = (t) => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const ownName = name.trim() && flat(name) !== flat(brew.name) ? name.trim() : '';
   const broken = name.includes('\n'); // he's put in his own line breaks
-  const query = () => new URLSearchParams({ font, pos: align === 'center' ? 'top-center' : 'top-left', align, ...(place ? { x: String(place.x), y: String(place.y) } : {}), size: String(size), border: frame, ...(colour ? { colour } : {}), ...(borderColour ? { borderColour } : {}), ...(borderAlpha < 1 ? { borderAlpha: String(borderAlpha) } : {}), ...(ownName || broken ? { name: name.trim() } : {}) });
+  const query = () => new URLSearchParams({ font, pos: align === 'center' ? 'top-center' : 'top-left', align, ...(place ? { x: String(place.x), y: String(place.y) } : {}), size: String(size), border: frame, ...(colour ? { colour } : {}), ...(borderColour ? { borderColour } : {}), ...(borderAlpha < 1 ? { borderAlpha: String(borderAlpha) } : {}), imageAlpha: String(imageAlpha), ...(ownName || broken ? { name: name.trim() } : {}) });
   // redrawn a moment after the last change
   useEffect(() => {
     if (!font) return undefined;
     const t = setTimeout(() => setPreviewSrc(`/api/homebrew/${brew.id}/labels/preview?${query()}`), 300);
     return () => clearTimeout(t);
-  }, [font, name, align, place, size, colour, frame, borderColour, borderAlpha, brew.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [font, name, align, place, size, colour, frame, borderColour, borderAlpha, imageAlpha, brew.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const n = Math.max(1, Math.min(200, parseInt(count, 10) || 10));
   const make = async () => {
     setBusy(true); setErr('');
     try {
-      try { localStorage.setItem('hbLabelFont', font); localStorage.setItem('hbLabelAlign', align); localStorage.setItem('hbLabelSize', String(size)); localStorage.setItem('hbLabelColour', colour); localStorage.setItem('hbLabelBorder', frame); localStorage.setItem('hbLabelBorderColour', borderColour); localStorage.setItem('hbLabelBorderAlpha', String(borderAlpha)); } catch { /* fine */ }
+      try { localStorage.setItem('hbLabelFont', font); localStorage.setItem('hbLabelAlign', align); localStorage.setItem('hbLabelSize', String(size)); localStorage.setItem('hbLabelColour', colour); localStorage.setItem('hbLabelBorder', frame); localStorage.setItem('hbLabelBorderColour', borderColour); localStorage.setItem('hbLabelBorderAlpha', String(borderAlpha)); localStorage.setItem('hbLabelImageAlpha', String(imageAlpha)); } catch { /* fine */ }
       const q = query(); q.set('count', String(n));
       const res = await fetch(`/api/homebrew/${brew.id}/labels?${q}`);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Couldn\'t make the labels.');
@@ -373,6 +579,13 @@ function LabelsDialog({ brew, isDark, border, onClose, onDone }) {
               </div>
               <span className="text-[10px] text-slate-500 text-center">Drag the name to move it - as it will print, 99 x 57 mm on the sheet</span>
             </>)}
+            {panel('Background', (
+              <label className="flex flex-col gap-1">
+                <span className={small}>Picture - {Math.round(imageAlpha * 100)}%</span>
+                <input type="range" min="0" max="1" step="0.01" value={imageAlpha} onChange={(e) => setImageAlpha(Number(e.target.value))} className="accent-amber-500" />
+                <span className="text-[10px] text-slate-500">0% shows just the drink's colour. <button type="button" onClick={() => setImageAlpha(0.64)} className="text-amber-600 hover:underline">Back to 64%</button></span>
+              </label>
+            ))}
             {panel('Border', <>
               <div className="flex flex-col gap-1">
                 <span className={small}>Style</span>
@@ -1320,6 +1533,8 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
   const [have, setHave] = useState(''); // the ingredient finder - what Simon has to use up
   const [pickGroup, setPickGroup] = useState('fruit'); // which group of the ingredient picker is open
   const [favOnly, setFavOnly] = useState(false); // show only favourites
+  const [filtersOpen, setFiltersOpen] = useState(false); // on a phone the filters fold away until tapped
+  const [haveOpen, setHaveOpen] = useState(''); // on a phone, the "What have you got?" group that's open
   const [acids, setAcids] = useState([]); // acidity to show (none picked = all)
   const [fizzes, setFizzes] = useState([]); // still / sparkling
   const [flavs, setFlavs] = useState([]); // flavours it must have - each one picked narrows it further
@@ -1555,11 +1770,151 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
     ['⭐', 'Avg rating', rated.length ? `${(rated.reduce((s, b) => s + b.rating, 0) / rated.length).toFixed(1)}` : '-'],
   ];
   const tile = `rounded-2xl border ${isDark ? 'border-white/5' : 'border-[#2E2B27]/10'}`;
+  // Fully themed header property badges: [Light Mode, Dark Mode]
+  // Themed header property badges: [Light Mode, Dark Mode]
+  // Consistent solid opaque themed background, themed border, and themed font color (no hover effects)
+  const headPill = 'h-7 inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 rounded-full border shadow-xs select-none';
+  const PROP_THEMES = {
+    sky: [
+      'bg-sky-100 text-sky-900 border-sky-300',
+      'bg-sky-950 text-sky-200 border-sky-500/50',
+    ],
+    amber: [
+      'bg-amber-100 text-amber-950 border-amber-300',
+      'bg-amber-950 text-amber-200 border-amber-500/50',
+    ],
+    pink: [
+      'bg-pink-100 text-pink-900 border-pink-300',
+      'bg-pink-950 text-pink-200 border-pink-500/50',
+    ],
+    rose: [
+      'bg-rose-100 text-rose-900 border-rose-300',
+      'bg-rose-950 text-rose-200 border-rose-500/50',
+    ],
+    emerald: [
+      'bg-emerald-100 text-emerald-900 border-emerald-300',
+      'bg-emerald-950 text-emerald-200 border-emerald-500/50',
+    ],
+    lime: [
+      'bg-lime-100 text-lime-950 border-lime-300',
+      'bg-lime-950 text-lime-200 border-lime-500/50',
+    ],
+    orange: [
+      'bg-orange-100 text-orange-950 border-orange-300',
+      'bg-orange-950 text-orange-200 border-orange-500/50',
+    ],
+    teal: [
+      'bg-teal-100 text-teal-900 border-teal-300',
+      'bg-teal-950 text-teal-200 border-teal-500/50',
+    ],
+    purple: [
+      'bg-purple-100 text-purple-900 border-purple-300',
+      'bg-purple-950 text-purple-200 border-purple-500/50',
+    ],
+    warm: [
+      'bg-[#f5ede6] text-[#482510] border-[#d8beac]',
+      'bg-[#241711] text-[#e8cbb8] border-[#6b4730]',
+    ],
+    slate: [
+      'bg-slate-100 text-slate-800 border-slate-300',
+      'bg-slate-900 text-slate-200 border-slate-700',
+    ],
+  };
+  const pillTheme = (hue) => (PROP_THEMES[hue] || PROP_THEMES.slate)[isDark ? 1 : 0];
+  const tint = (hue) => pillTheme(hue);
+  const SWEET_THEME = { dry: 'sky', medium: 'amber', sweet: 'rose' };
+  const ACID_THEME = { soft: 'emerald', fresh: 'lime', tart: 'orange' };
+  const FIZZ_THEME = { sparkling: 'sky', still: 'slate' };
+  const WINE_THEME = { red: 'rose', white: 'amber', rose: 'pink' };
+  const FLAVOUR_THEME = {
+    fruity: 'rose',
+    floral: 'purple',
+    herbal: 'emerald',
+    pine: 'teal',
+    roasted: 'warm',
+    spicy: 'orange',
+    honey: 'amber',
+  };
+
+  const renderHeaderProperties = (item) => {
+    if (!item) return null;
+    const wine = colourOf(item);
+    const swId = sweetOf(item);
+    const hasProps = wine || swId || item.acidity || item.fizz || (item.flavours || []).length > 0;
+    if (!hasProps) return null;
+
+    const wc = wine ? WINE_COLOURS.find((w) => w.id === wine) : null;
+    const sw = swId ? SWEETNESS.find((s) => s.id === swId) : null;
+    const ac = item.acidity ? ACIDITY.find((a) => a.id === item.acidity) : null;
+    const fz = item.fizz ? FIZZ.find((f) => f.id === item.fizz) : null;
+    const basisHint = item.sweetnessBasis ? BASIS_WORD[item.sweetnessBasis] : null;
+    const basisBadge = item.sweetnessBasis === 'gravity' ? 'target FG'
+      : item.sweetnessBasis === 'book' ? 'from book'
+      : item.sweetnessBasis === 'you' ? 'as set'
+      : item.sweetnessBasis === 'estimate' ? 'est.'
+      : null;
+
+    return (
+      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+        {wc && (
+          <span className={`${headPill} ${pillTheme(WINE_THEME[wc.id] || 'slate')}`} title={`Wine colour: ${wc.label}`}>
+            <span className={`w-2 h-2 rounded-full ${wc.dot} shrink-0`} />
+            <span>{wc.label}</span>
+          </span>
+        )}
+        {sw && (
+          <span
+            className={`${headPill} ${pillTheme(SWEET_THEME[sw.id] || 'slate')}`}
+            title={basisHint ? `Sweetness: ${sw.label} (${basisHint})` : `Sweetness: ${sw.label}`}
+          >
+            <span>{sw.label}{item.sweetnessBasis === 'estimate' ? ' ~' : ''}</span>
+            {basisBadge && (
+              <span className="text-[10px] font-medium tracking-tight opacity-75 border-l border-current/25 pl-1.5 ml-0.5" title={basisHint}>
+                {basisBadge}
+              </span>
+            )}
+          </span>
+        )}
+        {ac && (
+          <span className={`${headPill} ${pillTheme(ACID_THEME[ac.id] || 'lime')}`} title={ac.hint || `${ac.label} acidity`}>
+            <span>{ac.label} acidity</span>
+          </span>
+        )}
+        {fz && (
+          <span className={`${headPill} ${pillTheme(FIZZ_THEME[fz.id] || 'sky')}`} title={fz.id === 'sparkling' ? 'Sparkling / carbonated' : 'Still (no fizz)'}>
+            {fz.id === 'sparkling' ? (
+              <>
+                <span className="text-sm leading-none shrink-0">🫧</span>
+                <span>Sparkling</span>
+              </>
+            ) : (
+              <span>Still</span>
+            )}
+          </span>
+        )}
+        {FLAVOUR_TAGS.filter((f) => (item.flavours || []).includes(f.id)).map((f) => (
+          <span
+            key={f.id}
+            className={`${headPill} ${pillTheme(FLAVOUR_THEME[f.id] || 'slate')}`}
+            title={f.hint || f.label}
+          >
+            <span className="text-sm leading-none shrink-0">{f.emoji}</span>
+            <span>{f.label}</span>
+          </span>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <PortalShell title="Homebrew" subtitle="/ims/homebrew • your meads, braggots and brews"
       icon={FlaskConical} gradient={GRADIENT} glow="rgba(245,158,11,0.3)"
-      isDark={isDark} onThemeToggle={onThemeToggle} setCurrentPath={setCurrentPath} notification={notification} maxWidth="max-w-6xl">
+      isDark={isDark} onThemeToggle={onThemeToggle} setCurrentPath={setCurrentPath} notification={notification} maxWidth="max-w-6xl" backToTop
+      headerActions={isOwner && (
+        <button onClick={() => setInviteOpen(true)} title="Invite people to your Homebrew, and share it" className={`p-2 rounded-xl transition-all border flex items-center gap-1.5 text-xs font-bold ${isDark ? 'bg-white/5 hover:bg-white/10 text-amber-400 border-white/5' : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 text-amber-700 border-[#2E2B27]/10'}`}>
+          <UserPlus size={14} /><span className="hidden sm:inline">Invite &amp; Share</span>
+        </button>
+      )}>
       <style>{VESSEL_CSS}</style>
       {!open && (
         <div className="flex flex-col gap-5">
@@ -1574,13 +1929,9 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
             <button onClick={() => setFavOnly(!favOnly)} title="Show only your favourites" className={`px-4 py-2.5 rounded-2xl text-sm font-bold flex items-center gap-2 border transition ${favOnly ? 'bg-rose-500 border-rose-500 text-white shadow-lg shadow-rose-500/20' : `${border} ${isDark ? 'bg-slate-900/60' : 'bg-white/70'} text-slate-500 hover:text-rose-500`}`}>
               <Heart size={15} fill={favOnly ? 'currentColor' : 'none'} /> Favourites<span className={`text-[10px] px-1.5 rounded-full ${favOnly ? 'bg-white/25' : isDark ? 'bg-white/10' : 'bg-[#2E2B27]/10'}`}>{pool.filter((b) => b.favourite).length}</span>
             </button>
+            {/* Invite & Share is in the page header now; the new button takes its place here */}
             {isOwner && (
-              <button onClick={() => setInviteOpen(true)} title="Share your homebrew service with guests" className={`px-4 py-2.5 rounded-2xl text-sm font-bold flex items-center gap-2 border transition ${border} ${isDark ? 'bg-slate-900/60 hover:bg-slate-800 text-amber-400' : 'bg-white/70 hover:bg-amber-50 text-amber-700'}`}>
-                <UserPlus size={15} /> Invite & Share
-              </button>
-            )}
-            {isOwner && (
-              <button onClick={() => startNew(cat)} className={`${primary} ml-auto !px-4 !py-2.5 !text-sm shadow-lg shadow-amber-500/20`}><Plus size={15} /> {view === 'recipes' ? 'New recipe' : 'New brew'}</button>
+              <button onClick={() => startNew(cat)} className={`${primary} !px-4 !py-2.5 !text-sm shadow-lg shadow-amber-500/20`}><Plus size={15} /> {view === 'recipes' ? 'New recipe' : 'New brew'}</button>
             )}
           </div>
 
@@ -1605,8 +1956,38 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                 className={`w-full pl-4 pr-10 py-3 rounded-xl text-sm outline-none border focus:border-amber-500 ${isDark ? 'bg-slate-950/60 border-white/10 text-slate-100' : 'bg-white border-[#2E2B27]/15 text-[#2E2B27]'}`} />
               {have && <button onClick={() => setHave('')} title="Clear" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-amber-500"><X size={16} /></button>}
             </div>
+            {/* on a phone: a row per kind of ingredient, opening to show them two to a row */}
             {pickGroups.length > 0 && (
-              <div className="flex flex-col gap-2">
+              <div className="sm:hidden flex flex-col gap-1.5">
+                {pickGroups.map((g) => {
+                  const on = haveOpen === g.id;
+                  const chosen = g.items.filter((i) => wanted.includes(i.w)).length;
+                  return (
+                    <div key={g.id} className={`rounded-xl border ${on ? 'border-amber-500/60' : border} ${isDark ? 'bg-slate-900/50' : 'bg-white/80'}`}>
+                      <button type="button" onClick={() => setHaveOpen(on ? '' : g.id)} className="w-full px-3 py-2 flex items-center gap-2 text-sm font-bold">
+                        <span className="text-2xl leading-none">{g.icon}</span>{g.label}
+                        <span className={`text-[10px] px-1.5 rounded-full ${chosen ? 'bg-amber-500 text-white' : isDark ? 'bg-white/10' : 'bg-[#2E2B27]/10'}`}>{chosen ? `${chosen} ✓` : g.items.length}</span>
+                        {on ? <ChevronUp size={16} className="ml-auto text-slate-500" /> : <ChevronDown size={16} className="ml-auto text-slate-500" />}
+                      </button>
+                      {on && (
+                        <div className="grid grid-cols-2 gap-1.5 px-2 pb-2">
+                          {g.items.map((i) => {
+                            const picked = wanted.includes(i.w);
+                            return (
+                              <button key={i.w} onClick={() => togglePick(i.w)} className={`px-2 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1.5 min-w-0 transition ${picked ? 'bg-amber-500 border-amber-500 text-white' : `${border} ${isDark ? 'bg-slate-950/40' : 'bg-white'}`}`}>
+                                <span className="text-xl leading-none shrink-0">{i.icon}</span><span className="truncate">{i.w}</span><span className={`ml-auto text-[10px] ${picked ? 'text-white/80' : 'text-slate-500'}`}>{i.n}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {pickGroups.length > 0 && (
+              <div className="hidden sm:flex flex-col gap-2">
                 <div className="flex flex-wrap gap-1.5">
                   {pickGroups.map((g) => {
                     const on = pickGroup === g.id;
@@ -1641,12 +2022,44 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
           </div>}
 
           <div className={`${tile} p-3 sm:p-4 flex flex-col gap-3 ${isDark ? 'bg-slate-900/40' : 'bg-white/70'}`}>
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          {/* on a phone the filters fold away behind this bar */}
+          <button type="button" onClick={() => setFiltersOpen(!filtersOpen)} className="sm:hidden flex items-center gap-2 text-sm font-bold">
+            <Filter size={15} className="text-amber-500" /> Filters
+            {(() => { const n = (cat !== 'all' ? 1 : 0) + sweets.length + acids.length + fizzes.length + flavs.length + (abvOn ? 1 : 0); return n ? <span className="text-[10px] px-1.5 rounded-full bg-amber-500 text-white">{n} on</span> : null; })()}
+            {filtersOpen ? <ChevronUp size={16} className="ml-auto text-slate-500" /> : <ChevronDown size={16} className="ml-auto text-slate-500" />}
+          </button>
+          <div className={`${filtersOpen ? 'flex' : 'hidden'} sm:flex flex-col gap-3.5`}>
+            {/* the types: smaller on a phone, three to a row */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className={`text-[10px] font-black uppercase tracking-wider ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>Type</span>
+                {cat !== 'all' && (
+                  <button type="button" onClick={() => setCat('all')} className="text-[10px] font-bold text-slate-500 hover:text-amber-500 flex items-center gap-0.5">
+                    Show all types
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-1.5 sm:gap-2">
+                {[{ id: 'all', label: 'Everything' }, ...meta.categories].map((k) => {
+                  const L = k.id === 'all' ? { emoji: '✨', liquid: '#f59e0b' } : look(k.id);
+                  const on = cat === k.id;
+                  return (
+                    <button key={k.id} onClick={() => setCat(k.id)} className={`rounded-xl sm:rounded-2xl border px-1.5 py-2 sm:px-3 sm:py-3 flex flex-col items-center gap-0.5 sm:gap-1 min-w-0 transition ${on ? 'border-amber-500 shadow-lg shadow-amber-500/20' : border} ${isDark ? 'bg-slate-900/50 hover:bg-slate-800/60' : 'bg-white/80 hover:bg-white'}`}>
+                      <span className="text-xl sm:text-2xl leading-none">{L.emoji}</span>
+                      <span className="text-[10px] sm:text-xs font-bold text-center leading-tight">{k.label}</span>
+                      <span className="h-1 w-8 rounded-full" style={{ background: L.liquid, opacity: on ? 1 : 0.45 }} />
+                      <span className="text-[10px] text-slate-500">{countIn(k.id)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          <div className="flex flex-col gap-2.5 pt-1 border-t border-black/5 dark:border-white/5">
             {[['Sweetness', 'sweet', SWEETNESS, sweets, setSweets, (o) => (b) => sweetOf(b) === o.id, 'From the book where it says, otherwise estimated from the sugar, yeast and method'],
               ['Acidity', 'acid', ACIDITY, acids, setAcids, (o) => (b) => b.acidity === o.id, 'How tart and fresh it is - judged from sharp fruit, added acid and citrus, or a sour style'],
               ['Fizz', 'fizz', FIZZ, fizzes, setFizzes, (o) => (b) => b.fizz === o.id, 'Still, or sparkling (bottle-conditioned or carbonated)']].map(([title, group, opts, on, setOn, test, help]) => (
               <div key={title} className="flex flex-wrap items-center gap-1.5" title={help}>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mr-1">{title}</span>
+                <span className={`text-[10px] font-black uppercase tracking-wider mr-1 w-20 shrink-0 ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>{title}</span>
                 {opts.map((o) => {
                   const picked = on.includes(o.id);
                   return (
@@ -1660,8 +2073,8 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
               </div>
             ))}
             {abvMax > abvMin && (
-              <div className="basis-full flex"><div className="flex items-center gap-2 w-full sm:w-[36rem]" title="Strength - measured, from the target gravities, or estimated from the sugar and yeast where the book doesn't say">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Strength</span>
+              <div className="flex items-center gap-2 w-full sm:w-[36rem]" title="Strength - measured, from the target gravities, or estimated from the sugar and yeast where the book doesn't say">
+                <span className={`text-[10px] font-black uppercase tracking-wider w-20 shrink-0 ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>Strength</span>
                 <span className={`text-xs font-bold tabular-nums w-9 text-right ${abvOn ? 'text-amber-500' : ''}`}>{abvLo}%</span>
                 <div className="relative flex-1 h-4">
                   <div className={`absolute top-1/2 -translate-y-1/2 inset-x-0 h-1.5 rounded-full ${isDark ? 'bg-white/10' : 'bg-[#2E2B27]/10'}`} />
@@ -1673,11 +2086,11 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                     onChange={(e) => setAbvPick([abvLo, Math.max(Number(e.target.value), abvLo)])} />
                 </div>
                 <span className={`text-xs font-bold tabular-nums w-9 ${abvOn ? 'text-amber-500' : ''}`}>{abvHi}%</span>
-              </div></div>
+              </div>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-1.5" title="Aromas and flavours, from what goes in - pick more than one to find drinks with all of them">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mr-1">Aromas &amp; flavours</span>
+            <span className={`text-[10px] font-black uppercase tracking-wider mr-1 ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>Aromas &amp; flavours</span>
             {FLAVOUR_TAGS.map((o) => {
               const picked = flavs.includes(o.id);
               return (
@@ -1688,23 +2101,9 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                 </button>
               );
             })}
-            {(tasteOn || abvOn) && <button onClick={clearTaste} className="ml-auto text-xs font-bold text-slate-500 hover:text-amber-500 flex items-center gap-1"><X size={12} /> Clear filters</button>}
+            {(cat !== 'all' || tasteOn || abvOn) && <button onClick={() => { setCat('all'); clearTaste(); }} className="ml-auto text-xs font-bold text-slate-500 hover:text-amber-500 flex items-center gap-1"><X size={12} /> Clear filters</button>}
           </div>
           </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-            {[{ id: 'all', label: 'Everything' }, ...meta.categories].map((k) => {
-              const L = k.id === 'all' ? { emoji: '✨', liquid: '#f59e0b' } : look(k.id);
-              const on = cat === k.id;
-              return (
-                <button key={k.id} onClick={() => setCat(k.id)} className={`rounded-2xl border px-3 py-3 flex flex-col items-center gap-1 min-w-0 transition ${on ? 'border-amber-500 shadow-lg shadow-amber-500/20' : border} ${isDark ? 'bg-slate-900/50 hover:bg-slate-800/60' : 'bg-white/80 hover:bg-white'}`}>
-                  <span className="text-2xl leading-none">{L.emoji}</span>
-                  <span className="text-xs font-bold text-center leading-tight">{k.label}</span>
-                  <span className="h-1 w-8 rounded-full" style={{ background: L.liquid, opacity: on ? 1 : 0.45 }} />
-                  <span className="text-[10px] text-slate-500">{countIn(k.id)}</span>
-                </button>
-              );
-            })}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -1723,7 +2122,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                     {b.banner && (
                       <img src={`/api/homebrew/picture/${b.banner}`} alt="" aria-hidden="true" loading="lazy"
                         className="absolute inset-0 -z-10 w-full h-full object-cover object-right pointer-events-none select-none"
-                        style={{ opacity: isDark ? 0.22 : 0.3, mixBlendMode: isDark ? 'screen' : 'multiply' }} />
+                        style={{ opacity: isDark ? 0.33 : 0.45, mixBlendMode: isDark ? 'screen' : 'multiply' }} />
                     )}
                     <span className="absolute top-2 left-3 text-2xl leading-none">{L.emoji}</span>
                     <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFav(b); }} title={b.favourite ? 'Remove from favourites' : 'Add to favourites'}
@@ -1758,6 +2157,15 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                         })()}
                       </div>
                     )}
+                    {(() => {
+                      const sumText = b.shortSummary || b.summary || members.find((m) => m.shortSummary || m.summary)?.summary;
+                      const cardSum = shortSummary(sumText);
+                      return cardSum ? (
+                        <p className={`text-xs leading-snug line-clamp-2 mt-1 break-words ${isDark ? 'text-slate-300/85' : 'text-slate-600'}`} title={sumText}>
+                          {cardSum}
+                        </p>
+                      ) : null;
+                    })()}
                     {hitMap.get(b.id)?.hits.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1">
                         {hitMap.get(b.id).hits.slice(0, 3).map((g, i) => (
@@ -1805,7 +2213,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                 {(brew.bannerChoice ? brew.banner : main.banner || brew.banner) && (
                   <img src={`/api/homebrew/picture/${brew.bannerChoice ? brew.banner : main.banner || brew.banner}`} alt="" aria-hidden="true"
                     className="absolute inset-0 -z-10 w-full h-full object-cover pointer-events-none select-none"
-                    style={{ opacity: isDark ? 0.22 : 0.3, mixBlendMode: isDark ? 'screen' : 'multiply', WebkitMaskImage: 'linear-gradient(to right, rgba(0,0,0,0.25), #000 75%)', maskImage: 'linear-gradient(to right, rgba(0,0,0,0.25), #000 75%)' }} />
+                    style={{ opacity: isDark ? 0.33 : 0.45, mixBlendMode: isDark ? 'screen' : 'multiply', WebkitMaskImage: 'linear-gradient(to right, rgba(0,0,0,0.38), #000 75%)', maskImage: 'linear-gradient(to right, rgba(0,0,0,0.38), #000 75%)' }} />
                 )}
                 <div className="flex flex-col items-center gap-1">
                   <Vessel category={brew.category} status={brew.status} isRecipe={brew.isRecipe} size={110} isDark={isDark} wine={colourOf(brew)} liquid={brew.liquid || main.colour} pics={brew.mainPics?.length ? brew.mainPics : main.items.filter((i) => i.ready)} ingredients={brew.ingredients} fizz={brew.fizz} />
@@ -1868,18 +2276,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                         <p className="font-bold">From your recipe book
                           {brew.batchLitres ? <span title={bottlesOf(brew.batchLitres, brew.category)?.hint}> · {brew.batchLitres} L makes {bottlesOf(brew.batchLitres, brew.category)?.text} bottles</span> : null}</p>
                         {brew.sourceName && <p className="text-slate-500">Source: {brew.sourceUrl ? <a href={brew.sourceUrl} target="_blank" rel="noreferrer" className="text-sky-500 hover:underline inline-flex items-center gap-1">{brew.sourceName}<ExternalLink size={10} /></a> : brew.sourceName}</p>}
-                        {(colourOf(brew) || sweetOf(brew)) && (
-                          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                            {colourOf(brew) && <span className="h-7 inline-flex items-center gap-1.5 text-xs font-bold px-2.5 rounded-full bg-slate-500/10 text-slate-500"><span className={`w-2 h-2 rounded-full ${WINE_COLOURS.find((w) => w.id === colourOf(brew)).dot}`} />{WINE_COLOURS.find((w) => w.id === colourOf(brew)).label}</span>}
-                            {sweetOf(brew) && <span className={`h-7 inline-flex items-center gap-1.5 text-xs font-bold px-2.5 rounded-full ${SWEET_PILL[sweetOf(brew)]}`}>{SWEETNESS.find((s) => s.id === sweetOf(brew)).label}</span>}
-                            {sweetOf(brew) && brew.sweetnessBasis && <span className="text-xs text-slate-500">{BASIS_WORD[brew.sweetnessBasis]}</span>}
-                          </div>
-                        )}
-                        <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                          {brew.acidity && <span className="h-7 inline-flex items-center gap-1.5 text-xs font-bold px-2.5 rounded-full bg-lime-500/15 text-lime-700" title={ACIDITY.find((a) => a.id === brew.acidity)?.hint}>{ACIDITY.find((a) => a.id === brew.acidity)?.label} acidity</span>}
-                          {brew.fizz && <span className="h-7 inline-flex items-center gap-1.5 text-xs font-bold px-2.5 rounded-full bg-sky-500/15 text-sky-600">{brew.fizz === 'sparkling' ? <><span className="text-2xl leading-none">🫧</span>Sparkling</> : 'Still'}</span>}
-                          {FLAVOUR_TAGS.filter((f) => (brew.flavours || []).includes(f.id)).map((f) => <span key={f.id} className="h-7 inline-flex items-center gap-1.5 text-xs font-bold px-2.5 rounded-full bg-slate-500/10 text-slate-500"><span className="text-2xl leading-none">{f.emoji}</span>{f.label}</span>)}
-                        </div>
+                        {renderHeaderProperties(brew)}
                       </div>
                       {isOwner && <button onClick={startFrom} disabled={busy === 'start'} className={primary}><Plus size={13} /> Start a brew from this</button>}
                     </div>
@@ -1906,6 +2303,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                   ) : null}
                   {brew.isRecipe ? null : (
                     <>
+                      {renderHeaderProperties(brew)}
                       <StatusTrack status={brew.status} isDark={isDark} onPick={moveTo} busy={busy === 'stage'} />
                       <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                         {[['ABV', c.abv ? `${c.abv}%${c.abvFinal ? '' : ' so far'}` : brew.abvEstimate ? `~${brew.abvEstimate}% likely` : '-'], ['Potential', c.potentialAbv ? `${c.potentialAbv}%` : '-'], ['Day', c.daysSinceStart ?? '-'], ['OG', g3(brew.og)], ['Latest', g3(c.latestGravity)],

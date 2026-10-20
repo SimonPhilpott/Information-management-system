@@ -1,14 +1,17 @@
 import AccountChip from './AccountChip';
 import { useAuth } from '../../AuthGate';
 import React from 'react';
-import { ArrowLeft, Sun, Moon, Check, AlertCircle, Command, Activity } from 'lucide-react';
+import { ArrowLeft, ArrowUp, Sun, Moon, Check, AlertCircle, Command, Activity } from 'lucide-react';
 
 // Common frame for /ims/* pages: scrollable page, sticky header with a back
-// button to the IMS Hub, theme toggle, and toast notification.
+// button to the IMS Hub, theme toggle, and toast notification. Optional: headerActions (buttons shown in the
+// header, before Ctrl+K) and backToTop (a round button bottom right that scrolls back up, once scrolled down).
 export default function PortalShell({
   title, subtitle, icon: Icon, gradient, glow, isDark, onThemeToggle, setCurrentPath,
-  notification, maxWidth = 'max-w-6xl', children
+  notification, maxWidth = 'max-w-6xl', children, headerActions = null, backToTop = false
 }) {
+  const scroller = React.useRef(null);
+  const [scrolled, setScrolled] = React.useState(false);
   const { user } = useAuth();
   const guest = Boolean(user?.guest); // invited deck builder users only have that page
   const goHub = () => {
@@ -29,7 +32,8 @@ export default function PortalShell({
   return (
     // h-screen + overflow-y-auto: the app shell doesn't scroll the document,
     // so each page is its own scroll container.
-    <div className={`h-screen h-[100dvh] overflow-y-auto w-full flex flex-col font-sans transition-colors duration-300 ${bgShell}`}>
+    <div ref={scroller} onScroll={backToTop ? (e) => setScrolled(e.currentTarget.scrollTop > 500) : undefined}
+      className={`h-screen h-[100dvh] overflow-y-auto w-full flex flex-col font-sans transition-colors duration-300 ${bgShell}`}>
       {notification && (
         <div className={`fixed top-6 right-6 z-50 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 backdrop-blur-md border ${
           notification.type === 'error' ? 'bg-red-500/90 text-white border-red-600/30'
@@ -58,6 +62,7 @@ export default function PortalShell({
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {headerActions}
           <button
             onClick={() => {
               window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
@@ -81,6 +86,12 @@ export default function PortalShell({
         </div>
       </header>
       <main className={`flex-1 ${maxWidth} w-full mx-auto p-4 sm:p-6 flex flex-col gap-5`}>{children}</main>
+      {backToTop && scrolled && (
+        <button onClick={() => scroller.current?.scrollTo({ top: 0, behavior: 'smooth' })} title="Back to the top" aria-label="Back to the top"
+          className={`fixed bottom-5 right-5 z-40 w-12 h-12 rounded-full flex items-center justify-center shadow-xl transition active:scale-95 bg-gradient-to-br ${iconGradient} text-white hover:brightness-110`}>
+          <ArrowUp size={20} />
+        </button>
+      )}
     </div>
   );
 }

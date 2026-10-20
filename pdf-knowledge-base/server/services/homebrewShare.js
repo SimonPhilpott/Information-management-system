@@ -327,6 +327,8 @@ export function labelLook(q = {}) {
     border: BORDERS.includes(q.border) ? q.border : 'none',
     borderColour: /^#[0-9a-f]{6}$/i.test(q.borderColour || '') ? q.borderColour : '', // '' = the same as the name
     borderAlpha: Math.max(0.1, Math.min(1, Number(q.borderAlpha) || 1)), // how solid the border is
+    // how strongly the background picture shows (0 = not at all, just the colour wash; 0.64 as it always was)
+    imageAlpha: q.imageAlpha !== undefined && q.imageAlpha !== '' && Number.isFinite(Number(q.imageAlpha)) ? Math.max(0, Math.min(1, Number(q.imageAlpha))) : 0.64,
     // where he dragged the name to on the preview (mm from the label's top left - its left edge, its middle when
     // centred, its right edge when right-aligned), or none for the usual place
     x: q.x !== undefined && q.x !== '' && Number.isFinite(Number(q.x)) ? Math.max(0, Math.min(99, Number(q.x))) : null,
@@ -365,7 +367,7 @@ export function labelsHtml(b, { count = 10, fontId, title, qrHtml = '', look = l
   const abv = b.calc?.abv || b.calc?.potentialAbv || b.abvEstimate;
   const estimated = !b.calc?.abv && !b.calc?.potentialAbv;
   const label = `<div class="label">
-    ${banner ? `<img class="bg" src="${banner}" alt="">` : ''}
+    ${banner && look.imageAlpha > 0 ? `<img class="bg" src="${banner}" alt="">` : ''}
     ${look.border !== 'none' ? `<div class="border-wrap" style="opacity: ${look.borderAlpha}">${borderHtml(look.border, look.borderColour || nameColour)}</div>` : ''}
     ${qrHtml ? `<div class="qr">${qrHtml}</div>` : ''}
     <div class="body">
@@ -399,7 +401,7 @@ ${preview ? 'html, body { width: 99mm; height: 57mm; overflow: hidden; backgroun
 .label { position: relative; overflow: hidden; outline: 0.2mm dashed rgba(0,0,0,0.18); outline-offset: -0.1mm;
   background: linear-gradient(135deg, ${colour}38, ${colour}14 55%, #fff 100%); }
 .label.blank { background: none; }
-.bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: right; opacity: 0.64; mix-blend-mode: multiply;
+.bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: right; opacity: ${look.imageAlpha}; mix-blend-mode: multiply;
   -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,0.35), #000 60%); mask-image: linear-gradient(to right, rgba(0,0,0,0.35), #000 60%); }
 .body { position: relative; height: 100%; padding: 5mm 6mm 4.5mm; display: flex; flex-direction: column; }
 .head { text-align: ${align}; ${vpos === 'middle' ? 'margin: auto 0;' : ''} ${qrHtml && !placed ? (align === 'center' ? 'padding: 0 13.5mm;' : 'padding-right: 13.5mm;') : ''} }

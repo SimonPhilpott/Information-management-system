@@ -53,6 +53,28 @@ async function searchPixabay(query, shape, category) {
   return (d.hits || []).map((p) => ({ source: 'pixabay', id: String(p.id), url: p.largeImageURL || p.webformatURL, page: p.pageURL, credit: p.user, alt: p.tags || '' }));
 }
 
+export async function searchPixabayPhotos(query, { perPage = 24, page = 1 } = {}) {
+  const key = keyFor('PIXABAY_API_KEY');
+  if (!key) throw new Error('Pixabay API key not configured. Set PIXABAY_API_KEY in .env or settings.');
+  const q = String(query || '').trim();
+  if (!q) return { hits: [], total: 0 };
+  const u = `https://pixabay.com/api/?key=${encodeURIComponent(key)}&q=${encodeURIComponent(q)}&image_type=photo&per_page=${Math.min(50, Math.max(3, perPage))}&page=${Math.max(1, page)}&safesearch=true&orientation=horizontal`;
+  const res = await fetch(u, { signal: AbortSignal.timeout(20000) });
+  if (!res.ok) throw new Error(`Pixabay returned HTTP ${res.status}`);
+  const d = await res.json();
+  const hits = (d.hits || []).map((p) => ({
+    id: String(p.id),
+    previewUrl: p.previewURL,
+    url: p.largeImageURL || p.webformatURL,
+    page: p.pageURL,
+    credit: p.user,
+    tags: p.tags || '',
+    width: p.imageWidth,
+    height: p.imageHeight,
+  }));
+  return { hits, total: d.totalHits || hits.length };
+}
+
 // does a photo's tags / description name every word that matters in the query? ("Strawberries" -> strawberry)
 const STOP = new Set(['plant', 'fresh', 'dried', 'growing', 'the', 'and', 'of', 'a', 'with']);
 const stem = (w) => w.toLowerCase().replace(/(ies)$/, 'y').replace(/(oes|ses|xes)$/, (m) => m.slice(0, -2)).replace(/s$/, '');

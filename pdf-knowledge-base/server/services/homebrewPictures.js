@@ -296,6 +296,19 @@ export async function uploadBanner(buffer) {
   return key;
 }
 
+export async function savePixabayPhoto({ url, id, credit, page, query }) {
+  if (!url) throw new Error('No photo URL provided.');
+  const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+  if (!res.ok) throw new Error(`Couldn't download photo from Pixabay (HTTP ${res.status})`);
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const key = await uploadBanner(buffer);
+  try {
+    db.prepare('INSERT OR REPLACE INTO found_photos (key, source, source_id, page_url, credit, query, found_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(key, 'pixabay', String(id || key), page || null, credit || null, query || 'pixabay search', Date.now());
+  } catch (_) { /* fine */ }
+  return { key };
+}
+
 // ---- Every recipe its own banner, in the background (20 Oct: "give those recipes their unique banner now") --------
 // Works through the recipe book one at a time: picks its main ingredients (a text call, a fraction of a penny) and
 // finds its banner photo (Pexels / Pixabay, free - nothing is generated). Only runs once a photo key is set;

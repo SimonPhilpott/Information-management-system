@@ -3,7 +3,8 @@ import { Router } from 'express';
 import { listBrews, listRecipes, startFromRecipe, saveAsRecipe, setFavourite, CATEGORIES, getBrew, saveBrew, deleteBrew, addLog, deleteLog, addTasting, deleteTasting, brewInsight, whatIf, setNutrientReminders, setStepReminders, STYLES, STATUSES, LOG_KINDS } from '../services/homebrewService.js';
 import { shareRecipe, unshareRecipe, publicBase, recipePdf, labelsPdf, labelsHtml, labelLook, labelQr, listLabelFonts, addLabelFont, removeLabelFont, labelFontFile } from '../services/homebrewShare.js';
 import express from 'express';
-import { mainIngredients, pictureFile, listThemes, uploadBanner, setBannerChoice } from '../services/homebrewPictures.js';
+import { mainIngredients, pictureFile, listThemes, uploadBanner, setBannerChoice, savePixabayPhoto } from '../services/homebrewPictures.js';
+import { searchPixabayPhotos } from '../services/homebrewPhotos.js';
 import { setColourByYou, clearColourByYou, fillColours } from '../services/homebrewColours.js';
 import { listInvites, invite, revokeInvite, recentSignIns, OWNER, personName, canonEmail } from '../services/decksService.js';
 import { isApprovedSession } from '../middleware/requireSession.js';
@@ -43,6 +44,15 @@ router.get('/picture/:key', (req, res) => {
   if (!f || !fs.existsSync(f)) return res.status(404).end();
   res.set('Cache-Control', 'public, max-age=31536000, immutable').sendFile(f);
 });
+// search pixabay for banner photos with thumbnail previews, and save a picked photo
+router.get('/pixabay/search', wrap(async (req) => {
+  const q = req.query.q || '';
+  const page = parseInt(req.query.page, 10) || 1;
+  return searchPixabayPhotos(q, { page, perPage: 24 });
+}));
+router.post('/pixabay/pick', wrap(async (req) => {
+  return savePixabayPhoto(req.body || {});
+}));
 // a brew made from a recipe shows the recipe's main ingredients and banner
 router.get('/:id/main-ingredients', wrap((req) => { const brew = getBrew(req.params.id); if (!brew) throw new Error('No such brew'); return mainIngredients((brew.fromRecipe && getBrew(brew.fromRecipe)) || brew); }));
 // the lettering to choose from for labels
