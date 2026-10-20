@@ -174,6 +174,9 @@ router.put('/port', (req, res) => {
 // 7. Ngrok Tunnel Management
 let ngrokListener = null;
 
+// the tunnel's public address while it's running (for links people outside can open), else null
+export const ngrokUrl = () => (ngrokListener ? ngrokListener.url() : null);
+
 export const startNgrok = async (force = false) => {
   // If not forced (auto-start on boot), check if user actually wants it enabled
   if (!force && !isNgrokEnabled()) {

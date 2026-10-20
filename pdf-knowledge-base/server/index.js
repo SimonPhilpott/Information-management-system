@@ -86,6 +86,7 @@ import { startPresence, onPresence, getPresence } from './services/presenceServi
 import { dueNow as instructionsDue, forPeople as instructionsForPeople, markFired as markInstructionFired } from './services/imsInstructionsService.js';
 import imsInstructionsRoutes from './routes/imsInstructions.js';
 import homebrewRoutes from './routes/homebrew.js';
+import recipeShareRoutes from './routes/recipeShare.js';
 import { startWakeGate } from './services/wakeGateService.js';
 import { live, thinkDeliverers } from './live/state.js';
 import { handleLiveProxyConnection, setPushScheduleStatus, deliverInstructionsNow } from './live/liveProxy.js';
@@ -233,6 +234,8 @@ const requireAdmin = (req, res, next) => {
   if (req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1') return next();
   // the Start run button on a phone notification: guarded by its one-time token instead (routes/runStart.js)
   if (req.path.startsWith('/api/run-start/')) return next();
+  // a recipe Simon has shared (WhatsApp etc.): that one recipe, found by its unguessable token (routes/recipeShare.js)
+  if (req.path.startsWith('/api/share/recipe/')) return next();
   if (isApprovedSession(req)) return next();
   // Invited guests: the deck builder only, never invites or anything else in IMS.
   if (isGuestSession(req) && req.path.startsWith('/api/decks/') && !req.path.startsWith('/api/decks/invites')) return next();
@@ -272,6 +275,7 @@ app.use('/api/news', newsRoutes);
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/ims-instructions', imsInstructionsRoutes);
 app.use('/api/homebrew', homebrewRoutes);
+app.use('/api/share', recipeShareRoutes); // public: shared recipes only
 app.use('/api/dev-ideas', devIdeasRoutes);
 app.use('/api/decks/campaigns', campaignsRoutes);  // campaign tracking - part of the deck builder, so guests can use it
 app.use('/api/decks', decksRoutes);

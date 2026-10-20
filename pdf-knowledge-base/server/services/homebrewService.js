@@ -2,6 +2,12 @@ import db from '../db/database.js';
 import config from '../config.js';
 import { GoogleGenerativeAI } from './geminiClient.js';
 import { getModelFor } from './modelRegistry.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { tagRecipes, splitName, variantLabel, normSweetness, COLOUR_OF_CAT, estimateAbv, profileOf } from './homebrewTags.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Homebrew (/ims/homebrew, Personal): Simon's mead, braggot and other brews - the recipe, everything that happened
 // to each batch (readings, nutrient additions, racking, stabilising, bottling), how it tasted as it aged, and
@@ -64,24 +70,82 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_brew_tastings_brew ON brew_tastings(brew_id, at);
 `);
 // the kind of drink; recipe-book entries (common recipes and ones he keeps) and where a recipe came from
-for (const col of ['category TEXT', 'is_recipe INTEGER NOT NULL DEFAULT 0', 'source_name TEXT', 'source_url TEXT', 'from_recipe INTEGER']) {
+for (const col of ['category TEXT', 'is_recipe INTEGER NOT NULL DEFAULT 0', 'source_name TEXT', 'source_url TEXT', 'from_recipe INTEGER', 'favourite INTEGER NOT NULL DEFAULT 0',
+  // recipe families (same drink from different books, one card), version label, wine colour tag, where the sweetness came from
+  'family TEXT', 'variant TEXT', 'colour TEXT', 'sweetness_basis TEXT']) {
   try { db.exec(`ALTER TABLE brews ADD COLUMN ${col}`); } catch (_) { /* already there */ }
 }
 
+// Braggots are beers (beer strength, malt-based) - move any filed as mead
+try {
+  db.prepare("UPDATE brews SET category = 'beer', style = 'Braggot (honey beer)' WHERE style = 'Braggot (malt mead)'").run();
+} catch (_) { /* nothing to move */ }
+
 // The kinds of drink, each with its styles - all made from scratch (no kits)
+// Replaced legacy Rose and other wines with Richard W. Bender's Wild Winemaking categories:
+// Fruit & vegetable wine, Flower & herb wine, Hot pepper wine (cannabis wines excluded)
 export const CATEGORIES = [
-  { id: 'white_wine', label: 'White wine', styles: ['Grape (white)', 'Elderflower', 'Gooseberry', 'Dandelion', 'Apple', 'Pear (perry-style)', 'Parsnip', 'Other white'] },
+  { id: 'white_wine', label: 'White wine', styles: ['Grape (white)', 'Gooseberry', 'Apple', 'Pear (perry-style)', 'Parsnip', 'Other white'] },
   { id: 'red_wine', label: 'Red wine', styles: ['Grape (red)', 'Blackberry', 'Elderberry', 'Damson', 'Plum', 'Blackcurrant', 'Other red'] },
-  { id: 'rose_wine', label: 'Rosé & other wines', styles: ['Rosé', 'Rhubarb', 'Strawberry', 'Raspberry', 'Fortified / port-style', 'Sparkling', 'Other wine'] },
-  { id: 'mead', label: 'Mead', styles: ['Traditional mead', 'Melomel (fruit mead)', 'Metheglin (spiced mead)', 'Cyser (apple mead)', 'Pyment (grape mead)', 'Braggot (malt mead)', 'Bochet (caramelised honey)', 'Other mead'] },
-  { id: 'beer', label: 'Beer', styles: ['Bitter', 'Pale ale / IPA', 'Golden ale', 'Mild', 'Brown ale', 'Lager', 'Wheat beer', 'Herb / foraged beer', 'Other beer'] },
+  // Red, White and Rosé are also colour tags: every wine is tagged with its colour, so these show all wines of that colour
+  { id: 'rose_wine', label: 'Rosé wine', styles: ['Grape (rosé)', 'Strawberry', 'Raspberry', 'Redcurrant', 'Rhubarb', 'Other rosé'] },
+  { id: 'fruit_veg_wine', label: 'Fruit & vegetable wine', styles: ['Berry wine', 'Stone fruit (Peach / Plum / Cherry)', 'Pome fruit (Apple / Pear)', 'Citrus wine', 'Tropical fruit', 'Rhubarb / Blend', 'Vegetable wine (Kale / Tomato)', 'Sake-style (Squash / Pumpkin / Rice)', 'Cereal wine (Wheat / Barley / Rice)', 'Sparkling fruit wine', 'Other fruit & vegetable'] },
+  { id: 'flower_herb_wine', label: 'Flower & herb wine', styles: ['Dandelion', 'Elderflower', 'Flower wine (Rose / Jasmine / Lavender)', 'Herb wine (Basil / Thyme / Rosemary)', 'Mint wine (Peppermint / Spearmint)', 'Tea & botanical wine', 'Other flower & herb'] },
+  { id: 'hot_pepper_wine', label: 'Hot pepper wine', styles: ['Citrus & hot pepper', 'Sweet fruit & pepper', 'Mole & chocolate pepper', 'Tomato & pepper', 'Superhot pepper (Ghost / Habanero)', 'Mild / Medium pepper', 'Other hot pepper'] },
+  { id: 'mead', label: 'Mead', styles: ['Traditional mead', 'Melomel (fruit mead)', 'Metheglin (spiced mead)', 'Cyser (apple mead)', 'Pyment (grape mead)', 'Bochet (caramelised honey)', 'Other mead'] },
+  { id: 'beer', label: 'Beer', styles: ['Bitter', 'Pale ale / IPA', 'Golden ale', 'Mild', 'Brown ale', 'Lager', 'Wheat beer', 'Braggot (honey beer)', 'Herb / foraged beer', 'Other beer'] },
   { id: 'stout', label: 'Stout', styles: ['Dry stout', 'Sweet / milk stout', 'Oatmeal stout', 'Imperial stout', 'Porter', 'Other stout'] },
   { id: 'cider', label: 'Cider', styles: ['Cider', 'Perry', 'Fruit cider', 'Other cider'] },
+  { id: 'soda', label: 'Wild soda & kvass', styles: ['Wild soda', 'Root beer', 'Ginger beer', 'Kvass', 'Tepache, smreka & folk drinks', 'Lacto-fermented soda', 'Starter / bug', 'Other soda'] },
 ];
 export const STYLES = CATEGORIES.flatMap((c) => c.styles);
 const categoryOfStyle = (style) => (CATEGORIES.find((c) => c.styles.includes(style)) || {}).id || null;
 export const STATUSES = ['planning', 'fermenting', 'conditioning', 'bottled', 'finished', 'dumped'];
 export const LOG_KINDS = ['reading', 'nutrient', 'degas', 'addition', 'rack', 'stabilise', 'backsweeten', 'bottle', 'note'];
+
+// Auto-seed recipes from Wild Winemaking (Richard W. Bender) if not already present
+try {
+  const existingWildCount = db.prepare("SELECT COUNT(*) AS c FROM brews WHERE is_recipe = 1 AND source_name = 'Wild Winemaking (Richard W. Bender)'").get()?.c || 0;
+  if (existingWildCount === 0) {
+    const recipesFile = path.join(__dirname, '..', 'data', 'wild_winemaking_recipes.json');
+    if (fs.existsSync(recipesFile)) {
+      const items = JSON.parse(fs.readFileSync(recipesFile, 'utf8'));
+      const insert = db.prepare(`
+        INSERT INTO brews (name, style, category, status, batch_litres, ingredients, yeast, carbonation, method, notes, source_name, source_url, is_recipe, created_at, updated_at)
+        VALUES (@name, @style, @category, @status, @batch_litres, @ingredients, @yeast, @carbonation, @method, @notes, @source_name, @source_url, @is_recipe, @created_at, @updated_at)
+      `);
+      const insertAll = db.transaction((list) => {
+        const now = Date.now();
+        for (const it of list) {
+          insert.run({
+            name: it.name,
+            style: it.style,
+            category: it.category,
+            status: it.status || 'planning',
+            batch_litres: it.batch_litres || 4.5,
+            ingredients: JSON.stringify(it.ingredients || []),
+            yeast: it.yeast || null,
+            carbonation: it.carbonation || 'still',
+            method: it.method || '',
+            notes: it.notes || null,
+            source_name: it.source_name || 'Wild Winemaking (Richard W. Bender)',
+            source_url: it.source_url || null,
+            is_recipe: 1,
+            created_at: now,
+            updated_at: now
+          });
+        }
+      });
+      insertAll(items);
+      console.log(`[Homebrew] Seeded ${items.length} recipes from Wild Winemaking.`);
+    }
+  }
+} catch (err) {
+  console.warn('[Homebrew] Seeding Wild Winemaking recipes notice:', err.message);
+}
+
+// tag recipes with their family, version, colour and sweetness - all of them the first time, then any new ones
+try { const n = tagRecipes(db); if (n) console.log(`[Homebrew] Tagged ${n} recipes (family, colour, sweetness).`); } catch (err) { console.warn('[Homebrew] Tagging recipes:', err.message); }
 
 const num = (v) => (v === '' || v === null || v === undefined || Number.isNaN(Number(v)) ? null : Number(v));
 const json = (s, d) => { try { return JSON.parse(s || ''); } catch { return d; } };
@@ -104,9 +168,10 @@ function present(r, { full = false } = {}) {
   const fgNow = r.fg || latest;
   const a = abv(og, r.fg || latest);
   const out = {
-    id: r.id, name: r.name, style: r.style, category: r.category || categoryOfStyle(r.style), isRecipe: Boolean(r.is_recipe), sourceName: r.source_name, sourceUrl: r.source_url, fromRecipe: r.from_recipe, status: r.status, batchLitres: r.batch_litres, startedOn: r.started_on, bottledOn: r.bottled_on,
+    id: r.id, name: r.name, style: r.style, category: r.category || categoryOfStyle(r.style), isRecipe: Boolean(r.is_recipe), favourite: Boolean(r.favourite), sourceName: r.source_name, sourceUrl: r.source_url, fromRecipe: r.from_recipe, status: r.status, batchLitres: r.batch_litres, startedOn: r.started_on, bottledOn: r.bottled_on,
     ingredients: json(r.ingredients, []), yeast: r.yeast, yeastNotes: r.yeast_notes, nutrients: r.nutrients, water: r.water,
     targetOg: r.target_og, targetFg: r.target_fg, og: r.og, fg: r.fg, sweetness: r.sweetness, carbonation: r.carbonation,
+    shared: Boolean(r.share_token), sweetnessTag: normSweetness(r.sweetness), sweetnessBasis: r.sweetness_basis, abvEstimate: r.is_recipe && !r.target_og ? estimateAbv(r) : null, ...profileOf(r), colour: r.colour || COLOUR_OF_CAT[r.category] || null, family: r.family, variant: r.variant,
     method: r.method, notes: r.notes, createdAt: r.created_at, updatedAt: r.updated_at,
     calc: {
       latestGravity: latest, abv: a, abvFinal: Boolean(r.fg), potentialAbv: abv(og || r.target_og, r.target_fg || 1.0),
@@ -126,11 +191,11 @@ function present(r, { full = false } = {}) {
 }
 
 export const listBrews = () => db.prepare('SELECT * FROM brews WHERE is_recipe = 0 ORDER BY COALESCE(started_on, date(created_at / 1000, \'unixepoch\')) DESC, id DESC').all().map((r) => present(r));
-export const listRecipes = () => db.prepare('SELECT * FROM brews WHERE is_recipe = 1 ORDER BY category, name').all().map((r) => present(r));
+export const listRecipes = () => (tagRecipes(db), db.prepare('SELECT * FROM brews WHERE is_recipe = 1 ORDER BY category, name').all().map((r) => present(r)));
 export const getBrew = (id) => present(db.prepare('SELECT * FROM brews WHERE id = ?').get(Number(id)), { full: true });
 
 const FIELDS = { name: 'name', style: 'style', category: 'category', sourceName: 'source_name', sourceUrl: 'source_url', status: 'status', batchLitres: 'batch_litres', startedOn: 'started_on', bottledOn: 'bottled_on', yeast: 'yeast', yeastNotes: 'yeast_notes',
-  nutrients: 'nutrients', water: 'water', targetOg: 'target_og', targetFg: 'target_fg', og: 'og', fg: 'fg', sweetness: 'sweetness', carbonation: 'carbonation', method: 'method', notes: 'notes' };
+  nutrients: 'nutrients', water: 'water', targetOg: 'target_og', targetFg: 'target_fg', og: 'og', fg: 'fg', sweetness: 'sweetness', carbonation: 'carbonation', method: 'method', notes: 'notes', colour: 'colour' };
 const NUMERIC = new Set(['batch_litres', 'target_og', 'target_fg', 'og', 'fg']);
 
 export function saveBrew(id, body = {}) {
@@ -141,6 +206,15 @@ export function saveBrew(id, body = {}) {
   if (set.category && !CATEGORIES.some((c) => c.id === set.category)) throw new Error('Unknown category');
   if (set.style && !set.category && !id) set.category = categoryOfStyle(set.style);
   if (body.isRecipe !== undefined) set.is_recipe = body.isRecipe ? 1 : 0;
+  if (set.colour && !['red', 'white', 'rose'].includes(set.colour)) throw new Error('colour must be red, white or rose');
+  const before = id ? db.prepare('SELECT * FROM brews WHERE id = ?').get(Number(id)) : null;
+  // a sweetness he picks himself is his, not the book's or an estimate
+  if (set.sweetness !== undefined && (set.sweetness || null) !== (before?.sweetness || null)) set.sweetness_basis = set.sweetness ? 'you' : null;
+  const isRecipe = set.is_recipe ?? before?.is_recipe;
+  if (isRecipe && (set.name || set.category || set.source_name !== undefined || !id)) {
+    const name = set.name || before?.name, category = set.category || before?.category, source = set.source_name !== undefined ? set.source_name : before?.source_name;
+    if (name) { set.family = splitName(name, category).family; set.variant = variantLabel(name, category, source); }
+  }
   const now = Date.now();
   if (!id) {
     if (!set.name) throw new Error('Give the brew a name.');
@@ -155,7 +229,7 @@ export function saveBrew(id, body = {}) {
   return getBrew(id);
 }
 
-const COPY = ['name', 'style', 'category', 'batch_litres', 'ingredients', 'yeast', 'yeast_notes', 'nutrients', 'water', 'target_og', 'target_fg', 'sweetness', 'carbonation', 'method', 'notes', 'source_name', 'source_url'];
+const COPY = ['name', 'style', 'category', 'batch_litres', 'ingredients', 'yeast', 'yeast_notes', 'nutrients', 'water', 'target_og', 'target_fg', 'sweetness', 'sweetness_basis', 'colour', 'carbonation', 'method', 'notes', 'source_name', 'source_url'];
 function copyBrew(id, { asRecipe }) {
   const r = db.prepare('SELECT * FROM brews WHERE id = ?').get(Number(id));
   if (!r) throw new Error(`No brew #${id}`);
@@ -163,7 +237,14 @@ function copyBrew(id, { asRecipe }) {
   const vals = COPY.map((c) => r[c]);
   const nid = db.prepare(`INSERT INTO brews (${COPY.join(', ')}, is_recipe, status, from_recipe, created_at, updated_at) VALUES (${COPY.map(() => '?').join(', ')}, ?, ?, ?, ?, ?)`)
     .run(...vals, asRecipe ? 1 : 0, 'planning', asRecipe ? null : r.id, now, now).lastInsertRowid;
+  if (asRecipe) tagRecipes(db);
   return getBrew(nid);
+}
+// star a recipe or brew as a favourite (or un-star it)
+export function setFavourite(id, on) {
+  const n = db.prepare('UPDATE brews SET favourite = ? WHERE id = ?').run(on ? 1 : 0, Number(id)).changes;
+  if (!n) throw new Error('No such brew');
+  return present(db.prepare('SELECT * FROM brews WHERE id = ?').get(Number(id)));
 }
 export const startFromRecipe = (id) => copyBrew(id, { asRecipe: false });
 export const saveAsRecipe = (id) => copyBrew(id, { asRecipe: true });
