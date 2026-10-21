@@ -27,6 +27,12 @@ db.exec(`
     sig TEXT NOT NULL,
     items TEXT NOT NULL DEFAULT '[]'
   );
+  CREATE TABLE IF NOT EXISTS brew_ingredient_pictures (
+    name_norm TEXT PRIMARY KEY,
+    name_display TEXT NOT NULL,
+    key TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
 `);
 // the colour the finished drink is expected to be, for the demijohn on the page (added 20 Oct)
 try { db.exec('ALTER TABLE brew_main_ingredients ADD COLUMN colour TEXT'); } catch (_) { /* already there */ }
@@ -36,6 +42,34 @@ const keyOf = (name) => crypto.createHash('sha1').update(`${IMAGE_MODEL}|${norm(
 export const pictureFile = (key) => (/^[a-f0-9]{20}$/.test(key) ? path.join(DIR, `${key}.jpg`) : null);
 const ready = (key) => fs.existsSync(path.join(DIR, `${key}.jpg`));
 const sigOf = (b) => crypto.createHash('sha1').update(JSON.stringify([b.name, b.style, (b.ingredients || []).map((i) => i.name)])).digest('hex').slice(0, 16);
+
+export function getCustomIngredientKey(name) {
+  const n = norm(name);
+  if (!n) return null;
+  const row = db.prepare('SELECT key FROM brew_ingredient_pictures WHERE name_norm = ?').get(n);
+  return row?.key && ready(row.key) ? row.key : null;
+}
+
+export function setCustomIngredientKey(name, key) {
+  const n = norm(name);
+  if (!n) throw new Error('Ingredient name is required.');
+  if (!key) {
+    db.prepare('DELETE FROM brew_ingredient_pictures WHERE name_norm = ?').run(n);
+    return;
+  }
+  if (!pictureFile(key) || !ready(key)) throw new Error('That picture is not available.');
+  db.prepare('INSERT INTO brew_ingredient_pictures (name_norm, name_display, key, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(name_norm) DO UPDATE SET key = excluded.key, updated_at = excluded.updated_at')
+    .run(n, String(name).trim(), key, Date.now());
+}
+
+export function removeCustomIngredientKey(name) {
+  const n = norm(name);
+  if (n) db.prepare('DELETE FROM brew_ingredient_pictures WHERE name_norm = ?').run(n);
+}
+
+export function resolveIngredientKey(name) {
+  return getCustomIngredientKey(name) || keyOf(name);
+}
 
 const picking = new Map(); // brew id -> promise
 async function pickMain(b) {
@@ -215,8 +249,13 @@ export function mainIngredients(b) {
     return { items: [], colour: null, banner: bannerFor(b.id) ? { key: bannerFor(b.id), ready: true } : null, pending: true };
   }
   const picked = JSON.parse(row.items || '[]');
-  const items = picked.map((i) => ({ name: i.name, key: keyOf(i.name), ready: ready(keyOf(i.name)), _i: i }));
-  for (const i of items) if (!i.ready) paint(i._i); // e.g. the server restarted mid-way
+  const items = picked.map((i) => {
+    const customKey = getCustomIngredientKey(i.name);
+    const defKey = keyOf(i.name);
+    const key = customKey || defKey;
+    return { name: i.name, key, ready: ready(key), defaultKey: defKey, customKey, _i: i };
+  });
+  for (const i of items) if (!i.ready && !i.customKey) paint(i._i); // e.g. the server restarted mid-way
   const bannerKey = bannerKeyOf(b, picked);
   if (!ownBanner(b, picked)) paintBanner(b, picked); // (does nothing while pictures are switched off)
   // what the header shows: his own choice, else its own banner, else (while that's being made) its theme's
@@ -234,7 +273,7 @@ const srcOf = (id, fromRecipe) => (fromRecipe && rowStmt.get(fromRecipe) ? fromR
 const pickedOf = (id) => { try { return JSON.parse(rowStmt.get(id)?.items || 'null'); } catch (_) { return null; } };
 export function readyPictures(id, fromRecipe = null) {
   const items = pickedOf(srcOf(id, fromRecipe)) || [];
-  return items.map((i) => ({ name: i.name, key: keyOf(i.name) })).filter((i) => ready(i.key)).slice(0, 3);
+  return items.map((i) => ({ name: i.name, key: resolveIngredientKey(i.name) })).filter((i) => ready(i.key)).slice(0, 3);
 }
 // ---- Which banner a recipe shows ----------------------------------------------------------------------------------
 // His own choice (a theme picture or a photo he uploaded, picked on the recipe form), else the recipe's own banner,
@@ -307,6 +346,130 @@ export async function savePixabayPhoto({ url, id, credit, page, query }) {
       .run(key, 'pixabay', String(id || key), page || null, credit || null, query || 'pixabay search', Date.now());
   } catch (_) { /* fine */ }
   return { key };
+}
+
+const CROP_SQUARE = 'import sys,cv2\nimg=cv2.imread(sys.argv[1])\nh,w=img.shape[:2]\nd=min(h,w)\nx=(w-d)//2;y=(h-d)//2\nimg=img[y:y+d,x:x+d]\nimg=cv2.resize(img,(256,256),interpolation=cv2.INTER_AREA)\ncv2.imwrite(sys.argv[2],img,[cv2.IMWRITE_JPEG_QUALITY,85])';
+
+export async function uploadIngredientPicture(buffer) {
+  if (!buffer?.length) throw new Error('No picture came through.');
+  const key = crypto.createHash('sha1').update(buffer).digest('hex').slice(0, 20);
+  if (ready(key)) return key;
+  fs.mkdirSync(DIR, { recursive: true });
+  const tmp = path.join(DIR, `${key}.upload`);
+  fs.writeFileSync(tmp, buffer);
+  try {
+    await new Promise((resolve, reject) => execFile(PYTHON_EXE, ['-c', CROP_SQUARE, tmp, path.join(DIR, `${key}.jpg`)], { windowsHide: true, timeout: 30000 }, (err) => (err ? reject(new Error('That doesn\'t look like a picture IMS can read - try a JPEG or PNG.')) : resolve())));
+  } finally { try { fs.unlinkSync(tmp); } catch (_) { /* gone */ } }
+  if (!ready(key)) throw new Error('That doesn\'t look like a picture IMS can read - try a JPEG or PNG.');
+  return key;
+}
+
+export async function savePixabayIngredientPhoto({ url, id, credit, page, query, name }) {
+  if (!url) throw new Error('No photo URL provided.');
+  const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+  if (!res.ok) throw new Error(`Couldn't download photo from Pixabay (HTTP ${res.status})`);
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const key = await uploadIngredientPicture(buffer);
+  try {
+    db.prepare('INSERT OR REPLACE INTO found_photos (key, source, source_id, page_url, credit, query, found_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(key, 'pixabay', String(id || key), page || null, credit || null, query || 'pixabay search', Date.now());
+  } catch (_) { /* fine */ }
+  if (name) {
+    setCustomIngredientKey(name, key);
+  }
+  return { key };
+}
+
+export function listAllIngredients() {
+  const customRows = db.prepare('SELECT name_norm, name_display, key FROM brew_ingredient_pictures').all();
+  const customMap = new Map(customRows.map((r) => [r.name_norm, { key: r.key, display: r.name_display }]));
+
+  const map = new Map();
+
+  // 1. Distilled main ingredients from recipes
+  const mainRows = db.prepare('SELECT items FROM brew_main_ingredients').all();
+  for (const r of mainRows) {
+    try {
+      const items = JSON.parse(r.items || '[]');
+      for (const it of items) {
+        if (!it.name) continue;
+        const n = String(it.name).trim();
+        const nm = norm(n);
+        if (!nm) continue;
+        if (!map.has(nm)) {
+          map.set(nm, { name: n, norm: nm, count: 0, isMain: true, types: new Set() });
+        }
+        const entry = map.get(nm);
+        entry.count++;
+        entry.isMain = true;
+      }
+    } catch (_) {}
+  }
+
+  // 2. Ingredients from brews & recipes table
+  const brewRows = db.prepare('SELECT ingredients FROM brews').all();
+  for (const b of brewRows) {
+    try {
+      const ings = JSON.parse(b.ingredients || '[]');
+      for (const i of ings) {
+        if (!i.name) continue;
+        const clean = String(i.name).replace(/\(.*?\)/g, '').trim();
+        if (!clean) continue;
+        const nm = norm(clean);
+        if (!nm) continue;
+        if (!map.has(nm)) {
+          map.set(nm, { name: clean, norm: nm, count: 0, isMain: false, types: new Set() });
+        }
+        const entry = map.get(nm);
+        entry.count++;
+        if (i.type) entry.types.add(i.type);
+      }
+    } catch (_) {}
+  }
+
+  // 3. Any custom-set ingredients
+  for (const [nm, info] of customMap.entries()) {
+    if (!map.has(nm)) {
+      map.set(nm, { name: info.display || nm, norm: nm, count: 0, isMain: false, types: new Set() });
+    }
+  }
+
+  const ingredients = Array.from(map.values()).map((ing) => {
+    const defaultKey = keyOf(ing.name);
+    const customInfo = customMap.get(ing.norm);
+    const customKey = customInfo?.key || null;
+    const currentKey = customKey || defaultKey;
+    const hasImage = ready(currentKey);
+    const defaultReady = ready(defaultKey);
+    return {
+      name: ing.name,
+      norm: ing.norm,
+      count: ing.count,
+      isMain: ing.isMain,
+      type: Array.from(ing.types)[0] || (ing.isMain ? 'main' : 'other'),
+      types: Array.from(ing.types),
+      defaultKey,
+      defaultReady,
+      customKey,
+      currentKey,
+      hasImage,
+      hasCustom: Boolean(customKey),
+    };
+  });
+
+  ingredients.sort((a, b) => {
+    if (a.isMain !== b.isMain) return a.isMain ? -1 : 1;
+    if (b.count !== a.count) return b.count - a.count;
+    return a.name.localeCompare(b.name);
+  });
+
+  return {
+    ingredients,
+    totalCount: ingredients.length,
+    withImageCount: ingredients.filter((i) => i.hasImage).length,
+    customCount: ingredients.filter((i) => i.hasCustom).length,
+    mainCount: ingredients.filter((i) => i.isMain).length,
+  };
 }
 
 // ---- Every recipe its own banner, in the background (20 Oct: "give those recipes their unique banner now") --------

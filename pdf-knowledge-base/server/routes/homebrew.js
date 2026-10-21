@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { listBrews, listRecipes, startFromRecipe, saveAsRecipe, setFavourite, CATEGORIES, getBrew, saveBrew, deleteBrew, addLog, deleteLog, addTasting, deleteTasting, brewInsight, whatIf, setNutrientReminders, setStepReminders, STYLES, STATUSES, LOG_KINDS } from '../services/homebrewService.js';
 import { shareRecipe, unshareRecipe, publicBase, recipePdf, labelsPdf, labelsHtml, labelLook, labelQr, listLabelFonts, addLabelFont, removeLabelFont, labelFontFile } from '../services/homebrewShare.js';
 import express from 'express';
-import { mainIngredients, pictureFile, listThemes, uploadBanner, setBannerChoice, savePixabayPhoto } from '../services/homebrewPictures.js';
+import { mainIngredients, pictureFile, listThemes, uploadBanner, setBannerChoice, savePixabayPhoto, listAllIngredients, setCustomIngredientKey, removeCustomIngredientKey, uploadIngredientPicture, savePixabayIngredientPhoto } from '../services/homebrewPictures.js';
 import { searchPixabayPhotos } from '../services/homebrewPhotos.js';
 import { setColourByYou, clearColourByYou, fillColours } from '../services/homebrewColours.js';
 import { listInvites, invite, revokeInvite, recentSignIns, OWNER, personName, canonEmail } from '../services/decksService.js';
@@ -52,6 +52,24 @@ router.get('/pixabay/search', wrap(async (req) => {
 }));
 router.post('/pixabay/pick', wrap(async (req) => {
   return savePixabayPhoto(req.body || {});
+}));
+// Admin: ingredient image management (list, custom image, upload square, pick Pixabay)
+router.get('/admin/ingredients', onlyOwner, wrap(() => listAllIngredients()));
+router.post('/admin/ingredients/custom', onlyOwner, wrap((req) => {
+  setCustomIngredientKey(req.body?.name, req.body?.key);
+  return { success: true, key: req.body?.key };
+}));
+router.delete('/admin/ingredients/custom/:name', onlyOwner, wrap((req) => {
+  removeCustomIngredientKey(req.params.name);
+  return { success: true };
+}));
+router.post('/admin/ingredients/upload', onlyOwner, express.raw({ type: ['image/*', 'application/octet-stream'], limit: '15mb' }), wrap(async (req) => {
+  const key = await uploadIngredientPicture(req.body);
+  if (req.query.name) setCustomIngredientKey(req.query.name, key);
+  return { key };
+}));
+router.post('/admin/ingredients/pixabay/pick', onlyOwner, wrap(async (req) => {
+  return savePixabayIngredientPhoto(req.body || {});
 }));
 // a brew made from a recipe shows the recipe's main ingredients and banner
 router.get('/:id/main-ingredients', wrap((req) => { const brew = getBrew(req.params.id); if (!brew) throw new Error('No such brew'); return mainIngredients((brew.fromRecipe && getBrew(brew.fromRecipe)) || brew); }));

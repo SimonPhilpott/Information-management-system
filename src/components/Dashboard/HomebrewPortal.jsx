@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useFocusItem } from '../../hooks/useFocusItem';
-import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, ExternalLink, Copy, ChevronUp, ChevronDown, ChevronRight, ArrowLeft, ScrollText, Activity, Wine, Star, Heart, Share2, Send, FileDown, Link2, Printer, Image as ImageIcon, UserPlus, Users, Mail, User, Check, RefreshCw, Filter, Search, SlidersHorizontal, RotateCcw, ArrowUpDown } from 'lucide-react';
+import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, ExternalLink, Copy, ChevronUp, ChevronDown, ChevronRight, ArrowLeft, ScrollText, Activity, Wine, Star, Heart, Share2, Send, FileDown, Link2, Printer, Image as ImageIcon, UserPlus, Users, Mail, User, Check, RefreshCw, Filter, Search, SlidersHorizontal, RotateCcw, ArrowUpDown, Camera, Settings, Layers } from 'lucide-react';
 import PortalShell from './PortalShell';
 import { glossMatches, glossTerms } from './brewGlossary';
 import { useAuth } from '../../AuthGate';
@@ -1519,10 +1519,806 @@ function HomebrewInviteModal({ isOpen, onClose, isDark, toast }) {
   );
 }
 
+// Ingredient picture picker modal: works like PicturePicker for ingredients.
+// Allows choosing the default system photo, uploading your own square photo, or searching Pixabay.
+function IngredientPicturePickerModal({ ingredient, isOpen, onClose, onUpdated, isDark, border, notify }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [showPixabay, setShowPixabay] = useState(true);
+  const [pixabayQuery, setPixabayQuery] = useState(ingredient?.name || '');
+  const [pixabayResults, setPixabayResults] = useState([]);
+  const [pixabayBusy, setPixabayBusy] = useState(false);
+  const [pixabayErr, setPixabayErr] = useState('');
+  const [pickingId, setPickingId] = useState(null);
+
+  useEffect(() => {
+    if (!isOpen || !ingredient) return;
+    setPixabayQuery(ingredient.name || '');
+    setErr('');
+    setPixabayErr('');
+    searchPixabay(ingredient.name || '');
+  }, [isOpen, ingredient?.name]);
+
+  if (!isOpen || !ingredient) return null;
+
+  const searchPixabay = async (q) => {
+    const term = (q !== undefined ? q : pixabayQuery).trim();
+    if (!term) return;
+    setPixabayBusy(true);
+    setPixabayErr('');
+    try {
+      const res = await fetch(`/api/homebrew/pixabay/search?q=${encodeURIComponent(term)}`);
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Couldn't search Pixabay.");
+      setPixabayResults(d.hits || []);
+      if (!d.hits?.length) setPixabayErr(`No photos found for "${term}". Try another search term.`);
+    } catch (e) {
+      setPixabayErr(e.message);
+    } finally {
+      setPixabayBusy(false);
+    }
+  };
+
+  const upload = async (file) => {
+    if (!file) return;
+    setBusy(true);
+    setErr('');
+    try {
+      const res = await fetch(`/api/homebrew/admin/ingredients/upload?name=${encodeURIComponent(ingredient.name)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: file,
+      });
+      const d = await res.json();
+      if (!res.ok || !d.key) throw new Error(d.error || "Couldn't use that picture.");
+      onUpdated({ ...ingredient, customKey: d.key, currentKey: d.key, hasImage: true, hasCustom: true });
+      if (notify) notify(`Updated image for ${ingredient.name}`, 'success');
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pickPixabay = async (hit) => {
+    setPickingId(hit.id);
+    setPixabayErr('');
+    try {
+      const res = await fetch('/api/homebrew/admin/ingredients/pixabay/pick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: hit.url,
+          id: hit.id,
+          credit: hit.credit,
+          page: hit.page,
+          tags: hit.tags,
+          query: pixabayQuery || hit.tags,
+          name: ingredient.name,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.key) throw new Error(d.error || "Couldn't use that photo.");
+      onUpdated({ ...ingredient, customKey: d.key, currentKey: d.key, hasImage: true, hasCustom: true });
+      if (notify) notify(`Saved Pixabay image for ${ingredient.name}`, 'success');
+    } catch (e) {
+      setPixabayErr(e.message);
+    } finally {
+      setPickingId(null);
+    }
+  };
+
+  const resetToDefault = async () => {
+    setBusy(true);
+    setErr('');
+    try {
+      const res = await fetch(`/api/homebrew/admin/ingredients/custom/${encodeURIComponent(ingredient.name)}`, { method: 'DELETE' });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Couldn't reset image.");
+      onUpdated({ ...ingredient, customKey: null, currentKey: ingredient.defaultKey, hasImage: ingredient.defaultReady, hasCustom: false });
+      if (notify) notify(`Restored default image for ${ingredient.name}`, 'success');
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const suggestions = Array.from(new Set([
+    ingredient.name,
+    ingredient.name.replace(/\b(dried|fresh|crushed|whole|chopped|raw|flaked|extract|syrup|juice)\b/gi, '').trim(),
+    ingredient.name.split(/\s+/).slice(-1)[0],
+  ].filter(Boolean))).slice(0, 4);
+
+  const tile = (on) => `relative shrink-0 w-28 h-20 rounded-xl overflow-hidden border-2 transition cursor-pointer ${on ? 'border-amber-500 shadow-md shadow-amber-500/20' : `${border} hover:border-amber-500/50`}`;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className={`relative w-full max-w-2xl max-h-[90vh] rounded-3xl border ${border} ${isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'} shadow-2xl flex flex-col overflow-hidden`}>
+        {/* Header */}
+        <div className={`p-4 border-b ${border} flex items-center justify-between shrink-0`}>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`w-14 h-14 rounded-full overflow-hidden shrink-0 border-2 border-amber-500 shadow-sm ${isDark ? 'bg-slate-800' : 'bg-amber-50'}`}>
+              {ingredient.hasImage ? (
+                <img src={`/api/homebrew/picture/${ingredient.currentKey}`} alt={ingredient.name} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-amber-500 font-bold">
+                  <Sparkles size={20} />
+                </div>
+              )}
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-base font-extrabold flex items-center gap-2 truncate">
+                <span className="truncate">{ingredient.name}</span>
+                {ingredient.hasCustom && (
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-500 border border-amber-500/30 shrink-0">
+                    Custom Photo
+                  </span>
+                )}
+              </h3>
+              <p className="text-xs text-slate-500 truncate">Choose default image, upload an image, or search Pixabay</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition shrink-0 cursor-pointer">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Modal Scrollable Body */}
+        <div className="p-4 overflow-y-auto space-y-4">
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 block">
+              Image source
+            </label>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {/* Default Tile */}
+              <button
+                type="button"
+                onClick={resetToDefault}
+                disabled={busy}
+                className={tile(!ingredient.hasCustom)}
+                title="Use system default image"
+              >
+                {ingredient.defaultReady ? (
+                  <img src={`/api/homebrew/picture/${ingredient.defaultKey}`} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                ) : (
+                  <span className={`absolute inset-0 flex items-center justify-center ${isDark ? 'bg-slate-800 text-slate-500' : 'bg-amber-50 text-slate-400'}`}>
+                    <Sparkles size={16} />
+                  </span>
+                )}
+                <span className="absolute inset-x-0 bottom-0 text-[10px] font-bold text-white bg-black/60 px-1.5 py-0.5 flex items-center justify-between">
+                  <span>System default</span>
+                  {!ingredient.hasCustom && <Check size={10} className="text-amber-400" />}
+                </span>
+              </button>
+
+              {/* Your Picture Tile (if custom) */}
+              {ingredient.hasCustom && (
+                <button
+                  type="button"
+                  className={tile(true)}
+                  title="Your custom photo"
+                >
+                  <img src={`/api/homebrew/picture/${ingredient.customKey}`} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                  <span className="absolute inset-x-0 bottom-0 text-[10px] font-bold text-white bg-black/60 px-1.5 py-0.5 flex items-center justify-between">
+                    <span>Your picture</span>
+                    <Check size={10} className="text-amber-400" />
+                  </span>
+                </button>
+              )}
+
+              {/* Upload Tile */}
+              <label className={`${tile(false)} cursor-pointer flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-amber-500 ${isDark ? 'bg-slate-950/50' : 'bg-white'}`} title="Upload your own photo">
+                {busy ? <RotateCw size={16} className="animate-spin text-amber-500" /> : <Plus size={16} />}
+                <span className="text-[10px] font-bold">Upload own</span>
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
+              </label>
+
+              {/* Pixabay Toggle Tile */}
+              <button
+                type="button"
+                onClick={() => setShowPixabay(!showPixabay)}
+                className={`${tile(showPixabay)} flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-amber-500 ${isDark ? 'bg-slate-950/50' : 'bg-white'}`}
+                title="Search photos on Pixabay"
+              >
+                <Search size={16} className={showPixabay ? 'text-amber-500' : ''} />
+                <span className="text-[10px] font-bold">Search Pixabay</span>
+              </button>
+            </div>
+            {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
+          </div>
+
+          {/* Pixabay Search Box */}
+          {showPixabay && (
+            <div className={`p-3.5 rounded-2xl border ${border} ${isDark ? 'bg-slate-950/60' : 'bg-amber-50/40'} flex flex-col gap-2.5`}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold">
+                  <Search size={14} className="text-amber-500" />
+                  <span>Search Pixabay Photos</span>
+                </div>
+                <a href="https://pixabay.com" target="_blank" rel="noopener noreferrer" className="text-[10px] text-slate-400 hover:text-amber-500 flex items-center gap-1">
+                  pixabay.com <ExternalLink size={9} />
+                </a>
+              </div>
+
+              <form onSubmit={(e) => { e.preventDefault(); searchPixabay(); }} className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={pixabayQuery}
+                    onChange={(e) => setPixabayQuery(e.target.value)}
+                    placeholder={`Search photos for ${ingredient.name}...`}
+                    className={`w-full text-xs pl-8 pr-7 py-2 rounded-xl border ${border} outline-none focus:border-amber-500 ${isDark ? 'bg-slate-900 text-slate-100 placeholder-slate-500' : 'bg-white text-slate-900 placeholder-slate-400'}`}
+                  />
+                  {pixabayQuery && (
+                    <button type="button" onClick={() => setPixabayQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+                <button
+                  type="submit"
+                  disabled={pixabayBusy || !pixabayQuery.trim()}
+                  className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 transition shrink-0 cursor-pointer"
+                >
+                  {pixabayBusy ? <RotateCw size={13} className="animate-spin" /> : <Search size={13} />}
+                  <span>Search</span>
+                </button>
+              </form>
+
+              {suggestions.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Try:</span>
+                  {suggestions.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => { setPixabayQuery(s); searchPixabay(s); }}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${border} text-slate-500 hover:text-amber-500 hover:border-amber-500 transition capitalize ${isDark ? 'bg-slate-900/60' : 'bg-white'}`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {pixabayBusy && (
+                <div className="flex items-center justify-center py-6 text-xs text-slate-400 gap-2">
+                  <RotateCw size={14} className="animate-spin text-amber-500" />
+                  <span>Searching Pixabay for photos...</span>
+                </div>
+              )}
+
+              {pixabayErr && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 py-1">{pixabayErr}</p>
+              )}
+
+              {!pixabayBusy && pixabayResults.length > 0 && (
+                <div>
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                    Results ({pixabayResults.length} photos) - click a photo to set as {ingredient.name}
+                  </div>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 max-h-60 overflow-y-auto p-1">
+                    {pixabayResults.map((p) => {
+                      const isPicking = pickingId === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          disabled={Boolean(pickingId)}
+                          onClick={() => pickPixabay(p)}
+                          title={`Photo by ${p.credit} on Pixabay: ${p.tags}`}
+                          className="group relative aspect-square rounded-xl overflow-hidden border border-black/10 dark:border-white/10 hover:border-amber-500 hover:shadow-md transition text-left cursor-pointer bg-black/5"
+                        >
+                          <img
+                            src={p.previewUrl}
+                            alt={p.tags}
+                            loading="lazy"
+                            className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                          />
+                          <span className="absolute inset-x-0 bottom-0 bg-black/60 text-white text-[9px] px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                            {p.credit}
+                          </span>
+                          {isPicking && (
+                            <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                              <RotateCw size={16} className="animate-spin text-amber-400" />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className={`p-4 border-t ${border} flex items-center justify-between shrink-0 ${isDark ? 'bg-slate-950/40' : 'bg-slate-50'}`}>
+          {ingredient.hasCustom ? (
+            <button
+              type="button"
+              onClick={resetToDefault}
+              disabled={busy}
+              className="text-xs font-bold text-rose-500 hover:text-rose-600 flex items-center gap-1 cursor-pointer"
+            >
+              <RotateCcw size={13} /> Reset to system default
+            </button>
+          ) : (
+            <span className="text-xs text-slate-400">Using system default</span>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs cursor-pointer shadow-md shadow-amber-500/20 active:scale-95 transition"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Homebrew Administration screen: ingredients image manager with double-sized previews,
+// search, filter, and placeholders for future admin sections.
+function HomebrewAdminSection({ isDark, border, panel, field, onClose, notify, onReloadNeeded }) {
+  const [adminTab, setAdminTab] = useState('ingredients');
+  const [ingredients, setIngredients] = useState([]);
+  const [metrics, setMetrics] = useState({ totalCount: 0, withImageCount: 0, customCount: 0, mainCount: 0 });
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+  const [search, setSearch] = useState('');
+  const [scope, setScope] = useState('main'); // 'main' | 'all'
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'with-photo' | 'no-photo' | 'custom'
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [pickerIng, setPickerIng] = useState(null);
+  const [visibleLimit, setVisibleLimit] = useState(60);
+
+  const loadIngredients = useCallback(async () => {
+    setLoading(true);
+    setErr('');
+    try {
+      const res = await fetch('/api/homebrew/admin/ingredients');
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Failed to load ingredients.');
+      setIngredients(d.ingredients || []);
+      setMetrics({
+        totalCount: d.totalCount || 0,
+        withImageCount: d.withImageCount || 0,
+        customCount: d.customCount || 0,
+        mainCount: d.mainCount || 0,
+      });
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadIngredients();
+  }, [loadIngredients]);
+
+  const handleUpdated = (updated) => {
+    setIngredients((prev) => prev.map((x) => (x.norm === updated.norm ? updated : x)));
+    setPickerIng(updated);
+    setMetrics((m) => {
+      const old = ingredients.find((x) => x.norm === updated.norm);
+      let imgDelta = 0;
+      if (updated.hasImage && !old?.hasImage) imgDelta = 1;
+      else if (!updated.hasImage && old?.hasImage) imgDelta = -1;
+      let custDelta = 0;
+      if (updated.hasCustom && !old?.hasCustom) custDelta = 1;
+      else if (!updated.hasCustom && old?.hasCustom) custDelta = -1;
+      return {
+        ...m,
+        withImageCount: m.withImageCount + imgDelta,
+        customCount: m.customCount + custDelta,
+      };
+    });
+    if (onReloadNeeded) onReloadNeeded();
+  };
+
+  const filtered = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return ingredients.filter((ing) => {
+      if (scope === 'main' && !ing.isMain) return false;
+      if (statusFilter === 'with-photo' && !ing.hasImage) return false;
+      if (statusFilter === 'no-photo' && ing.hasImage) return false;
+      if (statusFilter === 'custom' && !ing.hasCustom) return false;
+      if (categoryFilter !== 'all') {
+        const matchesType = ing.type === categoryFilter || (ing.types || []).includes(categoryFilter);
+        if (!matchesType) return false;
+      }
+      if (q && !ing.name.toLowerCase().includes(q) && !ing.norm.includes(q)) return false;
+      return true;
+    });
+  }, [ingredients, search, scope, statusFilter, categoryFilter]);
+
+  const displayed = filtered.slice(0, visibleLimit);
+
+  const categories = [
+    { id: 'all', label: 'All types' },
+    { id: 'fruit', label: 'Fruit 🍎' },
+    { id: 'hops', label: 'Hops 🍺' },
+    { id: 'grain', label: 'Grains & malts 🌾' },
+    { id: 'honey', label: 'Honey & sugars 🍯' },
+    { id: 'spice', label: 'Spices & roots 🫚' },
+    { id: 'herbs', label: 'Herbs & flowers 🌿' },
+    { id: 'other', label: 'Other 🧪' },
+  ];
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Header bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-black/10 dark:border-white/10">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition active:scale-95 ${border} ${isDark ? 'bg-slate-900/60 hover:bg-white/10 text-slate-300' : 'bg-white hover:bg-black/5 text-[#2E2B27]'}`}
+          >
+            <ArrowLeft size={14} />
+            <span>Back to Homebrew</span>
+          </button>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight flex items-center gap-2">
+              <span>Homebrew Administration</span>
+            </h1>
+            <p className="text-xs text-slate-500">
+              Ingredient imagery, recipe catalogue management and service settings
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={loadIngredients}
+            disabled={loading}
+            title="Refresh ingredient catalogue"
+            className={`p-2 rounded-xl border ${border} ${isDark ? 'bg-slate-900/60 hover:bg-white/10' : 'bg-white hover:bg-black/5'} text-slate-400 hover:text-amber-500 transition`}
+          >
+            <RotateCw size={14} className={loading ? 'animate-spin text-amber-500' : ''} />
+          </button>
+        </div>
+      </div>
+
+      {/* Navigation tabs for admin sections */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-black/10 dark:border-white/10">
+        <button
+          type="button"
+          onClick={() => setAdminTab('ingredients')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition shrink-0 ${
+            adminTab === 'ingredients'
+              ? 'bg-amber-500 text-white shadow-md shadow-amber-500/20'
+              : isDark
+                ? 'bg-slate-900/40 text-slate-400 hover:text-white border border-white/5'
+                : 'bg-white text-slate-600 hover:text-black border border-black/10'
+          }`}
+        >
+          <span>🌿 Ingredients</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${adminTab === 'ingredients' ? 'bg-white/25 text-white' : 'bg-black/10 dark:bg-white/10'}`}>
+            {metrics.totalCount || ingredients.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          disabled
+          className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 opacity-50 cursor-not-allowed shrink-0 border border-dashed border-black/10 dark:border-white/10 text-slate-400"
+          title="Coming in future update"
+        >
+          <span>📖 Styles &amp; Categories</span>
+          <span className="text-[9px] uppercase px-1.5 py-0.5 rounded-full bg-slate-500/20 text-slate-400 font-bold">Planned</span>
+        </button>
+
+        <button
+          type="button"
+          disabled
+          className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 opacity-50 cursor-not-allowed shrink-0 border border-dashed border-black/10 dark:border-white/10 text-slate-400"
+          title="Coming in future update"
+        >
+          <span>⚗️ Equipment &amp; Vessels</span>
+          <span className="text-[9px] uppercase px-1.5 py-0.5 rounded-full bg-slate-500/20 text-slate-400 font-bold">Planned</span>
+        </button>
+
+        <button
+          type="button"
+          disabled
+          className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 opacity-50 cursor-not-allowed shrink-0 border border-dashed border-black/10 dark:border-white/10 text-slate-400"
+          title="Coming in future update"
+        >
+          <span>⚙️ Service Settings</span>
+          <span className="text-[9px] uppercase px-1.5 py-0.5 rounded-full bg-slate-500/20 text-slate-400 font-bold">Planned</span>
+        </button>
+      </div>
+
+      {/* Ingredients Tab Content */}
+      {adminTab === 'ingredients' && (
+        <div className="space-y-6">
+          {/* Summary KPIs */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className={`p-3.5 rounded-2xl border ${border} ${isDark ? 'bg-slate-900/40' : 'bg-white/70'} flex flex-col gap-1`}>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Main Recipe Items</span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-xl sm:text-2xl font-black">{metrics.mainCount}</span>
+                <span className="text-[11px] text-slate-500">core ingredients</span>
+              </div>
+            </div>
+            <div className={`p-3.5 rounded-2xl border ${border} ${isDark ? 'bg-slate-900/40' : 'bg-white/70'} flex flex-col gap-1`}>
+              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-500">With Photos</span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-xl sm:text-2xl font-black text-emerald-500">{metrics.withImageCount}</span>
+                <span className="text-[11px] text-slate-500">ready to show</span>
+              </div>
+            </div>
+            <div className={`p-3.5 rounded-2xl border ${border} ${isDark ? 'bg-slate-900/40' : 'bg-white/70'} flex flex-col gap-1`}>
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-500">Missing Photos</span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-xl sm:text-2xl font-black text-amber-500">{metrics.totalCount - metrics.withImageCount}</span>
+                <span className="text-[11px] text-slate-500">need photos</span>
+              </div>
+            </div>
+            <div className={`p-3.5 rounded-2xl border ${border} ${isDark ? 'bg-slate-900/40' : 'bg-white/70'} flex flex-col gap-1`}>
+              <span className="text-[10px] font-black uppercase tracking-wider text-orange-500">Custom Set By You</span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-xl sm:text-2xl font-black text-orange-500">{metrics.customCount}</span>
+                <span className="text-[11px] text-slate-500">overridden</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Controls Bar: Search & Filters */}
+          <div className={`p-4 rounded-2xl border ${border} ${isDark ? 'bg-slate-900/60' : 'bg-white/80'} shadow-sm space-y-3`}>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              {/* Search input */}
+              <div className="relative flex-1">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search ingredients by name (e.g. hops, honey, blackberry, malt)..."
+                  className={`w-full text-xs pl-9 pr-8 py-2.5 rounded-xl border ${border} outline-none focus:border-amber-500 ${isDark ? 'bg-slate-950 text-slate-100 placeholder-slate-500' : 'bg-white text-slate-900 placeholder-slate-400'}`}
+                />
+                {search && (
+                  <button type="button" onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+
+              {/* Scope toggle: Main vs All */}
+              <div className={`inline-flex p-1 rounded-xl border ${border} ${isDark ? 'bg-slate-950/50' : 'bg-slate-100'} shrink-0`}>
+                <button
+                  type="button"
+                  onClick={() => setScope('main')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    scope === 'main'
+                      ? 'bg-amber-500 text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  ⭐ Main ({metrics.mainCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScope('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    scope === 'all'
+                      ? 'bg-amber-500 text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  📋 All ({metrics.totalCount})
+                </button>
+              </div>
+            </div>
+
+            {/* Filter Pills row */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-black/5 dark:border-white/5">
+              {/* Status pills */}
+              <div className="flex items-center gap-1 overflow-x-auto pb-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1 shrink-0">Photo:</span>
+                {[
+                  ['all', 'All'],
+                  ['with-photo', 'With photo'],
+                  ['no-photo', 'Missing photo'],
+                  ['custom', 'Custom only'],
+                ].map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setStatusFilter(id)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition shrink-0 ${
+                      statusFilter === id
+                        ? 'bg-amber-500 border-amber-500 text-white'
+                        : `${border} ${isDark ? 'bg-slate-900/40 text-slate-400' : 'bg-white text-slate-600'} hover:border-amber-500/50`
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Category pills */}
+              <div className="flex items-center gap-1 overflow-x-auto pb-1 ml-auto">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1 shrink-0">Type:</span>
+                {categories.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setCategoryFilter(c.id)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition shrink-0 ${
+                      categoryFilter === c.id
+                        ? 'bg-amber-500 border-amber-500 text-white'
+                        : `${border} ${isDark ? 'bg-slate-900/40 text-slate-400' : 'bg-white text-slate-600'} hover:border-amber-500/50`
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Results Summary header */}
+          <div className="flex items-center justify-between text-xs text-slate-500 font-bold px-1">
+            <span>
+              Showing {displayed.length} of {filtered.length} {scope === 'main' ? 'main ingredients' : 'ingredients'}
+              {search && ` matching "${search}"`}
+            </span>
+            {(search || statusFilter !== 'all' || categoryFilter !== 'all') && (
+              <button
+                type="button"
+                onClick={() => { setSearch(''); setStatusFilter('all'); setCategoryFilter('all'); }}
+                className="text-amber-500 hover:text-amber-600 flex items-center gap-1 cursor-pointer"
+              >
+                <RotateCcw size={11} /> Reset filters
+              </button>
+            )}
+          </div>
+
+          {/* Ingredients Grid */}
+          {loading ? (
+            <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-400">
+              <RotateCw size={24} className="animate-spin text-amber-500" />
+              <p className="text-xs font-bold">Loading ingredient catalogue &amp; images...</p>
+            </div>
+          ) : err ? (
+            <div className="py-12 text-center text-red-500 text-xs font-bold">
+              {err}
+            </div>
+          ) : displayed.length === 0 ? (
+            <div className={`py-16 text-center rounded-2xl border border-dashed ${border} text-slate-400 space-y-2`}>
+              <Sparkles size={28} className="mx-auto opacity-30" />
+              <p className="text-sm font-bold">No ingredients found matching your search</p>
+              <p className="text-xs text-slate-500">Try adjusting your search query or reset the filters</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {displayed.map((ing) => (
+                <div
+                  key={ing.norm}
+                  className={`p-4 rounded-3xl border ${border} ${isDark ? 'bg-slate-900/60 hover:bg-slate-900/90' : 'bg-white/80 hover:bg-white'} shadow-sm transition-all flex items-center gap-4 group relative`}
+                >
+                  {/* Double-sized Circular Image (96px to 112px) */}
+                  <div className="relative shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setPickerIng(ing)}
+                      className={`relative w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden border-2 shadow-md transition-all group-hover:scale-105 cursor-pointer ${
+                        ing.hasCustom
+                          ? 'border-amber-500 shadow-amber-500/20'
+                          : ing.hasImage
+                            ? 'border-emerald-500/40 dark:border-emerald-400/40'
+                            : 'border-dashed border-amber-500/40 bg-amber-500/5'
+                      }`}
+                      title={`Click to set or change picture for ${ing.name}`}
+                    >
+                      {ing.hasImage ? (
+                        <img
+                          src={`/api/homebrew/picture/${ing.currentKey}`}
+                          alt={ing.name}
+                          loading="lazy"
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center p-2 text-center text-amber-500">
+                          <Camera size={24} className="opacity-60 mb-1" />
+                          <span className="text-[10px] font-extrabold uppercase tracking-tight">No image</span>
+                        </div>
+                      )}
+                      {/* Hover overlay */}
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                        <Camera size={20} className="drop-shadow-sm" />
+                      </div>
+                    </button>
+
+                    {/* Status badge */}
+                    {ing.hasCustom && (
+                      <span className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-500 text-white shadow-xs">
+                        Custom
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Details & Actions */}
+                  <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
+                    <div>
+                      <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-black/5 dark:bg-white/10 text-slate-500">
+                          {ing.type || 'Ingredient'}
+                        </span>
+                        {ing.isMain && (
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                            Main
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="text-sm sm:text-base font-extrabold tracking-tight truncate text-black dark:text-slate-100" title={ing.name}>
+                        {ing.name}
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {ing.count > 0 ? `Used in ${ing.count} recipe${ing.count === 1 ? '' : 's'}` : 'Catalogue ingredient'}
+                      </p>
+                    </div>
+
+                    <div className="mt-3 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPickerIng(ing)}
+                        className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs active:scale-95 transition cursor-pointer"
+                      >
+                        <Camera size={13} />
+                        <span>{ing.hasImage ? 'Change' : 'Set image'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Load More Button */}
+          {!loading && displayed.length < filtered.length && (
+            <div className="text-center pt-4">
+              <button
+                type="button"
+                onClick={() => setVisibleLimit((v) => v + 60)}
+                className={`px-5 py-2.5 rounded-2xl text-xs font-bold border transition cursor-pointer ${border} ${isDark ? 'bg-slate-900/60 hover:bg-white/10' : 'bg-white hover:bg-black/5'} text-amber-500 hover:text-amber-600 shadow-sm`}
+              >
+                Load {Math.min(60, filtered.length - displayed.length)} more ingredients ({filtered.length - displayed.length} remaining)
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Picture Picker Modal */}
+      {pickerIng && (
+        <IngredientPicturePickerModal
+          ingredient={pickerIng}
+          isOpen={Boolean(pickerIng)}
+          onClose={() => setPickerIng(null)}
+          onUpdated={handleUpdated}
+          isDark={isDark}
+          border={border}
+          notify={notify}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurrentPath }) {
   const { user } = useAuth();
   const isOwner = !user?.guest;
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
   const isDark = theme === 'dark';
   const [brews, setBrews] = useState([]);
   const [meta, setMeta] = useState({ styles: [], statuses: [], logKinds: [], categories: [] });
@@ -2843,12 +3639,50 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
       icon={FlaskConical} gradient={GRADIENT} glow="rgba(245,158,11,0.3)"
       isDark={isDark} onThemeToggle={onThemeToggle} setCurrentPath={setCurrentPath} notification={notification} maxWidth="max-w-6xl" backToTop
       headerActions={isOwner && (
-        <button onClick={() => setInviteOpen(true)} title="Invite people to your Homebrew, and share it" className={`p-2 rounded-xl transition-all border flex items-center gap-1.5 text-xs font-bold ${isDark ? 'bg-white/5 hover:bg-white/10 text-amber-400 border-white/5' : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 text-amber-700 border-[#2E2B27]/10'}`}>
-          <UserPlus size={14} /><span className="hidden sm:inline">Invite &amp; Share</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setAdminOpen(!adminOpen)}
+            title="Homebrew administration & ingredient images"
+            className={`p-2 rounded-xl transition-all border flex items-center gap-1.5 text-xs font-bold cursor-pointer ${
+              adminOpen
+                ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20'
+                : isDark
+                  ? 'bg-white/5 hover:bg-white/10 text-amber-400 border-white/5'
+                  : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 text-amber-700 border-[#2E2B27]/10'
+            }`}
+          >
+            <Settings size={14} />
+            <span className="hidden sm:inline">Admin</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setInviteOpen(true)}
+            title="Invite people to your Homebrew, and share it"
+            className={`p-2 rounded-xl transition-all border flex items-center gap-1.5 text-xs font-bold cursor-pointer ${
+              isDark
+                ? 'bg-white/5 hover:bg-white/10 text-amber-400 border-white/5'
+                : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 text-amber-700 border-[#2E2B27]/10'
+            }`}
+          >
+            <UserPlus size={14} />
+            <span className="hidden sm:inline">Invite &amp; Share</span>
+          </button>
+        </div>
       )}>
       <style>{VESSEL_CSS}</style>
-      {!open && (
+      {adminOpen && (
+        <HomebrewAdminSection
+          isDark={isDark}
+          border={border}
+          panel={panel}
+          field={field}
+          onClose={() => setAdminOpen(false)}
+          notify={notify}
+          onReloadNeeded={loadList}
+        />
+      )}
+      {!adminOpen && !open && (
         <div className="flex flex-col gap-5">
           <div className="flex flex-wrap items-center gap-3">
             <div className={`inline-flex p-1 rounded-2xl border ${border} ${isDark ? 'bg-slate-900/60' : 'bg-white/70'}`}>
@@ -3000,7 +3834,7 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
         </div>
       )}
 
-      {open && (
+      {!adminOpen && open && (
         <div className="flex flex-col gap-5 min-w-0 pb-24 sm:pb-0">
           {pictureOpen && brew && <PictureDialog brew={brew} isDark={isDark} border={border} onClose={() => setPictureOpen(false)} onPicked={(b) => { setPictureOpen(false); setBrew(b); loadList(); notify('Picture changed.'); }} />}
           {labelsOpen && brew && <LabelsDialog brew={brew} isDark={isDark} border={border} onClose={() => setLabelsOpen(false)} onDone={labelsMade} />}
