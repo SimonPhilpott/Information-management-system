@@ -38,7 +38,7 @@ db.exec(`
 // the colour the finished drink is expected to be, for the demijohn on the page (added 20 Oct)
 try { db.exec('ALTER TABLE brew_main_ingredients ADD COLUMN colour TEXT'); } catch (_) { /* already there */ }
 
-const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+const norm = normIngredient;
 const keyOf = (name) => crypto.createHash('sha1').update(`${IMAGE_MODEL}|${norm(name)}`).digest('hex').slice(0, 20);
 export const pictureFile = (key) => (/^[a-f0-9]{20}$/.test(key) ? path.join(DIR, `${key}.jpg`) : null);
 const ready = (key) => fs.existsSync(path.join(DIR, `${key}.jpg`));
