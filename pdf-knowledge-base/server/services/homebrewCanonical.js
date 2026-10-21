@@ -274,6 +274,12 @@ const EXACT_CANONICAL = {
   'sumac berries': 'Sumac berries',
   'manzanita berry': 'Manzanita berries',
   'manzanita berries': 'Manzanita berries',
+  'haw': 'Hawthorn berries',
+  'haws': 'Hawthorn berries',
+  'hawthorn berry': 'Hawthorn berries',
+  'hawthorn berries': 'Hawthorn berries',
+  'hawthorne berry': 'Hawthorn berries',
+  'hawthorne berries': 'Hawthorn berries',
   'hawthorn blossom': 'Hawthorn blossom',
   'hawthorn blossoms': 'Hawthorn blossom',
   'hawthorn flower': 'Hawthorn blossom',
@@ -530,9 +536,12 @@ export function canonicalizeMain(name) {
     return 'Dark cocoa powder';
   }
 
-  // Hawthorn blossom vs Hawthorn berries
-  if (/^hawthorn\s+(blossoms?|flowers?)$/i.test(clean)) {
+  // Hawthorn blossom vs Hawthorn berries / Haws
+  if (/^hawthorne?\s+(blossoms?|flowers?)$/i.test(clean)) {
     return 'Hawthorn blossom';
+  }
+  if (/^(haws?|hawthorne?\s+berr(y|ies))$/i.test(clean)) {
+    return 'Hawthorn berries';
   }
 
   // Coltsfoot
@@ -703,8 +712,16 @@ export function canonicalizeRecipeIngredient(name) {
   });
 
   // Hawthorn flowers -> hawthorn blossom
-  str = str.replace(/\bhawthorn\s+flowers?\b/gi, (match) => {
+  str = str.replace(/\bhawthorne?\s+flowers?\b/gi, (match) => {
     return match[0] === match[0].toUpperCase() ? 'Hawthorn blossom' : 'hawthorn blossom';
+  });
+
+  // Haws -> hawthorn berries
+  str = str.replace(/\bripe\s+hawthorne?\s+berries\s+\(haws\)/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Hawthorn berries' : 'hawthorn berries';
+  });
+  str = str.replace(/\bhaws\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Hawthorn berries' : 'hawthorn berries';
   });
 
   // Coltsfoot flowers -> coltsfoot flowers
