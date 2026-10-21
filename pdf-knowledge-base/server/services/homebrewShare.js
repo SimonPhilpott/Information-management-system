@@ -455,11 +455,59 @@ ${look.border !== 'none' ? '.body { padding: 7mm 8.5mm 7mm; }' : ''}
 // The PDF of label sheets (opts as for labelsHtml, plus qrUrl: the recipe's shared page for the QR code)
 export async function labelsPdf(b, { qrUrl, ...opts } = {}) {
   const qrHtml = await labelQr(qrUrl);
+  const look = opts.look || labelLook(opts);
   const { chromium } = await import('playwright');
   const browser = await chromium.launch();
   try {
+    const banner = asDataUri(b.banner);
+    let flatDataUri = null;
+    // PDF viewers (Chrome/Edge PDFium, Acrobat, print spoolers) drop nested transparency groups and
+    // -webkit-mask-image / mask-image soft-masks when repeated across multiple labels on an A4 sheet.
+    // Pre-flattening the single 99x57mm background wash and blended photo into a crisp 300+ DPI JPEG
+    // eliminates all PDF /SMask operators and guarantees 100% reliable rendering on every label.
+    if (banner && look.imageAlpha > 0) {
+      const colour = /^#[0-9a-f]{6}$/i.test(b.liquid || '') ? b.liquid : '#e8a33a';
+      const bgPage = await browser.newPage({ viewport: { width: 1169, height: 673 }, deviceScaleFactor: 2 });
+      try {
+        await bgPage.setContent(`<!doctype html><html><head><style>
+          html, body { margin: 0; padding: 0; width: 1169px; height: 673px; overflow: hidden; }
+          .label-bg { position: relative; width: 100%; height: 100%; overflow: hidden;
+            background: linear-gradient(135deg, ${colour}38, ${colour}14 55%, #fff 100%); }
+          .bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: right;
+            opacity: ${look.imageAlpha}; mix-blend-mode: multiply;
+            -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,0.35), #000 60%);
+            mask-image: linear-gradient(to right, rgba(0,0,0,0.35), #000 60%); }
+        </style></head><body>
+          <div class="label-bg">
+            <img class="bg" src="${banner}" alt="" loading="eager" decoding="sync">
+          </div>
+        </body></html>`, { waitUntil: 'load' });
+        await bgPage.evaluate(async () => {
+          const img = document.querySelector('img');
+          if (img) await (img.complete ? img.decode().catch(() => {}) : new Promise((r) => { img.onload = img.onerror = () => img.decode().then(r).catch(r); }));
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        });
+        const flatBuffer = await bgPage.screenshot({ type: 'jpeg', quality: 92 });
+        flatDataUri = `data:image/jpeg;base64,${flatBuffer.toString('base64')}`;
+      } finally {
+        await bgPage.close();
+      }
+    }
+
     const page = await browser.newPage();
-    await page.setContent(labelsHtml(b, { ...opts, qrHtml }), { waitUntil: 'load', timeout: 30000 });
+    await page.setContent(labelsHtml(b, { ...opts, look, qrHtml }), { waitUntil: 'load', timeout: 30000 });
+    if (flatDataUri) {
+      await page.evaluate((flatUri) => {
+        document.querySelectorAll('.label:not(.blank)').forEach((l) => { l.style.background = '#ffffff'; });
+        document.querySelectorAll('.bg').forEach((img) => {
+          img.src = flatUri;
+          img.style.mixBlendMode = 'normal';
+          img.style.webkitMaskImage = 'none';
+          img.style.maskImage = 'none';
+          img.style.opacity = '1';
+        });
+      }, flatDataUri);
+    }
     await page.evaluate(async () => {
       await document.fonts.ready;
       const imgs = Array.from(document.querySelectorAll('img'));
