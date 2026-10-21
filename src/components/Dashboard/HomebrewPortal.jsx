@@ -1568,6 +1568,17 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
     setBrewSort(val);
     try { localStorage.setItem('ims_homebrew_sort', val); } catch (_) {}
   };
+  const [recipeSort, setRecipeSort] = useState(() => {
+    try {
+      return localStorage.getItem('ims_homebrew_recipe_sort') || 'name-asc';
+    } catch (_) {
+      return 'name-asc';
+    }
+  });
+  const changeRecipeSort = (val) => {
+    setRecipeSort(val);
+    try { localStorage.setItem('ims_homebrew_recipe_sort', val); } catch (_) {}
+  };
 
   useEffect(() => {
     if (!filterSheetOpen) return;
@@ -1762,7 +1773,56 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
     for (const b of list) { const k = famKey(b); if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(b); }
     return [...byKey.entries()].map(([key, members]) => ({ key, members, rep: members.find((m) => m.favourite) || members[0] }));
   };
-  const cards = view === 'recipes' ? groupCards(shown) : shown.map((b) => ({ key: b.id, members: [b], rep: b }));
+  const cards = React.useMemo(() => {
+    const raw = view === 'recipes' ? groupCards(shown) : shown.map((b) => ({ key: b.id, members: [b], rep: b }));
+    if (view !== 'recipes' || wanted.length > 0) return raw;
+    return [...raw].sort((cA, cB) => {
+      const a = cA.rep;
+      const b = cB.rep;
+      if (recipeSort === 'name-asc') {
+        const nameA = (cA.members.length > 1 ? a.family : a.name) || '';
+        const nameB = (cB.members.length > 1 ? b.family : b.name) || '';
+        return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+      }
+      if (recipeSort === 'name-desc') {
+        const nameA = (cA.members.length > 1 ? a.family : a.name) || '';
+        const nameB = (cB.members.length > 1 ? b.family : b.name) || '';
+        return nameB.localeCompare(nameA, undefined, { sensitivity: 'base' });
+      }
+      if (recipeSort === 'abv-desc') {
+        const abvA = strengthOf(a) ?? -1;
+        const abvB = strengthOf(b) ?? -1;
+        if (abvB !== abvA) return abvB - abvA;
+        return (a.name || '').localeCompare(b.name || '');
+      }
+      if (recipeSort === 'abv-asc') {
+        const abvA = strengthOf(a) ?? 999;
+        const abvB = strengthOf(b) ?? 999;
+        if (abvA !== abvB) return abvA - abvB;
+        return (a.name || '').localeCompare(b.name || '');
+      }
+      if (recipeSort === 'type') {
+        const catA = catLabel(a.category) || a.category || '';
+        const catB = catLabel(b.category) || b.category || '';
+        const diff = catA.localeCompare(catB);
+        if (diff !== 0) return diff;
+        return (a.name || '').localeCompare(b.name || '');
+      }
+      if (recipeSort === 'rating') {
+        const rA = a.rating || 0;
+        const rB = b.rating || 0;
+        if (rB !== rA) return rB - rA;
+        return (a.name || '').localeCompare(b.name || '');
+      }
+      if (recipeSort === 'yield-desc') {
+        const yA = Number(a.batchLitres) || 0;
+        const yB = Number(b.batchLitres) || 0;
+        if (yB !== yA) return yB - yA;
+        return (a.name || '').localeCompare(b.name || '');
+      }
+      return 0;
+    });
+  }, [view, shown, wanted.length, recipeSort]);
   const familyOf = (b) => (b?.isRecipe ? recipes.filter((r) => famKey(r) === famKey(b)) : []);
   const toggleIn = (list, setList, v) => setList(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   // the picker: every grown ingredient that turns up in the recipe book, by group, A-Z. Its number is how many cards
@@ -2339,12 +2399,27 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
           </div>
         )}
 
-        {/* Sort selector in filter controls for My Brews */}
-        {view === 'brews' && (
-          <div className="flex items-center gap-2">
-            <span className={`text-[10px] font-black uppercase tracking-wider w-20 shrink-0 ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>Sort by</span>
-            <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold ${border} ${isDark ? 'bg-slate-950/60 text-slate-300' : 'bg-white text-[#2E2B27]'}`}>
-              <ArrowUpDown size={13} className="text-amber-500 shrink-0" />
+        {/* Sort selector in filter controls for Recipes & My Brews */}
+        <div className="flex items-center gap-2">
+          <span className={`text-[10px] font-black uppercase tracking-wider w-20 shrink-0 ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>Sort by</span>
+          <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold ${border} ${isDark ? 'bg-slate-950/60 text-slate-300' : 'bg-white text-[#2E2B27]'}`}>
+            <ArrowUpDown size={13} className="text-amber-500 shrink-0" />
+            {view === 'recipes' ? (
+              <select
+                value={recipeSort}
+                onChange={(e) => changeRecipeSort(e.target.value)}
+                aria-label="Sort recipes"
+                className="bg-transparent border-none text-xs font-bold outline-none cursor-pointer"
+              >
+                <option value="name-asc" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Name (A–Z)</option>
+                <option value="name-desc" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Name (Z–A)</option>
+                <option value="abv-desc" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Strength (highest ABV)</option>
+                <option value="abv-asc" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Strength (lowest ABV)</option>
+                <option value="type" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Drink Type / Category</option>
+                <option value="rating" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Rating</option>
+                <option value="yield-desc" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Batch size / Yield</option>
+              </select>
+            ) : (
               <select
                 value={brewSort}
                 onChange={(e) => changeBrewSort(e.target.value)}
@@ -2357,9 +2432,9 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                 <option value="status" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Stage / Status</option>
                 <option value="rating" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Rating</option>
               </select>
-            </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Aromas & Flavours */}
@@ -2786,10 +2861,25 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
             <button onClick={() => setFavOnly(!favOnly)} title="Show only your favourites" className={`px-4 py-2.5 rounded-2xl text-sm font-bold flex items-center gap-2 border transition ${favOnly ? 'bg-rose-500 border-rose-500 text-white shadow-lg shadow-rose-500/20' : `${border} ${isDark ? 'bg-slate-900/60' : 'bg-white/70'} text-slate-500 hover:text-rose-500`}`}>
               <Heart size={15} fill={favOnly ? 'currentColor' : 'none'} /> Favourites<span className={`text-[10px] px-1.5 rounded-full ${favOnly ? 'bg-white/25' : isDark ? 'bg-white/10' : 'bg-[#2E2B27]/10'}`}>{pool.filter((b) => b.favourite).length}</span>
             </button>
-            {view === 'brews' && (
-              <div className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-2xl border text-xs font-bold ${border} ${isDark ? 'bg-slate-900/60 text-slate-300' : 'bg-white/70 text-[#2E2B27]'}`}>
-                <ArrowUpDown size={14} className="text-amber-500 shrink-0" />
-                <span className="text-[10px] uppercase tracking-wider text-slate-500 hidden sm:inline">Sort:</span>
+            <div className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-2xl border text-xs font-bold ${border} ${isDark ? 'bg-slate-900/60 text-slate-300' : 'bg-white/70 text-[#2E2B27]'}`}>
+              <ArrowUpDown size={14} className="text-amber-500 shrink-0" />
+              <span className="text-[10px] uppercase tracking-wider text-slate-500 hidden sm:inline">Sort:</span>
+              {view === 'recipes' ? (
+                <select
+                  value={recipeSort}
+                  onChange={(e) => changeRecipeSort(e.target.value)}
+                  aria-label="Sort recipes"
+                  className="bg-transparent border-none text-xs font-bold outline-none cursor-pointer pr-1"
+                >
+                  <option value="name-asc" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Name (A–Z)</option>
+                  <option value="name-desc" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Name (Z–A)</option>
+                  <option value="abv-desc" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Strength (highest ABV)</option>
+                  <option value="abv-asc" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Strength (lowest ABV)</option>
+                  <option value="type" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Drink Type</option>
+                  <option value="rating" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Rating</option>
+                  <option value="yield-desc" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Batch size</option>
+                </select>
+              ) : (
                 <select
                   value={brewSort}
                   onChange={(e) => changeBrewSort(e.target.value)}
@@ -2802,8 +2892,8 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
                   <option value="status" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Stage / Status</option>
                   <option value="rating" className={isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>Rating</option>
                 </select>
-              </div>
-            )}
+              )}
+            </div>
             {/* Invite & Share is in the page header now; the new button takes its place here */}
             {isOwner && (
               <button onClick={() => startNew(cat)} className={`${primary} !px-4 !py-2.5 !text-sm shadow-lg shadow-amber-500/20`}><Plus size={15} /> {view === 'recipes' ? 'New recipe' : 'New brew'}</button>
