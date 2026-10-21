@@ -237,6 +237,14 @@ const EXACT_CANONICAL = {
   'granulated sugar': 'Granulated sugar',
   'brown sugar': 'Brown sugar',
   'dark brown sugar': 'Dark brown sugar',
+  'dark soft brown sugar': 'Dark brown sugar',
+  'dark sugar': 'Dark brown sugar',
+  'dark sugars': 'Dark brown sugar',
+  'coarse dark sugar': 'Dark brown sugar',
+  'darkest sugar': 'Dark brown sugar',
+  'barbados sugar': 'Dark brown sugar',
+  'black invert sugar': 'Dark brown sugar',
+  'invert sugar': 'Dark brown sugar',
   'glucose chipping': 'Brewing sugar',
   'glucose chippings': 'Brewing sugar',
   'brewing sugar': 'Brewing sugar',
@@ -397,6 +405,11 @@ export function canonicalizeMain(name) {
     return 'Beetroot';
   }
 
+  // Dark brown sugar / Barbados sugar / Black invert sugar / Dark sugar
+  if (/^(barbados\s+sugar|black\s+invert\s+sugar|invert\s+sugar|dark\s+(soft\s+)?(brown\s+)?sugar|coarse\s+dark\s+sugar|darkest\s+sugar)$/i.test(clean)) {
+    return 'Dark brown sugar';
+  }
+
   return clean;
 }
 
@@ -479,6 +492,11 @@ export function canonicalizeRecipeIngredient(name) {
   });
   str = str.replace(/\bbeetroots\b/gi, (match) => {
     return match[0] === match[0].toUpperCase() ? 'Beetroot' : 'beetroot';
+  });
+
+  // Dark brown sugar / Barbados sugar / Black invert sugar / Dark sugar
+  str = str.replace(/\b(barbados\s+sugar|black\s+invert\s+sugar|dark\s+soft\s+brown\s+sugar|coarse\s+dark\s+sugar(\s*-\s*the\s+darkest\s+available)?|darkest\s+sugar(\s+available)?)\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Dark brown sugar' : 'dark brown sugar';
   });
 
   return str;
