@@ -161,6 +161,11 @@ export async function recipePdf(b) {
   try {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'load', timeout: 20000 });
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+      const imgs = Array.from(document.querySelectorAll('img'));
+      await Promise.all(imgs.map((img) => (img.complete ? img.decode().catch(() => {}) : new Promise((r) => { img.onload = img.onerror = () => img.decode().then(r).catch(r); }))));
+    });
     const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
     const filename = `${b.name.replace(/[\\/:*?"<>|]+/g, '').trim() || 'Recipe'}.pdf`;
     return { pdf, filename };
@@ -344,7 +349,7 @@ export function labelLook(q = {}) {
 export async function labelQr(url) {
   if (!url) return '';
   const QRCode = (await import('qrcode')).default;
-  return `<img src="${await QRCode.toDataURL(url, { margin: 2, scale: 10, errorCorrectionLevel: 'L', color: { dark: '#000000', light: '#ffffff' } })}" alt="">`;
+  return `<img src="${await QRCode.toDataURL(url, { margin: 2, scale: 10, errorCorrectionLevel: 'L', color: { dark: '#000000', light: '#ffffff' } })}" alt="" loading="eager" decoding="sync">`;
 }
 
 // title: a name just for these labels (e.g. "Simon's Christmas Mead") - the recipe's own name then goes under it.
@@ -380,7 +385,7 @@ export function labelsHtml(b, { count = 10, fontId, title, recipeText, showRecip
   const abv = b.calc?.abv || b.calc?.potentialAbv || b.abvEstimate;
   const estimated = !b.calc?.abv && !b.calc?.potentialAbv;
   const label = `<div class="label">
-    ${banner && look.imageAlpha > 0 ? `<img class="bg" src="${banner}" alt="">` : ''}
+    ${banner && look.imageAlpha > 0 ? `<img class="bg" src="${banner}" alt="" loading="eager" decoding="sync">` : ''}
     ${look.border !== 'none' ? `<div class="border-wrap" style="opacity: ${look.borderAlpha}">${borderHtml(look.border, look.borderColour || nameColour)}</div>` : ''}
     ${qrHtml ? `<div class="qr">${qrHtml}</div>` : ''}
     <div class="body">
@@ -391,7 +396,7 @@ export function labelsHtml(b, { count = 10, fontId, title, recipeText, showRecip
       ${under && recipePlaced ? `<div class="under placed">${esc(under)}</div>` : ''}
       <div class="foot">
         <div class="facts">${abv ? `<div class="abv">${estimated ? '~' : ''}${esc(abv)}<small>% ABV</small></div>` : ''}<div class="date">${dateWord} ${esc(ukDate(date))}</div></div>
-        <div class="pics">${pics.map((p) => `<img src="${p.src}" alt="${esc(p.name)}">`).join('')}</div>
+        <div class="pics">${pics.map((p) => `<img src="${p.src}" alt="${esc(p.name)}" loading="eager" decoding="sync">`).join('')}</div>
       </div>
     </div>
   </div>`;
@@ -453,8 +458,13 @@ export async function labelsPdf(b, { qrUrl, ...opts } = {}) {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
-    await page.setContent(labelsHtml(b, { ...opts, qrHtml }), { waitUntil: 'networkidle', timeout: 30000 });
-    await page.evaluate(() => document.fonts.ready); // the label font, before the PDF is made
+    await page.setContent(labelsHtml(b, { ...opts, qrHtml }), { waitUntil: 'load', timeout: 30000 });
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+      const imgs = Array.from(document.querySelectorAll('img'));
+      await Promise.all(imgs.map((img) => (img.complete ? img.decode().catch(() => {}) : new Promise((r) => { img.onload = img.onerror = () => img.decode().then(r).catch(r); }))));
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    });
     const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
     return { pdf, filename: `${(String(opts.title || '').trim() || b.name).replace(/[\/:*?"<>|]+/g, '').trim() || 'Brew'} labels.pdf` };
   } finally { await browser.close(); }
