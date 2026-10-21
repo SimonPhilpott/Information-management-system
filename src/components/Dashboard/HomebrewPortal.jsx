@@ -455,6 +455,7 @@ function LabelsDialog({ brew, isDark, border, onClose, onDone }) {
   const [place, setPlace] = useState(null); // { x, y } in mm once he's dragged the name, else its usual place
   const [recipePlace, setRecipePlace] = useState(null); // { x, y } in mm once recipe text is dragged
   const [abvColour, setAbvColour] = useState(() => remembered('hbLabelAbvColour', ''));
+  const [bottledDate, setBottledDate] = useState(() => brew.bottledOn || brew.startedOn || new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date()));
   const frameRef = useRef(null);
   const drag = useRef(null);
   const [size, setSize] = useState(() => Number(remembered('hbLabelSize', '1')) || 1);
@@ -521,13 +522,13 @@ function LabelsDialog({ brew, isDark, border, onClose, onDone }) {
   const flat = (t) => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const ownName = name.trim() && flat(name) !== flat(brew.name) ? name.trim() : '';
   const broken = name.includes('\n'); // he's put in his own line breaks
-  const query = () => new URLSearchParams({ font, pos: align === 'center' ? 'top-center' : 'top-left', align, ...(place ? { x: String(place.x), y: String(place.y) } : {}), ...(recipePlace ? { recipeX: String(recipePlace.x), recipeY: String(recipePlace.y) } : {}), size: String(size), border: frame, ...(colour ? { colour } : {}), ...(abvColour ? { abvColour } : {}), ...(borderColour ? { borderColour } : {}), ...(borderAlpha < 1 ? { borderAlpha: String(borderAlpha) } : {}), imageAlpha: String(imageAlpha), ...(ownName || broken ? { name: name.trim() } : {}), showRecipe: showRecipe ? '1' : '0', ...(showRecipe && recipeText.trim() ? { recipeText: recipeText.trim() } : {}) });
+  const query = () => new URLSearchParams({ font, pos: align === 'center' ? 'top-center' : 'top-left', align, ...(place ? { x: String(place.x), y: String(place.y) } : {}), ...(recipePlace ? { recipeX: String(recipePlace.x), recipeY: String(recipePlace.y) } : {}), size: String(size), border: frame, ...(colour ? { colour } : {}), ...(abvColour ? { abvColour } : {}), ...(borderColour ? { borderColour } : {}), ...(borderAlpha < 1 ? { borderAlpha: String(borderAlpha) } : {}), imageAlpha: String(imageAlpha), ...(ownName || broken ? { name: name.trim() } : {}), showRecipe: showRecipe ? '1' : '0', ...(showRecipe && recipeText.trim() ? { recipeText: recipeText.trim() } : {}), ...(bottledDate ? { bottledDate } : {}) });
   // redrawn a moment after the last change
   useEffect(() => {
     if (!font) return undefined;
     const t = setTimeout(() => setPreviewSrc(`/api/homebrew/${brew.id}/labels/preview?${query()}`), 300);
     return () => clearTimeout(t);
-  }, [font, name, align, place, recipePlace, size, colour, abvColour, frame, borderColour, borderAlpha, imageAlpha, showRecipe, recipeText, brew.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [font, name, align, place, recipePlace, size, colour, abvColour, frame, borderColour, borderAlpha, imageAlpha, showRecipe, recipeText, bottledDate, brew.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const n = Math.max(1, Math.min(200, parseInt(count, 10) || 10));
   const make = async () => {
     setBusy(true); setErr('');
@@ -779,6 +780,18 @@ function LabelsDialog({ brew, isDark, border, onClose, onDone }) {
                       <input type="color" value={abvColour || brew.liquid || '#e8a33a'} onChange={(e) => setAbvColour(e.target.value)} className="w-4 h-4 p-0 border-0 bg-transparent cursor-pointer" /> Pick
                     </label>
                   </div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className={small}>Bottled date</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={bottledDate}
+                    onChange={(e) => setBottledDate(e.target.value)}
+                    className={`${field} w-44`}
+                  />
+                  <span className="text-[10px] text-slate-500">Prints as "Bottled [Date]" on every label</span>
                 </div>
               </div>
             </>)}

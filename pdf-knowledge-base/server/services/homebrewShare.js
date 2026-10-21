@@ -354,7 +354,7 @@ export async function labelQr(url) {
 
 // title: a name just for these labels (e.g. "Simon's Christmas Mead") - the recipe's own name then goes under it.
 // qrHtml: the QR code (labelQr). look: labelLook. preview: just one label, for the window's live preview.
-export function labelsHtml(b, { count = 10, fontId, title, recipeText, showRecipe = true, qrHtml = '', look = labelLook(), preview = false } = {}) {
+export function labelsHtml(b, { count = 10, fontId, title, recipeText, showRecipe = true, bottledDate, qrHtml = '', look = labelLook(), preview = false } = {}) {
   const own = String(title || '').replace(/\r/g, '').split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 3).join('\n').slice(0, 100);
   const heading = own || b.name;
   const flat = (t) => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -381,7 +381,8 @@ export function labelsHtml(b, { count = 10, fontId, title, recipeText, showRecip
   const banner = asDataUri(b.banner);
   const pics = (b.mainPics || []).map((p) => ({ name: p.name, src: asDataUri(p.key) })).filter((p) => p.src).slice(0, 3);
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date());
-  const [dateWord, date] = b.bottledOn ? ['Bottled', b.bottledOn] : b.startedOn ? ['Brewed', b.startedOn] : ['Made', today];
+  const date = (bottledDate && String(bottledDate).trim()) || b.bottledOn || b.startedOn || today;
+  const dateWord = 'Bottled';
   const abv = b.calc?.abv || b.calc?.potentialAbv || b.abvEstimate;
   const estimated = !b.calc?.abv && !b.calc?.potentialAbv;
   const label = `<div class="label">
