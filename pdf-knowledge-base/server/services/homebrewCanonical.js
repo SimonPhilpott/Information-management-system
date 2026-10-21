@@ -48,6 +48,45 @@ const EXACT_CANONICAL = {
   'dried elderberry': 'Elderberries',
   'dried elderberries': 'Elderberries',
 
+  // Flowers
+  'cowslip': 'Cowslips',
+  'cowslips': 'Cowslips',
+  'cowslip flowers': 'Cowslips',
+  'cowslip flower': 'Cowslips',
+  'cowslip blossom': 'Cowslips',
+  'cowslip blossoms': 'Cowslips',
+  'cowslip peeps': 'Cowslips',
+  'chamomile': 'Chamomile',
+  'chamomiles': 'Chamomile',
+  'chamomile flowers': 'Chamomile',
+  'chamomile flower': 'Chamomile',
+  'camomile': 'Chamomile',
+  'camomiles': 'Chamomile',
+  'camomile flowers': 'Chamomile',
+  'camomile flower': 'Chamomile',
+  'primrose': 'Primroses',
+  'primroses': 'Primroses',
+  'primrose flowers': 'Primroses',
+  'primrose flower': 'Primroses',
+  'wild violet': 'Wild Violets',
+  'wild violets': 'Wild Violets',
+  'wild violet petals': 'Wild Violets',
+  'violet': 'Wild Violets',
+  'violets': 'Wild Violets',
+  'violet petals': 'Wild Violets',
+  'yarrow': 'Yarrow',
+  'yarrow flower': 'Yarrow',
+  'yarrow flowers': 'Yarrow',
+  'broom flower': 'Broom flowers',
+  'broom flowers': 'Broom flowers',
+  'clover': 'Clover flowers',
+  'clover flower': 'Clover flowers',
+  'clover flowers': 'Clover flowers',
+  'clover blossom': 'Clover flowers',
+  'clover blossoms': 'Clover flowers',
+  'purple clover': 'Clover flowers',
+  'purple clover flowers': 'Clover flowers',
+
   // Berries & Orchard Fruits
   'blackberry': 'Blackberries',
   'blackberries': 'Blackberries',
@@ -138,8 +177,18 @@ const EXACT_CANONICAL = {
   'marrows': 'Marrow',
   'dandelion': 'Dandelions',
   'dandelions': 'Dandelions',
+  'dandelion flower': 'Dandelions',
+  'dandelion flowers': 'Dandelions',
+  'dandelion petal': 'Dandelions',
+  'dandelion petals': 'Dandelions',
+  'dandelion blossom': 'Dandelions',
+  'dandelion blossoms': 'Dandelions',
+  'dandelion head': 'Dandelions',
+  'dandelion heads': 'Dandelions',
   'dandelion root': 'Dandelion root',
   'dandelion roots': 'Dandelion root',
+  'dandelion green': 'Dandelion greens',
+  'dandelion greens': 'Dandelion greens',
   'sassafras root bark': 'Sassafras root bark',
   'sumac berry': 'Sumac berries',
   'sumac berries': 'Sumac berries',
@@ -196,24 +245,54 @@ const EXACT_CANONICAL = {
   'malt extract': 'Malt extract',
 
   // Hops
+  'cascade': 'Cascade hops',
   'cascade hops': 'Cascade hops',
   'cascade hop': 'Cascade hops',
   'us cascade hops': 'Cascade hops',
   'us cascade hop': 'Cascade hops',
+  'uk cascade hops': 'Cascade hops',
+  'uk cascade hop': 'Cascade hops',
+  'nz cascade hops': 'Cascade hops',
+  'nz cascade hop': 'Cascade hops',
+  'columbus': 'Columbus hops',
   'columbus hops': 'Columbus hops',
   'columbus hop': 'Columbus hops',
+  'columbus (tomahawk) hops': 'Columbus hops',
+  'simcoe': 'Simcoe hops',
   'simcoe hops': 'Simcoe hops',
   'simcoe hop': 'Simcoe hops',
+  'centennial': 'Centennial hops',
   'centennial hops': 'Centennial hops',
   'centennial hop': 'Centennial hops',
+  'citra': 'Citra hops',
   'citra hops': 'Citra hops',
   'citra hop': 'Citra hops',
+  'motueka': 'Motueka hops',
   'motueka hops': 'Motueka hops',
   'motueka hop': 'Motueka hops',
+  'amarillo': 'Amarillo hops',
+  'amarillo hops': 'Amarillo hops',
+  'saaz': 'Saaz hops',
+  'saaz hops': 'Saaz hops',
+  'chinook': 'Chinook hops',
+  'chinook hops': 'Chinook hops',
+  'east kent goldings': 'East Kent Goldings hops',
+  'east kent golding': 'East Kent Goldings hops',
+  'east kent goldings hops': 'East Kent Goldings hops',
+  'kent goldings': 'East Kent Goldings hops',
+  'goldings hops': 'Goldings hops',
+  'fuggles': 'Fuggles hops',
+  'fuggle': 'Fuggles hops',
+  'fuggles hops': 'Fuggles hops',
+  'hallertau': 'Hallertauer hops',
+  'hallertauer': 'Hallertauer hops',
+  'hallertauer hops': 'Hallertauer hops',
 
   // Juices & Grapes
   'white grape juice': 'White grape juice',
   'red grape juice': 'Red grape juice',
+  'white grape juice concentrate': 'White grape juice concentrate',
+  'red grape juice concentrate': 'Red grape juice concentrate',
   'white grapes': 'White grapes',
   'white grape': 'White grapes',
   'red grapes': 'Red grapes',
@@ -223,7 +302,22 @@ const EXACT_CANONICAL = {
   'green grapes': 'Green grapes',
   'green grape': 'Green grapes',
   'apple juice': 'Apple juice',
-  'sweet cider': 'Sweet cider',
+  'sweet apple juice': 'Apple juice',
+  'sweet cider': 'Apple juice',
+  'sweet apple cider': 'Apple juice',
+  'apple cider': 'Apple juice',
+  'apple juice concentrate': 'Apple juice',
+  'frozen apple juice concentrate': 'Apple juice',
+  'apple concentrate': 'Apple juice',
+  'fresh apple juice': 'Apple juice',
+  'fresh sweet apple juice': 'Apple juice',
+  'fresh sweet cider': 'Apple juice',
+  'freshly pressed sweet cider': 'Apple juice',
+  'unpasteurised sweet cider': 'Apple juice',
+  'unpasteurized sweet cider': 'Apple juice',
+  'pasteurised apple juice': 'Apple juice',
+  'pasteurized apple juice': 'Apple juice',
+  'preservative-free apple juice': 'Apple juice',
 };
 
 export function normIngredient(s) {
@@ -247,6 +341,38 @@ export function canonicalizeMain(name) {
   // Specific ginger check: any variation of ginger root, root ginger, gingerroot etc.
   if (/\b(ginger\s*root|root\s*ginger|gingerroot)\b/i.test(clean)) {
     return 'Ginger';
+  }
+
+  // Apple juice / sweet apple juice / sweet cider / apple juice concentrate
+  if (/^(frozen\s+)?(fresh\s*,?\s*)?(freshly\s+pressed\s+)?(unpasteuri[sz]ed\s+)?(sweet\s+)?apple\s+juice(\s+concentrate)?$/i.test(clean) ||
+      /^(fresh\s*,?\s*)?(freshly\s+pressed\s+)?(unpasteuri[sz]ed\s+)?sweet\s+(apple\s+)?cider$/i.test(clean) ||
+      /^(frozen\s+)?apple\s+(juice\s+concentrate|concentrate|cider)$/i.test(clean)) {
+    return 'Apple juice';
+  }
+
+  // Cascade / Cascade hops
+  if (/^(us\s+|uk\s+|nz\s+)?cascade(\s+hops?)?$/i.test(clean)) {
+    return 'Cascade hops';
+  }
+
+  // Cowslips / Cowslip flowers
+  if (/^cowslip(\s+flowers?|\s+blossoms?|\s+peeps?)?$/i.test(clean)) {
+    return 'Cowslips';
+  }
+
+  // Dandelion flowers / petals / blossoms (preserving root and greens)
+  if (/^dandelion(\s+(flowers?|petals?|blossoms?|heads?))?$/i.test(clean)) {
+    return 'Dandelions';
+  }
+
+  // Chamomile / Camomile
+  if (/^(ch|c)amomile(\s+flowers?)?$/i.test(clean)) {
+    return 'Chamomile';
+  }
+
+  // Primroses
+  if (/^primrose(\s+flowers?)?$/i.test(clean)) {
+    return 'Primroses';
   }
 
   return clean;
@@ -281,6 +407,43 @@ export function canonicalizeRecipeIngredient(name) {
   // Rose hips -> Rosehips
   str = str.replace(/\brose\s+hips?\b/gi, (match) => {
     return match[0] === match[0].toUpperCase() ? 'Rosehips' : 'rosehips';
+  });
+
+  // Sweet apple juice -> apple juice
+  str = str.replace(/\b(fresh,\s*)?sweet\s+apple\s+juice\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Apple juice' : 'apple juice';
+  });
+
+  // Sweet cider / sweet apple cider (e.g. "freshly pressed sweet cider", "sweet cider", "fresh, sweet apple cider")
+  str = str.replace(/\b((?:freshly\s+pressed|fresh|unpasteuri[sz]ed)\s*,?\s*)?sweet\s+(?:apple\s+)?cider\b/gi, (match, prefix) => {
+    const pref = prefix || '';
+    const term = (match[0] === match[0].toUpperCase() && !pref) ? 'Apple juice' : 'apple juice';
+    return pref + term;
+  });
+
+  // Frozen apple juice concentrate / apple juice concentrate -> apple juice
+  str = str.replace(/\b(frozen\s+)?apple\s+juice\s+concentrate\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Apple juice' : 'apple juice';
+  });
+
+  // Cowslip flowers -> cowslips
+  str = str.replace(/\bcowslip\s+flowers?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Cowslips' : 'cowslips';
+  });
+
+  // Dandelion petals / Dandelion flowers / blossoms -> dandelions
+  str = str.replace(/\bdandelion\s+(flowers?|petals?|blossoms?|heads?)\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Dandelions' : 'dandelions';
+  });
+
+  // Chamomile flowers / Camomile flowers -> chamomile
+  str = str.replace(/\b(ch|c)amomile\s+flowers?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Chamomile' : 'chamomile';
+  });
+
+  // Primrose flowers -> primroses
+  str = str.replace(/\bprimrose\s+flowers?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Primroses' : 'primroses';
   });
 
   return str;
