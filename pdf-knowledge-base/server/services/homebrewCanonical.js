@@ -171,8 +171,14 @@ const EXACT_CANONICAL = {
   'potatoes': 'Potatoes',
   'sweet potato': 'Sweet potatoes',
   'sweet potatoes': 'Sweet potatoes',
+  'beet': 'Beetroot',
+  'beets': 'Beetroot',
+  'red beet': 'Beetroot',
+  'red beets': 'Beetroot',
   'beetroot': 'Beetroot',
   'beetroots': 'Beetroot',
+  'red beetroot': 'Beetroot',
+  'red beetroots': 'Beetroot',
   'marrow': 'Marrow',
   'marrows': 'Marrow',
   'dandelion': 'Dandelions',
@@ -386,6 +392,11 @@ export function canonicalizeMain(name) {
     return 'Brewing sugar';
   }
 
+  // Beets / Beetroot (preserving Sugar beet)
+  if (/^(red\s+)?beet(root)?s?$/i.test(clean)) {
+    return 'Beetroot';
+  }
+
   return clean;
 }
 
@@ -460,6 +471,14 @@ export function canonicalizeRecipeIngredient(name) {
   // Glucose chippings -> brewing sugar
   str = str.replace(/\bglucose\s+chippings?\b/gi, (match) => {
     return match[0] === match[0].toUpperCase() ? 'Brewing sugar' : 'brewing sugar';
+  });
+
+  // Beets -> beetroot (preserving sugar beet)
+  str = str.replace(/(?<!sugar\s+)\b(red\s+)?beets?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Beetroot' : 'beetroot';
+  });
+  str = str.replace(/\bbeetroots\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Beetroot' : 'beetroot';
   });
 
   return str;
