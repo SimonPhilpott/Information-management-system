@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useFocusItem } from '../../hooks/useFocusItem';
-import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, ExternalLink, Copy, ChevronUp, ChevronDown, ChevronRight, ArrowLeft, ScrollText, Activity, Wine, Star, Heart, Share2, Send, FileDown, Link2, Printer, Image as ImageIcon, UserPlus, Users, Mail, User, Check, RefreshCw, Filter, Search, SlidersHorizontal, RotateCcw, ArrowUpDown, Camera, Settings, Layers } from 'lucide-react';
+import { FlaskConical, Plus, Save, Trash2, RotateCw, Sparkles, Bell, X, Wand2, ExternalLink, Copy, ChevronUp, ChevronDown, ChevronRight, ArrowLeft, ScrollText, Activity, Wine, Star, Heart, Share2, Send, FileDown, Link2, Printer, Image as ImageIcon, UserPlus, Users, Mail, User, Check, RefreshCw, Filter, Search, SlidersHorizontal, RotateCcw, ArrowUpDown, Camera, Settings, Layers, ClipboardPaste } from 'lucide-react';
 import PortalShell from './PortalShell';
 import { glossMatches, glossTerms } from './brewGlossary';
 import { useAuth } from '../../AuthGate';
@@ -117,6 +117,51 @@ function PicturePicker({ choice, onPick, brew, isDark, border }) {
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
 
+  const pasteFromClipboard = async () => {
+    setErr('');
+    try {
+      if (!navigator.clipboard?.read) {
+        throw new Error('Clipboard access unavailable. Press Ctrl+V directly to paste your copied image.');
+      }
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imageType = item.types.find((t) => t.startsWith('image/'));
+        if (imageType) {
+          const blob = await item.getType(imageType);
+          const file = new File([blob], 'clipboard-banner.png', { type: imageType });
+          await upload(file);
+          return;
+        }
+      }
+      throw new Error('No image found on your clipboard. Copy an image first, then click Paste or press Ctrl+V.');
+    } catch (e) {
+      if (e.name === 'NotAllowedError') {
+        setErr('Clipboard access was blocked. Press Ctrl+V to paste your image directly.');
+      } else {
+        setErr(e.message || 'Press Ctrl+V to paste your image.');
+      }
+    }
+  };
+
+  useEffect(() => {
+    const onPaste = (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type && items[i].type.startsWith('image/')) {
+          const file = items[i].getAsFile();
+          if (file) {
+            e.preventDefault();
+            upload(file);
+            break;
+          }
+        }
+      }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, []);
+
   const defaultTerm = () => {
     if (brew?.name) {
       const clean = brew.name.replace(/\b(batch|recipe|no\.?\s*\d+|v\d+|#\d+)\b/gi, '').replace(/[^\w\s-]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -187,10 +232,20 @@ function PicturePicker({ choice, onPick, brew, isDark, border }) {
           </button>
         ))}
         <label className={`${tile(false)} cursor-pointer flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-amber-500 ${isDark ? 'bg-slate-900/50' : 'bg-white/80'}`} title="Use a photo of your own">
-          {busy ? <RotateCw size={16} className="animate-spin" /> : <Plus size={16} />}
-          <span className="text-[10px] font-bold">Upload your own</span>
+          {busy ? <RotateCw size={16} className="animate-spin text-amber-500" /> : <Plus size={16} />}
+          <span className="text-[10px] font-bold">Upload own</span>
           <input type="file" accept="image/*" className="hidden" onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
         </label>
+        <button
+          type="button"
+          onClick={pasteFromClipboard}
+          disabled={busy}
+          className={`${tile(false)} flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-amber-500 cursor-pointer ${isDark ? 'bg-slate-900/50' : 'bg-white/80'}`}
+          title="Paste image from clipboard (or press Ctrl+V anywhere)"
+        >
+          {busy ? <RotateCw size={16} className="animate-spin text-amber-500" /> : <ClipboardPaste size={16} />}
+          <span className="text-[10px] font-bold">Paste (Ctrl+V)</span>
+        </button>
         <button type="button" onClick={togglePixabay} className={`${tile(showPixabay)} flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-amber-500 ${isDark ? 'bg-slate-900/50' : 'bg-white/80'}`} title="Search photos on Pixabay">
           <Search size={16} className={showPixabay ? 'text-amber-500' : ''} />
           <span className="text-[10px] font-bold">Search Pixabay</span>
@@ -1559,6 +1614,8 @@ function IngredientPicturePickerModal({ ingredient, isOpen, onClose, onUpdated, 
     }
   };
 
+  const [isDragging, setIsDragging] = useState(false);
+
   const upload = async (file) => {
     if (!file) return;
     setBusy(true);
@@ -1579,6 +1636,52 @@ function IngredientPicturePickerModal({ ingredient, isOpen, onClose, onUpdated, 
       setBusy(false);
     }
   };
+
+  const pasteFromClipboard = async () => {
+    setErr('');
+    try {
+      if (!navigator.clipboard?.read) {
+        throw new Error('Clipboard access unavailable. Press Ctrl+V directly to paste your copied image.');
+      }
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imageType = item.types.find((t) => t.startsWith('image/'));
+        if (imageType) {
+          const blob = await item.getType(imageType);
+          const file = new File([blob], 'clipboard-ingredient.png', { type: imageType });
+          await upload(file);
+          return;
+        }
+      }
+      throw new Error('No image found on your clipboard. Copy an image first, then click Paste or press Ctrl+V.');
+    } catch (e) {
+      if (e.name === 'NotAllowedError') {
+        setErr('Clipboard access was blocked. Press Ctrl+V to paste your image directly.');
+      } else {
+        setErr(e.message || 'Press Ctrl+V to paste your image.');
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onPaste = (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type && items[i].type.startsWith('image/')) {
+          const file = items[i].getAsFile();
+          if (file) {
+            e.preventDefault();
+            upload(file);
+            break;
+          }
+        }
+      }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [isOpen, ingredient?.name]);
 
   const pickPixabay = async (hit) => {
     setPickingId(hit.id);
@@ -1633,8 +1736,24 @@ function IngredientPicturePickerModal({ ingredient, isOpen, onClose, onUpdated, 
   const tile = (on) => `relative shrink-0 w-28 h-20 rounded-xl overflow-hidden border-2 transition cursor-pointer ${on ? 'border-amber-500 shadow-md shadow-amber-500/20' : `${border} hover:border-amber-500/50`}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className={`relative w-full max-w-2xl max-h-[90vh] rounded-3xl border ${border} ${isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'} shadow-2xl flex flex-col overflow-hidden`}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
+      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDragging(false); }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        const file = e.dataTransfer?.files?.[0];
+        if (file && file.type.startsWith('image/')) upload(file);
+      }}
+    >
+      <div className={`relative w-full max-w-2xl max-h-[90vh] rounded-3xl border ${isDragging ? 'border-amber-500 ring-4 ring-amber-500/20' : border} ${isDark ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'} shadow-2xl flex flex-col overflow-hidden transition-all`}>
+        {isDragging && (
+          <div className="absolute inset-0 z-50 bg-amber-500/10 backdrop-blur-xs flex flex-col items-center justify-center pointer-events-none border-2 border-dashed border-amber-500 rounded-3xl">
+            <ClipboardPaste size={36} className="text-amber-500 mb-2 animate-bounce" />
+            <span className="text-sm font-extrabold text-amber-500">Drop image here to set photo for {ingredient.name}</span>
+          </div>
+        )}
         {/* Header */}
         <div className={`p-4 border-b ${border} flex items-center justify-between shrink-0`}>
           <div className="flex items-center gap-3 min-w-0">
@@ -1713,6 +1832,18 @@ function IngredientPicturePickerModal({ ingredient, isOpen, onClose, onUpdated, 
                 <span className="text-[10px] font-bold">Upload own</span>
                 <input type="file" accept="image/*" className="hidden" onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
               </label>
+
+              {/* Paste Tile */}
+              <button
+                type="button"
+                onClick={pasteFromClipboard}
+                disabled={busy}
+                className={`${tile(false)} flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-amber-500 cursor-pointer ${isDark ? 'bg-slate-950/50' : 'bg-white'}`}
+                title="Paste image from clipboard (or press Ctrl+V anywhere)"
+              >
+                {busy ? <RotateCw size={16} className="animate-spin text-amber-500" /> : <ClipboardPaste size={16} />}
+                <span className="text-[10px] font-bold">Paste (Ctrl+V)</span>
+              </button>
 
               {/* Pixabay Toggle Tile */}
               <button
