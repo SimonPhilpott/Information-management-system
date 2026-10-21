@@ -9,6 +9,7 @@ import { GoogleGenerativeAI, readGeminiJson } from './geminiClient.js';
 import { getModelFor } from './modelRegistry.js';
 import logger from './loggerService.js';
 import { findPhoto, photoSearchReady } from './homebrewPhotos.js';
+import { canonicalizeMain, canonicalizeRecipeIngredient, migrateHomebrewIngredients, normIngredient } from './homebrewCanonical.js';
 
 // Main-ingredient pictures for a recipe's header (/ims/homebrew): small round photos of what makes the brew what
 // it is - the marigolds and camomile of a camomile and marigold mead, the malts and hops that make a beer unusual.
@@ -44,14 +45,16 @@ const ready = (key) => fs.existsSync(path.join(DIR, `${key}.jpg`));
 const sigOf = (b) => crypto.createHash('sha1').update(JSON.stringify([b.name, b.style, (b.ingredients || []).map((i) => i.name)])).digest('hex').slice(0, 16);
 
 export function getCustomIngredientKey(name) {
-  const n = norm(name);
+  const canon = canonicalizeMain(name) || name;
+  const n = norm(canon);
   if (!n) return null;
   const row = db.prepare('SELECT key FROM brew_ingredient_pictures WHERE name_norm = ?').get(n);
   return row?.key && ready(row.key) ? row.key : null;
 }
 
 export function setCustomIngredientKey(name, key) {
-  const n = norm(name);
+  const canon = canonicalizeMain(name) || name;
+  const n = norm(canon);
   if (!n) throw new Error('Ingredient name is required.');
   if (!key) {
     db.prepare('DELETE FROM brew_ingredient_pictures WHERE name_norm = ?').run(n);
@@ -59,16 +62,18 @@ export function setCustomIngredientKey(name, key) {
   }
   if (!pictureFile(key) || !ready(key)) throw new Error('That picture is not available.');
   db.prepare('INSERT INTO brew_ingredient_pictures (name_norm, name_display, key, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(name_norm) DO UPDATE SET key = excluded.key, updated_at = excluded.updated_at')
-    .run(n, String(name).trim(), key, Date.now());
+    .run(n, canon, key, Date.now());
 }
 
 export function removeCustomIngredientKey(name) {
-  const n = norm(name);
+  const canon = canonicalizeMain(name) || name;
+  const n = norm(canon);
   if (n) db.prepare('DELETE FROM brew_ingredient_pictures WHERE name_norm = ?').run(n);
 }
 
 export function resolveIngredientKey(name) {
-  return getCustomIngredientKey(name) || keyOf(name);
+  const canon = canonicalizeMain(name) || name;
+  return getCustomIngredientKey(canon) || keyOf(canon);
 }
 
 const picking = new Map(); // brew id -> promise
@@ -231,10 +236,11 @@ function pickAndStore(b, { photos = true } = {}) {
     const sig = sigOf(b);
     picking.set(b.id, pickMain(b)
       .then(({ items, colour }) => {
+        const canonicalItems = items.map((it) => ({ ...it, name: canonicalizeMain(it.name) }));
         db.prepare('INSERT INTO brew_main_ingredients (brew_id, sig, items, colour) VALUES (?, ?, ?, ?) ON CONFLICT(brew_id) DO UPDATE SET sig = excluded.sig, items = excluded.items, colour = excluded.colour')
-          .run(b.id, sig, JSON.stringify(items), colour);
-        if (photos) items.forEach(paint);
-        return items;
+          .run(b.id, sig, JSON.stringify(canonicalItems), colour);
+        if (photos) canonicalItems.forEach(paint);
+        return canonicalItems;
       })
       .finally(() => picking.delete(b.id)));
   }
@@ -393,11 +399,11 @@ export function listAllIngredients() {
       const items = JSON.parse(r.items || '[]');
       for (const it of items) {
         if (!it.name) continue;
-        const n = String(it.name).trim();
-        const nm = norm(n);
+        const canon = canonicalizeMain(it.name);
+        const nm = norm(canon);
         if (!nm) continue;
         if (!map.has(nm)) {
-          map.set(nm, { name: n, norm: nm, count: 0, isMain: true, types: new Set() });
+          map.set(nm, { name: canon, norm: nm, count: 0, isMain: true, types: new Set() });
         }
         const entry = map.get(nm);
         entry.count++;
@@ -415,10 +421,11 @@ export function listAllIngredients() {
         if (!i.name) continue;
         const clean = String(i.name).replace(/\(.*?\)/g, '').trim();
         if (!clean) continue;
-        const nm = norm(clean);
+        const canon = canonicalizeMain(clean);
+        const nm = norm(canon);
         if (!nm) continue;
         if (!map.has(nm)) {
-          map.set(nm, { name: clean, norm: nm, count: 0, isMain: false, types: new Set() });
+          map.set(nm, { name: canon, norm: nm, count: 0, isMain: false, types: new Set() });
         }
         const entry = map.get(nm);
         entry.count++;
@@ -429,8 +436,10 @@ export function listAllIngredients() {
 
   // 3. Any custom-set ingredients
   for (const [nm, info] of customMap.entries()) {
-    if (!map.has(nm)) {
-      map.set(nm, { name: info.display || nm, norm: nm, count: 0, isMain: false, types: new Set() });
+    const canon = canonicalizeMain(info.display || nm);
+    const canonNm = norm(canon);
+    if (!map.has(canonNm)) {
+      map.set(canonNm, { name: canon, norm: canonNm, count: 0, isMain: false, types: new Set() });
     }
   }
 

@@ -1876,6 +1876,7 @@ function HomebrewAdminSection({ isDark, border, panel, field, onClose, notify, o
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [pickerIng, setPickerIng] = useState(null);
   const [visibleLimit, setVisibleLimit] = useState(60);
+  const [merging, setMerging] = useState(false);
 
   const loadIngredients = useCallback(async () => {
     setLoading(true);
@@ -1901,6 +1902,22 @@ function HomebrewAdminSection({ isDark, border, panel, field, onClose, notify, o
   useEffect(() => {
     loadIngredients();
   }, [loadIngredients]);
+
+  const handleMergeDuplicates = async () => {
+    setMerging(true);
+    try {
+      const res = await fetch('/api/homebrew/admin/ingredients/merge', { method: 'POST' });
+      const d = await res.json();
+      if (!res.ok || d.success === false) throw new Error(d.error || 'Failed to merge duplicates.');
+      notify(`Merged duplicates across ${d.brewsUpdated || 0} brews and ${d.mainUpdated || 0} main recipe items.`);
+      await loadIngredients();
+      if (onReloadNeeded) onReloadNeeded();
+    } catch (e) {
+      notify(e.message, 'error');
+    } finally {
+      setMerging(false);
+    }
+  };
 
   const handleUpdated = (updated) => {
     setIngredients((prev) => prev.map((x) => (x.norm === updated.norm ? updated : x)));
@@ -1980,8 +1997,22 @@ function HomebrewAdminSection({ isDark, border, panel, field, onClose, notify, o
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={handleMergeDuplicates}
+            disabled={merging || loading}
+            title="Scan and merge duplicate naming conventions across recipes (e.g. Ginger root, Root ginger -> Ginger)"
+            className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+              isDark
+                ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30'
+                : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200'
+            }`}
+          >
+            <Layers size={14} className={merging ? 'animate-spin text-amber-500' : ''} />
+            <span>{merging ? 'Merging...' : 'Merge Naming Duplicates'}</span>
+          </button>
+          <button
+            type="button"
             onClick={loadIngredients}
-            disabled={loading}
+            disabled={loading || merging}
             title="Refresh ingredient catalogue"
             className={`p-2 rounded-xl border ${border} ${isDark ? 'bg-slate-900/60 hover:bg-white/10' : 'bg-white hover:bg-black/5'} text-slate-400 hover:text-amber-500 transition`}
           >

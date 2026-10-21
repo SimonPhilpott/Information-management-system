@@ -8,6 +8,8 @@ import { searchPixabayPhotos } from '../services/homebrewPhotos.js';
 import { setColourByYou, clearColourByYou, fillColours } from '../services/homebrewColours.js';
 import { listInvites, invite, revokeInvite, recentSignIns, OWNER, personName, canonEmail } from '../services/decksService.js';
 import { isApprovedSession } from '../middleware/requireSession.js';
+import db from '../db/database.js';
+import { migrateHomebrewIngredients } from '../services/homebrewCanonical.js';
 
 // /api/homebrew - the Homebrew page (Personal)
 const router = Router();
@@ -70,6 +72,10 @@ router.post('/admin/ingredients/upload', onlyOwner, express.raw({ type: ['image/
 }));
 router.post('/admin/ingredients/pixabay/pick', onlyOwner, wrap(async (req) => {
   return savePixabayIngredientPhoto(req.body || {});
+}));
+router.post('/admin/ingredients/merge', onlyOwner, wrap(() => {
+  const stats = migrateHomebrewIngredients(db);
+  return { success: true, ...stats };
 }));
 // a brew made from a recipe shows the recipe's main ingredients and banner
 router.get('/:id/main-ingredients', wrap((req) => { const brew = getBrew(req.params.id); if (!brew) throw new Error('No such brew'); return mainIngredients((brew.fromRecipe && getBrew(brew.fromRecipe)) || brew); }));

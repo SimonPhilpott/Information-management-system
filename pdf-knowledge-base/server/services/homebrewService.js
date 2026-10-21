@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { expectedColour, fillColours, colourByYou } from './homebrewColours.js';
 import { readyPictures, readyBanner, bannerChoiceOf } from './homebrewPictures.js';
 import { tagRecipes, splitName, variantLabel, normSweetness, COLOUR_OF_CAT, estimateAbv, profileOf } from './homebrewTags.js';
+import { canonicalizeRecipeIngredient } from './homebrewCanonical.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -203,7 +204,13 @@ const NUMERIC = new Set(['batch_litres', 'target_og', 'target_fg', 'og', 'fg']);
 export function saveBrew(id, body = {}) {
   const set = {};
   for (const [k, col] of Object.entries(FIELDS)) if (body[k] !== undefined) set[col] = NUMERIC.has(col) ? num(body[k]) : (String(body[k] ?? '').trim() || null);
-  if (body.ingredients !== undefined) set.ingredients = JSON.stringify((Array.isArray(body.ingredients) ? body.ingredients : []).filter((i) => i && String(i.name || '').trim()));
+  if (body.ingredients !== undefined) {
+    set.ingredients = JSON.stringify(
+      (Array.isArray(body.ingredients) ? body.ingredients : [])
+        .filter((i) => i && String(i.name || '').trim())
+        .map((i) => ({ ...i, name: canonicalizeRecipeIngredient(i.name) }))
+    );
+  }
   if (set.status && !STATUSES.includes(set.status)) throw new Error(`status must be one of ${STATUSES.join(', ')}`);
   if (set.category && !CATEGORIES.some((c) => c.id === set.category)) throw new Error('Unknown category');
   if (set.style && !set.category && !id) set.category = categoryOfStyle(set.style);
