@@ -1959,7 +1959,11 @@ function HomebrewAdminSection({ isDark, border, panel, field, onClose, notify, o
           <button
             type="button"
             onClick={onClose}
-            className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition active:scale-95 ${border} ${isDark ? 'bg-slate-900/60 hover:bg-white/10 text-slate-300' : 'bg-white hover:bg-black/5 text-[#2E2B27]'}`}
+            className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-colors cursor-pointer active:opacity-80 ${border} ${
+              isDark
+                ? 'bg-slate-900/60 hover:bg-white/10 active:bg-white/15 text-slate-300'
+                : 'bg-white hover:bg-black/5 active:bg-black/10 text-[#2E2B27]'
+            }`}
           >
             <ArrowLeft size={14} />
             <span>Back to Homebrew</span>
@@ -3838,8 +3842,18 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
         <div className="flex flex-col gap-5 min-w-0 pb-24 sm:pb-0">
           {pictureOpen && brew && <PictureDialog brew={brew} isDark={isDark} border={border} onClose={() => setPictureOpen(false)} onPicked={(b) => { setPictureOpen(false); setBrew(b); loadList(); notify('Picture changed.'); }} />}
           {labelsOpen && brew && <LabelsDialog brew={brew} isDark={isDark} border={border} onClose={() => setLabelsOpen(false)} onDone={labelsMade} />}
-          {/* Back button styled like IMS Hub button in PortalShell */}
-          <button onClick={backToShelf} className={`self-start p-2 rounded-xl flex items-center gap-2 text-xs font-bold transition-all active:scale-95 ${isDark ? 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5' : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 text-[#2E2B27] border border-[#2E2B27]/10'}`}><ArrowLeft size={16} /> {view === 'recipes' ? 'Back to the recipe book' : 'Back to all brews'}</button>
+          {/* Back button */}
+          <button
+            type="button"
+            onClick={backToShelf}
+            className={`self-start p-2 rounded-xl flex items-center gap-2 text-xs font-bold transition-colors cursor-pointer active:opacity-80 ${
+              isDark
+                ? 'bg-white/5 hover:bg-white/10 active:bg-white/15 text-slate-300 border border-white/5'
+                : 'bg-[#2E2B27]/5 hover:bg-[#2E2B27]/10 active:bg-[#2E2B27]/15 text-[#2E2B27] border border-[#2E2B27]/10'
+            }`}
+          >
+            <ArrowLeft size={16} /> {view === 'recipes' ? 'Back to the recipe book' : 'Back to all brews'}
+          </button>
 
           {brew && renderPhase1Header(brew, false)}
 
