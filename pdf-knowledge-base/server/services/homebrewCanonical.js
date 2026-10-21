@@ -92,6 +92,21 @@ const EXACT_CANONICAL = {
   'clover blossoms': 'Clover flowers',
   'purple clover': 'Clover flowers',
   'purple clover flowers': 'Clover flowers',
+  'coltsfoot': 'Coltsfoot flowers',
+  'coltsfoot flower': 'Coltsfoot flowers',
+  'coltsfoot flowers': 'Coltsfoot flowers',
+  'hibiscus': 'Hibiscus flowers',
+  'hibiscus flower': 'Hibiscus flowers',
+  'hibiscus flowers': 'Hibiscus flowers',
+  'golden rod': 'Goldenrod flowers',
+  'golden rod flowers': 'Goldenrod flowers',
+  'goldenrod': 'Goldenrod flowers',
+  'goldenrod flower': 'Goldenrod flowers',
+  'goldenrod flowers': 'Goldenrod flowers',
+  'basil': 'Basil',
+  'basil blossom': 'Basil',
+  'basil blossoms': 'Basil',
+  'sweet basil': 'Basil',
 
   // Berries & Orchard Fruits
   'blackberry': 'Blackberries',
@@ -167,6 +182,14 @@ const EXACT_CANONICAL = {
   'golden raisins': 'Golden raisins',
   'sultana': 'Sultanas',
   'sultanas': 'Sultanas',
+  'quince': 'Quinces',
+  'quinces': 'Quinces',
+  'pomegranate': 'Pomegranates',
+  'pomegranates': 'Pomegranates',
+  'mango': 'Mangoes',
+  'mangoes': 'Mangoes',
+  'grape': 'Grapes',
+  'grapes': 'Grapes',
 
   // Vegetables & Herbs
   'carrot': 'Carrots',
@@ -201,13 +224,25 @@ const EXACT_CANONICAL = {
   'dandelion roots': 'Dandelion root',
   'dandelion green': 'Dandelion greens',
   'dandelion greens': 'Dandelion greens',
+  'sassafras': 'Sassafras root bark',
+  'sassafras bark': 'Sassafras root bark',
+  'sassafras root': 'Sassafras root bark',
+  'sassafras roots': 'Sassafras root bark',
   'sassafras root bark': 'Sassafras root bark',
+  'sarsaparilla': 'Sarsaparilla root',
+  'sarsaparilla roots': 'Sarsaparilla root',
+  'sarsaparilla root': 'Sarsaparilla root',
+  'juniper': 'Juniper berries',
+  'juniper berry': 'Juniper berries',
+  'juniper berries': 'Juniper berries',
   'sumac berry': 'Sumac berries',
   'sumac berries': 'Sumac berries',
   'manzanita berry': 'Manzanita berries',
   'manzanita berries': 'Manzanita berries',
   'hawthorn blossom': 'Hawthorn blossom',
   'hawthorn blossoms': 'Hawthorn blossom',
+  'hawthorn flower': 'Hawthorn blossom',
+  'hawthorn flowers': 'Hawthorn blossom',
   'vine pruning': 'Vine prunings',
   'vine prunings': 'Vine prunings',
   'turkey tail mushroom': 'Turkey tail mushrooms',
@@ -313,6 +348,27 @@ const EXACT_CANONICAL = {
   'hallertau': 'Hallertauer hops',
   'hallertauer': 'Hallertauer hops',
   'hallertauer hops': 'Hallertauer hops',
+  'cluster': 'Cluster hops',
+  'cluster hop': 'Cluster hops',
+  'cluster hops': 'Cluster hops',
+
+  // Cocoa & Chocolate
+  'cocoa hulls': 'Cocoa husks',
+  'cocoa hull': 'Cocoa husks',
+  'cocoa husks': 'Cocoa husks',
+  'cocoa husk': 'Cocoa husks',
+  'cocoa bean hulls': 'Cocoa husks',
+  'cocoa bean hull': 'Cocoa husks',
+  'cocoa bean husks': 'Cocoa husks',
+  'cocoa bean husk': 'Cocoa husks',
+  'dark cocoa': 'Dark cocoa powder',
+  'dark cocoa powder': 'Dark cocoa powder',
+
+  // Spirits, Herbs & Misc
+  'apple brandy': 'Apple brandy',
+  'california sagebrush': 'California sagebrush',
+  'white sage': 'White sage',
+  'yerba santa': 'Yerba Santa',
 
   // Juices & Grapes
   'white grape juice': 'White grape juice',
@@ -421,6 +477,65 @@ export function canonicalizeMain(name) {
     return 'Burnet';
   }
 
+  // Cocoa husks / Cocoa hulls / Dark cocoa powder
+  if (/^cocoa(\s+bean)?\s+(hulls?|husks?)$/i.test(clean)) {
+    return 'Cocoa husks';
+  }
+  if (/^dark\s+cocoa(\s+powder)?$/i.test(clean)) {
+    return 'Dark cocoa powder';
+  }
+
+  // Hawthorn blossom vs Hawthorn berries
+  if (/^hawthorn\s+(blossoms?|flowers?)$/i.test(clean)) {
+    return 'Hawthorn blossom';
+  }
+
+  // Coltsfoot
+  if (/^coltsfoot(\s+flowers?)?$/i.test(clean)) {
+    return 'Coltsfoot flowers';
+  }
+
+  // Hibiscus
+  if (/^hibiscus(\s+flowers?)?$/i.test(clean)) {
+    return 'Hibiscus flowers';
+  }
+
+  // Goldenrod
+  if (/^golden\s*rod(\s+flowers?)?$/i.test(clean)) {
+    return 'Goldenrod flowers';
+  }
+
+  // Basil
+  if (/^(sweet\s+)?basil(\s+blossoms?)?$/i.test(clean)) {
+    return 'Basil';
+  }
+
+  // Fruits
+  if (/^quince(s)?$/i.test(clean)) return 'Quinces';
+  if (/^pomegranate(s)?$/i.test(clean)) return 'Pomegranates';
+  if (/^mango(es)?$/i.test(clean)) return 'Mangoes';
+  if (/^grape(s)?$/i.test(clean)) return 'Grapes';
+
+  // Juniper berries
+  if (/^juniper(\s+berries)?$/i.test(clean)) {
+    return 'Juniper berries';
+  }
+
+  // Sarsaparilla
+  if (/^sarsaparilla(\s+roots?)?$/i.test(clean)) {
+    return 'Sarsaparilla root';
+  }
+
+  // Sassafras
+  if (/^sassafras(\s+(bark|roots?|root\s+bark))?$/i.test(clean)) {
+    return 'Sassafras root bark';
+  }
+
+  // Cluster hops
+  if (/^cluster(\s+hops?)?$/i.test(clean)) {
+    return 'Cluster hops';
+  }
+
   return clean;
 }
 
@@ -513,6 +628,36 @@ export function canonicalizeRecipeIngredient(name) {
   // Burnet flowers / heads -> burnet
   str = str.replace(/\b(salad\s+)?burnet\s+(flowers?|heads?)\b/gi, (match) => {
     return match[0] === match[0].toUpperCase() ? 'Burnet' : 'burnet';
+  });
+
+  // Cocoa hulls / husks -> cocoa husks
+  str = str.replace(/\bcocoa(\s+bean)?\s+(hulls?|husks?)\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Cocoa husks' : 'cocoa husks';
+  });
+
+  // Dark cocoa -> dark cocoa powder
+  str = str.replace(/\bdark\s+cocoa\b(?!\s+powder)/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Dark cocoa powder' : 'dark cocoa powder';
+  });
+
+  // Hawthorn flowers -> hawthorn blossom
+  str = str.replace(/\bhawthorn\s+flowers?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Hawthorn blossom' : 'hawthorn blossom';
+  });
+
+  // Coltsfoot flowers -> coltsfoot flowers
+  str = str.replace(/\bcoltsfoot\s+flowers?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Coltsfoot flowers' : 'coltsfoot flowers';
+  });
+
+  // Hibiscus flowers -> hibiscus flowers
+  str = str.replace(/\bhibiscus\s+flowers?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Hibiscus flowers' : 'hibiscus flowers';
+  });
+
+  // Goldenrod flowers
+  str = str.replace(/\bgolden\s*rod\s+flowers?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Goldenrod flowers' : 'goldenrod flowers';
   });
 
   return str;
