@@ -24,7 +24,7 @@ const KEEP_LOCAL = 10, KEEP_DRIVE = 10;
 // What goes in, relative to data/ (files or folders; missing ones are skipped).
 const FILES = [
   'database.sqlite', 'boardgames_config.json', 'boardgames_cache.json', 'bgg_collection.csv', 'morning_report_state.json', 'wifi_networks.json',
-  'phrase_recordings', 'faces',
+  'phrase_recordings', 'faces', 'homebrew_pictures', 'label_fonts',
   'decks/campaign_banners', 'decks/chronicle_art', 'decks/chronicle_audio',
   'decks/ahlcg_campaign_setups.json', 'decks/arkham_places.json', 'decks/arkham_maps.json', 'decks/middle_earth_places.json',
   'decks/lotr_rulebooks.json', 'decks/ahlcg_rulebooks.json',

@@ -7,8 +7,8 @@ by the **IMS NAS backup** task. `LAST_BACKUP.txt` says when it last ran and whet
 
 | Folder | What it is |
 |---|---|
-| `project\` | The whole `D:\Information management system` folder: code, `.env` files (API keys), data, PDFs, wake-word data, firmware, Home Assistant config, installed packages. Nothing is ever deleted from it, so it may also hold files you'd since removed. |
-| `databases\<date>\` | Clean copies of the IMS database (`app.db`) and Home Assistant's (`home-assistant_v2.db`), one folder per night for 30 nights. **Always restore the database from here, not from `project\`.** |
+| `project\` | The whole `D:\Information management system` folder: code, `.env` files (API keys), data, PDFs, wake-word data, firmware, Home Assistant config, homebrew ingredient pictures and label fonts, installed packages. Nothing is ever deleted from it, so it may also hold files you'd since removed. |
+| `databases\<date>\` | Clean copies of the IMS database (`app.db` - holds all recipes, batches, logs, tastings, ingredient mappings) and Home Assistant's (`home-assistant_v2.db`), one folder per night for 30 nights. **Always restore the database from here, not from `project\`.** |
 | `git\` | The full code history as a single file per night (`ims-<date>.bundle`). |
 | `claude-project\` | Claude's memory notes and conversation history for IMS. |
 | `windows-startup\` | The shortcuts that start IMS when Windows starts. |
