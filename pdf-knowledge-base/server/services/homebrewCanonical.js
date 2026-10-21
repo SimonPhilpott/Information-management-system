@@ -79,6 +79,12 @@ const EXACT_CANONICAL = {
   'yarrow flowers': 'Yarrow',
   'broom flower': 'Broom flowers',
   'broom flowers': 'Broom flowers',
+  'burnet': 'Burnet',
+  'burnet flower': 'Burnet',
+  'burnet flowers': 'Burnet',
+  'burnet head': 'Burnet',
+  'burnet heads': 'Burnet',
+  'salad burnet': 'Burnet',
   'clover': 'Clover flowers',
   'clover flower': 'Clover flowers',
   'clover flowers': 'Clover flowers',
@@ -410,6 +416,11 @@ export function canonicalizeMain(name) {
     return 'Dark brown sugar';
   }
 
+  // Burnet / Burnet flowers / Burnet heads
+  if (/^(salad\s+)?burnet(\s+(flowers?|heads?))?$/i.test(clean)) {
+    return 'Burnet';
+  }
+
   return clean;
 }
 
@@ -497,6 +508,11 @@ export function canonicalizeRecipeIngredient(name) {
   // Dark brown sugar / Barbados sugar / Black invert sugar / Dark sugar
   str = str.replace(/\b(barbados\s+sugar|black\s+invert\s+sugar|dark\s+soft\s+brown\s+sugar|coarse\s+dark\s+sugar(\s*-\s*the\s+darkest\s+available)?|darkest\s+sugar(\s+available)?)\b/gi, (match) => {
     return match[0] === match[0].toUpperCase() ? 'Dark brown sugar' : 'dark brown sugar';
+  });
+
+  // Burnet flowers / heads -> burnet
+  str = str.replace(/\b(salad\s+)?burnet\s+(flowers?|heads?)\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Burnet' : 'burnet';
   });
 
   return str;
