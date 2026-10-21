@@ -9,7 +9,9 @@ import { useAuth } from '../../AuthGate';
 // it aged, and insights (the flavour profile it's heading for, what to tweak, what a change would do).
 const GRADIENT = 'from-amber-500 to-orange-600';
 const ING_TYPES = ['honey', 'malt', 'fruit', 'spice', 'hops', 'sugar', 'acid', 'tannin', 'other'];
+const ING_EMOJI = { honey: '🍯', malt: '🌾', fruit: '🍎', spice: '🌿', hops: '🍃', sugar: '🍬', acid: '🍋', tannin: '🍂', other: '🧪' };
 const ING_STAGES = ['primary', 'secondary', 'backsweeten', 'bottling'];
+const STAGE_LABEL = { primary: 'Primary (start)', secondary: 'Secondary (aging)', backsweeten: 'Backsweeten', bottling: 'Bottling' };
 const KIND_LABEL = { reading: 'Reading', nutrient: 'Nutrient', degas: 'Degas', addition: 'Addition', rack: 'Racked', stabilise: 'Stabilised', backsweeten: 'Backsweetened', bottle: 'Bottled', note: 'Note' };
 const when = (t) => (t ? new Date(t).toLocaleString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 const g3 = (g) => (g ? Number(g).toFixed(3) : '-');
@@ -2879,6 +2881,57 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
   };
 
   const renderPhase4StickyBottomBar = (b, forceInsideFrame = false) => {
+    const isEditing = Boolean(creating || (b?.isRecipe ? editRecipe : tab === 'recipe'));
+
+    if (isEditing) {
+      const isRec = b ? b.isRecipe : view === 'recipes';
+      const saveTitle = b ? (isRec ? 'Save recipe' : 'Save brew') : (isRec ? 'Create recipe' : 'Create brew');
+      return (
+        <div
+          className={`${forceInsideFrame ? 'absolute' : 'fixed sm:hidden'} bottom-0 inset-x-0 z-40 p-2.5 sm:p-3 border-t backdrop-blur-md shadow-2xl transition-all ${isDark ? 'bg-slate-900/95 border-white/10 text-white' : 'bg-white/95 border-[#2E2B27]/10 text-[#2E2B27]'}`}
+          style={{ paddingBottom: forceInsideFrame ? '0.75rem' : 'max(0.75rem, env(safe-area-inset-bottom))' }}
+        >
+          <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
+            {b?.isRecipe && editRecipe ? (
+              <button
+                type="button"
+                onClick={() => setEditRecipe(false)}
+                className={`px-3.5 py-2 rounded-xl border ${border} ${isDark ? 'bg-slate-950/40 text-slate-300' : 'bg-white text-slate-700'} font-bold text-xs shrink-0 active:scale-95 transition`}
+              >
+                Cancel
+              </button>
+            ) : b ? (
+              <button
+                type="button"
+                onClick={() => setTab('log')}
+                className={`px-3.5 py-2 rounded-xl border ${border} ${isDark ? 'bg-slate-950/40 text-slate-300' : 'bg-white text-slate-700'} font-bold text-xs shrink-0 active:scale-95 transition`}
+              >
+                Cancel
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={backToShelf}
+                className={`px-3.5 py-2 rounded-xl border ${border} ${isDark ? 'bg-slate-950/40 text-slate-300' : 'bg-white text-slate-700'} font-bold text-xs shrink-0 active:scale-95 transition`}
+              >
+                Cancel
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={saveBrew}
+              disabled={!form.name.trim() || busy === 'save'}
+              className="flex-1 py-2 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-extrabold text-xs shadow-lg shadow-amber-500/25 active:scale-98 transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+            >
+              {busy === 'save' ? <RotateCw size={14} className="animate-spin shrink-0" /> : <Save size={14} className="shrink-0" />}
+              <span className="truncate">{saveTitle}</span>
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     if (!b) return null;
     const isRec = b.isRecipe;
 
@@ -3364,62 +3417,355 @@ export default function HomebrewPortal({ theme = 'dark', onThemeToggle, setCurre
           )}
 
           {(!brew || (brew.isRecipe ? editRecipe : tab === 'recipe')) && (
-            <div className={panel}>
-              <div className="flex items-center gap-2 mb-3">
-                <h2 className="text-xs font-black uppercase tracking-wider">{brew ? (brew.isRecipe ? 'Edit recipe' : 'Recipe') : view === 'recipes' ? 'New recipe' : 'New brew'}</h2>
-                {brew?.isRecipe && <button onClick={() => setEditRecipe(false)} className={`${btn} ml-auto`}><ScrollText size={13} /> Back to reading it</button>}
+            <div className="flex flex-col gap-4">
+              {/* Form Title & Top Cancel Button */}
+              <div className="flex items-center justify-between gap-2 px-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg leading-none">{view === 'recipes' ? '📖' : '🫙'}</span>
+                  <h2 className="text-sm font-black uppercase tracking-wider">{brew ? (brew.isRecipe ? 'Edit recipe' : 'Recipe Details') : view === 'recipes' ? 'New recipe' : 'New brew'}</h2>
+                </div>
+                {brew?.isRecipe && (
+                  <button onClick={() => setEditRecipe(false)} className={`${btn} !py-1.5`}>
+                    <ScrollText size={13} /> Back to reading
+                  </button>
+                )}
               </div>
-              <LookPicker form={form} setForm={setForm} categories={meta.categories} stylesFor={stylesFor} brew={brew} isDark={isDark} border={border} label={label} />
-              <div className="mb-3"><span className={label}>Summary</span><textarea rows={Math.min(6, Math.max(2, Math.ceil((form.summary || '').length / 90)))} value={form.summary || ''} onChange={set('summary')} placeholder="What it is and what it's like - a line or two" className={`${field} resize-y`} /></div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-2"><span className={label}>Name</span><input value={form.name} onChange={set('name')} placeholder="e.g. Christmas braggot for Dad" className={field} /></div>
-                <div><span className={label}>Style</span><select value={form.style || ''} onChange={set('style')} className={field}>{(stylesFor(form.category).includes(form.style) || !form.style ? stylesFor(form.category) : [form.style, ...stylesFor(form.category)]).map((s) => <option key={s}>{s}</option>)}</select></div>
-                <div><span className={label}>Status</span><select value={form.status} onChange={set('status')} className={field}>{meta.statuses.map((s) => <option key={s}>{s}</option>)}</select></div>
-                <div><span className={label}>Batch (litres)</span><input type="number" step="0.1" value={form.batchLitres ?? ''} onChange={set('batchLitres')} className={field} />
-                  {bottlesOf(form.batchLitres, form.category) && <span className="text-[10px] text-slate-500 mt-1 block" title={bottlesOf(form.batchLitres, form.category).hint}>Makes {bottlesOf(form.batchLitres, form.category).text} bottles</span>}</div>
-                <div><span className={label}>Pitched on</span><input type="date" value={form.startedOn || ''} onChange={set('startedOn')} className={field} /></div>
-                <div><span className={label}>Target <Ab k="OG" /></span><input type="number" step="0.001" value={form.targetOg ?? ''} onChange={set('targetOg')} placeholder="1.100" className={field} /></div>
-                <div><span className={label}>Target <Ab k="FG" /></span><input type="number" step="0.001" value={form.targetFg ?? ''} onChange={set('targetFg')} placeholder="1.015" className={field} /></div>
-                <div><span className={label}>Bottled on</span><input type="date" value={form.bottledOn || ''} onChange={set('bottledOn')} className={field} /></div>
-                <div><span className={label}>Actual <Ab k="OG" /></span><input type="number" step="0.001" value={form.og ?? ''} onChange={set('og')} placeholder="first reading" className={field} /></div>
-                <div><span className={label}>Actual <Ab k="FG" /></span><input type="number" step="0.001" value={form.fg ?? ''} onChange={set('fg')} className={field} /></div>
-                <div><span className={label}>Sweetness</span><select value={form.sweetness || ''} onChange={set('sweetness')} title={brew?.sweetnessBasis ? `Currently ${BASIS_WORD[brew.sweetnessBasis]}` : undefined} className={field}><option value="">-</option>{['dry', 'medium', 'sweet', ...(['dry', 'medium', 'sweet', ''].includes(form.sweetness || '') ? [] : [form.sweetness])].map((s) => <option key={s}>{s}</option>)}</select></div>
-                {WINE_CATS.includes(form.category) && <div><span className={label}>Colour</span><select value={form.colour || ''} onChange={set('colour')} className={field}><option value="">-</option>{WINE_COLOURS.map((w) => <option key={w.id} value={w.id}>{w.label}</option>)}</select></div>}
-                <div><span className={label}>Carbonation</span><select value={form.carbonation || ''} onChange={set('carbonation')} className={field}><option value="">-</option><option>still</option><option>petillant</option><option>sparkling</option></select></div>
-                <div className="sm:col-span-2"><span className={label}>Yeast</span><input value={form.yeast || ''} onChange={set('yeast')} placeholder="e.g. Lalvin 71B, 1 sachet" className={field} /></div>
-                <div className="sm:col-span-3"><span className={label}>Yeast - how it was pitched</span><input value={form.yeastNotes || ''} onChange={set('yeastNotes')} placeholder="rehydrated with Go-Ferm at 40°C, pitched at 20°C" className={field} /></div>
-                <div className="sm:col-span-3"><span className={label}>Nutrients</span><input value={form.nutrients || ''} onChange={set('nutrients')} placeholder="Fermaid-O, TOSNA 4 doses of 1.5 g" className={field} /></div>
-                <div className="sm:col-span-3"><span className={label}>Water</span><input value={form.water || ''} onChange={set('water')} placeholder="tap, Campden-treated / bottled spring" className={field} /></div>
-                <div className="sm:col-span-2"><span className={label}>Recipe source</span><input value={form.sourceName || ''} onChange={set('sourceName')} placeholder="where the recipe came from" className={field} /></div>
-                <div><span className={label}>Source link</span><input value={form.sourceUrl || ''} onChange={set('sourceUrl')} placeholder="https://..." className={field} /></div>
-              </div>
-              <div className="mt-4">
-                <span className={label}>Ingredients</span>
-                <div className="flex flex-col gap-2">
-                  {form.ingredients.map((g, i) => (
-                    <div key={i} className="grid grid-cols-2 sm:grid-cols-[7rem_minmax(0,1fr)_5rem_5rem_7rem_2rem] gap-2 items-center">
-                      <select value={g.type || 'honey'} onChange={(e) => setIng(i, 'type', e.target.value)} className={field}>{ING_TYPES.map((t) => <option key={t}>{t}</option>)}</select>
-                      <input value={g.name || ''} onChange={(e) => setIng(i, 'name', e.target.value)} placeholder="e.g. Heather honey" title={abbrTitle(g.name)} className={field} />
-                      <input value={g.amount || ''} onChange={(e) => setIng(i, 'amount', e.target.value)} placeholder="1.5" className={field} />
-                      <input value={g.unit || ''} onChange={(e) => setIng(i, 'unit', e.target.value)} placeholder="kg" title={ABBR[String(g.unit || '').trim()]} className={field} />
-                      <select value={g.stage || 'primary'} onChange={(e) => setIng(i, 'stage', e.target.value)} className={field}>{ING_STAGES.map((t) => <option key={t}>{t}</option>)}</select>
-                      <button onClick={() => setForm({ ...form, ingredients: form.ingredients.filter((_, j) => j !== i) })} title="Remove" className="text-slate-500 hover:text-red-500 justify-self-center"><X size={14} /></button>
+
+              {/* Section 1: Overview & Identity */}
+              <div className={panel}>
+                <div className="flex items-center gap-2 mb-3 pb-2 border-b border-black/5 dark:border-white/5">
+                  <span className="text-base leading-none">✨</span>
+                  <h3 className="text-xs font-black uppercase tracking-wider">Overview &amp; Identity</h3>
+                </div>
+                <div className="flex flex-col gap-3.5">
+                  <LookPicker form={form} setForm={setForm} categories={meta.categories} stylesFor={stylesFor} brew={brew} isDark={isDark} border={border} label={label} />
+                  <div>
+                    <label className={label}>Name</label>
+                    <input value={form.name} onChange={set('name')} placeholder="e.g. Christmas braggot for Dad" className={field} />
+                  </div>
+                  <div>
+                    <label className={label}>Summary</label>
+                    <textarea rows={Math.min(6, Math.max(2, Math.ceil((form.summary || '').length / 90)))} value={form.summary || ''} onChange={set('summary')} placeholder="What it is and what it's like - a line or two" className={`${field} resize-y`} />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className={label}>Style</label>
+                      <select value={form.style || ''} onChange={set('style')} className={field}>
+                        {(stylesFor(form.category).includes(form.style) || !form.style ? stylesFor(form.category) : [form.style, ...stylesFor(form.category)]).map((s) => <option key={s}>{s}</option>)}
+                      </select>
                     </div>
-                  ))}
-                  <button onClick={() => setForm({ ...form, ingredients: [...form.ingredients, { type: 'honey', name: '', amount: '', unit: 'kg', stage: 'primary' }] })} className={`${btn} self-start`}><Plus size={13} /> Ingredient</button>
+                    <div>
+                      <label className={label}>Status</label>
+                      <select value={form.status} onChange={set('status')} className={field}>
+                        {meta.statuses.map((s) => <option key={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={label}>Batch (litres)</label>
+                      <input type="number" step="0.1" value={form.batchLitres ?? ''} onChange={set('batchLitres')} className={field} />
+                      {bottlesOf(form.batchLitres, form.category) && <span className="text-[10px] text-slate-500 mt-1 block" title={bottlesOf(form.batchLitres, form.category).hint}>Makes {bottlesOf(form.batchLitres, form.category).text} bottles</span>}
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div className="mt-4">
-                <span className={label}>Method</span>
-                <StepsEditor value={form.method || ''} onChange={(m) => setForm({ ...form, method: m })} field={field} border={border} isDark={isDark} />
+
+              {/* Section 2: Fermentation, Dates & Gravities */}
+              <div className={panel}>
+                <div className="flex items-center gap-2 mb-3 pb-2 border-b border-black/5 dark:border-white/5">
+                  <span className="text-base leading-none">🧪</span>
+                  <h3 className="text-xs font-black uppercase tracking-wider">Fermentation &amp; Specs</h3>
+                </div>
+                <div className="flex flex-col gap-3.5">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div>
+                      <label className={label}>Target <Ab k="OG" /></label>
+                      <input type="number" step="0.001" value={form.targetOg ?? ''} onChange={set('targetOg')} placeholder="1.100" className={field} />
+                    </div>
+                    <div>
+                      <label className={label}>Target <Ab k="FG" /></label>
+                      <input type="number" step="0.001" value={form.targetFg ?? ''} onChange={set('targetFg')} placeholder="1.015" className={field} />
+                    </div>
+                    <div>
+                      <label className={label}>Actual <Ab k="OG" /></label>
+                      <input type="number" step="0.001" value={form.og ?? ''} onChange={set('og')} placeholder="First reading" className={field} />
+                    </div>
+                    <div>
+                      <label className={label}>Actual <Ab k="FG" /></label>
+                      <input type="number" step="0.001" value={form.fg ?? ''} onChange={set('fg')} placeholder="Final reading" className={field} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className={label}>Pitched on</label>
+                      <input type="date" value={form.startedOn || ''} onChange={set('startedOn')} className={field} />
+                    </div>
+                    <div>
+                      <label className={label}>Bottled on</label>
+                      <input type="date" value={form.bottledOn || ''} onChange={set('bottledOn')} className={field} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className={label}>Sweetness</label>
+                      <select value={form.sweetness || ''} onChange={set('sweetness')} title={brew?.sweetnessBasis ? `Currently ${BASIS_WORD[brew.sweetnessBasis]}` : undefined} className={field}>
+                        <option value="">-</option>
+                        {['dry', 'medium', 'sweet', ...(['dry', 'medium', 'sweet', ''].includes(form.sweetness || '') ? [] : [form.sweetness])].map((s) => <option key={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={label}>Carbonation</label>
+                      <select value={form.carbonation || ''} onChange={set('carbonation')} className={field}>
+                        <option value="">-</option>
+                        <option>still</option>
+                        <option>petillant</option>
+                        <option>sparkling</option>
+                      </select>
+                    </div>
+                    {WINE_CATS.includes(form.category) && (
+                      <div className="col-span-2 sm:col-span-1">
+                        <label className={label}>Colour</label>
+                        <select value={form.colour || ''} onChange={set('colour')} className={field}>
+                          <option value="">-</option>
+                          {WINE_COLOURS.map((w) => <option key={w.id} value={w.id}>{w.label}</option>)}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="grid grid-cols-1 gap-3 mt-4">
-                <div><span className={label}>Notes</span><textarea rows={Math.min(14, Math.max(4, Math.ceil((form.notes || '').length / 60)))} value={form.notes || ''} onChange={set('notes')} placeholder="Anything else worth remembering" title={abbrTitle(form.notes)} className={`${field} resize-y`} /></div>
+
+              {/* Section 3: Ingredients (Mobile Cards + Desktop Table) */}
+              <div className={panel}>
+                <div className="flex items-center justify-between mb-3 pb-2 border-b border-black/5 dark:border-white/5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base leading-none">🌾</span>
+                    <h3 className="text-xs font-black uppercase tracking-wider">Ingredients ({form.ingredients.length})</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, ingredients: [...form.ingredients, { type: 'honey', name: '', amount: '', unit: 'kg', stage: 'primary' }] })}
+                    className={`${primary} !py-1 !px-2.5 !text-xs shadow-xs`}
+                  >
+                    <Plus size={13} /> Add ingredient
+                  </button>
+                </div>
+
+                {/* Desktop Table Column Labels */}
+                <div className="hidden sm:grid sm:grid-cols-[7.5rem_minmax(0,1fr)_5rem_5rem_7.5rem_2rem] gap-2 mb-1.5 px-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  <span>Type</span>
+                  <span>Ingredient name</span>
+                  <span>Amount</span>
+                  <span>Unit</span>
+                  <span>Stage</span>
+                  <span className="text-center">Remove</span>
+                </div>
+
+                {/* Ingredients List */}
+                <div className="flex flex-col gap-3 sm:gap-2">
+                  {form.ingredients.map((g, i) => (
+                    <div key={i}>
+                      {/* Mobile Card Layout */}
+                      <div className={`sm:hidden p-3.5 rounded-2xl border ${border} ${isDark ? 'bg-slate-950/40' : 'bg-white'} shadow-xs flex flex-col gap-2.5`}>
+                        <div className="flex items-center justify-between border-b border-black/5 dark:border-white/5 pb-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-500 text-[10px] font-black flex items-center justify-center shrink-0">
+                              {i + 1}
+                            </span>
+                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
+                              {g.name?.trim() ? g.name : `Ingredient #${i + 1}`}
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold shrink-0 ml-1">
+                              {ING_EMOJI[g.type] || '🌾'} {g.type || 'honey'}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setForm({ ...form, ingredients: form.ingredients.filter((_, j) => j !== i) })}
+                            title="Remove ingredient"
+                            className="p-1 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-500/10 active:scale-95 transition shrink-0 ml-2"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1 block">Ingredient Name</label>
+                          <input
+                            value={g.name || ''}
+                            onChange={(e) => setIng(i, 'name', e.target.value)}
+                            placeholder="e.g. Heather honey, Dried marigold petals"
+                            title={abbrTitle(g.name)}
+                            className={field}
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1 block">Amount</label>
+                            <input
+                              value={g.amount || ''}
+                              onChange={(e) => setIng(i, 'amount', e.target.value)}
+                              placeholder="e.g. 1.5"
+                              className={field}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1 block">Unit</label>
+                            <input
+                              value={g.unit || ''}
+                              onChange={(e) => setIng(i, 'unit', e.target.value)}
+                              placeholder="kg, g, L, cup..."
+                              title={ABBR[String(g.unit || '').trim()]}
+                              className={field}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1 block">Category</label>
+                            <select
+                              value={g.type || 'honey'}
+                              onChange={(e) => setIng(i, 'type', e.target.value)}
+                              className={field}
+                            >
+                              {ING_TYPES.map((t) => <option key={t} value={t}>{ING_EMOJI[t] || ''} {t}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1 block">Stage</label>
+                            <select
+                              value={g.stage || 'primary'}
+                              onChange={(e) => setIng(i, 'stage', e.target.value)}
+                              className={field}
+                            >
+                              {ING_STAGES.map((t) => <option key={t} value={t}>{STAGE_LABEL[t] || t}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Desktop Table Row Layout */}
+                      <div className="hidden sm:grid sm:grid-cols-[7.5rem_minmax(0,1fr)_5rem_5rem_7.5rem_2rem] gap-2 items-center">
+                        <select value={g.type || 'honey'} onChange={(e) => setIng(i, 'type', e.target.value)} className={field}>
+                          {ING_TYPES.map((t) => <option key={t} value={t}>{ING_EMOJI[t] || ''} {t}</option>)}
+                        </select>
+                        <input
+                          value={g.name || ''}
+                          onChange={(e) => setIng(i, 'name', e.target.value)}
+                          placeholder="e.g. Heather honey"
+                          title={abbrTitle(g.name)}
+                          className={field}
+                        />
+                        <input
+                          value={g.amount || ''}
+                          onChange={(e) => setIng(i, 'amount', e.target.value)}
+                          placeholder="1.5"
+                          className={field}
+                        />
+                        <input
+                          value={g.unit || ''}
+                          onChange={(e) => setIng(i, 'unit', e.target.value)}
+                          placeholder="kg"
+                          title={ABBR[String(g.unit || '').trim()]}
+                          className={field}
+                        />
+                        <select value={g.stage || 'primary'} onChange={(e) => setIng(i, 'stage', e.target.value)} className={field}>
+                          {ING_STAGES.map((t) => <option key={t} value={t}>{STAGE_LABEL[t] || t}</option>)}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setForm({ ...form, ingredients: form.ingredients.filter((_, j) => j !== i) })}
+                          title="Remove"
+                          className="text-slate-500 hover:text-red-500 justify-self-center p-1 rounded-lg transition"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {!form.ingredients.length && (
+                    <div className={`p-4 rounded-xl border border-dashed ${border} text-center text-xs text-slate-500`}>
+                      No ingredients added yet. Tap "+ Add ingredient" to start.
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, ingredients: [...form.ingredients, { type: 'honey', name: '', amount: '', unit: 'kg', stage: 'primary' }] })}
+                    className={`${btn} self-start mt-1`}
+                  >
+                    <Plus size={13} /> Add ingredient
+                  </button>
+                </div>
               </div>
+
+              {/* Section 4: Method & Process */}
+              <div className={panel}>
+                <div className="flex items-center gap-2 mb-3 pb-2 border-b border-black/5 dark:border-white/5">
+                  <span className="text-base leading-none">📋</span>
+                  <h3 className="text-xs font-black uppercase tracking-wider">Method &amp; Additions</h3>
+                </div>
+                <div className="flex flex-col gap-3.5">
+                  <div>
+                    <label className={label}>Method Steps</label>
+                    <StepsEditor value={form.method || ''} onChange={(m) => setForm({ ...form, method: m })} field={field} border={border} isDark={isDark} />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-black/5 dark:border-white/5">
+                    <div className="sm:col-span-1">
+                      <label className={label}>Yeast Strain</label>
+                      <input value={form.yeast || ''} onChange={set('yeast')} placeholder="e.g. Lalvin 71B, 1 sachet" className={field} />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className={label}>Yeast - how it was pitched</label>
+                      <input value={form.yeastNotes || ''} onChange={set('yeastNotes')} placeholder="rehydrated with Go-Ferm at 40°C, pitched at 20°C" className={field} />
+                    </div>
+                    <div className="sm:col-span-3">
+                      <label className={label}>Nutrients</label>
+                      <input value={form.nutrients || ''} onChange={set('nutrients')} placeholder="Fermaid-O, TOSNA 4 doses of 1.5 g" className={field} />
+                    </div>
+                    <div className="sm:col-span-3">
+                      <label className={label}>Water</label>
+                      <input value={form.water || ''} onChange={set('water')} placeholder="tap, Campden-treated / bottled spring" className={field} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 5: Notes & Attribution */}
+              <div className={panel}>
+                <div className="flex items-center gap-2 mb-3 pb-2 border-b border-black/5 dark:border-white/5">
+                  <span className="text-base leading-none">📝</span>
+                  <h3 className="text-xs font-black uppercase tracking-wider">Notes &amp; Attribution</h3>
+                </div>
+                <div className="flex flex-col gap-3.5">
+                  <div>
+                    <label className={label}>Notes</label>
+                    <textarea rows={Math.min(14, Math.max(4, Math.ceil((form.notes || '').length / 60)))} value={form.notes || ''} onChange={set('notes')} placeholder="Anything else worth remembering" title={abbrTitle(form.notes)} className={`${field} resize-y`} />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className={label}>Recipe Source</label>
+                      <input value={form.sourceName || ''} onChange={set('sourceName')} placeholder="Where the recipe came from" className={field} />
+                    </div>
+                    <div>
+                      <label className={label}>Source Link</label>
+                      <input value={form.sourceUrl || ''} onChange={set('sourceUrl')} placeholder="https://..." className={field} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Terms Glossary */}
               <TermsPanel border={border} texts={[form.summary, form.method, form.notes, form.yeast, form.yeastNotes, form.nutrients, form.water, ...form.ingredients.map(ingText),
                 form.targetOg || form.og ? 'OG' : '', form.targetFg || form.fg ? 'FG' : '']} />
-              <div className="flex gap-2 mt-4">
-                <button onClick={saveBrew} disabled={!form.name.trim() || busy === 'save'} className={primary}>{busy === 'save' ? <RotateCw size={13} className="animate-spin" /> : <Save size={13} />} Save</button>
+
+              {/* In-page Save / Delete Buttons (Desktop & fallback) */}
+              <div className="flex gap-2">
+                <button onClick={saveBrew} disabled={!form.name.trim() || busy === 'save'} className={primary}>
+                  {busy === 'save' ? <RotateCw size={13} className="animate-spin" /> : <Save size={13} />} Save
+                </button>
                 {brew && <button onClick={removeBrew} className={`${btn} text-red-500`}><Trash2 size={13} /> Delete</button>}
               </div>
             </div>

@@ -88,7 +88,7 @@ export default function PortalShell({
       <main className={`flex-1 ${maxWidth} w-full mx-auto p-4 sm:p-6 flex flex-col gap-5`}>{children}</main>
       {backToTop && scrolled && (
         <button onClick={() => scroller.current?.scrollTo({ top: 0, behavior: 'smooth' })} title="Back to the top" aria-label="Back to the top"
-          className={`fixed bottom-5 right-5 z-40 w-12 h-12 rounded-full flex items-center justify-center shadow-xl transition active:scale-95 bg-gradient-to-br ${iconGradient} text-white hover:brightness-110`}>
+          className={`fixed bottom-20 right-4 sm:bottom-5 sm:right-5 z-40 w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center shadow-xl transition active:scale-95 bg-gradient-to-br ${iconGradient} text-white hover:brightness-110`}>
           <ArrowUp size={20} />
         </button>
       )}
