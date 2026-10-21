@@ -445,30 +445,92 @@ const BORDERS = [['none', 'None'], ['line', 'Fine line'], ['double', 'Double'], 
 const LABEL_PX = [374, 215]; // 99 x 57 mm at 96 dpi
 const remembered = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
 function LabelsDialog({ brew, isDark, border, onClose, onDone }) {
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date());
+  const saved = (() => {
+    try {
+      const raw = localStorage.getItem(`hbLabel_${brew.id}`);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  })();
+  const lastGlobal = (() => {
+    try {
+      const raw = localStorage.getItem('hbLabel_last');
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  })();
+
   const [fonts, setFonts] = useState([]);
-  const [font, setFont] = useState(() => remembered('hbLabelFont', ''));
-  const [name, setName] = useState(brew.name);
-  const [showRecipe, setShowRecipe] = useState(() => remembered('hbLabelShowRecipe', 'true') !== 'false');
-  const [recipeText, setRecipeText] = useState(brew.name);
-  const [pos, setPos] = useState(() => remembered('hbLabelPos', 'top-left')); // (older choice: only its alignment is used now)
-  const [align, setAlign] = useState(() => remembered('hbLabelAlign', remembered('hbLabelPos', 'top-left').endsWith('center') ? 'center' : 'left'));
-  const [place, setPlace] = useState(null); // { x, y } in mm once he's dragged the name, else its usual place
-  const [recipePlace, setRecipePlace] = useState(null); // { x, y } in mm once recipe text is dragged
-  const [abvColour, setAbvColour] = useState(() => remembered('hbLabelAbvColour', ''));
-  const [bottledDate, setBottledDate] = useState(() => brew.bottledOn || brew.startedOn || new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date()));
+  const [font, setFont] = useState(() => saved?.font ?? lastGlobal?.font ?? remembered('hbLabelFont', ''));
+  const [name, setName] = useState(() => saved?.name ?? brew.name);
+  const [showRecipe, setShowRecipe] = useState(() => saved?.showRecipe ?? (lastGlobal?.showRecipe ?? true));
+  const [recipeText, setRecipeText] = useState(() => saved?.recipeText ?? brew.name);
+  const [align, setAlign] = useState(() => saved?.align ?? lastGlobal?.align ?? remembered('hbLabelAlign', remembered('hbLabelPos', 'top-left').endsWith('center') ? 'center' : 'left'));
+  const [place, setPlace] = useState(() => saved?.place ?? null); // { x, y } in mm once he's dragged the name, else its usual place
+  const [recipePlace, setRecipePlace] = useState(() => saved?.recipePlace ?? null); // { x, y } in mm once recipe text is dragged
+  const [abvColour, setAbvColour] = useState(() => saved?.abvColour ?? lastGlobal?.abvColour ?? remembered('hbLabelAbvColour', ''));
+  const [bottledDate, setBottledDate] = useState(() => saved?.bottledDate ?? brew.bottledOn ?? brew.startedOn ?? today);
   const frameRef = useRef(null);
   const drag = useRef(null);
-  const [size, setSize] = useState(() => Number(remembered('hbLabelSize', '1')) || 1);
-  const [colour, setColour] = useState(() => remembered('hbLabelColour', '')); // '' = the usual dark
-  const [frame, setFrame] = useState(() => remembered('hbLabelBorder', 'none')); // the border style
-  const [borderColour, setBorderColour] = useState(() => remembered('hbLabelBorderColour', '')); // '' = the same as the name
-  const [borderAlpha, setBorderAlpha] = useState(() => Number(remembered('hbLabelBorderAlpha', '1')) || 1); // how solid the border is
-  const [imageAlpha, setImageAlpha] = useState(() => { const v = Number(remembered('hbLabelImageAlpha', '0.64')); return Number.isFinite(v) ? v : 0.64; }); // the background picture
+  const [size, setSize] = useState(() => Number(saved?.size ?? lastGlobal?.size ?? remembered('hbLabelSize', '1')) || 1);
+  const [colour, setColour] = useState(() => saved?.colour ?? lastGlobal?.colour ?? remembered('hbLabelColour', '')); // '' = the usual dark
+  const [frame, setFrame] = useState(() => saved?.frame ?? lastGlobal?.frame ?? remembered('hbLabelBorder', 'none')); // the border style
+  const [borderColour, setBorderColour] = useState(() => saved?.borderColour ?? lastGlobal?.borderColour ?? remembered('hbLabelBorderColour', '')); // '' = the same as the name
+  const [borderAlpha, setBorderAlpha] = useState(() => Number(saved?.borderAlpha ?? lastGlobal?.borderAlpha ?? remembered('hbLabelBorderAlpha', '1')) || 1); // how solid the border is
+  const [imageAlpha, setImageAlpha] = useState(() => {
+    const v = Number(saved?.imageAlpha ?? lastGlobal?.imageAlpha ?? remembered('hbLabelImageAlpha', '0.64'));
+    return Number.isFinite(v) ? v : 0.64;
+  }); // the background picture
   const [fontBusy, setFontBusy] = useState(false);
-  const [count, setCount] = useState(() => String(bottlesOf(brew.batchLitres, brew.category)?.n || 10));
+  const [count, setCount] = useState(() => saved?.count ?? String(bottlesOf(brew.batchLitres, brew.category)?.n || 10));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [previewSrc, setPreviewSrc] = useState('');
+
+  // Auto-save the last state of label creation so tweaking never starts from scratch
+  useEffect(() => {
+    const s = {
+      name,
+      recipeText,
+      showRecipe,
+      font,
+      align,
+      place,
+      recipePlace,
+      size,
+      colour,
+      abvColour,
+      frame,
+      borderColour,
+      borderAlpha,
+      imageAlpha,
+      bottledDate,
+      count
+    };
+    try {
+      localStorage.setItem(`hbLabel_${brew.id}`, JSON.stringify(s));
+      localStorage.setItem('hbLabel_last', JSON.stringify(s));
+    } catch (_) {}
+  }, [name, recipeText, showRecipe, font, align, place, recipePlace, size, colour, abvColour, frame, borderColour, borderAlpha, imageAlpha, bottledDate, count, brew.id]);
+
+  const resetDefaults = () => {
+    if (!window.confirm('Reset this label design back to original defaults?')) return;
+    try { localStorage.removeItem(`hbLabel_${brew.id}`); } catch (_) {}
+    setName(brew.name);
+    setRecipeText(brew.name);
+    setShowRecipe(true);
+    setPlace(null);
+    setRecipePlace(null);
+    setAlign(remembered('hbLabelPos', 'top-left').endsWith('center') ? 'center' : 'left');
+    setSize(1);
+    setColour('');
+    setAbvColour('');
+    setFrame('none');
+    setBorderColour('');
+    setBorderAlpha(1);
+    setImageAlpha(0.64);
+    setBottledDate(brew.bottledOn || brew.startedOn || today);
+    setCount(String(bottlesOf(brew.batchLitres, brew.category)?.n || 10));
+  };
   const [scale, setScale] = useState(1.5);
   const box = useRef(null);
   const showOwnFonts = (list) => list.filter((f) => f.url && !document.getElementById(`hb-font-${f.id}`)).forEach((f) => {
@@ -634,12 +696,22 @@ function LabelsDialog({ brew, isDark, border, onClose, onDone }) {
   );
   const field = `rounded-xl border ${border} px-3 py-2 text-sm ${isDark ? 'bg-slate-900' : 'bg-white'}`;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className={`w-full max-w-6xl max-h-[92vh] overflow-y-auto rounded-3xl border ${border} p-5 flex flex-col gap-4 shadow-2xl ${isDark ? 'bg-slate-950 text-slate-100' : 'bg-[#fbf8f3] text-[#2E2B27]'}`} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      <div className={`w-full max-w-6xl max-h-[92vh] overflow-y-auto rounded-3xl border ${border} p-5 flex flex-col gap-4 shadow-2xl ${isDark ? 'bg-slate-950 text-slate-100' : 'bg-[#fbf8f3] text-[#2E2B27]'}`}>
         <div className="flex items-center gap-2">
           <Printer size={16} className="text-amber-500" />
           <h2 className="text-sm font-black uppercase tracking-wider">Print labels</h2>
-          <button onClick={onClose} title="Close" className="ml-auto p-1.5 rounded-lg text-slate-500 hover:text-amber-500"><X size={16} /></button>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={resetDefaults}
+              className="text-xs text-slate-400 hover:text-amber-500 font-medium px-2.5 py-1 rounded-lg border border-black/10 dark:border-white/10 hover:border-amber-500/30 transition"
+              title="Reset this label design back to original defaults"
+            >
+              Reset to defaults
+            </button>
+            <button onClick={onClose} title="Close" className="p-1.5 rounded-lg text-slate-500 hover:text-amber-500"><X size={16} /></button>
+          </div>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
           {/* right: what it looks like, its border, and the sheet (first on a phone) */}
