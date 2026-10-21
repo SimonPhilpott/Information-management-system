@@ -453,6 +453,8 @@ function LabelsDialog({ brew, isDark, border, onClose, onDone }) {
   const [pos, setPos] = useState(() => remembered('hbLabelPos', 'top-left')); // (older choice: only its alignment is used now)
   const [align, setAlign] = useState(() => remembered('hbLabelAlign', remembered('hbLabelPos', 'top-left').endsWith('center') ? 'center' : 'left'));
   const [place, setPlace] = useState(null); // { x, y } in mm once he's dragged the name, else its usual place
+  const [recipePlace, setRecipePlace] = useState(null); // { x, y } in mm once recipe text is dragged
+  const [abvColour, setAbvColour] = useState(() => remembered('hbLabelAbvColour', ''));
   const frameRef = useRef(null);
   const drag = useRef(null);
   const [size, setSize] = useState(() => Number(remembered('hbLabelSize', '1')) || 1);
@@ -519,18 +521,18 @@ function LabelsDialog({ brew, isDark, border, onClose, onDone }) {
   const flat = (t) => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const ownName = name.trim() && flat(name) !== flat(brew.name) ? name.trim() : '';
   const broken = name.includes('\n'); // he's put in his own line breaks
-  const query = () => new URLSearchParams({ font, pos: align === 'center' ? 'top-center' : 'top-left', align, ...(place ? { x: String(place.x), y: String(place.y) } : {}), size: String(size), border: frame, ...(colour ? { colour } : {}), ...(borderColour ? { borderColour } : {}), ...(borderAlpha < 1 ? { borderAlpha: String(borderAlpha) } : {}), imageAlpha: String(imageAlpha), ...(ownName || broken ? { name: name.trim() } : {}), showRecipe: showRecipe ? '1' : '0', ...(showRecipe && recipeText.trim() ? { recipeText: recipeText.trim() } : {}) });
+  const query = () => new URLSearchParams({ font, pos: align === 'center' ? 'top-center' : 'top-left', align, ...(place ? { x: String(place.x), y: String(place.y) } : {}), ...(recipePlace ? { recipeX: String(recipePlace.x), recipeY: String(recipePlace.y) } : {}), size: String(size), border: frame, ...(colour ? { colour } : {}), ...(abvColour ? { abvColour } : {}), ...(borderColour ? { borderColour } : {}), ...(borderAlpha < 1 ? { borderAlpha: String(borderAlpha) } : {}), imageAlpha: String(imageAlpha), ...(ownName || broken ? { name: name.trim() } : {}), showRecipe: showRecipe ? '1' : '0', ...(showRecipe && recipeText.trim() ? { recipeText: recipeText.trim() } : {}) });
   // redrawn a moment after the last change
   useEffect(() => {
     if (!font) return undefined;
     const t = setTimeout(() => setPreviewSrc(`/api/homebrew/${brew.id}/labels/preview?${query()}`), 300);
     return () => clearTimeout(t);
-  }, [font, name, align, place, size, colour, frame, borderColour, borderAlpha, imageAlpha, showRecipe, recipeText, brew.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [font, name, align, place, recipePlace, size, colour, abvColour, frame, borderColour, borderAlpha, imageAlpha, showRecipe, recipeText, brew.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const n = Math.max(1, Math.min(200, parseInt(count, 10) || 10));
   const make = async () => {
     setBusy(true); setErr('');
     try {
-      try { localStorage.setItem('hbLabelFont', font); localStorage.setItem('hbLabelAlign', align); localStorage.setItem('hbLabelSize', String(size)); localStorage.setItem('hbLabelColour', colour); localStorage.setItem('hbLabelBorder', frame); localStorage.setItem('hbLabelBorderColour', borderColour); localStorage.setItem('hbLabelBorderAlpha', String(borderAlpha)); localStorage.setItem('hbLabelImageAlpha', String(imageAlpha)); localStorage.setItem('hbLabelShowRecipe', showRecipe ? '1' : '0'); } catch { /* fine */ }
+      try { localStorage.setItem('hbLabelFont', font); localStorage.setItem('hbLabelAlign', align); localStorage.setItem('hbLabelSize', String(size)); localStorage.setItem('hbLabelColour', colour); localStorage.setItem('hbLabelBorder', frame); localStorage.setItem('hbLabelBorderColour', borderColour); localStorage.setItem('hbLabelBorderAlpha', String(borderAlpha)); localStorage.setItem('hbLabelImageAlpha', String(imageAlpha)); localStorage.setItem('hbLabelShowRecipe', showRecipe ? '1' : '0'); if (abvColour) localStorage.setItem('hbLabelAbvColour', abvColour); else localStorage.removeItem('hbLabelAbvColour'); } catch { /* fine */ }
       const q = query(); q.set('count', String(n));
       const res = await fetch(`/api/homebrew/${brew.id}/labels?${q}`);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Couldn\'t make the labels.');
@@ -576,27 +578,42 @@ function LabelsDialog({ brew, isDark, border, onClose, onDone }) {
   // is kept and the preview is drawn again by the server, exactly as it will print.
   const MM = 99 / LABEL_PX[0];
   const where = (e) => { const r = box.current.getBoundingClientRect(); return [(e.clientX - r.left) / scale, (e.clientY - r.top) / scale]; };
-  const nameEl = () => { try { return frameRef.current?.contentDocument?.querySelector('.head'); } catch { return null; } };
-  const onName = (el, x, y) => { if (!el) return false; const r = el.getBoundingClientRect(); return x >= r.left - 4 && x <= r.right + 4 && y >= r.top - 4 && y <= r.bottom + 4; };
+  const nameEl = () => { try { return frameRef.current?.contentDocument?.querySelector('.head') || frameRef.current?.contentDocument?.querySelector('.name'); } catch { return null; } };
+  const underEl = () => { try { return frameRef.current?.contentDocument?.querySelector('.under'); } catch { return null; } };
+  const onEl = (el, x, y) => { if (!el) return false; const r = el.getBoundingClientRect(); return x >= r.left - 4 && x <= r.right + 4 && y >= r.top - 4 && y <= r.bottom + 4; };
   const dragStart = (e) => {
-    const el = nameEl(); const [x, y] = where(e);
-    if (!onName(el, x, y)) return;
-    const r = el.getBoundingClientRect();
-    drag.current = { el, dx: x - r.left, dy: y - r.top, w: r.width, left: r.left, top: r.top };
-    e.currentTarget.setPointerCapture(e.pointerId);
+    const [x, y] = where(e);
+    const u = underEl();
+    const n = nameEl();
+    if (onEl(u, x, y)) {
+      const r = u.getBoundingClientRect();
+      drag.current = { type: 'under', el: u, dx: x - r.left, dy: y - r.top, w: r.width, left: r.left, top: r.top };
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } else if (onEl(n, x, y)) {
+      const r = n.getBoundingClientRect();
+      drag.current = { type: 'name', el: n, dx: x - r.left, dy: y - r.top, w: r.width, left: r.left, top: r.top };
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
   };
   const dragMove = (e) => {
     const [x, y] = where(e);
-    if (!drag.current) { e.currentTarget.style.cursor = onName(nameEl(), x, y) ? 'move' : 'default'; return; }
+    if (!drag.current) {
+      e.currentTarget.style.cursor = onEl(underEl(), x, y) || onEl(nameEl(), x, y) ? 'move' : 'default';
+      return;
+    }
     const d = drag.current;
     d.left = Math.max(0, Math.min(LABEL_PX[0] - 10, x - d.dx)); d.top = Math.max(0, Math.min(LABEL_PX[1] - 10, y - d.dy));
-    Object.assign(d.el.style, { position: 'absolute', zIndex: 1, left: `${d.left}px`, top: `${d.top}px`, transform: 'none', width: 'max-content', margin: 0 });
+    Object.assign(d.el.style, { position: 'absolute', zIndex: d.type === 'under' ? 2 : 1, left: `${d.left}px`, top: `${d.top}px`, transform: 'none', width: 'max-content', margin: 0 });
   };
   const dragEnd = () => {
     const d = drag.current; drag.current = null;
     if (!d) return;
     const round = (v) => Math.round(v * 2) / 2;
-    setPlace({ x: round((align === 'center' ? d.left + d.w / 2 : align === 'right' ? d.left + d.w : d.left) * MM), y: round(d.top * MM), w: d.w * MM });
+    if (d.type === 'under') {
+      setRecipePlace({ x: round(d.left * MM), y: round(d.top * MM) });
+    } else {
+      setPlace({ x: round((align === 'center' ? d.left + d.w / 2 : align === 'right' ? d.left + d.w : d.left) * MM), y: round(d.top * MM), w: d.w * MM });
+    }
   };
   // a new alignment after he's dragged it: the name stays where it is, only the point it's measured from changes
   const realign = (id) => {
@@ -633,7 +650,7 @@ function LabelsDialog({ brew, isDark, border, onClose, onDone }) {
                   : <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-500">Drawing the label...</div>}
                 <div className="absolute inset-0 touch-none select-none" onPointerDown={dragStart} onPointerMove={dragMove} onPointerUp={dragEnd} onPointerCancel={dragEnd} />
               </div>
-              <span className="text-[10px] text-slate-500 text-center">Drag the name to move it - as it will print, 99 x 57 mm on the sheet</span>
+              <span className="text-[10px] text-slate-500 text-center">Drag the title or recipe text to move them - as it will print, 99 x 57 mm on the sheet</span>
             </>)}
             {panel('Background', (
               <label className="flex flex-col gap-1">
@@ -711,7 +728,7 @@ function LabelsDialog({ brew, isDark, border, onClose, onDone }) {
                       className={`${field} text-xs`}
                     />
                     <div className="flex items-center justify-between text-[10px] text-slate-500">
-                      <span>Printed in italics underneath the main title.</span>
+                      <span>{recipePlace ? <>Positioned by dragging. <button type="button" onClick={() => setRecipePlace(null)} className="text-amber-600 hover:underline">Reset position</button></> : 'Drag subtitle on preview to move.'}</span>
                       {recipeText !== brew.name && (
                         <button
                           type="button"
@@ -741,9 +758,28 @@ function LabelsDialog({ brew, isDark, border, onClose, onDone }) {
                   <button type="button" onClick={() => setSize(1)} className="self-start text-[10px] text-amber-600 hover:underline">Back to 100%</button>
                 </label>
               </div>
-              <div className="flex flex-col gap-1">
-                <span className={small}>Colour</span>
-                {colours(colour, setColour)}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <span className={small}>Name colour</span>
+                  {colours(colour, setColour)}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className={small}>ABV colour</span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button type="button" onClick={() => setAbvColour('')} className={`${chip(!abvColour)} flex items-center gap-1.5`}>
+                      {brew.liquid && <span className="w-3 h-3 rounded-full" style={{ background: brew.liquid }} />} The drink's
+                    </button>
+                    <button type="button" onClick={() => setAbvColour('#2e2b27')} className={`${chip(abvColour === '#2e2b27')} flex items-center gap-1.5`}>
+                      <span className="w-3 h-3 rounded-full bg-[#2e2b27]" /> Dark
+                    </button>
+                    <button type="button" onClick={() => setAbvColour('#ffffff')} className={`${chip(abvColour === '#ffffff')} flex items-center gap-1.5`}>
+                      <span className="w-3 h-3 rounded-full bg-white border border-black/20" /> White
+                    </button>
+                    <label className={`${chip(abvColour && !['#ffffff', '#2e2b27'].includes(abvColour))} flex items-center gap-1.5 cursor-pointer`}>
+                      <input type="color" value={abvColour || brew.liquid || '#e8a33a'} onChange={(e) => setAbvColour(e.target.value)} className="w-4 h-4 p-0 border-0 bg-transparent cursor-pointer" /> Pick
+                    </label>
+                  </div>
+                </div>
               </div>
             </>)}
             {panel('Lettering', fonts.length

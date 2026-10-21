@@ -329,10 +329,13 @@ export function labelLook(q = {}) {
     borderAlpha: Math.max(0.1, Math.min(1, Number(q.borderAlpha) || 1)), // how solid the border is
     // how strongly the background picture shows (0 = not at all, just the colour wash; 0.64 as it always was)
     imageAlpha: q.imageAlpha !== undefined && q.imageAlpha !== '' && Number.isFinite(Number(q.imageAlpha)) ? Math.max(0, Math.min(1, Number(q.imageAlpha))) : 0.64,
+    abvColour: /^#[0-9a-f]{6}$/i.test(q.abvColour || '') ? q.abvColour : '',
     // where he dragged the name to on the preview (mm from the label's top left - its left edge, its middle when
     // centred, its right edge when right-aligned), or none for the usual place
     x: q.x !== undefined && q.x !== '' && Number.isFinite(Number(q.x)) ? Math.max(0, Math.min(99, Number(q.x))) : null,
     y: q.y !== undefined && q.y !== '' && Number.isFinite(Number(q.y)) ? Math.max(0, Math.min(57, Number(q.y))) : null,
+    recipeX: q.recipeX !== undefined && q.recipeX !== '' && Number.isFinite(Number(q.recipeX)) ? Math.max(0, Math.min(99, Number(q.recipeX))) : null,
+    recipeY: q.recipeY !== undefined && q.recipeY !== '' && Number.isFinite(Number(q.recipeY)) ? Math.max(0, Math.min(57, Number(q.recipeY))) : null,
     align: ['left', 'center', 'right'].includes(q.align) ? q.align : String(q.pos || '').endsWith('center') ? 'center' : 'left',
   };
 }
@@ -369,6 +372,8 @@ export function labelsHtml(b, { count = 10, fontId, title, recipeText, showRecip
   const lightName = parseInt(nameColour.slice(1, 3), 16) * 0.3 + parseInt(nameColour.slice(3, 5), 16) * 0.59 + parseInt(nameColour.slice(5, 7), 16) * 0.11 > 170;
   const halo = lightName ? 'rgba(0,0,0,0.55)' : '#fff'; // a soft glow behind the name so it reads over the photo
   const placed = look.x !== null && look.y !== null; // dragged to a spot of his own
+  const recipePlaced = look.recipeX !== null && look.recipeY !== null;
+  const abvColour = look.abvColour || colour;
   const vpos = placed ? 'top' : look.pos.split('-')[0];
   const align = look.align;
   const banner = asDataUri(b.banner);
@@ -384,8 +389,9 @@ export function labelsHtml(b, { count = 10, fontId, title, recipeText, showRecip
     <div class="body">
       <div class="head">
         <div class="name">${esc(heading).replace(/\n/g, '<br>')}</div>
-        ${under ? `<div class="under">${esc(under)}</div>` : ''}
+        ${under && !recipePlaced ? `<div class="under">${esc(under)}</div>` : ''}
       </div>
+      ${under && recipePlaced ? `<div class="under placed">${esc(under)}</div>` : ''}
       <div class="foot">
         <div class="facts">${abv ? `<div class="abv">${estimated ? '~' : ''}${esc(abv)}<small>% ABV</small></div>` : ''}<div class="date">${dateWord} ${esc(ukDate(date))}</div></div>
         <div class="pics">${pics.map((p) => `<img src="${p.src}" alt="${esc(p.name)}">`).join('')}</div>
@@ -420,6 +426,7 @@ ${placed ? `.head { position: absolute; z-index: 1; left: ${look.x}mm; top: ${lo
 .name { font-family: '${font.family}', Georgia, serif; font-size: ${(19 * font.size * look.size).toFixed(1)}pt; font-weight: ${font.weight}; line-height: 1.2; padding: 0.22em 0.3em; margin: -0.22em -0.3em; color: ${nameColour};
   text-shadow: 0 0 1.2mm ${halo}, 0 0 0.6mm ${halo}; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .under { margin-top: 1mm; font-style: italic; font-size: 9.5pt; color: ${lightName ? nameColour : '#3f3a33'}; text-shadow: 0 0 0.8mm ${halo}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+${recipePlaced ? `.under.placed { position: absolute; z-index: 2; left: ${look.recipeX}mm; top: ${look.recipeY}mm; margin: 0; max-width: 88mm; }` : ''}
 .border-wrap { position: absolute; inset: 0; pointer-events: none; }
 .frame { position: absolute; inset: 2.6mm; pointer-events: none; }
 .frame.line { border: 0.35mm solid ${look.borderColour || nameColour}; border-radius: 0.6mm; }
@@ -435,7 +442,7 @@ ${look.border !== 'none' ? '.body { padding: 7mm 8.5mm 7mm; }' : ''}
 .foot { margin-top: ${vpos === 'middle' ? '0' : 'auto'}; display: flex; align-items: flex-end; justify-content: space-between; gap: 3mm; }
 /* the strength, date and pictures always sit at the bottom - a long or big name can't push them off the label */
 .foot { position: absolute; left: ${look.border !== 'none' ? '8.5mm' : '6mm'}; right: ${look.border !== 'none' ? '8.5mm' : '6mm'}; bottom: ${look.border !== 'none' ? '7mm' : '4.5mm'}; margin: 0; }
-.abv { font-family: '${font.family}', Georgia, serif; font-size: ${(22 * Math.min(font.size, 1.2)).toFixed(1)}pt; font-weight: ${font.weight}; line-height: 1; color: ${colour}; text-shadow: 0 0 0.6mm #fff; }
+.abv { font-family: '${font.family}', Georgia, serif; font-size: ${(22 * Math.min(font.size, 1.2)).toFixed(1)}pt; font-weight: ${font.weight}; line-height: 1; color: ${abvColour}; text-shadow: 0 0 0.6mm #fff; }
 .abv small { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 8pt; font-weight: 800; color: #2e2b27; margin-left: 0.8mm; }
 .date { margin-top: 1.2mm; font-size: 8pt; font-weight: 600; color: #3f3a33; text-shadow: 0 0 0.8mm #fff; }
 .pics { display: flex; gap: 1.6mm; }
