@@ -361,9 +361,6 @@ export function labelsHtml(b, { count = 10, fontId, title, recipeText, showRecip
     } else {
       under = own && flat(own) !== flat(b.name) ? b.name : '';
     }
-    if (under && flat(under) === flat(heading)) {
-      under = '';
-    }
   }
   const font = listLabelFonts().find((f) => f.id === fontId) || LABEL_FONTS[0];
   const n = preview ? 1 : Math.max(1, Math.min(200, Math.round(Number(count)) || 10));
