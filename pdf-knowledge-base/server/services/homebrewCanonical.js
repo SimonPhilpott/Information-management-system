@@ -104,11 +104,46 @@ const EXACT_CANONICAL = {
   'goldenrod flower': 'Goldenrod flowers',
   'goldenrod flowers': 'Goldenrod flowers',
   'basil': 'Basil',
+  'fresh basil': 'Basil',
   'basil blossom': 'Basil',
   'basil blossoms': 'Basil',
   'sweet basil': 'Basil',
+  'mint': 'Mint',
+  'fresh mint': 'Mint',
+  'dried mint': 'Mint',
+  'rosemary': 'Rosemary',
+  'fresh rosemary': 'Rosemary',
+  'dried rosemary': 'Rosemary',
+  'dried sage': 'Sage',
 
   // Berries & Orchard Fruits
+  'berries': 'Berries',
+  'fresh berries': 'Berries',
+  'dried berries': 'Berries',
+  'bilberry': 'Bilberries',
+  'bilberries': 'Bilberries',
+  'dried bilberry': 'Bilberries',
+  'dried bilberries': 'Bilberries',
+  'red raspberry': 'Raspberries',
+  'red raspberries': 'Raspberries',
+  'green gooseberry': 'Gooseberries',
+  'green gooseberries': 'Gooseberries',
+  'red gooseberry': 'Gooseberries',
+  'red gooseberries': 'Gooseberries',
+  'dried sloe': 'Sloes',
+  'dried sloes': 'Sloes',
+  'red plum': 'Plums',
+  'red plums': 'Plums',
+  'sweet orange': 'Oranges',
+  'sweet oranges': 'Oranges',
+  'fresh fig': 'Figs',
+  'fresh figs': 'Figs',
+  'dried apricot': 'Apricots',
+  'dried apricots': 'Apricots',
+  'dried banana': 'Bananas',
+  'dried bananas': 'Bananas',
+  'sour morello cherry': 'Morello cherries',
+  'sour morello cherries': 'Morello cherries',
   'blackberry': 'Blackberries',
   'blackberries': 'Blackberries',
   'raspberry': 'Raspberries',
@@ -272,6 +307,14 @@ const EXACT_CANONICAL = {
   'cayenne peppers': 'Cayenne peppers',
   'hot pepper': 'Hot peppers',
   'hot peppers': 'Hot peppers',
+  'jalapeno': 'Jalapeños',
+  'jalapenos': 'Jalapeños',
+  'red jalapeno': 'Jalapeños',
+  'red jalapenos': 'Jalapeños',
+  'jalapeño': 'Jalapeños',
+  'jalapeños': 'Jalapeños',
+  'red jalapeño': 'Jalapeños',
+  'red jalapeños': 'Jalapeños',
 
   // Sugars & Grains
   'white sugar': 'White sugar',
@@ -306,6 +349,8 @@ const EXACT_CANONICAL = {
   'malt extract': 'Malt extract',
 
   // Hops
+  'hops': 'Hops',
+  'fresh hops': 'Hops',
   'cascade': 'Cascade hops',
   'cascade hops': 'Cascade hops',
   'cascade hop': 'Cascade hops',
@@ -505,10 +550,27 @@ export function canonicalizeMain(name) {
     return 'Goldenrod flowers';
   }
 
-  // Basil
-  if (/^(sweet\s+)?basil(\s+blossoms?)?$/i.test(clean)) {
-    return 'Basil';
-  }
+  // Fresh & Dried herbs/hops
+  if (/^(fresh\s+|sweet\s+)?basil(\s+blossoms?)?$/i.test(clean)) return 'Basil';
+  if (/^(fresh\s+|dried\s+)?mint$/i.test(clean)) return 'Mint';
+  if (/^(fresh\s+|dried\s+)?rosemary$/i.test(clean)) return 'Rosemary';
+  if (/^dried\s+sage$/i.test(clean)) return 'Sage';
+  if (/^fresh\s+hops?$/i.test(clean)) return 'Hops';
+
+  // Berries & Fruits
+  if (/^(fresh\s+|dried\s+)?berries$/i.test(clean)) return 'Berries';
+  if (/^(dried\s+)?bilberr(y|ies)$/i.test(clean)) return 'Bilberries';
+  if (/^(dried\s+)?sloes?$/i.test(clean)) return 'Sloes';
+  if (/^red\s+raspberr(y|ies)$/i.test(clean)) return 'Raspberries';
+  if (/^(green|red)\s+gooseberr(y|ies)$/i.test(clean)) return 'Gooseberries';
+  if (/^fresh\s+figs?$/i.test(clean)) return 'Figs';
+  if (/^dried\s+apricots?$/i.test(clean)) return 'Apricots';
+  if (/^dried\s+bananas?$/i.test(clean)) return 'Bananas';
+  if (/^sweet\s+oranges?$/i.test(clean)) return 'Oranges';
+  if (/^red\s+plums?$/i.test(clean)) return 'Plums';
+  if (/^sour\s+morello\s+cherr(y|ies)$/i.test(clean)) return 'Morello cherries';
+  if (/^(red\s+)?jalap[eé][nñ]os?$/i.test(clean)) return 'Jalapeños';
+
 
   // Fruits
   if (/^quince(s)?$/i.test(clean)) return 'Quinces';
@@ -658,6 +720,91 @@ export function canonicalizeRecipeIngredient(name) {
   // Goldenrod flowers
   str = str.replace(/\bgolden\s*rod\s+flowers?\b/gi, (match) => {
     return match[0] === match[0].toUpperCase() ? 'Goldenrod flowers' : 'goldenrod flowers';
+  });
+
+  // Fresh/Sweet basil -> basil
+  str = str.replace(/\b(fresh|sweet)\s+basil(\s+blossoms?)?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Basil' : 'basil';
+  });
+
+  // Fresh/Dried mint -> mint
+  str = str.replace(/\b(fresh|dried)\s+mint\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Mint' : 'mint';
+  });
+
+  // Fresh/Dried rosemary -> rosemary
+  str = str.replace(/\b(fresh|dried)\s+rosemary\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Rosemary' : 'rosemary';
+  });
+
+  // Dried sage -> sage
+  str = str.replace(/\bdried\s+sage\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Sage' : 'sage';
+  });
+
+  // Fresh hops -> hops
+  str = str.replace(/\bfresh\s+hops?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Hops' : 'hops';
+  });
+
+  // Fresh/Dried berries -> berries
+  str = str.replace(/\b(fresh|dried)\s+berries\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Berries' : 'berries';
+  });
+
+  // Dried bilberries -> bilberries
+  str = str.replace(/\bdried\s+bilberr(y|ies)\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Bilberries' : 'bilberries';
+  });
+
+  // Dried sloes -> sloes
+  str = str.replace(/\bdried\s+sloes?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Sloes' : 'sloes';
+  });
+
+  // Red raspberries -> raspberries
+  str = str.replace(/\bred\s+raspberr(y|ies)\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Raspberries' : 'raspberries';
+  });
+
+  // Green/Red gooseberries -> gooseberries
+  str = str.replace(/\b(green|red)\s+gooseberr(y|ies)\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Gooseberries' : 'gooseberries';
+  });
+
+  // Fresh figs -> figs
+  str = str.replace(/\bfresh\s+figs?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Figs' : 'figs';
+  });
+
+  // Dried apricots -> apricots
+  str = str.replace(/\bdried\s+apricots?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Apricots' : 'apricots';
+  });
+
+  // Dried bananas -> bananas
+  str = str.replace(/\bdried\s+bananas?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Bananas' : 'bananas';
+  });
+
+  // Sweet oranges -> oranges
+  str = str.replace(/\bsweet\s+oranges?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Oranges' : 'oranges';
+  });
+
+  // Red plums -> plums
+  str = str.replace(/\bred\s+plums?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Plums' : 'plums';
+  });
+
+  // Sour morello cherries -> morello cherries
+  str = str.replace(/\bsour\s+morello\s+cherr(y|ies)\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Morello cherries' : 'morello cherries';
+  });
+
+  // Red jalapeños -> jalapeños
+  str = str.replace(/\bred\s+jalap[eé][nñ]os?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Jalapeños' : 'jalapeños';
   });
 
   return str;
