@@ -448,6 +448,8 @@ function LabelsDialog({ brew, isDark, border, onClose, onDone }) {
   const [fonts, setFonts] = useState([]);
   const [font, setFont] = useState(() => remembered('hbLabelFont', ''));
   const [name, setName] = useState(brew.name);
+  const [showRecipe, setShowRecipe] = useState(() => remembered('hbLabelShowRecipe', 'true') !== 'false');
+  const [recipeText, setRecipeText] = useState(brew.name);
   const [pos, setPos] = useState(() => remembered('hbLabelPos', 'top-left')); // (older choice: only its alignment is used now)
   const [align, setAlign] = useState(() => remembered('hbLabelAlign', remembered('hbLabelPos', 'top-left').endsWith('center') ? 'center' : 'left'));
   const [place, setPlace] = useState(null); // { x, y } in mm once he's dragged the name, else its usual place
@@ -517,18 +519,18 @@ function LabelsDialog({ brew, isDark, border, onClose, onDone }) {
   const flat = (t) => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const ownName = name.trim() && flat(name) !== flat(brew.name) ? name.trim() : '';
   const broken = name.includes('\n'); // he's put in his own line breaks
-  const query = () => new URLSearchParams({ font, pos: align === 'center' ? 'top-center' : 'top-left', align, ...(place ? { x: String(place.x), y: String(place.y) } : {}), size: String(size), border: frame, ...(colour ? { colour } : {}), ...(borderColour ? { borderColour } : {}), ...(borderAlpha < 1 ? { borderAlpha: String(borderAlpha) } : {}), imageAlpha: String(imageAlpha), ...(ownName || broken ? { name: name.trim() } : {}) });
+  const query = () => new URLSearchParams({ font, pos: align === 'center' ? 'top-center' : 'top-left', align, ...(place ? { x: String(place.x), y: String(place.y) } : {}), size: String(size), border: frame, ...(colour ? { colour } : {}), ...(borderColour ? { borderColour } : {}), ...(borderAlpha < 1 ? { borderAlpha: String(borderAlpha) } : {}), imageAlpha: String(imageAlpha), ...(ownName || broken ? { name: name.trim() } : {}), showRecipe: showRecipe ? '1' : '0', ...(showRecipe && recipeText.trim() ? { recipeText: recipeText.trim() } : {}) });
   // redrawn a moment after the last change
   useEffect(() => {
     if (!font) return undefined;
     const t = setTimeout(() => setPreviewSrc(`/api/homebrew/${brew.id}/labels/preview?${query()}`), 300);
     return () => clearTimeout(t);
-  }, [font, name, align, place, size, colour, frame, borderColour, borderAlpha, imageAlpha, brew.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [font, name, align, place, size, colour, frame, borderColour, borderAlpha, imageAlpha, showRecipe, recipeText, brew.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const n = Math.max(1, Math.min(200, parseInt(count, 10) || 10));
   const make = async () => {
     setBusy(true); setErr('');
     try {
-      try { localStorage.setItem('hbLabelFont', font); localStorage.setItem('hbLabelAlign', align); localStorage.setItem('hbLabelSize', String(size)); localStorage.setItem('hbLabelColour', colour); localStorage.setItem('hbLabelBorder', frame); localStorage.setItem('hbLabelBorderColour', borderColour); localStorage.setItem('hbLabelBorderAlpha', String(borderAlpha)); localStorage.setItem('hbLabelImageAlpha', String(imageAlpha)); } catch { /* fine */ }
+      try { localStorage.setItem('hbLabelFont', font); localStorage.setItem('hbLabelAlign', align); localStorage.setItem('hbLabelSize', String(size)); localStorage.setItem('hbLabelColour', colour); localStorage.setItem('hbLabelBorder', frame); localStorage.setItem('hbLabelBorderColour', borderColour); localStorage.setItem('hbLabelBorderAlpha', String(borderAlpha)); localStorage.setItem('hbLabelImageAlpha', String(imageAlpha)); localStorage.setItem('hbLabelShowRecipe', showRecipe ? '1' : '0'); } catch { /* fine */ }
       const q = query(); q.set('count', String(n));
       const res = await fetch(`/api/homebrew/${brew.id}/labels?${q}`);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Couldn\'t make the labels.');
@@ -686,6 +688,45 @@ function LabelsDialog({ brew, isDark, border, onClose, onDone }) {
                 <span className="text-[10px] text-slate-500">Press Enter where you want it to break onto the next line (up to three lines).</span>
                 {ownName && <span className="text-[10px] text-slate-500">Just for these labels - the {brew.isRecipe ? 'recipe' : 'brew'} keeps its name, and it goes under yours. <button type="button" onClick={() => setName(brew.name)} className="text-amber-600 hover:underline">Use "{brew.name}"</button></span>}
               </label>
+                            <div className="flex flex-col gap-2 pt-2 border-t border-black/5 dark:border-white/5">
+                <div className="flex items-center justify-between">
+                  <span className={small}>Recipe subtitle</span>
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={showRecipe}
+                      onChange={(e) => setShowRecipe(e.target.checked)}
+                      className="w-3.5 h-3.5 rounded border-slate-300 text-amber-500 focus:ring-amber-400 accent-amber-500 cursor-pointer"
+                    />
+                    <span className="text-xs font-semibold text-slate-500">Include on label</span>
+                  </label>
+                </div>
+                {showRecipe ? (
+                  <div className="flex flex-col gap-1">
+                    <input
+                      type="text"
+                      value={recipeText}
+                      placeholder={brew.name}
+                      onChange={(e) => setRecipeText(e.target.value.slice(0, 100))}
+                      className={`${field} text-xs`}
+                    />
+                    <div className="flex items-center justify-between text-[10px] text-slate-500">
+                      <span>Printed in italics underneath the main title.</span>
+                      {recipeText !== brew.name && (
+                        <button
+                          type="button"
+                          onClick={() => setRecipeText(brew.name)}
+                          className="text-amber-600 hover:underline"
+                        >
+                          Reset to "{brew.name}"
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <span className="text-[10px] text-slate-400 italic">Recipe subtitle hidden on this label.</span>
+                )}
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1">
                   <span className={small}>Position</span>

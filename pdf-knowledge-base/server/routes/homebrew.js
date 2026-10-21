@@ -131,7 +131,7 @@ router.get('/:id/labels/preview', async (req, res) => {
     // the real link, so the preview's code can be scanned to check it (20 Oct: a stand-in pointed at /preview) - the
     // recipe is shared now, as making the labels would anyway
     const qrHtml = await labelQr(`${base}/api/share/recipe/${shareRecipe(src.id)}`);
-    res.set('Content-Type', 'text/html; charset=utf-8').send(labelsHtml(b, { fontId: req.query.font, title: req.query.name, look: labelLook(req.query), qrHtml, preview: true }));
+    res.set('Content-Type', 'text/html; charset=utf-8').send(labelsHtml(b, { fontId: req.query.font, title: req.query.name, recipeText: req.query.recipeText, showRecipe: req.query.showRecipe, look: labelLook(req.query), qrHtml, preview: true }));
   } catch (err) { res.status(500).send(`Couldn't show the label: ${err.message}`); }
 });
 // bottle labels: A4 sheets of 10 (?count= how many labels; ?inline=1 to open rather than download)
@@ -142,7 +142,7 @@ router.get('/:id/labels', async (req, res) => {
     // the QR code opens the recipe's shared page (a brew's: the recipe it came from) - shared now if it wasn't yet
     const token = shareRecipe((!b.isRecipe && b.fromRecipe) || b.id);
     const { base } = await publicBase(req);
-    const { pdf, filename } = await labelsPdf(b, { count: req.query.count, fontId: req.query.font, title: req.query.name, look: labelLook(req.query), qrUrl: `${base}/api/share/recipe/${token}` });
+    const { pdf, filename } = await labelsPdf(b, { count: req.query.count, fontId: req.query.font, title: req.query.name, recipeText: req.query.recipeText, showRecipe: req.query.showRecipe, look: labelLook(req.query), qrUrl: `${base}/api/share/recipe/${token}` });
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `${req.query.inline ? 'inline' : 'attachment'}; filename="${filename.replace(/"/g, '')}"` }).send(pdf);
   } catch (err) { res.status(500).json({ error: `Couldn't make the labels: ${err.message}` }); }
 });

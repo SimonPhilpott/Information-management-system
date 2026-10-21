@@ -346,11 +346,22 @@ export async function labelQr(url) {
 
 // title: a name just for these labels (e.g. "Simon's Christmas Mead") - the recipe's own name then goes under it.
 // qrHtml: the QR code (labelQr). look: labelLook. preview: just one label, for the window's live preview.
-export function labelsHtml(b, { count = 10, fontId, title, qrHtml = '', look = labelLook(), preview = false } = {}) {
+export function labelsHtml(b, { count = 10, fontId, title, recipeText, showRecipe = true, qrHtml = '', look = labelLook(), preview = false } = {}) {
   const own = String(title || '').replace(/\r/g, '').split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 3).join('\n').slice(0, 100);
   const heading = own || b.name;
   const flat = (t) => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const under = own && flat(own) !== flat(b.name) ? b.name : '';
+  const isShowRecipe = showRecipe !== false && showRecipe !== 'false' && showRecipe !== '0';
+  let under = '';
+  if (isShowRecipe) {
+    if (recipeText !== undefined) {
+      under = String(recipeText || '').trim().slice(0, 100);
+    } else {
+      under = own && flat(own) !== flat(b.name) ? b.name : '';
+    }
+    if (under && flat(under) === flat(heading)) {
+      under = '';
+    }
+  }
   const font = listLabelFonts().find((f) => f.id === fontId) || LABEL_FONTS[0];
   const n = preview ? 1 : Math.max(1, Math.min(200, Math.round(Number(count)) || 10));
   const colour = /^#[0-9a-f]{6}$/i.test(b.liquid || '') ? b.liquid : '#e8a33a';
