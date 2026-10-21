@@ -231,8 +231,14 @@ const EXACT_CANONICAL = {
   'granulated sugar': 'Granulated sugar',
   'brown sugar': 'Brown sugar',
   'dark brown sugar': 'Dark brown sugar',
-  'glucose chipping': 'Glucose chippings',
-  'glucose chippings': 'Glucose chippings',
+  'glucose chipping': 'Brewing sugar',
+  'glucose chippings': 'Brewing sugar',
+  'brewing sugar': 'Brewing sugar',
+  'brewers sugar': 'Brewing sugar',
+  'brewer s sugar': 'Brewing sugar',
+  "brewer's sugar": 'Brewing sugar',
+  'dextrose': 'Brewing sugar',
+  'corn sugar': 'Brewing sugar',
   'maple syrup': 'Maple syrup',
   'flaked barley': 'Flaked barley',
   'pearl barley': 'Pearl barley',
@@ -375,6 +381,11 @@ export function canonicalizeMain(name) {
     return 'Primroses';
   }
 
+  // Glucose chippings / brewing sugar / brewer's sugar / dextrose
+  if (/^(glucose\s+chippings?|brewers?\s*sugar|brewing\s+sugar|dextrose|corn\s+sugar)$/i.test(clean)) {
+    return 'Brewing sugar';
+  }
+
   return clean;
 }
 
@@ -444,6 +455,11 @@ export function canonicalizeRecipeIngredient(name) {
   // Primrose flowers -> primroses
   str = str.replace(/\bprimrose\s+flowers?\b/gi, (match) => {
     return match[0] === match[0].toUpperCase() ? 'Primroses' : 'primroses';
+  });
+
+  // Glucose chippings -> brewing sugar
+  str = str.replace(/\bglucose\s+chippings?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Brewing sugar' : 'brewing sugar';
   });
 
   return str;
