@@ -53,8 +53,7 @@ import { stripMedicalDisclaimers } from '../services/disclaimerSanitizer.js';
 import { transcribeWake } from '../services/wakeGateService.js';
 import { live, thinkDeliverers, FOLLOW_UP_MS } from './state.js';
 import { addInstruction, listInstructions, updateInstruction, cancelInstruction, completeInstruction, getInstruction, forPeople as instructionsForPeople, markFired as markInstructionFired, carryOutPrompt, describe as describeInstruction } from '../services/imsInstructionsService.js';
-import { stripToolText, looksLikeVisionAsk, looksAddressed, heardLikeWake, faceFromWords, BARE_GREETING_RX, isWakeOnly } from './textMatching.js';
-import { getPresence } from '../services/presenceService.js';
+import { stripToolText, looksLikeVisionAsk, looksAddressed, heardLikeWake, faceFromWords, BARE_GREETING_RX, isWakeOnly, isScrap } from './textMatching.js';
 import { withVoiceReminder, toSilentSetup, pinSavedVoice } from './setupMessages.js';
 import { writeDebugLog, IDF_NOISE } from './debugLog.js';
 
@@ -871,10 +870,6 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
       }
     }).catch(() => { /* stays gated */ }).finally(() => { gateBusy = false; });
   };
-  // Someone other than Simon at the desk (the camera knows them): he's probably talking to them, so his name on
-  // its own isn't enough - only a proper wake phrase wakes Ims (19 Oct, talking to Rowan: "Ims says hello to you
-  // guys" woke him)
-  const othersAtDesk = () => { try { const p = getPresence(); return Boolean(p.present && p.names.some((n) => !/^simon\b/i.test(String(n).trim()))); } catch (_) { return false; } };
   // A wake phrase said TO him: it opens with a greeting and the name ("Hey Ims, ..."), or is just that.
   // "Ims says hello to you guys" mentions him but isn't said to him.
   const STRICT_OPENING = /^\W*(hey|hi|hiya|heya|hello|oi|eh\s*up|ey\s*up|ay\s*up|ayup|eyup)\b/i;
@@ -884,12 +879,25 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
     if (isWakeOnly(x)) return true;
     return STRICT_OPENING.test(x) && looksAddressed(x.split(/\s+/).slice(0, 4).join(' '));
   };
+  // What wakes him from standby: the wake phrase itself (a greeting and the name, or a recorded mishearing of it),
+  // whoever is or isn't at the desk. A word that only sounds a bit like the name in a sentence ("Tim's", "times",
+  // "Ams for Ukraine") is talk to someone else. (Simon, 21 Oct: "he's not supposed to respond at all unless the
+  // full wake phrase is spoken.")
+  // A recorded spelling of the name alone ("Ims", "Ams", "I am") counts said on its own; at the start of a longer
+  // sentence it needs the greeting in front - only whole-phrase mishearings of "Hi Ims" ("Hymns", "Häms", "H&M")
+  // open a request without one ("Ims says hello to you guys", "Ams for Ukraine" woke him, 19 Oct).
+  const WHOLE_PHRASE_MISHEARD = /^\W*(hymns?|h[äa]m'?s|hims|h\.?\s?m\.?\s?'?s|\w*pims|poems|h\s*(?:&|and|n)\s*m'?s?|m\s*(?:&|and|n)\s*m'?s)\b/i;
+  const isWakeCall = (t) => {
+    if (saidToIms(t)) return true;
+    if (!heardLikeWake(t)) return false;
+    return String(t).trim().split(/\s+/).length <= 2 || WHOLE_PHRASE_MISHEARD.test(String(t));
+  };
   // Is what Gemini heard a wake phrase? 'yes', 'no' (a sentence that isn't one), or null (nothing heard yet)
-  const wakeVerdict = (said, strict) => {
+  const wakeVerdict = (said) => {
     const t = String(said || '').trim();
     if (!t) return null;
-    if (strict ? saidToIms(t) : (heardLikeWake(t) || looksAddressed(t))) return 'yes';
-    if (strict || t.split(/\s+/).filter(Boolean).length >= 3) return 'no';
+    if (isWakeCall(t)) return 'yes';
+    if (t.split(/\s+/).filter(Boolean).length >= 3) return 'no';
     return null;
   };
   const tryModelWake = () => {
@@ -906,18 +914,18 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
         wakeCheckLog(`woke (your model, score ${r.score})`);
         scheduleFastGreeting(Date.now(), true);
       };
-      // Simon alone with a clear pause after it: wake at once, as before. Otherwise his model's word is checked
-      // against what Gemini heard first (up to 1.5 s): his name in a sentence to someone else isn't a wake.
-      const strict = othersAtDesk();
-      if (!strict && r.quietAfterSec >= 0.45) { wake(); return; }
+      // Never on his model's word alone: it can't tell the wake phrase from talk to someone else ("I could smell
+      // something really nice" scored 1, 16 Oct; at 09:13 on 21 Oct it scored 0.97 with no words heard at all and
+      // Ims said "Ey up, what can I do for you?" while Simon was talking to someone). It waits up to 3 s for what
+      // Gemini heard (the transcript lags the sound by ~1.6 s) and wakes only on a wake phrase.
       const startedAt = Date.now();
       const check = () => {
         if (wakeCheck !== wc || isConversationActive || isRecordingActive() || isDeviceMicMuted()) return; // decided another way
-        const v = wakeVerdict(heardThisTurn, strict);
-        const timedOut = Date.now() - startedAt >= 1500;
-        if (v === 'yes' || (timedOut && !strict && v !== 'no')) { wake(); return; }
+        const v = wakeVerdict(heardThisTurn);
+        const timedOut = Date.now() - startedAt >= 3000;
+        if (v === 'yes') { wake(); return; }
         if (v === 'no' || timedOut) {
-          try { logCapture(`[${new Date().toISOString()}] ${tag} WAKE MODEL OVERRULED: heard "${String(heardThisTurn || '').trim().slice(0, 80) || '(nothing)'}" - not a wake phrase${strict ? ' (someone else at the desk)' : ''}\n`); } catch (_) { }
+          try { logCapture(`[${new Date().toISOString()}] ${tag} WAKE MODEL OVERRULED: heard "${String(heardThisTurn || '').trim().slice(0, 80) || '(nothing)'}" - not a wake phrase\n`); } catch (_) { }
           return;
         }
         setTimeout(check, 100);
@@ -1305,7 +1313,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
             }
             // after a fast greeting, his next words (not the tail of the wake phrase) are what Gemini answers
             if (fastGreet && !fastGreet.newSpeech && Date.now() - fastGreet.at > 400 && /[a-z0-9]/i.test(incomingTranscript) && (Date.now() > fastGreet.endsAt || !isWakeOnly(incomingTranscript))) fastGreet.newSpeech = true;
-            if (currentTurnComplete && looksAddressed(heardThisTurn) && !isRecordingActive() && (isConversationActive || !othersAtDesk() || saidToIms(heardThisTurn))) {
+            if (currentTurnComplete && !isRecordingActive() && (isConversationActive ? looksAddressed(heardThisTurn) : isWakeCall(heardThisTurn))) {
               isConversationActive = true;
               wakeDaemonService.acceptWake(heardThisTurn.trim().slice(0, 40), 'transcript_addressed');
               wakeCheckLog(`woke ("${heardThisTurn.trim().slice(0, 40)}")`);
@@ -1333,8 +1341,8 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
             // Wake Daemon user speech assessment
             const speechEval = wakeDaemonService.processUserSpeech(incomingTranscript, 'hardware');
-            if (speechEval.action === 'wake_accepted' && !isConversationActive && othersAtDesk() && !saidToIms(heardThisTurn)) {
-              try { logCapture(`[${new Date().toISOString()}] ${tag} WAKE IGNORED: "${heardThisTurn.trim().slice(0, 80)}" - someone else at the desk, and not a wake phrase\n`); } catch (_) { }
+            if (speechEval.action === 'wake_accepted' && !isConversationActive && !isWakeCall(heardThisTurn)) {
+              try { logCapture(`[${new Date().toISOString()}] ${tag} WAKE IGNORED: "${heardThisTurn.trim().slice(0, 80)}" - not a wake phrase\n`); } catch (_) { }
             } else if (speechEval.action === 'wake_accepted') {
               isConversationActive = true;
             } else if (speechEval.action === 'wake_rejected') {
@@ -1347,7 +1355,7 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
 
             if (judgePendingUntil) {
               judgePendingUntil = 0;
-              if (!isConversationActive && !looksAddressed(heardThisTurn)) {
+              if (!isConversationActive && !isWakeCall(heardThisTurn)) {
                 unsolicitedTurn = true;
                 console.warn(`${tag} 🔇 Not addressed to Ims (late transcript) - dropping the held reply. Heard: "${heardThisTurn.slice(0, 80)}"`);
                 try { logCapture(`[${new Date().toISOString()}] ${tag} REPLY DROPPED - NOT ADDRESSED (late): "${heardThisTurn.slice(0, 120)}"\n`); } catch (_) { }
@@ -1401,9 +1409,19 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
           if (startsModelOutput && currentTurnComplete && !unsolicitedTurn) {
             const followUp = heardStartAt ? heardStartAt <= followUpUntil : ((energeticMicFrames >= 8 || answeredAloud()) && Date.now() <= followUpUntil);
             // an open conversation is a to and fro: anything said in it is for Ims - no timing test. It only ends
-            const addressed = isConversationActive || answersTool || textTurnSent || touchToTalkActive || (looksAddressed(heardThisTurn) && (!othersAtDesk() || saidToIms(heardThisTurn))) || followUp;
+            const addressed = isConversationActive || answersTool || textTurnSent || touchToTalkActive || isWakeCall(heardThisTurn) || followUp;
             const isPartialWake = !heardThisTurn.trim() || BARE_GREETING_RX.test(heardThisTurn.trim());
-            if (!addressed && isPartialWake) {
+            // The one exception to "anything said in a conversation is for Ims": a scrap with no request in it,
+            // when he hasn't just asked a question, is Simon talking to someone else - Ims stays quiet (21 Oct).
+            const scrap = isHardware && isConversationActive && !answersTool && !textTurnSent && !touchToTalkActive
+              && !parsed.toolCall && isScrap(heardThisTurn) && !looksAddressed(heardThisTurn) && !/\?["')\s]*$/.test(lastImsReply || '');
+            if (scrap) {
+              unsolicitedTurn = true;
+              console.warn(`${tag} 🔇 Only a scrap of speech, not for Ims - dropping the reply. Heard: "${heardThisTurn.slice(0, 40)}"`);
+              try { logCapture(`[${new Date().toISOString()}] ${tag} REPLY DROPPED - SCRAP OF SPEECH: "${heardThisTurn.slice(0, 40)}"\n`); } catch (_) { }
+              paceFlush();
+              heardThisTurn = '';
+            } else if (!addressed && isPartialWake) {
               // No transcript yet, or only the opening greeting word ("Hi", "Hey", "Eh up") has streamed in so far:
               // hold model audio in the queue for up to 1.5 s until the full wake phrase finishes streaming.
               judgePendingUntil = Date.now() + 1500;

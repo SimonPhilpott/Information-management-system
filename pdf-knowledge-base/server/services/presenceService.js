@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import db from '../db/database.js';
-import { getFrame, keepCameraAwake } from './cameraService.js';
+import { getFrame, keepCameraAwake, wakeCamera } from './cameraService.js';
 import { detectFacesFast, matchEmbedding } from './faceService.js';
 import { isRecordingActive } from './recordingService.js';
 import logger from './loggerService.js';
@@ -36,7 +36,9 @@ const MOTION_MIN = 0.012;
 const PARTIAL_FRAMES_TO_STAY = 3;
 const PARTIAL_WINDOW_MS = 10000;
 const AWAY_BEFORE_GREET_MS = 5 * 60000; // must have been seen away this long to be greeted on return
-const RECOGNISE_WINDOW_MS = 20000;      // after sitting down, how long recognition may take
+// After sitting down, how long recognition may take. 20 s missed half the hellos (20-21 Oct: three of six,
+// Simon recognised each time, but not twice in 20 s from idle-rate 320x240 pictures while settling in).
+const RECOGNISE_WINDOW_MS = 45000;
 const MATCHES_TO_GREET = 2;             // matches needed in that window (one stray match never greets)
 // The camera faces the person, so someone on the right of the picture is on
 // Ims's left: his eyes move the opposite way across the screen. If the eyes
@@ -136,6 +138,8 @@ function onFaces(out, frameAt) {
       partialSeen = [];
       const id = db.prepare('INSERT INTO desk_presence (started_at, last_seen_at) VALUES (?, ?)').run(frameAt, frameAt).lastInsertRowid;
       session = { id, startedAt: frameAt, greetEligible, matches: new Map(), greeted: false, savedAt: frameAt };
+      // A hello is due: full speed and 640x480 for a few seconds, so there are sharp faces to recognise
+      if (greetEligible) wakeCamera();
     }
 
     // Who is it? Every face, every look - a name only counts after a couple of matches.

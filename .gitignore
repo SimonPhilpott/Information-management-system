@@ -24,6 +24,7 @@ dist-ssr
 *.sw?
 
 # PDF Knowledge Base
+pdf-knowledge-base/data
 pdf-knowledge-base/server/data
 pdf-knowledge-base/client/dist
 pdf-knowledge-base/node_modules

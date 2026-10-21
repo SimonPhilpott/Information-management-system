@@ -36,6 +36,13 @@ export const stripToolText = (text) => String(text).replace(TOOL_TAG, '').replac
 const WAKE_RX = /\b(hey[\s,-]*up|hey|hi|hiya|heya|hello|eh[\s,-]*up|ey[\s,-]*up|ay[\s,-]*up|aye[\s,-]*up|ayup|eyup|oi|up)\b[\s,.!?'-]*(h?[aei]{1,2}m+e?[sz]\b|i\.?\s?m\.?\s?s\b|elms\b|helms\b|aops\b|i['’]?m\b)/i;
 // Bare opening greeting word without a name yet - used to hold streaming responses rather than dropping early
 export const BARE_GREETING_RX = /^(?:hey[\s,-]*up|hey|hi|hiya|heya|hello|eh[\s,-]*up|ey[\s,-]*up|ay[\s,-]*up|aye[\s,-]*up|ayup|eyup|oi|up)[,.!? ]*$/i;
+// A scrap of speech with no request in it - "y a", "mm", "oh", "ok": no word of three letters or more and
+// four letters at most. In an open conversation that's Simon talking to someone else, not to Ims (21 Oct:
+// "y a" got "Sorry, didn't quite catch that" while he was talking to someone).
+export const isScrap = (t) => {
+  const words = String(t || '').toLowerCase().match(/[a-z0-9']+/g) || [];
+  return words.length > 0 && words.every((w) => w.replace(/'/g, '').length < 3) && words.join('').replace(/'/g, '').length <= 4;
+};
 // Speech-to-text often mangles the short wake phrase ("Hey IMS" -> "HMs", "Eh up Ims" -> "Anya Pims").
 // A name-like word near the start counts too. The name has to be there in some form: a greeting on its
 // own ("Hello", "Hi", "Hiya", "Eh up") never wakes Ims - Simon's rule (8 Oct).
