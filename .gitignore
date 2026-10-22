@@ -100,3 +100,6 @@ firmware/esp32-s3-box-3/*.o
 
 # personal documents and reference files kept out of the repository
 archive/
+
+# Homebrew header font: a commercial font (TimelessType.co), kept on this PC only - not published in the public repo
+src/components/HomebrewBeta/fonts/

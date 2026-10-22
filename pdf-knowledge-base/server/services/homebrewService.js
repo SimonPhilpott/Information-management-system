@@ -75,7 +75,9 @@ db.exec(`
 // the kind of drink; recipe-book entries (common recipes and ones he keeps) and where a recipe came from
 for (const col of ['category TEXT', 'is_recipe INTEGER NOT NULL DEFAULT 0', 'source_name TEXT', 'source_url TEXT', 'from_recipe INTEGER', 'favourite INTEGER NOT NULL DEFAULT 0',
   // recipe families (same drink from different books, one card), version label, wine colour tag, where the sweetness came from
-  'family TEXT', 'variant TEXT', 'colour TEXT', 'sweetness_basis TEXT', 'summary TEXT']) {
+  'family TEXT', 'variant TEXT', 'colour TEXT', 'sweetness_basis TEXT', 'summary TEXT',
+  // whose brew it is (22 Oct): empty = Simon's; an invited guest's email for a brew they started
+  'owner TEXT']) {
   try { db.exec(`ALTER TABLE brews ADD COLUMN ${col}`); } catch (_) { /* already there */ }
 }
 
@@ -171,7 +173,7 @@ function present(r, { full = false } = {}) {
   const fgNow = r.fg || latest;
   const a = abv(og, r.fg || latest);
   const out = {
-    id: r.id, name: r.name, style: r.style, category: r.category || categoryOfStyle(r.style), isRecipe: Boolean(r.is_recipe), favourite: Boolean(r.favourite), sourceName: r.source_name, sourceUrl: r.source_url, fromRecipe: r.from_recipe, status: r.status, batchLitres: r.batch_litres, startedOn: r.started_on, bottledOn: r.bottled_on,
+    id: r.id, name: r.name, style: r.style, category: r.category || categoryOfStyle(r.style), isRecipe: Boolean(r.is_recipe), favourite: Boolean(r.favourite), owner: r.owner || null, sourceName: r.source_name, sourceUrl: r.source_url, fromRecipe: r.from_recipe, status: r.status, batchLitres: r.batch_litres, startedOn: r.started_on, bottledOn: r.bottled_on,
     ingredients: json(r.ingredients, []), yeast: r.yeast, yeastNotes: r.yeast_notes, nutrients: r.nutrients, water: r.water,
     targetOg: r.target_og, targetFg: r.target_fg, og: r.og, fg: r.fg, sweetness: r.sweetness, carbonation: r.carbonation,
     shared: Boolean(r.share_token), sweetnessTag: normSweetness(r.sweetness), sweetnessBasis: r.sweetness_basis, abvEstimate: !r.target_og ? estimateAbv(r) : null, /* brews too: a likely strength until readings give the real one */ ...profileOf(r), colour: r.colour || COLOUR_OF_CAT[r.category] || null, liquid: expectedColour(r.id, r.from_recipe), mainPics: readyPictures(r.id, r.from_recipe), banner: readyBanner(r.id, r.from_recipe), bannerChoice: bannerChoiceOf(r.id), liquidChoice: colourByYou(r.id) || '', family: r.family, variant: r.variant,
@@ -201,7 +203,7 @@ const FIELDS = { name: 'name', style: 'style', category: 'category', sourceName:
   nutrients: 'nutrients', water: 'water', targetOg: 'target_og', targetFg: 'target_fg', og: 'og', fg: 'fg', sweetness: 'sweetness', carbonation: 'carbonation', method: 'method', notes: 'notes', colour: 'colour', summary: 'summary' };
 const NUMERIC = new Set(['batch_litres', 'target_og', 'target_fg', 'og', 'fg']);
 
-export function saveBrew(id, body = {}) {
+export function saveBrew(id, body = {}, { owner = null } = {}) {
   const set = {};
   for (const [k, col] of Object.entries(FIELDS)) if (body[k] !== undefined) set[col] = NUMERIC.has(col) ? num(body[k]) : (String(body[k] ?? '').trim() || null);
   if (body.ingredients !== undefined) {
@@ -227,6 +229,7 @@ export function saveBrew(id, body = {}) {
   const now = Date.now();
   if (!id) {
     if (!set.name) throw new Error('Give the brew a name.');
+    if (owner) set.owner = owner; // a guest's new brew is theirs
     const cols = Object.keys(set);
     const rid = db.prepare(`INSERT INTO brews (${cols.join(', ')}, created_at, updated_at) VALUES (${cols.map(() => '?').join(', ')}, ?, ?)`).run(...cols.map((c) => set[c]), now, now).lastInsertRowid;
     return getBrew(rid);
@@ -240,26 +243,37 @@ export function saveBrew(id, body = {}) {
 }
 
 const COPY = ['name', 'style', 'category', 'batch_litres', 'ingredients', 'yeast', 'yeast_notes', 'nutrients', 'water', 'target_og', 'target_fg', 'sweetness', 'sweetness_basis', 'colour', 'carbonation', 'method', 'notes', 'summary', 'source_name', 'source_url'];
-function copyBrew(id, { asRecipe }) {
+function copyBrew(id, { asRecipe, owner = null }) {
   const r = db.prepare('SELECT * FROM brews WHERE id = ?').get(Number(id));
   if (!r) throw new Error(`No brew #${id}`);
   const now = Date.now();
   const vals = COPY.map((c) => r[c]);
-  const nid = db.prepare(`INSERT INTO brews (${COPY.join(', ')}, is_recipe, status, from_recipe, created_at, updated_at) VALUES (${COPY.map(() => '?').join(', ')}, ?, ?, ?, ?, ?)`)
-    .run(...vals, asRecipe ? 1 : 0, 'planning', asRecipe ? null : r.id, now, now).lastInsertRowid;
+  const nid = db.prepare(`INSERT INTO brews (${COPY.join(', ')}, is_recipe, status, from_recipe, owner, created_at, updated_at) VALUES (${COPY.map(() => '?').join(', ')}, ?, ?, ?, ?, ?, ?)`)
+    .run(...vals, asRecipe ? 1 : 0, 'planning', asRecipe ? null : r.id, owner, now, now).lastInsertRowid;
   if (asRecipe) tagRecipes(db);
   return getBrew(nid);
 }
-// star a recipe or brew as a favourite (or un-star it)
-export function setFavourite(id, on) {
-  const n = db.prepare('UPDATE brews SET favourite = ? WHERE id = ?').run(on ? 1 : 0, Number(id)).changes;
-  if (!n) throw new Error('No such brew');
+// star a recipe or brew as a favourite (or un-star it). Simon's stars are on the brew itself; each invited guest
+// has their own (brew_favourites), so their favourites are theirs alone.
+db.exec('CREATE TABLE IF NOT EXISTS brew_favourites (email TEXT NOT NULL, brew_id INTEGER NOT NULL, PRIMARY KEY (email, brew_id))');
+export const favouritesOf = (email) => new Set(db.prepare('SELECT brew_id FROM brew_favourites WHERE email = ?').all(String(email || '').toLowerCase()).map((r) => r.brew_id));
+export function setFavourite(id, on, guestEmail = null) {
+  const row = db.prepare('SELECT * FROM brews WHERE id = ?').get(Number(id));
+  if (!row) throw new Error('No such brew');
+  if (guestEmail) {
+    const e = String(guestEmail).toLowerCase();
+    if (on) db.prepare('INSERT OR IGNORE INTO brew_favourites (email, brew_id) VALUES (?, ?)').run(e, Number(id));
+    else db.prepare('DELETE FROM brew_favourites WHERE email = ? AND brew_id = ?').run(e, Number(id));
+    return { ...present(row), favourite: Boolean(on) };
+  }
+  db.prepare('UPDATE brews SET favourite = ? WHERE id = ?').run(on ? 1 : 0, Number(id));
   return present(db.prepare('SELECT * FROM brews WHERE id = ?').get(Number(id)));
 }
-export const startFromRecipe = (id) => copyBrew(id, { asRecipe: false });
+export const startFromRecipe = (id, owner = null) => copyBrew(id, { asRecipe: false, owner });
 export const saveAsRecipe = (id) => copyBrew(id, { asRecipe: true });
 
 export function deleteBrew(id) {
+  db.prepare('DELETE FROM brew_favourites WHERE brew_id = ?').run(Number(id));
   db.prepare('DELETE FROM brew_logs WHERE brew_id = ?').run(Number(id));
   db.prepare('DELETE FROM brew_tastings WHERE brew_id = ?').run(Number(id));
   return db.prepare('DELETE FROM brews WHERE id = ?').run(Number(id)).changes > 0;
@@ -298,7 +312,7 @@ export const deleteTasting = (id) => db.prepare('DELETE FROM brew_tastings WHERE
 
 // Find a brew from what Simon said ("the braggot", "mead number 3"); the one on the go if he didn't say
 export function findBrew(q = '') {
-  const all = listBrews();
+  const all = listBrews().filter((b) => !b.owner); // Simon's own (a guest's brews are theirs)
   const s = String(q || '').toLowerCase().trim();
   if (!s) return all.find((b) => b.status === 'fermenting') || all.find((b) => b.status === 'conditioning') || all[0] || null;
   const n = /#?(\d+)/.exec(s);
@@ -362,7 +376,7 @@ export async function whatIf(id, change) {
 // What he has logged, for Ims ("how's the mead doing?")
 export function brewsForIms({ brew = '' } = {}) {
   const pick = brew ? findBrew(brew) : null;
-  const list = pick ? [getBrew(pick.id)] : listBrews().slice(0, 6).map((b) => getBrew(b.id));
+  const list = pick ? [getBrew(pick.id)] : listBrews().filter((b) => !b.owner).slice(0, 6).map((b) => getBrew(b.id));
   return list.map((b) => ({
     id: b.id, name: b.name, style: b.style, status: b.status, started: b.startedOn, bottled: b.bottledOn, daysIn: b.calc.daysSinceStart,
     og: b.og, latestGravity: b.calc.latestGravity, fg: b.fg, abv: b.calc.abv, thirdBreak: b.calc.thirdBreak, sweetness: b.calc.sweetnessClass,

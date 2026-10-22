@@ -216,15 +216,48 @@ function bannerPrompt(b, items) {
 const bannerKeyOf = (b, items) => crypto.createHash('sha1').update(`${IMAGE_MODEL}|banner v3|${bannerPrompt(b, items)}`).digest('hex').slice(0, 20);
 // What to search for a banner: the main ingredient where it grows or is gathered (apple orchard, barley field...),
 // then the ingredient on its own, then just the type's scene
-const SCENE_WORDS = { mead: 'beehive meadow', white_wine: 'vineyard grapes', red_wine: 'vineyard red grapes', rose_wine: 'vineyard grapes roses', fruit_veg_wine: 'fruit harvest', flower_herb_wine: 'herb garden flowers', hot_pepper_wine: 'chilli peppers', beer: 'barley field hops', stout: 'roasted malt barley', cider: 'apple orchard apples', soda: 'hedgerow foraging' };
+const SCENE_WORDS = { mead: 'honeycomb', white_wine: 'vineyard grapes', red_wine: 'vineyard red grapes', rose_wine: 'vineyard grapes roses', fruit_veg_wine: 'fruit harvest', flower_herb_wine: 'herb garden flowers', hot_pepper_wine: 'chilli peppers', beer: 'barley field hops', stout: 'roasted malt barley', cider: 'apple orchard apples', soda: 'hedgerow foraging' };
+// 22 Oct (Simon: "where possible don't use things"): a stock search takes a name literally - "Bourbon" found a ship,
+// "Black malt" a black cat, "Chocolate malt" a bowl of malt balls. So a banner shows where its ingredient grows: a
+// malt is a barley field, hops a hop garden, honey the hives; and things that don't grow (spirits, drinks, sugars,
+// salt, eggs, bacon, extracts...) are passed over for the next main ingredient, else the type's own scene.
+const GROWS_AS = [
+  [/\b(malt|barley|maris otter|golden promise|pilsner|munich|vienna|caramalt|carafa)\b/i, 'barley field'],
+  [/\bwheat\b/i, 'wheat field'], [/\brye\b/i, 'rye field'], [/\boat(s|meal)?\b/i, 'oat field'],
+  [/\b(corn|maize)\b/i, 'corn field'], [/\brice\b/i, 'rice paddy'], [/\bsorghum\b/i, 'sorghum field'],
+  [/\bhops?\b/i, 'hop cones'], [/\bhoney(comb)?\b/i, 'honeycomb'],
+  [/\bcoffee\b/i, 'coffee plant cherries'], [/\b(cocoa|cacao|chocolate)\b/i, 'cocoa pods tree'],
+  [/\bmaple\b/i, 'maple trees'], [/\b(birch|sycamore|walnut) sap\b|\btree sap\b/i, 'birch trees forest'],
+  [/\btea\b/i, 'tea plantation'], [/\bgrape juice\b/i, 'vineyard grapes'],
+];
+const NOT_GROWN = /\b(bourbon|whisk(e)?y|rum|brandy|gin|vodka|sherry|port|beer|ales?|stout|lager|cider|wine|sugars?|syrup|treacle|molasses|lactose|salt|water|rainwater|eggs?|bacon|steak|whey|extract|yeast|kefir|culture|flour|bread|toast|jam|candies|candy|nutrient|tannin|acid|campden|chalk|gypsum)\b/i;
+function bannerSubject(name) {
+  const n = String(name || '').replace(/\b(juice|pulp|zest|peel|purée|puree|concentrate)\b/gi, '').replace(/\s+/g, ' ').trim();
+  const grows = GROWS_AS.find(([re]) => re.test(n));
+  if (grows) return grows[1];
+  // what it is is its last word: "Cider apples" are apples, "Apple brandy" is a brandy
+  if (!n || NOT_GROWN.test(n.split(' ').pop())) return null;
+  return n;
+}
 const bannerQueries = (b, items) => {
-  const main = items[0]?.name;
   const scene = SCENE_WORDS[b.category] || 'country garden';
-  // the ingredient itself first, so it's what the photo shows ("white sage apple" found an orchard with no sage in it)
-  return [main, main && `${main} plant`, scene];
+  // the main ingredients together where a photo has them both (apples and blackberries), else the main one on its own,
+  // so it's what the photo shows ("white sage apple" found an orchard with no sage in it)
+  const subjects = [...new Set(items.map((i) => bannerSubject(i.name)).filter(Boolean))];
+  const main = subjects[0];
+  const both = subjects.length > 1 && subjects.slice(0, 2).every((s) => !/ /.test(s)) ? `${subjects[0]} ${subjects[1]}` : null;
+  return [both, main, main && !/ /.test(main) && `${main} plant`, scene];
 };
-const bannerFoundKey = (b, items) => crypto.createHash('sha1').update(`found banner|${b.id}|${items.map((i) => norm(i.name)).sort().join(',')}`).digest('hex').slice(0, 20);
-const paintBanner = (b, items) => findOnce(bannerFoundKey(b, items), { shape: 'wide', seed: `${b.id}|${b.name}`, queries: bannerQueries(b, items) });
+// flowers may be in a banner only when one of its ingredients is a flower
+const FLOWER_ING = /flower|blossom|petal|rose|elder|dandelion|clover|heather|marigold|camomile|chamomile|lavender|hibiscus|violet|cowslip|primrose|hawthorn|gorse|broom|honeysuckle|lilac|linden|jasmine|carnation|geranium|goldenrod|golden rod|meadowsweet|coltsfoot|agrimony|burnet|yarrow/i;
+// the queries the banners were first searched with (kept so a banner whose search hasn't changed keeps its photo)
+const oldBannerQueries = (b, items) => { const main = items[0]?.name; return [main, main && `${main} plant`, SCENE_WORDS[b.category] || 'country garden']; };
+const bannerFoundKey = (b, items) => {
+  const q = bannerQueries(b, items);
+  const same = q.join('|') === oldBannerQueries(b, items).join('|');
+  return crypto.createHash('sha1').update(`found banner|${b.id}|${items.map((i) => norm(i.name)).sort().join(',')}${same ? '' : `|${q.filter(Boolean).join('|')}`}`).digest('hex').slice(0, 20);
+};
+const paintBanner = (b, items) => findOnce(bannerFoundKey(b, items), { shape: 'wide', seed: `${b.id}|${b.name}`, queries: bannerQueries(b, items), flowersOk: items.some((i) => FLOWER_ING.test(i.name)) });
 // the recipe's own banner if it has one: a new v3, else one made before (v2)
 const ownBanner = (b, items) => [bannerFoundKey(b, items), bannerKeyOf(b, items), bannerKeyV2(b, items)].find(ready) || null;
 
@@ -416,7 +449,8 @@ export function listAllIngredients() {
   const brewRows = db.prepare('SELECT ingredients FROM brews').all();
   for (const b of brewRows) {
     try {
-      const ings = JSON.parse(b.ingredients || '[]');
+      // a line offering a choice ("Corn (or rice)") also counts each alternative in its "also" list (22 Oct)
+      const ings = JSON.parse(b.ingredients || '[]').flatMap((i) => [i, ...(Array.isArray(i?.also) ? i.also.map((a) => ({ ...i, name: a })) : [])]);
       for (const i of ings) {
         if (!i.name) continue;
         const clean = String(i.name).replace(/\(.*?\)/g, '').trim();

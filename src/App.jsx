@@ -45,7 +45,7 @@ const GlucosePortal = React.lazy(() => import('./components/Dashboard/GlucosePor
 const NewsPortal = React.lazy(() => import('./components/Dashboard/NewsPortal'));
 const TasksPortal = React.lazy(() => import('./components/Dashboard/TasksPortal'));
 const InstructionsPortal = React.lazy(() => import('./components/Dashboard/InstructionsPortal'));
-const HomebrewPortal = React.lazy(() => import('./components/Dashboard/HomebrewPortal'));
+const HomebrewBeta = React.lazy(() => import('./components/HomebrewBeta/HomebrewBeta'));
 const SystemArchitecturePortal = React.lazy(() => import('./components/Dashboard/SystemArchitecturePortal'));
 const DevIdeasPortal = React.lazy(() => import('./components/Dashboard/DevIdeasPortal'));
 const BackupsPortal = React.lazy(() => import('./components/Dashboard/BackupsPortal'));
@@ -1571,9 +1571,11 @@ export default function App() {
     );
   }
 
+  // Homebrew: the Material 3 design (components/HomebrewBeta). It was built as a beta at /ims/homebrew-beta and
+  // replaced the classic portal on 22 Oct; the classic one is retired, and -beta addresses open the same screens.
   if (currentPath === '/ims/homebrew' || currentPath.startsWith('/ims/homebrew')) {
     return (
-      <HomebrewPortal
+      <HomebrewBeta
         theme={state.theme}
         onThemeToggle={actions.toggleTheme}
         setCurrentPath={setCurrentPath}

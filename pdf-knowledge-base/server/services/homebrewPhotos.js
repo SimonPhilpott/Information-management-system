@@ -90,13 +90,20 @@ const pick = (list, seed) => list[parseInt(crypto.createHash('sha1').update(Stri
 // Ingredients are looked for among food photos first, then nature; banners among nature photos, then anything -
 // "ginger" on its own found a red-haired woman (20 Oct). Photos of people are never used.
 const PEOPLE = /\b(woman|women|man|men|girl|boy|people|person|portrait|model|lady|child|kid|face|beauty|fashion|redhead|bride)\b/i;
-export async function findPhoto({ dir, key, queries, shape, seed }) {
+// A banner shows the ingredients themselves (22 Oct, Simon: "no insects, no objects ... farm equipment or flowers even
+// though none of the ingredients are flowers"): never insects or other animals, people at work, buildings, vehicles,
+// machines, containers, food made from it or things; and flowers only when the recipe has a flower in it.
+export const BANNER_BAN = /\b(bees?|honeybees?|bumblebees?|beekeep\w*|apiar\w*|hives?|beehives?|skeps?|insects?|wasps?|hornets?|butterfl\w*|moths?|flies|fly|ants?|beetles?|ladybirds?|ladybugs?|spiders?|caterpillars?|dragonfl\w*|aphids?|bugs?|grasshoppers?|snails?|slugs?|worms?|birds?|cats?|dogs?|horses?|cows?|cattle|sheep|goats?|pigs?|chickens?|hens?|ducks?|animals?|tractors?|combine|harvesters?|machine\w*|equipment|trucks?|cars?|vehicles?|wagons?|carts?|wheelbarrows?|barns?|buildings?|house|houses|farmhouse|church|castle|windmills?|mills?|ships?|boats?|fences?|gates?|tools?|shovels?|rakes?|sickles?|scythes?|lanterns?|bottles?|glass|glasses|jars?|mugs?|cups?|cans?|kegs?|barrels?|casks?|brewery|brewing|factory|kitchen|knife|knives|chopping|cutting|plates?|cake|cakes|cookies?|biscuits?|dessert|pie|tart|candy|sweets|chocolate|drinks?|beverages?|juice|cocktail|wine|beer|cider|alcohol|cereal|muesli|granola|breakfast|meal|salad|soup|smoothie|yogh?urt|porridge|bowl|fungus|fungi|mushrooms?|toadstools?|warrior|viking|statue|sculpture|toys?|signs?|text|food\s?stand|market|shop|still\s?life)\b/i;
+const FLOWERY = /\b(flowers?|blossoms?|blooms?|blooming|petals?|floral|bouquet|roses?|daisy|daisies|tulips?|poppies|poppy|sunflowers?|wildflowers?)\b/i;
+const FLOWER_WANTED = /flower|blossom|petal|rose|elder|dandelion|clover|heather|marigold|camomile|chamomile|lavender|hibiscus|violet|cowslip|primrose|hawthorn|gorse|broom|honeysuckle|lilac|linden|jasmine|carnation|geranium|goldenrod|golden rod|meadowsweet|coltsfoot|agrimony|burnet|yarrow|mayflower|may blossom/i;
+const bannerOk = (alt, query, flowersOk) => (!BANNER_BAN.test(alt) || (/mushroom|chaga|turkey tail|chanterelle|matsutake/i.test(query) && !BANNER_BAN.test(alt.replace(/(fung(us|i)|mushrooms?|toadstools?)/gi, '')))) && (flowersOk || FLOWER_WANTED.test(query) || !FLOWERY.test(alt));
+export async function findPhoto({ dir, key, queries, shape, seed, flowersOk = false }) {
   const tries = queries.filter(Boolean).flatMap((query) => (shape === 'wide' ? ['nature', null] : ['food', 'nature']).map((category) => [query, category]));
   for (const [query, category] of tries) {
     const results = (await Promise.all([searchPexels(query, shape), searchPixabay(query, shape, category)].map((p) => p.catch((err) => { console.warn(`[Homebrew] Photo search: ${err.message}`); return []; })))).flat().filter((p) => p.url);
     // only photos whose own tags / description name what was searched for, and only the best few of those: further
     // down, loosely tagged results crept in ("strawberries" found a chocolate cake, "sweet potatoes" valentine cookies)
-    const found = results.filter((p) => mentions(p.alt, query) && !PEOPLE.test(p.alt)).slice(0, 8);
+    const found = results.filter((p) => mentions(p.alt, query) && !PEOPLE.test(p.alt) && (shape !== 'wide' || bannerOk(`${p.alt} ${p.page || ''}`.replace(/[-/_]/g, ' '), query, flowersOk))).slice(0, 8);
     if (!found.length) continue;
     const fresh = found.filter((p) => !usedStmt.get(p.source, p.id));
     const choice = pick(fresh.length ? fresh : found, `${seed}|${query}`);

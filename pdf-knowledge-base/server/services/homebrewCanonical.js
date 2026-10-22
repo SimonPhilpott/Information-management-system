@@ -3,6 +3,17 @@
 // compounding ("Black currants" -> "Blackcurrants"), and grammatical plurals/cases.
 
 const EXACT_CANONICAL = {
+  // Yeast - plain, baker's and brewer's are all Brewers yeast (Simon, 22 Oct)
+  'yeast': 'Brewers yeast',
+  "baker's yeast": 'Brewers yeast',
+  'bakers yeast': 'Brewers yeast',
+  "brewer's yeast": 'Brewers yeast',
+  'brewers yeast': 'Brewers yeast',
+  // Yeast nutrient - tablets are the same thing (Simon, 22 Oct)
+  'nutrient tablet': 'Yeast nutrient',
+  'nutrient tablets': 'Yeast nutrient',
+  'yeast nutrient tablet': 'Yeast nutrient',
+  'yeast nutrient tablets': 'Yeast nutrient',
   // Ginger
   'ginger': 'Ginger',
   'ginger root': 'Ginger',
@@ -79,6 +90,11 @@ const EXACT_CANONICAL = {
   'yarrow flowers': 'Yarrow',
   'broom flower': 'Broom flowers',
   'broom flowers': 'Broom flowers',
+  'gorse': 'Gorse flowers',
+  'gorse flower': 'Gorse flowers',
+  'gorse flowers': 'Gorse flowers',
+  'gorse blossom': 'Gorse flowers',
+  'gorse blossoms': 'Gorse flowers',
   'burnet': 'Burnet',
   'burnet flower': 'Burnet',
   'burnet flowers': 'Burnet',
@@ -120,6 +136,11 @@ const EXACT_CANONICAL = {
   'berries': 'Berries',
   'fresh berries': 'Berries',
   'dried berries': 'Berries',
+  'mixed berries': 'Mixed berries',
+  'mixed berry': 'Mixed berries',
+  'wild berries': 'Mixed berries',
+  'wild berry': 'Mixed berries',
+  'wild berries (mixed)': 'Mixed berries',
   'bilberry': 'Bilberries',
   'bilberries': 'Bilberries',
   'dried bilberry': 'Bilberries',
@@ -182,24 +203,28 @@ const EXACT_CANONICAL = {
   'sloes': 'Sloes',
   'cherry': 'Cherries',
   'cherries': 'Cherries',
-  'sour cherry': 'Sour cherries',
-  'sour cherries': 'Sour cherries',
-  'morello cherry': 'Morello cherries',
-  'morello cherries': 'Morello cherries',
-  'cherry plum': 'Cherry plums',
-  'cherry plums': 'Cherry plums',
+  'sour cherry': 'Cherries',
+  'sour cherries': 'Cherries',
+  'morello cherry': 'Cherries',
+  'morello cherries': 'Cherries',
+  'cherry plum': 'Plums',
+  'cherry plums': 'Plums',
   'lemon': 'Lemons',
   'lemons': 'Lemons',
   'fresh lemon': 'Lemons',
+  'ujukitsu': 'Lemons',
+  'ujukitsu lemon': 'Lemons',
+  'ujukitsu lemons': 'Lemons',
+  'ujukitsu (lemon)': 'Lemons',
   'orange': 'Oranges',
   'oranges': 'Oranges',
   'fresh orange': 'Oranges',
-  'seville orange': 'Seville oranges',
-  'seville oranges': 'Seville oranges',
-  'mandarin orange': 'Mandarin oranges',
-  'mandarin oranges': 'Mandarin oranges',
-  'calamondin orange': 'Calamondin oranges',
-  'calamondin oranges': 'Calamondin oranges',
+  'seville orange': 'Oranges',
+  'seville oranges': 'Oranges',
+  'mandarin orange': 'Oranges',
+  'mandarin oranges': 'Oranges',
+  'calamondin orange': 'Oranges',
+  'calamondin oranges': 'Oranges',
   'grapefruit': 'Grapefruit',
   'grapefruits': 'Grapefruit',
   'apricot': 'Apricots',
@@ -213,20 +238,91 @@ const EXACT_CANONICAL = {
   'raisin': 'Raisins',
   'raisins': 'Raisins',
   'dried raisins': 'Raisins',
-  'golden raisin': 'Golden raisins',
-  'golden raisins': 'Golden raisins',
+  'golden raisin': 'Raisins',
+  'golden raisins': 'Raisins',
   'sultana': 'Sultanas',
   'sultanas': 'Sultanas',
   'quince': 'Quinces',
   'quinces': 'Quinces',
+  'persimmon': 'Persimmons',
+  'persimmons': 'Persimmons',
+  'wild persimmon': 'Persimmons',
+  'wild persimmons': 'Persimmons',
+  'american persimmon': 'Persimmons',
+  'american persimmons': 'Persimmons',
   'pomegranate': 'Pomegranates',
   'pomegranates': 'Pomegranates',
   'mango': 'Mangoes',
   'mangoes': 'Mangoes',
   'grape': 'Grapes',
   'grapes': 'Grapes',
+  'fruit': 'Mixed fruit',
+  'fruits': 'Mixed fruit',
+  'mixed fruit': 'Mixed fruit',
+  'mixed fruits': 'Mixed fruit',
+  'mixed summer fruit': 'Mixed fruit',
+  'mixed summer fruits': 'Mixed fruit',
+  'summer fruit': 'Mixed fruit',
+  'summer fruits': 'Mixed fruit',
+  'berries or fruits': 'Mixed fruit',
+  'berries or fruit': 'Mixed fruit',
+  'fruits and berries': 'Mixed fruit',
+  'fruit and berries': 'Mixed fruit',
+  'fruits or berries': 'Mixed fruit',
+  'fruit or berries': 'Mixed fruit',
+  'dried mixed fruit': 'Dried mixed fruit',
+  'dried mixed fruits': 'Dried mixed fruit',
+  'mixed dried fruit': 'Dried mixed fruit',
+  'mixed dried fruits': 'Dried mixed fruit',
+  'dried berries & fruits': 'Dried mixed fruit',
+  'dried berries and fruits': 'Dried mixed fruit',
+  'dried berries or fruits': 'Dried mixed fruit',
+  'dried berries & fruit': 'Dried mixed fruit',
+  'dried berries and fruit': 'Dried mixed fruit',
+  'dried berries or fruit': 'Dried mixed fruit',
+  'dried fruits & berries': 'Dried mixed fruit',
+  'dried fruits and berries': 'Dried mixed fruit',
+  'dried fruits or berries': 'Dried mixed fruit',
+  'dried fruit & berries': 'Dried mixed fruit',
+  'dried fruit and berries': 'Dried mixed fruit',
+  'dried fruit or berries': 'Dried mixed fruit',
+  'dried berries fruits': 'Dried mixed fruit',
+  'dried forest berries': 'Dried mixed fruit',
+  'dried forest berry': 'Dried mixed fruit',
+  'forest berries': 'Dried mixed fruit',
+  'berries': 'Mixed berries',
+  'berry': 'Mixed berries',
+  'fresh berries': 'Mixed berries',
+  'mixed berries': 'Mixed berries',
+  'wild berries': 'Mixed berries',
+  'wild berry': 'Mixed berries',
+  'bush berries': 'Mixed berries',
+  'bush berry': 'Mixed berries',
+  'local wild berries': 'Mixed berries',
+  'local wild berry': 'Mixed berries',
+  'summer berries': 'Mixed berries',
 
   // Vegetables & Herbs
+  'mixed herbs': 'Mixed herbs',
+  'mixed herb': 'Mixed herbs',
+  'herbs': 'Mixed herbs',
+  'herb': 'Mixed herbs',
+  'foraged wild botanicals': 'Mixed herbs',
+  'wild flavourings': 'Mixed herbs',
+  'foraged herbs': 'Mixed herbs',
+  'honey': 'Honey',
+  'clover honey': 'Honey',
+  'heather honey': 'Honey',
+  'medium-amber honey': 'Honey',
+  'medium amber honey': 'Honey',
+  'tupelo honey': 'Honey',
+  'orange blossom honey': 'Honey',
+  'mixed honeys': 'Honey',
+  'mixed honey': 'Honey',
+  'wildflower honey': 'Honey',
+  'blended honey': 'Honey',
+  'brown honey': 'Honey',
+  'raw honey': 'Honey',
   'carrot': 'Carrots',
   'carrots': 'Carrots',
   'parsnip': 'Parsnips',
@@ -323,8 +419,16 @@ const EXACT_CANONICAL = {
   'red jalapeños': 'Jalapeños',
 
   // Sugars & Grains
+  'sugar': 'White sugar',
   'white sugar': 'White sugar',
-  'granulated sugar': 'Granulated sugar',
+  'granulated sugar': 'White sugar',
+  'granulated white sugar': 'White sugar',
+  'white granulated sugar': 'White sugar',
+  'caster sugar': 'White sugar',
+  'refined sugar': 'White sugar',
+  'cane sugar': 'White sugar',
+  'white cane sugar': 'White sugar',
+  'preserving sugar': 'White sugar',
   'brown sugar': 'Brown sugar',
   'dark brown sugar': 'Dark brown sugar',
   'dark soft brown sugar': 'Dark brown sugar',
@@ -353,6 +457,13 @@ const EXACT_CANONICAL = {
   'patent black malt': 'Patent Black Malt',
   'black patent malt': 'Patent Black Malt',
   'malt extract': 'Malt extract',
+  'brewers flour': 'Brewers flour',
+  'brewer flour': 'Brewers flour',
+  'brewing flour': 'Brewers flour',
+  'brewmore flour': 'Brewers flour',
+  'brewmore brewing flour': 'Brewers flour',
+  'brumore flour': 'Brewers flour',
+  'brumore brewing flour': 'Brewers flour',
 
   // Hops
   'hops': 'Hops',
@@ -404,36 +515,80 @@ const EXACT_CANONICAL = {
   'cluster hops': 'Cluster hops',
 
   // Cocoa & Chocolate
-  'cocoa hulls': 'Cocoa husks',
-  'cocoa hull': 'Cocoa husks',
-  'cocoa husks': 'Cocoa husks',
-  'cocoa husk': 'Cocoa husks',
-  'cocoa bean hulls': 'Cocoa husks',
-  'cocoa bean hull': 'Cocoa husks',
-  'cocoa bean husks': 'Cocoa husks',
-  'cocoa bean husk': 'Cocoa husks',
-  'dark cocoa': 'Dark cocoa powder',
-  'dark cocoa powder': 'Dark cocoa powder',
+  'cocoa hulls': 'Cocoa',
+  'cocoa hull': 'Cocoa',
+  'cocoa husks': 'Cocoa',
+  'cocoa husk': 'Cocoa',
+  'cocoa bean hulls': 'Cocoa',
+  'cocoa bean hull': 'Cocoa',
+  'cocoa bean husks': 'Cocoa',
+  'cocoa bean husk': 'Cocoa',
+  'cocoa powder': 'Cocoa',
+  'dark cocoa': 'Cocoa',
+  'dark cocoa powder': 'Cocoa',
 
   // Spirits, Herbs & Misc
-  'apple brandy': 'Apple brandy',
+  'apple brandy': 'Brandy',
+  'calvados': 'Brandy',
+  'apricot pulp': 'Apricots',
+  'peach pulp': 'Peaches',
+  'patent black malt': 'Black malt',
+  'black malt': 'Black malt',
+  'orange zest': 'Oranges',
+  'lemon zest': 'Lemons',
+  'red grapefruit zest': 'Grapefruit',
+  'spruce or pine needles': 'Spruce',
+  'spruce twigs': 'Spruce',
+  'pine needles': 'Pine',
+  'green pine cones': 'Pine',
+  'oak leaves': 'Oak',
+  'oak cubes': 'Oak',
+  'toasted oak chips': 'Oak',
+  'toasted oak bark': 'Oak',
+  'french oak': 'Oak',
+  'walnut leaves': 'Walnuts',
+  'hickory leaves': 'Hickory',
+  'hickory bark': 'Hickory',
+  'hickory hulls': 'Hickory',
+  'hickory nuts': 'Hickory',
+  'fallen leaves': 'Fallen leaves',
+  'fallen leaf': 'Fallen leaves',
+  'mixed fallen leaves': 'Fallen leaves',
+  'fallen leaves (cottonwood, alder, willow)': 'Fallen leaves',
+  'fallen leaves (cottonwood, alder, willow': 'Fallen leaves',
+  'cottonwood, alder, willow fallen leaves': 'Fallen leaves',
+  'forest grass': 'Forest grass (Hierochloe odorata)',
+  'forest grass (hierochloe odorata)': 'Forest grass (Hierochloe odorata)',
+  'grass (forest)': 'Forest grass (Hierochloe odorata)',
+  'hierochloe odorata': 'Forest grass (Hierochloe odorata)',
+  'roasted burdock root': 'Burdock',
+  'toasted burdock root': 'Burdock',
+  'burdock root': 'Burdock',
+  'cinnamon sticks': 'Cinnamon',
+  'cinnamon candies': 'Cinnamon',
+  'coffee beans': 'Coffee',
+  'tea leaves': 'Tea',
   'california sagebrush': 'California sagebrush',
   'white sage': 'White sage',
   'yerba santa': 'Yerba Santa',
 
   // Juices & Grapes
   'white grape juice': 'White grape juice',
+  'white grape juice concentrate': 'White grape juice',
+  'white grape concentrate': 'White grape juice',
+  'grape juice': 'White grape juice',
+  'grape juice concentrate': 'White grape juice',
+  'grape concentrate': 'White grape juice',
   'red grape juice': 'Red grape juice',
-  'white grape juice concentrate': 'White grape juice concentrate',
   'red grape juice concentrate': 'Red grape juice concentrate',
-  'white grapes': 'White grapes',
-  'white grape': 'White grapes',
-  'red grapes': 'Red grapes',
-  'red grape': 'Red grapes',
-  'black grapes': 'Black grapes',
-  'black grape': 'Black grapes',
-  'green grapes': 'Green grapes',
-  'green grape': 'Green grapes',
+  'white grapes': 'Grapes',
+  'white grape': 'Grapes',
+  'red grapes': 'Grapes',
+  'red grape': 'Grapes',
+  'black grapes': 'Grapes',
+  'black grape': 'Grapes',
+  'green grapes': 'Grapes',
+  'green grape': 'Grapes',
   'apple juice': 'Apple juice',
   'sweet apple juice': 'Apple juice',
   'sweet cider': 'Apple juice',
@@ -451,6 +606,22 @@ const EXACT_CANONICAL = {
   'pasteurised apple juice': 'Apple juice',
   'pasteurized apple juice': 'Apple juice',
   'preservative-free apple juice': 'Apple juice',
+
+  // Campden tablets
+  'camden tablet': 'Campden tablet',
+  'camden tablets': 'Campden tablet',
+  'campden tablet': 'Campden tablet',
+  'campden tablets': 'Campden tablet',
+
+  // Acid
+  'acid': 'Citric acid',
+  'citric acid': 'Citric acid',
+
+  // Raspberry leaf
+  'raspberry leaf': 'Raspberry leaf',
+  'raspberry leaves': 'Raspberry leaf',
+  'dried raspberry leaf': 'Raspberry leaf',
+  'dried raspberry leaves': 'Raspberry leaf',
 };
 
 export function normIngredient(s) {
@@ -470,6 +641,128 @@ export function canonicalizeMain(name) {
   const clean = String(name).trim();
   const n = normIngredient(clean);
   if (EXACT_CANONICAL[n]) return EXACT_CANONICAL[n];
+
+  // Campden tablet
+  if (/^cam[p]?den\s+tablets?$/i.test(clean)) return 'Campden tablet';
+
+  // Eggs (whites, yolks, shells) -> Eggs
+  if (/^eggs?(\s+(whites?|yolks?|shells?))?$/i.test(clean)) return 'Eggs';
+
+  // Peas (pods) -> Peas
+  if (/^pea\s+pods?$/i.test(clean)) return 'Peas';
+
+  // Beef (chopped steak) -> Beef
+  if (/^chopped\s+steak$/i.test(clean)) return 'Beef';
+
+  // Roots
+  if (/^dandelion\s+root$/i.test(clean)) return 'Dandelions';
+  if (/^gentian\s+root$/i.test(clean)) return 'Gentian';
+  if (/^licorice\s+root$/i.test(clean)) return 'Licorice';
+  if (/^burdock\s+root$/i.test(clean)) return 'Burdock';
+  if (/^sarsaparilla\s+root$/i.test(clean)) return 'Sarsaparilla';
+
+  // Barks
+  if (/^alder\s+bark$/i.test(clean)) return 'Alder';
+  if (/^willow\s+bark$/i.test(clean)) return 'Willow';
+
+  // Leaves & Shells
+  if (/^oak\s+leaves$/i.test(clean)) return 'Oak';
+  if (/^walnut\s+leaves$/i.test(clean)) return 'Walnuts';
+  if (/^hickory\s+(leaves|bark)$/i.test(clean)) return 'Hickory';
+  if (/^raspberry\s+leaves?$/i.test(clean)) return 'Raspberry leaf';
+  if (/^wintergreen\s+leaves$/i.test(clean)) return 'Wintergreen';
+  if (/^rosehip\s+shells$/i.test(clean)) return 'Rosehips';
+  if (/^wild\s+fennel\s+seeds$/i.test(clean)) return 'Fennel';
+
+  // Honey varieties, blends, and preferences -> Honey
+  if (/\bhoney\b/i.test(clean) && !/\b(malt|honeysuckle)\b/i.test(clean)) {
+    return 'Honey';
+  }
+
+  // Apples (cider, cooking, sour, tart, wild, windfall)
+  if (/\b(cider|cooking|sour|tart|wild|windfall)\s+apples?\b/i.test(clean)) {
+    return 'Apples';
+  }
+
+  // Cherries (bing, black, cornelian, morello, sour, sweet, white)
+  if (/\b(bing|black|cornelian|morello|sour|sweet|white)\s+cherries\b/i.test(clean)) {
+    return 'Cherries';
+  }
+
+  // Grapes (black, concord, cypriot, green, red, thompson seedless, white)
+  if (/\b(black|concord|cypriot|green|red|thompson\s+seedless|white)\s+grapes\b/i.test(clean)) {
+    return 'Grapes';
+  }
+
+  // Oranges (blood, calamondin, mandarin, navel, seville)
+  if (/\b(blood|calamondin|mandarin|navel|seville)\s+oranges?\b/i.test(clean)) {
+    return 'Oranges';
+  }
+
+  // Plums (cherry, golden, victoria, wild)
+  if (/\b(cherry|golden|victoria|wild)\s+plums?\b/i.test(clean)) {
+    return 'Plums';
+  }
+
+  // Raisins (golden, malaga, muscatel, smyrna)
+  if (/\b(golden|malaga|muscatel|smyrna)\s+raisins\b/i.test(clean)) {
+    return 'Raisins';
+  }
+
+  // Raspberries (golden)
+  if (/^golden\s+raspberries\b/i.test(clean)) return 'Raspberries';
+
+  // Grapefruit (pink)
+  if (/^pink\s+grapefruit\b/i.test(clean)) return 'Grapefruit';
+
+  // Limes & Lemons (key, ujukitsu)
+  if (/^key\s+limes\b/i.test(clean)) return 'Limes';
+  if (/^ujukitsu(\s+lemons?)?$/i.test(clean) || /\bujukitsu\b/i.test(name)) return 'Lemons';
+
+  // Currants & Dates (dried)
+  if (/^dried\s+currants\b/i.test(clean)) return 'Currants';
+  if (/^dried\s+dates\b/i.test(clean)) return 'Dates';
+
+  // Mulberries & Persimmons
+  if (/^white\s+mulberries\b/i.test(clean)) return 'Mulberries';
+  if (/^american\s+persimmons\b/i.test(clean)) return 'Persimmons';
+
+  // Guavas
+  if (/^(lemon|strawberry)\s+guavas\b/i.test(clean)) return 'Guavas';
+
+  // Barley (black, flaked, malted, pearl, popped, roasted)
+  if (/\b(black|flaked|malted|pearl|popped|roasted)\s+barley\b/i.test(clean)) {
+    return 'Barley';
+  }
+
+  // Oats, Maize, Corn
+  if (/^flaked\s+oats$/i.test(clean)) return 'Oats';
+  if (/^flaked\s+maize$/i.test(clean)) return 'Maize';
+  if (/^heirloom\s+flint\s+corn$/i.test(clean)) return 'Corn';
+
+  // Wheat (crushed, malted, midnight)
+  if (/\b(crushed|malted|midnight)\s+wheat\b/i.test(clean)) {
+    return 'Wheat';
+  }
+
+  // Malt Extract
+  if (/\b(amber|dark|superflavex)\s+malt\s+extract\b/i.test(clean)) {
+    return 'Malt extract';
+  }
+
+  // Sugar / White sugar
+  if (/^(clear|belgian)\s+candi\s+sugar$/i.test(clean)) return 'Candi sugar';
+  if (/^(sugar|white\s+sugar|granulated\s+sugar|brewing\s+sugar|caster\s+sugar|refined\s+sugar|cane\s+sugar|white\s+granulated\s+sugar)$/i.test(clean)) {
+    return 'White sugar';
+  }
+
+  // Herbs & Spices
+  if (/^herbs?$/i.test(clean) || /\b(aromatic|bouquet|forest|mixed|spiced|lactation|mother\'?s\s+milk|foraged)\s+herbs\b/i.test(clean) || /^(dried\s+herbal\s+blend|foraged\s+wild\s+botanicals|wild\s+flavourings)$/i.test(clean)) {
+    return 'Mixed herbs';
+  }
+  if (/\b(chai|metheglin)\s+spices\b/i.test(clean)) {
+    return 'Spices';
+  }
 
   // Specific ginger check: any variation of ginger root, root ginger, gingerroot etc.
   if (/\b(ginger\s*root|root\s*ginger|gingerroot)\b/i.test(clean)) {
@@ -528,12 +821,9 @@ export function canonicalizeMain(name) {
     return 'Burnet';
   }
 
-  // Cocoa husks / Cocoa hulls / Dark cocoa powder
-  if (/^cocoa(\s+bean)?\s+(hulls?|husks?)$/i.test(clean)) {
-    return 'Cocoa husks';
-  }
-  if (/^dark\s+cocoa(\s+powder)?$/i.test(clean)) {
-    return 'Dark cocoa powder';
+  // Cocoa
+  if (/^(dark\s+)?cocoa(\s+bean)?(\s+(powder|hulls?|husks?))?$/i.test(clean)) {
+    return 'Cocoa';
   }
 
   // Hawthorn blossom vs Hawthorn berries / Haws
@@ -559,6 +849,16 @@ export function canonicalizeMain(name) {
     return 'Goldenrod flowers';
   }
 
+  // Gorse / Gorse flowers
+  if (/^gorse(\s+(flowers?|blossoms?))?$/i.test(clean)) {
+    return 'Gorse flowers';
+  }
+
+  // Broom / Broom flowers
+  if (/^broom(\s+(flowers?|blossoms?))?$/i.test(clean)) {
+    return 'Broom flowers';
+  }
+
   // Fresh & Dried herbs/hops
   if (/^(fresh\s+|sweet\s+)?basil(\s+blossoms?)?$/i.test(clean)) return 'Basil';
   if (/^(fresh\s+|dried\s+)?mint$/i.test(clean)) return 'Mint';
@@ -567,7 +867,6 @@ export function canonicalizeMain(name) {
   if (/^fresh\s+hops?$/i.test(clean)) return 'Hops';
 
   // Berries & Fruits
-  if (/^(fresh\s+|dried\s+)?berries$/i.test(clean)) return 'Berries';
   if (/^(dried\s+)?bilberr(y|ies)$/i.test(clean)) return 'Bilberries';
   if (/^(dried\s+)?sloes?$/i.test(clean)) return 'Sloes';
   if (/^red\s+raspberr(y|ies)$/i.test(clean)) return 'Raspberries';
@@ -582,10 +881,31 @@ export function canonicalizeMain(name) {
 
 
   // Fruits
+  if (/^(american\s+|wild\s+)?persimmon(s)?$/i.test(clean)) return 'Persimmons';
   if (/^quince(s)?$/i.test(clean)) return 'Quinces';
   if (/^pomegranate(s)?$/i.test(clean)) return 'Pomegranates';
   if (/^mango(es)?$/i.test(clean)) return 'Mangoes';
+  // White grape juice (includes concentrate and unqualified grape juice/concentrate)
+  if (/(?<!\bred\s+)\b(?:white\s+)?grape\s+(?:juice\s+concentrate|concentrate|juice)\b/i.test(clean)) {
+    return 'White grape juice';
+  }
+
   if (/^grape(s)?$/i.test(clean)) return 'Grapes';
+
+  // Mixed fruit
+  if ((/\b(mixed\s+(?:summer\s+)?fruits?|summer\s+fruits?|(?:berries|fruits?)\s+(?:and|or)\s+(?:berries|fruits?))\b/i.test(clean) || /^fruits?$/i.test(clean)) && !/dried/i.test(clean)) {
+    return 'Mixed fruit';
+  }
+
+  // Mixed berries (includes berries, wild berries, bush berries, local wild berries)
+  if (/^(wild|mixed|bush|local\s+wild|fresh|summer)?\s*berr(y|ies)$/i.test(clean) && !/dried/i.test(clean)) {
+    return 'Mixed berries';
+  }
+
+  // Dried mixed fruit
+  if (/\b((?:mixed\s+dried|dried\s+mixed)\s+fruits?|dried\s+(?:berries|fruits?)\s*(?:&|and|or|\+|\s+)\s*(?:berries|fruits?)|dried\s+forest\s+berries)\b/i.test(clean)) {
+    return 'Dried mixed fruit';
+  }
 
   // Juniper berries
   if (/^juniper(\s+berries)?$/i.test(clean)) {
@@ -594,17 +914,47 @@ export function canonicalizeMain(name) {
 
   // Sarsaparilla
   if (/^sarsaparilla(\s+roots?)?$/i.test(clean)) {
-    return 'Sarsaparilla root';
+    return 'Sarsaparilla';
   }
 
   // Sassafras
   if (/^sassafras(\s+(bark|roots?|root\s+bark))?$/i.test(clean)) {
-    return 'Sassafras root bark';
+    return 'Sassafras';
   }
+
+  // Pine & Spruce
+  if (/^spruce(\s+(twigs?|needles?))?$/i.test(clean) || /^spruce\s+or\s+pine\s+needles$/i.test(clean)) return 'Spruce';
+  if (/^(green\s+)?pine\s+(needles?|cones?)$/i.test(clean)) return 'Pine';
+
+  // Oak, Hickory & Burdock
+  if (/^(toasted\s+|french\s+)?oak(\s+(leaves?|cubes?|chips?|bark))?$/i.test(clean)) return 'Oak';
+  if (/^(roasted\s+|toasted\s+)?burdock(\s+roots?)?$/i.test(clean)) return 'Burdock';
+  if (/^hickory(\s+(leaves?|bark|hulls?|nuts?))?$/i.test(clean)) return 'Hickory';
+  if (/^walnut\s+leaves?$/i.test(clean)) return 'Walnuts';
 
   // Cluster hops
   if (/^cluster(\s+hops?)?$/i.test(clean)) {
     return 'Cluster hops';
+  }
+
+  // Brewers flour
+  if (/^(brewers?|brewing|brewmore|brumore)\s+flour$/i.test(clean)) {
+    return 'Brewers flour';
+  }
+
+  // Fallen leaves
+  if (/^(mixed\s+)?fallen\s+leaves?(\s*\(.*)?$/i.test(clean)) {
+    return 'Fallen leaves';
+  }
+
+  // Forest grass (Hierochloe odorata)
+  if (/^(forest\s+grass(\s*\(hierochloe\s+odorata\))?|grass\s*\(forest\)|hierochloe\s+odorata)$/i.test(clean)) {
+    return 'Forest grass (Hierochloe odorata)';
+  }
+
+  // Acid
+  if (/^(citric\s+)?acid$/i.test(clean)) {
+    return 'Citric acid';
   }
 
   return clean;
@@ -656,6 +1006,11 @@ export function canonicalizeRecipeIngredient(name) {
   // Frozen apple juice concentrate / apple juice concentrate -> apple juice
   str = str.replace(/\b(frozen\s+)?apple\s+juice\s+concentrate\b/gi, (match) => {
     return match[0] === match[0].toUpperCase() ? 'Apple juice' : 'apple juice';
+  });
+
+  // White grape juice / concentrate / grape juice -> White grape juice
+  str = str.replace(/(?<!\bred\s+)\b(?:white\s+)?grape\s+(?:juice\s+concentrate|concentrate|juice)\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'White grape juice' : 'white grape juice';
   });
 
   // Cowslip flowers -> cowslips
@@ -764,6 +1119,11 @@ export function canonicalizeRecipeIngredient(name) {
     return match[0] === match[0].toUpperCase() ? 'Hops' : 'hops';
   });
 
+  // Dried mixed fruit
+  str = str.replace(/\b(dried\s+(?:berries|fruits?)\s*(?:&|and|or|\+)\s*(?:berries|fruits?)|(?:mixed\s+dried|dried\s+mixed)\s+fruits?|dried\s+forest\s+berries)\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Dried mixed fruit' : 'dried mixed fruit';
+  });
+
   // Fresh/Dried berries -> berries
   str = str.replace(/\b(fresh|dried)\s+berries\b/gi, (match) => {
     return match[0] === match[0].toUpperCase() ? 'Berries' : 'berries';
@@ -824,6 +1184,101 @@ export function canonicalizeRecipeIngredient(name) {
     return match[0] === match[0].toUpperCase() ? 'Jalapeños' : 'jalapeños';
   });
 
+  // Wild persimmons / American persimmons -> Persimmons
+  str = str.replace(/\b(wild|american)\s+persimmons?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Persimmons' : 'persimmons';
+  });
+
+  // Mixed herbs
+  str = str.replace(/\b(mixed\s+herbs?|foraged\s+herbs?|foraged\s+wild\s+botanicals|wild\s+flavourings|herbs?)\s*\(/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Mixed herbs (' : 'mixed herbs (';
+  });
+
+  // Honey varieties -> Honey with note
+  str = str.replace(/\b(clover|heather|medium-amber|medium\s+amber|tupelo|orange\s+blossom|mixed|wildflower|blended|brown|raw)\s+honeys?\b/gi, (match, pref) => {
+    return `Honey (${pref.toLowerCase()})`;
+  });
+
+  // Standalone lowercase honey -> Honey
+  str = str.replace(/^honey(\s*\([^)]*\))?$/i, (match, rest) => {
+    return 'Honey' + (rest || '');
+  });
+
+  // Ujukitsu -> Lemons (ujukitsu)
+  str = str.replace(/\bujukitsu\s*\(lemon\)/gi, 'Lemons (ujukitsu)');
+  str = str.replace(/\bujukitsu\s+lemons?\b/gi, 'Lemons (ujukitsu)');
+
+  // Mixed fruit
+  str = str.replace(/\b(mixed\s+summer\s+fruits?|summer\s+fruits?|berries\s+or\s+fruits?|fruits?\s+and\s+berries)\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Mixed fruit' : 'mixed fruit';
+  });
+  str = str.replace(/^fruits?(\s*\([^)]*\))?$/i, (match, rest) => {
+    return 'Mixed fruit' + (rest || '');
+  });
+
+  // Sugar -> White sugar
+  str = str.replace(/^sugar\b/i, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'White sugar' : 'white sugar';
+  });
+  str = str.replace(/\bwhite\s+sugar\s*\(white,\s*/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'White sugar (' : 'white sugar (';
+  });
+  str = str.replace(/\bwhite\s+sugar\s*\(white\)$/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'White sugar' : 'white sugar';
+  });
+
+  // Berries / Wild berries / Bush berries / Local wild berries -> Mixed berries
+  str = str.replace(/^(local\s+wild|wild|bush)\s+berr(y|ies)\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Mixed berries' : 'mixed berries';
+  });
+  str = str.replace(/^berries(\s*\(.*)?$/i, (match, rest) => {
+    return 'Mixed berries' + (rest || '');
+  });
+
+  // Gorse -> Gorse flowers
+  str = str.replace(/\bgorse\s+(flowers?|blossoms?)\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Gorse flowers' : 'gorse flowers';
+  });
+  str = str.replace(/\bgorse\b(?!\s+(?:flowers?|blossoms?))/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Gorse flowers' : 'gorse flowers';
+  });
+
+  // Brewmore / Brumore flour -> Brewers flour
+  str = str.replace(/\b(brewmore|brumore)\s+(?:brewing\s+)?flour\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Brewers flour' : 'brewers flour';
+  });
+  str = str.replace(/\bbrewing\s+flour\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Brewers flour' : 'brewers flour';
+  });
+
+  // Fallen leaves
+  str = str.replace(/\b(mixed\s+)?fallen\s+leaves\s*\(([^)]*)\)/gi, (match, prefix, details) => {
+    return `Fallen leaves (${details})`;
+  });
+  str = str.replace(/\b(mixed\s+)?fallen\s+leaves\b(?!\s*\()/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Fallen leaves' : 'fallen leaves';
+  });
+
+  // Forest grass (Hierochloe odorata)
+  str = str.replace(/\bgrass\s*\(\s*forest\s*\)/gi, 'Forest grass (Hierochloe odorata)');
+  str = str.replace(/\bforest\s+grass(?!\s*\(\s*hierochloe\s+odorata\s*\))\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Forest grass (Hierochloe odorata)' : 'forest grass (Hierochloe odorata)';
+  });
+
+  // Acid / Acid (to taste) -> Citric acid
+  str = str.replace(/\bacid\s*\(\s*to\s+taste\s*\)/gi, 'Citric acid (to taste)');
+  str = str.replace(/^acid(\s*\([^)]*\))?$/i, (match, rest) => 'Citric acid' + (rest || ''));
+  str = str.replace(/^citric\s+acid\b/i, 'Citric acid');
+
+  // Raspberry leaf
+  str = str.replace(/\braspberries\s*\(\s*leaves,?\s*dried\s*\)/gi, 'Raspberry leaf (dried)');
+  str = str.replace(/\braspberries\s*\(\s*leaves\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Raspberry leaf (' : 'raspberry leaf (';
+  });
+  str = str.replace(/\braspberr(y|ies)\s+leaves?\b/gi, (match) => {
+    return match[0] === match[0].toUpperCase() ? 'Raspberry leaf' : 'raspberry leaf';
+  });
+
   return str;
 }
 
@@ -873,6 +1328,35 @@ export function migrateHomebrewIngredients(db) {
 
         for (const it of items) {
           if (!it?.name) continue;
+          if (/^(?:lemon\s*(&|and)\s*orange|orange\s*(&|and)\s*lemon)$/i.test(it.name.trim())) {
+            changed = true;
+            for (const splitName of ['Lemons', 'Oranges']) {
+              const norm = normIngredient(splitName);
+              if (!seenNames.has(norm)) {
+                seenNames.add(norm);
+                newItems.push({ name: splitName, picture: splitName === 'Lemons' ? 'a fresh yellow lemon' : 'a fresh orange' });
+              }
+            }
+            continue;
+          }
+
+          if (/nettles?,\s*clover\s*(&|and)\s*raspberry\s*leaf/i.test(it.name.trim())) {
+            changed = true;
+            for (const split of [
+              { name: 'Nettles', picture: 'dried green nettle leaves' },
+              { name: 'Clover flowers', picture: 'dried red clover flowers' },
+              { name: 'Raspberry leaf', picture: 'dried raspberry leaves' }
+            ]) {
+              const canon = canonicalizeMain(split.name);
+              const norm = normIngredient(canon);
+              if (!seenNames.has(norm)) {
+                seenNames.add(norm);
+                newItems.push({ name: canon, picture: split.picture });
+              }
+            }
+            continue;
+          }
+
           const canon = canonicalizeMain(it.name);
           if (canon !== it.name) changed = true;
 

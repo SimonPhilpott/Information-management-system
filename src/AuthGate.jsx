@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { LogIn, Loader2, Layers } from 'lucide-react';
 const DecksPortal = React.lazy(() => import('./components/Dashboard/DecksPortal'));
-const HomebrewPortal = React.lazy(() => import('./components/Dashboard/HomebrewPortal'));
+// (Homebrew's guests get the same Homebrew as Simon - the classic portal was retired on 22 Oct)
+const HomebrewPortal = React.lazy(() => import('./components/HomebrewBeta/HomebrewBeta'));
 import { isCampaignPath, canonicalCampaignPath } from './components/Dashboard/campaignPaths';
 
 const AuthContext = createContext({ user: null, signOut: () => {} });
