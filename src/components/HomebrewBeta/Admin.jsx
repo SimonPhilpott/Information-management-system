@@ -275,6 +275,17 @@ function IngredientSheet({ ing, onClose, onChanged, all = [], onRenamed = () => 
       await done(`${ing.name} is back to the picture made for it.`);
     } catch (e) { snack(e.message, { error: true }); } finally { setBusy(''); }
   };
+  const removeAdded = async () => {
+    setBusy('remove');
+    try {
+      const res = await fetch(`/api/homebrew/admin/ingredients/added/${encodeURIComponent(ing.name)}`, { method: 'DELETE' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || 'Couldn\'t remove it.');
+      await refreshIngredientPictures();
+      snack(`${ing.name} removed.`);
+      onClose();
+    } catch (e) { snack(e.message, { error: true }); } finally { setBusy(''); }
+  };
   return (
     <Sheet open={open} onClose={onClose} title={ing?.name || ''} titleAfter={ing ? (
       <>
@@ -300,6 +311,7 @@ function IngredientSheet({ ing, onClose, onChanged, all = [], onRenamed = () => 
             <Btn kind="tonal" icon="merge" onClick={() => { setRenaming(false); setMergingWith((v) => !v); }}>Merge with…</Btn>
             <Btn kind="tonal" icon="paste" busy={busy === 'upload'} onClick={pasteFromClipboard}>Paste picture</Btn>
             {ing.hasCustom && <Btn kind="tonal" icon="close" busy={busy === 'reset'} onClick={useMade}>Use the one made for it</Btn>}
+            {ing.added && !ing.count && <Btn kind="text" icon="del" busy={busy === 'remove'} onClick={removeAdded}>Remove</Btn>}
           </div>
           <input ref={file} type="file" accept="image/*" hidden onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', '--fieldbg': 'var(--surface-c-low)' }}>
@@ -323,6 +335,46 @@ function IngredientSheet({ ing, onClose, onChanged, all = [], onRenamed = () => 
   );
 }
 
+// ---- a new ingredient, before any recipe uses it - so its picture can be ready ----
+const NEW_TYPES = [['fruit', 'Fruit'], ['veg', 'Vegetable'], ['herb', 'Herb or flower'], ['spice', 'Spice or root'], ['malt', 'Grain or malt'], ['hops', 'Hops'],
+  ['honey', 'Honey'], ['sugar', 'Sugar'], ['yeast', 'Yeast or brewing aid'], ['other', 'Something else']];
+function NewIngredient({ open, onClose, onAdded }) {
+  const snack = useSnack();
+  const [name, setName] = useState('');
+  const [type, setType] = useState('fruit');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const add = async () => {
+    if (!name.trim()) return;
+    setBusy(true); setErr('');
+    try {
+      const res = await fetch('/api/homebrew/admin/ingredients/new', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name.trim(), type }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ingredient) throw new Error(d.error || 'Couldn\'t add it.');
+      await refreshIngredientPictures();
+      snack(`${d.ingredient.name} added. Give it a picture.`);
+      setName('');
+      onAdded(d.ingredient);
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <Sheet open={open} onClose={onClose} title="New ingredient"
+      footer={<><Btn kind="text" onClick={onClose}>Cancel</Btn><Btn kind="filled" icon="add" busy={busy} disabled={!name.trim()} onClick={add}>Add ingredient</Btn></>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <TextField label="Name" value={name} onChange={(v) => { setName(v); setErr(''); }} autoFocus onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
+          help="The thing itself, as you'd buy it: Quince, not quince juice. It's named by the same rules as every recipe's ingredients." />
+        <div>
+          <p className="t-ts muted" style={{ margin: '0 0 8px' }}>What it is</p>
+          <div className="chips wrap">
+            {NEW_TYPES.map(([id, label]) => <FilterChip key={id} on={type === id} onClick={() => setType(id)}>{label}</FilterChip>)}
+          </div>
+        </div>
+        {err && <p style={{ color: 'var(--error)', margin: 0 }}>{err}</p>}
+      </div>
+    </Sheet>
+  );
+}
+
 export default function Admin({ headerEnd, onDataChanged }) {
   const d = useIngredientPictures();
   const snack = useSnack();
@@ -331,6 +383,7 @@ export default function Admin({ headerEnd, onDataChanged }) {
   const [limit, setLimit] = useState(PAGE);
   const [sel, setSel] = useState(null);
   const [inviting, setInviting] = useState(false);
+  const [adding, setAdding] = useState(false);
   const all = d?.ingredients || [];
   const list = useMemo(() => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
@@ -383,7 +436,10 @@ export default function Admin({ headerEnd, onDataChanged }) {
               <span style={{ flex: '1 1 220px' }} className="t-bm">Invite someone to Homebrew. They can read every recipe and brew, start brews of their own and keep their own favourites. You see their brews and they see yours.</span>
               <Btn kind="tonal" icon="add" onClick={() => setInviting(true)}>Invite someone</Btn>
             </div>
-            <div className="sect" style={{ paddingTop: 4 }}>{list.length} {list.length === 1 ? 'ingredient' : 'ingredients'}</div>
+            <div className="sect" style={{ paddingTop: 4 }}>
+              <span style={{ flex: 1 }}>{list.length} {list.length === 1 ? 'ingredient' : 'ingredients'}</span>
+              <Btn kind="tonal" icon="add" onClick={() => setAdding(true)}>New ingredient</Btn>
+            </div>
             {list.length ? (
               <div className="adm-grid">
                 {list.slice(0, limit).map((i, n) => (
@@ -419,6 +475,7 @@ export default function Admin({ headerEnd, onDataChanged }) {
       </div>
       <IngredientSheet ing={current} onClose={() => setSel(null)} all={all} onRenamed={(name) => { const n = all.find((i) => i.name.toLowerCase() === name.toLowerCase()); setSel(n ? n.norm : ingredientNorm(name)); onDataChanged?.(); }} />
       <InviteSheet open={inviting} onClose={() => setInviting(false)} />
+      <NewIngredient open={adding} onClose={() => setAdding(false)} onAdded={(ing) => { setAdding(false); setKind('all'); setQ(''); setSel(ing.norm); }} />
     </>
   );
 }

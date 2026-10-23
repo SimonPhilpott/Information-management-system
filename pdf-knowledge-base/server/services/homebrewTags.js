@@ -61,7 +61,8 @@ export function splitName(name, category) {
 export const familyKey = (family, category) => `${WINE_CATS.includes(category) ? 'wine' : category}::${family.toLowerCase()}`;
 export function variantLabel(name, category, source) {
   const { quals } = splitName(name, category);
-  return [sourceShort(source), ...quals.map((q) => q.replace(/^medium sweet$/i, 'medium-sweet').toLowerCase().replace(/^no\. /, 'No. ').replace(/^ag#/, 'AG#'))].join(' · ');
+  // (no source, no source in the label: recipes no longer carry their books - 23 Oct)
+  return [source ? sourceShort(source) : null, ...quals.map((q) => q.replace(/^medium sweet$/i, 'medium-sweet').toLowerCase().replace(/^no\. /, 'No. ').replace(/^ag#/, 'AG#'))].filter(Boolean).join(' · ');
 }
 
 // ---- colour -------------------------------------------------------------------------------------------------
@@ -179,9 +180,9 @@ const SOUR_STYLE = /\bsour\b|kombucha|kefir|lambic|gose|brett|spanish-style|sidr
 const FLAVOURS = [
   ['fruity', /apple|pear|plum|damson|sloe|cherr|peach|apricot|nectarine|grape|raisin|sultana|berr|currant|rhubarb|orange|lemon|lime|grapefruit|pineapple|banana|mango|melon|fig|date|quince|bullace|greengage|persimmon|pomegranate|guava|papaya|kiwi|passion|medlar|haw\b|rose ?hip|tomato|cactus|prickly pear|mandarin|tangerine|kumquat|citrus/i],
   ['floral', /elderflower|dandelion|rose petal|\brose\b|cowslip|primrose|lilac|violet|blossom|honeysuckle|lavender|chamomile|camomile|hibiscus|marigold|calendula|clover|gorse|broom|linden|lime flower|carnation|jasmine|heather|meadowsweet|golden ?rod|coltsfoot|burnet|sunflower|flower|petal|orange blossom/i],
-  ['herbal', /\bmint|sage|thyme|rosemary|basil|parsley|balm|nettle|burdock|yarrow|mugwort|tarragon|fennel|dill|oregano|marjoram|lovage|\btea\b|chai|tulsi|bay leaf|herb|beetroot|parsnip|carrot|potato|turnip|mangold|celery|lettuce|spinach|pea pod|broad bean|runner bean|lima bean|mushroom|matsutake|chanterelle|truffle|earth|dandelion root|burdock root|sap\b|birch|oak leaf|walnut leaf|leaves|leaf/i],
+  ['herbal', /\bmint|sage|thyme|rosemary|basil|parsley|balm|nettle|burdock|yarrow|mugwort|tarragon|fennel|dill|oregano|marjoram|lovage|\btea\b|chai|tulsi|bay leaf|herb|beetroot|parsnip|carrot|potato|turnip|mangold|celery|lettuce|spinach|kale|cabbage|pea[- ]?pod|broad bean|runner bean|lima bean|mushroom|matsutake|chanterelle|truffle|earth|dandelion root|burdock root|sap\b|birch|oak leaf|walnut leaf|leaves|leaf/i],
   ['pine', /\bhops?\b|hopped|ipa\b|pale ale|bitter\b|spruce|\bpines?\b|pine (needle|cone|tip)|\bfir\b|juniper|cedar|douglas|resin|conifer|gruit/i],
-  ['roasted', /coffee|espresso|chocolate|cocoa|cacao|roast|black malt|chocolate malt|crystal malt|caramel|toffee|toasted (?!bread)|\boak (chips?|cubes?|spiral|stave|barrel)|\boaked\b|bourbon|molasses|treacle|black treacle|maple|stout|porter|smoked|bochet|burnt/i],
+  ['roasted', /coffee|espresso|chocolate|cocoa|cacao|roast|black malt|chocolate malt|crystal malt|caramel|toffee|toasted (?!bread)|\boak (chips?|cubes?|spiral|stave|barrel)|\boaked\b|bourbon|molasses|treacle|black treacle|maple|stout|porter|smoked|bochet|burnt|hickory/i],
   ['spicy', /ginger|cinnamon|clove|nutmeg|allspice|mace|cardamom|star anise|anise|chai|pepper|chil+i|chile|jalape|habanero|cayenne|chipotle|vanilla|spice|spiced|metheglin|wassail/i],
 ];
 export function profileOf(r) {
@@ -207,6 +208,12 @@ export function profileOf(r) {
   if (/prune|\bhips?\b|dried fruit|pyment/i.test(r.name)) add('fruity');
   if (cat === 'soda' && !flavours.length) add('herbal');
   if ((cat === 'beer' || cat === 'stout') && ings.some((i) => i.type === 'hops')) add('pine');
+  // every recipe has at least one flavour (23 Oct, Simon): if nothing above caught it, what its kind of drink brings
+  if (!flavours.length) {
+    const veg = /vegetable|cereal|grain|sake/i.test(r.style || '') || /pea|bean|kale|cabbage|carrot|parsnip|potato|beet|celery|lettuce|spinach|marrow|squash|turnip|swede/i.test(r.name);
+    add(cat === 'mead' ? 'honey' : cat === 'stout' ? 'roasted' : cat === 'beer' ? 'pine' : cat === 'hot_pepper_wine' ? 'spicy'
+      : cat === 'flower_herb_wine' ? 'floral' : veg || cat === 'soda' ? 'herbal' : 'fruity');
+  }
   // acidity: sharp fruit, added acid and citrus, or a deliberately sour style
   let score = 0;
   if (SOUR_STYLE.test(all)) score += 3;

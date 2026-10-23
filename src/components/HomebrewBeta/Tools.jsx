@@ -3,7 +3,7 @@
 // portal's) and are remembered under the beta's own keys, so the classic portal's settings are never changed.
 import React, { useEffect, useRef, useState } from 'react';
 import { BEERISH, BORDERS, bottlesOf } from './brewData';
-import { Sheet, Btn, Icon, TextField, Segmented, Slider, Spinner, FilterChip } from './ui';
+import { Sheet, Btn, Icon, TextField, Segmented, Slider, Spinner, FilterChip, Popover, SelectField } from './ui';
 import { getClipboardImage } from './Admin';
 import Vessel from './Vessel';
 
@@ -227,7 +227,8 @@ export function LabelsSheet({ open, onClose, brew, onDone }) {
     const v = start();
     setS({
       name: v.name ?? brew.name, showRecipe: v.showRecipe ?? true, recipeText: v.recipeText ?? brew.name, font: v.font ?? '', align: v.align ?? 'left',
-      place: v.place ?? null, recipePlace: v.recipePlace ?? null, size: Number(v.size ?? 1) || 1, colour: v.colour ?? '', abvColour: v.abvColour ?? '',
+      els: { ...(v.place ? { name: { x: v.place.x, y: v.place.y } } : {}), ...(v.recipePlace ? { under: { x: v.recipePlace.x, y: v.recipePlace.y } } : {}), ...(v.els || {}) },
+      size: Number(v.size ?? 1) || 1, colour: v.colour ?? '', abvColour: v.abvColour ?? '',
       frame: v.frame ?? 'none', borderColour: v.borderColour ?? '', borderAlpha: Number(v.borderAlpha ?? 1) || 1, imageAlpha: Number.isFinite(Number(v.imageAlpha)) ? Number(v.imageAlpha) : 0.64,
       bottledDate: v.bottledDate ?? brew.bottledOn ?? brew.startedOn ?? today, count: v.count ?? String(bottlesOf(brew.batchLitres, brew.category)?.n || 10),
     });
@@ -254,7 +255,7 @@ export function LabelsSheet({ open, onClose, brew, onDone }) {
     const own = s.name?.trim() && (flat(s.name) !== flat(brew.name) || s.name.includes('\n'));
     return new URLSearchParams({
       font: s.font, pos: s.align === 'center' ? 'top-center' : 'top-left', align: s.align,
-      ...(s.place ? { x: String(s.place.x), y: String(s.place.y) } : {}), ...(s.recipePlace ? { recipeX: String(s.recipePlace.x), recipeY: String(s.recipePlace.y) } : {}),
+      ...(s.els && Object.keys(s.els).length ? { els: JSON.stringify(s.els) } : {}),
       size: String(s.size), border: s.frame, ...(s.colour ? { colour: s.colour } : {}), ...(s.abvColour ? { abvColour: s.abvColour } : {}),
       ...(s.borderColour ? { borderColour: s.borderColour } : {}), ...(s.borderAlpha < 1 ? { borderAlpha: String(s.borderAlpha) } : {}), imageAlpha: String(s.imageAlpha),
       ...(own ? { name: s.name.trim() } : {}), showRecipe: s.showRecipe ? '1' : '0', ...(s.showRecipe && s.recipeText?.trim() ? { recipeText: s.recipeText.trim() } : {}),
@@ -280,6 +281,55 @@ export function LabelsSheet({ open, onClose, brew, onDone }) {
     ro.observe(el);
     return () => ro.disconnect();
   }, [open, s.font !== undefined]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ---- tapping and dragging the parts of the label on the preview (23 Oct, Simon) ----
+  const frame = useRef(null);
+  const [pick, setPick] = useState(null); // { k, anchor } - the part whose settings are open
+  const setEl = (k, patch) => setS((x) => {
+    const cur = { ...(x.els?.[k] || {}), ...patch };
+    Object.keys(cur).forEach((key) => (cur[key] === null || cur[key] === undefined) && delete cur[key]);
+    const els = { ...(x.els || {}), [k]: cur };
+    if (!Object.keys(cur).length) delete els[k];
+    return { ...x, els };
+  });
+  const MM = 25.4 / 96; // the preview is drawn at 96 dpi
+  const attach = () => {
+    const doc = frame.current?.contentDocument;
+    const label = doc?.querySelector('.label');
+    if (!label) return;
+    doc.querySelectorAll('[data-el]').forEach((node) => {
+      node.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        const k = node.dataset.el;
+        const sx = e.clientX, sy = e.clientY;
+        const r0 = node.getBoundingClientRect(), L = label.getBoundingClientRect();
+        let moved = false;
+        try { node.setPointerCapture(e.pointerId); } catch { /* fine */ }
+        const move = (ev) => {
+          const dx = ev.clientX - sx, dy = ev.clientY - sy;
+          if (!moved && Math.hypot(dx, dy) < 3) return;
+          moved = true;
+          node.style.translate = `${dx}px ${dy}px`;
+        };
+        const up = (ev) => {
+          node.removeEventListener('pointermove', move); node.removeEventListener('pointerup', up);
+          if (!moved) {
+            // its settings, in a pop-up beside it (the preview is scaled, so its place is worked out in the page)
+            const fr = frame.current.getBoundingClientRect();
+            const rect = { left: fr.left + r0.left * prevScale, top: fr.top + r0.top * prevScale, right: fr.left + r0.right * prevScale, bottom: fr.top + r0.bottom * prevScale };
+            rect.width = rect.right - rect.left; rect.height = rect.bottom - rect.top;
+            setPick({ k, anchor: { getBoundingClientRect: () => rect } });
+            return;
+          }
+          const dx = ev.clientX - sx, dy = ev.clientY - sy;
+          const a = alignOf(k);
+          const ax = a === 'center' ? r0.left + r0.width / 2 : a === 'right' ? r0.right : r0.left;
+          setEl(k, { x: Math.round((ax + dx - L.left) * MM * 10) / 10, y: Math.round((r0.top + dy - L.top) * MM * 10) / 10 });
+        };
+        node.addEventListener('pointermove', move); node.addEventListener('pointerup', up);
+      });
+    });
+  };
+  const alignOf = (k) => s.els?.[k]?.align || (k === 'name' ? s.align : 'left');
   const n = Math.max(1, Math.min(200, parseInt(s.count, 10) || 10));
   const make = async () => {
     setBusy(true); setErr('');
@@ -328,11 +378,11 @@ export function LabelsSheet({ open, onClose, brew, onDone }) {
           <div className="label-prev" aria-label="Label preview" ref={prevBox}>
             {/* the server draws the label as a web page at its real size (99 x 57 mm at 96 dpi), so it's shown in a
                 frame scaled to the box - an <img> can't show a page, and showed a broken picture */}
-            {src && <iframe title="Label preview" src={src} className={loading ? 'loading' : ''} onLoad={() => setLoading(false)}
+            {src && <iframe ref={frame} title="Label preview" src={src} className={loading ? 'loading' : ''} onLoad={() => { setLoading(false); attach(); }}
               style={{ width: LABEL_PX[0], height: LABEL_PX[1], transform: `scale(${prevScale})` }} />}
             {loading && <span style={{ position: 'absolute' }}><Spinner /></span>}
           </div>
-          <p className="t-bs muted">10 labels to an A4 sheet, 99 × 57 mm. {Math.ceil(n / 10)} sheet{n > 10 ? 's' : ''}.</p>
+          <p className="t-bs muted">Tap any part of the label to change it, or drag it to move it. 10 labels to an A4 sheet, 99 × 57 mm. {Math.ceil(n / 10)} sheet{n > 10 ? 's' : ''}.</p>
           <div className="fgrid">
             <TextField className="full" label="Name on the label" value={s.name} onChange={set('name')} />
             <TextField label="How many" type="number" inputMode="numeric" value={s.count} onChange={set('count')} help={bottlesOf(brew.batchLitres, brew.category) ? `About ${bottlesOf(brew.batchLitres, brew.category).n} bottles in this batch` : undefined} />
@@ -343,7 +393,9 @@ export function LabelsSheet({ open, onClose, brew, onDone }) {
             {s.showRecipe && <TextField label="Subtitle" value={s.recipeText} onChange={set('recipeText')} style={{ flex: 1 }} />}
           </div>
           <Segmented label="Name position" value={s.align} onChange={set('align')} options={[['left', 'Left'], ['center', 'Centred']]} />
-          {(s.place || s.recipePlace) && <Btn kind="text" icon="close" onClick={() => setS((x) => ({ ...x, place: null, recipePlace: null }))}>Put the name back in its usual place</Btn>}
+          {Object.values(s.els || {}).some((e) => e.x !== undefined) && (
+            <Btn kind="text" icon="close" onClick={() => setS((x) => ({ ...x, els: Object.fromEntries(Object.entries(x.els || {}).map(([k, e]) => { const { x: _x, y: _y, ...rest } = e; return [k, rest]; }).filter(([, e]) => Object.keys(e).length)) }))}>Put everything back in its usual place</Btn>
+          )}
           {fontGroup('wine', 'Classic lettering')}
           {fontGroup('beer', 'Craft lettering')}
           {fontGroup('yours', 'Your fonts')}
@@ -360,6 +412,53 @@ export function LabelsSheet({ open, onClose, brew, onDone }) {
           {err && <p style={{ color: 'var(--error)' }}>{err}</p>}
         </div>
       )}
+      <Popover anchor={pick?.anchor} open={Boolean(pick)} onClose={() => setPick(null)} label={pick ? `${PART_NAMES[pick.k]} settings` : ''} width={300}>
+        {pick && <PartSettings k={pick.k} s={s} setS={setS} setEl={setEl} fonts={fonts} brew={brew} onDone={() => setPick(null)} />}
+      </Popover>
     </Sheet>
+  );
+}
+
+// ---- one part's settings, in the pop-up from the label preview ----
+const PART_NAMES = { name: 'Name', under: 'Subtitle', abv: 'Strength', date: 'Bottled date', pics: 'Pictures', qr: 'QR code' };
+const TEXT_PARTS = ['name', 'under', 'abv', 'date'];
+function PartSettings({ k, s, setS, setEl, fonts, brew, onDone }) {
+  const e = s.els?.[k] || {};
+  const isName = k === 'name';
+  // the name's alignment, size, colour and font are the label's main ones (the controls below the preview too)
+  const align = isName ? (e.align || s.align) : e.align || 'left';
+  const size = isName ? (e.size ?? s.size) : e.size ?? 1;
+  const colour = isName ? (e.colour ?? s.colour) : k === 'abv' ? (e.colour ?? s.abvColour) : e.colour || '';
+  const font = isName ? s.font : e.font || '';
+  const setAlign = (v) => (isName ? setS((x) => ({ ...x, align: v, els: { ...(x.els || {}), name: { ...(x.els?.name || {}), align: v } } })) : setEl(k, { align: v }));
+  const setSize = (v) => (isName ? setS((x) => ({ ...x, size: v })) : setEl(k, { size: v }));
+  const setColour = (v) => (isName ? setS((x) => ({ ...x, colour: v })) : k === 'abv' ? setS((x) => ({ ...x, abvColour: v })) : setEl(k, { colour: v || null }));
+  const setFont = (v) => (isName ? setS((x) => ({ ...x, font: v })) : setEl(k, { font: v || null }));
+  const placed = e.x !== undefined;
+  return (
+    <div className="part-set">
+      <div className="t-tm">{PART_NAMES[k]}</div>
+      {TEXT_PARTS.includes(k) && <Segmented label="Line up" value={align} onChange={setAlign} options={[['left', 'Left'], ['center', 'Centre'], ['right', 'Right']]} />}
+      {TEXT_PARTS.includes(k) && (
+        <SelectField label="Font" value={font} onChange={setFont}
+          options={[...(isName ? [] : [['', k === 'abv' ? 'Same as the name' : 'The usual one']]), ...fonts.map((f) => [f.id, f.label])]} />
+      )}
+      {TEXT_PARTS.includes(k) && (
+        <div className="chips wrap">
+          {COLOUR_CHOICES(brew).map(([v, l]) => (
+            <FilterChip key={l} on={(colour || '') === v} onClick={() => setColour(v)}><span className="swatch" style={{ background: v || '#2e2b27', width: 14, height: 14, marginRight: 6 }} />{l}</FilterChip>
+          ))}
+          <label className={`chip sl ${colour && !COLOUR_CHOICES(brew).some(([v]) => v === colour) ? 'on' : ''}`} style={{ cursor: 'pointer' }}>
+            <input type="color" value={colour || '#2e2b27'} onChange={(ev) => setColour(ev.target.value)} style={{ width: 18, height: 18, border: 0, padding: 0, background: 'none', marginRight: 6 }} aria-label="Choose a colour" />Pick
+          </label>
+        </div>
+      )}
+      <Slider label="Size" value={Math.round(size * 100)} onChange={(v) => setSize(v / 100)} min={50} max={k === 'name' ? 180 : 200} step={5} lo="Smaller" hi="Bigger" />
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {placed && <Btn kind="text" icon="close" onClick={() => setEl(k, { x: null, y: null })}>Usual place</Btn>}
+        {!isName && Object.keys(e).length > 0 && <Btn kind="text" onClick={() => { setS((x) => { const els = { ...(x.els || {}) }; delete els[k]; return { ...x, els }; }); onDone(); }}>Reset</Btn>}
+        <Btn kind="tonal" onClick={onDone} style={{ marginLeft: 'auto' }}>Done</Btn>
+      </div>
+    </div>
   );
 }

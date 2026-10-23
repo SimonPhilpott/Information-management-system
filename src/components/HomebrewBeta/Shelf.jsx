@@ -2,8 +2,10 @@
 // the Next up card when a brew needs something, then a gallery of vessel cards that load in as you scroll.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Vessel from './Vessel';
+import { toolsFor, toolInfo } from './Calculators';
+import { qty, useSystem, SystemChip, SystemToggle } from './units';
 import {
-  look, colourOf, sweetOf, strengthOf, WINE_COLOURS, SWEETNESS, ACIDITY, FIZZ, FLAVOUR_TAGS, STATUS_WORD, famKey, ingText,
+  look, colourOf, sweetOf, strengthOf, WINE_COLOURS, SWEETNESS, ACIDITY, FIZZ, FLAVOUR_TAGS, STATUS_WORD, famKey,
 } from './brewData';
 import {
   passes, groupCards, sortCards, filterCount, searchText, activityOf, ACTIVE, RECIPE_SORTS, BREW_SORTS, EMPTY_FILTERS, relDay,
@@ -19,6 +21,7 @@ export const tintOf = (b) => `linear-gradient(180deg, ${(b.liquid || look(b.cate
 
 // ---- one card: the vessel on a tint of the drink's colour, then what it is ----
 export function ShelfCard({ card, index = 0, selected, onOpen, onFav, hits, catLabel, fresh, gold = false }) {
+  const sys = useSystem();
   const b = card.rep;
   const many = card.members.length > 1;
   const art = useRef(null);
@@ -48,7 +51,7 @@ export function ShelfCard({ card, index = 0, selected, onOpen, onFav, hits, catL
       <div className="info">
         <span className="n">{many ? b.family : b.name}</span>
         <span className="st">{b.style || catLabel(b.category)}</span>
-        {hits?.length > 0 && <span className="tags">{hits.slice(0, 3).map((g, i) => <span key={i} className="tag hit">{ingText(g).slice(0, 34)}</span>)}</span>}
+        {hits?.length > 0 && <span className="tags">{hits.slice(0, 3).map((g, i) => <span key={i} className="tag hit">{`${g.amount ? `${qty(g.amount, g.unit, sys)} ` : ''}${g.name}`.slice(0, 34)}</span>)}</span>}
         {!hits?.length && (wc || sweets.length > 0 || flavs.length > 0) && (
           <span className="tags">
             {wc && <span className="tag"><span className="dot" style={{ background: wc.liquid }} />{wc.label}</span>}
@@ -122,7 +125,21 @@ function Gallery({ cards, selectedId, onOpen, onFav, hitMap, catLabel, hrefFor, 
 }
 
 // ---- Next up: the one job a brew needs now, with the button that does it ----
-function NextUp({ jobs, onJob, onOpen }) {
+// the tool that goes with a job in Next up: nutrients when a mead is pitched, temperature correction for a reading,
+// stabilising when it's finished fermenting, priming sugar when it's bottled
+function jobTool(job) {
+  const b = job.brew;
+  const ids = toolsFor(b);
+  const wanted = job.kind === 'log' ? ['hydro', 'abv']
+    : job.kind === 'move' && job.to === 'fermenting' ? ['nutrient', 'hydro']
+      : job.kind === 'move' && job.to === 'conditioning' ? ['stabilise', 'abv']
+        : job.kind === 'move' && job.to === 'bottled' ? ['priming', 'stabilise'] : [];
+  // (the tools are those for the stage it's moving into, where that's where they're needed)
+  const next = job.kind === 'move' ? toolsFor({ ...b, status: job.to }) : [];
+  return wanted.find((id) => ids.includes(id) || next.includes(id)) || null;
+}
+
+function NextUp({ jobs, onJob, onOpen, onTool }) {
   const [all, setAll] = useState(false);
   if (!jobs.length) return null;
   const [job, ...rest] = jobs;
@@ -136,6 +153,7 @@ function NextUp({ jobs, onJob, onOpen }) {
         <div className="d">{job.detail}</div>
         <div className="acts">
           <Btn kind="filled" icon={job.kind === 'log' ? 'chart' : job.kind === 'taste' ? 'wine' : 'check'} onClick={() => onJob(job)}>{job.action}</Btn>
+          {onTool && jobTool(job) && <Btn kind="text" onClick={() => onTool(jobTool(job), b)}><span className="em" aria-hidden="true" style={{ marginRight: 6 }}>{toolInfo(jobTool(job)).em}</span>{toolInfo(jobTool(job)).short}</Btn>}
           <Btn kind="text" onClick={() => onOpen(b)}>Open</Btn>
         </div>
         {rest.length > 0 && (
@@ -187,6 +205,10 @@ function FilterSheet({ open, onClose, pool, texts, filters, setFilters, categori
       actions={filterCount(filters) > 0 ? <Btn kind="text" onClick={() => setFilters({ ...EMPTY_FILTERS, q: filters.q, fav: filters.fav })}>Reset</Btn> : null}
       footer={<Btn kind="filled" big wide onClick={onClose}>Show {total} {isRecipes ? (total === 1 ? 'drink' : 'drinks') : (total === 1 ? 'brew' : 'brews')}</Btn>}>
       <div ref={body} className="fsheet">
+        <section data-sec="units">
+          <h3 className="t-ts muted" style={{ marginBottom: 4 }}>Measurements</h3>
+          <SystemToggle />
+        </section>
         <section data-sec="sort">
           <h3 className="t-ts muted" style={{ marginBottom: 4 }}>Sort by</h3>
           <div className="chips wrap">{sorts.map(([v, l]) => <FilterChip key={v} on={sort === v} onClick={() => setSort(v)}>{l}</FilterChip>)}</div>
@@ -324,7 +346,7 @@ function ChipRow({ children }) {
 // ---- the shelf screen ----
 export default function Shelf({
   dest, brews, recipes, loading, categories, catLabel, filters, setFilters, sort, setSort, selectedId, onOpen, onFav, onNew, jobs, onJob,
-  hrefFor, scrollRef, headerEnd, compact, isOwner,
+  hrefFor, scrollRef, headerEnd, compact, isOwner, onTool,
 }) {
   const isRecipes = dest === 'recipes';
   const isFavs = dest === 'favourites';
@@ -344,6 +366,16 @@ export default function Shelf({
   const chip = (key, on, label, text) => <MenuChip on={on || drop?.key === key} label={label} onClick={(e) => setDrop({ key, anchor: e.currentTarget })}>{text}</MenuChip>;
   const sweetLabel = filters.sweets.length ? SWEETNESS.filter((s) => filters.sweets.includes(s.id)).map((s) => s.label).join(', ') : 'Sweetness';
   const typeLabel = filters.cat === 'all' ? 'Type' : (WINE_COLOURS.find((w) => w.id === filters.cat)?.label ? `${WINE_COLOURS.find((w) => w.id === filters.cat).label} wine` : catLabel(filters.cat));
+  // the filters that are on, each with what it says and how to take it off
+  const without = (k, v) => () => setFilters({ ...filters, [k]: filters[k].filter((x) => x !== v) });
+  const activeFilters = [
+    filters.cat !== 'all' && { key: 'cat', label: typeLabel, off: () => setFilters({ ...filters, cat: 'all' }) },
+    ...SWEETNESS.filter((x) => filters.sweets.includes(x.id)).map((x) => ({ key: `s-${x.id}`, label: x.label, off: without('sweets', x.id) })),
+    ...ACIDITY.filter((x) => filters.acids.includes(x.id)).map((x) => ({ key: `a-${x.id}`, label: `${x.label} acidity`, off: without('acids', x.id) })),
+    ...FIZZ.filter((x) => filters.fizzes.includes(x.id)).map((x) => ({ key: `f-${x.id}`, label: x.label, off: without('fizzes', x.id) })),
+    ...FLAVOUR_TAGS.filter((x) => filters.flavs.includes(x.id)).map((x) => ({ key: `fl-${x.id}`, label: x.label, lead: x.emoji, off: without('flavs', x.id) })),
+    filters.abv && { key: 'abv', label: `${filters.abv[0]}% – ${filters.abv[1]}%`, off: () => setFilters({ ...filters, abv: null }) },
+  ].filter(Boolean);
   const sortMenu = useMenu();
   const sorts = isRecipes ? RECIPE_SORTS : BREW_SORTS;
 
@@ -375,7 +407,8 @@ export default function Shelf({
           {headerEnd}
         </div>
         {!compact && <ChipRow>
-          {!isFavs && <FilterChip on={filters.fav} onClick={() => setFilters({ ...filters, fav: !filters.fav })}>Favourites</FilterChip>}
+          <SystemChip />
+          {!isFavs && <FilterChip on={filters.fav} onClick={() => setFilters({ ...filters, fav: !filters.fav })}><Icon n="fav" size={18} className="fav-heart" />Favourites</FilterChip>}
           {chip('type', filters.cat !== 'all', 'Type of drink', typeLabel)}
           {chip('sweet', filters.sweets.length + filters.acids.length + filters.fizzes.length > 0, 'Sweetness, acidity and fizz',
             filters.acids.length + filters.fizzes.length
@@ -396,7 +429,7 @@ export default function Shelf({
       <div className="gutter" style={{ display: 'flex', flexDirection: 'column' }}>
         {dest === 'brews' && !searching && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 8 }}>
-            <NextUp jobs={jobs} onJob={onJob} onOpen={(b) => onOpen(b, null)} />
+            <NextUp jobs={jobs} onJob={onJob} onOpen={(b) => onOpen(b, null)} onTool={onTool} />
             {myBrews.length > 0 && (
               <div className="stats">
                 <Stat value={myBrews.filter((b) => b.status === 'fermenting').length} label="Fermenting" />
@@ -410,7 +443,20 @@ export default function Shelf({
 
         {loading ? <div style={{ paddingTop: 8 }}><SkeletonGrid n={compact ? 4 : 8} /></div> : (
           <>
-            {searching && <div className="sect"><span>{cards.length} {isRecipes ? (cards.length === 1 ? 'drink' : 'drinks') : 'found'}</span>{nFilters > 0 && <Btn kind="text" onClick={() => setFilters({ ...EMPTY_FILTERS, q: filters.q, fav: filters.fav })}>Clear filters</Btn>}</div>}
+            {searching && <div className="sect"><span>{cards.length} {isRecipes ? (cards.length === 1 ? 'drink' : 'drinks') : 'found'}</span></div>}
+            {/* the filters that are on, each one removable, and Clear filters (23 Oct) */}
+            {nFilters > 0 && (
+              <div className="chips wrap active-filters">
+                {activeFilters.map(({ key, label, lead, off }) => (
+                  <button key={key} type="button" className="chip sl on input" onClick={off} aria-label={`Remove ${label}`}>
+                    {lead && <span className="em" aria-hidden="true">{lead}</span>}{label}<span className="trail"><Icon n="close" size={18} /></span>
+                  </button>
+                ))}
+                <button type="button" className="chip sl" onClick={() => setFilters({ ...EMPTY_FILTERS, q: filters.q, fav: filters.fav })}>
+                  <Icon n="close" size={18} className="fav-heart" />Clear filters
+                </button>
+              </div>
+            )}
             {groups ? groups.map(([label, l]) => (
               <React.Fragment key={label}>
                 <div className="sect">{label}<span className="n">{l.length}</span></div>

@@ -14,6 +14,7 @@ const P = {
   fav: 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z',
   favo: 'M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z',
   add: 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z',
+  remove: 'M19 13H5v-2h14v2z',
   book: 'M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z',
   flask: 'M19.8 18.4L14 10.67V6.5l1.35-1.69c.26-.33.03-.81-.39-.81H9.04c-.42 0-.65.48-.39.81L10 6.5v4.17L4.2 18.4c-.49.66-.02 1.6.8 1.6h14c.82 0 1.29-.94.8-1.6z',
   tune: 'M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z',
@@ -33,6 +34,8 @@ const P = {
   edit: 'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z',
   del: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
   person: 'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z',
+  blank: 'M0 0', // nothing: keeps menu items lined up beside one with a tick
+  calc: 'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5.97 4.06L14.09 6l1.41 1.41L16.91 6l1.06 1.06-1.41 1.41 1.41 1.41-1.06 1.06-1.41-1.4-1.41 1.41-1.06-1.06 1.41-1.41-1.41-1.42zm-6.78.66h5v1.5h-5v-1.5zM11.5 16h-2v2H8v-2H6v-1.5h2v-2h1.5v2h2V16zm6.5 1.25h-5v-1.5h5v1.5zm0-2.5h-5v-1.5h5v1.5z',
   palette: 'M12 3a9 9 0 0 0 0 18c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z',
   image: 'M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z',
   link: 'M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z',
@@ -175,6 +178,96 @@ export function useRipples(rootRef) {
 // from: the element the vessel starts in (a card's art, or the page's hero); to(): finds where it ends up once the
 // screen has changed - the two are morphed into each other (Material's container transform).
 let vtRunning = null;
+// ---- the liquid wipe (23 Oct, trial): moving between the main screens, a wave of amber brew spills across the screen
+// - a wobbly, dripping front edge, a lit surface and a few bubbles - the screen changes while it's fully covered, then
+// the liquid runs off the far side. dir 1 flows left to right (to a tab further along), -1 the other way. Off with
+// Reduce motion. Drawn fresh for the screen's size each time.
+let wiping = null;
+export function liquidWipe(swap, { dir = 1 } = {}) {
+  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (reduced || !document.body.animate) { swap(); return; }
+  if (wiping) { wiping(); }
+  const W = window.innerWidth, H = window.innerHeight;
+  const A = Math.max(36, Math.min(80, W * 0.09)); // how far the edges wobble
+  // With the browser's page transitions (Chrome, so Android and the Play app): the new screen is built first, behind a
+  // picture of the old one, and the old picture is cut away just behind the liquid's front edge as it sweeps across - the
+  // page changes exactly as the liquid passes, never after it (23 Oct, Simon). Without them: the liquid is made wider,
+  // so it covers the whole screen for a moment, and the screen changes then.
+  const VT = typeof document.startViewTransition === 'function';
+  const SW = Math.round(VT ? W * 1.15 + A * 4 : W * 2.2 + A * 4);
+  // an edge as a wave down the screen, with a couple of drips bulging ahead of it
+  const edge = (x0, phase, drips) => {
+    const pts = [];
+    for (let y = 0; y <= H; y += 12) {
+      let x = x0 + A * 0.45 * Math.sin(y / 70 + phase) + A * 0.25 * Math.sin(y / 23 + phase * 2);
+      for (const [dy, size] of drips) x += size * Math.exp(-(((y - dy * H) / 26) ** 2));
+      pts.push([x, y]);
+    }
+    return pts;
+  };
+  const lead = edge(SW - A * 1.2, 0.6, [[0.28, A * 0.7], [0.66, A * 0.95]]);
+  const trail = edge(A * 1.2, 2.1, [[0.45, -A * 0.5]]).reverse();
+  const outline = `M${lead.map(([x, y]) => `${x.toFixed(1)} ${y}`).join(' L')} L${trail.map(([x, y]) => `${x.toFixed(1)} ${y}`).join(' L')} Z`;
+  const shine = `M${lead.map(([x, y]) => `${(x - 7).toFixed(1)} ${y}`).join(' L')}`;
+  const bubbles = Array.from({ length: 14 }, (_, i) => {
+    const x = A * 2 + ((i * 97) % 89) / 89 * (W - A);
+    const y = ((i * 53) % 97) / 97 * H;
+    const r = 3 + (i % 4) * 2.5;
+    return `<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${r}" fill="#fff" fill-opacity=".18" stroke="#fff" stroke-opacity=".55" stroke-width="1.4"/>`;
+  }).join('');
+  const box = document.createElement('div');
+  box.className = 'hbb-wipe';
+  box.setAttribute('aria-hidden', 'true');
+  box.style.cssText = `position:fixed;inset:0;z-index:2147483000;pointer-events:none;overflow:hidden;transform:scaleX(${dir < 0 ? -1 : 1});`;
+  // role="img": a drawing - IMS's page-wide icon rule would otherwise empty its fills
+  box.innerHTML = `<div style="position:absolute;top:0;left:0;width:${SW}px;height:${H}px;will-change:transform,opacity"><svg role="img" width="${SW}" height="${H}" viewBox="0 0 ${SW} ${H}" style="display:block;overflow:visible;filter:drop-shadow(0 0 18px rgba(60,30,5,.35))">
+    <defs><linearGradient id="hbbWipeG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f7c25c"/><stop offset=".55" stop-color="#e7a03a"/><stop offset="1" stop-color="#c8711a"/></linearGradient>
+    <linearGradient id="hbbWipeL" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000" stop-opacity=".18"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/><stop offset=".92" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity=".05"/></linearGradient></defs>
+    <path d="${outline}" fill="url(#hbbWipeG)"/><path d="${outline}" fill="url(#hbbWipeL)"/>
+    <path d="${shine}" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="4" stroke-linecap="round"/>${bubbles}</svg></div>`;
+  // (the plain layer around the drawing is what moves and fades: it runs on the graphics compositor, so it keeps
+  // going smoothly while the new screen is being built)
+  const layer = box.firstElementChild;
+  const html = document.documentElement;
+  // one sweep at a steady speed: from off the near side, across, and off the far side, without stopping. The screen
+  // changes the moment the liquid covers it all, which leaves about a third of a second, still covered, for the new
+  // screen to be built; from halfway the liquid fades away quickly as it runs off
+  const start = -SW, end = W, DURATION = 675; // (23 Oct: 25% quicker than 900)
+  const coverAt = (W - SW + A * 2.4 - start) / (end - start); // when its front edge has passed the far side of the screen
+  let done = false;
+  const finish = () => { if (done) return; done = true; box.remove(); html.classList.remove('hbb-liquid'); if (wiping === finish) wiping = null; };
+  let swapped = false;
+  const doSwap = () => { if (!swapped) { swapped = true; swap(); } };
+  wiping = () => { doSwap(); finish(); };
+  const run = () => {
+    const sweep = layer.animate([{ transform: `translateX(${start}px)` }, { transform: `translateX(${end}px)` }], { duration: DURATION, easing: 'linear', fill: 'forwards' });
+    // the fade: from halfway, twice as quick (23 Oct) - gone three-quarters of the way through
+    layer.animate([{ opacity: 1 }, { opacity: 1, offset: 0.5 }, { opacity: 0, offset: 0.75 }, { opacity: 0 }], { duration: DURATION, easing: 'linear', fill: 'forwards' });
+    return sweep;
+  };
+  if (VT) {
+    // the liquid is its own layer of the transition, drawn over both pictures and moving live
+    box.style.viewTransitionName = 'hbb-liquid';
+    html.classList.add('hbb-liquid');
+    const vt = document.startViewTransition(() => { doSwap(); document.body.appendChild(box); });
+    vt.ready.then(() => {
+      run();
+      // the old screen's picture, cut away from the side the liquid comes from, a little behind its front edge
+      const cut = (tx) => Math.round(tx + SW - A * 2.2);
+      const clip = (x) => (dir < 0 ? `inset(0 ${x}px 0 0)` : `inset(0 0 0 ${x}px)`);
+      html.animate([{ clipPath: clip(cut(start)) }, { clipPath: clip(cut(end)) }], { duration: DURATION, easing: 'linear', fill: 'forwards', pseudoElement: '::view-transition-old(root)' });
+    }).catch(finish);
+    vt.finished.finally(finish);
+    setTimeout(finish, 3000); // never left on screen
+    return;
+  }
+  document.body.appendChild(box);
+  const sweep = run();
+  setTimeout(doSwap, DURATION * coverAt + 16);
+  sweep.onfinish = () => { doSwap(); finish(); };
+  setTimeout(() => { doSwap(); finish(); }, 3000); // never left on screen
+}
+
 export function viewTransition(update, { back = false, from = null, to = null } = {}) {
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (!document.startViewTransition || reduced) { update(); return; }
@@ -400,6 +493,16 @@ function listenForBack() {
     if (top) { top.popped = true; top.close(); }
   }, true);
 }
+// A tap outside an open menu or dropdown closes it - and if the tap was on another dropdown (the next filter chip, the
+// sort or account button), that one opens too, rather than the tap being used up just closing the first (23 Oct)
+function closeAndPass(e, close) {
+  const { clientX: x, clientY: y } = e;
+  close();
+  const under = document.elementsFromPoint(x, y).find((el) => !el.closest('.menu-catch, .popover, .menu'));
+  const target = under?.closest('[aria-haspopup]');
+  if (target) setTimeout(() => target.click(), 0);
+}
+
 function useOverlayClose(open, close, { history = true } = {}) {
   const closeRef = useRef(close);
   closeRef.current = close;
@@ -504,7 +607,7 @@ export function Menu({ anchor, open, onClose, items }) {
   if (!open || !pos) return null;
   return (
     <Layer>
-      <div className="menu-catch" onClick={onClose} />
+      <div className="menu-catch" onClick={(e) => closeAndPass(e, onClose)} />
       <div className="menu" role="menu" style={{ top: pos.top, bottom: pos.bottom, left: pos.left, right: pos.right, transformOrigin: pos.origin }}>
         {items.filter(Boolean).map((it, i) => (it === '-' ? <hr key={i} /> : (
           <button key={i} type="button" role="menuitem" className={`sl ${it.danger ? 'danger' : ''} ${it.selected ? 'sel' : ''}`} disabled={it.disabled}
@@ -534,7 +637,7 @@ export function Popover({ anchor, open, onClose, children, label, width = 300 })
   if (!open || !pos) return null;
   return (
     <Layer>
-      <div className="menu-catch" onClick={onClose} />
+      <div className="menu-catch" onClick={(e) => closeAndPass(e, onClose)} />
       <div className="popover" role="dialog" aria-label={label} style={{ top: pos.top, left: pos.left, width, maxHeight: pos.maxHeight }}>{children}</div>
     </Layer>
   );

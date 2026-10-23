@@ -22,7 +22,7 @@ function cleanName(name) {
   return c ? c[0].toUpperCase() + c.slice(1) : '';
 }
 const ALL_ITEMS = PRODUCE_GROUPS.flatMap((g) => g.items.map((i) => ({ ...i, gid: g.id })));
-const BY_KIND = { malt: 'grain', hops: 'hops', honey: 'sweet', sugar: 'sweet', spice: 'spice', fruit: 'fruit' };
+const BY_KIND = { malt: 'grain', hops: 'hops', honey: 'sweet', sugar: 'sweet', spice: 'spice', fruit: 'fruit', acid: 'aids', tannin: 'aids', veg: 'veg', herb: 'herbs', yeast: 'aids' };
 function groupOf(label, types = []) {
   const t = label.toLowerCase();
   // the word a name ends on says what it is ("honey malt" is a malt), so the match that ends last wins, then the longest

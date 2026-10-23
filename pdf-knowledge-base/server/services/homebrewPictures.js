@@ -65,6 +65,36 @@ export function setCustomIngredientKey(name, key) {
     .run(n, canon, key, Date.now());
 }
 
+// Ingredients Simon adds himself (22 Oct) - in the list before any recipe uses them, so they can have a picture ready.
+// Named by the same rules as every other ingredient; one already in the list (from a recipe or added before) is refused.
+db.exec('CREATE TABLE IF NOT EXISTS brew_ingredient_extra (name_norm TEXT PRIMARY KEY, name_display TEXT NOT NULL, type TEXT, created_at INTEGER NOT NULL)');
+const INGREDIENT_TYPES = ['fruit', 'veg', 'herb', 'spice', 'malt', 'hops', 'honey', 'sugar', 'yeast', 'acid', 'tannin', 'other'];
+export function addIngredient(name, type = 'other') {
+  // the thing itself, not a form of it: "lemon juice" is Lemon (22 Oct, Simon's ingredient rules)
+  const raw = String(name || '').replace(/\(.*?\)/g, '').replace(/\b(juice|zest|peel|rind|pulp|pur[eé]e|concentrate|extract)\b/gi, '').replace(/\s+/g, ' ').trim();
+  if (!raw) throw new Error('Give the ingredient a name.');
+  if (raw.length > 60) throw new Error('That name is too long.');
+  // (and again after the name rules, which still turn some fruit into its juice: lemon -> Lemon juice)
+  let canon = (canonicalizeMain(raw) || raw).replace(/\b(juice|zest|peel|rind|pulp|pur[eé]e|concentrate|extract)\b/gi, '').replace(/\s+/g, ' ').trim() || raw;
+  canon = canon.replace(/^(\s*["'(]*)([a-z])/, (m, lead, ch) => lead + ch.toUpperCase());
+  const n = norm(canon);
+  if (!n) throw new Error('Give the ingredient a name.');
+  // singular and plural are the same ingredient (Lemon / Lemons, Cherry / Cherries)
+  const forms = new Set([n, `${n}s`, `${n}es`, n.replace(/y$/, 'ies'), n.replace(/ies$/, 'y'), n.replace(/es$/, ''), n.replace(/s$/, '')]);
+  const existing = listAllIngredients().ingredients.find((i) => forms.has(i.norm));
+  if (existing) throw new Error(`${existing.name} is already in the list.`);
+  db.prepare('INSERT INTO brew_ingredient_extra (name_norm, name_display, type, created_at) VALUES (?, ?, ?, ?)')
+    .run(n, canon, INGREDIENT_TYPES.includes(type) ? type : 'other', Date.now());
+  return { name: canon, norm: n };
+}
+// an added ingredient that nothing uses can be taken off the list again (with its picture choice)
+export function removeAddedIngredient(name) {
+  const n = norm(canonicalizeMain(name) || name);
+  const gone = db.prepare('DELETE FROM brew_ingredient_extra WHERE name_norm = ?').run(n).changes > 0;
+  if (gone) db.prepare('DELETE FROM brew_ingredient_pictures WHERE name_norm = ?').run(n);
+  return gone;
+}
+
 export function removeCustomIngredientKey(name) {
   const canon = canonicalizeMain(name) || name;
   const n = norm(canon);
@@ -468,7 +498,14 @@ export function listAllIngredients() {
     } catch (_) {}
   }
 
-  // 3. Any custom-set ingredients
+  // 3. Ingredients added by hand (not in any recipe yet)
+  const added = new Set();
+  for (const r of db.prepare('SELECT name_norm, name_display, type FROM brew_ingredient_extra').all()) {
+    added.add(r.name_norm);
+    if (!map.has(r.name_norm)) map.set(r.name_norm, { name: r.name_display, norm: r.name_norm, count: 0, isMain: false, types: new Set(r.type ? [r.type] : []) });
+  }
+
+  // 4. Any custom-set ingredients
   for (const [nm, info] of customMap.entries()) {
     const canon = canonicalizeMain(info.display || nm);
     const canonNm = norm(canon);
@@ -497,6 +534,7 @@ export function listAllIngredients() {
       currentKey,
       hasImage,
       hasCustom: Boolean(customKey),
+      added: added.has(ing.norm),
     };
   });
 

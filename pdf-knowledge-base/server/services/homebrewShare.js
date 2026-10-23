@@ -342,7 +342,31 @@ export function labelLook(q = {}) {
     recipeX: q.recipeX !== undefined && q.recipeX !== '' && Number.isFinite(Number(q.recipeX)) ? Math.max(0, Math.min(99, Number(q.recipeX))) : null,
     recipeY: q.recipeY !== undefined && q.recipeY !== '' && Number.isFinite(Number(q.recipeY)) ? Math.max(0, Math.min(57, Number(q.recipeY))) : null,
     align: ['left', 'center', 'right'].includes(q.align) ? q.align : String(q.pos || '').endsWith('center') ? 'center' : 'left',
+    els: labelEls(q.els),
   };
+}
+// Each part of the label can have its own settings (23 Oct, Simon - set from little pop-ups on the preview, and dragged
+// into place): { name, under, abv, date, pics, qr } -> { x, y (mm from the label's top left; its left edge, middle or
+// right edge by its alignment), align, colour, font (a label font's id), size (x the usual) }. Anything left out keeps
+// the label's usual look.
+const LABEL_ELS = ['name', 'under', 'abv', 'date', 'pics', 'qr'];
+function labelEls(raw) {
+  let v = {};
+  try { v = typeof raw === 'string' ? JSON.parse(raw || '{}') : raw || {}; } catch { v = {}; }
+  const out = {};
+  for (const k of LABEL_ELS) {
+    const e = v?.[k];
+    if (!e || typeof e !== 'object') continue;
+    const n = (x, lo, hi) => (x !== undefined && x !== null && x !== '' && Number.isFinite(Number(x)) ? Math.max(lo, Math.min(hi, Number(x))) : null);
+    out[k] = {
+      x: n(e.x, -20, 99), y: n(e.y, -10, 57),
+      align: ['left', 'center', 'right'].includes(e.align) ? e.align : null,
+      colour: /^#[0-9a-f]{6}$/i.test(e.colour || '') ? e.colour : null,
+      font: typeof e.font === 'string' && /^[\w-]{1,40}$/.test(e.font) ? e.font : null,
+      size: n(e.size, 0.4, 2.5),
+    };
+  }
+  return out;
 }
 // The QR code for a label: a sharp black-and-white image with its quiet zone, not vector paths - viewers and printers
 // drew the paths as a smeared, unreadable pattern (20 Oct)
@@ -367,17 +391,25 @@ export function labelsHtml(b, { count = 10, fontId, title, recipeText, showRecip
       under = own && flat(own) !== flat(b.name) ? b.name : '';
     }
   }
-  const font = listLabelFonts().find((f) => f.id === fontId) || LABEL_FONTS[0];
+  const fonts = listLabelFonts();
+  const font = fonts.find((f) => f.id === fontId) || LABEL_FONTS[0];
+  const E = look.els || {};
+  // (the name and subtitle dragged before each part had its own settings)
+  if (look.x !== null && look.y !== null && !(E.name && E.name.x !== null)) E.name = { ...(E.name || {}), x: look.x, y: look.y };
+  if (look.recipeX !== null && look.recipeY !== null && !(E.under && E.under.x !== null)) E.under = { ...(E.under || {}), x: look.recipeX, y: look.recipeY };
+  const elFont = (k) => (E[k]?.font && fonts.find((f) => f.id === E[k].font)) || null;
+  const usedFonts = [font, ...['name', 'under', 'abv', 'date'].map(elFont).filter(Boolean)].filter((f, i, a) => a.findIndex((g) => g.id === f.id) === i);
+  const isPlaced = (k) => E[k] && E[k].x !== null && E[k].y !== null;
   const n = preview ? 1 : Math.max(1, Math.min(200, Math.round(Number(count)) || 10));
   const colour = /^#[0-9a-f]{6}$/i.test(b.liquid || '') ? b.liquid : '#e8a33a';
-  const nameColour = look.colour || '#2e2b27';
+  const nameColour = E.name?.colour || look.colour || '#2e2b27';
   const lightName = parseInt(nameColour.slice(1, 3), 16) * 0.3 + parseInt(nameColour.slice(3, 5), 16) * 0.59 + parseInt(nameColour.slice(5, 7), 16) * 0.11 > 170;
   const halo = lightName ? 'rgba(0,0,0,0.55)' : '#fff'; // a soft glow behind the name so it reads over the photo
-  const placed = look.x !== null && look.y !== null; // dragged to a spot of his own
-  const recipePlaced = look.recipeX !== null && look.recipeY !== null;
-  const abvColour = look.abvColour || colour;
+  const placed = isPlaced('name'); // dragged to a spot of his own
+  const recipePlaced = isPlaced('under');
+  const abvColour = E.abv?.colour || look.abvColour || colour;
   const vpos = placed ? 'top' : look.pos.split('-')[0];
-  const align = look.align;
+  const align = E.name?.align || look.align;
   const banner = asDataUri(b.banner);
   const pics = (b.mainPics || []).map((p) => ({ name: p.name, src: asDataUri(p.key) })).filter((p) => p.src).slice(0, 3);
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date());
@@ -385,19 +417,47 @@ export function labelsHtml(b, { count = 10, fontId, title, recipeText, showRecip
   const dateWord = 'Bottled';
   const abv = b.calc?.abv || b.calc?.potentialAbv || b.abvEstimate;
   const estimated = !b.calc?.abv && !b.calc?.potentialAbv;
+  const nameHtml = esc(heading).replace(/\n/g, '<br>');
+  const abvHtml = abv ? `${estimated ? '~' : ''}${esc(abv)}<small>% ABV</small>` : '';
+  const dateHtml = `${dateWord} ${esc(ukDate(date))}`;
+  const picsHtml = pics.map((p) => `<img src="${p.src}" alt="${esc(p.name)}" loading="eager" decoding="sync">`).join('');
+  // where a dragged part goes, and how wide it may be, by its alignment
+  const freeCss = (k, sel, maxW = null) => {
+    if (!isPlaced(k)) return '';
+    const e = E[k];
+    const a = e.align || (k === 'name' ? align : 'left');
+    const room = a === 'center' ? 2 * Math.min(Math.max(e.x, 0), 99 - e.x) : a === 'right' ? e.x - 2 : 99 - e.x - 2;
+    return `${sel}.free { position: absolute; z-index: 3; margin: 0; left: ${e.x}mm; top: ${e.y}mm; width: max-content; max-width: ${Math.max(10, maxW ?? room).toFixed(1)}mm; text-align: ${a}; ${a === 'center' ? 'transform: translateX(-50%);' : a === 'right' ? 'transform: translateX(-100%);' : ''} }`;
+  };
+  // each part's own font, size, colour and alignment
+  const fam = (f) => `'${f.family}', Georgia, serif`;
+  const elCss = [
+    E.under && (E.under.colour || E.under.size || E.under.font || E.under.align) ? `.under { ${E.under.colour ? `color: ${E.under.colour};` : ''} ${E.under.size ? `font-size: ${(9.5 * E.under.size).toFixed(1)}pt;` : ''} ${elFont('under') ? `font-family: ${fam(elFont('under'))}; font-style: normal; font-weight: ${elFont('under').weight};` : ''} ${E.under.align ? `text-align: ${E.under.align};` : ''} }` : '',
+    E.abv && (E.abv.size || E.abv.font || E.abv.align) ? `.abv { ${E.abv.size ? `font-size: ${(22 * Math.min((elFont('abv') || font).size, 1.2) * E.abv.size).toFixed(1)}pt;` : ''} ${elFont('abv') ? `font-family: ${fam(elFont('abv'))}; font-weight: ${elFont('abv').weight};` : ''} ${E.abv.align ? `text-align: ${E.abv.align};` : ''} }` : '',
+    E.date && (E.date.colour || E.date.size || E.date.font || E.date.align) ? `.date { ${E.date.colour ? `color: ${E.date.colour};` : ''} ${E.date.size ? `font-size: ${(8 * E.date.size).toFixed(1)}pt;` : ''} ${elFont('date') ? `font-family: ${fam(elFont('date'))}; font-weight: ${elFont('date').weight};` : ''} ${E.date.align ? `text-align: ${E.date.align};` : ''} }` : '',
+    E.pics?.size ? `.pics img { width: ${(14 * E.pics.size).toFixed(1)}mm; height: ${(14 * E.pics.size).toFixed(1)}mm; }` : '',
+    E.qr?.size ? `.qr { width: ${(12 * E.qr.size).toFixed(1)}mm; height: ${(12 * E.qr.size).toFixed(1)}mm; }` : '',
+    isPlaced('qr') ? `.qr.free { left: ${E.qr.x}mm; top: ${E.qr.y}mm; right: auto; }` : '',
+    freeCss('name', '.name'), freeCss('under', '.under', 88), freeCss('abv', '.abv'), freeCss('date', '.date'), freeCss('pics', '.pics'),
+    preview ? '[data-el] { cursor: grab; touch-action: none; } [data-el]:hover { outline: 0.3mm dashed rgba(0,0,0,0.45); outline-offset: 0.6mm; } [data-el].sel { outline: 0.35mm solid #c8711a; outline-offset: 0.6mm; }' : '',
+  ].filter(Boolean).join('\n');
   const label = `<div class="label">
     ${banner && look.imageAlpha > 0 ? `<img class="bg" src="${banner}" alt="" loading="eager" decoding="sync">` : ''}
     ${look.border !== 'none' ? `<div class="border-wrap" style="opacity: ${look.borderAlpha}">${borderHtml(look.border, look.borderColour || nameColour)}</div>` : ''}
-    ${qrHtml ? `<div class="qr">${qrHtml}</div>` : ''}
+    ${qrHtml ? `<div class="qr${isPlaced('qr') ? ' free' : ''}" data-el="qr">${qrHtml}</div>` : ''}
     <div class="body">
-      <div class="head">
-        <div class="name">${esc(heading).replace(/\n/g, '<br>')}</div>
-        ${under && !recipePlaced ? `<div class="under">${esc(under)}</div>` : ''}
-      </div>
-      ${under && recipePlaced ? `<div class="under placed">${esc(under)}</div>` : ''}
+      ${placed ? `<div class="name free" data-el="name">${nameHtml}</div>` : ''}
+      ${!placed || (under && !recipePlaced) ? `<div class="head">
+        ${!placed ? `<div class="name" data-el="name">${nameHtml}</div>` : ''}
+        ${under && !recipePlaced ? `<div class="under" data-el="under">${esc(under)}</div>` : ''}
+      </div>` : ''}
+      ${under && recipePlaced ? `<div class="under placed free" data-el="under">${esc(under)}</div>` : ''}
+      ${abvHtml && isPlaced('abv') ? `<div class="abv free" data-el="abv">${abvHtml}</div>` : ''}
+      ${isPlaced('date') ? `<div class="date free" data-el="date">${dateHtml}</div>` : ''}
+      ${pics.length && isPlaced('pics') ? `<div class="pics free" data-el="pics">${picsHtml}</div>` : ''}
       <div class="foot">
-        <div class="facts">${abv ? `<div class="abv">${estimated ? '~' : ''}${esc(abv)}<small>% ABV</small></div>` : ''}<div class="date">${dateWord} ${esc(ukDate(date))}</div></div>
-        <div class="pics">${pics.map((p) => `<img src="${p.src}" alt="${esc(p.name)}" loading="eager" decoding="sync">`).join('')}</div>
+        <div class="facts">${abvHtml && !isPlaced('abv') ? `<div class="abv" data-el="abv">${abvHtml}</div>` : ''}${!isPlaced('date') ? `<div class="date" data-el="date">${dateHtml}</div>` : ''}</div>
+        ${pics.length && !isPlaced('pics') ? `<div class="pics" data-el="pics">${picsHtml}</div>` : '<div></div>'}
       </div>
     </div>
   </div>`;
@@ -408,7 +468,7 @@ export function labelsHtml(b, { count = 10, fontId, title, recipeText, showRecip
     sheets.push(`<section class="sheet">${Array.from({ length: 10 }, (_, i) => (i < here ? label : '<div class="label blank"></div>')).join('')}</section>`);
   }
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(heading)} labels</title>
-${fontHead(font)}<style>
+${usedFonts.map(fontHead).join('\n')}<style>
 @page { size: A4; margin: 6mm; }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -425,11 +485,11 @@ ${preview ? 'html, body { width: 99mm; height: 57mm; overflow: hidden; backgroun
   -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,0.35), #000 60%); mask-image: linear-gradient(to right, rgba(0,0,0,0.35), #000 60%); }
 .body { position: relative; height: 100%; padding: 5mm 6mm 4.5mm; display: flex; flex-direction: column; }
 .head { text-align: ${align}; ${vpos === 'middle' ? 'margin: auto 0;' : ''} ${qrHtml && !placed ? (align === 'center' ? 'padding: 0 13.5mm;' : 'padding-right: 13.5mm;') : ''} }
-${placed ? `.head { position: absolute; z-index: 1; left: ${look.x}mm; top: ${look.y}mm; width: max-content; max-width: ${(align === 'center' ? 2 * Math.min(look.x, 99 - look.x) : align === 'right' ? look.x - 2 : 99 - look.x - 2).toFixed(1)}mm; ${align === 'center' ? 'transform: translateX(-50%);' : align === 'right' ? 'transform: translateX(-100%);' : ''} }` : ''}
-.name { font-family: '${font.family}', Georgia, serif; font-size: ${(19 * font.size * look.size).toFixed(1)}pt; font-weight: ${font.weight}; line-height: 1.2; padding: 0.22em 0.3em; margin: -0.22em -0.3em; color: ${nameColour};
+/* (a dragged name is placed by its own rule, below) */
+.name { font-family: '${(elFont('name') || font).family}', Georgia, serif; font-size: ${(19 * (elFont('name') || font).size * (E.name?.size || look.size)).toFixed(1)}pt; font-weight: ${(elFont('name') || font).weight}; line-height: 1.2; padding: 0.22em 0.3em; margin: -0.22em -0.3em; color: ${nameColour};
   text-shadow: 0 0 1.2mm ${halo}, 0 0 0.6mm ${halo}; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .under { margin-top: 1mm; font-style: italic; font-size: 9.5pt; color: ${lightName ? nameColour : '#3f3a33'}; text-shadow: 0 0 0.8mm ${halo}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-${recipePlaced ? `.under.placed { position: absolute; z-index: 2; left: ${look.recipeX}mm; top: ${look.recipeY}mm; margin: 0; max-width: 88mm; }` : ''}
+/* (a dragged subtitle is placed by its own rule, below) */
 .border-wrap { position: absolute; inset: 0; pointer-events: none; }
 .frame { position: absolute; inset: 2.6mm; pointer-events: none; }
 .frame.line { border: 0.35mm solid ${look.borderColour || nameColour}; border-radius: 0.6mm; }
@@ -450,6 +510,7 @@ ${look.border !== 'none' ? '.body { padding: 7mm 8.5mm 7mm; }' : ''}
 .date { margin-top: 1.2mm; font-size: 8pt; font-weight: 600; color: #3f3a33; text-shadow: 0 0 0.8mm #fff; }
 .pics { display: flex; gap: 1.6mm; }
 .pics img { width: 14mm; height: 14mm; border-radius: 50%; object-fit: cover; border: 0.6mm solid #fff; box-shadow: 0 0.3mm 0.8mm rgba(0,0,0,0.25); }
+${elCss}
 </style></head><body>${sheets.join('')}</body></html>`;
 }
 // The PDF of label sheets (opts as for labelsHtml, plus qrUrl: the recipe's shared page for the QR code)

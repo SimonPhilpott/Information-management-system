@@ -9,22 +9,23 @@ import { flushSync } from 'react-dom';
 import './hbb.css';
 import { useAuth } from '../../AuthGate';
 import { famKey } from './brewData';
-import {
+import { STANDALONE,
   BASE, parsePath, pathFor, api, EMPTY_FILTERS, nextJobs, moveBrew, pitchReminders, ACTIVE,
 } from './logic';
 import { STATUS_WORD } from './brewData';
 import {
-  Icon, IconButton, useMedia, useRipples, viewTransition, LayerProvider, SnackHost, useSnack, TipHost, Menu, useMenu, Confirm, useScrollState, DarkCtx,
+  Icon, IconButton, useMedia, useRipples, viewTransition, liquidWipe, LayerProvider, SnackHost, useSnack, TipHost, Menu, useMenu, Confirm, useScrollState, DarkCtx,
 } from './ui';
 import Shelf from './Shelf';
 import InviteSheet from './Invite';
+import Calculators, { ToolSheet } from './Calculators';
 import { Brand } from './brand';
 import Find from './Find';
 import BrewPage from './BrewPage';
 import BrewForm from './BrewForm';
 import Admin from './Admin';
 
-const NAV = [['brews', 'My brews', 'flask'], ['recipes', 'Recipe book', 'book'], ['find', 'Find', 'leaf'], ['favourites', 'Favourites', 'favo']];
+const NAV = [['brews', 'My brews', 'flask'], ['recipes', 'Recipe book', 'book'], ['find', 'Find', 'leaf'], ['favourites', 'Favourites', 'favo'], ['tools', 'Tools', 'calc']];
 const readSort = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
 const keepSort = (k, v) => { try { localStorage.setItem(k, v); } catch { /* fine */ } };
 const initials = (name) => String(name || 'Simon Philpott').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
@@ -87,9 +88,10 @@ function App({ theme, onThemeToggle, setCurrentPath, rootEl }) {
   // ---- moving about: every screen has an address; Android's back gesture goes back ----
   const listScroll = useRef(null);
   const detailArt = useRef(null);
-  const go = (next, { replace = false, from = null, to = null, back = false } = {}) => {
+  const go = (next, { replace = false, from = null, to = null, back = false, instant = false } = {}) => {
     const path = pathFor(next);
-    viewTransition(() => {
+    // instant: no page transition of its own (the liquid wipe is covering the screen)
+    (instant ? (fn) => fn() : viewTransition)(() => {
       flushSync(() => {
         setRoute({ dest: next.dest || routeRef.current.dest, id: next.item?.id ?? null, edit: Boolean(next.edit), create: next.create || null });
         if (!next.item && !next.create && next.dest) setListDest(next.dest);
@@ -130,7 +132,9 @@ function App({ theme, onThemeToggle, setCurrentPath, rootEl }) {
   };
   const switchDest = (d) => {
     if (d === listDest && !route.id && !route.create) { listScroll.current?.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-    go({ dest: d });
+    // between the main screens, the liquid wipe flows towards the one you're going to (on trial, 23 Oct)
+    const order = [...NAV.map(([k]) => k), 'admin'];
+    liquidWipe(() => go({ dest: d }, { instant: true }), { dir: order.indexOf(d) >= order.indexOf(listDest) ? 1 : -1 });
   };
   const newItem = () => go({ create: listDest === 'recipes' || listDest === 'find' ? 'recipe' : 'brew', dest: listDest });
   const goHome = () => { window.history.pushState(null, '', '/ims'); setCurrentPath('/ims'); };
@@ -183,16 +187,19 @@ function App({ theme, onThemeToggle, setCurrentPath, rootEl }) {
   const { down } = useScrollState(listScroll);
   const accountMenu = useMenu();
   const [inviting, setInviting] = useState(false);
+  // a brewing tool opened from a brew (its stage's tools, or Next up), filled in with that brew's numbers
+  const [tool, setTool] = useState(null);
+  const openTool = (id, brew) => setTool({ id, brew });
   const showDetail = Boolean(route.id || route.create || route.edit);
   const showList = wide || !showDetail;
   const fabLabel = listDest === 'recipes' ? 'New recipe' : 'New brew';
-  const destTitle = { brews: 'My brews', recipes: 'Recipe book', find: 'Find by ingredient', favourites: 'Favourites', admin: 'Ingredient pictures' }[listDest];
+  const destTitle = { brews: 'My brews', recipes: 'Recipe book', find: 'Find by ingredient', favourites: 'Favourites', tools: 'Brewing tools', admin: 'Ingredient pictures' }[listDest];
   const avatar = <IconButton label="Your account and settings" onClick={accountMenu.show} aria-haspopup="menu"><span className="avatar">{initials(user?.name)}</span></IconButton>;
   const accountItems = [
     isOwner && { label: 'Ingredient pictures (admin)', icon: 'admin', onClick: () => switchDest('admin') },
     { label: theme === 'dark' ? 'Light theme' : 'Dark theme', icon: theme === 'dark' ? 'sun' : 'moon', onClick: onThemeToggle },
     isOwner && { label: 'Invite someone', icon: 'share', onClick: () => setInviting(true) },
-    !user?.guest && { label: 'IMS home', icon: 'home', onClick: goHome },
+    !user?.guest && !STANDALONE && { label: 'IMS home', icon: 'home', onClick: goHome },
   ];
   const hrefFor = (b) => pathFor({ item: b });
 
@@ -216,19 +223,21 @@ function App({ theme, onThemeToggle, setCurrentPath, rootEl }) {
           <h1 className="t-tl" style={{ flex: 1 }}>{destTitle}</h1>
         </div>
         <div key={listDest} className="fade-through-in">
-          {listDest === 'admin' ? (
+          {listDest === 'tools' ? (
+            <Calculators recipes={recipes} brews={brewsFull} headerEnd={null} />
+          ) : listDest === 'admin' ? (
             <Admin headerEnd={null} onDataChanged={loadList} />
           ) : listDest === 'find' ? (
             <Find recipes={recipes} words={words} setWords={setWords} selectedId={route.id} onOpen={openItem} onFav={toggleFav} catLabel={catLabel} hrefFor={hrefFor} headerEnd={null} scrollRef={listScroll} />
           ) : (
-            <Shelf dest={listDest} brews={brewsFull} recipes={recipes} loading={loading} categories={meta.categories} catLabel={catLabel}
+            <Shelf dest={listDest} brews={brewsFull} recipes={recipes} loading={loading} categories={meta.categories} catLabel={catLabel} onTool={openTool}
               filters={filters[shelfDest]} setFilters={setFilters} sort={sorts[shelfDest]} setSort={setSort} selectedId={route.id}
               onOpen={openItem} onFav={toggleFav} onNew={newItem} jobs={jobs} onJob={runJob} hrefFor={hrefFor} scrollRef={listScroll}
               headerEnd={null} compact={layout === 'compact'} isOwner={isOwner} />
           )}
         </div>
       </div>
-      {layout === 'compact' && (isOwner || listDest === 'brews') && listDest !== 'find' && listDest !== 'admin' && (
+      {layout === 'compact' && (isOwner || listDest === 'brews') && listDest !== 'find' && listDest !== 'admin' && listDest !== 'tools' && (
         <div className="fab-slot"><button type="button" className={`fab sl ${down ? 'small' : ''}`} onClick={newItem} aria-label={fabLabel}><Icon n="add" /><span className="lbl">{fabLabel}</span></button></div>
       )}
     </div>
@@ -245,8 +254,8 @@ function App({ theme, onThemeToggle, setCurrentPath, rootEl }) {
           }}
           onDeleted={() => { loadList(); go({ dest: listDest }, { replace: true }); }} />
       ) : (
-        <BrewPage item={item} layout={layout} isOwner={isOwner} catLabel={catLabel} family={family} kinds={meta.logKinds}
-          backIcon={wide ? 'close' : 'back'} onBack={closeDetail} onEdit={() => go({ item, edit: true })} onOpen={openItem}
+        <BrewPage item={item} layout={layout} isOwner={isOwner} catLabel={catLabel} family={family} kinds={meta.logKinds} onTool={openTool}
+          backIcon={wide ? 'close' : 'back'} onBack={closeDetail} onEdit={() => go({ item, edit: true })} onEditOther={(it) => go({ item: it, edit: true })} onOpen={openItem}
           onChanged={putItem} onListChanged={loadList} onDeleted={() => go({ dest: listDest }, { replace: true })} onFav={toggleFav}
           request={request} artRef={detailArt} hrefFor={hrefFor} />
       )}
@@ -286,6 +295,7 @@ function App({ theme, onThemeToggle, setCurrentPath, rootEl }) {
       </div>
       <Menu anchor={accountMenu.anchor} open={accountMenu.open} onClose={accountMenu.close} items={accountItems} />
       <InviteSheet open={inviting} onClose={() => setInviting(false)} />
+      <ToolSheet id={tool?.id} brew={tool?.brew} recipes={recipes} brews={brewsFull} onClose={() => setTool(null)} />
       <Confirm open={Boolean(confirm)} {...(confirm || {})} onClose={() => setConfirm(null)} onOk={confirm?.onOk || (() => {})} />
     </>
   );

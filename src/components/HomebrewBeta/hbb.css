@@ -1,5 +1,6 @@
-/* Figtree (22 Oct, Simon's choice) for all body text, beside Rustic Delight headings. (@import must come first) */
-@import url('https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap');
+/* Figtree (22 Oct, Simon's choice) for all body text, beside Rustic Delight headings; Noto Emoji (23 Oct) draws every
+   emoji as one-colour line art in the app's colour instead of each phone's own colour emoji. (@import must come first) */
+@import url('https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Noto+Emoji:wght@400..700&display=swap');
 /* Homebrew (beta) - Material Design 3, Android first. Everything is scoped to .hbb so nothing here touches the rest
    of IMS (the one global piece is the view-transition styling, which only applies while <html> has .hbb-vt, set by
    the beta for its own transitions).
@@ -49,7 +50,7 @@
   --std-decel: cubic-bezier(0, 0, 0, 1);
   --std-accel: cubic-bezier(.3, 0, 1, 1);
 
-  --font: 'Figtree', 'Inter', 'Roboto', system-ui, sans-serif;
+  --font: 'Figtree', 'Noto Emoji', 'Inter', 'Roboto', system-ui, sans-serif;
 
   position: fixed;
   inset: 0;
@@ -248,8 +249,9 @@
 .hbb .gcard.sel { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
 /* the drawing sits in the bottom-right corner, the same 12dp from the right edge as from the bottom */
 .hbb .gcard .art { position: relative; height: 152px; display: flex; align-items: flex-end; justify-content: flex-end; padding: 0 12px 12px 0; isolation: isolate; }
-.hbb .gcard .art img.banner { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -1; opacity: .38; mix-blend-mode: multiply; }
-.hbb.dark .gcard .art img.banner { opacity: .3; mix-blend-mode: screen; }
+/* recipe pictures behind cards, Next up and brew pages: 0.5 everywhere (23 Oct, Simon) */
+.hbb .gcard .art img.banner { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -1; opacity: .5; mix-blend-mode: multiply; }
+.hbb.dark .gcard .art img.banner { opacity: .5; mix-blend-mode: screen; }
 .hbb .gcard .abv { position: absolute; left: 12px; top: 12px; font-size: 22px; line-height: 1.1; font-weight: 800; letter-spacing: -.02em; color: var(--on-surface); }
 .hbb .gcard .abv.below { top: 42px; }
 .hbb .gcard .abv small { font-size: 13px; font-weight: 700; }
@@ -276,9 +278,9 @@
 /* Next up */
 .hbb .nextup { position: relative; isolation: isolate; overflow: hidden; border-radius: 24px; padding: 20px; background: var(--primary-c); color: var(--on-primary-c); display: flex; gap: 16px; align-items: center; animation: hbb-enter .45s var(--emph-decel) both; }
 /* the recipe's picture behind the card, strongest at the right edge and fading out before it reaches the words */
-.hbb .nextup-bg { position: absolute; top: 0; right: 0; bottom: 0; width: min(70%, 900px); height: 100%; object-fit: cover; z-index: -1; pointer-events: none; opacity: .6;
+.hbb .nextup-bg { position: absolute; top: 0; right: 0; bottom: 0; width: min(70%, 900px); height: 100%; object-fit: cover; z-index: -1; pointer-events: none; opacity: .5;
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 75%); mask-image: linear-gradient(90deg, transparent, #000 75%); }
-.hbb.dark .nextup-bg { opacity: .4; }
+.hbb.dark .nextup-bg { opacity: .5; }
 /* a narrow phone card: keep the picture behind the demijohn, clear of the words */
 @media (max-width: 599px) {
   .hbb .nextup-bg { width: 55%; -webkit-mask-image: linear-gradient(90deg, transparent 10%, #000 80%); mask-image: linear-gradient(90deg, transparent 10%, #000 80%); }
@@ -302,8 +304,8 @@
 
 /* ---- detail page ---- */
 .hbb .hero { position: relative; isolation: isolate; padding-bottom: 20px; }
-.hbb .hero .bgimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; opacity: .3; mix-blend-mode: multiply; -webkit-mask-image: linear-gradient(#000 50%, transparent); mask-image: linear-gradient(#000 50%, transparent); }
-.hbb.dark .hero .bgimg { opacity: .22; mix-blend-mode: screen; }
+.hbb .hero .bgimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; opacity: .5; mix-blend-mode: multiply; -webkit-mask-image: linear-gradient(#000 50%, transparent); mask-image: linear-gradient(#000 50%, transparent); }
+.hbb.dark .hero .bgimg { opacity: .5; mix-blend-mode: screen; }
 .hbb .hero .tint { position: absolute; inset: 0; z-index: -3; }
 .hbb .hero .stage { display: flex; justify-content: center; align-items: flex-end; min-height: 176px; padding-top: 4px; }
 .hbb .hero .kicker { font-size: 14px; line-height: 20px; color: var(--on-surface-var); font-weight: 500; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
@@ -326,7 +328,7 @@
 .hbb .tab.on { color: var(--primary); }
 .hbb .tabs .ind { position: absolute; bottom: 0; height: 3px; border-radius: 3px 3px 0 0; background: var(--primary); transition: transform .3s var(--emph), width .3s var(--emph); left: 0; }
 .hbb .section { padding-block: 16px; display: flex; flex-direction: column; gap: 12px; }
-.hbb .section h2 { font-size: 16px; line-height: 24px; font-weight: 600; }
+.hbb .section h2 { font-size: 22px; line-height: 28px; font-weight: 600; } /* Ingredients, Method... (23 Oct: up from 16px, to match the tools heading) */
 .hbb .lead-text { font-size: 16px; line-height: 24px; padding: 14px 16px; border-radius: 16px; background: var(--surface-c); }
 .hbb .ings { border-radius: 16px; background: var(--surface-c-lowest); border: 1px solid var(--outline-var); overflow: hidden; }
 .hbb.dark .ings { background: var(--surface-c-low); }
@@ -338,7 +340,7 @@
 .hbb .steps li { display: flex; gap: 14px; font-size: 16px; line-height: 24px; }
 .hbb .steps .no { width: 28px; height: 28px; flex: none; border-radius: 50%; background: var(--secondary-c); color: var(--on-secondary-c); font-size: 13px; font-weight: 700; display: grid; place-items: center; }
 .hbb .kv { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 14px; }
-.hbb .kv b { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--on-surface-var); margin-right: 6px; }
+.hbb .kv b { font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--primary); margin-right: 6px; } /* Makes, Yeast: bold, in the app's brown (23 Oct) */
 .hbb .term { border-bottom: 1.5px dotted var(--primary); cursor: help; }
 .hbb .tip { position: fixed; z-index: 60; max-width: min(320px, calc(100vw - 32px)); border-radius: 8px; padding: 10px 12px; background: var(--inverse-surface); color: var(--inverse-on-surface); font-size: 14px; line-height: 20px; box-shadow: var(--shadow-2); animation: hbb-menu .15s var(--emph-decel) both; }
 .hbb .tip b { display: block; color: var(--inverse-primary); margin-bottom: 2px; }
@@ -425,11 +427,13 @@
 .hbb .swatch { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--outline-var); flex: none; }
 
 /* segmented buttons */
-.hbb .segb { display: flex; height: 40px; border: 1px solid var(--outline); border-radius: 20px; overflow: hidden; }
-.hbb .segb button { position: relative; flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 600; border-left: 1px solid var(--outline); min-width: 0; padding: 0 8px; white-space: nowrap; transition: background-color .2s var(--emph); }
-.hbb .segb button:first-child { border-left: 0; }
-.hbb .segb button.on { background: var(--secondary-c); color: var(--on-secondary-c); }
-.hbb .segb button .ck { display: inline-flex; max-width: 0; overflow: hidden; transition: max-width .15s var(--emph); }
+.hbb .segb { display: flex; height: 44px; padding: 4px; gap: 4px; border-radius: 22px; background: var(--surface-c-high); }
+/* a soft tonal track; the choice is a raised pill in the chip colour, with a tick (23 Oct: was outlined with dividers) */
+.hbb .segb button { position: relative; flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 600; min-width: 0; padding: 0 10px; border-radius: 18px; white-space: nowrap; color: var(--on-surface-var); transition: background-color .2s var(--emph), color .2s linear, box-shadow .2s var(--std); }
+.hbb .segb button:not(.on):hover { color: var(--on-surface); }
+.hbb .segb button.on { background: var(--secondary-c); color: var(--on-secondary-c); box-shadow: var(--shadow-1); }
+.hbb .segb button .ck { display: inline-flex; flex: none; max-width: 0; overflow: hidden; transition: max-width .15s var(--emph); }
+.hbb .segb button .ck svg { width: 18px; height: 18px; flex: none; }
 .hbb .segb button.on .ck { max-width: 18px; }
 
 /* sliders */
@@ -511,7 +515,7 @@
 .hbb .picgrid button .okmark { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 50%; background: var(--primary); color: var(--on-primary); display: grid; place-items: center; animation: hbb-pop .25s var(--emph-decel) both; }
 .hbb .label-prev { width: 100%; aspect-ratio: 99 / 57; border-radius: 8px; background: #fff; box-shadow: var(--shadow-2); overflow: hidden; display: grid; place-items: center; position: relative; }
 .hbb .label-prev { place-items: start; }
-.hbb .label-prev iframe { position: absolute; top: 0; left: 0; border: 0; pointer-events: none; transform-origin: top left; background: #fff; transition: opacity .25s linear; }
+.hbb .label-prev iframe { position: absolute; top: 0; left: 0; border: 0; pointer-events: auto; transform-origin: top left; background: #fff; transition: opacity .25s linear; }
 .hbb .label-prev iframe.loading { opacity: .5; }
 .hbb .fontlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
 .hbb .fontlist button { height: 56px; border-radius: 12px; border: 1px solid var(--outline-var); padding: 0 12px; font-size: 20px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; transition: background-color .15s linear, border-color .15s linear; }
@@ -623,7 +627,7 @@ html.hbb-vt.hbb-back::view-transition-group(*) { animation-duration: .35s; }
 /* ---- Rustic Delight (22 Oct, Simon's choice): the Homebrew header and every heading. A display face with a small
    x-height, so headings are set a little larger than the Material sizes they replace ---- */
 @font-face { font-family: 'HB Rustic Delight'; src: url('./fonts/rustic-delight.ttf') format('truetype'); font-display: swap; }
-.hbb { --head-font: 'HB Rustic Delight', Georgia, serif; }
+.hbb { --head-font: 'HB Rustic Delight', 'Noto Emoji', Georgia, serif; }
 .hbb .brand-bar { display: flex; align-items: center; gap: 8px; }
 .hbb .brand { flex: 1; min-width: 0; font-family: var(--head-font); font-size: 40px; line-height: 48px; font-weight: 400; color: var(--primary); }
 .hbb .brand.small { font-size: 28px; line-height: 34px; }
@@ -670,3 +674,63 @@ html.hbb-vt.hbb-back::view-transition-group(*) { animation-duration: .35s; }
 .hbb .corner-acts { position: absolute; top: max(4px, env(safe-area-inset-top, 0px)); right: max(8px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; align-items: center; z-index: 2; }
 .hbb .brand-bar:has(.corner-acts) .brand { padding-right: 56px; }
 .hbb .owner-tag { display: inline-flex; margin-top: 8px; background: var(--secondary-c); color: var(--on-secondary-c); height: 28px; border-radius: 14px; }
+/* Emoji as one-colour line art (Noto Emoji, 23 Oct, Simon): never the phone's colour emoji, and tinted in the app's
+   amber where they stand alone as icons - flavours on cards, taste and type chips, Find categories, ingredient cards */
+.hbb { font-variant-emoji: text; }
+.hbb .em, .hbb .tag.emo, .hbb .pic > span, .hbb .adm-big > span { color: var(--primary); font-weight: 500; }
+/* Brewing tools (calculators) */
+.hbb .tool-grid .adm-tile .pic { font-size: 30px; }
+.hbb .tool-grid .adm-tile .st { overflow-wrap: break-word; }
+.hbb .calc { display: flex; flex-direction: column; gap: 16px; }
+.hbb .calc-out { display: flex; flex-direction: column; gap: 2px; padding: 16px; border-radius: 20px; background: var(--surface-c-high); }
+.hbb .calc-out .r { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 6px 0; border-bottom: 1px solid var(--outline-var); }
+.hbb .calc-out .r:last-of-type { border-bottom: 0; }
+.hbb .calc-out .k { color: var(--on-surface-var); font-size: 14px; }
+.hbb .calc-out .r b { font-size: 16px; text-align: right; }
+.hbb .calc-out .r.big b { font-size: 28px; line-height: 34px; color: var(--primary); }
+.hbb .calc-out .note { margin: 8px 0 0; font-size: 13px; line-height: 19px; color: var(--on-surface-var); }
+.hbb .calc table.scale { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+.hbb .calc table.scale th { text-align: left; font-size: 12px; color: var(--on-surface-var); font-weight: 600; padding: 6px 4px; }
+.hbb .calc table.scale td { padding: 7px 4px; border-top: 1px solid var(--outline-var); vertical-align: top; }
+.hbb .calc table.scale td:first-child { width: 50%; }
+/* the tools for a brew's stage, under its stage track */
+.hbb .stage-tools { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.hbb .stage-tools .chips { padding-block: 0; }
+.hbb .tool-chip { height: 36px; padding: 0 14px 0 10px; gap: 6px; background: var(--surface-c-low); }
+.hbb .tool-chip .em { font-size: 18px; line-height: 1; width: auto; min-width: 0; margin: 0 8px 0 0; padding: 0; }
+/* numbers: no browser arrows (tiny, and hidden on Android anyway); the calculators have - and + buttons instead */
+.hbb input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+.hbb input[type=number]::-webkit-inner-spin-button, .hbb input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.hbb .nudge-field { position: relative; min-width: 0; }
+.hbb .tf.has-nudge input { padding-right: 96px; }
+.hbb .nudge { position: absolute; top: 8px; right: 6px; display: flex; gap: 4px; }
+.hbb .nudge button { width: 40px; height: 40px; border-radius: 20px; display: grid; place-items: center; color: var(--on-surface); background: var(--surface-c-high); }
+.hbb .nudge button::after { content: ""; position: absolute; inset: -4px -2px; } /* 48dp touch target */
+.hbb .nudge button { position: relative; }
+/* the liquid wipe, done as a page transition: the pictures of the old and new screens don't fade - the old one is cut
+   away behind the liquid (its own layer, drawn live on top) */
+html.hbb-liquid::view-transition-group(*), html.hbb-liquid::view-transition-image-pair(*) { animation: none; }
+html.hbb-liquid::view-transition-old(root), html.hbb-liquid::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+html.hbb-liquid::view-transition-new(hbb-liquid) { animation: none; }
+html.hbb-liquid::view-transition-old(root) { z-index: 1; }
+/* card tags (sweetness, wine colour, flavour icons) all alike: 28px tall, 10px either side, in the icons' amber (23 Oct) */
+.hbb .gcard .tags .tag:not(.hit) { height: 28px; border-radius: 14px; padding: 0 10px; color: var(--primary); }
+.hbb .gcard .tags .tag.emo { gap: 6px; }
+/* the wine colour's dot on a card: a 1px ring in the tag's text colour, so pale wines (white, rosé) still show */
+.hbb .gcard .tags .tag .dot { width: 10px; height: 10px; border: 1px solid currentColor; box-sizing: border-box; flex: none; }
+/* the tags on a recipe or brew page, styled like the cards' (23 Oct): 28px tall, 10px either side, amber, 20px icons */
+.hbb .props .tag { height: 28px; border-radius: 14px; padding: 0 10px; gap: 6px; color: var(--primary); }
+.hbb .props .tag .em { font-size: 20px; line-height: 1; width: auto; min-width: 0; margin: 0; padding: 0; }
+.hbb .props .tag .dot { width: 10px; height: 10px; border: 1px solid currentColor; box-sizing: border-box; flex: none; }
+/* the label maker's pop-up for one part of the label */
+.hbb .part-set { display: flex; flex-direction: column; gap: 12px; padding: 14px; }
+/* the brown heart on the Favourites filter */
+.hbb .chip .fav-heart { color: #8a4b22; margin-right: 6px; flex: none; }
+.hbb.dark .chip .fav-heart { color: #c98a5a; }
+.hbb .hero .kicker.props { margin-bottom: 8px; gap: 6px; }
+.hbb .stage-tools > h2 { margin: 8px 0 2px; font-size: 22px; line-height: 28px; } /* the same as Ingredients and Method */
+/* Clear filters, beside the count: a small outlined button in the body font, black text (light in the dark theme) */
+.hbb .clear-btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px 0 10px; border-radius: 16px; border: 1px solid var(--outline); background: var(--surface-c-lowest); color: var(--on-surface); font-family: var(--font); font-size: 13px; font-weight: 600; letter-spacing: 0; margin-left: 8px; }
+.hbb.dark .clear-btn { background: var(--surface-c-high); }
+.hbb .active-filters { padding: 0 0 12px; }
+.hbb .active-filters .chip .em { font-size: 18px; width: auto; margin-right: 6px; }

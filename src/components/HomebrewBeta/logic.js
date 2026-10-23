@@ -2,31 +2,36 @@
 // next). Uses the same /api/homebrew service as the classic portal - only the page is new.
 import { COLOUR_TILE, colourOf, sweetOf, strengthOf, famKey, slug, STATUS_WORD, ingredientHits, wantedOf } from './brewData';
 
-export const BASE = '/ims/homebrew';
+// Where Homebrew lives: /ims/homebrew inside IMS, or the root of its own site when it runs as the standalone app
+// (the Homebrew repo sets VITE_HOMEBREW_BASE to '' and VITE_HOMEBREW_STANDALONE to 1)
+export const BASE = import.meta.env?.VITE_HOMEBREW_BASE ?? '/ims/homebrew';
+export const STANDALONE = import.meta.env?.VITE_HOMEBREW_STANDALONE === '1';
+const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // ---- addresses: every screen has its own, so Android's back gesture and new tabs work ----
 // /ims/homebrew                  My brews
 // /ims/homebrew/recipes          Recipe book
 // /ims/homebrew/find             Find by ingredient
 // /ims/homebrew/favourites       Favourites
+// /ims/homebrew/tools            Brewing tools (calculators)
 // /ims/homebrew/recipe/412-broom-wine[/edit]   a recipe (or its edit form)
 // /ims/homebrew/brew/1016-apple-pie-cider[/edit]
 // /ims/homebrew/new/recipe | /new/brew          the new-recipe / new-brew form
-export const DESTS = ['brews', 'recipes', 'find', 'favourites'];
+export const DESTS = ['brews', 'recipes', 'find', 'favourites', 'tools'];
 export function parsePath(p) {
   // (the beta's old /ims/homebrew-beta addresses open the same screens)
-  const rest = String(p || '').replace(/^\/ims\/homebrew(-beta)?/, '').replace(/\/+$/, '');
+  const rest = String(p || '').replace(BASE ? new RegExp(`^${escRe(BASE)}(-beta)?`) : /^/, '').replace(/\/+$/, '');
   let m = rest.match(/^\/(recipe|brew)\/(\d+)[^/]*(\/edit)?/);
   if (m) return { dest: m[1] === 'recipe' ? 'recipes' : 'brews', id: Number(m[2]), edit: Boolean(m[3]), create: null };
   m = rest.match(/^\/new\/(recipe|brew)/);
   if (m) return { dest: m[1] === 'recipe' ? 'recipes' : 'brews', id: null, edit: false, create: m[1] };
-  m = rest.match(/^\/(recipes|find|favourites|admin)/);
+  m = rest.match(/^\/(recipes|find|favourites|tools|admin)/);
   return { dest: m ? m[1] : 'brews', id: null, edit: false, create: null };
 }
 export function pathFor({ dest, item, edit, create }) {
   if (create) return `${BASE}/new/${create}`;
   if (item) return `${BASE}/${item.isRecipe ? 'recipe' : 'brew'}/${item.id}${slug(item.name) ? `-${slug(item.name)}` : ''}${edit ? '/edit' : ''}`;
-  return dest && dest !== 'brews' ? `${BASE}/${dest}` : BASE;
+  return dest && dest !== 'brews' ? `${BASE}/${dest}` : BASE || '/';
 }
 
 // ---- the service ----

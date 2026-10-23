@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { listBrews, listRecipes, startFromRecipe, saveAsRecipe, setFavourite, favouritesOf, CATEGORIES, getBrew, saveBrew, deleteBrew, addLog, deleteLog, addTasting, deleteTasting, brewInsight, whatIf, setNutrientReminders, setStepReminders, STYLES, STATUSES, LOG_KINDS } from '../services/homebrewService.js';
 import { shareRecipe, unshareRecipe, publicBase, recipePdf, labelsPdf, labelsHtml, labelLook, labelQr, listLabelFonts, addLabelFont, removeLabelFont, labelFontFile } from '../services/homebrewShare.js';
 import express from 'express';
-import { mainIngredients, pictureFile, listThemes, uploadBanner, setBannerChoice, savePixabayPhoto, listAllIngredients, setCustomIngredientKey, removeCustomIngredientKey, uploadIngredientPicture, savePixabayIngredientPhoto } from '../services/homebrewPictures.js';
+import { addIngredient, removeAddedIngredient, mainIngredients, pictureFile, listThemes, uploadBanner, setBannerChoice, savePixabayPhoto, listAllIngredients, setCustomIngredientKey, removeCustomIngredientKey, uploadIngredientPicture, savePixabayIngredientPhoto } from '../services/homebrewPictures.js';
 import { searchPixabayPhotos } from '../services/homebrewPhotos.js';
 import { setColourByYou, clearColourByYou, fillColours } from '../services/homebrewColours.js';
 import { listInvites, invite, revokeInvite, recentSignIns, OWNER, personName, canonEmail } from '../services/decksService.js';
@@ -83,6 +83,9 @@ router.post('/pixabay/pick', notGuest, wrap(async (req) => {
 }));
 // Admin: ingredient image management (list, custom image, upload square, pick Pixabay)
 router.get('/admin/ingredients', onlyOwner, wrap(() => listAllIngredients()));
+// a new ingredient, before any recipe uses it; and taking one added by hand off the list again
+router.post('/admin/ingredients/new', onlyOwner, wrap((req) => ({ ingredient: addIngredient(req.body?.name, req.body?.type) })));
+router.delete('/admin/ingredients/added/:name', onlyOwner, wrap((req) => ({ removed: removeAddedIngredient(req.params.name) })));
 router.post('/admin/ingredients/custom', onlyOwner, wrap((req) => {
   setCustomIngredientKey(req.body?.name, req.body?.key);
   return { success: true, key: req.body?.key };

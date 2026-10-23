@@ -60,7 +60,7 @@ const CAT_LOOK = {
   rose_wine: { emoji: '🌸', liquid: '#f08fa8', tint: 'from-pink-300/30 to-rose-400/10' },
   fruit_veg_wine: { emoji: '🫐', liquid: '#a83262', tint: 'from-pink-500/30 to-purple-600/10' },
   flower_herb_wine: { emoji: '🌼', liquid: '#e8c85a', tint: 'from-yellow-300/30 to-emerald-400/10' },
-  hot_pepper_wine: { emoji: '🌶️', liquid: '#d9381e', tint: 'from-red-500/30 to-orange-600/10' },
+  hot_pepper_wine: { emoji: '🌶', liquid: '#d9381e', tint: 'from-red-500/30 to-orange-600/10' },
   beer: { emoji: '🍺', liquid: '#d98a1f', tint: 'from-orange-400/30 to-amber-600/10' },
   stout: { emoji: '🖤', liquid: '#2b1a12', tint: 'from-stone-700/40 to-stone-900/10' },
   cider: { emoji: '🍏', liquid: '#c4d45a', tint: 'from-lime-400/30 to-green-500/10' },
@@ -148,6 +148,7 @@ function ingredientHits(b, wanted) {
 // acid). Raisins are left out: nearly every wine uses them for body.
 const PRODUCE_GROUPS = [
   { id: 'fruit', label: 'Fruit', icon: '🍎', items: [
+    ['citrus', '🍋'], ['citrus fruit', '🍋'], ['cloudberry', '🫐'], ['dewberry', '🫐'], ['stone fruit', '🍑'],
     ['apple', '🍎'], ['apricot', '🍑'], ['banana', '🍌'], ['black currant', '🫐'], ['blackberry', '🫐'], ['blood orange', '🍊'], ['blueberry', '🫐'],
     ['buddha’s hand', '🍋'], ['cactus pear', '🌵'], ['calamondin', '🍊'], ['cape gooseberry', '🟠'], ['cherry', '🍒'], ['chokecherry', '🍒'], ['citron', '🍋'],
     ['coconut', '🥥'], ['crabapple', '🍎'], ['cranberry', '🔴'], ['currant', '🫐'], ['damson', '🟣'], ['elderberry', '🫐'], ['fig', '🟤'], ['gooseberry', '🟢'],
@@ -158,29 +159,34 @@ const PRODUCE_GROUPS = [
     ['tangerine', '🍊'], ['watermelon', '🍉'],
   ] },
   { id: 'veg', label: 'Vegetables', icon: '🥕', items: [
+    ['artichoke', '🥬'], ['jerusalem artichoke', '🥔'], ['aubergine', '🍆'], ['broad bean', '🫛'], ['lima bean', '🫛'], ['runner bean', '🫛'], ['lettuce', '🥬'], ['spinach', '🥬'], ['mangel wurzel', '🥔'], ['mangelwurzel', '🥔'], ['mangold', '🥔'], ['mangold wurzel', '🥔'], ['knotweed', '🌱'], ['knotweed stalk', '🌱'],
     ['beet', '🟣'], ['bell pepper', '🫑'], ['carrot', '🥕'], ['celery', '🥬'], ['corn', '🌽'], ['cucumber', '🥒'], ['garlic', '🧄'],
     ['kale', '🥬'], ['marrow', '🥒'], ['onion', '🧅'], ['parsnip', '🥕'], ['pea', '🫛'], ['potato', '🥔'], ['pumpkin', '🎃'], ['squash', '🎃'], ['swede', '🥔'], ['sweet potato', '🍠'],
     ['tomato', '🍅'], ['turnip', '🥔'],
   ] },
   { id: 'herbs', label: 'Herbs & flowers', icon: '🌿', items: [
-    ['apple mint', '🌿'], ['basil', '🌿'], ['bay', '🌿'], ['broom', '🌼'], ['burdock', '🌿'], ['chamomile', '🌼'], ['clover', '☘️'], ['cowslip', '🌼'], ['dandelion', '🌼'], ['elderflower', '🌸'], ['fennel', '🌿'], ['gorse', '🌼'], ['ground ivy', '🌿'],
+    ['rose water', '🌹'], ['agrimony', '🌼'], ['burnet', '🌿'], ['black locust flower', '🌼'], ['bramble tip', '🌱'], ['carnation', '🌸'], ['coltsfoot', '🌼'], ['flower', '🌸'], ['petal', '🌸'], ['blossom', '🌸'], ['geranium', '🌸'], ['pelargonium', '🌸'], ['goldenrod', '🌼'], ['hawthorn blossom', '🌸'], ['honeysuckle', '🌼'], ['linden blossom', '🌼'], ['parsley', '🌿'], ['passion flower', '🌸'], ['pellitory', '🌿'], ['rosebud', '🌹'], ['sweet briar', '🌹'], ['woolly bluecurls', '🌸'], ['forest grass', '🌾'], ['gesho', '🌿'], ['gesho stick', '🌿'], ['dock', '🌿'], ['curly dock', '🌿'], ['bitter dock', '🌿'], ['gromwell', '🌿'],
+    ['apple mint', '🌿'], ['basil', '🌿'], ['bay', '🌿'], ['broom', '🌼'], ['burdock', '🌿'], ['chamomile', '🌼'], ['clover', '☘'], ['cowslip', '🌼'], ['dandelion', '🌼'], ['elderflower', '🌸'], ['fennel', '🌿'], ['gorse', '🌼'], ['ground ivy', '🌿'],
     ['heather', '🌸'], ['hibiscus', '🌺'], ['horehound', '🌿'], ['hyssop', '🌿'], ['jasmine', '🌸'], ['lavender', '🪻'], ['lemon balm', '🌿'], ['lemongrass', '🌿'],
     ['lilac', '🌸'], ['marigold', '🌼'], ['mint', '🌿'], ['mugwort', '🌿'], ['nettle', '🌿'], ['oregano', '🌿'], ['pineapple weed', '🌼'], ['primrose', '🌼'], ['rose', '🌹'],
     ['rosemary', '🌿'], ['sage', '🌿'], ['sagebrush', '🌿'], ['tarragon', '🌿'], ['thyme', '🌿'], ['violet', '🌸'], ['wormwood', '🌿'], ['yarrow', '🌼'],
     ['yerba santa', '🌿'],
   ] },
   { id: 'spice', label: 'Spices & roots', icon: '🫚', items: [
-    ['allspice', '🟤'], ['anise', '⭐'], ['cardamom', '🟢'], ['cayenne', '🌶️'], ['chile', '🌶️'], ['chocolate', '🍫'], ['cinnamon', '🟤'], ['clove', '🟤'],
-    ['cocoa', '🍫'], ['coffee', '☕'], ['coriander', '🌿'], ['fenugreek', '🟡'], ['ghost pepper', '🌶️'], ['ginger', '🫚'], ['habanero', '🌶️'], ['jalapeño', '🌶️'],
-    ['licorice', '🟤'], ['nutmeg', '🌰'], ['pepper', '🌶️'], ['peppercorn', '⚫'], ['sarsaparilla', '🟤'], ['sassafras', '🟤'], ['star anise', '⭐'], ['tea', '🍵'],
+    ['eringo root', '🫚'], ['gentian', '🫚'], ['almond essence', '🌰'],
+    ['allspice', '🟤'], ['anise', '⭐'], ['cardamom', '🟢'], ['cayenne', '🌶'], ['chile', '🌶'], ['chocolate', '🍫'], ['cinnamon', '🟤'], ['clove', '🟤'],
+    ['cocoa', '🍫'], ['coffee', '☕'], ['coriander', '🌿'], ['fenugreek', '🟡'], ['ghost pepper', '🌶'], ['ginger', '🫚'], ['habanero', '🌶'], ['jalapeño', '🌶'],
+    ['licorice', '🟤'], ['nutmeg', '🌰'], ['pepper', '🌶'], ['peppercorn', '⚫'], ['sarsaparilla', '🟤'], ['sassafras', '🟤'], ['star anise', '⭐'], ['tea', '🍵'],
     ['vanilla', '🍦'],
   ] },
   { id: 'grain', label: 'Grains & malts', icon: '🌾', items: [
+    ['souring grain', '🌾'],
     ['amber malt', '🌾'], ['barley', '🌾'], ['biscuit malt', '🌾'], ['bread', '🍞'], ['caramalt', '🌾'], ['chocolate malt', '🌾'], ['crystal malt', '🌾'],
     ['golden promise', '🌾'], ['maize', '🌽'], ['malt', '🌾'], ['malt extract', '🌾'], ['maris otter', '🌾'], ['munich', '🌾'], ['oat', '🌾'], ['pilsner', '🌾'],
     ['rice', '🍚'], ['rye', '🌾'], ['sorghum', '🌾'], ['vienna', '🌾'], ['wheat', '🌾'],
   ] },
   { id: 'sweet', label: 'Honey & sugars', icon: '🍯', items: [
+    ['sugar', '🍬'], ['brewing sugar', '🍬'], ['candies', '🍬'], ['fireball candies', '🍬'],
     ['birch syrup', '🍁'], ['candi sugar', '🍬'], ['honey', '🍯'], ['lactose', '🥛'], ['maple syrup', '🍁'], ['molasses', '🍯'], ['piloncillo', '🍬'],
   ] },
   { id: 'hops', label: 'Hops', icon: '🍺', items: [
@@ -192,8 +198,12 @@ const PRODUCE_GROUPS = [
     ['candy cap', '🍄'], ['chaga', '🍄'], ['chanterelle', '🍄'], ['matsutake', '🍄'], ['mushroom', '🍄'], ['reishi', '🍄'], ['shiitake', '🍄'], ['turkey tail', '🍄'],
   ] },
   { id: 'forage', label: 'Trees', icon: '🌲', items: [
+    ['tree sap', '🌳'], ['sycamore sap', '🌳'], ['walnut sap', '🌳'], ['black locust', '🌳'], ['fallen leaves', '🍂'], ['vine prunings', '🍇'], ['almond', '🌰'], ['walnut', '🌰'],
     ['alder', '🌳'], ['birch', '🌳'], ['fir', '🌲'], ['hickory', '🌰'], ['juniper', '🌲'], ['oak', '🌳'], ['pecan', '🌰'], ['pine', '🌲'],
     ['pinecone', '🌲'], ['spruce', '🌲'], ['willow', '🌳'],
+  ] },
+  { id: 'aids', label: 'Yeasts & brewing aids', icon: '🧫', items: [
+    ['yeast', '🧫'], ['brettanomyces', '🧫'], ['kefir', '🧫'], ['kefir grain', '🧫'], ['kefir culture', '🧫'], ['scoby', '🧫'], ['kombucha', '🧫'], ['malolactic culture', '🧫'], ['culture', '🧫'], ['yeast nutrient', '🧪'], ['nutrient', '🧪'], ['tannin', '🧪'], ['citric acid', '🧪'], ['malic acid', '🧪'], ['tartaric acid', '🧪'], ['acid', '🧪'], ['cream of tartar', '🧪'], ['campden tablet', '🧪'], ['metabisulphite', '🧪'], ['potassium sorbate', '🧪'], ['pectic enzyme', '🧪'], ['pectin enzyme', '🧪'], ['enzyme', '🧪'], ['isinglass', '🧪'], ['glycerine', '🧪'], ['calcium carbonate', '🧪'], ['calcium chloride', '🧪'], ['chalk', '🧪'], ['salt', '🧂'], ['water', '💧'], ['rainwater', '💧'], ['vinegar', '🧪'], ['whey', '🥛'],
   ] },
 ].map((g) => ({ ...g, items: g.items.map(([w, icon]) => ({ w, icon, re: wordRe(w) })) }));
 

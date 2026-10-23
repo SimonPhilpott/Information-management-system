@@ -3,6 +3,7 @@
 // /api/homebrew/invites service as before.
 import React, { useCallback, useEffect, useState } from 'react';
 import { Sheet, Btn, IconButton, TextField, Confirm, useSnack } from './ui';
+import { BASE } from './logic';
 
 const when = (t) => new Date(t).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' });
 
@@ -12,7 +13,7 @@ export default function InviteSheet({ open, onClose }) {
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [stopping, setStopping] = useState(null);
-  const link = `${window.location.origin}/ims/homebrew?invite=1`;
+  const link = `${window.location.origin}${BASE || '/'}?invite=1`;
 
   const load = useCallback(async () => {
     try {

@@ -16,6 +16,8 @@ import {
 import { FavButton, tintOf } from './Shelf';
 import { Brand } from './brand';
 import { PictureSheet, LabelsSheet, LiquidSheet } from './Tools';
+import { StageTools } from './Calculators';
+import { qty, batch, useSystem } from './units';
 import { useIngredientPictures, picMapOf, pictureFor } from './ingredientPics';
 
 const STAGE_HEAD = { primary: 'To start', secondary: 'Later, in secondary', backsweeten: 'To back-sweeten', bottling: 'At bottling' };
@@ -145,6 +147,7 @@ function TermsPanel({ texts }) {
 // each ingredient as a small card: its picture (the one chosen in Ingredient pictures, else the one made for it, else
 // its kind's emoji), its name and how much
 function Ingredients({ brew }) {
+  const sys = useSystem(); // metric or imperial
   const listing = useIngredientPictures();
   const pics = React.useMemo(() => picMapOf(listing), [listing]);
   const groups = ING_STAGES.map((st) => [st, (brew.ingredients || []).filter((g) => (g.stage || 'primary') === st && g.name)]).filter(([, l]) => l.length);
@@ -156,7 +159,7 @@ function Ingredients({ brew }) {
       <div className="icards">
         {list.map((g, i) => {
           const ing = pictureFor(pics, g.name);
-          const amount = [g.amount, g.unit].filter(Boolean).join(' ');
+          const amount = qty(g.amount, g.unit, sys);
           return (
             <div key={i} className="icard" style={{ animationDelay: `${Math.min(n++, 12) * 30}ms` }}>
               <span className="pic" aria-hidden="true">{ing ? <img src={`/api/homebrew/picture/${ing.key}`} alt="" loading="lazy" onError={(e) => { e.currentTarget.replaceWith(document.createTextNode(ING_EMOJI[g.type] || '🧪')); }} /> : (ING_EMOJI[g.type] || '🧪')}</span>
@@ -330,7 +333,7 @@ function Insights({ brew, isOwner, onChanged }) {
 // ---- the page ----
 export default function BrewPage({
   item, layout, isOwner, catLabel, family = [], kinds, onBack, backIcon = 'back', onEdit, onOpen, onChanged, onListChanged, onDeleted, onFav,
-  request, artRef, hrefFor,
+  request, artRef, hrefFor, onTool, onEditOther,
 }) {
   const b = item;
   const snack = useSnack();
@@ -346,6 +349,7 @@ export default function BrewPage({
   const axis = useAxis(tabsFor.map(([v]) => v), tab);
   const [busy, setBusy] = useState('');
   const [sheet, setSheet] = useState(null); // 'log' | 'taste' | 'picture' | 'liquid' | 'labels'
+  const sys = useSystem(); // metric or imperial, for amounts and batch sizes
   const [confirm, setConfirm] = useState(null);
   const [shareUrl, setShareUrl] = useState(null);
   const more = useMenu();
@@ -423,6 +427,14 @@ export default function BrewPage({
     await onListChanged();
     snack('Saved to your recipe book.', d.brew ? { action: { label: 'Open', onClick: () => onOpen(d.brew) } } : {});
   });
+  // a new version of a recipe: a copy in the same family (shown with the other versions), opened straight into its form
+  const newVersion = () => run('version', async () => {
+    const d = await api(`/api/homebrew/${b.id}/save-as-recipe`, 'POST', {});
+    const named = await api(`/api/homebrew/${d.brew.id}`, 'PUT', { name: `${b.family || String(b.name).replace(/\s*\(.*$/, '')} (new version)` });
+    await onListChanged();
+    snack('New version made - change whatever you like.');
+    onEditOther?.(named.brew || d.brew);
+  });
   const stepReminders = () => run('steps', async () => {
     const d = await api(`/api/homebrew/${b.id}/step-reminders`, 'POST', {});
     snack(`${d.reminders.length} step reminder${d.reminders.length === 1 ? '' : 's'} set${d.reminders[0] ? `, the first on ${d.reminders[0].goesOffAt}` : ''}.`);
@@ -480,15 +492,16 @@ export default function BrewPage({
     { label: 'Download the PDF', icon: 'download', onClick: downloadPdf },
     !b.isRecipe && isOwner && canEdit && ['fermenting', 'conditioning'].includes(b.status) && { label: 'Set step reminders', icon: 'bell', onClick: stepReminders },
     !b.isRecipe && isOwner && canEdit && { label: 'Save as a recipe', icon: 'copyrecipe', onClick: keepAsRecipe },
+    b.isRecipe && isOwner && { label: 'Create a new version', icon: 'copyrecipe', onClick: newVersion },
     '-',
     canEdit && { label: 'Delete', icon: 'del', danger: true, onClick: remove },
   ];
 
   const kicker = (
-    <div className="kicker">
-      <span>{look(b.category).emoji} {catLabel(b.category)}</span>
-      {b.style && <span>· {b.style}</span>}
-      {b.isRecipe && b.sourceName && <span>· {b.sourceUrl ? <a href={b.sourceUrl} target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>{b.sourceName}</a> : b.sourceName}</span>}
+    // its type and style as pills, like its other properties (23 Oct)
+    <div className="kicker props">
+      <span className="tag"><span className="em" aria-hidden="true">{look(b.category).emoji}</span>{catLabel(b.category)}</span>
+      {b.style && b.style !== catLabel(b.category) && <span className="tag">{b.style}</span>}
     </div>
   );
   const props = (
@@ -496,13 +509,13 @@ export default function BrewPage({
       {wc && <span className="tag"><span className="dot" style={{ background: wc.liquid }} />{wc.label} wine</span>}
       {sw && <span className="tag" title={b.sweetnessBasis ? `Sweetness ${BASIS_WORD[b.sweetnessBasis]}` : undefined}>{sw.label}{b.sweetnessBasis === 'estimate' ? ' (estimated)' : ''}</span>}
       {ac && <span className="tag" title={ac.hint}>{ac.label} acidity</span>}
-      {fz && <span className="tag">{fz.id === 'sparkling' ? '🫧 Sparkling' : 'Still'}</span>}
-      {flavs.map((f) => <span key={f.id} className="tag" title={f.hint}>{f.emoji} {f.label}</span>)}
+      {fz && <span className="tag">{fz.id === 'sparkling' ? <><span className="em" aria-hidden="true">🫧</span>Sparkling</> : 'Still'}</span>}
+      {flavs.map((f) => <span key={f.id} className="tag" title={f.hint}><span className="em" aria-hidden="true">{f.emoji}</span>{f.label}</span>)}
     </div>
   );
   const recipeFacts = [
     strength && <Fact key="s" k="Strength" v={`${estStrength ? '~' : ''}${strength}%`} title={estStrength ? 'Likely strength, estimated from the sugar and yeast' : undefined} />,
-    b.batchLitres && <Fact key="m" k="Makes" v={`${b.batchLitres} L`} />,
+    b.batchLitres && <Fact key="m" k="Makes" v={batch(b.batchLitres, sys)} />,
     bottles && <Fact key="b" k="Bottles" v={bottles.text.replace('≈', '')} title={bottles.hint} />,
     !b.batchLitres && (b.targetOg || b.og) && <Fact key="og" k="Starting gravity" v={g3(b.og || b.targetOg)} />,
     !b.batchLitres && (b.targetFg || b.fg) && <Fact key="fg" k="Final gravity" v={g3(b.fg || b.targetFg)} />,
@@ -518,7 +531,7 @@ export default function BrewPage({
       ACTIVE.includes(b.status) ? c.daysSinceStart != null && <CountFact key="d" k="Day" value={c.daysSinceStart} /> : b.bottledOn && <Fact key="d" k="Bottled" v={shortDate(b.bottledOn)} />,
       gravityNow != null && <CountFact key="g" k="Gravity" value={gravityNow} decimals={3} />,
       c.attenuation != null && <CountFact key="a" k="Sugar eaten" value={c.attenuation} suffix="%" />,
-      gravityNow == null && b.batchLitres && <Fact key="b" k="Batch" v={`${b.batchLitres} L`} title={bottles?.hint} />,
+      gravityNow == null && b.batchLitres && <Fact key="b" k="Batch" v={batch(b.batchLitres, sys)} title={bottles?.hint} />,
     ].filter(Boolean);
     return list.length > 0 && <div className="facts" style={{ gridTemplateColumns: `repeat(${list.length === 4 && !wide ? 2 : list.length}, minmax(0, 1fr))` }}>{list}</div>;
   })();
@@ -563,9 +576,10 @@ export default function BrewPage({
               <div>
                 <p className="t-ts muted" style={{ marginBottom: 4 }}>{family.length} versions of {b.family || b.name}</p>
                 <div className="versions">
-                  {family.map((v) => (
+                  {family.map((v, i) => (
                     <a key={v.id} href={hrefFor(v)} className={`chip sl ${v.id === b.id ? 'on' : ''}`} onClick={(e) => { e.preventDefault(); if (v.id !== b.id) onOpen(v, null, { replace: true }); }}>
-                      <span className="ck"><Icon n="check" size={18} /></span>{v.variant || v.sourceName || v.name}
+                      {/* (versions that are otherwise the same are numbered - recipes no longer name their books) */}
+                      <span className="ck"><Icon n="check" size={18} /></span>{v.variant || `Version ${i + 1}`}
                     </a>
                   ))}
                 </div>
@@ -581,6 +595,7 @@ export default function BrewPage({
             )}
             {facts}
             {!b.isRecipe && <StageTrack status={b.status} busy={busy === 'stage'} onPick={canEdit && full ? move : null} />}
+            {onTool && <StageTools brew={b} onTool={(id) => onTool(id, b)} />}
             {wide && actionsRow}
           </div>
         </div>
@@ -593,7 +608,7 @@ export default function BrewPage({
                 {b.summary && <p className="lead-text"><RichText text={b.summary} /></p>}
                 {(b.batchLitres || b.yeast) && (
                   <div className="kv">
-                    {b.batchLitres ? <span><b>Makes</b>{b.batchLitres} L{bottles ? ` · ${bottles.text} bottles` : ''}</span> : null}
+                    {b.batchLitres ? <span><b>Makes</b>{batch(b.batchLitres, sys)}{bottles ? ` · ${bottles.text} bottles` : ''}</span> : null}
                     {b.yeast && <span><b>Yeast</b><RichText text={b.yeast} /></span>}
                     {(b.targetOg || b.og) && <span><b>OG</b>{g3(b.og || b.targetOg)}{!b.og && b.targetOg ? ' target' : ''}</span>}
                     {(b.targetFg || b.fg) && <span><b>FG</b>{g3(b.fg || b.targetFg)}{!b.fg && b.targetFg ? ' target' : ''}</span>}
