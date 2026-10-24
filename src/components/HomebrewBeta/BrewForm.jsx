@@ -7,6 +7,7 @@ import {
 import { api } from './logic';
 import { Icon, IconButton, Btn, TextField, TextArea, SelectField, SaveButton, Confirm, useSnack, FilterChip, useScrollState } from './ui';
 import { PictureSheet } from './Tools';
+import { amountChange, inMethod, stepFor } from './stepSync';
 
 const STATUS_LABEL = { planning: 'Planning', fermenting: 'Fermenting', conditioning: 'Clearing', bottled: 'Bottled', finished: 'Finished', dumped: 'Dumped' };
 const blankIng = () => ({ type: 'fruit', name: '', amount: '', unit: 'kg', stage: 'primary' });
@@ -23,7 +24,16 @@ export default function BrewForm({ item, kind, meta, onCancel, onSaved, onDelete
   const scroll = useRef(null);
   const { lifted } = useScrollState(scroll);
   const fresh = useRef(new Set()); // ingredients and steps just added (they animate in)
-  useEffect(() => { setForm(pick(item)); const s = parseSteps(item?.method); setSteps(s.length ? s : ['']); start.current = JSON.stringify(pick(item)); }, [item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // the method follows the ingredients (24 Oct, Simon): an amount changed here changes in the steps too, and a new
+  // ingredient no step mentions gets a suggested step
+  const linked = useRef({}); // ingredient -> the amount and unit last written into the steps for it
+  const [synced, setSynced] = useState({}); // ingredient -> the step numbers just changed for it
+  const [flash, setFlash] = useState(() => new Set()); // steps that have just changed
+  const [named, setNamed] = useState(() => new Set()); // new ingredients whose name has been typed in
+  const [dismissed, setDismissed] = useState(() => new Set());
+  const [firstCount, setFirstCount] = useState(item?.ingredients?.length || 0); // the ingredients it had when the form opened
+  const flashSteps = (ks) => { setFlash(new Set(ks)); clearTimeout(flashSteps.t); flashSteps.t = setTimeout(() => setFlash(new Set()), 1600); };
+  useEffect(() => { setForm(pick(item)); const s = parseSteps(item?.method); setSteps(s.length ? s : ['']); start.current = JSON.stringify(pick(item)); linked.current = {}; setFirstCount(item?.ingredients?.length || 0); setNamed(new Set()); setDismissed(new Set()); setSynced({}); }, [item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
   const stylesFor = (id) => (meta.categories.find((x) => x.id === id) || {}).styles || meta.styles || [];
@@ -32,11 +42,34 @@ export default function BrewForm({ item, kind, meta, onCancel, onSaved, onDelete
   const dirty = JSON.stringify(current) !== JSON.stringify({ ...JSON.parse(start.current), method: joinSteps(parseSteps(JSON.parse(start.current).method)) });
   const bottles = bottlesOf(form.batchLitres, form.category);
 
-  const setIng = (i, k, v) => setForm((f) => ({ ...f, ingredients: f.ingredients.map((g, j) => (j === i ? { ...g, [k]: v } : g)) }));
+  const setIng = (i, k, v) => {
+    const g = form.ingredients[i];
+    const now = { ...g, [k]: v };
+    setForm((f) => ({ ...f, ingredients: f.ingredients.map((x, j) => (j === i ? { ...x, [k]: v } : x)) }));
+    if (k !== 'amount' && k !== 'unit') return;
+    const was = linked.current[i] || g;
+    const res = amountChange(steps, form.ingredients, i, was, now);
+    if (!res) return;
+    linked.current[i] = now;
+    setSteps(res.steps);
+    flashSteps(res.changed);
+    setSynced((m) => ({ ...m, [i]: res.changed }));
+  };
+  const addSuggested = (i) => {
+    const g = form.ingredients[i];
+    const { text, at } = stepFor(steps, g, form.ingredients);
+    setSteps((l) => { const base = l.length === 1 && !l[0].trim() ? [] : l; const n = [...base]; n.splice(at, 0, text); return n; });
+    fresh.current.add(`s${at}`);
+    flashSteps([at]);
+    setDismissed((d) => new Set(d).add(i));
+    snack(`Added as step ${at + 1}. You can change its wording in the method.`);
+  };
+
   const addIng = () => setForm((f) => { fresh.current.add(`i${f.ingredients.length}`); return { ...f, ingredients: [...f.ingredients, blankIng()] }; });
   const removeIng = (i) => {
     const gone = form.ingredients[i];
     setForm((f) => ({ ...f, ingredients: f.ingredients.filter((_, j) => j !== i) }));
+    linked.current = {}; setSynced({}); setNamed(new Set()); setDismissed(new Set()); // the numbering has moved
     snack(`Removed ${gone.name || 'the ingredient'}.`, { action: { label: 'Undo', onClick: () => setForm((f) => { const l = [...f.ingredients]; l.splice(i, 0, gone); return { ...f, ingredients: l }; }) } });
   };
   const moveStep = (i, d) => setSteps((s) => { const l = [...s]; const [x] = l.splice(i, 1); l.splice(i + d, 0, x); return l; });
@@ -138,12 +171,26 @@ export default function BrewForm({ item, kind, meta, onCancel, onSaved, onDelete
                     <IconButton icon="del" label={`Remove ${g.name || 'this ingredient'}`} onClick={() => removeIng(i)} />
                   </div>
                   <div className="fgrid four">
-                    <TextField className="full" label="Ingredient" value={g.name} onChange={(v) => setIng(i, 'name', v)} />
-                    <TextField label="Amount" inputMode="decimal" value={g.amount} onChange={(v) => setIng(i, 'amount', v)} />
+                    <TextField className="full" label="Ingredient" value={g.name} onChange={(v) => setIng(i, 'name', v)} onBlur={() => g.name?.trim() && setNamed((n) => new Set(n).add(i))} />
+                    <TextField label="Amount" inputMode="decimal" value={g.amount} onChange={(v) => setIng(i, 'amount', v)}
+                      help={synced[i]?.length ? `Changed in step${synced[i].length > 1 ? 's' : ''} ${synced[i].map((k) => k + 1).join(', ')}` : undefined} />
                     <TextField label="Unit" value={g.unit} onChange={(v) => setIng(i, 'unit', v)} help="kg, g, L, tsp…" />
                     <SelectField label="Kind" value={g.type || 'other'} onChange={(v) => setIng(i, 'type', v)} options={ING_TYPES.map((t) => [t, `${ING_EMOJI[t]} ${t[0].toUpperCase()}${t.slice(1)}`])} />
                     <SelectField label="When" value={g.stage || 'primary'} onChange={(v) => setIng(i, 'stage', v)} options={ING_STAGES.map((s) => [s, STAGE_LABEL[s]])} />
                   </div>
+                  {i >= firstCount && named.has(i) && !dismissed.has(i) && g.name?.trim().length > 2 && !inMethod(steps, g) && (() => {
+                    const sug = stepFor(steps, g, form.ingredients);
+                    return (
+                      <div className="step-suggest" role="status">
+                        <span className="lab"><Icon n="sparkle" size={18} />No step uses {g.name.trim()} yet. Add this as step {sug.at + 1}?</span>
+                        <p>{sug.text}</p>
+                        <div className="acts">
+                          <Btn kind="text" onClick={() => setDismissed((d) => new Set(d).add(i))}>No thanks</Btn>
+                          <Btn kind="tonal" icon="add" onClick={() => addSuggested(i)}>Add step</Btn>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
               {!form.ingredients.length && <p className="muted">No ingredients yet.</p>}
@@ -155,7 +202,7 @@ export default function BrewForm({ item, kind, meta, onCancel, onSaved, onDelete
             <h2><Icon n="note" size={20} />Method</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {steps.map((s, i) => (
-                <div key={i} className="step-row" style={fresh.current.has(`s${i}`) ? undefined : { animation: 'none' }}>
+                <div key={i} className={`step-row ${flash.has(i) ? 'synced' : ''}`} style={fresh.current.has(`s${i}`) ? undefined : { animation: 'none' }}>
                   <span className="no">{i + 1}</span>
                   <TextArea label={`Step ${i + 1}`} rows={2} value={s} onChange={(v) => setSteps((l) => l.map((x, j) => (j === i ? v : x)))} />
                   <span className="tools">

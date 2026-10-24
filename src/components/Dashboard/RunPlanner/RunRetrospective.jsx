@@ -146,7 +146,7 @@ export default function RunRetrospective({ activityId, isDark, call, send, units
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {[['good', 'What went well', CheckCircle2, 'text-emerald-500'], ['watch', 'What to watch', AlertTriangle, 'text-amber-500'], ['learn', 'What it teaches', Lightbulb, 'text-sky-500']].map(([k, title, Icon, tone]) => (
             <div key={k} className={card}>
-              <div className={`flex items-center gap-2 font-black uppercase tracking-wider text-[10px] mb-2 ${tone}`}><Icon size={14} />{title}</div>
+              <div className={`rp-title flex items-center gap-2 font-black uppercase tracking-wider text-[10px] mb-2 ${tone}`}><Icon size={14} />{title}</div>
               {a.findings[k].length ? <ul className="flex flex-col gap-1.5">{a.findings[k].map((t) => <li key={t} className="leading-snug">{t}</li>)}</ul> : <div className={muted}>Nothing here this time.</div>}
             </div>
           ))}
@@ -156,7 +156,7 @@ export default function RunRetrospective({ activityId, isDark, call, send, units
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* what you took: correct anything the phone buttons missed */}
         <div className={card}>
-          <div className="flex items-center gap-2 font-black uppercase tracking-wider text-[10px] mb-2"><Cookie size={14} className="text-amber-500" />What you took</div>
+          <div className="rp-title flex items-center gap-2 font-black uppercase tracking-wider text-[10px] mb-2"><Cookie size={14} className="text-amber-500" />What you took</div>
           <p className={`mb-2 ${muted}`}>Carbs marked taken are logged to Nightscout as a note at that minute (a record only - AAPS does not count them as carbs). Minutes are from when you started.</p>
           <div className="flex flex-col gap-1.5">
             {intakes.length === 0 && <div className={muted}>Nothing recorded.</div>}
@@ -187,7 +187,7 @@ export default function RunRetrospective({ activityId, isDark, call, send, units
 
         {/* how it felt, pinned to the timeline */}
         <div className={card}>
-          <div className="flex items-center gap-2 font-black uppercase tracking-wider text-[10px] mb-2"><StickyNote size={14} className="text-indigo-500" />Your notes</div>
+          <div className="rp-title flex items-center gap-2 font-black uppercase tracking-wider text-[10px] mb-2"><StickyNote size={14} className="text-indigo-500" />Your notes</div>
           <div className="flex flex-wrap items-center gap-2 mb-2">
             <span className="font-bold shrink-0">How hard did it feel?</span>
             <div className="flex-1 min-w-[200px]">

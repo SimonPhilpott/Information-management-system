@@ -4,7 +4,8 @@ import {
   Layers, Plus, Minus, Download, Upload, Search, RefreshCw, Trash2, Copy, ExternalLink, FlaskConical, Sparkles,
   BarChart3, FileJson, FileText, ChevronLeft, AlertTriangle, CheckCircle2, Package, X, Wand2, ClipboardCopy, UserPlus, Mail, Eye, MessageCircleQuestion, Send,
 } from 'lucide-react';
-import PortalShell from './PortalShell';
+import ServicePage, { Fab } from '../Material/ServicePage';
+import { FilterChip, Segmented, useSnack } from '../HomebrewBeta/ui';
 import { CampaignList, CampaignDetail } from './CampaignsView';
 import { ArkhamList, ArkhamDetail } from './ArkhamCampaigns';
 import { CAMPAIGN_GAMES, canonicalCampaignPath } from './campaignPaths';
@@ -48,31 +49,26 @@ export default function DecksPortal({ theme = 'dark', onThemeToggle, setCurrentP
 
   const ui = {
     isDark,
-    panel: `rounded-2xl border p-4 sm:p-5 ${isDark ? 'bg-slate-900/40 border-white/5' : 'bg-white/70 border-[#2E2B27]/10 shadow-sm'}`,
-    field: `w-full px-3 py-2 rounded-xl text-sm outline-none border ${isDark ? 'bg-slate-950/60 border-white/10' : 'bg-white border-[#2E2B27]/10'}`,
-    muted: isDark ? 'text-slate-400' : 'text-slate-500',
-    soft: isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10',
-    row: isDark ? 'bg-slate-950/40 border-white/5' : 'bg-white border-[#2E2B27]/10',
-    primary: 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white',
+    // the IMS design (24 Oct 2026): these names are styled in Material/ims-m.css (.imsm-cm)
+    panel: 'cm-panel rounded-2xl border p-4 sm:p-5',
+    field: 'cm-field w-full px-3 py-2 rounded-xl text-sm outline-none border',
+    muted: 'cm-muted',
+    soft: 'cm-soft',
+    row: 'cm-row',
+    primary: 'cm-primary',
   };
 
   return (
-    <PortalShell title="Campaign Manager" subtitle="/campaigns • your card game campaigns, and the decks you play them with"
-      icon={Layers} gradient="from-emerald-600 to-teal-700" glow="rgba(16,185,129,0.3)" maxWidth="max-w-7xl"
-      isDark={isDark} onThemeToggle={onThemeToggle} setCurrentPath={setCurrentPath} notification={notification}>
+    <ServicePage title="Campaign Manager" icon="explore" accent="green" wide theme={theme} onThemeToggle={onThemeToggle} setCurrentPath={setCurrentPath}
+      sub="Your card game campaigns, and the decks you play them with.">
+      <ToastBridge message={notification} />
+      <div className="rpb-legacy imsm-cm flex flex-col gap-4">
       {/* a tab for each game with campaigns */}
-      <div className={`flex gap-1 border-b ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
-        {CAMPAIGN_GAMES.map((g) => (
-          <button key={g.key} onClick={() => go(`/campaigns/${g.key}`)}
-            className={`px-4 py-2 -mb-px text-sm font-bold border-b-2 ${g.key === gameKey ? 'border-emerald-500' : `border-transparent ${ui.muted}`}`}>{g.name}</button>
-        ))}
+      <div className="cm-games">
+        {CAMPAIGN_GAMES.map((g) => <FilterChip key={g.key} on={g.key === gameKey} onClick={() => go(`/campaigns/${g.key}`)}>{g.name}</FilterChip>)}
       </div>
       {!deckId && !campaignId && (
-        <div className="flex gap-2">
-          {[[`/campaigns/${gameKey}`, 'Campaigns', Sparkles, !onDecks], [`/campaigns/${gameKey}/decks`, 'Decks', Layers, onDecks]].map(([to, label, Icon, active]) => (
-            <button key={to} onClick={() => go(to)} className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 ${active ? ui.primary : ui.soft}`}><Icon size={15} />{label}</button>
-          ))}
-        </div>
+        <Segmented label="Campaigns or decks" value={onDecks ? 'decks' : 'campaigns'} onChange={(v) => go(v === 'decks' ? `/campaigns/${gameKey}/decks` : `/campaigns/${gameKey}`)} options={[['campaigns', 'Campaigns'], ['decks', 'Decks']]} />
       )}
       {deckId ? <DeckEditor key={deckId} id={deckId} ui={ui} toast={toast} go={go} />
         : campaignId && gameKey === 'ahlcg' ? <ArkhamDetail key={campaignId} id={campaignId} ui={ui} toast={toast} go={go} />
@@ -80,8 +76,17 @@ export default function DecksPortal({ theme = 'dark', onThemeToggle, setCurrentP
         : onDecks ? <DeckList key={gameKey} gameKey={gameKey} ui={ui} toast={toast} go={go} />
         : gameKey === 'ahlcg' ? <ArkhamList ui={ui} toast={toast} go={go} />
         : <CampaignList ui={ui} toast={toast} go={go} />}
-    </PortalShell>
+      </div>
+      {!deckId && !campaignId && <Fab label={onDecks ? 'New deck' : 'New campaign'} onClick={() => window.dispatchEvent(new Event(onDecks ? 'cm-new-deck' : 'cm-new-campaign'))} />}
+    </ServicePage>
   );
+}
+
+// the page's own messages, shown as the IMS snackbar
+function ToastBridge({ message }) {
+  const snack = useSnack();
+  useEffect(() => { if (message?.msg) snack(message.msg, message.type === 'error' ? { error: true } : undefined); }, [message, snack]);
+  return null;
 }
 
 // ---- deck list ------------------------------------------------------------------------------------------
@@ -116,6 +121,10 @@ function DeckList({ ui, toast, go, gameKey = 'lotr' }) {
   const newDeck = async () => {
     try { const d = await api(`/api/decks/${gameKey}/decks`, { method: 'POST', body: { name: 'New deck' } }); go(`/campaigns/${gameKey}/decks/${d.deck.id}`); } catch (err) { toast(err.message, 'error'); }
   };
+  // the New deck button in the bottom right
+  const newRef = useRef(newDeck);
+  newRef.current = newDeck;
+  useEffect(() => { const on = () => newRef.current(); window.addEventListener('cm-new-deck', on); return () => window.removeEventListener('cm-new-deck', on); }, []);
 
   return (
     <>

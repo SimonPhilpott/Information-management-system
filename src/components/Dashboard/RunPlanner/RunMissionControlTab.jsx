@@ -105,7 +105,11 @@ export default function RunMissionControlTab({
   field,
   btn,
   ghost,
-  targets
+  targets,
+  // the Run planner beta draws these two itself (its Today verdict and its own plan section)
+  hideNow = false,
+  hidePlan = false,
+  hideLoad = false, // the beta draws training load itself too
 }) {
   // signing in to a different Komoot account (the current one stays connected until the new one works)
   const weather = plan?.weather || demand?.weather;
@@ -140,7 +144,7 @@ export default function RunMissionControlTab({
                 <RouteMap route={routeFull} units={units} />
               </div>
               <div className="lg:col-span-2 min-w-0 flex flex-col gap-3">
-                <div className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'opacity-70 text-slate-300' : 'text-[#2E2B27]'}`}>Elevation Profile</div>
+                <div className={`rp-title text-[10px] font-bold uppercase tracking-wider ${isDark ? 'opacity-70 text-slate-300' : 'text-[#2E2B27]'}`}>Elevation Profile</div>
                 <ElevationProfile route={routeFull} units={units} />
                 <p className={`text-[10px] leading-relaxed ${isDark ? 'text-slate-500' : 'text-[#6A645D]'}`}>
                   {dist(routeFull.distanceKm, units, 1)} {units}, {elev(routeFull.gainM, units)} {elevUnit(units)} up and {elev(routeFull.lossM, units)} {elevUnit(units)} down. Steepness: green flat, amber climbing, red steep, blue downhill.
@@ -153,7 +157,7 @@ export default function RunMissionControlTab({
             <div className={`rounded-xl border p-3 mb-4 ${isDark ? 'border-white/10 bg-slate-950/30' : 'border-[#2E2B27]/10 bg-[#FAF7F2]'}`}>
               {routeHistory.count > 0 ? (
                 <>
-                  <div className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${isDark ? 'opacity-70 text-slate-300' : 'text-[#2E2B27]'}`}>
+                  <div className={`rp-title text-[10px] font-bold uppercase tracking-wider mb-2 ${isDark ? 'opacity-70 text-slate-300' : 'text-[#2E2B27]'}`}>
                     Your previous runs of this route ({routeHistory.count})
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -221,7 +225,7 @@ export default function RunMissionControlTab({
       )}
 
       {/* TRAINING LOAD, RAMP AND RECOVERY (Strava) */}
-      <TrainingLoadCard isDark={isDark} units={units} />
+      {!hideLoad && <TrainingLoadCard isDark={isDark} units={units} />}
 
       {/* LIVE ROUTE WEATHER & DYNAMIC HYDRATION BAR */}
       {weather?.current && hydration && (
@@ -324,12 +328,12 @@ export default function RunMissionControlTab({
       )}
 
       {/* 5. WHERE YOU ARE NOW - tiles with the go / eat first / wait verdict */}
-      <div className={panel}>
+      {!hideNow && <div className={panel}>
         <WhereYouAreNow form={form} setForm={setForm} now={now} useCurrent={useCurrent} plan={plan} isDark={isDark} stepCarbs={stepCarbs} busy={busy} />
-      </div>
+      </div>}
 
       {/* 6. THE RUN PLAN - its own section under "Where you are now", always open, filled in as things change */}
-      <RunPlanDock
+      {!hidePlan && <RunPlanDock
         plan={plan}
         busy={busy === 'estimate'}
         isDark={isDark}
@@ -437,7 +441,7 @@ export default function RunMissionControlTab({
           )}
         </>
       )}
-      </RunPlanDock>
+      </RunPlanDock>}
     </div>
   );
 }

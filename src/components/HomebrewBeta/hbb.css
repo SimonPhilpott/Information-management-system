@@ -101,10 +101,11 @@
   color-scheme: dark;
 }
 .hbb *, .hbb *::before, .hbb *::after { box-sizing: border-box; }
-.hbb a { color: inherit; text-decoration: none; }
-.hbb a:hover { color: inherit; }
-.hbb button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
-.hbb input, .hbb select, .hbb textarea { font: inherit; color: inherit; }
+/* (the Run planner beta's embedded classic panels, .rpb-legacy, keep their own Tailwind styles) */
+.hbb a:not(:where(.rpb-legacy *)) { color: inherit; text-decoration: none; }
+.hbb a:not(:where(.rpb-legacy *)):hover { color: inherit; }
+.hbb button:not(:where(.rpb-legacy *)) { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.hbb input:not(:where(.rpb-legacy *)), .hbb select:not(:where(.rpb-legacy *)), .hbb textarea:not(:where(.rpb-legacy *)) { font: inherit; color: inherit; }
 .hbb :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .hbb ::selection { background: var(--primary-c); color: var(--on-primary-c); }
 .hbb .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -126,7 +127,7 @@
 .hbb .muted { color: var(--on-surface-var); }
 .hbb .num { font-variant-numeric: tabular-nums; }
 .hbb h1, .hbb h2, .hbb h3, .hbb h4 { margin: 0; text-wrap: balance; }
-.hbb p { margin: 0; }
+.hbb p:not(:where(.rpb-legacy *)) { margin: 0; }
 
 /* ---- icons: Material Symbols shapes, filled from currentColor ---- */
 .hbb .ic { width: 24px; height: 24px; flex: none; display: block; }
@@ -240,10 +241,10 @@
 /* the same 16dp above the filter chips (from the search bar) as below them (to the first card) */
 .hbb .shelf-head .chips { padding-top: 16px; padding-bottom: 0; }
 .hbb .shelf-head.lift { background: var(--surface-c); }
-.hbb .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.hbb .grid:not(:where(.rpb-legacy *)) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .hbb .shelf-end { height: 120px; } /* once, after the last card: room to scroll it clear of the New button */
-@media (min-width: 600px) { .hbb .grid { grid-template-columns: repeat(auto-fill, minmax(184px, 1fr)); gap: 16px; } }
-.hbb .wide .grid { grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); }
+@media (min-width: 600px) { .hbb .grid:not(:where(.rpb-legacy *)) { grid-template-columns: repeat(auto-fill, minmax(184px, 1fr)); gap: 16px; } }
+.hbb .wide .grid:not(:where(.rpb-legacy *)) { grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); }
 .hbb .gcard { position: relative; border-radius: 16px; background: var(--surface-c-low); border: 1px solid var(--outline-var); overflow: hidden; display: flex; flex-direction: column; text-align: left; transition: box-shadow .2s var(--std), border-color .2s linear, transform .25s var(--emph); }
 @media (hover: hover) { .hbb .gcard:hover { box-shadow: var(--shadow-2); border-color: transparent; } }
 .hbb .gcard.sel { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
@@ -735,3 +736,11 @@ html.hbb-liquid::view-transition-old(root) { z-index: 1; }
 .hbb .active-filters { padding: 0 0 12px; }
 .hbb .active-filters .chip .em { font-size: 18px; width: auto; margin-right: 6px; }
 .hbb .brand-bar .ims-back { flex: none; margin-left: -8px; }
+/* the method following the ingredients (24 Oct): a suggested step for a new ingredient, and a step that's just changed */
+.hbb .step-suggest { margin: -4px 8px 0 0; padding: 12px 14px; border-radius: 14px; background: var(--secondary-c); color: var(--on-secondary-c); display: flex; flex-direction: column; gap: 6px; animation: hbb-enter .3s var(--emph-decel) both; }
+.hbb .step-suggest .lab { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; }
+.hbb .step-suggest p { margin: 0; font-style: italic; }
+.hbb .step-suggest .acts { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.hbb .step-row.synced .tf textarea { animation: hbb-synced 1.6s var(--emph-decel); }
+@keyframes hbb-synced { 0%, 30% { background: var(--primary-c, var(--secondary-c)); } 100% { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .hbb .step-row.synced .tf textarea { animation: none; outline: 2px solid var(--primary); } }

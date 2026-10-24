@@ -58,6 +58,20 @@ router.put('/selected-route', (req, res) => {
   res.json({ success: true, routeId: id });
 });
 router.get('/routes', (req, res) => res.json({ success: true, routes: listRoutes() }));
+// every route's shape, cut down to a few dozen points, and its climb profile - the Run planner beta's route cards
+// draw the line and the hills from these (one request for the whole list, instead of each route in full)
+router.get('/routes/previews', (req, res) => {
+  try {
+    const thin = (l, n) => (l.length <= n ? l : Array.from({ length: n }, (_, i) => l[Math.round((i * (l.length - 1)) / (n - 1))]));
+    const previews = listRoutes().map((r) => {
+      const full = getRoute(r.id) || {};
+      const path = Array.isArray(full.path) ? full.path : [];
+      const near = (a, b) => a && b && Math.abs(a[0] - b[0]) < 0.002 && Math.abs(a[1] - b[1]) < 0.003;
+      return { id: r.id, line: thin(path, 64).map((p) => [Number(p[0].toFixed(5)), Number(p[1].toFixed(5))]), hills: thin(Array.isArray(full.profile) ? full.profile : [], 40).map((p) => Math.round(p[1])), loop: path.length > 2 && near(path[0], path[path.length - 1]) };
+    });
+    res.json({ success: true, previews });
+  } catch (err) { fail(res, err); }
+});
 // Route finder and duplicate finder (before /routes/:id, which would otherwise swallow these paths)
 router.get('/routes/find', async (req, res) => {
   try { res.json({ success: true, ...(await findRoutes({ shape: req.query.shape || 'any', minKm: req.query.minKm, maxKm: req.query.maxKm, minMinutes: req.query.minMinutes, maxMinutes: req.query.maxMinutes })) }); } catch (err) { fail(res, err); }

@@ -1,0 +1,274 @@
+/* Run planner (beta): the run plan, in the beta's own design (24 Oct) - PlanSection.jsx */
+.hbb.rpb .rpb-plan { display: flex; flex-direction: column; gap: 14px; padding-bottom: 96px; } /* room for the Send button */
+.hbb.rpb .rpb-h3 { font-family: var(--head-font); font-weight: 400; font-size: 20px; line-height: 26px; margin: 6px 0 10px; }
+.hbb.rpb .fab.busy svg { animation: rpb-spin 1s linear infinite; }
+@keyframes rpb-spin { to { transform: rotate(360deg); } }
+
+/* the numbers */
+.hbb.rpb .rpb-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.hbb.rpb .rpb-stat { position: relative; border-radius: 22px; padding: 14px 16px; background: var(--surface-c-lowest); border: 1px solid var(--outline-var); display: flex; flex-direction: column; gap: 2px; min-width: 0; animation: hbb-enter .35s var(--emph-decel) both; }
+.hbb.rpb.dark .rpb-stat { background: var(--surface-c-low); }
+.hbb.rpb .rpb-stat .k { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--primary); }
+.hbb.rpb .rpb-stat .v { font-size: 28px; line-height: 36px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hbb.rpb .rpb-stat .v small { font-size: 14px; font-weight: 600; color: var(--on-surface-var); margin-left: 3px; }
+.hbb.rpb .rpb-stat .v .to { font-size: 18px; color: var(--on-surface-var); margin: 0 6px; font-weight: 500; }
+.hbb.rpb .rpb-stat .s { font-size: 13px; line-height: 18px; color: var(--on-surface-var); }
+.hbb.rpb .rpb-stat.carbs .k { color: var(--tertiary); }
+.hbb.rpb .rpb-stat.water .k { color: #1f7fa6; }
+.hbb.rpb.dark .rpb-stat.water .k { color: #7fd0f0; }
+.hbb.rpb .rpb-stat.ok .v { color: var(--bg-ok); }
+.hbb.rpb .rpb-stat.low .v { color: var(--bg-low); }
+.hbb.rpb .rpb-stat .rpb-stepper { position: absolute; top: 6px; right: 6px; }
+.hbb.rpb .rpb-stepper { display: inline-flex; gap: 2px; border-radius: 20px; background: var(--surface-c-high); }
+.hbb.rpb .rpb-stepper .ib { width: 40px; height: 40px; color: var(--on-surface); }
+
+/* banners: anything to act on */
+.hbb.rpb .rpb-banner { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 20px; background: var(--surface-c-high); animation: hbb-enter .3s var(--emph-decel) both; }
+.hbb.rpb .rpb-banner .bic { width: 36px; height: 36px; flex: none; border-radius: 12px; display: grid; place-items: center; background: rgba(255, 255, 255, .5); }
+.hbb.rpb.dark .rpb-banner .bic { background: rgba(0, 0, 0, .2); }
+.hbb.rpb .rpb-banner .btx { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 2px; }
+.hbb.rpb .rpb-banner .btx b { font-size: 15px; line-height: 20px; }
+.hbb.rpb .rpb-banner .btx p { margin: 0; font-size: 14px; line-height: 20px; opacity: .9; }
+.hbb.rpb .rpb-banner .bact { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; align-self: center; }
+.hbb.rpb .rpb-banner.good { background: var(--primary-c); color: var(--on-primary-c); }
+.hbb.rpb .rpb-banner.info { background: #d6ecf6; color: #0b2c3b; }
+.hbb.rpb .rpb-banner.warn { background: var(--tertiary-c); color: var(--on-tertiary-c); }
+.hbb.rpb .rpb-banner.stop { background: #ffdad6; color: #410002; }
+.hbb.rpb.dark .rpb-banner.info { background: #12394a; color: #cdeaf7; }
+.hbb.rpb.dark .rpb-banner.stop { background: #93000a; color: #ffdad6; }
+
+/* the chart */
+.hbb.rpb .rpb-chartcard { padding: 14px 14px 10px; }
+.hbb.rpb .rpb-chartcard .hd { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-bottom: 8px; }
+.hbb.rpb .rpb-chartcard .hd h3 { margin: 0; font-family: var(--head-font); font-weight: 400; font-size: 20px; line-height: 26px; }
+.hbb.rpb .rpb-chartcard .hd .muted { font-size: 13px; }
+.hbb.rpb .rpb-chartcard .hd .grow { flex: 1; }
+
+/* the carb stops */
+.hbb.rpb .rpb-stops { display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 10px; }
+.hbb.rpb .rpb-stop { border-radius: 22px; padding: 10px 10px 12px 14px; background: var(--tertiary-c); color: var(--on-tertiary-c); display: flex; flex-direction: column; gap: 6px; animation: hbb-enter .3s var(--emph-decel) both; }
+.hbb.rpb .rpb-stop .top { display: flex; align-items: center; gap: 10px; }
+.hbb.rpb .rpb-stop .no { width: 30px; height: 30px; flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 800; background: var(--tertiary); color: #fff; }
+.hbb.rpb.dark .rpb-stop .no { color: #2c1800; }
+.hbb.rpb .rpb-stop .when { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 18px; }
+.hbb.rpb .rpb-stop .when .muted { color: inherit; opacity: .75; font-size: 13px; }
+.hbb.rpb .rpb-stop .min { display: inline-flex; align-items: baseline; gap: 4px; font-weight: 700; }
+.hbb.rpb .rpb-stop .min input { width: 54px; height: 30px; padding: 0 8px; border-radius: 8px; border: 1px solid currentColor; background: rgba(255, 255, 255, .55); color: inherit; font-size: 16px; font-weight: 700; -moz-appearance: textfield; }
+.hbb.rpb.dark .rpb-stop .min input { background: rgba(0, 0, 0, .2); }
+.hbb.rpb .rpb-stop .min input::-webkit-inner-spin-button { -webkit-appearance: none; }
+.hbb.rpb .rpb-stop .top .ib { width: 36px; height: 36px; color: inherit; }
+.hbb.rpb .rpb-stop .amt { display: flex; align-items: center; gap: 8px; }
+.hbb.rpb .rpb-stop .g { font-size: 30px; line-height: 36px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.hbb.rpb .rpb-stop .g small { font-size: 15px; margin-left: 2px; }
+.hbb.rpb .rpb-stop .ml { flex: 1; font-size: 13px; opacity: .8; white-space: nowrap; }
+.hbb.rpb .rpb-stop .rpb-stepper { background: rgba(255, 255, 255, .5); }
+.hbb.rpb.dark .rpb-stop .rpb-stepper { background: rgba(0, 0, 0, .2); }
+.hbb.rpb .rpb-stop .rpb-stepper .ib { color: inherit; }
+.hbb.rpb .rpb-stop.add { align-items: center; justify-content: center; gap: 4px; min-height: 104px; background: transparent; border: 2px dashed var(--tertiary); color: var(--tertiary); font-weight: 700; }
+
+/* the detail, folded away */
+.hbb.rpb .rpb-folds { display: flex; flex-direction: column; gap: 8px; }
+.hbb.rpb .rpb-fold { border-radius: 20px; background: var(--surface-c-lowest); border: 1px solid var(--outline-var); overflow: hidden; }
+.hbb.rpb.dark .rpb-fold { background: var(--surface-c-low); }
+.hbb.rpb .rpb-fold summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 14px 16px; color: var(--primary); }
+.hbb.rpb .rpb-fold summary::-webkit-details-marker { display: none; }
+.hbb.rpb .rpb-fold summary span { flex: 1; font-family: var(--head-font); font-size: 19px; line-height: 24px; color: var(--on-surface); }
+.hbb.rpb .rpb-fold summary > :last-child { transition: transform .25s var(--emph); }
+.hbb.rpb .rpb-fold[open] summary > :last-child { transform: rotate(180deg); }
+.hbb.rpb .rpb-fold .fb { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 21px; }
+.hbb.rpb .rpb-fold .fb p { margin: 0; }
+.hbb.rpb .rpb-checks { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.hbb.rpb .rpb-checks li { display: flex; gap: 10px; align-items: flex-start; }
+.hbb.rpb .rpb-checks li > :first-child { flex: none; margin-top: 1px; color: var(--bg-ok); }
+.hbb.rpb .rpb-checks li.look > :first-child { color: var(--tertiary); }
+.hbb.rpb .rpb-whatif { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.hbb.rpb .rpb-whatif h4 { margin: 0 0 6px; font-family: var(--head-font); font-weight: 400; font-size: 17px; }
+.hbb.rpb .rpb-whatif table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.hbb.rpb .rpb-whatif th { text-align: right; font-size: 12px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--on-surface-var); padding: 4px 0; }
+.hbb.rpb .rpb-whatif td { text-align: right; padding: 6px 0; border-top: 1px solid var(--outline-var); }
+.hbb.rpb .rpb-whatif th:first-child, .hbb.rpb .rpb-whatif td:first-child { text-align: left; font-weight: 700; }
+.hbb.rpb .rpb-whatif td.ok { color: var(--bg-ok); font-weight: 700; }
+.hbb.rpb .rpb-whatif td.low { color: var(--bg-low); font-weight: 700; }
+.hbb.rpb .rpb-sources { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.hbb.rpb .rpb-sources a { color: var(--primary); display: inline-flex; align-items: center; gap: 4px; text-decoration: underline; text-underline-offset: 2px; }
+
+/* OpenStreetMap tiles, toned to the green theme (route cards, the route's map, the replay map) */
+.hbb.rpb image[href*="tile.openstreetmap.org"] { filter: grayscale(1) sepia(.35) hue-rotate(55deg) saturate(1.5) brightness(1.04) contrast(.92); }
+.hbb.rpb.dark image[href*="tile.openstreetmap.org"] { filter: grayscale(1) invert(.92) sepia(.4) hue-rotate(55deg) saturate(1.3) brightness(.85) contrast(.95); }
+
+/* the replay: the map beside the chart is as wide as the chart is tall, so the whole route shows (it was cropped) */
+@media (min-width: 1024px) { .hbb.rpb .rpb-legacy [class*="grid-cols-[minmax(0,1fr)_300px]"] { grid-template-columns: minmax(0, 1fr) 440px; } }
+
+/* ---- the route on its map (RouteMapArt.jsx): cards and the route's own page ---- */
+.hbb.rpb .rpb-map { position: relative; display: block; overflow: hidden; background: #e6efdc; }
+.hbb.rpb.dark .rpb-map { background: #1c251a; }
+.hbb.rpb .rpb-map.big { aspect-ratio: 640 / 400; }
+.hbb.rpb .rpb-map svg { display: block; width: 100%; height: 100%; }
+.hbb.rpb .rpb-map .wash { fill: rgba(253, 248, 243, .14); }
+.hbb.rpb.dark .rpb-map .wash { fill: rgba(0, 0, 0, .12); }
+.hbb.rpb .rpb-map .hills { fill: rgba(47, 107, 60, .22); }
+.hbb.rpb .rpb-map .reveal { fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
+.hbb.rpb .rpb-map .reveal.drawn { animation: rpb-draw 1.6s cubic-bezier(.45, 0, .25, 1) .15s forwards; }
+.hbb.rpb .rpb-map .under { fill: none; stroke: rgba(255, 255, 255, .95); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+.hbb.rpb .rpb-map .line { fill: none; stroke: var(--primary); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.hbb.rpb.dark .rpb-map .under { stroke: rgba(0, 0, 0, .55); }
+.hbb.rpb .rpb-map .start { fill: var(--primary); stroke: #fff; stroke-width: 2.5; }
+.hbb.rpb .rpb-map .end { fill: #fff; stroke: var(--primary); stroke-width: 2.5; }
+.hbb.rpb .rpb-map .end.in { animation: rpb-pop .3s var(--emph-decel) 1.6s both; }
+.hbb.rpb .rpb-map .mark { opacity: 0; transform-box: fill-box; transform-origin: center; }
+.hbb.rpb .rpb-map .mark.in { animation: rpb-pop .3s var(--emph-decel) both; }
+.hbb.rpb .rpb-map .mark circle { fill: #10261a; stroke: #fff; stroke-width: 1.5; }
+.hbb.rpb .rpb-map .mark text { fill: #fff; font-size: 10px; font-weight: 800; }
+.hbb.rpb .rpb-map .osm { font-size: 9px; fill: #33402f; opacity: .8; }
+@keyframes rpb-pop { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .hbb.rpb .rpb-map .reveal { stroke-dashoffset: 0; animation: none !important; }
+  .hbb.rpb .rpb-map .mark, .hbb.rpb .rpb-map .end { opacity: 1; animation: none !important; }
+}
+/* zoom, and Play to draw the route again */
+.hbb.rpb .rpb-map .zoom { position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column; gap: 2px; padding: 2px; border-radius: 26px; background: var(--surface-c-lowest); box-shadow: var(--shadow-2); }
+.hbb.rpb .rpb-map .zoom .ib { width: 44px; height: 44px; color: var(--on-surface); }
+.hbb.rpb .rpb-map.zoomed svg { cursor: grab; }
+
+/* the plan chart at its real size: its small print brought up to a readable size */
+.hbb.rpb svg[aria-label^="Run plan:"] text[font-size="8"], .hbb.rpb svg[aria-label^="Run plan:"] text[font-size="9"] { font-size: 11.5px; }
+.hbb.rpb svg[aria-label^="Run plan:"] text[font-size="10"] { font-size: 12px; }
+
+/* ---- the run as a track (Timeline.jsx, Option C) ---- */
+.hbb.rpb .rpb-track { width: 100%; min-width: 0; color: var(--on-surface-var); }
+.hbb.rpb .rpb-track svg { display: block; overflow: visible; }
+.hbb.rpb .rpb-track .lab { font-size: 12px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; fill: var(--primary); }
+.hbb.rpb .rpb-track .gband { fill: var(--bg-ok); fill-opacity: .09; }
+.hbb.rpb .rpb-track .gline { fill: none; stroke: var(--bg-ok); stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
+.hbb.rpb .rpb-track .hills { fill: #9fcf8f; fill-opacity: .55; }
+.hbb.rpb.dark .rpb-track .hills { fill: #3f6b3a; fill-opacity: .8; }
+.hbb.rpb .rpb-track .track { stroke: var(--primary); stroke-width: 6; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
+.hbb.rpb .rpb-track .tick { stroke: var(--outline); }
+.hbb.rpb .rpb-track .km { font-size: 12px; fill: var(--on-surface-var); }
+.hbb.rpb .rpb-track .km.b { font-weight: 800; fill: var(--on-surface); }
+.hbb.rpb .rpb-track .finish { fill: var(--primary); }
+.hbb.rpb .rpb-track .drink { fill: #1f8fbf; stroke: var(--surface-c-lowest); stroke-width: 2; }
+.hbb.rpb .rpb-track .stem { stroke: var(--tertiary); stroke-width: 2.5; }
+.hbb.rpb .rpb-track .dot { fill: var(--surface-c-lowest); stroke: var(--tertiary); stroke-width: 3.5; }
+.hbb.rpb .rpb-track .cpill { fill: var(--tertiary); }
+.hbb.rpb .rpb-track .pg { font-size: 16px; font-weight: 800; fill: #fff; }
+.hbb.rpb.dark .rpb-track .pg { fill: #2c1800; }
+.hbb.rpb .rpb-track .stop { opacity: 0; transform-box: fill-box; transform-origin: 50% 100%; }
+.hbb.rpb .rpb-track.in .gline { animation: rpb-draw 1.4s var(--emph) .1s forwards; }
+.hbb.rpb .rpb-track.in .track { animation: rpb-draw 1s var(--emph) forwards; }
+.hbb.rpb .rpb-track.in .stop { animation: rpb-rise .45s var(--emph-decel) both; }
+@keyframes rpb-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .hbb.rpb .rpb-track .gline, .hbb.rpb .rpb-track .track { stroke-dashoffset: 0; animation: none !important; } .hbb.rpb .rpb-track .stop { opacity: 1; animation: none !important; } }
+
+/* ---- stop by stop (Timeline.jsx, Option D) ---- */
+.hbb.rpb .rpb-moments { display: flex; flex-direction: column; }
+.hbb.rpb .rpb-moments .mo { display: grid; grid-template-columns: 76px 28px minmax(0, 1fr); gap: 10px; animation: hbb-enter .3s var(--emph-decel) both; }
+.hbb.rpb .rpb-moments .mt { text-align: right; padding-top: 12px; line-height: 18px; }
+.hbb.rpb .rpb-moments .mt b { display: block; font-size: 16px; font-variant-numeric: tabular-nums; }
+.hbb.rpb .rpb-moments .mt small { display: block; font-size: 12px; color: var(--on-surface-var); }
+.hbb.rpb .rpb-moments .mrail { position: relative; display: flex; justify-content: center; }
+.hbb.rpb .rpb-moments .mrail::before { content: ''; position: absolute; top: 14px; bottom: -14px; width: 4px; border-radius: 2px; background: var(--bg-ok); }
+.hbb.rpb .rpb-moments .mrail.near::before { background: var(--bg-high); }
+.hbb.rpb .rpb-moments .mrail.low::before { background: var(--bg-low); }
+.hbb.rpb .rpb-moments .mrail.none::before { display: none; }
+.hbb.rpb .rpb-moments .mrail i { position: relative; margin-top: 14px; width: 20px; height: 20px; border-radius: 50%; background: var(--surface-c-lowest); border: 4px solid var(--primary); }
+.hbb.rpb .rpb-moments .stop .mrail i { border-color: var(--tertiary); }
+.hbb.rpb .rpb-moments .mbd { padding: 4px 0 16px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.hbb.rpb .rpb-moments .ev { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 8px 8px 14px; border-radius: 18px; background: var(--tertiary-c); color: var(--on-tertiary-c); }
+.hbb.rpb .rpb-moments .ev.quiet { background: var(--surface-c-high); color: var(--on-surface); padding: 10px 14px; }
+.hbb.rpb .rpb-moments .ev .mamt { font-size: 26px; line-height: 32px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.hbb.rpb .rpb-moments .ev .mamt small { font-size: 14px; margin-left: 2px; }
+.hbb.rpb .rpb-moments .ev .mwhat { flex: 1; min-width: 140px; font-size: 14px; }
+.hbb.rpb .rpb-moments .ev .med { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.hbb.rpb .rpb-moments .ev .mmin { display: inline-flex; align-items: baseline; gap: 4px; font-weight: 700; }
+.hbb.rpb .rpb-moments .ev .mmin input { width: 56px; height: 36px; padding: 0 8px; border-radius: 10px; border: 1px solid currentColor; background: rgba(255, 255, 255, .55); color: inherit; font-size: 16px; font-weight: 700; -moz-appearance: textfield; }
+.hbb.rpb.dark .rpb-moments .ev .mmin input { background: rgba(0, 0, 0, .2); }
+.hbb.rpb .rpb-moments .ev .mmin input::-webkit-inner-spin-button { -webkit-appearance: none; }
+.hbb.rpb .rpb-moments .ev .rpb-stepper { background: rgba(255, 255, 255, .5); }
+.hbb.rpb.dark .rpb-moments .ev .rpb-stepper { background: rgba(0, 0, 0, .2); }
+.hbb.rpb .rpb-moments .ev .ib { color: inherit; }
+.hbb.rpb .rpb-moments .mgl { font-size: 13px; padding-left: 2px; color: var(--on-surface-var); }
+.hbb.rpb .rpb-moments .mgl.near { color: var(--bg-high); font-weight: 700; }
+.hbb.rpb .rpb-moments .mgl.low { color: var(--bg-low); font-weight: 700; }
+.hbb.rpb .rpb-moments .mo-add { margin: 4px 0 0 114px; height: 48px; padding: 0 18px; border-radius: 24px; border: 2px dashed var(--tertiary); color: var(--tertiary); font-weight: 700; display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; }
+@media (max-width: 520px) {
+  .hbb.rpb .rpb-moments .mo { grid-template-columns: 58px 24px minmax(0, 1fr); gap: 8px; }
+  .hbb.rpb .rpb-moments .mo-add { margin-left: 90px; }
+}
+
+/* the track for a run looked back on: the plan dashed, a planned stop you didn't take outlined */
+.hbb.rpb .rpb-track .gplan { fill: none; stroke: var(--on-surface-var); stroke-width: 2; stroke-dasharray: 6 5; stroke-opacity: .7; }
+.hbb.rpb .rpb-track .stop.ghost .cpill { fill: var(--surface-c-lowest); stroke: var(--tertiary); stroke-width: 2; stroke-dasharray: 4 3; }
+.hbb.rpb .rpb-track .stop.ghost .pg { fill: var(--tertiary); }
+.hbb.rpb .rpb-track .stop.ghost .stem { stroke-dasharray: 3 3; }
+
+/* the track's water, insulin on board and the detailed chart (24 Oct) */
+.hbb.rpb .rpb-track .pml { font-size: 13px; font-weight: 800; fill: #0b4a63; }
+.hbb.rpb.dark .rpb-track .pml { fill: #cdeaf7; }
+.hbb.rpb .rpb-track .wpill { fill: #cfe9f5; stroke: #1f8fbf; stroke-width: 1.5; }
+.hbb.rpb.dark .rpb-track .wpill { fill: #12394a; stroke: #7fd0f0; }
+.hbb.rpb .rpb-track .wstem { stroke: #1f8fbf; stroke-width: 2; }
+.hbb.rpb .rpb-track .ml { font-size: 12px; font-weight: 700; fill: #1f8fbf; }
+.hbb.rpb.dark .rpb-track .ml { fill: #7fd0f0; }
+.hbb.rpb .rpb-track .drink { fill: #1f8fbf; stroke: var(--surface-c-lowest); stroke-width: 2.5; }
+.hbb.rpb .rpb-track .iband { fill: #7c5cc4; fill-opacity: .06; }
+.hbb.rpb .rpb-track .iarea { fill: #7c5cc4; fill-opacity: .18; }
+.hbb.rpb .rpb-track .iline { fill: none; stroke: #7c5cc4; stroke-width: 2.5; stroke-linecap: round; }
+.hbb.rpb.dark .rpb-track .iarea { fill: #b9a3f0; fill-opacity: .22; }
+.hbb.rpb.dark .rpb-track .iline { stroke: #b9a3f0; }
+.hbb.rpb .rpb-track .lab.ilab { fill: #6a4cb3; }
+.hbb.rpb.dark .rpb-track .lab.ilab { fill: #c9b7f5; }
+.hbb.rpb .rpb-track .ival { font-size: 12px; font-weight: 800; fill: #4b3290; }
+.hbb.rpb.dark .rpb-track .ival { fill: #e2d8fb; }
+.hbb.rpb .rpb-track .gnocarb { fill: none; stroke: var(--bg-low); stroke-width: 2; stroke-dasharray: 6 5; stroke-opacity: .7; }
+.hbb.rpb .rpb-track .stop.movable { cursor: ew-resize; touch-action: none; }
+.hbb.rpb .rpb-track.dragging .stop { animation: none; opacity: 1; }
+
+/* the run beside its map (the plan's track, the replay) */
+.hbb.rpb .rpb-withmap { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (min-width: 1100px) { .hbb.rpb .rpb-withmap { grid-template-columns: minmax(0, 1fr) 360px; } }
+.hbb.rpb .rpb-withmap .rpb-map { border-radius: 18px; aspect-ratio: 1 / 1; border: 1px solid var(--outline-var); }
+.hbb.rpb .rpb-map .mk rect { fill: var(--tertiary); }
+.hbb.rpb .rpb-map .mk text { font-size: 12px; font-weight: 800; fill: #fff; }
+.hbb.rpb.dark .rpb-map .mk text { fill: #2c1800; }
+.hbb.rpb .rpb-map .mk circle { fill: #fff; stroke: var(--tertiary); stroke-width: 3; }
+.hbb.rpb .rpb-map .runner { fill: #1f8fbf; stroke: #fff; stroke-width: 3; }
+.hbb.rpb .rpb-map .runner-halo { fill: #1f8fbf; fill-opacity: .25; }
+
+/* touch or point at the track for the numbers at that minute (24 Oct) */
+.hbb.rpb .rpb-track { position: relative; }
+.hbb.rpb .rpb-track svg { cursor: crosshair; }
+.hbb.rpb .rpb-track .pline { stroke: var(--on-surface); stroke-width: 1.5; stroke-dasharray: 4 3; stroke-opacity: .55; }
+.hbb.rpb .rpb-track .pdot { fill: var(--surface-c-lowest); stroke: var(--bg-ok); stroke-width: 3; }
+.hbb.rpb .rpb-track .pdot.gplan { stroke: var(--on-surface-var); }
+.hbb.rpb .rpb-track .pdot.gnocarb { stroke: var(--bg-low); }
+.hbb.rpb .rpb-track .prunner { fill: #1f8fbf; stroke: #fff; stroke-width: 3; }
+.hbb.rpb .rpb-track .probe.play .pline { stroke: #1f8fbf; stroke-dasharray: none; stroke-opacity: .7; }
+.hbb.rpb .rpb-readout { position: absolute; top: -6px; z-index: 2; width: 220px; padding: 8px 12px; border-radius: 16px; background: var(--inverse-surface); color: var(--inverse-on-surface); box-shadow: var(--shadow-2); display: flex; flex-direction: column; gap: 2px; font-size: 13px; line-height: 18px; pointer-events: none; transform: translateY(-100%); animation: hbb-enter .15s var(--emph-decel) both; }
+.hbb.rpb .rpb-readout > b { font-size: 14px; }
+.hbb.rpb .rpb-readout span { display: flex; align-items: center; gap: 6px; }
+.hbb.rpb .rpb-readout span i { width: 10px; height: 10px; border-radius: 50%; flex: none; background: #7fd197; }
+.hbb.rpb .rpb-readout span.gplan i { background: #c2c9b8; }
+.hbb.rpb .rpb-readout span.gnocarb i { background: #ff8a7a; }
+.hbb.rpb .rpb-readout span.iob i { background: #b9a3f0; }
+.hbb.rpb .rpb-readout span.ht i { background: #9fcf8f; border-radius: 2px; }
+.hbb.rpb .rpb-readout span b { margin-left: auto; }
+.hbb.rpb .rpb-chartcard:has(.rpb-readout) { overflow: visible; }
+.hbb.rpb .rpb-map .done { fill: none; stroke: #1f8fbf; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; stroke-opacity: .85; }
+
+/* ---- the replay (Replay.jsx) ---- */
+.hbb.rpb .rpb-clock { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.hbb.rpb .rpb-clock small { font-size: 13px; font-weight: 600; color: var(--on-surface-var); }
+.hbb.rpb .rpb-player { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--outline-var); }
+.hbb.rpb .rpb-player .playbtn { width: 56px; height: 56px; border-radius: 18px; background: var(--grad); color: var(--on-grad); }
+.hbb.rpb .rpb-player input[type=range] { flex: 1; min-width: 180px; accent-color: var(--primary); height: 32px; }
+
+/* the hills by steepness (green flat, yellow climbing, orange and red steep, blue downhill) */
+.hbb.rpb .rpb-track .hillsg path { stroke: none; }
+.hbb.rpb .rpb-track .hillsg .st1 { fill: #6fcf7f; fill-opacity: .55; }
+.hbb.rpb .rpb-track .hillsg .st2 { fill: #f2c94c; fill-opacity: .75; }
+.hbb.rpb .rpb-track .hillsg .st3 { fill: #f2994a; fill-opacity: .8; }
+.hbb.rpb .rpb-track .hillsg .st4 { fill: #dc4c3c; fill-opacity: .8; }
+.hbb.rpb .rpb-track .hillsg .stdown { fill: #56b8e6; fill-opacity: .6; }
+.hbb.rpb .rpb-track .hillsg .hilltop { fill: none; stroke: #3d5a3f; stroke-opacity: .55; stroke-width: 1.5; }
+.hbb.rpb.dark .rpb-track .hillsg .hilltop { stroke: #c8e6c0; }

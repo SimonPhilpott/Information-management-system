@@ -122,7 +122,7 @@ export default function RunGaugesBar({
         return (
           <div className={`flex flex-col justify-between p-3.5 rounded-2xl border ${isDark ? 'bg-slate-900/60 border-white/10 shadow-lg shadow-black/20' : 'bg-white border-[#2E2B27]/10 shadow-sm'}`}>
             <div className="w-full flex flex-col items-start gap-1 mb-1">
-              <span className={`text-sm font-black uppercase tracking-wide ${isDark ? 'text-slate-100' : 'text-[#2E2B27]'}`}>Weather</span>
+              <span className={`rp-title text-sm font-black uppercase tracking-wide ${isDark ? 'text-slate-100' : 'text-[#2E2B27]'}`}>Weather</span>
               <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${isDark ? 'bg-sky-500/10 border-sky-500/25 text-sky-300' : 'bg-sky-50 border-sky-300 text-sky-900'}`}>{c.condition}</span>
             </div>
             {(() => {

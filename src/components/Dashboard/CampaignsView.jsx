@@ -361,6 +361,7 @@ export function CampaignList({ ui, toast, go }) {
   const [opts, setOpts] = useState(null);
   const [decks, setDecks] = useState([]);
   const [adding, setAdding] = useState(false);
+  useEffect(() => { const on = () => { setAdding(true); window.scrollTo?.(0, 0); }; window.addEventListener('cm-new-campaign', on); return () => window.removeEventListener('cm-new-campaign', on); }, []);
   const [draft, setDraft] = useState({ name: '', kind: 'The Lord of the Rings saga', players: {} });
   const load = useCallback(() => api('/api/decks/campaigns').then((d) => setList(d.campaigns)).catch((err) => toast(err.message, 'error')), [toast]);
   useEffect(() => {

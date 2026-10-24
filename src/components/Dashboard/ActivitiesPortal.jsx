@@ -36,7 +36,7 @@ function Delta({ now, before, invert = false }) {
 const LOW = 4.0, HIGH = 7.5;
 
 // One activity's glucose and insulin on board, from the Nightscout log.
-function GlucoseDetail({ id, km, isDark, sessionTag, onUpdateTag }) {
+export function GlucoseDetail({ id, km, isDark, sessionTag, onUpdateTag }) {
   const [state, setState] = useState({ loading: true });
   useEffect(() => {
     let live = true;
@@ -285,7 +285,7 @@ function GoalsPanel({ isDark, units, panel, field, label, btn, ghost, showToast 
 }
 
 // AI review of one run against the runner's targets, with advice for next time on the same route.
-function RunInsight({ id, km, isDark, sessionTag, onUpdateTag }) {
+export function RunInsight({ id, km, isDark, sessionTag, onUpdateTag }) {
   const { units } = useUnits();
   const [insight, setInsight] = useState(null);
   const [routes, setRoutes] = useState({ routes: [], routeId: null, suggestions: [] });

@@ -36,19 +36,35 @@ async function ask(batch) {
   return JSON.parse(res.response.text()).results || [];
 }
 
-// checks: nothing about people, books or scans left; no spaced dashes; no big loss of content (numbers kept)
+// no "-" at all (24 Oct, Simon): as remove_dashes.mjs - ranges become "to", hyphenated words two words
+const noDashes = (t) => String(t)
+  .replace(/([\d½¼¾])\s*[-–—]\s*(?=[\d½¼¾])/g, '$1 to ')
+  .replace(/[ \t]+[-–—]+[ \t]+/g, ', ')
+  .replace(/([A-Za-zÀ-ÿ0-9'’])[-–—]+(?=[A-Za-zÀ-ÿ0-9])/g, '$1 ')
+  .replace(/[-–—]+/g, ' ')
+  .replace(/ {2,}/g, ' ').replace(/ +,/g, ',').replace(/,\s*,/g, ',').replace(/\( +/g, '(').replace(/ +\)/g, ')').trim();
+// fix-ups for what the edit left behind once the misprint explanations went
+const polish = (t) => noDashes(String(t)
+  .replace(/\s*\(chapters? [\d, and]+\)/g, '')
+  .replace(/\(½ oz, about 14 g\)/g, '(about 14 g)')
+  .replace(/^\(3½–4½ lb\.\) /, 'Sugar 3½ to 4½ lb. ')
+  .replace(/ 3½ lb, the usual ½ oz of baker's yeast, and ½ lb of raisins or ½ oz of root ginger in a 1-gallon recipe\./g, " Baker's yeast is usually ½ oz."));
+
+// checks: nothing about people, books or scans left; no spaced dashes; no big loss of content (numbers kept, except
+// where the old note was only explaining misprinted numbers)
 const nums = (t) => (String(t).match(/\d+(?:[.,]\d+)?/g) || []).length;
 const problems = (r, t) => {
   const p = [];
   if (!t || !t.trim()) return ['empty'];
   const m = t.match(FLAG);
   if (m) p.push(`still says "${m[0]}"`);
-  if (/\s[-–—]\s/.test(t)) p.push('has a spaced dash');
-  if (nums(t) < nums(r.notes) * 0.8 - 1) p.push(`lost numbers (${nums(r.notes)} -> ${nums(t)})`);
+  if (/[-–—]/.test(t)) p.push('has a dash');
+  if (!/the scan (prints|reads)/i.test(r.notes) && nums(t) < nums(r.notes) * 0.8 - 1) p.push(`lost numbers (${nums(r.notes)} -> ${nums(t)})`);
   return p;
 };
 
 const cache = fs.existsSync(CACHE) ? JSON.parse(fs.readFileSync(CACHE, 'utf8')) : {};
+for (const v of Object.values(cache)) v.notes = polish(v.notes);
 const todo = recipes.filter((r) => !cache[r.id] || cache[r.id].old !== r.notes || problems(r, cache[r.id].notes).length);
 if (!APPLY && todo.length) {
   console.log(`Editing ${todo.length} notes in ${Math.ceil(todo.length / BATCH)} batches...`);
@@ -60,7 +76,7 @@ if (!APPLY && todo.length) {
     }
     for (const r of results) {
       const rec = batch.find((b) => b.id === Number(r.id));
-      if (rec) cache[rec.id] = { name: rec.name, old: rec.notes, notes: String(r.notes || '').replace(/\s+[-–—]\s+/g, ', ').trim() };
+      if (rec) cache[rec.id] = { name: rec.name, old: rec.notes, notes: polish(r.notes || '') };
     }
     fs.writeFileSync(CACHE, JSON.stringify(cache, null, 1));
     if ((s / BATCH) % 10 === 9 || s + BATCH >= todo.length) console.log(`  ${Math.min(s + BATCH, todo.length)} of ${todo.length}`);

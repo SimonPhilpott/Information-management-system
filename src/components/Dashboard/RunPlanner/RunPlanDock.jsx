@@ -160,7 +160,7 @@ export default function RunPlanDock({ plan, busy, error, isDark, units, waitingF
                 {/* the combined chart */}
                 <div className={card}>
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                    <div className="font-black uppercase tracking-wider text-[10px]">Glucose, hydration, insulin & course</div>
+                    <div className="rp-title font-black uppercase tracking-wider text-[10px]">Glucose, hydration, insulin & course</div>
                     <div className="flex items-center gap-2 text-[10px]">
                       <span className={muted}>{viewingSent ? "The plan as sent - Show live plan to change it" : "Drag a carb or water line to change when you take it"}</span>
                       <button onClick={() => printRunReport({ plan: p, units })} className={`px-2 py-0.5 rounded-lg font-bold border flex items-center gap-1 ${isDark ? 'border-white/15' : 'border-[#2E2B27]/20'}`} title="The route, this plan and the latest retrospective for the route - choose Save as PDF in the print dialogue"><Printer size={11} />Print / PDF</button>

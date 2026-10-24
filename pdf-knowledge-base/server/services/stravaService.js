@@ -220,7 +220,7 @@ export function listActivities({ sport = '', search = '', from = '', to = '', ta
   const sortCol = allowedSorts[sortBy] || 'start_local';
   const orderDir = String(sortDir).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
-  const rows = db.prepare(`SELECT id, name, sport, start_local, day, distance, moving_time, elapsed_time, elevation, avg_speed, max_speed, avg_hr, max_hr, avg_watts, kudos, trainer, commute, session_tag
+  const rows = db.prepare(`SELECT id, name, sport, start_local, day, distance, moving_time, elapsed_time, elevation, avg_speed, max_speed, avg_hr, max_hr, avg_watts, kudos, trainer, commute, session_tag, json_extract(raw, '$.map.summary_polyline') AS polyline
     FROM strava_activities ${clause} ORDER BY ${sortCol} ${orderDir} LIMIT ? OFFSET ?`).all(...params, Math.min(200, Number(limit) || 50), Math.max(0, Number(offset) || 0));
   return { total, activities: rows };
 }

@@ -427,8 +427,13 @@ export function getStoredMatch(id) {
 export function getGlucoseBadges() {
   const out = {};
   for (const r of db.prepare("SELECT activity_id, status, data FROM activity_glucose WHERE status = 'ok'").all()) {
-    const s = JSON.parse(r.data).stats;
-    out[r.activity_id] = { bgStart: s.bgStart, bgEnd: s.bgEnd, bgMin: s.bgMin, iobStart: s.iobStart, hypo: s.hypoWithin2h };
+    const d = JSON.parse(r.data), s = d.stats;
+    // a small glucose line for the activity itself (start to finish, about 24 points) for the feed cards
+    const dur = d.window?.durationMin;
+    const during = Array.isArray(d.series) && dur ? d.series.filter((p) => p.m >= 0 && p.m <= dur && p.bg != null) : [];
+    const step = Math.max(1, Math.ceil(during.length / 24));
+    const spark = during.filter((_, i) => i % step === 0 || i === during.length - 1).map((p) => Math.round(p.bg * 10) / 10);
+    out[r.activity_id] = { bgStart: s.bgStart, bgEnd: s.bgEnd, bgMin: s.bgMin, iobStart: s.iobStart, hypo: s.hypoWithin2h, pctInRange: s.pctInRange, spark };
   }
   return out;
 }

@@ -43,6 +43,7 @@ export function ArkhamList({ ui, toast, go }) {
   const [opts, setOpts] = useState(null);
   const [decks, setDecks] = useState([]);
   const [adding, setAdding] = useState(false);
+  useEffect(() => { const on = () => { setAdding(true); window.scrollTo?.(0, 0); }; window.addEventListener('cm-new-campaign', on); return () => window.removeEventListener('cm-new-campaign', on); }, []);
   const [draft, setDraft] = useState({ name: '', kind: 'Night of the Zealot', difficulty: 'standard', players: [] });
   const load = useCallback(() => api('/api/decks/campaigns?game=ahlcg').then((d) => setList(d.campaigns)).catch((err) => toast(err.message, 'error')), [toast]);
   useEffect(() => {

@@ -25,41 +25,41 @@ import { useAppLogic } from './hooks/useAppLogic';
 const OnboardingSetup = React.lazy(() => import('./components/Dashboard/OnboardingSetup'));
 import { checkIsEntertainment } from './utils/contentFilter';
 const DemoPortal = React.lazy(() => import('./components/Dashboard/DemoPortal'));
-const MemoriesPortal = React.lazy(() => import('./components/Dashboard/MemoriesPortal'));
-const PersonaPortal = React.lazy(() => import('./components/Dashboard/PersonaPortal'));
-const DayReportPortal = React.lazy(() => import('./components/Dashboard/DayReportPortal'));
-const CodeRepoPortal = React.lazy(() => import('./components/Dashboard/CodeRepoPortal'));
+const MemoriesPortal = React.lazy(() => import('./components/Material/Memories'));
+const PersonaPortal = React.lazy(() => import('./components/Material/Personas'));
+const DayReportPortal = React.lazy(() => import('./components/Material/DayReport'));
+const CodeRepoPortal = React.lazy(() => import('./components/Material/CodeRepo'));
 const ProjectBuilderPage = React.lazy(() => import('./components/Dashboard/ProjectBuilder/ProjectBuilderPage'));
-const MusicScanPortal = React.lazy(() => import('./components/Dashboard/MusicScanPortal'));
-const ScheduledItemsPortal = React.lazy(() => import('./components/Dashboard/ScheduledItemsPortal'));
-const BirthdayPortal = React.lazy(() => import('./components/Dashboard/BirthdayPortal'));
-const BoardgamesPortal = React.lazy(() => import('./components/Dashboard/BoardgamesPortal'));
-const LookPortal = React.lazy(() => import('./components/Dashboard/LookPortal'));
-const FacesPortal = React.lazy(() => import('./components/Dashboard/FacesPortal'));
-const FaceDesignerPortal = React.lazy(() => import('./components/Dashboard/FaceDesignerPortal'));
-const WifiPortal = React.lazy(() => import('./components/Dashboard/WifiPortal'));
-const RecordingsPortal = React.lazy(() => import('./components/Dashboard/RecordingsPortal'));
-const CalendarPortal = React.lazy(() => import('./components/Dashboard/CalendarPortal'));
-const ActivitiesPortal = React.lazy(() => import('./components/Dashboard/ActivitiesPortal'));
-const GlucosePortal = React.lazy(() => import('./components/Dashboard/GlucosePortal'));
-const NewsPortal = React.lazy(() => import('./components/Dashboard/NewsPortal'));
-const TasksPortal = React.lazy(() => import('./components/Dashboard/TasksPortal'));
-const InstructionsPortal = React.lazy(() => import('./components/Dashboard/InstructionsPortal'));
+const MusicScanPortal = React.lazy(() => import('./components/Material/MusicScan'));
+const ScheduledItemsPortal = React.lazy(() => import('./components/Material/Scheduled')); // the IMS design (24 Oct)
+const BirthdayPortal = React.lazy(() => import('./components/Material/Birthdays'));
+const BoardgamesPortal = React.lazy(() => import('./components/Material/Boardgames'));
+const LookPortal = React.lazy(() => import('./components/Material/Look'));
+const FacesPortal = React.lazy(() => import('./components/Material/Faces'));
+const FaceDesignerPortal = React.lazy(() => import('./components/Material/FaceDesigner'));
+const WifiPortal = React.lazy(() => import('./components/Material/Wifi'));
+const RecordingsPortal = React.lazy(() => import('./components/Material/Recordings'));
+const CalendarPortal = React.lazy(() => import('./components/Material/Calendar'));
+const ActivitiesPortal = React.lazy(() => import('./components/Material/Activities'));
+const GlucosePortal = React.lazy(() => import('./components/Material/Glucose'));
+const NewsPortal = React.lazy(() => import('./components/Material/News'));
+const TasksPortal = React.lazy(() => import('./components/Material/Tasks'));
+const InstructionsPortal = React.lazy(() => import('./components/Material/Instructions'));
 const HomebrewBeta = React.lazy(() => import('./components/HomebrewBeta/HomebrewBeta'));
 const SystemArchitecturePortal = React.lazy(() => import('./components/Dashboard/SystemArchitecturePortal'));
-const DevIdeasPortal = React.lazy(() => import('./components/Dashboard/DevIdeasPortal'));
-const BackupsPortal = React.lazy(() => import('./components/Dashboard/BackupsPortal'));
+const DevIdeasPortal = React.lazy(() => import('./components/Material/DevIdeas'));
+const BackupsPortal = React.lazy(() => import('./components/Material/Backups'));
 const DecksPortal = React.lazy(() => import('./components/Dashboard/DecksPortal'));
 import { isCampaignPath, canonicalCampaignPath } from './components/Dashboard/campaignPaths';
-const PhrasesPortal = React.lazy(() => import('./components/Dashboard/PhrasesPortal'));
-const RunPlannerPortal = React.lazy(() => import('./components/Dashboard/RunPlannerPortal'));
-const DoorbellPortal = React.lazy(() => import('./components/Dashboard/DoorbellPortal'));
-const WeatherPortal = React.lazy(() => import('./components/Dashboard/WeatherPortal'));
-const DeviceHealthPortal = React.lazy(() => import('./components/Dashboard/DeviceHealthPortal'));
-const StoragePortal = React.lazy(() => import('./components/Dashboard/StoragePortal'));
-const ModelSwitcherPortal = React.lazy(() => import('./components/Dashboard/ModelSwitcherPortal'));
-const CostsPortal = React.lazy(() => import('./components/Dashboard/CostsPortal'));
-const ImsHub = React.lazy(() => import('./components/Dashboard/ImsHub'));
+const PhrasesPortal = React.lazy(() => import('./components/Material/Phrases'));
+const RunBeta = React.lazy(() => import('./components/RunBeta/RunBeta'));
+const DoorbellPortal = React.lazy(() => import('./components/Material/Doorbell'));
+const WeatherPortal = React.lazy(() => import('./components/Material/Weather'));
+const DeviceHealthPortal = React.lazy(() => import('./components/Material/DeviceHealth'));
+const StoragePortal = React.lazy(() => import('./components/Material/Storage'));
+const ModelSwitcherPortal = React.lazy(() => import('./components/Material/Models'));
+const CostsPortal = React.lazy(() => import('./components/Material/Costs'));
+const ImsHub = React.lazy(() => import('./components/Material/Hub'));
 const CommandPalette = React.lazy(() => import('./components/Dashboard/CommandPalette'));
 
 function getShortSummary(text) {
@@ -1471,9 +1471,11 @@ export default function App() {
     );
   }
 
+  // Run planner: the Material 3 design (components/RunBeta), in green. It was built as a beta at /ims/runplanner-beta
+  // and replaced the classic page on 24 Oct; the classic one is retired, and -beta addresses open the same screens.
   if (currentPath === '/ims/runplanner' || currentPath.startsWith('/ims/runplanner')) {
     return (
-      <RunPlannerPortal
+      <RunBeta
         theme={state.theme}
         onThemeToggle={actions.toggleTheme}
         setCurrentPath={setCurrentPath}

@@ -115,7 +115,7 @@ export default function RunLearningTab({ call, send, isDark, panelClass, units =
         {checkMsg && <div className="text-[11px] text-sky-600">{checkMsg}</div>}
         {recent?.length > 0 && (
           <div className={`rounded-xl border ${isDark ? 'border-white/10' : 'border-[#2E2B27]/10'}`}>
-            <div className={`px-3 pt-2.5 pb-1 text-[10px] font-black uppercase tracking-wider ${muted}`}>Your latest runs</div>
+            <div className={`rp-title px-3 pt-2.5 pb-1 text-[10px] font-black uppercase tracking-wider ${muted}`}>Your latest runs</div>
             <div className="flex flex-col">
               {recent.map((r) => {
                 const badge = {
@@ -168,7 +168,7 @@ export default function RunLearningTab({ call, send, isDark, panelClass, units =
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className={card}>
-          <div className="font-black uppercase tracking-wider text-[10px] mb-2">Suggested - your call</div>
+          <div className="rp-title font-black uppercase tracking-wider text-[10px] mb-2">Suggested - your call</div>
           {!data?.suggestions?.length ? <div className={muted}>Nothing to suggest yet. It takes a few runs with glucose data where the model fits clearly{data?.profiles?.length ? '' : ' - none analysed so far'}.</div> : (
             <div className="flex flex-col gap-2">
               {data.suggestions.map((l) => <Lesson key={l.id} l={l} actions={<>
@@ -179,7 +179,7 @@ export default function RunLearningTab({ call, send, isDark, panelClass, units =
           )}
         </div>
         <div className={card}>
-          <div className="font-black uppercase tracking-wider text-[10px] mb-2">In use in your plans</div>
+          <div className="rp-title font-black uppercase tracking-wider text-[10px] mb-2">In use in your plans</div>
           {!data?.accepted?.length ? <div className={muted}>None yet - plans use the standard model{' '}(fitted to your runs once 4 have glucose data).</div> : (
             <div className="flex flex-col gap-2">
               {data.accepted.map((l) => <Lesson key={l.id} l={l} actions={<button onClick={() => decide(l.id, 'retire')} className={small}><Undo2 size={12} />Stop using it</button>} />)}
@@ -190,7 +190,7 @@ export default function RunLearningTab({ call, send, isDark, panelClass, units =
 
       {/* how close the pre-run prediction got, run by run - the number learning should push up */}
       <div className={card}>
-        <div className="font-black uppercase tracking-wider text-[10px] mb-1">Prediction accuracy</div>
+        <div className="rp-title font-black uppercase tracking-wider text-[10px] mb-1">Prediction accuracy</div>
         <p className={`mb-2 ${muted}`}>For each run sent from the planner: the share of your glucose readings during the run that were within 1 mmol/L of the plan's predicted line. As lessons are accepted it should climb.</p>
         {!data?.accuracy?.length ? <div className={muted}>No runs with a sent plan and glucose data yet.</div> : (() => {
           const rows = data.accuracy;
@@ -227,7 +227,7 @@ export default function RunLearningTab({ call, send, isDark, panelClass, units =
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* after your runs: the spike, and (with 3 runs) a conservative correction estimate */}
         <div className={card}>
-          <div className="font-black uppercase tracking-wider text-[10px] mb-2">After your runs - the spike</div>
+          <div className="rp-title font-black uppercase tracking-wider text-[10px] mb-2">After your runs - the spike</div>
           {(() => {
             const pr = data?.postRun;
             const pat = pr?.overall;
@@ -265,7 +265,7 @@ export default function RunLearningTab({ call, send, isDark, panelClass, units =
 
       {data?.profiles?.length > 0 && (
         <div className={card}>
-          <div className="font-black uppercase tracking-wider text-[10px] mb-2">Kinds of run so far</div>
+          <div className="rp-title font-black uppercase tracking-wider text-[10px] mb-2">Kinds of run so far</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
             {data.profiles.map((p) => (
               <div key={p.key} className={`rounded-lg border px-3 py-2 ${isDark ? 'border-white/5' : 'border-[#2E2B27]/10'}`}>
@@ -279,7 +279,7 @@ export default function RunLearningTab({ call, send, isDark, panelClass, units =
       )}
 
       <div className={card}>
-        <div className="font-black uppercase tracking-wider text-[10px] mb-2">Your runs</div>
+        <div className="rp-title font-black uppercase tracking-wider text-[10px] mb-2">Your runs</div>
         {!data?.sessions?.length ? <div className={muted}>No runs yet - plan one in the Run Planner, or open a past run in the Flythrough tab.</div> : (
           <div className="flex flex-col divide-y divide-current/5">
             {data.sessions.map((x) => {

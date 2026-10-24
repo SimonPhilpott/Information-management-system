@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { dist, elev, elevUnit } from '../../../utils/units';
 import { makeTimeScale } from './timeScale';
 
@@ -15,17 +15,30 @@ const at = (series, m) => {
   return best;
 };
 
+// The Run planner beta draws the chart at its real size (24 Oct, Simon: "it's enormous"): wider than 900 it grows
+// wider instead of being scaled up, so it stays 444 px tall with its text at its own size. The classic page scales it.
+export const ChartFit = createContext(false);
+
 // playheadMin / onSeek: the Flythrough's replay - a moving runner marker, and click anywhere to jump there
 export default function RunPlanChart({ plan, isDark, units = 'km', onMoveStop = null, onMoveDrink = null, playheadMin = null, onSeek = null }) {
   // dragging a carb line (stop index) or a water-only line (its minute): { kind, key, from, to }
   const [drag, setDrag] = useState(null);
   const [hover, setHover] = useState(null);
   const svgRef = useRef(null);
+  const fit = useContext(ChartFit);
+  const [boxW, setBoxW] = useState(0);
+  useEffect(() => {
+    const box = fit ? svgRef.current?.parentElement : null;
+    if (!box || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(([e]) => setBoxW(Math.round(e.contentRect.width)));
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [fit, Boolean(plan?.prediction?.length)]); // eslint-disable-line react-hooks/exhaustive-deps
   const d = useMemo(() => {
     if (!plan?.prediction?.length) return null;
     const dur = plan.run.durationMin;
     const total = plan.prediction.at(-1)[0];
-    const W = 900, L = 44, R = 12;
+    const W = fit && boxW > 900 ? boxW : 900, L = 44, R = 12;
     const rows = { bg: [8, 200], fluid: [222, 56], iob: [292, 34], ele: [340, 82] };
     const H = 444;
     const scale = makeTimeScale({ L, W, R, dur, total });
@@ -58,7 +71,7 @@ export default function RunPlanChart({ plan, isDark, units = 'km', onMoveStop = 
     });
     const ticks = scale.ticks;
     return { inv: scale.inv, dur, total, W, H, L, R, rows, X, Ybg, Yf, Yi, Ye, line, eff, effMax, hyd, sweat, fMax, drinkMax, drinkTotal, iob, iMax, ele, eMin, eMax, eleSegs, ticks, maxBg };
-  }, [plan]);
+  }, [plan, fit, boxW]);
 
   if (!d) return null;
   const { dur, total, W, H, L, R, rows, X, Ybg, Yf, Yi, Ye, line } = d;
@@ -155,8 +168,11 @@ export default function RunPlanChart({ plan, isDark, units = 'km', onMoveStop = 
               {dragging && <line x1={X(s0.minute)} x2={X(s0.minute)} y1={rows.bg[0] + 14} y2={rows.bg[0] + rows.bg[1]} stroke={isDark ? '#facc15' : '#b45309'} strokeOpacity="0.3" strokeDasharray="3 3" />}
               <line x1={X(s.minute)} x2={X(s.minute)} y1={rows.bg[0] + 14} y2={rows.bg[0] + rows.bg[1]} stroke={isDark ? '#facc15' : '#b45309'} strokeWidth="1.6" />
               <line x1={X(s.minute)} x2={X(s.minute)} y1={rows.bg[0] + rows.bg[1]} y2={rows.fluid[0] + rows.fluid[1]} stroke={isDark ? '#facc15' : '#b45309'} strokeWidth="1" strokeOpacity="0.35" strokeDasharray="2 3" />
-              <rect x={X(s.minute) - 16} y={rows.bg[0] + 14 + (i % 2) * 15} width="32" height="13" rx="6" fill={isDark ? '#facc15' : '#f59e0b'} />
-              <text x={X(s.minute)} y={rows.bg[0] + 24 + (i % 2) * 15} fontSize="9" fontWeight="900" textAnchor="middle" fill="#1c1917">{s.grams} g</text>
+              {/* the amount in a pill; at the very start the pill sits just right of the line, clear of the axis and the replay's runner line */}
+              {(() => { const px = X(s.minute) - 16 < L + 6 ? X(s.minute) + 5 : X(s.minute) - 16; return (<>
+              <rect x={px} y={rows.bg[0] + 14 + (i % 2) * 15} width="32" height="13" rx="6" fill={isDark ? '#facc15' : '#f59e0b'} />
+              <text x={px + 16} y={rows.bg[0] + 24 + (i % 2) * 15} fontSize="9" fontWeight="900" textAnchor="middle" fill="#1c1917">{s.grams} g</text>
+              </>); })()}
               {dragging && (
                 <text x={X(s.minute) + 6} y={rows.bg[0] + rows.bg[1] - 8} fontSize="10" fontWeight="900" fill={isDark ? '#facc15' : '#92400e'}>
                   {`${s.minute} min${kmAtMinute(s.minute) != null ? ` · ${dist(kmAtMinute(s.minute), units, 1)} ${units}` : ''}`}

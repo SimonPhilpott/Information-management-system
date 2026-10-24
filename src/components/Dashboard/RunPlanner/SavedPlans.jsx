@@ -51,7 +51,7 @@ export function SavedRoutePlans({ routeId, isDark, units = 'km', card, muted, re
   const label = { linked: 'run done', started: 'under way', scheduled: 'planned', armed: 'waiting for run / match', cancelled: 'cancelled', no_run: 'no run found' };
   return (
     <div className={card}>
-      <div className="flex items-center gap-2 font-black uppercase tracking-wider text-[10px] mb-2"><History size={13} />Plans for this route</div>
+      <div className="rp-title flex items-center gap-2 font-black uppercase tracking-wider text-[10px] mb-2"><History size={13} />Plans for this route</div>
       <div className="flex flex-col divide-y divide-current/5">
         {plans.map((p) => (
           <div key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 py-1.5">

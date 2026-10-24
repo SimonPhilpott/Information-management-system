@@ -8,7 +8,9 @@ import {
   UserPlus, Mail, ClipboardCopy, X, Check, Filter, Download, Printer, Search, Play, Loader2, CheckCircle2,
   Trash2, Camera, Volume2, Sliders,
 } from 'lucide-react';
-import PortalShell from './PortalShell';
+import ServicePage, { Fab } from '../Material/ServicePage';
+import { Btn, FilterChip, IconButton, useSnack } from '../HomebrewBeta/ui';
+import { LINKS } from './ImsHub';
 import ImsFace from '../Ims/ImsFace';
 import { useSystemEvents } from '../../hooks/useSystemEvents';
 
@@ -85,7 +87,7 @@ const spokes = (live) => [
       { icon: Droplets, main: 'Nightscout (Heroku + MongoDB)', sub: 'Glucose every minute; carbs posted as Meal Bolus' },
       { icon: Syringe, main: 'AndroidAPS', sub: 'Picks up carbs from Nightscout - insulin is never sent' },
       { icon: Activity, main: 'Strava', sub: 'Activities, synced every 30 minutes' },
-      { icon: Route, main: 'Komoot', sub: 'Saved routes and turn-by-turn directions for the run planner and route finder; switchable account; synced at 10pm on run days' },
+      { icon: Route, main: 'Komoot', sub: 'Saved routes and turn-by-turn directions for the run planner; added from a link or your account (switchable); synced at 10pm on run days' },
       { icon: Globe, main: 'OpenStreetMap', sub: 'Map tiles for routes, and Nominatim road names for GPX route descriptions' },
       { icon: CloudSun, main: 'Open-Meteo', sub: 'Hourly forecasts 16 days ahead for home and saved places; 10 years of history for "unusual for the time of year"' },
       { icon: Apple, main: 'Open Food Facts', sub: 'Carb look-ups when you log food' },
@@ -118,7 +120,7 @@ const spokes = (live) => [
     rows: [
       { icon: Bell, main: 'Core functions - 11', sub: 'Weather, doorbell, alarms, timers, reminders, instructions (things Ims does later), birthdays, calendar, memories, recordings, tasks' },
       { icon: Heart, main: 'Personal - 7', sub: 'Code best practices (with project builder), day report, music scanner, board games, campaigns, homebrew (recipes, brews, printable bottle labels with QR codes), news' },
-      { icon: Droplets, main: 'Health and fitness - 3', sub: 'Blood sugar (clinic AGP report), activities (training load), run planner (live run plan, route finder, retrospective) & T1D Rulebook' },
+      { icon: Droplets, main: 'Health and fitness - 3', sub: 'Blood sugar (clinic AGP report), activities (training load), run planner (today\'s plan on a track with its map, routes, run replays, learning and the T1D rulebook)' },
       { icon: Settings, main: 'Customisation and system - 11', sub: 'Device health, storage, model switcher, costs and budget, face designer, persona, wake phrases, Wi-Fi, dev ideas, backups, this page' },
       { icon: Eye, main: 'Camera and Vision - 2', sub: 'Look and Faces - Logitech C270 stream, camera hours, snapshots and movement, face recognition, desk presence' },
     ],
@@ -128,7 +130,7 @@ const spokes = (live) => [
     rows: [
       { icon: Monitor, main: 'Host', sub: 'Windows 11 PC on the home network (192.168.1.78)' },
       { icon: Server, main: 'Backend', sub: `Node.js ${live?.node || ''} + Express :3001; device TCP :3002, device HTTP :3003` },
-      { icon: Code, main: 'Frontend', sub: 'React 19, Vite and Tailwind; dev server :6001' },
+      { icon: Code, main: 'Frontend', sub: 'React 19 and Vite; the Material 3 design (Homebrew\'s kit) on every IMS page; dev server :6001' },
       { icon: Cpu, main: 'Firmware', sub: 'Arduino-ESP32 3.3.11 (ESP-IDF 5, pioarduino), LovyanGFX' },
       { icon: Terminal, main: 'Helpers', sub: 'Python 3.12 (music scan, face tool, Garmin sync, wake-word model), Playwright (scraping, PDFs and labels)' },
       { icon: GitBranch, main: 'Source', sub: 'GitHub - SimonPhilpott/Information-management-system, main' },
@@ -229,6 +231,8 @@ const ACTIONS = [
   { icon: Newspaper, title: 'News sources', sub: 'Feeds and weighting', path: '/ims/news', accent: 'sky' },
   { icon: Smile, title: 'Face designer', sub: 'Faces and eyes', path: '/ims/facedesigner', accent: 'amber' },
   { icon: Wifi, title: 'Wi-Fi', sub: 'Desk terminal networks', path: '/ims/wifi', accent: 'blue' },
+  { icon: Cpu, title: 'Device health', sub: 'The desk, live', path: '/ims/device-health', accent: 'teal' },
+  { icon: Bot, title: 'Model switcher', sub: 'Which model does what', path: '/ims/models', accent: 'indigo' },
 ];
 
 // hot: rows used by a test prompt - { 'card|row': { at, uses, pulse, reason } }. A row lights up in its card's colour
@@ -301,11 +305,11 @@ function Card({ card, isDark, cardRef, onOpen, onRowAction, hot, showUsedOnly, s
   const isDimmed = Boolean(query && !cardHasMatch);
 
   return (
-    <div ref={cardRef} className={`relative z-10 rounded-2xl border p-3.5 transition-all duration-300 ${isDimmed ? 'opacity-35 grayscale-[50%]' : ''} ${isDark ? 'bg-slate-900/80 border-white/10' : 'bg-white border-slate-200/80 shadow-[0_6px_24px_rgba(15,23,42,0.06)]'}`}
+    <div ref={cardRef} className={`arch-card relative z-10 rounded-2xl border p-3.5 transition-all duration-300 ${isDimmed ? 'opacity-35 grayscale-[50%]' : ''} ${isDark ? 'bg-slate-900/80 border-white/10' : 'bg-white border-slate-200/80 shadow-[0_6px_24px_rgba(15,23,42,0.06)]'}`}
       style={cardHasMatch ? { boxShadow: '0 0 0 2px #f59e0b, 0 0 30px rgba(245, 158, 11, 0.45)', borderColor: '#f59e0b' } : anyLit ? { boxShadow: `0 0 0 2px ${a.line}, 0 0 26px ${a.line}66` } : undefined}>
       <button onClick={onOpen} disabled={!onOpen} title={onOpen ? 'More detail in the Ims panel' : undefined} className="w-full flex items-center gap-2.5 mb-2 text-left">
         <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${cardHasMatch ? 'bg-amber-500/20 text-amber-400' : a.badge}`}><Icon size={16} className={cardHasMatch ? 'text-amber-400' : a.text} /></span>
-        <span className="font-bold text-[15px] flex-1 min-w-0 truncate">
+        <span className="arch-title font-bold text-[15px] flex-1 min-w-0 truncate">
           <HighlightText text={card.title} query={query} isDark={isDark} />
         </span>
         {cardHasMatch && (
@@ -461,6 +465,13 @@ function Connectors({ wrapRef, centreRef, refs, cards }) {
       </svg>
     </>
   );
+}
+
+// the page's own messages, shown as the IMS snackbar
+function ToastBridge({ message }) {
+  const snack = useSnack();
+  useEffect(() => { if (message?.msg) snack(message.msg, message.type === 'error' ? { error: true } : undefined); }, [message, snack]);
+  return null;
 }
 
 function formatUptime(s) {
@@ -720,6 +731,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
 
   // ---- test prompt: runs through Ims, lighting up each part of the map as it's used
   const [prompt, setPrompt] = useState('');
+  const promptRef = useRef(null);
   const [running, setRunning] = useState(false);
   const [trace, setTrace] = useState([]);
   const [answer, setAnswer] = useState(null);
@@ -925,10 +937,15 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
   const litCount = Object.keys(effectiveHot).length;
 
   return (
-    <PortalShell title="System Architecture" subtitle="/ims/architecture • how Ims is built and how it all connects"
-      icon={Network} gradient="from-fuchsia-500 to-violet-600" glow="rgba(168,85,247,0.3)"
-      isDark={isDark} onThemeToggle={onThemeToggle} setCurrentPath={setCurrentPath} maxWidth="max-w-[2200px]"
-      notification={toastMessage}>
+    <ServicePage title="System Architecture" icon="hub" accent="violet" full theme={theme} onThemeToggle={onThemeToggle} setCurrentPath={setCurrentPath}
+      sub="How Ims is built, and how it all connects."
+      actions={<>
+        <IconButton icon="people" label="Invite and guests" onClick={() => setInviteModalOpen(true)} />
+        <IconButton icon="print" label="Save as PDF" onClick={handleSaveAsPdf} />
+        <IconButton icon="open" label="Fit to screen" onClick={toggleFit} />
+      </>}>
+      <ToastBridge message={toastMessage} />
+      <div className="rpb-legacy imsm-arch">
       <style>{`
         @keyframes archPulse { 0%, 100% { box-shadow: 0 0 0 0 var(--pulse); } 50% { box-shadow: 0 0 0 5px transparent; filter: brightness(1.15); } }
         .arch-pulse { animation: archPulse 1s ease-in-out infinite; }
@@ -938,11 +955,11 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
           .print-full { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; }
         }
       `}</style>
-      <div className="no-print flex flex-wrap justify-between items-center gap-2 -mt-2 mb-3">
-        <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0 max-w-2xl">
+      <div className="arch-tools no-print flex flex-wrap justify-between items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
           {/* Interactive Search Bar */}
-          <div className="relative flex-1 min-w-[200px] max-w-md">
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${searchQuery ? 'border-amber-500/70 shadow-[0_0_12px_rgba(245,158,11,0.2)] bg-amber-500/10' : isDark ? 'bg-white/5 border-white/10 text-slate-300 focus-within:border-violet-500' : 'bg-white border-slate-200 text-slate-700 focus-within:border-violet-500 shadow-sm'}`}>
+          <div className="relative flex-1 min-w-[200px] max-w-xl">
+            <div className={`arch-search flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${searchQuery ? 'border-amber-500/70 shadow-[0_0_12px_rgba(245,158,11,0.2)] bg-amber-500/10' : isDark ? 'bg-white/5 border-white/10 text-slate-300 focus-within:border-violet-500' : 'bg-white border-slate-200 text-slate-700 focus-within:border-violet-500 shadow-sm'}`}>
               <Search size={14} className={searchQuery ? 'text-amber-400 shrink-0' : 'text-slate-400 shrink-0'} />
               <input
                 ref={searchInputRef}
@@ -969,33 +986,10 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
           </div>
 
           {/* Show only used filter checkbox */}
-          <label className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer shrink-0 ${showUsedOnly ? 'bg-violet-600 border-violet-500 text-white shadow-sm' : isDark ? 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
-            <input
-              type="checkbox"
-              checked={showUsedOnly}
-              onChange={(e) => setShowUsedOnly(e.target.checked)}
-              className="rounded accent-violet-600 text-white w-3.5 h-3.5"
-            />
-            <span className="flex items-center gap-1.5">
-              <Filter size={13} /> Show only used items
-              {litCount > 0 && <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-white/20">{litCount}</span>}
-            </span>
-          </label>
+          <FilterChip on={showUsedOnly} onClick={() => setShowUsedOnly(!showUsedOnly)}>Only what the prompt used{litCount > 0 ? ` (${litCount})` : ''}</FilterChip>
+          <Btn kind="text" icon="people" onClick={() => setInviteModalOpen(true)}>Invite and guests</Btn>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          {/* Save as PDF / Snapshot button */}
-          <button onClick={handleSaveAsPdf} title="Save current system architecture as PDF snapshot"
-            className={`px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 border transition-colors ${isDark ? 'border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20' : 'border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100'}`}>
-            <Download size={14} /> Save as PDF
-          </button>
-          <button onClick={() => setInviteModalOpen(true)} className={`px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 border ${isDark ? 'border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20' : 'border-purple-200 bg-purple-50 text-purple-800 hover:bg-purple-100'}`}>
-            <UserPlus size={14} /> Invite & Guests
-          </button>
-          <button onClick={toggleFit} className={`px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 border ${isDark ? 'border-white/10 bg-white/5 hover:bg-white/10' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
-            <Maximize2 size={14} /> Fit to screen
-          </button>
-        </div>
       </div>
 
       <div ref={fitRef} className={`print-full flex flex-col xl:flex-row gap-6 items-start ${fitted ? `overflow-hidden p-2 ${isDark ? 'bg-[#030712] text-slate-100' : 'bg-[#F4F1EC] text-slate-900'}` : ''}`}
@@ -1019,12 +1013,12 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
             <div className="order-1 lg:order-none flex-1 min-w-0 lg:max-w-[440px] flex flex-col gap-10 justify-between">
               {place('clients', '')}
               <div className="flex items-center justify-center">
-                <div ref={centreRef} className={`relative z-10 w-full rounded-3xl border-2 p-5 text-center ${isDark ? 'bg-slate-900 border-violet-500/60 shadow-[0_0_40px_rgba(139,92,246,0.25)]' : 'bg-white border-violet-400 shadow-[0_0_40px_rgba(139,92,246,0.22)]'}`}>
+                <div ref={centreRef} className={`arch-centre relative z-10 w-full rounded-3xl border-2 p-5 text-center ${isDark ? 'bg-slate-900 border-violet-500/60 shadow-[0_0_40px_rgba(139,92,246,0.25)]' : 'bg-white border-violet-400 shadow-[0_0_40px_rgba(139,92,246,0.22)]'}`}>
                   <span className={`absolute top-3 right-3 px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}>
                     <GitBranch size={11} /> main
                   </span>
                   <div className="mt-4 flex justify-center"><ImsFace status="idle" width={150} /></div>
-                  <div className="mt-4 text-xl font-black tracking-tight">Ims</div>
+                  <div className="arch-ims mt-4 text-xl font-black tracking-tight">Ims</div>
                   <div className={`text-sm ${muted}`}>Information Management System</div>
                   <div className={`text-xs mt-1 ${muted}`}>Voice assistant with switchable personas - desk, web and phone</div>
                   <div className="mt-3 flex items-center justify-center gap-2 text-[11px] font-bold">
@@ -1044,7 +1038,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
                       )}
                     </div>
                     <div className="flex gap-1.5">
-                      <input value={prompt} onChange={(e) => { setPrompt(e.target.value); if (!e.target.value.trim()) { setHot({}); setTrace([]); setAnswer(null); } }} onKeyDown={(e) => e.key === 'Enter' && runTest()} disabled={running}
+                      <input ref={promptRef} value={prompt} onChange={(e) => { setPrompt(e.target.value); if (!e.target.value.trim()) { setHot({}); setTrace([]); setAnswer(null); } }} onKeyDown={(e) => e.key === 'Enter' && runTest()} disabled={running}
                         placeholder="Ims, any birthdays coming up?" className={`flex-1 min-w-0 px-2.5 py-1.5 rounded-lg text-[12.5px] outline-none border ${isDark ? 'bg-slate-950/70 border-white/10' : 'bg-white border-slate-200'}`} />
                       <button onClick={runTest} disabled={running || !prompt.trim()} className="px-3 py-1.5 rounded-lg text-[12px] font-bold bg-violet-600 text-white disabled:opacity-40">{running ? '...' : 'Run'}</button>
                     </div>
@@ -1092,7 +1086,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
             <ChevronRight size={16} className="rotate-180" /><span className="xl:[writing-mode:vertical-rl]">Ims - overview, conversation, data, findings</span>
           </button>
         )}
-        {panelOpen && <aside ref={panelRef} className={`no-print ${panelCls} w-full xl:w-[440px] shrink-0 xl:sticky xl:top-24 relative`}>
+        {panelOpen && <aside ref={panelRef} className={`arch-panel no-print ${panelCls} w-full xl:w-[440px] shrink-0 xl:sticky xl:top-24 relative`}>
           <button onClick={togglePanel} title="Hide the panel" className={`absolute top-3 right-3 p-1.5 rounded-lg ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}><ChevronRight size={15} /></button>
           <div className="p-5 flex gap-4 items-start">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-fuchsia-500 to-violet-600 flex items-center justify-center shadow-[0_8px_24px_rgba(168,85,247,0.35)] shrink-0">
@@ -1132,7 +1126,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
                       ['Persona', 'Switchable - see Personas'],
                       ['Voice model', 'gemini-3.8-live, en-GB'],
                       ['Backend', `Node.js ${live?.node || ''} / Express on :3001`],
-                      ['Frontend', 'React 19 + Vite, via ngrok'],
+                      ['Frontend', 'React 19 + Vite, Material 3 design, via ngrok'],
                       ['Device', 'ESP32-S3-BOX-3 over TCP :3002'],
                       ['Database', `SQLite, ${live?.tables ?? '...'} tables`],
                       ['Repository', 'SimonPhilpott/Information-management-system'],
@@ -1144,9 +1138,9 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
 
                 <section className="grid grid-cols-4 gap-2">
                   {[
-                    [Wrench, 35, 'Voice tools', 'violet'],
-                    [Boxes, 26, 'Hub pages', 'indigo'],
-                    [Plug, 17, 'Connections', 'orange'],
+                    [Wrench, 51, 'Voice tools', 'violet'],
+                    [Boxes, LINKS.length, 'Hub pages', 'indigo'],
+                    [Plug, byKey.connections.rows.length, 'Connections', 'orange'],
                     [Database, live?.tables ?? '...', 'Tables', 'red'],
                   ].map(([Icon, n, label, acc]) => (
                     <div key={label} className={`rounded-xl p-2.5 ${ACCENTS[acc].badge}`}>
@@ -1246,7 +1240,9 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
       </div>
 
       <ArchitectureInviteModal isOpen={inviteModalOpen} onClose={() => setInviteModalOpen(false)} isDark={isDark} toast={toast} />
-    </PortalShell>
+      </div>
+      <Fab label="Try a prompt" icon="sparkle" onClick={() => { promptRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => promptRef.current?.focus(), 350); }} />
+    </ServicePage>
   );
 }
 

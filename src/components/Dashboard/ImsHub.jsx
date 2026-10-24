@@ -1,12 +1,12 @@
 import AccountChip from './AccountChip';
 import React from 'react';
-import { ArrowLeft, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight , Droplets , Newspaper , ListChecks , MessageSquareQuote , Network , Lightbulb , Layers , DatabaseBackup, SunMedium, Code2, CloudSun, HardDrive, BrainCircuit, PoundSterling, ClipboardList, FlaskConical } from 'lucide-react';
+import { ArrowLeft, Star, Brain, Drama, Music, Bell, Clock, PenLine, Cake, Dices, Eye, ScanFace, Smile, Wifi, Mic, CalendarDays, Activity, Route, Sun, Moon, ChevronRight , Droplets , Newspaper , ListChecks , MessageSquareQuote , Network , Lightbulb , Layers , DatabaseBackup, SunMedium, Code2, CloudSun, HardDrive, BrainCircuit, PoundSterling, ClipboardList, FlaskConical } from 'lucide-react';
 
 // Each entry here is one card on the hub. Add a new one whenever a new
 // /ims/* page is built - this is the single place that needs to know about
 // all of them (App.jsx separately needs its own route check per page, same
 // as the existing /ims/memories one - see the comment there).
-const LINKS = [
+export const LINKS = [
   {
     path: '/ims/memories',
     title: 'Memories',
@@ -242,11 +242,12 @@ const LINKS = [
   {
     path: '/ims/runplanner',
     title: 'Run Planner',
-    description: 'Plan Komoot routes, timing and carbs to keep glucose steady.',
+    description: "Today's verdict, routes on the map, the plan stop by stop, replays and lessons from your runs, and your rulebook.",
     icon: Route,
     gradient: 'from-emerald-500 to-teal-600',
     glow: 'rgba(16,185,129,0.3)'
   },
+
   {
     path: '/ims/dayreport',
     title: 'Day Report',
@@ -281,7 +282,10 @@ const LINKS = [
   }
 ];
 
-const SECTIONS = [
+// Pages already in the new design (Homebrew's Material 3 look, 24 Oct 2026) get a small star on their card.
+export const NEW_DESIGN = new Set(['/ims/homebrew', '/ims/runplanner', '/ims/weather', '/ims/doorbell', '/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/instructions', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings', '/ims/tasks', '/ims/wifi', '/ims/storage', '/ims/backups', '/ims/costs', '/ims/devideas', '/ims/look', '/ims/faces', '/ims/news', '/ims/models', '/ims/phrases', '/ims/device-health', '/ims/facedesigner', '/ims/persona', '/ims/dayreport', '/ims/boardgames', '/ims/musicscan', '/ims/code-repo', '/ims/architecture', '/campaigns', '/ims/glucose', '/ims/activities']);
+
+export const SECTIONS = [
   ['Core functions', ['/ims/weather', '/ims/doorbell', '/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/instructions', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings', '/ims/tasks']],
   ['Vision & camera', ['/ims/look', '/ims/faces']],
   ['Personal', ['/ims/code-repo', '/ims/dayreport', '/ims/musicscan', '/ims/boardgames', '/campaigns', '/ims/homebrew', '/ims/news']],
@@ -387,7 +391,7 @@ export default function ImsHub({
                   <ChevronRight size={18} className={`transition-transform group-hover:translate-x-1 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold tracking-tight">{link.title}</h3>
+                  <h3 className="text-sm font-bold tracking-tight flex items-center gap-1.5">{link.title}{NEW_DESIGN.has(link.path) && <Star size={14} fill="currentColor" className="text-amber-500 shrink-0" aria-label="In the new design" />}</h3>
                   <p className={`text-xs mt-1 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                     {link.description}
                   </p>
