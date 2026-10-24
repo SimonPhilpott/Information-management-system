@@ -6,7 +6,7 @@ import { MESHES } from './data/mesh_authority.js';
 
 const MESH_JSON_AUTHORITY = MESHES;
 const OrbitalNav = React.lazy(() => import('./components/Navigation/OrbitalNav').then(m => ({ default: m.OrbitalNav })));
-const Layout = React.lazy(() => import('./components/Dashboard/Layout'));
+const Library = React.lazy(() => import('./components/Material/Library')); // the home screen's Library room (25 Oct); was Dashboard/Layout
 const ChatInterface = React.lazy(() => import('./components/Dashboard/ChatInterface'));
 const ImsHome = React.lazy(() => import('./components/Material/Home')); // the home screen in the IMS design (25 Oct)
 const IntelligenceDrawer = React.lazy(() => import('./components/Editor/IntelligenceDrawer').then(m => ({ default: m.IntelligenceDrawer })));
@@ -1880,7 +1880,7 @@ export default function App() {
             onNewChat: () => { actions.setSessionId(null); actions.setMessages([]); },
           }}
           library={(
-        <Layout
+        <Library
           sessions={state.sessions}
         activeSessionId={state.sessionId}
         onLoadSession={actions.loadSession}
@@ -2461,7 +2461,7 @@ export default function App() {
             />
           </div>
         )}
-        </Layout>
+        </Library>
           )}
         />
       </React.Suspense>
