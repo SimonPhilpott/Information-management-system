@@ -1287,3 +1287,7 @@
 .imsl-right { padding-right: 14px; }
 .imsl .chat-history-title-container > * { display: block; width: 100%; min-width: 0; }
 .imsl .chat-history-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100% !important; }
+.hbb.imsm .imsh-ims > .imsh-hero { flex: none; padding-top: 10px; }
+.hbb.imsm .imsh-ims.talking > .imsh-hero { padding-top: 4px; }
+.hbb.imsm .imsh-err { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: 16px; background: var(--error-c); color: var(--on-error-c); font-size: 14px; line-height: 20px; margin-top: 6px; }
+@media (max-width: 700px) { .hbb.imsm .imsh-face { width: min(220px, 58vw); } .hbb.imsm .imsh-ims.talking .imsh-face { width: min(130px, 34vw); border-radius: 18px; } }

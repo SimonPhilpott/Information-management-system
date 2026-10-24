@@ -1902,11 +1902,15 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 }
               }
               if (gWs.readyState === WebSocket.OPEN) {
+                // SILENT: the model takes the acknowledgement without a turn of its own. Answering it (with the
+                // accent reminder attached) made him say something after his farewell - "no speak" (25 Oct).
                 gWs.send(JSON.stringify({
                   toolResponse: {
                     functionResponses: [{
-                      response: { output: withVoiceReminder({ status: 'acknowledged' }) },
-                      id: call.id
+                      response: { output: { status: 'acknowledged', note: 'The conversation is closed. Say nothing more.' } },
+                      id: call.id,
+                      name: call.name,
+                      scheduling: 'SILENT'
                     }]
                   }
                 }));

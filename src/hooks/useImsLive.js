@@ -42,6 +42,8 @@ export function useImsLive() {
   const voiceRef = useRef(voiceReplies);
   const micOnRef = useRef(false);
   const endAfterSpeechRef = useRef(false);
+  // after his farewell turn: anything more he produces is dropped until Simon next speaks or types (25 Oct - he said "no speak")
+  const closedRef = useRef(false), closingRef = useRef(false);
   const standbyFaceRef = useRef(null);
 
   useEffect(() => { voiceRef.current = voiceReplies; }, [voiceReplies]);
@@ -118,7 +120,7 @@ export function useImsLive() {
     if (d.setupComplete) { setStatus((s) => (s === 'connecting' ? (micOnRef.current ? 'listening' : 'ready') : s)); return; }
     if (d.setEmotion !== undefined) { setFace(d.face || d.standbyFace || standbyFaceRef.current); return; }
     if (d.sessionIdle) { stopMic(); finishAll(); setStatus('asleep'); setFace(standbyFaceRef.current); return; }
-    if (d.endConversation) { endAfterSpeechRef.current = true; if (!isPlaying()) { endAfterSpeechRef.current = false; stopMic(); setStatus('asleep'); } return; }
+    if (d.endConversation) { closingRef.current = true; endAfterSpeechRef.current = true; if (!isPlaying()) { endAfterSpeechRef.current = false; stopMic(); setStatus('asleep'); } return; }
     if (d.toolCall?.functionCalls) {
       setStatus('thinking');
       for (const c of d.toolCall.functionCalls) if (!SILENT_TOOLS.has(c.name)) addNote('tool', TOOL_LABELS[c.name] || c.name);
@@ -127,11 +129,13 @@ export function useImsLive() {
     const sc = d.serverContent;
     if (!sc) return;
     if (sc.interrupted) { stopPlayback(); finishAll(); }
-    if (sc.inputTranscription?.text) { appendText('user', sc.inputTranscription.text); setStatus('thinking'); }
+    if (sc.inputTranscription?.text) { closedRef.current = false; appendText('user', sc.inputTranscription.text); setStatus('thinking'); }
+    if (closedRef.current) return;
     if (sc.outputTranscription?.text) appendText('ims', sc.outputTranscription.text);
     for (const p of sc.modelTurn?.parts || []) {
       if (p.inlineData?.data && p.inlineData.mimeType?.startsWith('audio/') && voiceRef.current) playChunk(p.inlineData.data);
     }
+    if (sc.turnComplete && closingRef.current) { closingRef.current = false; closedRef.current = true; }
     if (sc.turnComplete) { finishAll(); if (!isPlaying()) setStatus(micOnRef.current ? 'listening' : 'ready'); }
   };
 
@@ -153,6 +157,7 @@ export function useImsLive() {
   const sendText = useCallback(async (text) => {
     const t = String(text || '').trim();
     if (!t) return;
+    closedRef.current = false; closingRef.current = false;
     ensureOut();
     finishAll();
     addNote('user', t);
@@ -167,10 +172,15 @@ export function useImsLive() {
     if (m) { try { m.node.disconnect(); m.stream.getTracks().forEach((t) => t.stop()); m.ctx.close(); } catch { /* closed */ } }
   };
   const startMic = async () => {
+    closedRef.current = false; closingRef.current = false; setError(null);
+    // the browser only offers the microphone on a secure address (https, or localhost)
+    if (!navigator.mediaDevices?.getUserMedia) throw Object.assign(new Error('This browser will not give the page a microphone here - open IMS from its https address (or localhost) to talk to him.'), { name: 'Insecure' });
     ensureOut();
     try { await connect(); } catch { return; }
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // made after the connect wait, so a browser may start it paused - and a paused one sends nothing
+    if (ctx.state === 'suspended') { try { await ctx.resume(); } catch { /* resumes on the next tap */ } }
     const srcNode = ctx.createMediaStreamSource(stream);
     const ratio = ctx.sampleRate / 16000;
     let pending = [];
@@ -202,7 +212,13 @@ export function useImsLive() {
   };
   const toggleMic = useCallback(async () => {
     if (micOnRef.current) { stopMic(); setStatus((s) => (s === 'listening' ? 'ready' : s)); return; }
-    try { await startMic(); } catch (err) { setError(err.name === 'NotAllowedError' ? 'Microphone access was blocked.' : err.message); stopMic(); }
+    try { await startMic(); } catch (err) {
+      setError(err.name === 'NotAllowedError' ? 'The browser has blocked the microphone for this site - allow it from the icon at the left of the address bar, then tap the mic again.'
+        : err.name === 'NotFoundError' ? 'No microphone found - plug one in or check your sound settings, then tap the mic again.'
+        : err.name === 'NotReadableError' ? 'The microphone is busy in another app (a call, perhaps) - close that and tap the mic again.'
+        : err.message);
+      stopMic();
+    }
   }, []);
 
   const stopSpeaking = useCallback(() => stopPlayback(), []);

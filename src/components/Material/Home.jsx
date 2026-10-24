@@ -99,7 +99,6 @@ function ImsRoom({ dark, onOpenStatus, statusTone }) {
 
   useEffect(() => { if (!glance.status?.hasTimer) return undefined; const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, [glance.status?.hasTimer]);
   useEffect(() => { if (ims.messages.length) listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' }); }, [ims.messages]);
-  useEffect(() => { if (ims.error) snack(ims.error, { error: true }); }, [ims.error, snack]);
   const grow = (el) => { if (!el) return; el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 220)}px`; };
   const submit = (t = text) => { if (!t.trim()) return; ims.sendText(t); setText(''); requestAnimationFrame(() => grow(taRef.current)); };
   const launcher = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
@@ -114,13 +113,14 @@ function ImsRoom({ dark, onOpenStatus, statusTone }) {
         <IconButton icon="search" label="Search everything (Ctrl K)" onClick={launcher} />
       </header>
 
+      {/* his face stays docked at the top while the conversation scrolls under it */}
+      <section className="imsh-hero">
+        <div className={`imsh-face st-${ims.status}`}><ImsFace face={ims.face} status={ims.status} levelRef={ims.levelRef} width="100%" /></div>
+      </section>
       <div className="imsh-scroll" ref={listRef}>
-        <section className="imsh-hero">
-          <div className={`imsh-face st-${ims.status}`}><ImsFace face={ims.face} status={ims.status} levelRef={ims.levelRef} width="100%" /></div>
-          {!talking && <h2 className="imsh-hello">{greeting()}, {firstName}</h2>}
-        </section>
         {!talking && (
           <>
+            <h2 className="imsh-hello">{greeting()}, {firstName}</h2>
             <Glance {...glance} now={now} />
             <div className="imsh-suggest">{SUGGEST.map((s) => <button key={s} type="button" className="chip sl" onClick={() => submit(s)}>{s}</button>)}</div>
           </>
@@ -134,6 +134,7 @@ function ImsRoom({ dark, onOpenStatus, statusTone }) {
         )}
       </div>
 
+      {ims.error && <div className="imsh-err" role="alert"><Icon n="warn" size={20} /><span>{ims.error}</span></div>}
       <div className="imsh-compose">
         <div className="box">
           <textarea ref={taRef} rows={1} value={text} placeholder="Type to Ims..." aria-label="Message to Ims"
