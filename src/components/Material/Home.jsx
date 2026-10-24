@@ -141,9 +141,8 @@ function ImsRoom({ dark, onOpenStatus, statusTone }) {
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }} />
           <div className="row">
             <button type="button" className={`cchip sl ${ims.voiceReplies ? 'on' : ''}`} onClick={() => ims.setVoiceReplies(!ims.voiceReplies)} title={ims.voiceReplies ? 'He answers out loud; tap for text only' : 'Text only; tap to hear him'}>
-              <Icon n={ims.voiceReplies ? 'mic' : 'chat'} size={16} />{ims.voiceReplies ? 'Voice replies' : 'Text only'}
+              <Icon n={ims.voiceReplies ? 'mic' : 'chat'} size={16} /><span>{ims.voiceReplies ? 'Voice replies' : 'Text only'}</span>
             </button>
-            <button type="button" className="cchip sl food" onClick={() => setCamera(true)} title="Carbs from a photo of your food"><Icon n="food" size={16} />Log food</button>
             <span className="grow" />
             {ims.status === 'speaking' && <IconButton icon="stop" label="Stop him talking" onClick={ims.stopSpeaking} />}
             <IconButton icon="more" label="More" onClick={more.show} aria-haspopup="menu" />
@@ -152,6 +151,9 @@ function ImsRoom({ dark, onOpenStatus, statusTone }) {
         </div>
         <button type="button" className={`imsh-mic sl ${ims.micOn ? 'on' : ''}`} onClick={ims.toggleMic} aria-label={ims.micOn ? 'Stop talking' : 'Talk to Ims'} title={ims.micOn ? 'Stop talking' : 'Talk to Ims'}>
           <Icon n={ims.micOn ? 'stop' : 'mic'} size={28} />
+        </button>
+        <button type="button" className="imsh-food sl" onClick={() => setCamera(true)} aria-label="Log food from a photo" title="Log food: carbs from a photo of your plate">
+          <Icon n="food" size={26} /><span>Log food</span>
         </button>
       </div>
 
