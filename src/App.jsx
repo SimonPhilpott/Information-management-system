@@ -8,13 +8,13 @@ const MESH_JSON_AUTHORITY = MESHES;
 const OrbitalNav = React.lazy(() => import('./components/Navigation/OrbitalNav').then(m => ({ default: m.OrbitalNav })));
 const Layout = React.lazy(() => import('./components/Dashboard/Layout'));
 const ChatInterface = React.lazy(() => import('./components/Dashboard/ChatInterface'));
-const HomeChat = React.lazy(() => import('./components/Ims/HomeChat'));
+const ImsHome = React.lazy(() => import('./components/Material/Home')); // the home screen in the IMS design (25 Oct)
 const IntelligenceDrawer = React.lazy(() => import('./components/Editor/IntelligenceDrawer').then(m => ({ default: m.IntelligenceDrawer })));
 const AdminPanel = React.lazy(() => import('./components/Admin/AdminPanel').then(m => ({ default: m.AdminPanel })));
 const CatalogBrowser = React.lazy(() => import('./components/Dashboard/CatalogBrowser'));
 const HnswIndexModal = React.lazy(() => import('./components/Dashboard/HnswIndexModal'));
 import { AnimatePresence, motion, animate } from 'framer-motion';
-import { Activity, Link as LinkIcon, Cpu, ArrowDown, Network, GitMerge, Box, CircleDot, Type, Globe, Aperture, Maximize2, Minimize2, ListOrdered } from 'lucide-react';
+import { Activity, Link as LinkIcon, Cpu, ArrowDown, Network, GitMerge, Box, CircleDot, Type, Globe, Aperture, Maximize2, Minimize2, ListOrdered, Database } from 'lucide-react';
 
 const MeshCanvas = React.lazy(() => import('./components/KnowledgeMesh/MeshCanvas').then(m => ({ default: m.MeshCanvas })));
 const SpatialCanvas = React.lazy(() => import('./components/KnowledgeMesh/SpatialCanvas').then(m => ({ default: m.SpatialCanvas })));
@@ -1863,6 +1863,23 @@ export default function App() {
           <div className="w-8 h-8 border-2 border-brand-cyan/20 border-t-brand-cyan rounded-full animate-spin" />
         </div>
       }>
+        <ImsHome
+          theme={state.theme}
+          onThemeToggle={actions.toggleTheme}
+          setCurrentPath={setCurrentPath}
+          onLogout={actions.handleLogout}
+          syncStatus={state.syncStatus}
+          onSync={actions.triggerSync}
+          history={{
+            sessions: state.sessions,
+            activeSessionId: state.sessionId,
+            onLoadSession: actions.loadSession,
+            onDeleteSession: actions.deleteSession,
+            onClearHistory: actions.clearAllHistory,
+            isClearingHistory: state.isClearingHistory,
+            onNewChat: () => { actions.setSessionId(null); actions.setMessages([]); },
+          }}
+          library={(
         <Layout
           sessions={state.sessions}
         activeSessionId={state.sessionId}
@@ -2419,7 +2436,7 @@ export default function App() {
             )} {/* end sunburst HUD conditional */}
           </section>
         ) : (
-          <HomeChat theme={state.theme}>
+          <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
             <ChatInterface
               messages={state.messages}
               isTyping={state.isTyping}
@@ -2442,9 +2459,11 @@ export default function App() {
               geminiLive={actions.geminiLive}
               showCitations={state.showCitations}
             />
-          </HomeChat>
+          </div>
         )}
         </Layout>
+          )}
+        />
       </React.Suspense>
       <AnimatePresence>
         <React.Suspense fallback={null}>
