@@ -493,6 +493,7 @@ export default function BrewPage({
     !b.isRecipe && isOwner && canEdit && ['fermenting', 'conditioning'].includes(b.status) && { label: 'Set step reminders', icon: 'bell', onClick: stepReminders },
     !b.isRecipe && isOwner && canEdit && { label: 'Save as a recipe', icon: 'copyrecipe', onClick: keepAsRecipe },
     b.isRecipe && isOwner && { label: 'Create a new version', icon: 'copyrecipe', onClick: newVersion },
+    b.isRecipe && isOwner && { label: 'Save as a new recipe', icon: 'add', onClick: () => setSheet('saveNew') },
     '-',
     canEdit && { label: 'Delete', icon: 'del', danger: true, onClick: remove },
   ];
@@ -691,9 +692,43 @@ export default function BrewPage({
       <Confirm open={Boolean(confirm)} {...(confirm || {})} onClose={() => setConfirm(null)} onOk={confirm?.onOk || (() => {})} />
       {full && <LogSheet open={sheet === 'log'} onClose={() => setSheet(null)} brew={b} kinds={kinds} onSaved={(nb) => { onChanged(nb); onListChanged(); }} />}
       {full && <TastingSheet open={sheet === 'taste'} onClose={() => setSheet(null)} brew={b} onSaved={(nb) => { onChanged(nb); onListChanged(); }} />}
+      <SaveNewSheet open={sheet === 'saveNew'} onClose={() => setSheet(null)} recipe={b} family={family} onSaved={async (nb) => { setSheet(null); await onListChanged(); snack(`${nb.name} saved as a new recipe.`); onEditOther?.(nb); }} />
       <LiquidSheet open={sheet === 'liquid'} onClose={() => setSheet(null)} brew={b} onPicked={(nb) => { onChanged({ ...b, ...nb }); onListChanged(); snack('Colour changed.'); setSheet(null); }} />
       <PictureSheet open={sheet === 'picture'} onClose={() => setSheet(null)} brew={b} onPicked={(nb) => { onChanged({ ...b, ...nb }); onListChanged(); snack('Picture changed.'); setSheet(null); }} />
       <LabelsSheet open={sheet === 'labels'} onClose={() => setSheet(null)} brew={b} onDone={labelsMade} />
     </div>
+  );
+}
+
+// ---- Save as a new recipe: a copy that stands on its own, under a new name (24 Oct, Simon) ----
+// A new version stays in the family (same name, a different version label); this one gets its own name and its own card.
+// A name that would put it straight back in the same family is caught before saving.
+function SaveNewSheet({ open, onClose, recipe, family = [], onSaved }) {
+  const base = String(recipe?.family || recipe?.name || '').replace(/\s*\(.*$/, '');
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => { if (open) { setName(`My ${base.charAt(0).toLowerCase()}${base.slice(1)}`); setErr(''); } }, [open, recipe?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const core = (t) => String(t || '').replace(/\s*\(.*$/, '').replace(/\s+(no\.?\s*\d+|[ivx]+|\d+)$/i, '').trim().toLowerCase();
+  const clash = name.trim() && (core(name) === core(base) || family.some((v) => core(v.name) === core(name)));
+  const save = async () => {
+    if (!name.trim() || clash) return;
+    setBusy(true); setErr('');
+    try {
+      const d = await api(`/api/homebrew/${recipe.id}/save-as-recipe`, 'POST', {});
+      const named = await api(`/api/homebrew/${d.brew.id}`, 'PUT', { name: name.trim() });
+      onSaved(named.brew || d.brew);
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <Sheet open={open} onClose={onClose} title="Save as a new recipe"
+      footer={<><Btn kind="text" onClick={onClose}>Cancel</Btn><Btn kind="filled" icon="add" busy={busy} disabled={!name.trim() || clash} onClick={save}>Save new recipe</Btn></>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <p className="muted t-bm" style={{ margin: 0 }}>A copy of {recipe?.name} that stands on its own in the recipe book, with its own card. To keep it with the other versions instead, use Create a new version.</p>
+        <TextField label="Name for the new recipe" value={name} onChange={(v) => { setName(v); setErr(''); }} autoFocus onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
+          help={clash ? `That's the name of the ${base} family, so it would join its versions. Choose a different name.` : 'You can change everything else straight after.'} />
+        {err && <p style={{ color: 'var(--error)', margin: 0 }}>{err}</p>}
+      </div>
+    </Sheet>
   );
 }

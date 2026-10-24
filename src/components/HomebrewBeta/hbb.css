@@ -734,3 +734,4 @@ html.hbb-liquid::view-transition-old(root) { z-index: 1; }
 .hbb.dark .clear-btn { background: var(--surface-c-high); }
 .hbb .active-filters { padding: 0 0 12px; }
 .hbb .active-filters .chip .em { font-size: 18px; width: auto; margin-right: 6px; }
+.hbb .brand-bar .ims-back { flex: none; margin-left: -8px; }

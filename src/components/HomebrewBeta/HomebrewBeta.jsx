@@ -210,6 +210,8 @@ function App({ theme, onThemeToggle, setCurrentPath, rootEl }) {
     <div className={`pane list ${parkList ? 'parked' : ''}`} key="list" aria-hidden={parkList || undefined} inert={parkList || undefined}>
       <div className="scroll" ref={listScroll}>
         <div className="gutter brand-bar" style={{ paddingTop: 'max(12px, env(safe-area-inset-top, 0px))' }}>
+          {/* back to the IMS dashboard - for Simon only (not guests, and not in the standalone app) */}
+          {isOwner && !STANDALONE && <IconButton icon="back" label="Back to the IMS dashboard" onClick={goHome} className="ims-back" />}
           <Brand />
           {/* on a phone: your account top right, and the ingredient pictures admin (Simon only) beneath it */}
           {layout === 'compact' && (
