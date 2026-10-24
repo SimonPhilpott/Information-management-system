@@ -10,14 +10,13 @@ import './ims-m.css';
 import { useAuth } from '../../AuthGate';
 import { Icon, IconButton, Btn, Sheet, Confirm, Menu, useMenu, useRipples, LayerProvider, SnackHost, TipHost, DarkCtx, useSnack } from '../HomebrewBeta/ui';
 import ImsFace from '../Ims/ImsFace';
+import Rail from './Rail';
 import PhotoCarbs, { CameraCapture } from '../Dashboard/PhotoCarbs';
 import { useImsLive } from '../../hooks/useImsLive';
 
-const ROOMS = [['ims', 'Ims', 'face'], ['library', 'Library', 'book'], ['history', 'History', 'archive']];
 const STATUS_TEXT = { asleep: 'Asleep', connecting: 'Waking up', ready: 'Awake', listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking' };
 const SUGGEST = ["What's my day look like?", 'Any news from my sources?', "What's the weather doing later?", 'Set a timer for 10 minutes'];
 const CAL = { pod: 'Omnipod change', sensor: 'Sensor change', prescription: 'Prescription' };
-const initials = (name) => String(name || 'Simon Philpott').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 const londonNow = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/London' }));
 const greeting = () => { const h = londonNow().getHours(); return h < 5 ? 'Evening' : h < 12 ? 'Morning' : h < 18 ? 'Afternoon' : 'Evening'; };
 const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
@@ -225,18 +224,7 @@ function Shell({ theme, onThemeToggle, setCurrentPath, onLogout, syncStatus, onS
 
   return (
     <>
-      <nav className="imsh-rail" aria-label="Home">
-        <span className="logo" aria-hidden="true"><Icon n="sparkle" size={22} /></span>
-        {ROOMS.map(([k, l, ic]) => (
-          <button key={k} type="button" className={`ri sl ${room === k ? 'on' : ''}`} aria-current={room === k ? 'page' : undefined} onClick={() => setRoom(k)}>
-            <i><Icon n={ic} size={22} /></i><span>{l}</span>
-          </button>
-        ))}
-        {!user?.guest && <button type="button" className="ri sl" onClick={() => go('/ims')}><i><Icon n="hub" size={22} /></i><span>IMS</span></button>}
-        <span className="grow" />
-        <IconButton className="rtheme" icon={dark ? 'sun' : 'moon'} label={dark ? 'Light theme' : 'Dark theme'} onClick={onThemeToggle} />
-        <IconButton className="racct" label="Your account" onClick={account.show} aria-haspopup="menu"><span className="avatar">{initials(user?.name)}</span></IconButton>
-      </nav>
+      <Rail active={room} onRoom={setRoom} setCurrentPath={setCurrentPath} theme={theme} onThemeToggle={onThemeToggle} onAccount={account.show} />
 
       {room === 'ims' && <main className="imsh-main"><ImsRoom dark={dark} statusTone={tone} onOpenStatus={() => setStatusOpen(true)} /></main>}
       {room === 'history' && <main className="imsh-main scroll"><HistoryRoom {...history} onLoadSession={(id) => { history.onLoadSession(id); setRoom('library'); }} onNewChat={() => { history.onNewChat(); setRoom('library'); }} /></main>}

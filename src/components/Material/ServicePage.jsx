@@ -8,6 +8,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import '../HomebrewBeta/hbb.css';
 import './ims-m.css';
 import { useAuth } from '../../AuthGate';
+import Rail from './Rail';
 import { Icon, IconButton, useRipples, LayerProvider, SnackHost, TipHost, Menu, useMenu, useScrollState, DarkCtx } from '../HomebrewBeta/ui';
 
 // whether the page has been scrolled down (the floating button shrinks to its icon)
@@ -15,7 +16,7 @@ const ScrollCtx = createContext(false);
 
 const initials = (name) => String(name || 'Simon Philpott').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 
-function Frame({ title, icon, accent, theme, onThemeToggle, setCurrentPath, fab, actions, sub, children, wide, full, backTo = '/ims', backLabel = 'Back to the IMS dashboard' }) {
+function Frame({ title, icon, accent, theme, onThemeToggle, setCurrentPath, fab, actions, sub, children, wide, full, rail, backTo = '/ims', backLabel = 'Back to the IMS dashboard' }) {
   const { user } = useAuth();
   const scroller = useRef(null);
   const { down } = useScrollState(scroller);
@@ -24,6 +25,8 @@ function Frame({ title, icon, accent, theme, onThemeToggle, setCurrentPath, fab,
   const goHome = () => go('/ims');
   useEffect(() => { const was = document.title; document.title = title; return () => { document.title = was; }; }, [title]);
   return (
+    <>
+    {rail !== false && <Rail active={rail === 'dash' ? 'dash' : null} setCurrentPath={setCurrentPath} />}
     <div className="imsm-page">
       <div className="scroll" ref={scroller}>
         <div className={`imsm-body ${wide ? 'wide' : ''} ${full ? 'full' : ''}`}>
@@ -49,6 +52,7 @@ function Frame({ title, icon, accent, theme, onThemeToggle, setCurrentPath, fab,
         !user?.guest && { label: 'IMS home', icon: 'home', onClick: goHome },
       ]} />
     </div>
+    </>
   );
 }
 
@@ -59,7 +63,7 @@ export default function ServicePage(props) {
   useRipples(root);
   const dark = props.theme === 'dark';
   return (
-    <div className={`hbb imsm acc-${props.accent || 'green'} ${dark ? 'dark' : ''}`} ref={(el) => { root.current = el; if (el && el !== node) setNode(el); }}>
+    <div className={`hbb imsm withrail acc-${props.accent || 'green'} ${dark ? 'dark' : ''}`} ref={(el) => { root.current = el; if (el && el !== node) setNode(el); }}>
       <DarkCtx.Provider value={dark}>
         <LayerProvider root={node}>
           <SnackHost>

@@ -1,11 +1,11 @@
 // The IMS dashboard in the IMS design (24 Oct 2026): every IMS page as a card in its own colour, grouped as before,
-// with a search across them. A small star marks the pages already in the new design. The list of pages, their
+// with a search across them. (The stars that marked pages in the new design went on 25 Oct, once every page was.) The list of pages, their
 // groups and descriptions still live in Dashboard/ImsHub.jsx (LINKS, SECTIONS, NEW_DESIGN), the one place to add
 // a new page; the icon and colour for each are here.
 import React, { useMemo, useState } from 'react';
 import ServicePage from './ServicePage';
 import { Icon } from '../HomebrewBeta/ui';
-import { LINKS, SECTIONS, NEW_DESIGN } from '../Dashboard/ImsHub';
+import { LINKS, SECTIONS } from '../Dashboard/ImsHub';
 
 // path -> [icon, colour]
 const LOOK = {
@@ -30,7 +30,6 @@ function Body({ go }) {
       .filter((l) => !needle || `${l.title} ${l.description}`.toLowerCase().includes(needle))
       .sort((a, b) => a.title.localeCompare(b.title, 'en-GB'))]).filter(([, l]) => l.length);
   }, [q]);
-  const updated = LINKS.filter((l) => NEW_DESIGN.has(l.path)).length;
 
   return (
     <>
@@ -39,7 +38,6 @@ function Body({ go }) {
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a page" aria-label="Find a page" />
         {q && <button type="button" className="sl" aria-label="Clear the search" onClick={() => setQ('')}><Icon n="close" size={20} /></button>}
       </div>
-      <p className="muted imsm-hubnote"><Icon n="star" size={16} />{updated} of {LINKS.length} pages are in the new design.</p>
       {!groups.length && <p className="muted">Nothing matches “{q}”.</p>}
       {groups.map(([name, links]) => (
         <section key={name} className="imsm-hubsec">
@@ -51,7 +49,7 @@ function Body({ go }) {
                 <button key={l.path} type="button" className={`imsm-hubcard sl ${l.disabled ? 'off' : ''}`} disabled={Boolean(l.disabled)} title={l.disabled || undefined} onClick={() => go(l.path)}>
                   <span className={`imsm-tile acc-${acc}`}><Icon n={icon} size={24} /></span>
                   <span className="txt">
-                    <b>{l.title}{NEW_DESIGN.has(l.path) && <span className="star" title="In the new design"><Icon n="star" size={16} /></span>}</b>
+                    <b>{l.title}</b>
                     <small>{l.disabled || l.description}</small>
                   </span>
                   <Icon n="open" size={20} />
@@ -68,7 +66,7 @@ function Body({ go }) {
 export default function Hub({ theme = 'light', onThemeToggle, setCurrentPath }) {
   const go = (path) => { window.history.pushState(null, '', path); if (setCurrentPath) setCurrentPath(path); else window.dispatchEvent(new PopStateEvent('popstate')); };
   return (
-    <ServicePage title="IMS" icon="home" accent="green" wide theme={theme} onThemeToggle={onThemeToggle} setCurrentPath={setCurrentPath}
+    <ServicePage rail="dash" title="IMS" icon="home" accent="green" wide theme={theme} onThemeToggle={onThemeToggle} setCurrentPath={setCurrentPath}
       backTo="/" backLabel="Back to the library dashboard" sub="Everything about Ims outside a normal chat: what he remembers, who he is, and the services he runs.">
       <Body go={go} />
     </ServicePage>

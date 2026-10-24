@@ -1291,3 +1291,6 @@
 .hbb.imsm .imsh-ims.talking > .imsh-hero { padding-top: 4px; }
 .hbb.imsm .imsh-err { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: 16px; background: var(--error-c); color: var(--on-error-c); font-size: 14px; line-height: 20px; margin-top: 6px; }
 @media (max-width: 700px) { .hbb.imsm .imsh-face { width: min(220px, 58vw); } .hbb.imsm .imsh-ims.talking .imsh-face { width: min(130px, 34vw); border-radius: 18px; } }
+.hbb.imsm.withrail { --rail: 84px; }
+.hbb.imsm .imsh-rail button.logo { border: 0; cursor: pointer; }
+@media (max-width: 700px) { .hbb.imsm.withrail { flex-direction: column-reverse; } .hbb.imsm.withrail .imsm-page { flex: 1; min-height: 0; } .hbb.imsm.withrail .imsm-fab { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); } }
