@@ -2572,18 +2572,31 @@ static unsigned long infoTimerEndMs = 0;
 static String infoUpcoming[24];
 static int infoUpcomingCount = 0;
 
-static void drawWeatherIcon(LovyanGFX &g, int x, int y, const char *kind) {
-  const uint16_t sun = g.color565(255, 200, 60), cloud = g.color565(170, 180, 200), rain = g.color565(90, 160, 255),
-                 moon = g.color565(210, 215, 235), snow = g.color565(235, 240, 255), bolt = g.color565(255, 220, 80);
-  const uint16_t bg = g.color565(11, 14, 21);
-  if (!strcmp(kind, "sun")) { g.fillCircle(x + 8, y + 8, 4, sun); for (int a = 0; a < 8; a++) { float r = a * PI / 4; g.drawLine(x + 8 + cosf(r) * 6, y + 8 + sinf(r) * 6, x + 8 + cosf(r) * 8, y + 8 + sinf(r) * 8, sun); } return; }
-  if (!strcmp(kind, "moon")) { g.fillCircle(x + 8, y + 8, 6, moon); g.fillCircle(x + 11, y + 6, 5, bg); return; }
-  if (!strcmp(kind, "partsun")) { g.fillCircle(x + 5, y + 5, 4, sun); }
-  g.fillCircle(x + 6, y + 8, 4, cloud); g.fillCircle(x + 10, y + 7, 5, cloud); g.fillRoundRect(x + 2, y + 8, 13, 5, 2, cloud);
-  if (!strcmp(kind, "rain")) for (int i = 0; i < 3; i++) g.drawLine(x + 4 + i * 4, y + 14, x + 3 + i * 4, y + 16, rain);
-  if (!strcmp(kind, "snow")) for (int i = 0; i < 3; i++) g.fillCircle(x + 4 + i * 4, y + 15, 1, snow);
-  if (!strcmp(kind, "storm")) { g.drawLine(x + 9, y + 12, x + 7, y + 15, bolt); g.drawLine(x + 7, y + 15, x + 10, y + 15, bolt); g.drawLine(x + 10, y + 15, x + 8, y + 18, bolt); }
-  if (!strcmp(kind, "fog")) for (int i = 0; i < 2; i++) g.drawFastHLine(x + 2, y + 14 + i * 2, 13, cloud);
+// The weather symbol, drawn smooth at any size (26 Oct: 22px in the weather pill, the size of the tiles' symbols).
+// The shapes are laid out on an 18-unit square; bg is what's behind it (the moon's bite is cut in that colour).
+static void drawWeatherIcon(LovyanGFX &g, int x, int y, const char *kind, int size = 18, uint16_t bg = 0) {
+  const uint16_t sun = g.color565(255, 200, 60), cloud = g.color565(190, 200, 218), rain = g.color565(110, 175, 255),
+                 moon = g.color565(220, 225, 240), snow = g.color565(240, 244, 255), bolt = g.color565(255, 220, 80);
+  if (!bg) bg = g.color565(11, 14, 21);
+  const float k = size / 18.0f;
+  auto X = [&](float u) { return (int)lroundf(x + u * k); };
+  auto Y = [&](float u) { return (int)lroundf(y + u * k); };
+  auto R = [&](float u) { return max(1, (int)lroundf(u * k)); };
+  const float w = max(0.6f, 0.75f * k);
+  if (!strcmp(kind, "sun")) {
+    g.fillSmoothCircle(X(9), Y(9), R(4), sun);
+    for (int a = 0; a < 8; a++) { float r = a * PI / 4; g.drawWideLine(X(9 + cosf(r) * 6.2f), Y(9 + sinf(r) * 6.2f), X(9 + cosf(r) * 8.2f), Y(9 + sinf(r) * 8.2f), w, sun); }
+    return;
+  }
+  if (!strcmp(kind, "moon")) { g.fillSmoothCircle(X(9), Y(9), R(6.5f), moon); g.fillSmoothCircle(X(12.2f), Y(6.6f), R(5.4f), bg); return; }
+  if (!strcmp(kind, "partsun")) g.fillSmoothCircle(X(5.5f), Y(5.5f), R(4), sun);
+  g.fillSmoothCircle(X(6.5f), Y(9), R(4.2f), cloud);
+  g.fillSmoothCircle(X(11), Y(8), R(5.2f), cloud);
+  g.fillSmoothRoundRect(X(2.2f), Y(9), X(16) - X(2.2f), Y(14) - Y(9), R(2.4f), cloud);
+  if (!strcmp(kind, "rain")) for (int i = 0; i < 3; i++) g.drawWideLine(X(5 + i * 4), Y(15.2f), X(4 + i * 4), Y(17.6f), w, rain);
+  if (!strcmp(kind, "snow")) for (int i = 0; i < 3; i++) g.fillSmoothCircle(X(5 + i * 4), Y(16.2f), R(1.1f), snow);
+  if (!strcmp(kind, "storm")) { g.drawWideLine(X(10), Y(13), X(8), Y(16), w, bolt); g.drawWideLine(X(8), Y(16), X(11), Y(16), w, bolt); g.drawWideLine(X(11), Y(16), X(9), Y(18), w, bolt); }
+  if (!strcmp(kind, "fog")) for (int i = 0; i < 2; i++) g.drawWideLine(X(2.5f), Y(15.2f + i * 2), X(15.5f), Y(15.2f + i * 2), w, cloud);
 }
 
 static void applyNightBrightness() {
@@ -2764,15 +2777,21 @@ void drawFooterClock() {
   g.setTextSize(1);
   g.setFont(&fonts::DejaVu12);
   if (infoTempC > -100) {
+    // in a 28px slate pill like the tiles (26 Oct), the symbol 22px - the size of the tiles' symbols
     char tb[8];
     snprintf(tb, sizeof(tb), "%d", infoTempC);
-    g.setTextDatum(baseline_right);
-    g.setTextColor(g.color565(170, 180, 200), bg);
-    g.drawString(tb, 306, oy + 22);
-    g.drawCircle(309, oy + 14, 2, g.color565(170, 180, 200));
-    const int iconX = 306 - g.textWidth(tb) - 20;
-    drawWeatherIcon(g, iconX, oy + 9, infoWeather);
-    notesRight = iconX - 10;
+    g.setFont(&fonts::DejaVu18);
+    const int tw = g.textWidth(tb);
+    const uint16_t pill = g.color565(30, 38, 52);
+    const int pw = 6 + 22 + 6 + tw + 6 + 12, px = 314 - pw, py = oy + (36 - TILE) / 2;
+    g.fillSmoothRoundRect(px, py, pw, TILE, TILE / 2, pill);
+    drawWeatherIcon(g, px + 6, py + (TILE - 22) / 2, infoWeather, 22, pill);
+    g.setTextDatum(middle_left);
+    g.setTextColor(g.color565(228, 233, 240), pill);
+    g.drawString(tb, px + 6 + 22 + 6, py + TILE / 2 + 1);
+    g.drawCircle(px + 6 + 22 + 6 + tw + 4, py + TILE / 2 - 5, 2, g.color565(228, 233, 240));
+    g.setFont(&fonts::DejaVu12);
+    notesRight = px - 10;
   }
   if (mid.length()) {
     g.setTextSize(1);
@@ -2896,15 +2915,25 @@ void drawTopStrip() {
   // left: the time, then the weather and the date where they fit
   struct tm t;
   char hm[8] = "--:--", dd[20] = "";
-  if (getLocalTime(&t, 0)) { strftime(hm, sizeof(hm), "%H:%M", &t); strftime(dd, sizeof(dd), "%a %d %b '%y", &t); }
+  if (getLocalTime(&t, 0)) {
+    strftime(hm, sizeof(hm), "%H:%M", &t);
+    // "Sun 25th Oct '26" (26 Oct)
+    const int d = t.tm_mday;
+    const char *sfx = (d % 100 >= 11 && d % 100 <= 13) ? "th" : d % 10 == 1 ? "st" : d % 10 == 2 ? "nd" : d % 10 == 3 ? "rd" : "th";
+    char wd[4], mon[4], yy[4];
+    strftime(wd, sizeof(wd), "%a", &t); strftime(mon, sizeof(mon), "%b", &t); strftime(yy, sizeof(yy), "%y", &t);
+    snprintf(dd, sizeof(dd), "%s %d%s %s '%s", wd, d, sfx, mon, yy);
+  }
   g.setFont(&fonts::DejaVu18);
   g.setTextDatum(baseline_left);
   g.setTextColor(g.color565(236, 230, 221), bg);
-  g.drawString(hm, 44, TOP_BASE);
-  int x = 44 + g.textWidth(hm) + 12;
-  g.setFont(&fonts::DejaVu18);
+  // the time starts where his face starts (x 54, 26 Oct)
+  const int timeX = FACE_CENTER_X - (int)lroundf(5.5f * FACE_PITCH) - FACE_DOT / 2;
+  g.drawString(hm, timeX, TOP_BASE);
+  int x = timeX + g.textWidth(hm) + 10;
+  g.setFont(&fonts::DejaVu12); // the smaller size, so it always fits beside the time
   if (dd[0] && x + g.textWidth(dd) < limit) {
-    g.setTextColor(g.color565(130, 138, 156), bg);
+    g.setTextColor(g.color565(150, 158, 176), bg);
     g.drawString(dd, x, TOP_BASE);
   }
   g.setFont(&fonts::Font0);
