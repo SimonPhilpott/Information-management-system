@@ -1927,12 +1927,16 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 ws.send(JSON.stringify(getDevicePayload(emotion)));
               }
               if (gWs.readyState === WebSocket.OPEN) {
+                // When it comes with a real tool call (the weather, a timer...), the face is acknowledged SILENTLY:
+                // answering it made him reply twice - a thin guess straight away, then the proper answer once the
+                // tool's result landed (25 Oct, "set a timer" and "what's the weather doing later?"). The real
+                // tool's result prompts the one answer. On its own (a plain reply) it's acknowledged as before.
+                const withRealCall = (parsed.toolCall?.functionCalls || []).some((c) => !['setEmotion', 'noteWake', 'noWakeDetected', 'endConversation'].includes(c.name));
                 gWs.send(JSON.stringify({
                   toolResponse: {
-                    functionResponses: [{
-                      response: { output: withVoiceReminder({ status: 'acknowledged' }) },
-                      id: call.id
-                    }]
+                    functionResponses: [withRealCall
+                      ? { response: { output: { status: 'acknowledged' } }, id: call.id, name: call.name, scheduling: 'SILENT' }
+                      : { response: { output: withVoiceReminder({ status: 'acknowledged' }) }, id: call.id }]
                   }
                 }));
               }
