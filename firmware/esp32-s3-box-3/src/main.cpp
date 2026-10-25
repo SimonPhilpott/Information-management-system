@@ -883,7 +883,7 @@ static uint8_t *playbackQueueStorage = nullptr;
 // and the calendar icons down the right (sensor, pod, prescription, Nightscout DB) with the face between them
 // (12x8 dots at an 18px pitch, x 54-266, y 50-190), and the notes in a strip along the bottom.
 #define MAIN_TOP_H 48 // the whole space above the face (it starts at y 50), so the strip's items sit in its middle
-#define MAIN_FOOT_Y 204
+#define MAIN_FOOT_Y 200 // the bottom strip: its 28px row sits 10px off the bottom edge, like the top pill
 // A fired timer / alarm / reminder fills the screen below the top strip until it's tapped (or 2 minutes pass).
 static bool alertCardActive = false;
 static char alertCardKind[16] = "";
@@ -1795,10 +1795,15 @@ static void drawFaceInternal(bool forceFull) {
     int r = i / FACE_COLS, c = i % FACE_COLS;
     int x = FACE_CENTER_X + (int)roundf((c - 5.5f) * FACE_PITCH) - FACE_DOT / 2;
     int y = FACE_CENTER_Y + (int)roundf((r - 3.5f) * FACE_PITCH) - FACE_DOT / 2;
-    uint8_t r8 = (uint8_t)(offR + (onR - offR) * v / 255);
-    uint8_t g8 = (uint8_t)(offG + (onG - offG) * v / 255);
-    uint8_t b8 = (uint8_t)(offB + (onB - offB) * v / 255);
-    uint16_t c565 = tft.color565(r8, g8, b8);
+    // The screen has only 32 / 64 / 32 steps of red / green / blue, so a dim breath moved in visible jumps (and
+    // the channels stepped at different moments, tinting it). Each dot rounds up or down by a fixed 4x4 pattern
+    // across the face instead (ordered dithering, 26 Oct): neighbours differ by at most one step, and the face as
+    // a whole fades in ~16 times finer steps.
+    static const uint8_t BAYER[16] = {0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5};
+    const float th = (BAYER[(r % 4) * 4 + (c % 4)] + 0.5f) / 16.0f;
+    const float rf = offR + (onR - offR) * v / 255.0f, gf = offG + (onG - offG) * v / 255.0f, bf = offB + (onB - offB) * v / 255.0f;
+    const int r5 = min(31, (int)(rf * 31.0f / 255.0f + th)), g6 = min(63, (int)(gf * 63.0f / 255.0f + th)), b5 = min(31, (int)(bf * 31.0f / 255.0f + th));
+    uint16_t c565 = (uint16_t)((r5 << 11) | (g6 << 5) | b5);
     if (!forceFull && c565 == faceCurColors[i]) continue;
     faceCurColors[i] = c565;
     faceCurLevels[i] = v;
@@ -2618,7 +2623,7 @@ static bool footerSpriteReady = false;
 static LGFX_Sprite leftColSprite(&tft), rightColSprite(&tft);
 static bool colSpritesTried = false, leftColReady = false, rightColReady = false;
 #define TILE 28 // 26 Oct: near the cog's 30px - the most five a side allow between the strips
-#define TILE_PITCH 32
+#define TILE_PITCH 31 // the last tile ends at 200, where the bottom strip starts
 #define TILE_TOP 48 // screen y of the first tile: right under the top strip, the last ends at the notes
 #define LEFT_COL_W 54
 #define RIGHT_COL_X 266
@@ -2753,13 +2758,13 @@ void drawFooterClock() {
   if (!footerSpriteReady) {
     footerSprite.setColorDepth(16);
     footerSprite.setPsram(true);
-    footerSpriteReady = footerSprite.createSprite(320, 36) != nullptr;
+    footerSpriteReady = footerSprite.createSprite(320, 240 - MAIN_FOOT_Y) != nullptr;
   }
   LovyanGFX &g = footerSpriteReady ? (LovyanGFX &)footerSprite : (LovyanGFX &)tft;
   const int oy = footerSpriteReady ? 0 : MAIN_FOOT_Y;
   if (!footerSpriteReady) tft.startWrite();
   const uint16_t bg = g.color565(11, 14, 21);
-  g.fillRect(0, oy, 320, 36, bg);
+  g.fillRect(0, oy, 320, 240 - MAIN_FOOT_Y, bg);
   String mid = "";
   uint16_t midCol = g.color565(255, 200, 100);
   if (isMicHardwareMuted) { mid = "Press the top button to unmute"; midCol = g.color565(255, 107, 129); }
@@ -2783,7 +2788,7 @@ void drawFooterClock() {
     g.setFont(&fonts::DejaVu18);
     const int tw = g.textWidth(tb);
     const uint16_t pill = g.color565(30, 38, 52);
-    const int pw = 6 + 22 + 6 + tw + 6 + 12, px = 314 - pw, py = oy + (36 - TILE) / 2;
+    const int pw = 6 + 22 + 6 + tw + 6 + 12, px = 314 - pw, py = oy + (240 - MAIN_FOOT_Y) - 10 - TILE;
     g.fillSmoothRoundRect(px, py, pw, TILE, TILE / 2, pill);
     drawWeatherIcon(g, px + 6, py + (TILE - 22) / 2, infoWeather, 22, pill);
     g.setTextDatum(middle_left);
@@ -2801,9 +2806,9 @@ void drawFooterClock() {
       while (mid.length() > 3 && g.textWidth(mid + "...") > maxW) mid = mid.substring(0, mid.length() - 1);
       mid += "...";
     }
-    g.setTextDatum(baseline_left);
+    g.setTextDatum(middle_left); // level with the temperature in the weather pill
     g.setTextColor(midCol, bg);
-    g.drawString(mid, 10, oy + 22);
+    g.drawString(mid, 10, oy + (240 - MAIN_FOOT_Y) - 10 - TILE / 2 + 1);
     g.setFont(&fonts::Font0);
     g.setTextDatum(top_left);
   }
@@ -2904,12 +2909,24 @@ void drawTopStrip() {
   else if (!voiceDaemonRunning) warn = "Voice off";
   g.setFont(&fonts::DejaVu18);
   if (warn) {
-    g.setTextDatum(baseline_right);
-    g.setTextColor(warnCol, bg);
-    g.drawString(warn, limit, TOP_BASE);
-    const int wx = limit - g.textWidth(warn) - 9;
-    g.fillCircle(wx, MAIN_TOP_H / 2, 4, warnCol);
-    limit = wx - 12;
+    // the date comes first (26 Oct): when the note and the date won't both fit, the note shrinks to its dot
+    g.setFont(&fonts::DejaVu18);
+    const int timeEnd = FACE_CENTER_X - (int)lroundf(5.5f * FACE_PITCH) - FACE_DOT / 2 + g.textWidth("00:00") + 10;
+    g.setFont(&fonts::DejaVu12);
+    const int dateEnd = timeEnd + g.textWidth("Wed 28th Sep '26") + 10;
+    g.setFont(&fonts::DejaVu18);
+    const int full = g.textWidth(warn) + 9 + 4;
+    if (limit - full - 8 >= dateEnd) {
+      g.setTextDatum(baseline_right);
+      g.setTextColor(warnCol, bg);
+      g.drawString(warn, limit, TOP_BASE);
+      const int wx = limit - g.textWidth(warn) - 9;
+      g.fillCircle(wx, MAIN_TOP_H / 2, 4, warnCol);
+      limit = wx - 12;
+    } else {
+      g.fillCircle(limit - 4, MAIN_TOP_H / 2, 4, warnCol);
+      limit -= 16;
+    }
   }
 
   // left: the time, then the weather and the date where they fit
