@@ -2604,13 +2604,13 @@ static bool footerSpriteReady = false;
 // the left of the tile when there's room. Each column is drawn off screen and pushed in one go.
 static LGFX_Sprite leftColSprite(&tft), rightColSprite(&tft);
 static bool colSpritesTried = false, leftColReady = false, rightColReady = false;
-#define TILE 22
-#define TILE_PITCH 28
-#define TILE_TOP 50 // screen y of the first tile: level with the top of the face
-#define LEFT_COL_W 52
-#define RIGHT_COL_X 268
-#define LEFT_ICON_X 10
-#define RIGHT_ICON_X 288 // screen x of the right-hand tiles (10px in from the edge)
+#define TILE 28 // 26 Oct: near the cog's 30px - the most five a side allow between the strips
+#define TILE_PITCH 32
+#define TILE_TOP 48 // screen y of the first tile: right under the top strip, the last ends at the notes
+#define LEFT_COL_W 54
+#define RIGHT_COL_X 266
+#define LEFT_ICON_X 6
+#define RIGHT_ICON_X 286 // screen x of the right-hand tiles (6px in from the edge)
 
 // the status colours of the tiles (the IMS palette)
 #define TC_ORANGE 255, 180, 92
@@ -2620,24 +2620,33 @@ static bool colSpritesTried = false, leftColReady = false, rightColReady = false
 #define TC_RED 255, 143, 134
 
 // One tile: a rounded square in a dark tint of the colour, the outline (tile_icons.h) in the colour itself.
-static void drawTileIcon(LovyanGFX &g, const uint8_t *path, size_t len, int x, int y, uint8_t r, uint8_t gr, uint8_t b, bool centreDot = false) {
+// ang turns the outline about its centre (degrees) and dx nudges the whole tile sideways - for the animations.
+static void drawTileIconEx(LovyanGFX &g, const uint8_t *path, size_t len, int x, int y, int size, uint8_t r, uint8_t gr, uint8_t b,
+                           bool centreDot = false, float ang = 0.0f, float dx = 0.0f) {
   const int bgR = 11, bgG = 14, bgB = 21;
-  g.fillSmoothRoundRect(x, y, TILE, TILE, 6, g.color565(bgR + (r - bgR) * 26 / 100, bgG + (gr - bgG) * 26 / 100, bgB + (b - bgB) * 26 / 100));
+  const int tx = x + (int)lroundf(dx);
+  g.fillSmoothRoundRect(tx, y, size, size, size * 6 / 22, g.color565(bgR + (r - bgR) * 26 / 100, bgG + (gr - bgG) * 26 / 100, bgB + (b - bgB) * 26 / 100));
   const uint16_t col = g.color565(r, gr, b);
-  const float gs = TILE * 0.74f;            // the outline's box inside the tile
-  const float ox = x + (TILE - gs) / 2.0f, oy = y + (TILE - gs) / 2.0f, k = gs / 240.0f;
+  const float gs = size * 0.74f;            // the outline's box inside the tile
+  const float ox = tx + (size - gs) / 2.0f, oy = y + (size - gs) / 2.0f, k = gs / 240.0f;
   const float w = gs / 24.0f * 0.95f;        // half the stroke: a 1.9-unit line, like the canvas
+  const float cx = ox + gs / 2.0f, cy = oy + gs / 2.0f, ca = cosf(ang * PI / 180.0f), sa = sinf(ang * PI / 180.0f);
   int px = -1, py = -1;
-  for (size_t i = 0; i + 1 < len || (i < len && pgm_read_byte(&path[i]) == 255);) {
+  for (size_t i = 0; i < len;) {
     const uint8_t vx = pgm_read_byte(&path[i]);
     if (vx == 255) { px = py = -1; i++; continue; }
+    if (i + 1 >= len) break;
     const uint8_t vy = pgm_read_byte(&path[i + 1]);
-    const int nx = (int)lroundf(ox + vx * k), ny = (int)lroundf(oy + vy * k);
+    const float fx = ox + vx * k - cx, fy = oy + vy * k - cy;
+    const int nx = (int)lroundf(cx + fx * ca - fy * sa), ny = (int)lroundf(cy + fx * sa + fy * ca);
     if (px >= 0) g.drawWideLine(px, py, nx, ny, w, col);
     px = nx; py = ny;
     i += 2;
   }
-  if (centreDot) g.fillSmoothCircle(x + TILE / 2, y + TILE / 2, 1, col);
+  if (centreDot) g.fillSmoothCircle(tx + size / 2, y + size / 2, max(1, size / 22), col);
+}
+static void drawTileIcon(LovyanGFX &g, const uint8_t *path, size_t len, int x, int y, uint8_t r, uint8_t gr, uint8_t b, bool centreDot = false) {
+  drawTileIconEx(g, path, len, x, y, TILE, r, gr, b, centreDot);
 }
 #define TILE_ICON(g, name, x, y, c, ...) drawTileIcon(g, tile_##name, sizeof(tile_##name), x, y, c, ##__VA_ARGS__)
 
@@ -2661,10 +2670,10 @@ void drawSideIcons() {
     g.setFont(&fonts::DejaVu18);
     g.setTextDatum(middle_left);
     auto slot = [&](int k) { return oy + TILE_TOP - MAIN_TOP_H + k * TILE_PITCH; };
-    auto cnt = [&](int y, int n, uint16_t c) {
-      if (n <= 1) return;
+    auto cnt = [&](int y, int n, uint16_t c) { // always shown, even for one (26 Oct)
+      if (n <= 0) return;
       g.setTextColor(c, bg);
-      g.drawString(n > 9 ? String("9+") : String(n), LEFT_ICON_X + TILE + 4, y + TILE / 2 + 1);
+      g.drawString(n > 9 ? String("9+") : String(n), LEFT_ICON_X + TILE + 3, y + TILE / 2 + 1);
     };
     const uint16_t orange = g.color565(TC_ORANGE);
     if (alarmCount > 0) { TILE_ICON(g, alarm, LEFT_ICON_X, slot(0), TC_ORANGE); cnt(slot(0), alarmCount, orange); }
@@ -2710,10 +2719,10 @@ void drawSideIcons() {
       g.setTextSize(1);
       g.setFont(&fonts::Font0);
       const int tw = g.textWidth(dbBuf);
-      if (ix - 3 - tw >= ox) { // only when it fits between the face and the tile
+      if (ix - 2 - tw >= ox - 2) { // only when it fits between the face (it ends at x 266) and the tile
         g.setTextDatum(middle_right);
         g.setTextColor(red ? g.color565(TC_RED) : g.color565(TC_ORANGE), bg);
-        g.drawString(dbBuf, ix - 3, slot(4) + TILE / 2);
+        g.drawString(dbBuf, ix - 2, slot(4) + TILE / 2);
       }
       g.setTextDatum(top_left);
     }
@@ -2848,7 +2857,7 @@ void drawTopStrip() {
   g.fillRect(0, 0, 320, MAIN_TOP_H, bg);
   g.setTextSize(1);
   // the settings cog on a light grey tile, in the tiles' style (26 Oct)
-  g.fillSmoothRoundRect(HEADER_ICON_CX - 15, MAIN_TOP_H / 2 - 15, 30, 30, 8, g.color565(200, 205, 212));
+  g.fillSmoothRoundRect(HEADER_ICON_CX - TILE / 2, MAIN_TOP_H / 2 - TILE / 2, TILE, TILE, TILE * 6 / 22, g.color565(200, 205, 212)); // the same size as the tiles
   g.drawXBitmap(HEADER_ICON_CX - 11, MAIN_TOP_H / 2 - 11, cog_icon_22x22, 22, 22, g.color565(27, 32, 40));
 
   // right: the glucose pill, in a dark tint of its own colour
@@ -2859,13 +2868,13 @@ void drawTopStrip() {
   const int vw = g.textWidth(currentGlucoseValue);
   const bool twoArrows = currentGlucoseDirection.startsWith("Double");
   const int aw = twoArrows ? 26 : 18;
-  const int pw = 10 + vw + 6 + aw + 10;
+  const int pw = 12 + vw + 6 + aw + 12; // 26 Oct: as tall as the tiles (28px), with matching padding
   const int px = 320 - 6 - pw;
-  g.fillRoundRect(px, MAIN_TOP_H / 2 - 12, pw, 24, 12, pill);
+  g.fillSmoothRoundRect(px, MAIN_TOP_H / 2 - TILE / 2, pw, TILE, TILE / 2, pill);
   g.setTextDatum(baseline_left); // by the baseline: "middle" counts descender space and sits high
   g.setTextColor(gc, pill);
-  g.drawString(currentGlucoseValue, px + 10, TOP_BASE);
-  drawGlucoseArrows(g, px + 10 + vw + 6 + aw / 2, MAIN_TOP_H / 2, currentGlucoseDirection, gc);
+  g.drawString(currentGlucoseValue, px + 12, TOP_BASE);
+  drawGlucoseArrows(g, px + 12 + vw + 6 + aw / 2, MAIN_TOP_H / 2, currentGlucoseDirection, gc);
   int limit = px - 8;
 
   // a note only when something is wrong (or an update is going on)
@@ -2912,6 +2921,18 @@ static void showAlertCard(const char *kind, const char *label) {
   alertCardActive = true;
   alertCardUntil = millis() + 120000UL;
 }
+// The card's colours, and its icon as a big tile (48px) at 136,46 - shaken by the animation tick.
+#define CARD_ICON_X 136
+#define CARD_ICON_Y 46
+#define CARD_ICON 48
+static uint16_t alertCardBg() {
+  return !strcmp(alertCardKind, "timer") ? tft.color565(36, 23, 10) : !strcmp(alertCardKind, "alarm") ? tft.color565(44, 12, 12) : tft.color565(26, 20, 52);
+}
+static void drawAlertCardIcon(LovyanGFX &g, float ang, float dx, int ox = CARD_ICON_X, int oy = CARD_ICON_Y) {
+  if (!strcmp(alertCardKind, "timer")) drawTileIconEx(g, tile_timer, sizeof(tile_timer), ox, oy, CARD_ICON, TC_ORANGE, false, ang, dx);
+  else if (!strcmp(alertCardKind, "alarm")) drawTileIconEx(g, tile_alarm, sizeof(tile_alarm), ox, oy, CARD_ICON, TC_RED, false, ang, dx);
+  else drawTileIconEx(g, tile_reminder, sizeof(tile_reminder), ox, oy, CARD_ICON, 169, 150, 255);
+}
 static void drawAlertCard() {
   const bool isTimer = !strcmp(alertCardKind, "timer"), isAlarm = !strcmp(alertCardKind, "alarm");
   const uint16_t bg = isTimer ? tft.color565(36, 23, 10) : isAlarm ? tft.color565(44, 12, 12) : tft.color565(26, 20, 52);
@@ -2919,10 +2940,7 @@ static void drawAlertCard() {
   const uint16_t ink = tft.color565(251, 236, 220);
   tft.startWrite();
   tft.fillRect(0, MAIN_TOP_H, 320, 240 - MAIN_TOP_H, bg); // straight fill: covers a painted face too
-  tft.fillCircle(160, 70, 22, tft.color565(11, 14, 21));
-  if (isTimer) drawTimerIcon(tft, 148, 58, acc);
-  else if (isAlarm) drawAlarmIcon(tft, 148, 58, acc);
-  else drawReminderIcon(tft, 148, 58, acc);
+  drawAlertCardIcon(tft, 0.0f, 0.0f); // the tile; the animation tick shakes it for a timer or alarm going off
   tft.setTextSize(1);
   tft.setTextDatum(middle_center);
   tft.setFont(&fonts::DejaVu18);
@@ -2941,6 +2959,90 @@ static void drawAlertCard() {
   tft.setFont(&fonts::Font0);
   tft.setTextDatum(top_left);
   tft.endWrite();
+}
+
+// Animated tiles (26 Oct, Simon: "when the alarm goes off the clock shakes, as the timer runs the sand falls and
+// the hourglass shakes when it's going off, reminder stays unanimated, the flames on the cake animate when a
+// birthday is 'Today', the new music vinyl spins when a new record is released 'Today', the other icons stay
+// static"). Only the moving tiles are redrawn, each off screen and pushed in one go, about 14 times a second.
+static LGFX_Sprite animTileSprite(&tft), animCardSprite(&tft);
+static bool animTried = false, animTileReady = false, animCardReady = false;
+// a point in the tile's 24-unit outline space -> pixels in a tile drawn at (x, y) with size TILE
+static inline void tileUnit(int x, int y, float ux, float uy, int &px, int &py) {
+  const float gs = TILE * 0.74f, o = (TILE - gs) / 2.0f;
+  px = (int)lroundf(x + o + ux * gs / 24.0f); py = (int)lroundf(y + o + uy * gs / 24.0f);
+}
+static void drawSandTile(LovyanGFX &g, int x, int y, unsigned long t) {
+  TILE_ICON(g, timer, x, y, TC_ORANGE);
+  const uint16_t sand = g.color565(TC_ORANGE);
+  const float f = (t % 4000) / 4000.0f; // one glass every four seconds
+  // the top chamber empties: a triangle down to the neck, its surface sinking
+  const float sy = 5.6f + f * 5.6f, half = 2.7f * (11.5f - sy) / 5.9f;
+  int ax, ay, bx, by, cx, cy;
+  if (half > 0.25f) {
+    tileUnit(x, y, 12 - half, sy, ax, ay); tileUnit(x, y, 12 + half, sy, bx, by); tileUnit(x, y, 12, 11.4f, cx, cy);
+    g.fillTriangle(ax, ay, bx, by, cx, cy, sand);
+  }
+  // the bottom fills: a heap growing on the floor of the glass
+  const float h = 0.6f + f * 3.6f;
+  tileUnit(x, y, 12, 20.3f - h, ax, ay); tileUnit(x, y, 8.8f, 20.3f, bx, by); tileUnit(x, y, 15.2f, 20.3f, cx, cy);
+  g.fillTriangle(ax, ay, bx, by, cx, cy, sand);
+  // a grain falling through the neck
+  const float gy = 12.0f + ((t / 70) % 7);
+  int gx, gyp;
+  tileUnit(x, y, 12, gy, gx, gyp);
+  if (gy < 20.3f - h) g.fillRect(gx, gyp, 1, 2, sand);
+}
+static void drawFlameTile(LovyanGFX &g, int x, int y, unsigned long t) {
+  TILE_ICON(g, birthday, x, y, TC_GREEN);
+  const float xs[3] = {8.5f, 12.0f, 15.5f};
+  for (int i = 0; i < 3; i++) {
+    const float hh = 2.2f + 0.9f * sinf(t / 95.0f + i * 2.1f), sway = 0.5f * sinf(t / 140.0f + i);
+    int ax, ay, bx, by, cx, cy;
+    tileUnit(x, y, xs[i] - 1.0f, 7.6f, ax, ay); tileUnit(x, y, xs[i] + 1.0f, 7.6f, bx, by); tileUnit(x, y, xs[i] + sway, 7.6f - hh, cx, cy);
+    const uint16_t c = ((t / 160 + i) % 2) ? g.color565(255, 214, 110) : g.color565(255, 168, 70);
+    g.fillTriangle(ax, ay, bx, by, cx, cy, c);
+  }
+}
+void drawIconAnimTick() {
+  if (onSettingsScreen) return;
+  static unsigned long last = 0;
+  const unsigned long t = millis();
+  if (t - last < 70) return;
+  last = t;
+  if (!animTried) {
+    animTried = true;
+    animTileSprite.setColorDepth(16); animTileSprite.setPsram(true);
+    animCardSprite.setColorDepth(16); animCardSprite.setPsram(true);
+    animTileReady = animTileSprite.createSprite(TILE, TILE) != nullptr;
+    animCardSprite.setColorDepth(16);
+    animCardReady = animCardSprite.createSprite(CARD_ICON + 8, CARD_ICON) != nullptr;
+  }
+  if (alertCardActive) {
+    // a timer or alarm going off: its tile shakes (a reminder's card stays still)
+    if (!animCardReady || (strcmp(alertCardKind, "timer") && strcmp(alertCardKind, "alarm"))) return;
+    animCardSprite.fillSprite(alertCardBg());
+    drawAlertCardIcon(animCardSprite, 11.0f * sinf(t / 45.0f), 4.0f + 2.5f * sinf(t / 31.0f), 0, 0);
+    animCardSprite.pushSprite(CARD_ICON_X - 4, CARD_ICON_Y);
+    return;
+  }
+  if (!animTileReady) return;
+  const uint16_t bg = tft.color565(11, 14, 21);
+  auto push = [&](int x, int y) { animTileSprite.pushSprite(x, y); };
+  // the timer: sand falling while it runs
+  if (timerCount > 0 && infoTimerEndMs && (long)(infoTimerEndMs - millis()) > 0) {
+    animTileSprite.fillSprite(bg); drawSandTile(animTileSprite, 0, 0, t); push(LEFT_ICON_X, TILE_TOP + 1 * TILE_PITCH);
+  }
+  // a birthday today: the candles flicker
+  if (birthdayCount > 0 && birthdayColor == 2) {
+    animTileSprite.fillSprite(bg); drawFlameTile(animTileSprite, 0, 0, t); push(LEFT_ICON_X, TILE_TOP + 3 * TILE_PITCH);
+  }
+  // new music out today: the record spins
+  if (newReleaseCount > 0) {
+    animTileSprite.fillSprite(bg);
+    drawTileIconEx(animTileSprite, tile_music, sizeof(tile_music), 0, 0, TILE, TC_ORANGE, false, (float)((t / 8) % 360));
+    push(LEFT_ICON_X, TILE_TOP + 4 * TILE_PITCH);
+  }
 }
 
 void renderScreen(bool forceRedraw = false) {
@@ -5735,6 +5837,7 @@ void loop() {
       drawFaceTick();
     }
   }
+  drawIconAnimTick(); // the animated tiles (it keeps its own ~14 fps pace)
 
   // The footer clock shows seconds, so it needs a genuine once-a-second
   // tick - renderScreen() otherwise only redraws on a state/mute/emotion
