@@ -2694,7 +2694,7 @@ static bool footerSpriteReady = false;
 // the left of the tile when there's room. Each column is drawn off screen and pushed in one go.
 static LGFX_Sprite leftColSprite(&tft), rightColSprite(&tft);
 static bool colSpritesTried = false, leftColReady = false, rightColReady = false;
-#define TILE 27 // 26 Oct: five a side with an even 4px between them and above the weather pill
+#define TILE 26 // 26 Oct: even, so the symbol has the same padding all round; an even 5px between tiles
 #define TILE_GLYPH 20.7f // the symbol inside a side tile: the size it had on a 28px tile (26 Oct: smaller tiles, same symbols)
 #define TILE_PITCH 31 // the last tile ends at 200, where the bottom strip starts
 #define TILE_TOP 48 // screen y of the first tile: right under the top strip, the last ends at the notes
@@ -2870,7 +2870,7 @@ void drawFooterClock() {
     const bool extreme = infoWarnLevel > 0 || infoExtreme[0] != 0;
     // a warning or extreme-weather symbol is a full tile at the pill's right end, so it lines up with the
     // right-hand tiles above it (x 286-314); the pill's corners match the tiles' (26 Oct)
-    const int pw = 6 + 22 + 6 + tw + 6 + (extreme ? 8 + TILE : 10), px = RIGHT_ICON_X + TILE - pw, py = oy + (240 - MAIN_FOOT_Y) - 10 - TILE;
+    const int pw = 6 + 22 + 6 + tw + 6 + (extreme ? 8 + TILE : 10), px = RIGHT_ICON_X + TILE - pw, py = oy + (240 - MAIN_FOOT_Y) - (MAIN_TOP_H / 2 - TILE / 2) - TILE; // as far off the bottom edge as the top pills are off the top
     g.fillSmoothRoundRect(px, py, pw, TILE, TILE * 6 / 22, pill);
     drawWeatherIcon(g, px + 6, py + (TILE - 22) / 2, infoWeather, 22, pill);
     g.setTextDatum(middle_left);
@@ -2902,7 +2902,7 @@ void drawFooterClock() {
     }
     g.setTextDatum(middle_left); // level with the temperature in the weather pill
     g.setTextColor(midCol, bg);
-    g.drawString(mid, 10, oy + (240 - MAIN_FOOT_Y) - 10 - TILE / 2 + 1);
+    g.drawString(mid, 10, oy + (240 - MAIN_FOOT_Y) - (MAIN_TOP_H / 2 - TILE / 2) - TILE / 2 + 1);
     g.setFont(&fonts::Font0);
     g.setTextDatum(top_left);
   }
