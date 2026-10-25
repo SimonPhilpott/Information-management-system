@@ -866,9 +866,9 @@ static uint8_t *playbackQueueStorage = nullptr;
 // ---------------------------------------------------------------------------
 #define FACE_COLS 12
 #define FACE_ROWS 8
-#define FACE_DOT 16
-#define FACE_RADIUS 5
-#define FACE_PITCH 21
+#define FACE_DOT 14
+#define FACE_RADIUS 4
+#define FACE_PITCH 19
 // 164: 64px left margin for the icon stack (24px icon + count), 200px face
 // (x=64..264), and a 56px right-hand zone for the blood glucose widget
 // (centered at 292) - gap to the face tightened to make room for the icons.
@@ -876,10 +876,11 @@ static uint8_t *playbackQueueStorage = nullptr;
 // 116 (shifted down 5px from 111): top of face is at y=50, leaving 7px
 // comfortable margin below the top header (HEADER_H = 43)
 #define FACE_CENTER_Y 120
-// Screen layout, option A of the desk-screen mock-ups (25 Oct 2026, Simon: "go with A"): the face fills the
-// middle (12x8 dots at a 21px pitch, x 36-284, y 38-202), a 36px strip on top (settings gear, time, weather,
-// glucose) and a 36px strip at the bottom (the status icons, notes and Ims's state). The icons that used to
-// stand down the left and the glucose column on the right live in those strips now.
+// Screen layout, option A of the desk-screen mock-ups (25 Oct 2026, Simon: "go with A"), revised 26 Oct (Simon:
+// "move them back to the sides", one text size, no status word): a 36px strip on top (settings gear, time,
+// weather, date, glucose), the status icons down the left (alarm, timer, reminder, birthday, new music, camera)
+// and the calendar icons down the right (sensor, pod, prescription, Nightscout DB) with the face between them
+// (12x8 dots at a 19px pitch, x 48-272, y 46-194), and the notes in a strip along the bottom.
 #define MAIN_TOP_H 36
 #define MAIN_FOOT_Y 204
 // A fired timer / alarm / reminder fills the screen below the top strip until it's tapped (or 2 minutes pass).
@@ -887,8 +888,9 @@ static bool alertCardActive = false;
 static char alertCardKind[16] = "";
 static char alertCardLabel[64] = "";
 static unsigned long alertCardUntil = 0;
-// where the camera icon sits in the bottom strip (it's still tappable to wake the camera)
-static int camChipX0 = -1, camChipX1 = -1;
+// where the camera icon sits (it's still tappable to wake the camera)
+static int camChipX0 = -1, camChipX1 = -1, camChipY0 = -1, camChipY1 = -1;
+void drawSideIcons();
 void drawTopStrip();
 void drawFooterClock();
 // How loud Ims's own voice is right now: the playback task writes the average level of each
@@ -1919,8 +1921,8 @@ static uint8_t calRx = 0;
 // Nightscout database usage (percent), drawn under the icons: green to 70, orange 71-90, red 91+.
 static float nsDbPct = -1.0f;
 
-// The sensor / pod / prescription icons are drawn in the bottom strip (drawFooterClock) now.
-static void drawCalendarIcons() { drawFooterClock(); }
+// The sensor / pod / prescription icons are drawn in the right-hand column (drawSideIcons).
+static void drawCalendarIcons() { drawSideIcons(); }
 
 #define GLUCOSE_CX 292
 
@@ -1991,10 +1993,11 @@ static void drawGlucoseArrows(LovyanGFX &g, int cx, int cy, const String &dir, u
   }
 }
 
-// Glucose sits in the top strip and the calendar icons in the bottom one (option A, 25 Oct): redraw both.
+// Glucose sits in the top strip and the calendar icons in the right-hand column: redraw both.
 void drawGlucoseWidget() {
   if (onSettingsScreen) return;
-  drawFooterClock(); // draws the top strip too
+  drawTopStrip();
+  drawSideIcons();
 }
 
 // Header bar height, shared by all four screens (main/personality/voice/
@@ -2546,7 +2549,7 @@ void drawStatusIconStack(bool force = false) {
     return; // State unchanged - avoid wiping/redrawing over SPI
   }
 
-  drawFooterClock(); // the icons are drawn in the bottom strip now (option A, 25 Oct)
+  drawSideIcons();
 
   lastDrawnAlarm = alarmCount;
   lastDrawnTimer = timerCount;
@@ -2593,27 +2596,94 @@ static void applyNightBrightness() {
 static LGFX_Sprite footerSprite(&tft);
 static bool footerSpriteReady = false;
 
-// Ims's state in words and a colour, for the bottom strip (it used to be the capitals under the face)
-static void mainStatus(LovyanGFX &g, uint16_t &col, const char *&txt) {
-  if (recordingActive) { col = g.color565(255, 71, 87); txt = "Recording"; return; }
-  if (isMicHardwareMuted) { col = g.color565(255, 71, 87); txt = "Mic muted"; return; }
-  switch (currentState) {
-    case STATE_CONNECTING_WIFI: col = g.color565(255, 165, 2); txt = "Wi-Fi..."; return;
-    case STATE_CONNECTING_SERVER: col = g.color565(255, 165, 2); txt = "Connecting"; return;
-    case STATE_LISTENING: col = g.color565(46, 213, 115); txt = "Listening"; return;
-    case STATE_THINKING: col = g.color565(112, 161, 255); txt = "Thinking"; return;
-    case STATE_SPEAKING: col = g.color565(165, 94, 234); txt = "Speaking"; return;
-    default: col = g.color565(87, 101, 116); txt = imsAsleep() ? "Asleep" : "Standby"; return;
+// The icon columns either side of the face (26 Oct): the same icons in the same fixed slots as the old
+// left-hand stack (a type always lands in the same place), counts beside them, and the calendar icons on the
+// right. Each column is drawn off screen and pushed in one go.
+static LGFX_Sprite leftColSprite(&tft), rightColSprite(&tft);
+static bool colSpritesTried = false, leftColReady = false, rightColReady = false;
+#define SIDE_TOP (MAIN_TOP_H + 6)
+#define SIDE_PITCH 26
+#define LEFT_COL_W 46
+#define RIGHT_COL_X 282
+void drawSideIcons() {
+  if (onSettingsScreen || alertCardActive) return;
+  const int colH = MAIN_FOOT_Y - MAIN_TOP_H;
+  if (!colSpritesTried) {
+    colSpritesTried = true;
+    leftColSprite.setColorDepth(16); leftColSprite.setPsram(true);
+    rightColSprite.setColorDepth(16); rightColSprite.setPsram(true);
+    leftColReady = leftColSprite.createSprite(LEFT_COL_W, colH) != nullptr;
+    rightColReady = rightColSprite.createSprite(320 - RIGHT_COL_X, colH) != nullptr;
+  }
+  const uint16_t ORANGE = tft.color565(255, 140, 0), WHITE = tft.color565(255, 255, 255);
+  {
+    LovyanGFX &g = leftColReady ? (LovyanGFX &)leftColSprite : (LovyanGFX &)tft;
+    const int ox = 0, oy = leftColReady ? 0 : MAIN_TOP_H;
+    if (!leftColReady) tft.startWrite();
+    const uint16_t bg = g.color565(11, 14, 21);
+    g.fillRect(ox, oy, LEFT_COL_W, colH, bg);
+    g.setTextSize(1);
+    g.setFont(&fonts::DejaVu18);
+    g.setTextDatum(middle_left);
+    auto slot = [&](int k) { return oy + 6 + k * SIDE_PITCH; };
+    auto cnt = [&](int y, int n, uint16_t c) {
+      if (n <= 1) return;
+      g.setTextColor(c, bg);
+      g.drawString(n > 9 ? String("9+") : String(n), 4 + 24 + 2, y + 13);
+    };
+    if (alarmCount > 0) { drawAlarmIcon(g, 4, slot(0), ORANGE); cnt(slot(0), alarmCount, ORANGE); }
+    if (timerCount > 0) { drawTimerIcon(g, 4, slot(1), ORANGE); cnt(slot(1), timerCount, ORANGE); }
+    if (reminderCount > 0) { drawReminderIcon(g, 4, slot(2), ORANGE); cnt(slot(2), reminderCount, ORANGE); }
+    if (birthdayCount > 0) {
+      const uint16_t cake = birthdayColor == 2 ? g.color565(70, 220, 120) : birthdayColor == 1 ? ORANGE : WHITE;
+      drawBirthdayIcon(g, 4, slot(3), cake); cnt(slot(3), birthdayCount, cake);
+    }
+    if (newReleaseCount > 0) { drawMusicIcon(g, 4, slot(4), ORANGE); cnt(slot(4), newReleaseCount, ORANGE); }
+    // yellow = camera attached but asleep, green = awake and ready (tap it to wake or sleep the camera)
+    if (cameraAttached || cameraPresent()) {
+      drawCameraIcon(g, 4, slot(5), cameraAwake ? g.color565(70, 220, 120) : g.color565(255, 210, 60));
+      camChipX0 = 0; camChipX1 = LEFT_COL_W;
+      camChipY0 = MAIN_TOP_H + 6 + 5 * SIDE_PITCH - 4; camChipY1 = camChipY0 + 32;
+    } else { camChipX0 = camChipX1 = camChipY0 = camChipY1 = -1; }
+    g.setFont(&fonts::Font0);
+    g.setTextDatum(top_left);
+    if (leftColReady) leftColSprite.pushSprite(0, MAIN_TOP_H); else tft.endWrite();
+  }
+  {
+    LovyanGFX &g = rightColReady ? (LovyanGFX &)rightColSprite : (LovyanGFX &)tft;
+    const int ox = rightColReady ? 0 : RIGHT_COL_X, oy = rightColReady ? 0 : MAIN_TOP_H;
+    const int w = 320 - RIGHT_COL_X;
+    if (!rightColReady) tft.startWrite();
+    const uint16_t bg = g.color565(11, 14, 21);
+    g.fillRect(ox, oy, w, colH, bg);
+    const int ix = ox + (w - 24) / 2;
+    if (calSensor) smoothIcon(g, sensor_icon_24x24, ix, oy + 6, calSensor == 2 ? ORANGE : WHITE);
+    if (calPod) smoothIcon(g, pod_icon_24x24, ix, oy + 6 + SIDE_PITCH, WHITE);
+    if (calRx) smoothIcon(g, rx_icon_24x24, ix, oy + 6 + 2 * SIDE_PITCH, WHITE);
+    if (nsDbPct > 70.0f) { // Nightscout filling up: only shown once it needs attention
+      const uint16_t c = nsDbPct <= 90 ? ORANGE : g.color565(255, 71, 87);
+      g.setTextSize(1);
+      g.setTextDatum(middle_center);
+      g.setFont(&fonts::Font0);
+      g.setTextColor(c, bg);
+      g.drawString("DB", ox + w / 2, oy + 6 + 3 * SIDE_PITCH + 6);
+      char dbBuf[8];
+      snprintf(dbBuf, sizeof(dbBuf), "%.0f%%", nsDbPct);
+      g.setFont(&fonts::Font2);
+      g.drawString(dbBuf, ox + w / 2, oy + 6 + 3 * SIDE_PITCH + 20);
+      g.setFont(&fonts::Font0);
+      g.setTextDatum(top_left);
+    }
+    if (rightColReady) rightColSprite.pushSprite(RIGHT_COL_X, MAIN_TOP_H); else tft.endWrite();
   }
 }
 
-// The bottom strip (option A, 25 Oct): the status icons from the old left-hand column (same art, same colours,
-// counts beside them), the pod / sensor / prescription icons, then the rolling notes or the timer counting
-// down, and Ims's state at the right. Drawn off screen and pushed in one go, once a second.
+// The bottom strip (26 Oct): just the notes - the unmute hint, else the rolling notes (3.5 s each), else the
+// soonest timer counting down, else what's next today - in the same size as the rest. Pushed once a second.
 void drawFooterClock() {
   applyNightBrightness();
   if (onSettingsScreen) return;
-  drawTopStrip(); // the time is up top now
+  drawTopStrip(); // the time is up top
   if (alertCardActive) return; // the alert card covers this strip
   if (!footerSpriteReady) {
     footerSprite.setColorDepth(16);
@@ -2625,87 +2695,32 @@ void drawFooterClock() {
   if (!footerSpriteReady) tft.startWrite();
   const uint16_t bg = g.color565(11, 14, 21);
   g.fillRect(0, oy, 320, 36, bg);
-  uint16_t stCol; const char *stTxt;
-  mainStatus(g, stCol, stTxt);
-  g.setTextSize(1);
-  g.setFont(&fonts::DejaVu18);
-
-  const uint16_t ORANGE = g.color565(255, 140, 0), WHITE = g.color565(255, 255, 255);
-  const int iy = oy + 6;
-  int x = 6;
-  auto count = [&](int n, uint16_t c) {
-    if (n <= 1) { x += 24 + 8; return; }
-    g.setTextDatum(middle_left);
-    g.setTextColor(c, bg);
-    String txt = n > 9 ? String("9+") : String(n);
-    g.drawString(txt, x + 26, oy + 19);
-    x += 26 + g.textWidth(txt) + 8;
-  };
-  if (alarmCount > 0) { drawAlarmIcon(g, x, iy, ORANGE); count(alarmCount, ORANGE); }
-  if (timerCount > 0) {
-    drawTimerIcon(g, x, iy, ORANGE);
-    if (infoTimerEndMs && (long)(infoTimerEndMs - millis()) > 0) {
-      // the soonest timer, counting down beside its icon
-      unsigned long left = (infoTimerEndMs - millis()) / 1000;
-      char tb[12];
-      if (left >= 3600) snprintf(tb, sizeof(tb), "%lu:%02lu:%02lu", left / 3600, (left / 60) % 60, left % 60);
-      else snprintf(tb, sizeof(tb), "%lu:%02lu", left / 60, left % 60);
-      g.setTextDatum(middle_left);
-      g.setTextColor(ORANGE, bg);
-      g.drawString(tb, x + 26, oy + 19);
-      x += 26 + g.textWidth(tb) + 8;
-    } else count(timerCount, ORANGE);
-  }
-  if (reminderCount > 0) { drawReminderIcon(g, x, iy, ORANGE); count(reminderCount, ORANGE); }
-  if (birthdayCount > 0) {
-    const uint16_t cake = birthdayColor == 2 ? g.color565(70, 220, 120) : birthdayColor == 1 ? ORANGE : WHITE;
-    drawBirthdayIcon(g, x, iy, cake); count(birthdayCount, cake);
-  }
-  if (newReleaseCount > 0) { drawMusicIcon(g, x, iy, ORANGE); count(newReleaseCount, ORANGE); }
-  if (calSensor) { smoothIcon(g, sensor_icon_24x24, x, iy, calSensor == 2 ? ORANGE : WHITE); x += 32; } // same shapes, smoothed edges like the rest
-  if (calPod) { smoothIcon(g, pod_icon_24x24, x, iy, WHITE); x += 32; }
-  if (calRx) { smoothIcon(g, rx_icon_24x24, x, iy, WHITE); x += 32; }
-  // yellow = camera attached but asleep, green = awake and ready (tap it to wake or sleep the camera)
-  if (cameraAttached || cameraPresent()) {
-    camChipX0 = x - 4; camChipX1 = x + 28;
-    drawCameraIcon(g, x, iy, cameraAwake ? g.color565(70, 220, 120) : g.color565(255, 210, 60));
-    x += 32;
-  } else { camChipX0 = camChipX1 = -1; }
-  if (nsDbPct > 70.0f) { // Nightscout filling up: only shown once it needs attention
-    char dbBuf[16];
-    snprintf(dbBuf, sizeof(dbBuf), "DB %.0f%%", nsDbPct);
-    g.setTextDatum(middle_left);
-    g.setTextColor(nsDbPct <= 90 ? ORANGE : g.color565(255, 71, 87), bg);
-    g.drawString(dbBuf, x, oy + 19);
-    x += g.textWidth(dbBuf) + 8;
-  }
-
-  // Ims's state at the right: a dot and a word
-  g.setTextDatum(middle_right);
-  g.setTextColor(stCol == g.color565(87, 101, 116) ? g.color565(120, 130, 150) : stCol, bg);
-  g.drawString(stTxt, 314, oy + 19);
-  const int dotX = 314 - g.textWidth(stTxt) - 10;
-  g.fillCircle(dotX, oy + 18, 5, stCol);
-  int right = dotX - 14;
-
-  // the notes in between: the mute hint, else the rolling notes (3.5 s each), else what's next today
   String mid = "";
   uint16_t midCol = g.color565(255, 200, 100);
   if (isMicHardwareMuted) { mid = "Press the top button to unmute"; midCol = g.color565(255, 107, 129); }
   else if (infoUpcomingCount > 0) mid = infoUpcoming[(millis() / 3500) % infoUpcomingCount];
-  else if (infoNext.length()) mid = infoNext;
-  if (mid.length() && right - x > 40) {
-    const int maxW = right - x;
+  else if (infoTimerEndMs && (long)(infoTimerEndMs - millis()) > 0) {
+    unsigned long left = (infoTimerEndMs - millis()) / 1000;
+    char tb[12];
+    if (left >= 3600) snprintf(tb, sizeof(tb), "%lu:%02lu:%02lu", left / 3600, (left / 60) % 60, left % 60);
+    else snprintf(tb, sizeof(tb), "%lu:%02lu", left / 60, left % 60);
+    mid = (infoTimerLabel.length() ? infoTimerLabel + " " : String("Timer ")) + tb;
+    midCol = g.color565(255, 140, 0);
+  } else if (infoNext.length()) mid = infoNext;
+  if (mid.length()) {
+    g.setTextSize(1);
+    g.setFont(&fonts::DejaVu18);
+    const int maxW = 304;
     if (g.textWidth(mid) > maxW) {
       while (mid.length() > 3 && g.textWidth(mid + "...") > maxW) mid = mid.substring(0, mid.length() - 1);
       mid += "...";
     }
-    g.setTextDatum(middle_left);
+    g.setTextDatum(middle_center);
     g.setTextColor(midCol, bg);
-    g.drawString(mid, x, oy + 19);
+    g.drawString(mid, 160, oy + 18);
+    g.setFont(&fonts::Font0);
+    g.setTextDatum(top_left);
   }
-  g.setFont(&fonts::Font0);
-  g.setTextDatum(top_left);
   if (footerSpriteReady) footerSprite.pushSprite(0, MAIN_FOOT_Y);
   else tft.endWrite();
 }
@@ -2779,13 +2794,13 @@ void drawTopStrip() {
   const uint16_t gc = getGlucoseColor(currentGlucoseValue);
   const int R = ((gc >> 11) & 31) * 255 / 31, G = ((gc >> 5) & 63) * 255 / 63, B = (gc & 31) * 255 / 31;
   const uint16_t pill = g.color565(11 + (R - 11) * 26 / 100, 14 + (G - 14) * 26 / 100, 21 + (B - 21) * 26 / 100);
-  g.setFont(&fonts::DejaVu24);
+  g.setFont(&fonts::DejaVu18); // one text size across the strips (26 Oct)
   const int vw = g.textWidth(currentGlucoseValue);
   const bool twoArrows = currentGlucoseDirection.startsWith("Double");
   const int aw = twoArrows ? 26 : 18;
   const int pw = 10 + vw + 6 + aw + 10;
   const int px = 320 - 6 - pw;
-  g.fillRoundRect(px, 4, pw, 28, 14, pill);
+  g.fillRoundRect(px, 6, pw, 24, 12, pill);
   g.setTextDatum(middle_left);
   g.setTextColor(gc, pill);
   g.drawString(currentGlucoseValue, px + 10, 19);
@@ -2812,7 +2827,7 @@ void drawTopStrip() {
   struct tm t;
   char hm[8] = "--:--", dd[16] = "";
   if (getLocalTime(&t, 0)) { strftime(hm, sizeof(hm), "%H:%M", &t); strftime(dd, sizeof(dd), "%a %d %b", &t); }
-  g.setFont(&fonts::DejaVu24);
+  g.setFont(&fonts::DejaVu18);
   g.setTextDatum(middle_left);
   g.setTextColor(g.color565(236, 230, 221), bg);
   g.drawString(hm, 44, 19);
@@ -2899,8 +2914,8 @@ void renderScreen(bool forceRedraw = false) {
   lastRenderedMute = isMicHardwareMuted;
   lastRenderedEmotion = currentEmotion;
 
-  // Option A (25 Oct): the top strip, the face in the middle (or a fired timer / alarm / reminder's card),
-  // and the bottom strip with the icons, the notes and Ims's state in words.
+  // Option A (25 Oct, revised 26 Oct): the top strip, the icon columns either side of the face (or a fired
+  // timer / alarm / reminder's card over all of it), and the notes along the bottom.
   tft.startWrite();
   fillAroundFace(0, 0, 320, 240, tft.color565(11, 14, 21)); // all but a painted face, redrawn in place below
   tft.endWrite();
@@ -2914,8 +2929,8 @@ void renderScreen(bool forceRedraw = false) {
   memset(faceCurColors, 0, sizeof(faceCurColors));
   drawFaceInternal(true);
   tft.endWrite();
-  drawStatusIconStack(true); // keeps its change tracking current
-  drawFooterClock();          // both strips
+  drawStatusIconStack(true); // the icon columns (and their change tracking)
+  drawFooterClock();          // the top strip and the notes
 }
 
 
@@ -5851,8 +5866,8 @@ void loop() {
     } else if (currentState == STATE_SPEAKING || isSpeakerActive()) {
       // Tap to stop him talking: back to standby, wake phrase listened for again
       interruptToStandby();
-    } else if (touchY >= MAIN_FOOT_Y && camChipX1 > 0 && touchX >= camChipX0 && touchX <= camChipX1 && (cameraAttached || cameraStarted())) {
-      // Tap on the camera icon in the bottom strip: toggle / wake camera
+    } else if (camChipX1 > 0 && touchX >= camChipX0 && touchX <= camChipX1 && touchY >= camChipY0 && touchY <= camChipY1 && (cameraAttached || cameraStarted())) {
+      // Tap on the camera icon in the left-hand column: toggle / wake camera
       cameraAwake = !cameraAwake;
       cameraSetAwake(cameraAwake);
       logf("[Touch] Camera icon tapped -> cameraAwake=%d", cameraAwake ? 1 : 0);
