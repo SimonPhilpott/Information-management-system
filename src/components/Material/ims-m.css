@@ -1294,3 +1294,4 @@
 .hbb.imsm.withrail { --rail: 84px; }
 .hbb.imsm .imsh-rail button.logo { border: 0; cursor: pointer; }
 @media (max-width: 700px) { .hbb.imsm.withrail { flex-direction: column-reverse; } .hbb.imsm.withrail .imsm-page { flex: 1; min-height: 0; } .hbb.imsm.withrail .imsm-fab { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); } }
+.imsl .chat-empty h2 { font-family: var(--head-font) !important; font-weight: 400 !important; font-size: 38px !important; line-height: 1.15 !important; letter-spacing: 0 !important; color: var(--pri) !important; background: none !important; -webkit-text-fill-color: currentColor !important; }
