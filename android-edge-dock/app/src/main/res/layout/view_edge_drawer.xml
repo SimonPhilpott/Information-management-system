@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/drawer_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Scrim (dimmed backdrop) to catch outside taps -->
+    <View
+        android:id="@+id/view_scrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/scrim_bg"
+        android:clickable="true"
+        android:focusable="true" />
+
+    <!-- Full-width sliding card from the left with right and bottom grey borders -->
+    <LinearLayout
+        android:id="@+id/card_drawer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:background="@drawable/panel_background"
+        android:elevation="16dp"
+        android:orientation="vertical">
+
+        <!-- Top Header Bar -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingEnd="12dp">
+
+            <!-- Online Status Dot -->
+            <View
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:background="@drawable/btn_rounded"
+                android:backgroundTint="#22C55E" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_weight="1"
+                android:text="IMS Assistant"
+                android:textColor="@color/text_primary"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <!-- Open in Chrome Browser Button -->
+            <ImageButton
+                android:id="@+id/btn_drawer_browser"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:background="?android:selectableItemBackgroundBorderless"
+                android:contentDescription="Open in Chrome browser"
+                android:src="@drawable/ic_open_in_browser" />
+
+            <!-- Theme Toggle Button -->
+            <ImageButton
+                android:id="@+id/btn_drawer_theme"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="2dp"
+                android:background="?android:selectableItemBackgroundBorderless"
+                android:contentDescription="Toggle theme"
+                android:src="@drawable/ic_theme_toggle" />
+
+            <!-- Refresh Button -->
+            <ImageButton
+                android:id="@+id/btn_drawer_refresh"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="2dp"
+                android:background="?android:selectableItemBackgroundBorderless"
+                android:contentDescription="Refresh page"
+                android:src="@drawable/ic_refresh" />
+
+            <!-- Close Button -->
+            <ImageButton
+                android:id="@+id/btn_drawer_close"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="2dp"
+                android:background="?android:selectableItemBackgroundBorderless"
+                android:contentDescription="Close drawer"
+                android:src="@drawable/ic_close" />
+
+        </LinearLayout>
+
+        <!-- Loading Progress Bar -->
+        <ProgressBar
+            android:id="@+id/web_progress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:indeterminate="true"
+            android:visibility="gone" />
+
+        <!-- Live WebView taking full width and height -->
+        <WebView
+            android:id="@+id/web_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+    </LinearLayout>
+
+</FrameLayout>

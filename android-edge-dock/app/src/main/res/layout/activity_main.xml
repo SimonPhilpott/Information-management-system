@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_dark"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="IMS Edge Dock"
+            android:textColor="@color/text_primary"
+            android:textSize="26sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Left-edge slide-out assistant dock"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp" />
+
+        <!-- Status Card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:background="@drawable/btn_rounded"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Permissions &amp; Status"
+                android:textColor="@color/accent"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <!-- Overlay -->
+            <TextView
+                android:id="@+id/tv_overlay_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="Overlay Permission: Checking..."
+                android:textColor="@color/text_primary"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btn_grant_overlay"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:backgroundTint="@color/primary"
+                android:text="Enable Overlay Permission"
+                android:textColor="@color/text_primary" />
+
+            <!-- Microphone -->
+            <TextView
+                android:id="@+id/tv_mic_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="Microphone Permission: Checking..."
+                android:textColor="@color/text_primary"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btn_grant_mic"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:backgroundTint="@color/surface_dark"
+                android:text="Enable Microphone Permission"
+                android:textColor="@color/text_primary" />
+
+            <!-- Camera -->
+            <TextView
+                android:id="@+id/tv_camera_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="Camera Permission: Checking..."
+                android:textColor="@color/text_primary"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btn_grant_camera"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:backgroundTint="@color/surface_dark"
+                android:text="Enable Camera Permission (Food Photos)"
+                android:textColor="@color/text_primary" />
+
+            <!-- Autostart / Battery Optimization -->
+            <TextView
+                android:id="@+id/tv_battery_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="Autostart on Boot: Checking..."
+                android:textColor="@color/text_primary"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btn_grant_battery"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:backgroundTint="@color/surface_dark"
+                android:text="Allow Unrestricted Autostart on Boot"
+                android:textColor="@color/text_primary" />
+
+        </LinearLayout>
+
+        <!-- Service Control Card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/btn_rounded"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Dock Service Control"
+                android:textColor="@color/accent"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btn_toggle_service"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:backgroundTint="@color/primary"
+                android:text="Start Edge Dock"
+                android:textColor="@color/text_primary" />
+
+            <Button
+                android:id="@+id/btn_test_open"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="@color/surface_dark"
+                android:text="Test Open Drawer Now"
+                android:textColor="@color/text_primary" />
+
+            <Button
+                android:id="@+id/btn_notification_settings"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="@color/surface_dark"
+                android:text="Turn Off Notifications (Zero Clutter)"
+                android:textColor="@color/text_primary" />
+
+        </LinearLayout>
+
+        <!-- URL Config Card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/btn_rounded"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="IMS Web Address"
+                android:textColor="@color/accent"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/et_url"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/btn_rounded"
+                android:hint="https://simon-ims.ngrok-free.app/"
+                android:inputType="textUri"
+                android:padding="12dp"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_secondary"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btn_save_url"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="@color/surface_dark"
+                android:text="Save URL"
+                android:textColor="@color/text_primary" />
+
+        </LinearLayout>
+
+        <!-- Instructions Card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="24dp"
+            android:background="@drawable/btn_rounded"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Features &amp; Tips"
+                android:textColor="@color/accent"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:lineSpacingExtra="4dp"
+                android:text="• Recessed Black Handle: 5dp thin sliver flush with the bezel with a 1px dark green border.\n• Send to AAPS: Automatically closes the dock beforehand and opens Tasker/AAPS.\n• Autostart on Boot: The dock starts automatically when your phone powers on.\n• Open Chrome: Tap the top browser icon to open IMS in full Chrome.\n• Theme Toggle: Tap the moon/sun icon to toggle dark/light theme."
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>

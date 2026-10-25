@@ -98,6 +98,15 @@ function ClassicDotFace({ face, status = 'idle', levelRef, width = 180, classNam
 
     window.addEventListener('pointermove', onPointerMove, { passive: true });
 
+    let wakeVal = 0; // 0 = asleep, 1 = awake
+    let lapStart = 0;
+    let prevStatus = 'asleep';
+
+    const onDockOpen = () => {
+      lapStart = performance.now();
+    };
+    window.addEventListener('ims-dock-open', onDockOpen);
+
     const draw = (now) => {
       const { face: f0, status: st } = stateRef.current;
       const f = resolveFace(f0);
@@ -111,7 +120,17 @@ function ClassicDotFace({ face, status = 'idle', levelRef, width = 180, classNam
       smoothLevel = smoothLevel * 0.5 + level * 0.5;
       const speaking = st === 'speaking';
       const asleep = st === 'asleep';
-      const thinking = st === 'thinking' || st === 'connecting';
+
+      // Check if transitioning out of sleep without an explicit event
+      if (st !== 'asleep' && prevStatus === 'asleep' && (now - lapStart > 2000)) {
+        lapStart = now;
+      }
+      prevStatus = st;
+
+      // Smoothly animate between asleep (0) and awake (1)
+      const targetWake = asleep ? 0 : 1;
+      wakeVal += (targetWake - wakeVal) * (targetWake > wakeVal ? 0.08 : 0.12);
+      if (Math.abs(wakeVal - targetWake) < 0.005) wakeVal = targetWake;
 
       let want = levels(speaking && smoothLevel > 0.18 && f.openGrid ? f.openGrid : f.grid);
       if (!f.openGrid && speaking) {
@@ -178,17 +197,53 @@ function ClassicDotFace({ face, status = 'idle', levelRef, width = 180, classNam
         }
       }
 
-      if (asleep) {
-        want = new Float32Array(96);
-        for (const c of EYE_CELLS) want[3 * COLS + c] = 0.8;
-        want[6 * COLS + 5] = 0.6; want[6 * COLS + 6] = 0.6;
-      }
-      if (thinking) {
-        const step = Math.floor(now / 60) % 36;
-        [1, 0.55, 0.3, 0.15].forEach((v, k) => { const i = RING[(step - k + 36) % 36]; want[i] = Math.max(want[i], v); });
+      if (wakeVal < 0.999) {
+        const asleepGrid = new Float32Array(96);
+        for (const c of EYE_CELLS) asleepGrid[3 * COLS + c] = 0.8;
+        asleepGrid[6 * COLS + 5] = 0.6; asleepGrid[6 * COLS + 6] = 0.6;
+        if (wakeVal <= 0.001) {
+          want = asleepGrid;
+        } else {
+          const blended = new Float32Array(96);
+          for (let i = 0; i < 96; i++) {
+            blended[i] = asleepGrid[i] * (1 - wakeVal) + want[i] * wakeVal;
+          }
+          want = blended;
+        }
       }
 
-      const [R, G, B] = asleep ? [60, 90, 140] : rgb(f.color);
+      // One full 360-degree lap of the 36-dot border when dock opens
+      const tracerCells = new Set();
+      const LAP_DURATION = 900;
+      const lapElapsed = lapStart > 0 ? (now - lapStart) : 999999;
+      const isLapping = lapElapsed < LAP_DURATION;
+
+      if (isLapping) {
+        const progress = Math.max(0, Math.min(1, lapElapsed / LAP_DURATION));
+        const headIndex = Math.min(35, Math.floor(progress * 36));
+        const comet = [1.0, 0.85, 0.6, 0.38, 0.2, 0.08];
+        comet.forEach((v, k) => {
+          const dotStep = headIndex - k;
+          if (dotStep >= 0 && dotStep < 36) {
+            const cell = RING[dotStep];
+            want[cell] = Math.max(want[cell], v);
+            tracerCells.add(cell);
+          }
+        });
+      } else if (st === 'thinking') {
+        const step = Math.floor(now / 60) % 36;
+        [1, 0.55, 0.3, 0.15].forEach((v, k) => {
+          const cell = RING[(step - k + 36) % 36];
+          want[cell] = Math.max(want[cell], v);
+          tracerCells.add(cell);
+        });
+      }
+
+      const [sR, sG, sB] = [60, 90, 140];
+      const [aR, aG, aB] = rgb(f.color);
+      const R = Math.round(sR + (aR - sR) * wakeVal);
+      const G = Math.round(sG + (aG - sG) * wakeVal);
+      const B = Math.round(sB + (aB - sB) * wakeVal);
       const bg = 0.05 + 0.19 * breath(now);
       const pitch = Math.min(w / COLS, h / ROWS);
       const dot = pitch * 0.72;
@@ -197,8 +252,15 @@ function ClassicDotFace({ face, status = 'idle', levelRef, width = 180, classNam
         const v = want[i];
         const x = ox + (i % COLS) * pitch, y = oy + Math.floor(i / COLS) * pitch;
         const a = v > 0 ? 0.25 + 0.75 * v : bg;
-        ctx.fillStyle = `rgba(${R},${G},${B},${a.toFixed(3)})`;
-        if (v > 0.9) { ctx.shadowColor = `rgba(${R},${G},${B},0.55)`; ctx.shadowBlur = dot * 0.6; } else ctx.shadowBlur = 0;
+        const isTracer = tracerCells.has(i);
+        const [dotR, dotG, dotB] = isTracer ? [76, 255, 122] : [R, G, B];
+        ctx.fillStyle = `rgba(${dotR},${dotG},${dotB},${a.toFixed(3)})`;
+        if (isTracer || v > 0.9) {
+          ctx.shadowColor = `rgba(${dotR},${dotG},${dotB},${isTracer ? 0.9 : 0.55})`;
+          ctx.shadowBlur = dot * (isTracer ? 0.9 : 0.6);
+        } else {
+          ctx.shadowBlur = 0;
+        }
         ctx.beginPath();
         ctx.roundRect(x, y, dot, dot, dot * 0.3);
         ctx.fill();
@@ -210,6 +272,7 @@ function ClassicDotFace({ face, status = 'idle', levelRef, width = 180, classNam
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('ims-dock-open', onDockOpen);
     };
   }, [levelRef]);
 

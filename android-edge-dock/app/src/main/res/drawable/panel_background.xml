@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Offset top and left so their strokes are off-screen, showing the grey border on the right and bottom edge -->
+    <item
+        android:left="-3dp"
+        android:top="-3dp"
+        android:right="0dp"
+        android:bottom="0dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/surface_dark" />
+            <stroke
+                android:width="1.5dp"
+                android:color="@color/drawer_border_grey" />
+        </shape>
+    </item>
+</layer-list>

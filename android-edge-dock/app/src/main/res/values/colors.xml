@@ -1,0 +1,15 @@
+<resources>
+    <color name="bg_dark">#0F1117</color>
+    <color name="surface_dark">#181B24</color>
+    <color name="surface_card">#212530</color>
+    <color name="primary">#3B82F6</color>
+    <color name="primary_variant">#2563EB</color>
+    <color name="accent">#06B6D4</color>
+    <color name="text_primary">#F8FAFC</color>
+    <color name="text_secondary">#94A3B8</color>
+    <color name="handle_bg">#000000</color>
+    <color name="handle_border_green">#16A34A</color>
+    <color name="handle_border_dark_green">#15803D</color>
+    <color name="drawer_border_grey">#64748B</color>
+    <color name="scrim_bg">#99000000</color>
+</resources>

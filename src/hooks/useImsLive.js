@@ -57,6 +57,34 @@ export function useImsLive() {
     }).catch(() => {});
   }, []);
 
+  // Animate face awake when Android Edge Dock opens, and return to asleep when closed
+  useEffect(() => {
+    let wakeTimer = null;
+    const onWake = () => {
+      clearTimeout(wakeTimer);
+      setStatus((s) => {
+        if (s === 'asleep') {
+          wakeTimer = setTimeout(() => {
+            setStatus((cur) => (cur === 'connecting' ? 'ready' : cur));
+          }, 700);
+          return 'connecting';
+        }
+        return s;
+      });
+    };
+    const onSleep = () => {
+      clearTimeout(wakeTimer);
+      setStatus((s) => (s === 'ready' || s === 'connecting' ? 'asleep' : s));
+    };
+    window.addEventListener('ims-dock-open', onWake);
+    window.addEventListener('ims-dock-close', onSleep);
+    return () => {
+      clearTimeout(wakeTimer);
+      window.removeEventListener('ims-dock-open', onWake);
+      window.removeEventListener('ims-dock-close', onSleep);
+    };
+  }, []);
+
   // ---- chat text -----------------------------------------------------------------------------------
   // Ims's transcript can carry a tool call he wrote out rather than called ("setEmotion(emotion='happy')") -
   // he never says it, so it's never shown. Cleaned over the whole message, as it can arrive in pieces.
