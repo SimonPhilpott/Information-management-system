@@ -2907,26 +2907,12 @@ void drawTopStrip() {
   if (otaInProgress) { warn = "Updating"; warnCol = g.color565(0, 210, 255); }
   else if (WiFi.status() != WL_CONNECTED) warn = "No Wi-Fi";
   else if (!voiceDaemonRunning) warn = "Voice off";
-  g.setFont(&fonts::DejaVu18);
+  // something wrong (or an update going on) is a badge on the corner of the settings cog, so the time, date and
+  // glucose always keep their room (26 Oct: the note used to crowd the date out)
   if (warn) {
-    // the date comes first (26 Oct): when the note and the date won't both fit, the note shrinks to its dot
-    g.setFont(&fonts::DejaVu18);
-    const int timeEnd = FACE_CENTER_X - (int)lroundf(5.5f * FACE_PITCH) - FACE_DOT / 2 + g.textWidth("00:00") + 10;
-    g.setFont(&fonts::DejaVu12);
-    const int dateEnd = timeEnd + g.textWidth("Wed 28th Sep '26") + 10;
-    g.setFont(&fonts::DejaVu18);
-    const int full = g.textWidth(warn) + 9 + 4;
-    if (limit - full - 8 >= dateEnd) {
-      g.setTextDatum(baseline_right);
-      g.setTextColor(warnCol, bg);
-      g.drawString(warn, limit, TOP_BASE);
-      const int wx = limit - g.textWidth(warn) - 9;
-      g.fillCircle(wx, MAIN_TOP_H / 2, 4, warnCol);
-      limit = wx - 12;
-    } else {
-      g.fillCircle(limit - 4, MAIN_TOP_H / 2, 4, warnCol);
-      limit -= 16;
-    }
+    const int bx = HEADER_ICON_CX + TILE / 2 - 2, by = MAIN_TOP_H / 2 - TILE / 2 + 2;
+    g.fillSmoothCircle(bx, by, 6, bg);
+    g.fillSmoothCircle(bx, by, 4, warnCol);
   }
 
   // left: the time, then the weather and the date where they fit
@@ -2941,15 +2927,19 @@ void drawTopStrip() {
     strftime(wd, sizeof(wd), "%a", &t); strftime(mon, sizeof(mon), "%b", &t); strftime(yy, sizeof(yy), "%y", &t);
     snprintf(dd, sizeof(dd), "%s %d%s %s '%s", wd, d, sfx, mon, yy);
   }
-  g.setFont(&fonts::DejaVu18);
   g.setTextDatum(baseline_left);
-  g.setTextColor(g.color565(236, 230, 221), bg);
-  // the time starts where his face starts (x 54, 26 Oct)
+  // the time starts where his face starts (x 54, 26 Oct); the date beside it in the smaller size. When the date
+  // won't fit beside the full-size time (a wide glucose reading), the time drops to the date's size too.
   const int timeX = FACE_CENTER_X - (int)lroundf(5.5f * FACE_PITCH) - FACE_DOT / 2;
+  g.setFont(&fonts::DejaVu12);
+  const int dw = dd[0] ? g.textWidth(dd) : 0;
+  g.setFont(&fonts::DejaVu18);
+  if (dd[0] && timeX + g.textWidth(hm) + 10 + dw >= limit) g.setFont(&fonts::DejaVu12);
+  g.setTextColor(g.color565(236, 230, 221), bg);
   g.drawString(hm, timeX, TOP_BASE);
-  int x = timeX + g.textWidth(hm) + 10;
-  g.setFont(&fonts::DejaVu12); // the smaller size, so it always fits beside the time
-  if (dd[0] && x + g.textWidth(dd) < limit) {
+  const int x = timeX + g.textWidth(hm) + 10;
+  g.setFont(&fonts::DejaVu12);
+  if (dd[0] && x + dw < limit) {
     g.setTextColor(g.color565(150, 158, 176), bg);
     g.drawString(dd, x, TOP_BASE);
   }
