@@ -16,8 +16,8 @@ import TopicDiscovery from '../Dashboard/TopicDiscovery';
 import SyncStatus from '../Dashboard/SyncStatus';
 const PDFWorkspace = React.lazy(() => import('../Dashboard/PDFWorkspace'));
 
-const TONES = [['friendly', 'Friendly', 'Conversational and human'], ['professional', 'Professional', 'Formal and polished'], ['direct', 'Direct', 'No fluff, straight to the point'], ['investigator', 'Investigator', 'Exhaustive, research-minded']];
-const MODELS = [['flash', 'Flash', 'Fast, concise answers'], ['pro', 'Pro', 'Complex reasoning and research'], ['thinking', 'Thinking', 'Step-by-step analysis'], ['research', 'Research', 'Exhaustive exploration']];
+export const TONES = [['friendly', 'Friendly', 'Conversational and human'], ['professional', 'Professional', 'Formal and polished'], ['direct', 'Direct', 'No fluff, straight to the point'], ['investigator', 'Investigator', 'Exhaustive, research-minded']];
+export const MODELS = [['flash', 'Flash', 'Fast, concise answers'], ['pro', 'Pro', 'Complex reasoning and research'], ['thinking', 'Thinking', 'Step-by-step analysis'], ['research', 'Research', 'Exhaustive exploration']];
 const go = (to) => { window.history.pushState(null, '', to); window.dispatchEvent(new PopStateEvent('popstate')); };
 const useWide = (q) => { const [m, setM] = useState(() => window.matchMedia(q).matches); useEffect(() => { const mq = window.matchMedia(q); const on = () => setM(mq.matches); mq.addEventListener('change', on); return () => mq.removeEventListener('change', on); }, [q]); return m; };
 
@@ -119,6 +119,8 @@ export default function Library(props) {
                 {activeGem && <Chip icon="sparkle" label="Mode" value={activeGem.name} onClick={gemM.show} />}
                 <Chip icon="bolt" label="Model" value={model[1]} onClick={modelM.show} />
                 <Chip icon="tune" label="Sources" value={kb ? 'Your library' : 'Gemini'} onClick={srcM.show} on />
+                {kb && <button type="button" className={`imsl-chip tog ${showCitations ? 'on' : ''}`} aria-pressed={Boolean(showCitations)} onClick={onToggleCitations} title={showCitations ? 'Citations are shown: hide them' : 'Citations are hidden: show them'}><Icon n={showCitations ? 'check' : 'eye'} size={18} /><span className="v">Citations</span></button>}
+                {kb && <button type="button" className={`imsl-chip tog ${showPersonal ? 'on' : ''}`} aria-pressed={Boolean(showPersonal)} onClick={onTogglePersonal} title={showPersonal ? 'Personal books are included: professional only' : 'Professional books only: include personal books'}><Icon n={showPersonal ? 'check' : 'person'} size={18} /><span className="v">Personal</span></button>}
               </span>
               <span className="grow" />
               {cost != null && <button type="button" className="imsl-cost" onClick={() => go('/ims/costs')} title="Spend this month: open Costs">£{Number(cost).toFixed(2)} this month</button>}

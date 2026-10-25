@@ -1298,51 +1298,12 @@
 .hbb.imsm .imsh-search-btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 8px 0 12px; border-radius: 20px; color: var(--on-surface-var); }
 .hbb.imsm .imsh-search-btn:hover { background: var(--surface-c-high); color: var(--on-surface); }
 .hbb.imsm .imsh-search-btn kbd { font: 600 12px/1 var(--font); padding: 5px 8px; border-radius: 8px; background: var(--surface-c-high); color: var(--on-surface-var); border: 1px solid var(--outline-var); }
-@media (max-width: 700px) { .hbb.imsm .imsh-search-btn kbd { display: none; } .hbb.imsm .imsh-rail .radmin { display: none; } }
+@media (max-width: 700px) { .hbb.imsm .imsh-search-btn kbd { display: none; } .hbb.imsm .imsh-rail .radmin, .hbb.imsm .imsh-rail .rgraph { display: none; } }
 /* the header stays in view while scrolling (26 Oct) */
 .hbb.imsm .imsm-head { position: sticky; top: 0; z-index: 6; background: var(--surface); margin-top: -12px; padding-top: 12px; padding-bottom: 4px; box-shadow: 0 0 0 100vmax var(--surface); clip-path: inset(0 -100vmax 0 -100vmax); transition: box-shadow .2s; }
 .hbb.imsm .imsm-head.stuck { border-bottom: 1px solid var(--outline-var); }
 .hbb.imsm .imsm-ptabs { top: var(--imsm-head-h, 0px); }
 
-/* ---- Admin (26 Oct): the admin panel in the IMS design - its own pieces recoloured, IMS chrome around them ---- */
-.imsa {
-  --s: #fdf8f3; --s-lowest: #ffffff; --s-low: #f8f1ea; --s-c: #f2eae2; --s-high: #ece3da; --on-s: #221a13; --on-s-var: #574a40; --line: #ddd0c4;
-  --pri: #2f6b3c; --pri-c: #c4eac0; --on-pri-c: #002110; --sec-c: #d7e8cd; --on-sec-c: #11200f; --grad: linear-gradient(135deg, #3f9a55, #2f7d6a);
-  --font: 'Figtree', 'Noto Emoji', 'Inter', 'Roboto', system-ui, sans-serif; --head-font: 'HB Rustic Delight', 'Noto Emoji', Georgia, serif;
-  --bg-primary: var(--s); --bg-secondary: var(--s); --bg-tertiary: var(--s-c); --bg-elevated: var(--s-high); --bg-overlay: rgba(253, 248, 243, .96);
-  --glass-bg: var(--s-lowest); --glass-bg-light: var(--s-low); --glass-border: var(--line); --glass-border-hover: var(--pri);
-  --text-primary: var(--on-s); --text-secondary: var(--on-s-var); --text-muted: #7a6c61; --text-accent: var(--pri);
-  --accent-indigo: var(--pri); --accent-indigo-light: #4c8a58; --accent-sage: var(--pri); --accent-cyan: var(--pri);
-  --gradient-primary: var(--grad); --gradient-secondary: var(--grad); --font-sans: var(--font);
-  --radius-sm: 10px; --radius-md: 14px; --radius-lg: 20px; --radius-xl: 28px;
-  --shadow-glow: none; --shadow-glow-hover: none; --accent-glow: none;
-  background: var(--s); color: var(--on-s); font-family: var(--font); border-radius: 28px; border: 1px solid var(--line);
-}
-.imsa.dark {
-  --s: #18120d; --s-lowest: #120d09; --s-low: #201a15; --s-c: #251e19; --s-high: #302823; --on-s: #efe0d5; --on-s-var: #d8c3b4; --line: #53453b;
-  --pri: #9fd88a; --pri-c: #1f5129; --on-pri-c: #c4eac0; --sec-c: #354a30; --on-sec-c: #d7e8cd; --grad: linear-gradient(135deg, #a6e07f, #5fc29a);
-  --bg-overlay: rgba(24, 18, 13, .96); --text-muted: #b3a294; --accent-indigo-light: #7fc37a;
-}
-.imsa-head { display: flex; align-items: center; gap: 14px; padding: 18px 20px 14px 24px; border-bottom: 1px solid var(--line); flex: none; flex-wrap: wrap; }
-.imsa-tile { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; color: #fff; background: var(--grad); flex: none; }
-.imsa-head h2 { margin: 0; font-family: var(--head-font); font-weight: 400; font-size: 34px; line-height: 40px; color: var(--pri); }
-.imsa-sub { flex: 1; min-width: 160px; font-size: 14px; color: var(--on-s-var); }
-.imsa-close { width: 44px; height: 44px; border: 0; border-radius: 50%; background: transparent; color: var(--on-s-var); display: grid; place-items: center; cursor: pointer; flex: none; }
-.imsa-close:hover { background: var(--s-high); color: var(--on-s); }
-.imsa-tabs { padding: 12px 20px; border-bottom: 1px solid var(--line); flex: none; }
-.imsa .imsa-tabs .mode-switcher { background: transparent !important; border: 0 !important; padding: 0 !important; gap: 8px !important; }
-.imsa .imsa-tabs .mode-item { flex: none; height: 38px; padding: 0 14px; border-radius: 10px !important; border: 1px solid var(--line) !important; background: transparent !important; color: var(--on-s-var) !important; font: 600 14px var(--font) !important; gap: 8px; box-shadow: none !important; white-space: nowrap; }
-.imsa .imsa-tabs .mode-item:hover { color: var(--on-s) !important; border-color: var(--pri) !important; }
-.imsa .imsa-tabs .mode-item.active { background: var(--sec-c) !important; color: var(--on-sec-c) !important; border-color: transparent !important; }
-.imsa input:not([type=checkbox]):not([type=radio]):not([type=range]), .imsa select, .imsa textarea { border-radius: 12px !important; font-family: var(--font) !important; }
-.imsa button { font-family: var(--font); }
-.imsa h3, .imsa h4 { font-family: var(--font); }
-.imsa .italic { font-style: normal !important; }
-@media (max-width: 700px) {
-  .imsa { width: calc(100vw - 16px) !important; height: calc(100dvh - 16px) !important; border-radius: 22px; }
-  .imsa-head h2 { font-size: 28px; }
-  .imsa-sub { display: none; }
-}
 .hbb.imsm .imsm-wxwarn { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 20px; text-decoration: none; color: #2a1e00; background: #ffd83c; }
 .hbb.imsm .imsm-wxwarn.amber { background: #ff9628; color: #2a1200; }
 .hbb.imsm .imsm-wxwarn.red { background: #e8403a; color: #fff; }
@@ -1393,7 +1354,85 @@
 .hbb.imsm .imsa-kv > div { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid var(--outline-var); font-size: 14px; }
 .hbb.imsm .imsa-kv > div:first-child { border-top: 0; }
 .hbb.imsm .imsa-kv b { text-align: right; overflow-wrap: anywhere; }
-/* the existing tools (Map URLs, Ingest, Rulebooks), recoloured in place */
-.hbb.imsm .imsa.imsa-embed { border: 0; border-radius: 22px; background: var(--surface-c-lowest); outline: 1px solid var(--outline-var); padding: 8px; overflow: hidden; }
-.hbb.imsm.dark .imsa.imsa-embed { background: var(--surface-c-low); }
 @media (max-width: 700px) { .hbb.imsm .imsa-layout { grid-template-columns: 1fr; } .hbb.imsm .imsa-feats { grid-template-columns: 1fr; } }
+
+/* ---- Admin tools (26 Oct): Map URLs, Ingest and Rulebooks in the IMS design (AdminTools.jsx) ---- */
+.hbb.imsm .imsa-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.hbb.imsm .imsa-bar .imsa-search { flex: 1 1 280px; }
+.hbb.imsm .imsa-bar .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.hbb.imsm .imsa-urls { gap: 2px; padding: 8px; }
+.hbb.imsm .imsa-urow { display: grid; grid-template-columns: minmax(180px, 34%) 1fr auto; align-items: center; gap: 8px; min-height: 48px; padding: 2px 4px 2px calc(4px + var(--lv, 0) * 20px); border-radius: 14px; }
+.hbb.imsm .imsa-urow:hover { background: var(--surface-c-low); }
+.hbb.imsm .imsa-urow .who { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.hbb.imsm .imsa-urow .tw { width: 36px; height: 36px; flex: none; transition: transform .2s var(--emph); }
+.hbb.imsm .imsa-urow .tw.shut { transform: rotate(-90deg); }
+.hbb.imsm .imsa-urow .tw-sp { width: 36px; flex: none; }
+.hbb.imsm .imsa-urow .who i { width: 10px; height: 10px; border-radius: 50%; flex: none; margin-right: 4px; }
+.hbb.imsm .imsa-urow .who .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 600; }
+.hbb.imsm .imsa-urow .who small { flex: none; font-size: 12px; font-weight: 700; color: var(--on-surface-var); background: var(--surface-c-high); border-radius: 10px; padding: 1px 8px; }
+.hbb.imsm .imsa-urow .adr { display: flex; align-items: center; gap: 8px; min-width: 0; height: 40px; padding: 0 12px; border-radius: 12px; background: var(--surface-c); color: var(--on-surface-var); border: 1px solid transparent; transition: border-color .15s, background .15s; }
+.hbb.imsm .imsa-urow.set .adr { background: var(--primary-c); color: var(--on-primary-c); }
+.hbb.imsm .imsa-urow .adr:focus-within { border-color: var(--primary); background: var(--surface-c-lowest); color: var(--on-surface); }
+.hbb.imsm .imsa-urow .adr input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: inherit; font: 500 13px ui-monospace, "Cascadia Code", Consolas, monospace; }
+.hbb.imsm .imsa-urow .adr input::placeholder { color: var(--on-surface-var); opacity: .7; font-family: var(--font); font-style: normal; }
+.hbb.imsm .imsa-urow .acts { display: flex; gap: 2px; }
+.hbb.imsm .imsa-urow .acts .ib:disabled { opacity: .35; }
+.hbb.imsm .ib.spinning svg { animation: imsa-spin 1s linear infinite; }
+@keyframes imsa-spin { to { transform: rotate(360deg); } }
+.hbb.imsm .imsa-scan { display: flex; flex-direction: column; gap: 14px; }
+.hbb.imsm .imsa-scanbox { height: 300px; overflow: auto; margin: 0; }
+.hbb.imsm .imsa-scanbox.wait { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; border-radius: 14px; background: var(--surface-c); color: var(--on-surface-var); }
+.hbb.imsm .imsa-mono textarea { font: 500 12.5px/19px ui-monospace, "Cascadia Code", Consolas, monospace; }
+.hbb.imsm .imsa-navtree { display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: 14px; background: var(--surface-c-low); }
+.hbb.imsm .imsa-navtree .it { display: flex; gap: 10px; align-items: flex-start; padding: 6px 8px; border-radius: 10px; color: var(--primary); }
+.hbb.imsm .imsa-navtree .it:hover { background: var(--surface-c-high); }
+.hbb.imsm .imsa-navtree .it span, .hbb.imsm .imsa-pick .txt { display: flex; flex-direction: column; min-width: 0; color: var(--on-surface); }
+.hbb.imsm .imsa-navtree small, .hbb.imsm .imsa-pick .txt small { color: var(--on-surface-var); font: 500 12px ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
+.hbb.imsm .imsa-picks { display: flex; flex-direction: column; gap: 8px; }
+.hbb.imsm .imsa-pick { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px 6px; border-radius: 16px; background: var(--surface-c-low); outline: 1px solid var(--outline-var); opacity: .7; transition: opacity .15s, background .15s; }
+.hbb.imsm .imsa-pick.on { opacity: 1; background: var(--surface-c-lowest); outline-color: var(--primary); }
+.hbb.imsm .imsa-pick .top { display: flex; align-items: center; gap: 8px; }
+.hbb.imsm .imsa-pick .txt { flex: 1; }
+.hbb.imsm .imsa-pick .kind { width: 170px; flex: none; margin: 0; }
+.hbb.imsm .imsa-pick .links { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-left: 46px; }
+.hbb.imsm .imsa-pick .links > .muted { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+.hbb.imsm .tag.imsa-link { gap: 2px; padding-right: 4px; }
+.hbb.imsm .tag.imsa-link button { display: grid; place-items: center; width: 20px; height: 20px; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; }
+.hbb.imsm .tag.imsa-link button:hover { background: rgba(0,0,0,.1); }
+.hbb.imsm .imsa-look { position: relative; }
+.hbb.imsm .imsa-look input { width: 130px; height: 28px; padding: 0 10px; border-radius: 14px; border: 1px dashed var(--outline); background: transparent; color: var(--on-surface); font: 500 13px var(--font); outline: 0; transition: width .2s var(--emph); }
+.hbb.imsm .imsa-look input:focus { width: 200px; border-style: solid; border-color: var(--primary); }
+.hbb.imsm .imsa-look .pop { position: absolute; left: 0; top: calc(100% + 4px); z-index: 5; display: flex; flex-direction: column; min-width: 220px; padding: 6px; border-radius: 14px; background: var(--surface-c-high); box-shadow: 0 6px 18px rgba(0,0,0,.18); }
+.hbb.imsm .imsa-look .pop button { text-align: left; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--on-surface); font: 500 14px var(--font); cursor: pointer; }
+.hbb.imsm .imsa-look .pop button:hover { background: var(--surface-c-highest); }
+.hbb.imsm .imsa-prop { gap: 10px; }
+.hbb.imsm .imsa-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.hbb.imsm .imsa-diff > div { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 14px; font-size: 14px; line-height: 20px; }
+.hbb.imsm .imsa-diff small { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.hbb.imsm .imsa-diff .old { background: var(--surface-c); color: var(--on-surface-var); }
+.hbb.imsm .imsa-diff .old span { text-decoration: line-through; text-decoration-color: rgba(192,57,43,.6); }
+.hbb.imsm .imsa-diff .new { background: var(--primary-c); color: var(--on-primary-c); }
+.hbb.imsm .imsa-games { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 8px; }
+.hbb.imsm .imsa-games .imsm-item .meta a { color: var(--primary); }
+.hbb.imsm .imsa-rterm { height: 300px; margin: 0 16px 16px; }
+.hbb.imsm .imsa-rterm .ln.good { color: #7fd69a; } .hbb.imsm .imsa-rterm .ln.warn { color: #f3c26b; } .hbb.imsm .imsa-rterm .ln.bad { color: #ff8a80; } .hbb.imsm .imsa-rterm .ln.sys { color: #6fd6e8; }
+@media (max-width: 700px) {
+  .hbb.imsm .imsa-urow { grid-template-columns: 1fr auto; padding-left: calc(2px + var(--lv, 0) * 10px); }
+  .hbb.imsm .imsa-urow .adr { grid-column: 1 / -1; grid-row: 2; margin-left: 42px; }
+  .hbb.imsm .imsa-diff { grid-template-columns: 1fr; }
+  .hbb.imsm .imsa-games { grid-template-columns: 1fr; }
+  .hbb.imsm .imsa-pick .top { flex-wrap: wrap; }
+  .hbb.imsm .imsa-pick .kind { width: calc(100% - 46px); margin-left: 46px; }
+  .hbb.imsm.imsa-page .imsm-stats.four { grid-template-columns: 1fr 1fr; }
+  .hbb.imsm.imsa-page .imsm-stats.four .imsm-stat { padding: 12px 14px; }
+  .hbb.imsm .imsa-pick .links { padding-left: 8px; }
+}
+.hbb.imsm .imsa-page .tag svg, .hbb.imsm .imsm-card .tag svg { flex: none; margin-right: 4px; }
+.hbb.imsm .imsa-sets { display: flex; flex-direction: column; }
+.hbb.imsm .imsa-set { display: flex; align-items: center; gap: 14px; padding: 12px 4px; border-top: 1px solid var(--outline-var); cursor: pointer; }
+.hbb.imsm .imsa-set.off { cursor: default; opacity: .55; }
+.hbb.imsm .imsa-set .ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; flex: none; background: var(--secondary-c); color: var(--on-secondary-c); }
+.hbb.imsm .imsa-set .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.hbb.imsm .imsa-set .tx b { font-size: 16px; }
+.hbb.imsm .imsa-set .tx small { font-size: 14px; line-height: 20px; color: var(--on-surface-var); }
+.imsl-chip.tog { padding: 0 12px 0 10px; }

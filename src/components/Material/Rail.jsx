@@ -15,7 +15,9 @@ const goTo = (to, setCurrentPath) => { window.history.pushState(null, '', to); i
 // theme/onThemeToggle/onAccount: the light-dark switch and account button at the foot (the home screen; a service
 // page has them in its own header).
 // onAdmin: the admin panel (the home screen, where it lives) - a cog at the foot of the rail
-export default function Rail({ active, onRoom, setCurrentPath, theme, onThemeToggle, onAccount, onAdmin }) {
+// onGraph / graphOn: the library's spatial graph (26 Oct, Simon: "an icon to see the spatial graph would be great
+// above admin cog"), just above the cog
+export default function Rail({ active, onRoom, setCurrentPath, theme, onThemeToggle, onAccount, onAdmin, onGraph, graphOn }) {
   const { user } = useAuth();
   if (user?.guest) return null;
   const room = (k) => {
@@ -35,6 +37,7 @@ export default function Rail({ active, onRoom, setCurrentPath, theme, onThemeTog
         <i><Icon n="hub" size={22} /></i><span>IMS</span>
       </button>
       <span className="grow" />
+      {onGraph && <button type="button" className={`ri sl rgraph ${graphOn ? 'on' : ''}`} aria-pressed={Boolean(graphOn)} title={graphOn ? 'Close the spatial graph' : 'The spatial graph of the library'} onClick={onGraph}><i><Icon n="share" size={22} /></i><span>Graph</span></button>}
       {onAdmin && <button type="button" className="ri sl radmin" onClick={onAdmin}><i><Icon n="admin" size={22} /></i><span>Admin</span></button>}
       {onThemeToggle && <IconButton className="rtheme" icon={theme === 'dark' ? 'sun' : 'moon'} label={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={onThemeToggle} />}
       {onAccount && <IconButton className="racct" label="Your account" onClick={onAccount} aria-haspopup="menu"><span className="avatar">{initials(user?.name)}</span></IconButton>}

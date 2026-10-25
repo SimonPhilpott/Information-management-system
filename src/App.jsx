@@ -1866,6 +1866,8 @@ export default function App() {
         <ImsHome
           theme={state.theme}
           onOpenAdmin={() => { setIsAdminOpen(true); actions.setShowAdmin(true); }}
+          graphOpen={state.showGraph}
+          onGraph={(open) => actions.setShowGraph(open)}
           onThemeToggle={actions.toggleTheme}
           setCurrentPath={setCurrentPath}
           onLogout={actions.handleLogout}
@@ -2561,6 +2563,19 @@ export default function App() {
               applyLayout={applyLayout} 
               onApplyAIProposal={handleApplyAIProposal}
               onReviewSync={handleReviewSync}
+              library={{
+                appMode: state.appMode, onModeChange: actions.setAppMode,
+                showCitations: state.showCitations, onToggleCitations: actions.toggleCitations,
+                showPersonal: state.showPersonal, onTogglePersonal: () => actions.setShowPersonal(!state.showPersonal),
+                chatTone: state.chatTone, onToneChange: actions.setChatTone,
+                currentModel: state.currentModel, onModelChange: actions.updateModel,
+                gems: state.gems, onActivateGem: actions.activateGem,
+                showGraph: state.showGraph,
+                onOpenGraph: () => { setIsAdminOpen(false); actions.setShowAdmin(false); window.dispatchEvent(new CustomEvent('ims:room', { detail: 'library' })); actions.setShowGraph(true); },
+                onOpenCatalog: () => { setIsAdminOpen(false); actions.setShowAdmin(false); actions.setShowCatalog(true); },
+                onOpenHnsw: () => { setIsAdminOpen(false); actions.setShowAdmin(false); setShowHnswModal(true); },
+                onSync: actions.triggerSync, syncStatus: state.syncStatus,
+              }}
             />
          )}
          {state.showCatalog && (

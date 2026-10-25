@@ -210,7 +210,7 @@ function HistoryRoom({ sessions, activeSessionId, onLoadSession, onDeleteSession
   );
 }
 
-function Shell({ theme, onThemeToggle, setCurrentPath, onLogout, syncStatus, onSync, history, room, setRoom, onOpenAdmin }) {
+function Shell({ theme, onThemeToggle, setCurrentPath, onLogout, syncStatus, onSync, history, room, setRoom, onOpenAdmin, graphOpen, onGraph }) {
   const { user } = useAuth();
   const dark = theme === 'dark';
   const account = useMenu();
@@ -224,7 +224,8 @@ function Shell({ theme, onThemeToggle, setCurrentPath, onLogout, syncStatus, onS
 
   return (
     <>
-      <Rail active={room} onRoom={setRoom} setCurrentPath={setCurrentPath} theme={theme} onThemeToggle={onThemeToggle} onAccount={account.show} onAdmin={onOpenAdmin} />
+      <Rail active={room === 'library' && graphOpen ? 'graph' : room} onRoom={(r) => { if (r === 'library' && graphOpen) onGraph?.(false); setRoom(r); }} setCurrentPath={setCurrentPath} theme={theme} onThemeToggle={onThemeToggle} onAccount={account.show} onAdmin={onOpenAdmin}
+        graphOn={room === 'library' && graphOpen} onGraph={onGraph && (() => { if (room === 'library' && graphOpen) onGraph(false); else { setRoom('library'); onGraph(true); } })} />
 
       {room === 'ims' && <main className="imsh-main"><ImsRoom dark={dark} statusTone={tone} onOpenStatus={() => setStatusOpen(true)} /></main>}
       {room === 'history' && <main className="imsh-main scroll"><HistoryRoom {...history} onLoadSession={(id) => { history.onLoadSession(id); setRoom('library'); }} onNewChat={() => { history.onNewChat(); setRoom('library'); }} /></main>}
@@ -252,6 +253,12 @@ export default function Home(props) {
   const [node, setNode] = useState(null);
   const [room, setRoomState] = useState(() => { try { return localStorage.getItem('home_room') || 'ims'; } catch { return 'ims'; } });
   const setRoom = (r) => { setRoomState(r); try { localStorage.setItem('home_room', r); } catch { /* ignore */ } };
+  // another screen (the admin page's Chat & library) can send the home screen to a room
+  useEffect(() => {
+    const on = (e) => { if (['ims', 'library', 'history'].includes(e.detail)) setRoom(e.detail); };
+    window.addEventListener('ims:room', on);
+    return () => window.removeEventListener('ims:room', on);
+  }, []);
   useRipples(root);
   const dark = props.theme === 'dark';
   // the library page draws itself full screen, so it sits beside the rail rather than inside the IMS frame

@@ -1,22 +1,21 @@
 // The admin screens in the IMS design (26 Oct 2026, Simon: "use the new design principles to improve them like we
 // did with the run planner"). A full-screen page over the home screen with the IMS header and its sections as chips:
 // Library map (counts, keeping it safe, search and the tree), Checkpoints, Deleted, Node types, Layout (the physics
-// playground), Map URLs, Ingest and Rulebooks (the existing tools, recoloured), Sharing (the ngrok tunnel) and About.
+// playground), Map URLs, Ingest and Rulebooks (AdminTools.jsx), Sharing (the ngrok tunnel) and About.
 // It takes the same props the old Admin/AdminPanel did, and does the same things with them.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import '../HomebrewBeta/hbb.css';
 import './ims-m.css';
-import { Icon, IconButton, Btn, TextField, TextArea, FilterChip, Confirm, Slider, useSnack, Spinner, useRipples, LayerProvider, SnackHost, TipHost, DarkCtx } from '../HomebrewBeta/ui';
+import { Icon, IconButton, Btn, TextArea, SelectField, Segmented, FilterChip, Confirm, Slider, useSnack, useRipples, LayerProvider, SnackHost, TipHost, DarkCtx } from '../HomebrewBeta/ui';
 import { ItemCard, Empty } from './ServicePage';
 import { ENTITY_TYPES } from '../../data/nodes';
 import { IMPORTANCE_TIERS } from '../Editor/IntelligenceDrawer';
-import { ImportManager } from '../Admin/ImportManager';
-import { URLMapper } from '../Admin/URLMapper';
-import { RulebookScraper } from '../Admin/RulebookScraper';
+import { MapUrls, Ingest, Rulebooks } from './AdminTools';
+import { TONES, MODELS } from './Library';
 import { ADMIN_FEATURES, ADMIN_MODULES, ADMIN_GUIDE } from './adminAbout';
 
 const ROOMS = [
-  ['map', 'Library map', 'hub'], ['checkpoints', 'Checkpoints', 'archive'], ['deleted', 'Deleted', 'del'], ['types', 'Node types', 'tune'],
+  ['map', 'Library map', 'hub'], ['library', 'Chat & library', 'chat'], ['checkpoints', 'Checkpoints', 'archive'], ['deleted', 'Deleted', 'del'], ['types', 'Node types', 'tune'],
   ['layout', 'Layout', 'explore'], ['urls', 'Map URLs', 'link'], ['ingest', 'Ingest', 'upload'], ['rulebooks', 'Rulebooks', 'book'],
   ['sharing', 'Sharing', 'public'], ['about', 'About', 'info'],
 ];
@@ -60,9 +59,19 @@ function DefCard({ color, label, idLabel, guidance, keys, defaults, onSave }) {
   );
 }
 
+// one on/off setting: an icon, what it is, what it's doing now, and a switch
+function Setting({ icon, title, desc, on, onChange, disabled }) {
+  return (
+    <label className={`imsa-set ${disabled ? 'off' : ''}`}>
+      <span className="ic"><Icon n={icon} size={22} /></span>
+      <span className="tx"><b>{title}</b><small>{disabled ? 'Only for answers from your library.' : desc}</small></span>
+      <span className="imsm-switch"><input type="checkbox" checked={Boolean(on)} disabled={disabled} onChange={() => onChange?.()} aria-label={title} /><i /></span>
+    </label>
+  );
+}
+
 function Body(props) {
-  const { nodes = [], deletedNodes = [], theme, onClose, onFocusNode, onRestoreNode, onReset, onBackup, onApplyAIProposal, onReviewSync, onGetMeshBackups, onCreateMeshBackup, onRestoreMeshBackup } = props;
-  const dark = theme === 'dark';
+  const { nodes = [], deletedNodes = [], onClose, onFocusNode, onRestoreNode, onReset, onBackup, onApplyAIProposal, onReviewSync, onGetMeshBackups, onCreateMeshBackup, onRestoreMeshBackup, library: lib = {} } = props;
   const snack = useSnack();
   const err = useCallback((m) => snack(m, { error: true }), [snack]);
   const [room, setRoom] = useState(() => { try { return localStorage.getItem('admin_room') || 'map'; } catch { return 'map'; } });
@@ -74,6 +83,18 @@ function Body(props) {
   const [detail, setDetail] = useState(null);
   const [tunnel, setTunnel] = useState({ status: 'disconnected', url: '', error: '', logs: [] });
   const [phys, setPhys] = useState({ d: 65, g: 45, s: 0.35, t: 60 });
+  // the header stays in view and the room chips sit just under it, as on the service pages
+  const scroller = useRef(null);
+  const head = useRef(null);
+  useEffect(() => {
+    const el = head.current, sc = scroller.current;
+    if (!el || !sc || typeof ResizeObserver === 'undefined') return undefined;
+    const set = () => sc.style.setProperty('--imsm-head-h', `${el.offsetHeight}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const loadBackups = useCallback(async () => { if (!onGetMeshBackups) return; try { setBackups((await onGetMeshBackups()) || []); } catch { /* none */ } }, [onGetMeshBackups]);
   useEffect(() => { loadBackups(); }, [loadBackups]);
@@ -137,14 +158,13 @@ function Body(props) {
     return { links, dots };
   }, [phys]);
 
-  const legacy = (child) => <div className={`imsa imsa-embed rpb-legacy ${dark ? 'dark' : ''}`}>{child}</div>;
   const typeCount = useMemo(() => new Set(nodes.map((n) => n.type)).size, [nodes]);
 
   return (
     <div className="imsm-page">
-      <div className="scroll">
+      <div className="scroll" ref={scroller}>
         <div className="imsm-body wide">
-          <header className="imsm-head imsa-top">
+          <header className="imsm-head imsa-top" ref={head}>
             <IconButton icon="close" label="Close admin" onClick={onClose} />
             <span className="imsm-tile acc-teal"><Icon n="admin" size={26} /></span>
             <h1 className="imsm-title">Admin</h1>
@@ -180,6 +200,40 @@ function Body(props) {
                   <div>{roots.map((r, i) => <Branch key={`r-${r.id || i}`} node={r} nodes={nodes} onOpen={onFocusNode} />)}</div>
                 </section>
               )}
+            </>
+          )}
+
+          {room === 'library' && (
+            <>
+              <section className="imsm-card">
+                <h3><Icon n="book" size={20} />Where answers come from</h3>
+                <Segmented label="Answers from" value={lib.appMode === 'general' ? 'general' : 'kb'} onChange={(v) => lib.onModeChange?.(v)} options={[['kb', 'Your library'], ['general', 'Gemini']]} />
+                <p className="muted" style={{ margin: 0 }}>{lib.appMode === 'general' ? 'The library chat answers from Gemini\'s general knowledge, not your documents.' : 'The library chat answers from your own documents and subjects.'}</p>
+                <div className="imsa-sets">
+                  <Setting icon="doc" title="Citations" on={lib.showCitations} onChange={lib.onToggleCitations} disabled={lib.appMode === 'general'}
+                    desc={lib.showCitations ? 'Answers show the book and page each point came from.' : 'Answers come without the book and page references.'} />
+                  <Setting icon="person" title="Personal books" on={lib.showPersonal} onChange={lib.onTogglePersonal} disabled={lib.appMode === 'general'}
+                    desc={lib.showPersonal ? 'Your personal books are searched as well as the professional ones - and shown in the spatial graph.' : 'Professional books only, in answers and in the spatial graph.'} />
+                </div>
+              </section>
+              <section className="imsm-card">
+                <h3><Icon n="chat" size={20} />How the library chat answers</h3>
+                <div className="imsa-three">
+                  <SelectField label="Tone" value={lib.chatTone || 'friendly'} onChange={(v) => lib.onToneChange?.(v)} options={TONES.map(([k, l, d]) => [k, `${l} - ${d}`])} />
+                  <SelectField label="Model" value={lib.currentModel || 'flash'} onChange={(v) => lib.onModelChange?.(v)} options={MODELS.map(([k, l, d]) => [k, `${l} - ${d}`])} />
+                  {(lib.gems || []).length > 0 && <SelectField label="Mode" value={String((lib.gems.find((g) => g.is_active === 1) || lib.gems[0]).id)} onChange={(v) => lib.onActivateGem?.(lib.gems.find((g) => String(g.id) === v)?.id ?? v)} options={lib.gems.map((g) => [String(g.id), g.name])} />}
+                </div>
+              </section>
+              <section className="imsm-card">
+                <h3><Icon n="share" size={20} />The library</h3>
+                <p className="muted" style={{ margin: 0 }}>The spatial graph is also on the rail, just above the admin cog.</p>
+                <div className="imsm-row">
+                  {lib.onOpenGraph && <Btn icon="share" onClick={lib.onOpenGraph}>Open the spatial graph</Btn>}
+                  {lib.onOpenCatalog && <Btn kind="tonal" icon="book" onClick={lib.onOpenCatalog}>Browse the library</Btn>}
+                  {lib.onOpenHnsw && <Btn kind="tonal" icon="bolt" onClick={lib.onOpenHnsw}>Fast index</Btn>}
+                  {lib.onSync && <Btn kind="tonal" icon="sync" busy={Boolean(lib.syncStatus?.drive?.active || lib.syncStatus?.indexing?.active)} onClick={() => { lib.onSync(); snack('Syncing the library.'); }}>Sync the library now</Btn>}
+                </div>
+              </section>
             </>
           )}
 
@@ -286,24 +340,9 @@ function Body(props) {
             </>
           )}
 
-          {room === 'urls' && (
-            <>
-              <section className="imsm-card quiet"><h3><Icon n="link" size={20} />Map URLs</h3><p className="muted" style={{ margin: 0 }}>Link nodes in the library map to their pages on the intranet, and review what the last sync found.</p></section>
-              {legacy(<URLMapper nodes={nodes} onReviewSync={onReviewSync} />)}
-            </>
-          )}
-          {room === 'ingest' && (
-            <>
-              <section className="imsm-card quiet"><h3><Icon n="upload" size={20} />Ingest</h3><p className="muted" style={{ margin: 0 }}>Bring new structure into the library map: the AI proposes changes and you choose what to apply.</p></section>
-              {legacy(<ImportManager nodes={nodes} onApplyChanges={onApplyAIProposal} />)}
-            </>
-          )}
-          {room === 'rulebooks' && (
-            <>
-              <section className="imsm-card quiet"><h3><Icon n="book" size={20} />Rulebooks</h3><p className="muted" style={{ margin: 0 }}>Pull game rulebooks in from the web for the library and the board games.</p></section>
-              {legacy(<RulebookScraper />)}
-            </>
-          )}
+          {room === 'urls' && <MapUrls nodes={nodes} onUpdateNodes={props.onUpdateNodes} onReviewSync={onReviewSync} />}
+          {room === 'ingest' && <Ingest nodes={nodes} onApplyChanges={onApplyAIProposal} />}
+          {room === 'rulebooks' && <Rulebooks />}
 
           {room === 'sharing' && (
             <>
