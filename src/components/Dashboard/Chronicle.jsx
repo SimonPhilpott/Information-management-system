@@ -17,7 +17,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Loads the chronicle, asks for any missing or out-of-date chapters to be written (players only), and
 // keeps checking while the chronicler is writing. Shared by the book and the map's pop-ups.
-export function useChronicle(c, edit) {
+// apiBase: where the book's requests go (the D&D Solo DM's chronicle uses /api/dnd/campaigns/<id>)
+export function useChronicle(c, edit, apiBase = null) {
   const [chron, setChron] = useState(null);
   const [tick, setTick] = useState(0); // bumped to look again (after an edit or a rewrite)
   const sig = c ? JSON.stringify([c.scenarios, c.cards, c.players.map((p) => p.fallen)]) : '';
@@ -26,7 +27,7 @@ export function useChronicle(c, edit) {
     let alive = true;
     (async () => {
       try {
-        const url = `/api/decks/campaigns/${c.id}/chronicle`;
+        const url = `${apiBase || `/api/decks/campaigns/${c.id}`}/chronicle`;
         let d = await api(url);
         let asked = 0;
         for (let i = 0; alive && i < 90; i++) {
@@ -253,7 +254,8 @@ function paginate(meas, chapters) {
   });
 }
 
-export default function Chronicle({ c, chron, byCode = {}, setC, toast = () => {} }) {
+export default function Chronicle({ c, chron, byCode = {}, setC, toast = () => {}, apiBase = null }) {
+  const base = apiBase || `/api/decks/campaigns/${c.id}`;
   // Arkham Horror's chronicle is an investigator's case notes; Lord of the Rings' a quill-and-ink book.
   const journal = c.game === 'ahlcg';
   const num = journal ? (n) => String(n) : roman;
@@ -403,7 +405,7 @@ export default function Chronicle({ c, chron, byCode = {}, setC, toast = () => {
         let d;
         for (let i = 0; i < 80; i++) {
           if (playSeqId.current !== seqId) return;
-          d = await api(`/api/decks/campaigns/${c.id}/chronicle/voice`, { method: 'POST', body: { chapter: item.name } });
+          d = await api(`${base}/chronicle/voice`, { method: 'POST', body: { chapter: item.name } });
           if (d?.ready) break;
           await sleep(3000);
         }
@@ -494,20 +496,20 @@ export default function Chronicle({ c, chron, byCode = {}, setC, toast = () => {
   // Editing a chapter by hand, and having it written afresh.
   const [editing, setEditing] = useState(null); // { chapter, label, title, summary, text, tale }
   const [busy, setBusy] = useState(false);
-  const reloadCampaign = async () => { if (setC) { try { const d = await api(`/api/decks/campaigns/${c.id}`); setC(d.campaign); } catch (_) { /* next load */ } } };
+  const reloadCampaign = async () => { if (setC && !apiBase) { try { const d = await api(`/api/decks/campaigns/${c.id}`); setC(d.campaign); } catch (_) { /* next load */ } } };
   // A fresh title from the chronicler, for the chapter as it now reads (kept only if the edit is saved).
   const [titling, setTitling] = useState(false);
   const newTitle = async () => {
     setTitling(true);
     try {
-      const d = await api(`/api/decks/campaigns/${c.id}/chronicle/title`, { method: 'POST', body: { chapter: editing.chapter, title: editing.title, text: editing.text } });
+      const d = await api(`${base}/chronicle/title`, { method: 'POST', body: { chapter: editing.chapter, title: editing.title, text: editing.text } });
       setEditing((e) => e && { ...e, title: d.title });
     } catch (err) { toast(err.message, 'error'); } finally { setTitling(false); }
   };
   const saveEdit = async () => {
     setBusy(true);
     try {
-      const d = await api(`/api/decks/campaigns/${c.id}/chronicle/chapter`, { method: 'PUT', body: { chapter: editing.chapter, title: editing.title, summary: editing.summary, paragraphs: editing.text } });
+      const d = await api(`${base}/chronicle/chapter`, { method: 'PUT', body: { chapter: editing.chapter, title: editing.title, summary: editing.summary, paragraphs: editing.text } });
       chron?.set?.(d);
       if (editing.tale) await reloadCampaign();
       setEditing(null);
@@ -516,7 +518,7 @@ export default function Chronicle({ c, chron, byCode = {}, setC, toast = () => {
   };
   const toggleLock = async (x) => {
     try {
-      const d = await api(`/api/decks/campaigns/${c.id}/chronicle/lock`, { method: 'PUT', body: { chapter: x.name, locked: !x.ch.locked } });
+      const d = await api(`${base}/chronicle/lock`, { method: 'PUT', body: { chapter: x.name, locked: !x.ch.locked } });
       chron?.set?.(d);
       if (x.name === '__tale') await reloadCampaign();
       toast(x.ch.locked ? 'Chapter unlocked.' : 'Chapter locked - it stays exactly as it is.');
@@ -528,9 +530,9 @@ export default function Chronicle({ c, chron, byCode = {}, setC, toast = () => {
   const newPicture = async (x, prompt) => {
     setPainting(x.name);
     try {
-      let d = await api(`/api/decks/campaigns/${c.id}/chronicle/art/new-take`, { method: 'POST', body: { chapter: x.name, prompt } });
+      let d = await api(`${base}/chronicle/art/new-take`, { method: 'POST', body: { chapter: x.name, prompt } });
       chron?.set?.(d);
-      for (let i = 0; i < 30 && !d.art?.[x.name]; i++) { await sleep(3000); d = await api(`/api/decks/campaigns/${c.id}/chronicle`); }
+      for (let i = 0; i < 30 && !d.art?.[x.name]; i++) { await sleep(3000); d = await api(`${base}/chronicle`); }
       chron?.set?.(d);
       if (!d.art?.[x.name]) toast('The picture is taking a while - it will appear when it is ready.');
     } catch (err) { toast(err.message, 'error'); } finally { setPainting(null); }
@@ -538,10 +540,10 @@ export default function Chronicle({ c, chron, byCode = {}, setC, toast = () => {
   const rewrite = async (x) => {
     if (!window.confirm(`Have the chronicler write "${x.ch?.title || x.label}" afresh? The chapter as it stands${x.ch?.edited || c.epilogue?.edited ? ', including any hand edits,' : ''} will be replaced.`)) return;
     try {
-      const d = await api(`/api/decks/campaigns/${c.id}/chronicle/rewrite`, { method: 'POST', body: { chapter: x.name } });
+      const d = await api(`${base}/chronicle/rewrite`, { method: 'POST', body: { chapter: x.name } });
       if (x.name === '__tale') {
         toast('The chronicler is rewriting the tale...');
-        for (let i = 0; i < 60; i++) { await sleep(4000); const e = await api(`/api/decks/campaigns/${c.id}/epilogue`); if (!e.writing) break; }
+        for (let i = 0; i < 60; i++) { await sleep(4000); const e = await api(`${base}/epilogue`); if (!e.writing) break; }
         await reloadCampaign();
       } else { chron?.set?.(d); chron?.refresh?.(); toast('The chronicler is rewriting the chapter...'); }
     } catch (err) { toast(err.message, 'error'); }
@@ -884,7 +886,7 @@ export default function Chronicle({ c, chron, byCode = {}, setC, toast = () => {
         <div className="flex items-center gap-2">
           <button className={btn} style={btnStyle} disabled={!canOn || !!flip} onClick={() => go(at + step)} title="Turn the page"><ChevronRight size={18} /></button>
           {c.canEdit && <button className={btn} style={editMode ? { ...btnStyle, background: '#6b1d0e', color: '#f4e4bc' } : btnStyle} onClick={() => setEditMode(!editMode)} title={editMode ? 'Done editing' : 'Edit the book - chapters, titles, pictures and locks'} aria-pressed={editMode}><Pencil size={17} /></button>}
-          <a className={btn} style={btnStyle} href={`/api/decks/campaigns/${c.id}/chronicle.pdf`} download title="Download the chronicle as a PDF"><Download size={18} /></a>
+          {!apiBase && <a className={btn} style={btnStyle} href={`${base}/chronicle.pdf`} download title="Download the chronicle as a PDF"><Download size={18} /></a>}
           <button className={btn} style={btnStyle} onClick={() => setOpen(false)} title="Close the book"><X size={18} /></button>
         </div>
       </div>

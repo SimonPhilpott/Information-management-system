@@ -67,7 +67,7 @@ function Frame({ title, icon, accent, theme, onThemeToggle, setCurrentPath, fab,
   );
 }
 
-// accent: red | sky | teal | pink | indigo | orange | violet | blue | green
+// accent: red | sky | teal | pink | indigo | orange | violet | blue | green | brown
 export default function ServicePage(props) {
   const root = useRef(null);
   const [node, setNode] = useState(null);

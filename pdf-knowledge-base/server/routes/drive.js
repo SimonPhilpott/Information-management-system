@@ -43,9 +43,13 @@ export function startSyncAndIndex() {
       await syncPdfs();
 
       // Phase 2: Index unindexed documents (including previously failed ones at indexed=-1)
+      // Folders held back from indexing (setting index_hold_folders, a JSON list of folder prefixes - 25 Oct 2026: the
+      // new D&D 5E and Warhammer folders, ~360 big books, wait until Simon says)
+      let held = [];
+      try { held = JSON.parse(db.prepare("SELECT value FROM settings WHERE key = 'index_hold_folders'").get()?.value || '[]'); } catch { /* none */ }
       const unindexed = db.prepare(`
         SELECT * FROM documents WHERE indexed = 0 OR indexed = -1 OR indexed IS NULL
-      `).all();
+      `).all().filter((d) => !held.some((h) => String(d.folder_path || '').startsWith(h)));
 
       indexProgress = {
         active: true,

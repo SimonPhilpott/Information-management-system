@@ -3,6 +3,7 @@ import { LogIn, Loader2, Layers } from 'lucide-react';
 const DecksPortal = React.lazy(() => import('./components/Dashboard/DecksPortal'));
 // (Homebrew's guests get the same Homebrew as Simon - the classic portal was retired on 22 Oct)
 const HomebrewPortal = React.lazy(() => import('./components/HomebrewBeta/HomebrewBeta'));
+const DndSolo = React.lazy(() => import('./components/Material/DndSolo')); // invited players get the D&D Solo DM too (25 Oct)
 import { isCampaignPath, canonicalCampaignPath } from './components/Dashboard/campaignPaths';
 
 const AuthContext = createContext({ user: null, signOut: () => {} });
@@ -81,6 +82,7 @@ const guestCampaignPath = (p) => canonicalCampaignPath(isCampaignPath(p) ? p : '
 function GuestApp() {
   const [path, setPath] = useState(() => window.location.pathname);
   const isHomebrew = path.startsWith('/ims/homebrew');
+  const isDnd = path.startsWith('/ims/dnd');
   const [theme, setTheme] = useState(() => {
     try { return localStorage.getItem(isHomebrew ? 'homebrewTheme' : 'deckTheme') || 'dark'; } catch { return 'dark'; }
   });
@@ -104,7 +106,9 @@ function GuestApp() {
 
   return (
     <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#030712] text-slate-400"><Loader2 className="animate-spin" size={22} /></div>}>
-      {isHomebrew ? (
+      {isDnd ? (
+        <DndSolo theme={theme} onThemeToggle={toggle} setCurrentPath={go} />
+      ) : isHomebrew ? (
         <HomebrewPortal theme={theme} onThemeToggle={toggle} setCurrentPath={go} />
       ) : (
         <DecksPortal theme={theme} onThemeToggle={toggle} currentPath={guestCampaignPath(path)} setCurrentPath={go} />

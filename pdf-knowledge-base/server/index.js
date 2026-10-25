@@ -250,6 +250,9 @@ const requireAdmin = (req, res, next) => {
   if (isGuestSession(req)) {
     if (req.path.startsWith('/api/decks/') && !req.path.startsWith('/api/decks/invites')) return next();
     if (req.path.startsWith('/api/homebrew') && !req.path.startsWith('/api/homebrew/invites')) return next();
+    // the D&D Solo DM (25 Oct 2026, Simon: "an invite feature ... so my son and Daniel can also use it") - each guest
+    // has their own adventures; the library tools stay the owner's (routes/dnd.js)
+    if (req.path.startsWith('/api/dnd/')) return next();
   }
   return res.status(401).json({ error: 'Sign in with your Google account to use this.', signInRequired: true });
 };

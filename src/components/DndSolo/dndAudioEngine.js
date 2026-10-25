@@ -422,6 +422,36 @@ class DndAudioEngine {
     }
   }
 
+  // One die knocking the felt, the rim or another die (the 3D tray calls this on every hard contact; 0-1 strength)
+  knock(strength = 0.5) {
+    this.ensureRunning();
+    if (!this.ctx || this.isMuted) return;
+    const now = this.ctx.currentTime;
+    if (this._lastKnock && now - this._lastKnock < 0.025) return; // a burst of contacts is one click
+    this._lastKnock = now;
+    const len = Math.floor(this.ctx.sampleRate * 0.05);
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 6);
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 1800 + Math.random() * 2200;
+    bp.Q.value = 2.5;
+    const body = this.ctx.createOscillator();
+    body.type = 'triangle';
+    body.frequency.value = 520 + Math.random() * 420;
+    const bg = this.ctx.createGain();
+    bg.gain.setValueAtTime(0.18 * strength, now);
+    bg.gain.exponentialRampToValueAtTime(0.0001, now + 0.035);
+    const g = this.ctx.createGain();
+    g.gain.value = 0.55 * Math.max(0.15, strength);
+    src.connect(bp); bp.connect(g); g.connect(this.sfxGain);
+    body.connect(bg); bg.connect(this.sfxGain);
+    src.start(now); body.start(now); body.stop(now + 0.04);
+  }
+
   _sfxDiceRoll() {
     const t = this.ctx.currentTime;
     const impacts = 4;

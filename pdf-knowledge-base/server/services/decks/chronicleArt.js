@@ -26,7 +26,9 @@ export const artBrief = ({ scene, place, heroes, fallen, style }) => (style === 
   : `Scene: ${scene}${place ? `\nPlace: ${place}.` : ''}${heroes?.length ? `\nThe company - show exactly these heroes and no others among them, true to their kind: ${heroes.join('; ')}.` : ''}${fallen?.length ? `\nFallen here, to be shown with sorrow and honour: ${fallen.join('; ')}.` : ''}`);
 // Arkham Horror: an old photograph, as if clipped into an investigator's case notes.
 const PHOTO = 'A photograph taken in the 1920s: grainy black-and-white silver-gelatin print, slightly faded and sepia-toned with age, soft focus at the edges, deep film noir shadows, the Roaring Twenties in New England (cloche hats, fedoras, trench coats, gas lamps, Model T motor cars) - a haunting, uneasy scene of cosmic horror and detective investigation, true to H.P. Lovecraft. It fills the whole frame edge to edge. No text, no letters, no captions, no borders, no frames, no modern things. Portrait orientation.';
-const promptOf = (src) => `${src.style === 'photo' ? PHOTO : STYLE}\n${src.custom || artBrief(src)}`;
+// 'ink': the same engraving style for any world (the D&D Solo chronicles - a sci-fi or horror game isn't Middle-earth)
+const styleOf = (src) => (src.style === 'photo' ? PHOTO : src.style === 'ink' ? STYLE.replace('chronicle of Middle-earth', `chronicle${src.world ? ` of a ${src.world} tale` : ''}`) : STYLE);
+const promptOf = (src) => `${styleOf(src)}\n${src.custom || artBrief(src)}`;
 
 const keyOf = (src) => crypto.createHash('sha1').update(`${MODEL}|${promptOf(src)}|take ${src.take || 0}`).digest('hex').slice(0, 20);
 export const artFile = (key) => (/^[a-f0-9]{20}$/.test(key) ? path.join(DIR, `${key}.jpg`) : null);

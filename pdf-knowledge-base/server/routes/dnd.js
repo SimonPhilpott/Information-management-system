@@ -2,27 +2,40 @@ import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
 import {
-  scanDndLibrary, getRulesets, getRuleset,
+  DND_BOOKS_ROOT, scanDndLibrary, getRulesets, getRuleset,
   createCharacter, getCharacter, updateCharacter,
-  createCampaign, getCampaigns, getCampaign, deleteCampaign,
-  rollDice, consultOracle, processDmTurn
+  startCampaign, getCampaigns, getCampaign, deleteCampaign,
+  rollDice, consultOracle, processDmTurn, undoLastTurn, getTurn
 } from '../services/dndSoloService.js';
-import { requireSession } from '../middleware/requireSession.js';
+import { narrate } from '../services/decks/chronicleVoice.js';
+import { startDiscovery, discoveryStatus, studySystem, askRules, rollHero, rulesetFiles, rpgDocuments, askDm } from '../services/dndLibrary.js';
+import { isApprovedSession, isGuestSession } from '../middleware/requireSession.js';
+import { canonEmail } from '../services/decksService.js';
+import { campaignOwner, characterCampaign, turnCampaign } from '../services/dndSoloService.js';
+import * as chronicle from '../services/dndChronicle.js';
 
 const router = Router();
-router.use(requireSession);
+// Simon, and anyone he's invited (the shared guest list of the deck builder and Homebrew). Guests play their own
+// adventures; reading the library and studying the games is Simon's.
+const viewer = (req) => ({ isOwner: isApprovedSession(req), email: canonEmail(req.session?.user?.email) });
+router.use((req, res, next) => (isApprovedSession(req) || isGuestSession(req) ? next() : res.status(401).json({ error: 'Sign in with your Google account to use this.', signInRequired: true })));
+const ownerOf = (req) => (viewer(req).isOwner ? null : viewer(req).email);
+const onlyOwner = (req, res, next) => (viewer(req).isOwner ? next() : res.status(403).json({ success: false, error: 'Only Simon can do that.' }));
+const theirs = (row, req) => Boolean(row) && (row.owner || null) === ownerOf(req);
+// every request about one adventure (or its hero, or one of its turns) must be the viewer's own
+router.param('id', (req, res, next, id) => (req.path.startsWith('/campaigns/') && !theirs(campaignOwner(id), req) ? res.status(404).json({ success: false, error: 'Campaign not found' }) : next()));
+router.use('/characters/:charId', (req, res, next) => (theirs(characterCampaign(req.params.charId), req) ? next() : res.status(404).json({ success: false, error: 'Character not found' })));
+router.use('/turns/:turnId', (req, res, next) => (theirs(turnCampaign(Number(req.params.turnId)), req) ? next() : res.status(404).json({ success: false, error: 'Turn not found' })));
+router.get('/me', (req, res) => res.json({ success: true, isOwner: viewer(req).isOwner, email: viewer(req).email }));
 
 const fail = (res, err, code = 400) => res.status(code).json({ success: false, error: err.message });
 
 // Rulesets & Scanner
 router.get('/rulesets', (req, res) => {
-  try {
-    const rulesets = getRulesets();
-    res.json({ success: true, rulesets });
-  } catch (err) { fail(res, err); }
+  try { res.json({ success: true, rulesets: getRulesets() }); } catch (err) { fail(res, err); }
 });
 
-router.post('/scan', (req, res) => {
+router.post('/scan', onlyOwner, (req, res) => {
   try {
     const rulesets = scanDndLibrary();
     res.json({ success: true, rulesets, count: rulesets.length });
@@ -37,19 +50,46 @@ router.get('/rulesets/:id', (req, res) => {
   } catch (err) { fail(res, err); }
 });
 
-// Campaigns
-router.get('/campaigns', (req, res) => {
+// The games in the library index: find them all (in the background) and study each from its rulebooks
+router.post('/discover', onlyOwner, (req, res) => {
+  if (!startDiscovery({ restudy: Boolean(req.body?.restudy) })) return fail(res, new Error('Already reading the library'), 409);
+  res.json({ success: true, status: discoveryStatus() });
+});
+router.get('/discover', (req, res) => {
+  const docs = rpgDocuments();
+  res.json({ success: true, status: discoveryStatus(), books: docs.length, indexed: docs.filter((d) => d.indexed === 1).length });
+});
+router.post('/rulesets/:id/study', onlyOwner, async (req, res) => {
+  try { res.json({ success: true, profile: await studySystem(req.params.id) }); } catch (err) { fail(res, err, 500); }
+});
+router.get('/rulesets/:id/books', (req, res) => {
+  try { res.json({ success: true, books: rulesetFiles(getRuleset(req.params.id)) }); } catch (err) { fail(res, err); }
+});
+// A rules question answered from the game's own books, with the pages
+router.post('/rulesets/:id/ask', async (req, res) => {
   try {
-    const campaigns = getCampaigns();
-    res.json({ success: true, campaigns });
-  } catch (err) { fail(res, err); }
+    const r = getRuleset(req.params.id);
+    if (!r) return fail(res, new Error('Ruleset not found'), 404);
+    res.json({ success: true, ...(await askRules(r, String(req.body?.question || ''))) });
+  } catch (err) { fail(res, err, 500); }
+});
+// A starting hero made by the book's character creation (not saved - the page shows it to keep or re-roll)
+router.post('/rulesets/:id/hero', async (req, res) => {
+  try {
+    const r = getRuleset(req.params.id);
+    if (!r) return fail(res, new Error('Ruleset not found'), 404);
+    res.json({ success: true, hero: await rollHero(r, req.body || {}) });
+  } catch (err) { fail(res, err, 500); }
 });
 
-router.post('/campaigns', (req, res) => {
-  try {
-    const campaign = createCampaign(req.body || {});
-    res.json({ success: true, campaign });
-  } catch (err) { fail(res, err); }
+// Campaigns
+router.get('/campaigns', (req, res) => {
+  try { res.json({ success: true, campaigns: getCampaigns(ownerOf(req)) }); } catch (err) { fail(res, err); }
+});
+
+// A new campaign with its hero; the DM writes the opening scene before this answers
+router.post('/campaigns', async (req, res) => {
+  try { res.json({ success: true, campaign: await startCampaign(req.body || {}, ownerOf(req)) }); } catch (err) { fail(res, err, 500); }
 });
 
 router.get('/campaigns/:id', (req, res) => {
@@ -61,32 +101,82 @@ router.get('/campaigns/:id', (req, res) => {
 });
 
 router.delete('/campaigns/:id', (req, res) => {
-  try {
-    deleteCampaign(req.params.id);
-    res.json({ success: true });
-  } catch (err) { fail(res, err); }
+  try { deleteCampaign(req.params.id); res.json({ success: true }); } catch (err) { fail(res, err); }
 });
 
 router.post('/campaigns/:id/turn', async (req, res) => {
   try {
     const { playerAction, diceRoll, oracleResult } = req.body || {};
-    if (!playerAction) return fail(res, new Error('Player action is required'), 400);
-    const campaign = await processDmTurn({
-      campaignId: req.params.id,
-      playerAction,
-      diceRoll,
-      oracleResult
-    });
+    if (!String(playerAction || '').trim()) return fail(res, new Error('Player action is required'), 400);
+    const campaign = await processDmTurn({ campaignId: req.params.id, playerAction: String(playerAction).trim(), diceRoll, oracleResult });
     res.json({ success: true, campaign });
   } catch (err) { fail(res, err, 500); }
 });
 
-// Characters
-router.post('/characters', (req, res) => {
+// Rindewind out of character - recap, rules, advice - for any room of the page
+router.post('/campaigns/:id/ask', async (req, res) => {
   try {
-    const character = createCharacter(req.body || {});
-    res.json({ success: true, character });
-  } catch (err) { fail(res, err); }
+    const campaign = getCampaign(req.params.id);
+    if (!campaign) return fail(res, new Error('Campaign not found'), 404);
+    const question = String(req.body?.question || '').trim();
+    if (!question) return fail(res, new Error('Ask him something'), 400);
+    res.json({ success: true, ...(await askDm({ campaign, ruleset: getRuleset(campaign.ruleset_id), question, books: campaign.books?.length ? campaign.books : null })) });
+  } catch (err) { fail(res, err, 500); }
+});
+// Any text read aloud by the Chronicler (his out-of-character answers)
+router.post('/voice', (req, res) => {
+  try {
+    const text = String(req.body?.text || '').trim().slice(0, 3000);
+    if (!text) return fail(res, new Error('Nothing to read'), 400);
+    const r = narrate({ heading: '', paragraphs: text.split(/\n\s*\n/).filter(Boolean), game: 'lotr' });
+    if (r.failed) throw new Error(`The narrator lost his voice for a moment (${r.error}) - try again.`);
+    res.json({ success: true, ...r, url: r.ready ? `/api/decks/campaigns/chronicle-audio/${r.key}` : null });
+  } catch (err) { fail(res, err, 500); }
+});
+
+// The chronicle book - the same requests the LOTR campaign's book makes (Dashboard/Chronicle.jsx with apiBase)
+const ch = (fn) => async (req, res) => { try { res.json({ success: true, ...(await fn(req)) }); } catch (err) { res.status(err.status || 500).json({ success: false, error: err.message }); } };
+const chap = (req) => String(req.body?.chapter || '');
+router.get('/campaigns/:id/chronicle', ch((req) => chronicle.chronicleStatus(req.params.id)));
+router.post('/campaigns/:id/chronicle', ch((req) => chronicle.writeChronicle(req.params.id)));
+router.put('/campaigns/:id/chronicle/chapter', ch((req) => chronicle.editChapter(req.params.id, chap(req), req.body || {})));
+router.put('/campaigns/:id/chronicle/lock', ch((req) => chronicle.lockChapter(req.params.id, chap(req), Boolean(req.body?.locked))));
+router.post('/campaigns/:id/chronicle/title', ch((req) => chronicle.suggestTitle(req.params.id, chap(req), req.body || {})));
+router.post('/campaigns/:id/chronicle/rewrite', ch((req) => chronicle.rewriteChapter(req.params.id, chap(req))));
+router.post('/campaigns/:id/chronicle/voice', ch(async (req) => {
+  const r = narrate(chronicle.chapterForReading(req.params.id, chap(req)));
+  if (r.failed) throw new Error(`The narrator lost his voice for a moment (${r.error}) - try again.`);
+  return { ...r, url: r.ready ? `/api/decks/campaigns/chronicle-audio/${r.key}` : null };
+}));
+router.post('/campaigns/:id/chronicle/voice/new-take', ch((req) => chronicle.newReadingTake(req.params.id, chap(req))));
+router.post('/campaigns/:id/chronicle/art/new-take', ch((req) => chronicle.newPicture(req.params.id, chap(req), req.body?.prompt ?? null)));
+
+// Take back the last turn (the sheet goes back too); answers with what was asked, so it can be tried again
+router.post('/campaigns/:id/undo', (req, res) => {
+  try { res.json({ success: true, ...undoLastTurn(req.params.id) }); } catch (err) { fail(res, err); }
+});
+
+// A turn read aloud by the Chronicler - the narrator of the Lord of the Rings campaign chronicles, same voice and
+// direction. Made in the background the first time and kept; the page asks again until it's ready.
+router.post('/turns/:turnId/voice', (req, res) => {
+  try {
+    const t = getTurn(Number(req.params.turnId));
+    if (!t) return fail(res, new Error('Turn not found'), 404);
+    const paragraphs = String(t.dm_narrative || '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+    const r = narrate({ heading: '', paragraphs, game: 'lotr' });
+    if (r.failed) throw new Error(`The narrator lost his voice for a moment (${r.error}) - try again.`);
+    res.json({ success: true, ...r, url: r.ready ? `/api/decks/campaigns/chronicle-audio/${r.key}` : null });
+  } catch (err) { fail(res, err, 500); }
+});
+
+// Tabletop Audio's soundscape catalogue (the browser can't read it across sites)
+router.get('/soundscapes', async (req, res) => {
+  try { res.json({ success: true, tracks: await (await import('../services/dndSoundscapes.js')).catalogue() }); } catch (err) { fail(res, err, 500); }
+});
+
+// Characters
+router.post('/characters', onlyOwner, (req, res) => {
+  try { res.json({ success: true, character: createCharacter(req.body || {}) }); } catch (err) { fail(res, err); }
 });
 
 router.get('/characters/:id', (req, res) => {
@@ -98,51 +188,30 @@ router.get('/characters/:id', (req, res) => {
 });
 
 router.put('/characters/:id', (req, res) => {
-  try {
-    const character = updateCharacter(req.params.id, req.body || {});
-    res.json({ success: true, character });
-  } catch (err) { fail(res, err); }
+  try { res.json({ success: true, character: updateCharacter(req.params.id, req.body || {}) }); } catch (err) { fail(res, err); }
 });
 
 // Dice Roller & Solo Oracle
 router.post('/roll', (req, res) => {
-  try {
-    const result = rollDice(req.body || {});
-    res.json({ success: true, result });
-  } catch (err) { fail(res, err); }
+  try { res.json({ success: true, result: rollDice(req.body || {}) }); } catch (err) { fail(res, err); }
 });
 
 router.post('/oracle', (req, res) => {
-  try {
-    const result = consultOracle(req.body || {});
-    res.json({ success: true, result });
-  } catch (err) { fail(res, err); }
+  try { res.json({ success: true, result: consultOracle(req.body || {}) }); } catch (err) { fail(res, err); }
 });
 
-// Asset streamer for maps, tokens, and play sheets
+// Maps, tokens and play sheets from the D&D books folder - and only from there
 router.get('/asset', (req, res) => {
   try {
-    const rel = String(req.query.path || '').replace(/\.\./g, '');
-    const baseDir = process.env.DND_BOOKS_PATH || 'G:\\My Drive\\BOOKS\\D&D';
-    const filePath = path.resolve(baseDir, rel);
-
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).send('Asset not found');
-    }
-
-    const ext = path.extname(filePath).toLowerCase();
-    const mimeTypes = {
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.png': 'image/png',
-      '.webp': 'image/webp',
-      '.pdf': 'application/pdf',
-      '.zip': 'application/zip'
-    };
-
-    if (mimeTypes[ext]) {
-      res.setHeader('Content-Type', mimeTypes[ext]);
-    }
+    const base = path.resolve(DND_BOOKS_ROOT);
+    const filePath = path.resolve(base, String(req.query.path || ''));
+    if (!filePath.toLowerCase().startsWith(base.toLowerCase() + path.sep)) return res.status(403).send('Not in the D&D books folder');
+    if (!fs.existsSync(filePath)) return res.status(404).send('Asset not found');
+    const types = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.pdf': 'application/pdf', '.zip': 'application/zip' };
+    const type = types[path.extname(filePath).toLowerCase()];
+    if (!type) return res.status(415).send('Not a map, token or sheet');
+    res.setHeader('Content-Type', type);
+    res.setHeader('Cache-Control', 'private, max-age=86400');
     fs.createReadStream(filePath).pipe(res);
   } catch (err) { fail(res, err, 500); }
 });

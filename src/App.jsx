@@ -59,7 +59,7 @@ const DeviceHealthPortal = React.lazy(() => import('./components/Material/Device
 const StoragePortal = React.lazy(() => import('./components/Material/Storage'));
 const ModelSwitcherPortal = React.lazy(() => import('./components/Material/Models'));
 const CostsPortal = React.lazy(() => import('./components/Material/Costs'));
-const DndSoloPortal = React.lazy(() => import('./components/DndSolo/DndSoloPortal'));
+const DndSoloPortal = React.lazy(() => import('./components/Material/DndSolo')); // the D&D Solo DM in the IMS design (25 Oct)
 const ImsHub = React.lazy(() => import('./components/Material/Hub'));
 const CommandPalette = React.lazy(() => import('./components/Dashboard/CommandPalette'));
 
