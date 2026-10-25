@@ -279,16 +279,24 @@ export const LINKS = [
     icon: Code2,
     gradient: 'from-cyan-500 to-blue-600',
     glow: 'rgba(6,182,212,0.3)'
+  },
+  {
+    path: '/ims/dnd',
+    title: 'D&D Solo DM',
+    description: 'Autonomous solo tabletop RPG dungeon master with dynamic rulesets, animated 3D dice tray, interactive character sheet, battle maps and book scanner.',
+    icon: Dices,
+    gradient: 'from-amber-600 to-red-700',
+    glow: 'rgba(217,119,6,0.35)'
   }
 ];
 
 // Pages already in the new design (Homebrew's Material 3 look, 24 Oct 2026) get a small star on their card.
-export const NEW_DESIGN = new Set(['/ims/homebrew', '/ims/runplanner', '/ims/weather', '/ims/doorbell', '/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/instructions', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings', '/ims/tasks', '/ims/wifi', '/ims/storage', '/ims/backups', '/ims/costs', '/ims/devideas', '/ims/look', '/ims/faces', '/ims/news', '/ims/models', '/ims/phrases', '/ims/device-health', '/ims/facedesigner', '/ims/persona', '/ims/dayreport', '/ims/boardgames', '/ims/musicscan', '/ims/code-repo', '/ims/architecture', '/campaigns', '/ims/glucose', '/ims/activities']);
+export const NEW_DESIGN = new Set(['/ims/homebrew', '/ims/runplanner', '/ims/weather', '/ims/doorbell', '/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/instructions', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings', '/ims/tasks', '/ims/wifi', '/ims/storage', '/ims/backups', '/ims/costs', '/ims/devideas', '/ims/look', '/ims/faces', '/ims/news', '/ims/models', '/ims/phrases', '/ims/device-health', '/ims/facedesigner', '/ims/persona', '/ims/dayreport', '/ims/boardgames', '/ims/musicscan', '/ims/code-repo', '/ims/dnd', '/ims/architecture', '/campaigns', '/ims/glucose', '/ims/activities']);
 
 export const SECTIONS = [
   ['Core functions', ['/ims/weather', '/ims/doorbell', '/ims/alarms', '/ims/timers', '/ims/reminders', '/ims/instructions', '/ims/birthday', '/ims/calendar', '/ims/memories', '/ims/recordings', '/ims/tasks']],
   ['Vision & camera', ['/ims/look', '/ims/faces']],
-  ['Personal', ['/ims/code-repo', '/ims/dayreport', '/ims/musicscan', '/ims/boardgames', '/campaigns', '/ims/homebrew', '/ims/news']],
+  ['Personal', ['/ims/dnd', '/ims/code-repo', '/ims/dayreport', '/ims/musicscan', '/ims/boardgames', '/campaigns', '/ims/homebrew', '/ims/news']],
   ['Health and fitness', ['/ims/glucose', '/ims/activities', '/ims/runplanner']],
   ['Customisation and system settings', ['/ims/device-health', '/ims/storage', '/ims/models', '/ims/costs', '/ims/facedesigner', '/ims/persona', '/ims/phrases', '/ims/wifi', '/ims/devideas', '/ims/backups', '/ims/architecture']],
 ];

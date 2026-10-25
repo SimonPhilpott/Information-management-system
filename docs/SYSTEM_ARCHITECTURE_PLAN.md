@@ -234,3 +234,26 @@ We recommend initiating **Phase 1 (Dev Ideas #49 & #46)** immediately:
 1. It cleans the workspace of clutter and strengthens external tunnel security.
 2. It carries virtually zero operational risk to active diabetes monitoring, voice streaming, or day report services.
 3. It creates a clean, predictable baseline for the subsequent scheduler and logging enhancements.
+
+---
+
+## Section 6: Living Architecture, Episodic Memory & Solo D&D Innovations
+
+In addition to the core 5 phases, the following high-impact architectural subsystems are integrated into IMS:
+
+### 1. Living Architecture & System Shadow (`/api/system-shadow`)
+- **Digital Twin Runtime State:** Mirrors live memory, active Node handles, Express route counts, and uptime directly into the System Architecture portal (`/ims/architecture`).
+- **SQLite Engine & WAL Telemetry:** Monitors page size, dirty cache pages, WAL write metrics, and database disk footprint in real time.
+- **Architectural Drift Detection:** Automatically compares declared manifest routes against runtime registered endpoints and flags phantom or unmounted routes.
+
+### 2. Episodic Narrative Graph (Long-Horizon Life Memory) (`/api/narrative-graph`)
+- **Narrative Arcs & Episodes:** Long-term memory graph capturing life milestones, health developments, training cycles, and creative endeavours across `narrative_arcs`, `narrative_episodes`, and causal `narrative_links`.
+- **Significance & Emotion Indexing:** Weighted episodic retrieval based on emotional resonance and historical significance.
+- **Gemini Live Multimodal Voice Tools:** Native tools (`recordEpisode`, `getNarrativeArcs`) allowing real-time voice agents (ESP32-S3-BOX-3) to reference and record life memory episodes organically during conversation.
+
+### 3. Solo D&D & Tabletop RPG Dungeon Master (`/ims/dnd`)
+- **Dynamic Ruleset & Expansion Scanner:** Recursively indexes `G:\My Drive\BOOKS\D&D` across 9+ tabletop RPG systems (*D&D 5e*, *Across a Thousand Dead Worlds*, *Alien RPG*, *Barbarian Prince*, *CAMPFIRE STORY*, *Doom Pilgrim*, *Ker Nethalas*, *Last Days Zombie Apocalypse*, *Thousand Year Old Campfire*), discovering rulebooks, battle maps, play sheets, and counters.
+- **Gemini 2.5 Flash Dungeon Master:** Contextual turn progression with rich atmospheric prose, narrative options, skill check suggestions, and an illuminated manuscript viewer.
+- **The Chronicler (LOTR LCG Integration):** Interactive painted wizard-scribe avatar (`ChroniclerFace`) featuring procedural breathing, micro-blinking, optical-flow emotion morphing (*neutral*, *joy*, *fear*, *rage*, *amazement*, *suspicious*), and syllable-synchronised lip-sync during audio narration.
+- **Procedural Ambient Soundscapes & SFX:** Zero-dependency Web Audio API procedural sound synthesis delivering dynamic atmospheres (*Dungeon Depths*, *Campfire in the Wilds*, *Tavern Hearth*, *Derelict Alien Hulk*, *Stormy Ruins*) and tactical tabletop sound effects (*dice clatter*, *sword clash*, *shield block*, *spell cast*, *door creak*, *fanfare*, *fumble*, *oracle whisper*).
+

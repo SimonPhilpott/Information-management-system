@@ -49,6 +49,7 @@ import { getSetting } from '../db/database.js';
 import { pickClip, pickGreeting } from '../services/holdingClips.js';
 import { pickJoke } from '../services/jokeService.js';
 import { pushPhoneNotification } from '../services/runAlertsService.js';
+import { recordEpisode, getNarrativeSummaryForIms } from '../services/narrativeGraphService.js';
 import { recordUsage } from '../services/geminiClient.js';
 import { stripMedicalDisclaimers } from '../services/disclaimerSanitizer.js';
 import { transcribeWake } from '../services/wakeGateService.js';
@@ -2401,6 +2402,22 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
               }).catch((err) => {
                 respondToToolCall(call, { error: err.message, fallback: "Could not deliver push notification to phone." });
               });
+            } else if (call.name === 'recordEpisode') {
+              try {
+                const ep = recordEpisode(call.args || {});
+                console.log(`${tag} 📖 recordEpisode: "${ep.title}" (${ep.category})`);
+                respondToToolCall(call, { status: 'recorded', title: ep.title, instruction: "Acknowledge in your voice that you've woven this milestone into his story." });
+              } catch (err) {
+                respondToToolCall(call, { error: err.message });
+              }
+            } else if (call.name === 'getNarrativeArcs') {
+              try {
+                const summary = getNarrativeSummaryForIms();
+                console.log(`${tag} 📜 getNarrativeArcs`);
+                respondToToolCall(call, { summary, instruction: "Reflect on his journey and active life arcs in your warm Yorkshire tone." });
+              } catch (err) {
+                respondToToolCall(call, { error: err.message });
+              }
             } else {
               respondToToolCall(call, { status: 'acknowledged' });
             }

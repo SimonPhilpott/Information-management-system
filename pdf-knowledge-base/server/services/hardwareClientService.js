@@ -1466,6 +1466,26 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
               },
               required: ["title", "message"]
             }
+          },
+          {
+            name: "recordEpisode",
+            description: "Records a meaningful life milestone or narrative episode to Simon's long-horizon episodic memory graph (e.g. running achievement, memorable brew tasting, campaign turning point, family milestone). Sets causal connections across life arcs.",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                title: { type: "STRING", description: "Short title of the episode, e.g. 'Stannary 15k Breakthrough' or 'First Braggot Bottled'." },
+                summary: { type: "STRING", description: "What happened, what made it significant, and the emotional tone." },
+                category: { type: "STRING", enum: ["running", "gaming", "homebrew", "family", "engineering", "general"] },
+                emotionalValence: { type: "STRING", enum: ["triumphant", "positive", "neutral", "challenging", "frustrating"] },
+                lessonsLearned: { type: "STRING", description: "Any key takeaway or rule learned from the experience." }
+              },
+              required: ["title", "summary"]
+            }
+          },
+          {
+            name: "getNarrativeArcs",
+            description: "Retrieves Simon's active long-horizon life arcs and narrative milestones (running journeys, homebrews, campaign sagas, engineering goals). Use when reflecting on his progress over weeks or months.",
+            parameters: { type: "OBJECT", properties: {} }
           }
         ]
       }]

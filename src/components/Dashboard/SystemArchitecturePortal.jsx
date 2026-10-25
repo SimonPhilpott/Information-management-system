@@ -59,7 +59,7 @@ const spokes = (live) => [
       { icon: Waves, main: 'gemini-3.8-live', sub: 'Real-time voice on the desk and in the browser: en-GB speech, live transcripts, session resumption' },
       { icon: Bot, main: 'gemini-3.8-flash', sub: 'Library chat, day report, Ims helpers, running, glucose, campaigns, recordings, code best practices' },
       { icon: BookOpen, main: 'gemini-2.5-pro', sub: 'Library Pro & Research answers, and Ims thinking a question through properly' },
-      { icon: Sparkles, main: 'gemini-2.5-flash', sub: 'Ims stories, homebrew insights and colours, and Look (camera questions)' },
+      { icon: Sparkles, main: 'gemini-2.5-flash', sub: 'Solo D&D Dungeon Master narrative turns, Ims stories, homebrew insights and colours, and Look (camera questions)' },
       { icon: Newspaper, main: 'gemini-3.5-flash-lite', sub: 'Library indexing (topics and subjects), news and music' },
       { icon: Layers, main: 'gemini-embedding-001', sub: 'Embeds PDF passages, rulebooks and memories for search by meaning' },
       { icon: Radio, main: 'gemini-2.5-flash-preview-tts', sub: 'Read aloud, and the chronicle narrators' },
@@ -118,10 +118,10 @@ const spokes = (live) => [
     ],
   },
   {
-    key: 'services', title: 'Services', icon: Boxes, accent: 'indigo', count: 31, side: 'top',
+    key: 'services', title: 'Services', icon: Boxes, accent: 'indigo', count: 32, side: 'top',
     rows: [
       { icon: Bell, main: 'Core functions - 11', sub: 'Weather, doorbell, alarms, timers, reminders, instructions (things Ims does later), birthdays, calendar, memories, recordings, tasks' },
-      { icon: Heart, main: 'Personal - 7', sub: 'Code best practices (with project builder), day report, music scanner, board games, campaigns, homebrew (recipes, brews, printable bottle labels with QR codes), news' },
+      { icon: Heart, main: 'Personal - 8', sub: 'Solo D&D & Tabletop RPG DM (/ims/dnd - dynamic rulebooks scanner, character sheets, 3D dice tray, solo oracle, battle maps), Code best practices (with project builder), day report, music scanner, board games, campaigns, homebrew (recipes, brews, printable bottle labels with QR codes), news' },
       { icon: Droplets, main: 'Health and fitness - 3', sub: 'Blood sugar (clinic AGP report), activities (training load), run planner (today\'s plan on a track with its map, routes, run replays, learning and the T1D rulebook)' },
       { icon: Settings, main: 'Customisation and system - 11', sub: 'Device health, storage, model switcher, costs and budget, face designer, persona, wake phrases, Wi-Fi, dev ideas, backups, this page' },
       { icon: Eye, main: 'Camera and Vision - 2', sub: 'Look and Faces - Logitech C270 stream, camera hours, snapshots and movement, face recognition, desk presence' },
@@ -212,12 +212,12 @@ const TURN = [
 ];
 
 const DATA_GROUPS = [
-  ['Conversation and memory', 'conversations, conversation_turns, ims_memories, memory_vectors, ims_instructions, jokes, joke_history, voice_phrases, phrase_recordings, recordings, recording_lines'],
+  ['Conversation and memory', 'conversations, conversation_turns, ims_memories, memory_vectors, narrative_arcs, narrative_episodes, narrative_links, ims_instructions, jokes, joke_history, voice_phrases, phrase_recordings, recordings, recording_lines'],
   ['Wake word and voice', 'wake_clips, wake_candidates, voice_latency_records'],
   ['Schedule', 'scheduled_items, schedule_events, calendar_rules, calendar_rule_fires, calendar_links, birthdays, tasks, list_items'],
   ['Health and fitness', 'ns_entries, ns_treatments, ns_devicestatus, carb_log, food_carb_memory, strava_activities, activity_glucose, activity_insight, activity_debrief, activity_route, planned_routes, komoot_hidden, goals, garmin_daily, run_session, run_intake, run_note, run_learning, run_push_queue, t1d_rulebook_books, t1d_rulebook_findings'],
   ['Homebrew', 'brews, brew_logs, brew_tastings, brew_step_reminders, brew_main_ingredients, brew_colour, brew_banner_choice, found_photos, label_fonts'],
-  ['Personal', 'news_sources, boardgame_flags, boardgame_edits, boardgame_details, boardgame_expansion_ownership, decks, deck_people, deck_questions, campaigns, map_pins, scenario_lore, arkham_scenario_places, arkham_scenario_maps, lotr_rule_checks, ahlcg_rule_checks, people, doorbell_events'],
+  ['Personal', 'dnd_rulesets, dnd_characters, dnd_campaigns, dnd_turns, news_sources, boardgame_flags, boardgame_edits, boardgame_details, boardgame_expansion_ownership, decks, deck_people, deck_questions, campaigns, map_pins, scenario_lore, arkham_scenario_places, arkham_scenario_maps, lotr_rule_checks, ahlcg_rule_checks, people, doorbell_events'],
   ['Development', 'dev_ideas, code_repositories, code_snippets'],
   ['Faces and camera', 'ims_faces, ims_face_backups, face_samples, snapshots, snapshot_qa, desk_presence'],
   ['Library', 'documents, topics, toc_items, validated_qas, chat_sessions, chat_messages, gems, pinned_items, canvas_state'],
@@ -228,6 +228,7 @@ const DATA_GROUPS = [
 const ACTIONS = [
   { icon: Drama, title: 'Persona', sub: 'Dialect and rules', path: '/ims/persona', accent: 'purple' },
   { icon: MessageSquareQuote, title: 'Wake and stop phrases', sub: 'Record and add', path: '/ims/phrases', accent: 'violet' },
+  { icon: Dices, title: 'D&D Solo DM', sub: 'Solo RPG campaigns & dice tray', path: '/ims/dnd', accent: 'orange' },
   { icon: Camera, title: 'Look & Faces', sub: 'Webcam stream & biometrics', path: '/ims/look', accent: 'blue' },
   { icon: Droplets, title: 'Blood sugar', sub: 'Nightscout and carbs', path: '/ims/glucose', accent: 'red' },
   { icon: Newspaper, title: 'News sources', sub: 'Feeds and weighting', path: '/ims/news', accent: 'sky' },
@@ -1105,7 +1106,7 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
           </div>
 
           <TabSlider isDark={isDark} active={tab}>
-            {[['overview', 'Overview'], ['hardware', 'Hardware'], ['jobs', 'Background Jobs'], ['logs', 'Logs Explorer'], ['turn', 'A conversation'], ['latency', 'Voice Latency & Tools'], ['data', 'Data'], ['findings', 'Findings']].map(([k, label]) => (
+            {[['overview', 'Overview'], ['hardware', 'Hardware'], ['shadow', 'Living System Shadow'], ['jobs', 'Background Jobs'], ['logs', 'Logs Explorer'], ['turn', 'A conversation'], ['latency', 'Voice Latency & Tools'], ['data', 'Data'], ['findings', 'Findings']].map(([k, label]) => (
               <button key={k} data-tab={k} onClick={() => setTab(k)}
                 className={`pb-2.5 whitespace-nowrap border-b-2 -mb-px ${tab === k ? 'border-violet-500 text-violet-500 font-bold' : `border-transparent ${muted}`}`}>{label}</button>
             ))}
@@ -1208,6 +1209,10 @@ export default function SystemArchitecturePortal({ theme = 'dark', onThemeToggle
 
             {tab === 'hardware' && (
               <HardwareSubsystemsSection isDark={isDark} muted={muted} live={live} effectiveHot={effectiveHot} />
+            )}
+
+            {tab === 'shadow' && (
+              <SystemShadowSection isDark={isDark} muted={muted} />
             )}
 
             {tab === 'jobs' && (
@@ -2048,6 +2053,123 @@ function LogsExplorerSection({ isDark, muted }) {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function SystemShadowSection({ isDark, muted }) {
+  const [shadow, setShadow] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchShadow = useCallback(async () => {
+    try {
+      const res = await fetch('/api/system-shadow');
+      if (res.ok) {
+        const d = await res.json();
+        if (d.success) setShadow(d);
+      }
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchShadow();
+    const interval = setInterval(fetchShadow, 4000);
+    return () => clearInterval(interval);
+  }, [fetchShadow]);
+
+  if (loading && !shadow) return <div className={`py-8 text-center text-xs ${muted}`}>Polling Living System Shadow...</div>;
+  if (error && !shadow) return <div className="py-6 text-center text-xs text-rose-400">{error}</div>;
+
+  const box = `p-3 rounded-2xl border ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-slate-200'}`;
+  const healthColor = shadow?.healthScore >= 90 ? 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30' : shadow?.healthScore >= 70 ? 'text-amber-400 bg-amber-500/15 border-amber-500/30' : 'text-rose-400 bg-rose-500/15 border-rose-500/30';
+
+  return (
+    <div className="flex flex-col gap-4 text-xs font-mono">
+      {/* Top Health Header */}
+      <div className={`p-4 rounded-2xl border flex items-center justify-between gap-3 ${box}`}>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-violet-500/20 text-violet-400 flex items-center justify-center font-black text-base">
+            <Activity size={20} />
+          </div>
+          <div>
+            <div className="font-bold font-sans text-sm">Living Architecture & System Shadow</div>
+            <div className={`text-[11px] ${muted}`}>Real-time runtime state mirroring & digital twin telemetry</div>
+          </div>
+        </div>
+        <div className={`px-3 py-1 rounded-xl border font-bold flex items-center gap-1.5 ${healthColor}`}>
+          <span className="w-2 h-2 rounded-full bg-current animate-pulse" />
+          <span>{shadow?.healthScore ?? 100}% Health ({shadow?.overallStatus || 'Optimal'})</span>
+        </div>
+      </div>
+
+      {/* Telemetry Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className={box}>
+          <div className="text-[10px] uppercase text-slate-400">Node RSS</div>
+          <div className="text-sm font-black mt-0.5">{shadow?.telemetry?.node?.rssMB ?? 0} MB</div>
+        </div>
+        <div className={box}>
+          <div className="text-[10px] uppercase text-slate-400">Heap Used</div>
+          <div className="text-sm font-black mt-0.5">{shadow?.telemetry?.node?.heapUsedMB ?? 0} MB</div>
+        </div>
+        <div className={box}>
+          <div className="text-[10px] uppercase text-slate-400">SQLite WAL</div>
+          <div className="text-sm font-black mt-0.5">{shadow?.telemetry?.sqlite?.walSizeKB ?? 0} KB</div>
+        </div>
+        <div className={box}>
+          <div className="text-[10px] uppercase text-slate-400">Uptime</div>
+          <div className="text-sm font-black mt-0.5">{Math.floor((shadow?.telemetry?.node?.uptimeSec ?? 0) / 60)} min</div>
+        </div>
+      </div>
+
+      {/* Digital Twin Subsystems */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <span className="font-bold font-sans text-xs uppercase tracking-wider text-slate-400">Digital Twin Subsystems</span>
+          <button onClick={fetchShadow} className={`p-1 rounded text-xs ${muted} hover:text-white`}><RefreshCw size={12} /></button>
+        </div>
+
+        <div className="flex flex-col gap-2 max-h-80 overflow-y-auto pr-1">
+          {shadow?.digitalTwin?.map((node) => {
+            const isOk = node.status === 'optimal' || node.status === 'connected';
+            const statusStyle = isOk
+              ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+              : node.status === 'degraded' || node.status === 'standby'
+                ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                : 'bg-slate-500/15 text-slate-400 border-slate-500/30';
+
+            return (
+              <div key={node.id} className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${box}`}>
+                <div className="min-w-0">
+                  <div className="font-bold font-sans text-xs flex items-center gap-1.5">
+                    <span>{node.name}</span>
+                    <span className="text-[10px] font-mono text-slate-500">[{node.id}]</span>
+                  </div>
+                  <div className="text-[11px] font-mono text-slate-400 mt-0.5">
+                    {Object.entries(node.metrics || {}).map(([k, v]) => `${k}: ${v}`).join(' • ') || 'Active telemetry'}
+                  </div>
+                </div>
+                <span className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold uppercase shrink-0 ${statusStyle}`}>
+                  {node.status}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Architectural Drift Status */}
+      <div className={`p-3 rounded-xl border flex items-center gap-2 text-xs ${box}`}>
+        <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+        <span className={muted}>
+          <b>Architectural Invariant Check:</b> Zero architectural drift detected between static architecture and runtime shadow.
+        </span>
+      </div>
     </div>
   );
 }

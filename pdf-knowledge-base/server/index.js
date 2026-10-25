@@ -125,6 +125,9 @@ import meshBackupsRoutes, { backupArchiveHandler } from './routes/meshBackups.js
 import tunnelRoutes from './routes/tunnel.js';
 import sharepointRoutes from './routes/sharepoint.js';
 import portStatusRoutes from './routes/portStatus.js';
+import narrativeGraphRoutes from './routes/narrativeGraph.js';
+import systemShadowRoutes from './routes/systemShadow.js';
+import dndRoutes from './routes/dnd.js';
 import localOnly from './middleware/localOnly.js';
 import { doorbellService } from './services/doorbellService.js';
 import appDb from './db/database.js';
@@ -238,6 +241,8 @@ const requireAdmin = (req, res, next) => {
   if (req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1') return next();
   // the Start run button on a phone notification: guarded by its one-time token instead (routes/runStart.js)
   if (req.path.startsWith('/api/run-start/')) return next();
+  // Android Edge Dock background heartbeat ping
+  if (req.path.startsWith('/api/system-shadow/edge-dock-ping')) return next();
   // a recipe Simon has shared (WhatsApp etc.): that one recipe, found by its unguessable token (routes/recipeShare.js)
   if (req.path.startsWith('/api/share/recipe/')) return next();
   if (isApprovedSession(req)) return next();
@@ -334,6 +339,9 @@ app.use('/api/costs', (await import('./routes/costs.js')).default);
 app.use('/api/conversations', (await import('./routes/conversations.js')).default); // transcripts + Ims's answer times
 app.use('/api/personas', (await import('./routes/personas.js')).default); // Ims's personas (character, accent, voice) + test bench
 app.use('/api/voice-latency', (await import('./routes/voiceLatency.js')).default);
+app.use('/api/narrative-graph', narrativeGraphRoutes);
+app.use('/api/system-shadow', systemShadowRoutes);
+app.use('/api/dnd', dndRoutes);
 app.all('/api/backup', localOnly, backupArchiveHandler);
 app.use('/api/mesh-backups', meshBackupsRoutes);
 app.use('/api/tunnel', tunnelRoutes);

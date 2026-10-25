@@ -347,6 +347,101 @@ try {
   // Column already exists
 }
 
+// Episodic Narrative Graph & Solo D&D Subsystems
+db.exec(`
+  CREATE TABLE IF NOT EXISTS narrative_arcs (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    theme TEXT,
+    status TEXT DEFAULT 'active',
+    episode_count INTEGER DEFAULT 0,
+    start_date TEXT,
+    last_active TEXT,
+    arc_summary TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS narrative_episodes (
+    id TEXT PRIMARY KEY,
+    arc_id TEXT REFERENCES narrative_arcs(id) ON DELETE SET NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    category TEXT DEFAULT 'general',
+    emotional_valence TEXT DEFAULT 'neutral',
+    significance INTEGER DEFAULT 3,
+    started_at TEXT,
+    ended_at TEXT,
+    key_entities TEXT DEFAULT '[]',
+    lessons_learned TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS narrative_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_episode_id TEXT REFERENCES narrative_episodes(id) ON DELETE CASCADE,
+    target_episode_id TEXT REFERENCES narrative_episodes(id) ON DELETE CASCADE,
+    relation_type TEXT NOT NULL,
+    weight REAL DEFAULT 1.0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS dnd_rulesets (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    path TEXT NOT NULL,
+    description TEXT,
+    genre TEXT DEFAULT 'fantasy',
+    dice_system TEXT DEFAULT 'd20',
+    books_count INTEGER DEFAULT 0,
+    maps_count INTEGER DEFAULT 0,
+    sheets_count INTEGER DEFAULT 0,
+    metadata_json TEXT DEFAULT '{}',
+    last_scanned DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS dnd_characters (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    ruleset_id TEXT NOT NULL,
+    role_or_class TEXT,
+    level INTEGER DEFAULT 1,
+    hp INTEGER DEFAULT 10,
+    max_hp INTEGER DEFAULT 10,
+    ac INTEGER DEFAULT 10,
+    attributes_json TEXT DEFAULT '{}',
+    inventory_json TEXT DEFAULT '[]',
+    spells_or_skills_json TEXT DEFAULT '[]',
+    notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS dnd_campaigns (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    ruleset_id TEXT NOT NULL,
+    setting TEXT,
+    character_id TEXT REFERENCES dnd_characters(id) ON DELETE SET NULL,
+    current_scene TEXT,
+    turn_count INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'active',
+    notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS dnd_turns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id TEXT REFERENCES dnd_campaigns(id) ON DELETE CASCADE,
+    turn_number INTEGER NOT NULL,
+    player_action TEXT,
+    dm_narrative TEXT NOT NULL,
+    dice_rolls_json TEXT DEFAULT '[]',
+    scene_state_json TEXT DEFAULT '{}',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 // Helper functions
 export function getSetting(key) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
