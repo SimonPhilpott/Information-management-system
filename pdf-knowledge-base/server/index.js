@@ -583,9 +583,21 @@ const logGlucoseHistory = () => logNightscout().catch((err) => console.error('[N
 let deviceWeather = null;
 const weatherKind = (c, day) => (/thunder/i.test(c) ? 'storm' : /snow/i.test(c) ? 'snow' : /rain|drizzle|shower/i.test(c) ? 'rain' : /fog/i.test(c) ? 'fog'
   : /clear|sunny|mainly clear/i.test(c) ? (day ? 'sun' : 'moon') : /partly/i.test(c) ? (day ? 'partsun' : 'cloud') : 'cloud');
+// Extreme weather today, for the Box-3's weather pill to add a warning symbol (26 Oct, Simon: "very windy, very
+// cold, very hot, chance of flooding"). The most serious one wins; null on an ordinary day.
+const extremeWeather = (w) => {
+  const t = w.today || {}, c = w.current || {}, lang = w.description?.language_today || {};
+  const cond = `${c.condition || ''} ${t.condition || ''}`;
+  if (/thunder/i.test(cond)) return 'storm';
+  if (/heavy|very/i.test(String(t.rain_level || '')) || Number(t.rain_total_mm) >= 15) return 'flood';
+  if (Number(c.gust_mph) >= 40 || /gale|storm/i.test(String(lang.wind?.band || ''))) return 'wind';
+  if (Number(t.min_temp_c) <= 0 || Number(c.feels_like_c) <= -3) return 'cold';
+  if (Number(t.max_temp_c) >= 27) return 'heat';
+  return null;
+};
 const refreshDeviceWeather = () => getWeather({}).then((w) => {
   if (w?.current) {
-    deviceWeather = { tempC: w.current.temperature_c, weather: weatherKind(w.current.condition, w.current.is_daylight) };
+    deviceWeather = { tempC: w.current.temperature_c, weather: weatherKind(w.current.condition, w.current.is_daylight), extreme: extremeWeather(w) };
     pushScheduleStatus();
   }
 }).catch((err) => console.error('[Weather] Device refresh failed:', err.message));
