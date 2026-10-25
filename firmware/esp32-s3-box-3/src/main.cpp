@@ -868,7 +868,7 @@ static uint8_t *playbackQueueStorage = nullptr;
 #define FACE_ROWS 8
 #define FACE_DOT 14
 #define FACE_RADIUS 4
-#define FACE_PITCH 19
+#define FACE_PITCH 18
 // 164: 64px left margin for the icon stack (24px icon + count), 200px face
 // (x=64..264), and a 56px right-hand zone for the blood glucose widget
 // (centered at 292) - gap to the face tightened to make room for the icons.
@@ -880,7 +880,7 @@ static uint8_t *playbackQueueStorage = nullptr;
 // "move them back to the sides", one text size, no status word): a 36px strip on top (settings gear, time,
 // weather, date, glucose), the status icons down the left (alarm, timer, reminder, birthday, new music, camera)
 // and the calendar icons down the right (sensor, pod, prescription, Nightscout DB) with the face between them
-// (12x8 dots at a 19px pitch, x 48-272, y 46-194), and the notes in a strip along the bottom.
+// (12x8 dots at an 18px pitch, x 54-266, y 50-190), and the notes in a strip along the bottom.
 #define MAIN_TOP_H 36
 #define MAIN_FOOT_Y 204
 // A fired timer / alarm / reminder fills the screen below the top strip until it's tapped (or 2 minutes pass).
@@ -2603,8 +2603,10 @@ static LGFX_Sprite leftColSprite(&tft), rightColSprite(&tft);
 static bool colSpritesTried = false, leftColReady = false, rightColReady = false;
 #define SIDE_TOP (MAIN_TOP_H + 6)
 #define SIDE_PITCH 26
-#define LEFT_COL_W 46
-#define RIGHT_COL_X 282
+#define LEFT_COL_W 52
+#define RIGHT_COL_X 268
+#define LEFT_ICON_X 10
+#define RIGHT_ICON_X 286 // screen x of the right-hand icons (10px in from the edge)
 void drawSideIcons() {
   if (onSettingsScreen || alertCardActive) return;
   const int colH = MAIN_FOOT_Y - MAIN_TOP_H;
@@ -2624,24 +2626,24 @@ void drawSideIcons() {
     g.fillRect(ox, oy, LEFT_COL_W, colH, bg);
     g.setTextSize(1);
     g.setFont(&fonts::DejaVu18);
-    g.setTextDatum(middle_left);
+    g.setTextDatum(baseline_left); // by the baseline: the "middle" datum counts descender space and sits high
     auto slot = [&](int k) { return oy + 6 + k * SIDE_PITCH; };
     auto cnt = [&](int y, int n, uint16_t c) {
       if (n <= 1) return;
       g.setTextColor(c, bg);
-      g.drawString(n > 9 ? String("9+") : String(n), 4 + 24 + 2, y + 13);
+      g.drawString(n > 9 ? String("9+") : String(n), LEFT_ICON_X + 24 + 2, y + 19);
     };
-    if (alarmCount > 0) { drawAlarmIcon(g, 4, slot(0), ORANGE); cnt(slot(0), alarmCount, ORANGE); }
-    if (timerCount > 0) { drawTimerIcon(g, 4, slot(1), ORANGE); cnt(slot(1), timerCount, ORANGE); }
-    if (reminderCount > 0) { drawReminderIcon(g, 4, slot(2), ORANGE); cnt(slot(2), reminderCount, ORANGE); }
+    if (alarmCount > 0) { drawAlarmIcon(g, LEFT_ICON_X, slot(0), ORANGE); cnt(slot(0), alarmCount, ORANGE); }
+    if (timerCount > 0) { drawTimerIcon(g, LEFT_ICON_X, slot(1), ORANGE); cnt(slot(1), timerCount, ORANGE); }
+    if (reminderCount > 0) { drawReminderIcon(g, LEFT_ICON_X, slot(2), ORANGE); cnt(slot(2), reminderCount, ORANGE); }
     if (birthdayCount > 0) {
       const uint16_t cake = birthdayColor == 2 ? g.color565(70, 220, 120) : birthdayColor == 1 ? ORANGE : WHITE;
-      drawBirthdayIcon(g, 4, slot(3), cake); cnt(slot(3), birthdayCount, cake);
+      drawBirthdayIcon(g, LEFT_ICON_X, slot(3), cake); cnt(slot(3), birthdayCount, cake);
     }
-    if (newReleaseCount > 0) { drawMusicIcon(g, 4, slot(4), ORANGE); cnt(slot(4), newReleaseCount, ORANGE); }
+    if (newReleaseCount > 0) { drawMusicIcon(g, LEFT_ICON_X, slot(4), ORANGE); cnt(slot(4), newReleaseCount, ORANGE); }
     // yellow = camera attached but asleep, green = awake and ready (tap it to wake or sleep the camera)
     if (cameraAttached || cameraPresent()) {
-      drawCameraIcon(g, 4, slot(5), cameraAwake ? g.color565(70, 220, 120) : g.color565(255, 210, 60));
+      drawCameraIcon(g, LEFT_ICON_X, slot(5), cameraAwake ? g.color565(70, 220, 120) : g.color565(255, 210, 60));
       camChipX0 = 0; camChipX1 = LEFT_COL_W;
       camChipY0 = MAIN_TOP_H + 6 + 5 * SIDE_PITCH - 4; camChipY1 = camChipY0 + 32;
     } else { camChipX0 = camChipX1 = camChipY0 = camChipY1 = -1; }
@@ -2656,7 +2658,7 @@ void drawSideIcons() {
     if (!rightColReady) tft.startWrite();
     const uint16_t bg = g.color565(11, 14, 21);
     g.fillRect(ox, oy, w, colH, bg);
-    const int ix = ox + (w - 24) / 2;
+    const int ix = ox + RIGHT_ICON_X - RIGHT_COL_X;
     if (calSensor) smoothIcon(g, sensor_icon_24x24, ix, oy + 6, calSensor == 2 ? ORANGE : WHITE);
     if (calPod) smoothIcon(g, pod_icon_24x24, ix, oy + 6 + SIDE_PITCH, WHITE);
     if (calRx) smoothIcon(g, rx_icon_24x24, ix, oy + 6 + 2 * SIDE_PITCH, WHITE);
@@ -2709,15 +2711,15 @@ void drawFooterClock() {
   } else if (infoNext.length()) mid = infoNext;
   if (mid.length()) {
     g.setTextSize(1);
-    g.setFont(&fonts::DejaVu18);
+    g.setFont(&fonts::DejaVu12);
     const int maxW = 304;
     if (g.textWidth(mid) > maxW) {
       while (mid.length() > 3 && g.textWidth(mid + "...") > maxW) mid = mid.substring(0, mid.length() - 1);
       mid += "...";
     }
-    g.setTextDatum(middle_center);
+    g.setTextDatum(baseline_center);
     g.setTextColor(midCol, bg);
-    g.drawString(mid, 160, oy + 18);
+    g.drawString(mid, 160, oy + 22);
     g.setFont(&fonts::Font0);
     g.setTextDatum(top_left);
   }
@@ -2801,9 +2803,9 @@ void drawTopStrip() {
   const int pw = 10 + vw + 6 + aw + 10;
   const int px = 320 - 6 - pw;
   g.fillRoundRect(px, 6, pw, 24, 12, pill);
-  g.setTextDatum(middle_left);
+  g.setTextDatum(baseline_left); // by the baseline: "middle" counts descender space and sits high
   g.setTextColor(gc, pill);
-  g.drawString(currentGlucoseValue, px + 10, 19);
+  g.drawString(currentGlucoseValue, px + 10, 24);
   drawGlucoseArrows(g, px + 10 + vw + 6 + aw / 2, 18, currentGlucoseDirection, gc);
   int limit = px - 8;
 
@@ -2815,9 +2817,9 @@ void drawTopStrip() {
   else if (!voiceDaemonRunning) warn = "Voice off";
   g.setFont(&fonts::DejaVu18);
   if (warn) {
-    g.setTextDatum(middle_right);
+    g.setTextDatum(baseline_right);
     g.setTextColor(warnCol, bg);
-    g.drawString(warn, limit, 19);
+    g.drawString(warn, limit, 24);
     const int wx = limit - g.textWidth(warn) - 9;
     g.fillCircle(wx, 18, 4, warnCol);
     limit = wx - 12;
@@ -2828,9 +2830,9 @@ void drawTopStrip() {
   char hm[8] = "--:--", dd[16] = "";
   if (getLocalTime(&t, 0)) { strftime(hm, sizeof(hm), "%H:%M", &t); strftime(dd, sizeof(dd), "%a %d %b", &t); }
   g.setFont(&fonts::DejaVu18);
-  g.setTextDatum(middle_left);
+  g.setTextDatum(baseline_left);
   g.setTextColor(g.color565(236, 230, 221), bg);
-  g.drawString(hm, 44, 19);
+  g.drawString(hm, 44, 24);
   int x = 44 + g.textWidth(hm) + 12;
   g.setFont(&fonts::DejaVu18);
   if (infoTempC > -100) {
@@ -2840,14 +2842,14 @@ void drawTopStrip() {
     if (x + need < limit) {
       drawWeatherIcon(g, x, 9, infoWeather);
       g.setTextColor(g.color565(170, 180, 200), bg);
-      g.drawString(tb, x + 19, 19);
-      g.drawCircle(x + 19 + g.textWidth(tb) + 3, 12, 2, g.color565(170, 180, 200));
+      g.drawString(tb, x + 19, 24);
+      g.drawCircle(x + 19 + g.textWidth(tb) + 3, 13, 2, g.color565(170, 180, 200));
       x += need + 8;
     }
   }
   if (dd[0] && x + g.textWidth(dd) < limit) {
     g.setTextColor(g.color565(130, 138, 156), bg);
-    g.drawString(dd, x, 19);
+    g.drawString(dd, x, 24);
   }
   g.setFont(&fonts::Font0);
   g.setTextDatum(top_left);
