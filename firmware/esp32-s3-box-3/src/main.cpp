@@ -892,6 +892,7 @@ static unsigned long alertCardUntil = 0;
 // where the camera icon sits (it's still tappable to wake the camera)
 static int camChipX0 = -1, camChipX1 = -1, camChipY0 = -1, camChipY1 = -1;
 void drawSideIcons();
+static void alertAccent(uint8_t &r, uint8_t &gr, uint8_t &b);
 void drawTopStrip();
 void drawFooterClock();
 // How loud Ims's own voice is right now: the playback task writes the average level of each
@@ -1772,6 +1773,8 @@ static void drawFaceInternal(bool forceFull) {
     onR = (standbyFaceRGB >> 16) & 0xFF; onG = (standbyFaceRGB >> 8) & 0xFF; onB = standbyFaceRGB & 0xFF;
   }
   if (packReady) {
+    // an alert's button covers the painted face's mouth: draw it once with the screen, then leave it be
+    if (alertCardActive && !forceFull) return;
     drawPortraitFace(forceFull);
     return;
   }
@@ -1805,6 +1808,7 @@ static void drawFaceInternal(bool forceFull) {
     const int r5 = min(31, (int)(rf * 31.0f / 255.0f + th)), g6 = min(63, (int)(gf * 63.0f / 255.0f + th)), b5 = min(31, (int)(bf * 31.0f / 255.0f + th));
     uint16_t c565 = (uint16_t)((r5 << 11) | (g6 << 5) | b5);
     if (!forceFull && c565 == faceCurColors[i]) continue;
+    if (alertCardActive && r >= 5) continue; // his mouth is the alert's button (drawAlertCard)
     faceCurColors[i] = c565;
     faceCurLevels[i] = v;
     tft.fillRoundRect(x, y, FACE_DOT, FACE_DOT, FACE_RADIUS, c565);
@@ -1815,7 +1819,7 @@ static void drawFaceInternal(bool forceFull) {
 // a ~30ms cadence (~33 FPS) from loop(), allowing silky-smooth background dot
 // breathing while advancing discrete expression frames (blink/mouth/gaze) on a 120ms tick.
 void drawFaceTick() {
-  if (onSettingsScreen || alertCardActive) return; // don't paint face dots over the settings screen or an alert
+  if (onSettingsScreen) return; // don't paint face dots over the settings screen (an alert keeps the face: 26 Oct)
   static unsigned long lastAnimFrameMs = 0;
   if (millis() - lastAnimFrameMs >= 120) {
     lastAnimFrameMs = millis();
@@ -2669,7 +2673,7 @@ static void drawTileIcon(LovyanGFX &g, const uint8_t *path, size_t len, int x, i
 #define TILE_ICON(g, name, x, y, c, ...) drawTileIcon(g, tile_##name, sizeof(tile_##name), x, y, c, ##__VA_ARGS__)
 
 void drawSideIcons() {
-  if (onSettingsScreen || alertCardActive) return;
+  if (onSettingsScreen) return;
   const int colH = MAIN_FOOT_Y - MAIN_TOP_H;
   if (!colSpritesTried) {
     colSpritesTried = true;
@@ -2754,7 +2758,6 @@ void drawFooterClock() {
   applyNightBrightness();
   if (onSettingsScreen) return;
   drawTopStrip(); // the time is up top
-  if (alertCardActive) return; // the alert card covers this strip
   if (!footerSpriteReady) {
     footerSprite.setColorDepth(16);
     footerSprite.setPsram(true);
@@ -2767,7 +2770,14 @@ void drawFooterClock() {
   g.fillRect(0, oy, 320, 240 - MAIN_FOOT_Y, bg);
   String mid = "";
   uint16_t midCol = g.color565(255, 200, 100);
-  if (isMicHardwareMuted) { mid = "Press the top button to unmute"; midCol = g.color565(255, 107, 129); }
+  if (alertCardActive) {
+    // what went off, in its colour
+    uint8_t ar, ag, ab;
+    alertAccent(ar, ag, ab);
+    const bool tm = !strcmp(alertCardKind, "timer"), al = !strcmp(alertCardKind, "alarm");
+    mid = String(tm ? "Timer done" : al ? "Alarm" : "Reminder") + (alertCardLabel[0] ? String(": ") + alertCardLabel : String(""));
+    midCol = g.color565(ar, ag, ab);
+  } else if (isMicHardwareMuted) { mid = "Press the top button to unmute"; midCol = g.color565(255, 107, 129); }
   else if (infoUpcomingCount > 0) mid = infoUpcoming[(millis() / 3500) % infoUpcomingCount];
   else if (infoTimerEndMs && (long)(infoTimerEndMs - millis()) > 0) {
     unsigned long left = (infoTimerEndMs - millis()) / 1000;
@@ -2951,11 +2961,20 @@ void drawTopStrip() {
 
 // A fired timer, alarm or reminder fills the screen below the top strip (option A, 25 Oct). Ims still says it
 // out loud as before; a tap anywhere dismisses the card (and stops him if he's talking).
+// A fired timer, alarm or reminder uses his face (26 Oct, Simon: "maybe Ims's mouth turns into a dismiss area and
+// his eyes do something appropriate"): his eyes take the alert's expression (wide-eyed for an alarm, pleased for a
+// timer that's done, knowing for a reminder), his mouth becomes the Stop / Done button with the alert's tile in it
+// (shaking for an alarm or timer), and what it is shows along the bottom. Ims still says it out loud as before.
 static void showAlertCard(const char *kind, const char *label) {
   strlcpy(alertCardKind, kind && kind[0] ? kind : "reminder", sizeof(alertCardKind));
   strlcpy(alertCardLabel, label ? label : "", sizeof(alertCardLabel));
   alertCardActive = true;
   alertCardUntil = millis() + 120000UL;
+  currentEmotion = !strcmp(alertCardKind, "alarm") ? EMOTION_AMAZEMENT : !strcmp(alertCardKind, "timer") ? EMOTION_JOY : EMOTION_COCKY;
+}
+static void endAlertCard() {
+  alertCardActive = false;
+  currentEmotion = EMOTION_NEUTRAL;
 }
 // The card's colours, and its icon as a big tile (48px) at 136,46 - shaken by the animation tick.
 #define CARD_ICON_X 136
@@ -2969,31 +2988,37 @@ static void drawAlertCardIcon(LovyanGFX &g, float ang, float dx, int ox = CARD_I
   else if (!strcmp(alertCardKind, "alarm")) drawTileIconEx(g, tile_alarm, sizeof(tile_alarm), ox, oy, CARD_ICON, TC_RED, false, ang, dx);
   else drawTileIconEx(g, tile_reminder, sizeof(tile_reminder), ox, oy, CARD_ICON, 169, 150, 255);
 }
+// His mouth as the alert's button: 196x48 over the mouth rows of the face.
+#define ALERT_BTN_X 62
+#define ALERT_BTN_Y 141
+#define ALERT_BTN_W 196
+#define ALERT_BTN_H 48
+static void alertAccent(uint8_t &r, uint8_t &gr, uint8_t &b) {
+  if (!strcmp(alertCardKind, "timer")) { r = 255; gr = 180; b = 92; }
+  else if (!strcmp(alertCardKind, "alarm")) { r = 255; gr = 143; b = 134; }
+  else { r = 169; gr = 150; b = 255; }
+}
+static void drawAlertMouth(LovyanGFX &g, int ox, int oy, float ang, float dx) {
+  uint8_t r, gr, b;
+  alertAccent(r, gr, b);
+  const uint16_t acc = g.color565(r, gr, b);
+  g.fillRect(ox, oy, ALERT_BTN_W, ALERT_BTN_H, g.color565(11, 14, 21));
+  g.fillSmoothRoundRect(ox, oy, ALERT_BTN_W, ALERT_BTN_H, ALERT_BTN_H / 2, acc);
+  const int ts = 32, tx = ox + 9, ty = oy + (ALERT_BTN_H - ts) / 2;
+  if (!strcmp(alertCardKind, "timer")) drawTileIconEx(g, tile_timer, sizeof(tile_timer), tx, ty, ts, r, gr, b, false, ang, dx);
+  else if (!strcmp(alertCardKind, "alarm")) drawTileIconEx(g, tile_alarm, sizeof(tile_alarm), tx, ty, ts, r, gr, b, false, ang, dx);
+  else drawTileIconEx(g, tile_reminder, sizeof(tile_reminder), tx, ty, ts, r, gr, b);
+  g.setTextSize(1);
+  g.setFont(&fonts::DejaVu24);
+  g.setTextDatum(middle_center);
+  g.setTextColor(g.color565(20, 14, 10), acc);
+  g.drawString(!strcmp(alertCardKind, "reminder") ? "Done" : "Stop", ox + 9 + ts + (ALERT_BTN_W - 9 - ts) / 2, oy + ALERT_BTN_H / 2 + 1);
+  g.setFont(&fonts::Font0);
+  g.setTextDatum(top_left);
+}
 static void drawAlertCard() {
-  const bool isTimer = !strcmp(alertCardKind, "timer"), isAlarm = !strcmp(alertCardKind, "alarm");
-  const uint16_t bg = isTimer ? tft.color565(36, 23, 10) : isAlarm ? tft.color565(44, 12, 12) : tft.color565(26, 20, 52);
-  const uint16_t acc = isTimer ? tft.color565(255, 180, 92) : isAlarm ? tft.color565(255, 140, 130) : tft.color565(169, 150, 255);
-  const uint16_t ink = tft.color565(251, 236, 220);
   tft.startWrite();
-  tft.fillRect(0, MAIN_TOP_H, 320, 240 - MAIN_TOP_H, bg); // straight fill: covers a painted face too
-  drawAlertCardIcon(tft, 0.0f, 0.0f); // the tile; the animation tick shakes it for a timer or alarm going off
-  tft.setTextSize(1);
-  tft.setTextDatum(middle_center);
-  tft.setFont(&fonts::DejaVu18);
-  tft.setTextColor(acc, bg);
-  tft.drawString(isTimer ? "TIMER DONE" : isAlarm ? "ALARM" : "REMINDER", 160, 108);
-  String label = alertCardLabel[0] ? String(alertCardLabel) : String(isTimer ? "Time's up" : isAlarm ? "Wake up" : "Reminder");
-  tft.setFont(&fonts::DejaVu24);
-  if (tft.textWidth(label) > 300) tft.setFont(&fonts::DejaVu18);
-  while (label.length() > 3 && tft.textWidth(label) > 300) label = label.substring(0, label.length() - 4) + "...";
-  tft.setTextColor(ink, bg);
-  tft.drawString(label, 160, 140);
-  tft.fillRoundRect(16, 178, 288, 50, 25, acc);
-  tft.setFont(&fonts::DejaVu24);
-  tft.setTextColor(bg, acc);
-  tft.drawString("Dismiss", 160, 203);
-  tft.setFont(&fonts::Font0);
-  tft.setTextDatum(top_left);
+  drawAlertMouth(tft, ALERT_BTN_X, ALERT_BTN_Y, 0.0f, 0.0f);
   tft.endWrite();
 }
 
@@ -3052,15 +3077,15 @@ void drawIconAnimTick() {
     animCardSprite.setColorDepth(16); animCardSprite.setPsram(true);
     animTileReady = animTileSprite.createSprite(TILE, TILE) != nullptr;
     animCardSprite.setColorDepth(16);
-    animCardReady = animCardSprite.createSprite(CARD_ICON + 8, CARD_ICON) != nullptr;
+    animCardReady = animCardSprite.createSprite(ALERT_BTN_W, ALERT_BTN_H) != nullptr;
   }
   if (alertCardActive) {
     // a timer or alarm going off: its tile shakes (a reminder's card stays still)
-    if (!animCardReady || (strcmp(alertCardKind, "timer") && strcmp(alertCardKind, "alarm"))) return;
-    animCardSprite.fillSprite(alertCardBg());
-    drawAlertCardIcon(animCardSprite, 11.0f * sinf(t / 45.0f), 4.0f + 2.5f * sinf(t / 31.0f), 0, 0);
-    animCardSprite.pushSprite(CARD_ICON_X - 4, CARD_ICON_Y);
-    return;
+    if (animCardReady && (!strcmp(alertCardKind, "timer") || !strcmp(alertCardKind, "alarm"))) {
+      drawAlertMouth(animCardSprite, 0, 0, 11.0f * sinf(t / 45.0f), 2.0f * sinf(t / 31.0f));
+      animCardSprite.pushSprite(ALERT_BTN_X, ALERT_BTN_Y);
+    }
+    // (the side tiles still animate below)
   }
   if (!animTileReady) return;
   const uint16_t bg = tft.color565(11, 14, 21);
@@ -3106,11 +3131,6 @@ void renderScreen(bool forceRedraw = false) {
   tft.startWrite();
   fillAroundFace(0, 0, 320, 240, tft.color565(11, 14, 21)); // all but a painted face, redrawn in place below
   tft.endWrite();
-  if (alertCardActive) {
-    drawTopStrip();
-    drawAlertCard();
-    return;
-  }
   tft.startWrite();
   memset(faceCurLevels, 0, sizeof(faceCurLevels));
   memset(faceCurColors, 0, sizeof(faceCurColors));
@@ -3118,6 +3138,7 @@ void renderScreen(bool forceRedraw = false) {
   tft.endWrite();
   drawStatusIconStack(true); // the icon columns (and their change tracking)
   drawFooterClock();          // the top strip and the notes
+  if (alertCardActive) drawAlertCard(); // his mouth as the alert's button
 }
 
 
@@ -5925,7 +5946,7 @@ void loop() {
 
 
   if (alertCardActive && (long)(millis() - alertCardUntil) > 0 && !onSettingsScreen) {
-    alertCardActive = false;
+    endAlertCard();
     renderScreen(true);
   }
 
@@ -6032,8 +6053,8 @@ void loop() {
         }
       }
     } else if (alertCardActive) {
-      // a fired timer / alarm / reminder's card: any tap dismisses it (and stops him if he's saying it)
-      alertCardActive = false;
+      // a fired timer / alarm / reminder: any tap dismisses it (and stops him if he's saying it)
+      endAlertCard();
       if (currentState == STATE_SPEAKING || isSpeakerActive()) interruptToStandby();
       renderScreen(true);
       delay(200);
