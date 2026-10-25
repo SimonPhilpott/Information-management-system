@@ -2695,6 +2695,7 @@ static bool footerSpriteReady = false;
 static LGFX_Sprite leftColSprite(&tft), rightColSprite(&tft);
 static bool colSpritesTried = false, leftColReady = false, rightColReady = false;
 #define TILE 27 // 26 Oct: five a side with an even 4px between them and above the weather pill
+#define TILE_GLYPH 20.7f // the symbol inside a side tile: the size it had on a 28px tile (26 Oct: smaller tiles, same symbols)
 #define TILE_PITCH 31 // the last tile ends at 200, where the bottom strip starts
 #define TILE_TOP 48 // screen y of the first tile: right under the top strip, the last ends at the notes
 #define LEFT_COL_W 54
@@ -2717,7 +2718,7 @@ static void drawTileIconEx(LovyanGFX &g, const uint8_t *path, size_t len, int x,
   const int tx = x + (int)lroundf(dx);
   g.fillSmoothRoundRect(tx, y, size, size, size * 6 / 22, g.color565(bgR + (r - bgR) * 26 / 100, bgG + (gr - bgG) * 26 / 100, bgB + (b - bgB) * 26 / 100));
   const uint16_t col = g.color565(r, gr, b);
-  const float gs = size * 0.74f;            // the outline's box inside the tile
+  const float gs = size == TILE ? TILE_GLYPH : size * 0.74f; // the outline's box inside the tile
   const float ox = tx + (size - gs) / 2.0f, oy = y + (size - gs) / 2.0f, k = gs / 240.0f;
   const float w = gs / 24.0f * 0.95f;        // half the stroke: a 1.9-unit line, like the canvas
   const float cx = ox + gs / 2.0f, cy = oy + gs / 2.0f, ca = cosf(ang * PI / 180.0f), sa = sinf(ang * PI / 180.0f);
@@ -2881,12 +2882,12 @@ void drawFooterClock() {
       // a Met Office warning: a tile in the warning's colour with the hazard in dark (26 Oct)
       const uint16_t lc = infoWarnLevel == 3 ? g.color565(232, 64, 52) : infoWarnLevel == 2 ? g.color565(255, 150, 40) : g.color565(255, 214, 60);
       g.fillSmoothRoundRect(wx, wy, TILE, TILE, TILE * 6 / 22, lc);
-      drawExtremeIcon(g, wx + 4, wy + 4, infoWarnKind[0] ? infoWarnKind : "warn", TILE - 8, lc, g.color565(30, 22, 6));
+      drawExtremeIcon(g, wx + (TILE - 20) / 2, wy + (TILE - 20) / 2, infoWarnKind[0] ? infoWarnKind : "warn", 20, lc, g.color565(30, 22, 6));
     } else if (extreme) {
       // the forecast's own extreme weather: a darker slate tile
       const uint16_t tc = g.color565(48, 60, 80);
       g.fillSmoothRoundRect(wx, wy, TILE, TILE, TILE * 6 / 22, tc);
-      drawExtremeIcon(g, wx + 4, wy + 4, infoExtreme, TILE - 8, tc);
+      drawExtremeIcon(g, wx + (TILE - 20) / 2, wy + (TILE - 20) / 2, infoExtreme, 20, tc);
     }
     g.setFont(&fonts::DejaVu12);
     notesRight = px - 10;
@@ -3113,7 +3114,7 @@ static LGFX_Sprite animTileSprite(&tft), animCardSprite(&tft);
 static bool animTried = false, animTileReady = false, animCardReady = false;
 // a point in the tile's 24-unit outline space -> pixels in a tile drawn at (x, y) with size TILE
 static inline void tileUnit(int x, int y, float ux, float uy, int &px, int &py) {
-  const float gs = TILE * 0.74f, o = (TILE - gs) / 2.0f;
+  const float gs = TILE_GLYPH, o = (TILE - gs) / 2.0f;
   px = (int)lroundf(x + o + ux * gs / 24.0f); py = (int)lroundf(y + o + uy * gs / 24.0f);
 }
 static void drawSandTile(LovyanGFX &g, int x, int y, unsigned long t) {
