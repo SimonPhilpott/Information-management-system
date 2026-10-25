@@ -2867,20 +2867,27 @@ void drawFooterClock() {
     const int tw = g.textWidth(tb);
     const uint16_t pill = g.color565(30, 38, 52);
     const bool extreme = infoWarnLevel > 0 || infoExtreme[0] != 0;
-    const int pw = 6 + 22 + 6 + tw + 6 + 12 + (extreme ? 22 + 6 : 0), px = 314 - pw, py = oy + (240 - MAIN_FOOT_Y) - 10 - TILE;
-    g.fillSmoothRoundRect(px, py, pw, TILE, TILE / 2, pill);
+    // a warning or extreme-weather symbol is a full tile at the pill's right end, so it lines up with the
+    // right-hand tiles above it (x 286-314); the pill's corners match the tiles' (26 Oct)
+    const int pw = 6 + 22 + 6 + tw + 6 + (extreme ? 8 + TILE : 10), px = RIGHT_ICON_X + TILE - pw, py = oy + (240 - MAIN_FOOT_Y) - 10 - TILE;
+    g.fillSmoothRoundRect(px, py, pw, TILE, TILE * 6 / 22, pill);
     drawWeatherIcon(g, px + 6, py + (TILE - 22) / 2, infoWeather, 22, pill);
     g.setTextDatum(middle_left);
     g.setTextColor(g.color565(228, 233, 240), pill);
     g.drawString(tb, px + 6 + 22 + 6, py + TILE / 2 + 1);
     g.drawCircle(px + 6 + 22 + 6 + tw + 4, py + TILE / 2 - 5, 2, g.color565(228, 233, 240));
+    const int wx = RIGHT_ICON_X, wy = py; // the same column as the right-hand tiles
     if (infoWarnLevel > 0) {
       // a Met Office warning: a tile in the warning's colour with the hazard in dark (26 Oct)
       const uint16_t lc = infoWarnLevel == 3 ? g.color565(232, 64, 52) : infoWarnLevel == 2 ? g.color565(255, 150, 40) : g.color565(255, 214, 60);
-      const int wx = px + 6 + 22 + 6 + tw + 12, wy = py + (TILE - 22) / 2;
-      g.fillSmoothRoundRect(wx, wy, 22, 22, 6, lc);
-      drawExtremeIcon(g, wx + 3, wy + 3, infoWarnKind[0] ? infoWarnKind : "warn", 16, lc, g.color565(30, 22, 6));
-    } else if (extreme) drawExtremeIcon(g, px + 6 + 22 + 6 + tw + 12, py + (TILE - 22) / 2, infoExtreme, 22, pill);
+      g.fillSmoothRoundRect(wx, wy, TILE, TILE, TILE * 6 / 22, lc);
+      drawExtremeIcon(g, wx + 4, wy + 4, infoWarnKind[0] ? infoWarnKind : "warn", TILE - 8, lc, g.color565(30, 22, 6));
+    } else if (extreme) {
+      // the forecast's own extreme weather: a darker slate tile
+      const uint16_t tc = g.color565(48, 60, 80);
+      g.fillSmoothRoundRect(wx, wy, TILE, TILE, TILE * 6 / 22, tc);
+      drawExtremeIcon(g, wx + 4, wy + 4, infoExtreme, TILE - 8, tc);
+    }
     g.setFont(&fonts::DejaVu12);
     notesRight = px - 10;
   }
@@ -2980,7 +2987,7 @@ void drawTopStrip() {
   const int aw = twoArrows ? 26 : 18;
   const int pw = 12 + vw + 6 + aw + 12; // 26 Oct: as tall as the tiles (28px), with matching padding
   const int px = 320 - 6 - pw;
-  g.fillSmoothRoundRect(px, MAIN_TOP_H / 2 - TILE / 2, pw, TILE, TILE / 2, pill);
+  g.fillSmoothRoundRect(px, MAIN_TOP_H / 2 - TILE / 2, pw, TILE, TILE * 6 / 22, pill); // the tiles' corners (26 Oct)
   g.setTextDatum(baseline_left); // by the baseline: "middle" counts descender space and sits high
   g.setTextColor(gc, pill);
   g.drawString(currentGlucoseValue, px + 12, TOP_BASE);
