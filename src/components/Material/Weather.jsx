@@ -72,6 +72,14 @@ function Body() {
       <p className="muted" style={{ margin: 0 }}>Home is <b>{places.home?.name || '…'}</b>{places.home?.region ? `, ${places.home.region}` : ''}: Ims, the day report and the Run planner use it unless you name somewhere else.</p>
       {error && <div className="imsm-banner"><Icon n="info" size={20} /><span>{error}</span></div>}
       {loading && !data && <div className="imsm-empty"><Spinner /></div>}
+      {/* Met Office warnings in force for home's county (26 Oct) - the same ones the Box-3 shows */}
+      {(data?.warnings || []).map((w) => (
+        <a key={`${w.level}-${w.type}-${w.until}`} className={`imsm-wxwarn ${w.level}`} href={w.link} target="_blank" rel="noreferrer">
+          <Icon n="warn" size={26} />
+          <span className="t"><b>{w.text[0].toUpperCase() + w.text.slice(1)}</b><small>Until {w.until_text} · {w.areas.length > 3 ? `${w.areas.slice(0, 3).join(', ')} and more` : w.areas.join(', ')}</small></span>
+          <Icon n="open" size={20} />
+        </a>
+      ))}
 
       {data && day && (
         <>

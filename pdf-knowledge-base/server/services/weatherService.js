@@ -1,3 +1,4 @@
+import { activeWarnings } from './weatherWarningsService.js';
 import { inYourVoice, dialectLabel, usesYorkshireWeatherPhrasing } from './personaService.js';
 import fs from 'fs';
 import path from 'path';
@@ -586,6 +587,17 @@ export async function getWeather({ location = '', days = 2, hourly = false, days
         feels_like_c: Math.round(h.feels), rain_probability_percent: h.prob, rain_mm: r1(h.mm),
         wind_mph: h.windMph, gust_mph: h.gustMph, wind_direction: h.windDir, uv: Math.round(h.uv), is_day: h.isDay,
       }));
+    }
+    // Met Office warnings in force for home's county (26 Oct): the page shows them, and Ims mentions one first
+    if (payload.is_home) {
+      try {
+        const ws = activeWarnings();
+        if (ws.length) {
+          const until = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+          payload.warnings = ws.map((w) => ({ level: w.level, type: w.type, kind: w.kind, text: w.text, from: w.from, until: w.until, until_text: until(w.until), areas: w.areas, link: w.link }));
+          payload.how_to_speak += ` There is an official Met Office ${ws[0].text} for here until ${until(ws[0].until)}: say so plainly first (no dialect jokes about it), then the rest.`;
+        }
+      } catch (_) { /* warnings are a bonus; the forecast stands without them */ }
     }
     // the speaking instruction first, so it is read before the facts
     const { how_to_speak: speak, ...rest } = payload;

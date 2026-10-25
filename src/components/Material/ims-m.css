@@ -1343,3 +1343,9 @@
   .imsa-head h2 { font-size: 28px; }
   .imsa-sub { display: none; }
 }
+.hbb.imsm .imsm-wxwarn { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 20px; text-decoration: none; color: #2a1e00; background: #ffd83c; }
+.hbb.imsm .imsm-wxwarn.amber { background: #ff9628; color: #2a1200; }
+.hbb.imsm .imsm-wxwarn.red { background: #e8403a; color: #fff; }
+.hbb.imsm .imsm-wxwarn .t { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.hbb.imsm .imsm-wxwarn b { font-size: 17px; }
+.hbb.imsm .imsm-wxwarn small { font-size: 14px; opacity: .85; }
