@@ -92,6 +92,28 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "Please disable notifications in App Settings", Toast.LENGTH_SHORT).show();
             }
         });
+
+        if (handleIncomingDeepLink(getIntent())) {
+            return;
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIncomingDeepLink(intent);
+    }
+
+    private boolean handleIncomingDeepLink(Intent intent) {
+        if (intent == null) return false;
+        Uri data = intent.getData();
+        if (data != null && "ims-dock".equalsIgnoreCase(data.getScheme())) {
+            testOpenDrawer();
+            finish();
+            return true;
+        }
+        return false;
     }
 
     @Override

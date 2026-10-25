@@ -73,6 +73,7 @@ import calendarRoutes from './routes/calendar.js';
 import stravaRoutes from './routes/strava.js';
 import garminRoutes from './routes/garmin.js';
 import plannerRoutes from './routes/planner.js';
+import { pushPhoneNotification } from './services/runAlertsService.js';
 import goalRoutes from './routes/goals.js';
 import { getStatus as getStravaStatus, syncActivities as syncStrava } from './services/stravaService.js';
 import { logNightscout } from './services/runGlucoseService.js';
@@ -310,6 +311,13 @@ app.get('/api/ims/status', (req, res) => {
     const { calendar, hasAlarm, hasTimer, hasReminder, alarmCount, timerCount, reminderCount, birthday, newReleases, recording } = deviceStatus();
     res.json({ success: true, icons: calendar?.icons || [], hasAlarm, hasTimer, hasReminder, alarmCount, timerCount, reminderCount, birthday, newReleases, recording, items: listScheduledItems() });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+app.post('/api/notify-phone', async (req, res) => {
+  try {
+    const { title, message, priority, tags, alarm } = req.body || {};
+    await pushPhoneNotification({ title, message, priority, tags, alarm });
+    res.json({ success: true, message: 'Notification sent to phone via side dock.' });
+  } catch (err) { res.status(400).json({ success: false, error: err.message }); }
 });
 app.use('/api/day-report', dayReportRoutes);
 app.use('/api/code-repo', codeRepoRoutes);

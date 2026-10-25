@@ -44,10 +44,11 @@ const spokes = (live) => [
     ],
   },
   {
-    key: 'clients', title: 'Clients', icon: Monitor, accent: 'blue', count: 4, side: 'bottom',
+    key: 'clients', title: 'Clients', icon: Monitor, accent: 'blue', count: 5, side: 'bottom',
     rows: [
       { icon: Speaker, main: 'Desk terminal', sub: 'ESP32-S3-BOX-3 - raw TCP :3002, 16 kHz mic up, 24 kHz voice down' },
       { icon: Smile, main: 'Web app - Ims panel', sub: 'Same brain as the desk, over the /api/ims-live WebSocket' },
+      { icon: Smartphone, main: 'Android Edge Dock', sub: 'Native system overlay drawer with hardware-accelerated WebView, camera, mic, AAPS integration, auto-boot, and deep-linked push notifications' },
       { icon: BookOpen, main: 'Library chat and voice', sub: 'Deep research over your PDFs - /api/chat and /api/live' },
       { icon: Smartphone, main: 'Phone and away from home', sub: 'Installable as an app (or in the browser) through the ngrok tunnel' },
     ],
@@ -70,18 +71,19 @@ const spokes = (live) => [
     rows: [
       { icon: Hand, main: 'Wake gate', sub: 'Your own wake-word model beside Gemini, wake phrases and your recorded spellings; follow-up window' },
       { icon: Drama, main: 'Persona and context', sub: 'Active persona (character, accent, voice), house rules, services, memories, instructions' },
-      { icon: Wrench, main: '51 function tools', sub: 'Run on the server - calendar, glucose, carbs, lists, news, brews, instructions, stories, campaigns...' },
+      { icon: Wrench, main: '52 function tools', sub: 'Run on the server - calendar, glucose, carbs, lists, news, brews, phone push notifications, instructions, stories, campaigns...' },
       { icon: Gauge, main: 'Audio pacing', sub: 'A 15 s lead buffer, so speech never speeds up; a reply that may repeat the last is checked before it plays' },
       { icon: MessageSquareQuote, main: 'Stop phrases', sub: '"Ims stop" halts speech and silences a ringing alarm' },
       { icon: Moon, main: '15 s of silence', sub: 'Closes the Gemini session to keep costs down' },
     ],
   },
   {
-    key: 'connections', title: 'External connections', icon: Plug, accent: 'orange', count: 23, side: 'left',
+    key: 'connections', title: 'External connections', icon: Plug, accent: 'orange', count: 24, side: 'left',
     rows: [
       { icon: Activity, main: 'Garmin Connect', sub: 'Daily sleep, HRV, Body Battery, VO2 max and training readiness for the run planner and day report' },
       { icon: Camera, main: 'Pixabay', sub: 'Photos for homebrew banners and ingredients - found, not generated (free licence)' },
       { icon: Bell, main: 'Ring Doorbell (Direct API)', sub: 'ring-client-api 2FA session, live SIP/WebSocket dings & motion' },
+      { icon: Bell, main: 'ntfy.sh & Tasker', sub: 'Push alerts for run hydration/carbs, route links, and instant deep-linked Side Dock mobile notifications' },
       { icon: CalendarDays, main: 'Google Calendar', sub: 'Events and rules, synced every 5 minutes' },
       { icon: HardDrive, main: 'Google Drive', sub: 'Source of the PDF library' },
       { icon: Droplets, main: 'Nightscout (Heroku + MongoDB)', sub: 'Glucose every minute; carbs posted as Meal Bolus' },

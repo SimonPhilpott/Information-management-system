@@ -61,7 +61,7 @@ function fillUrl(template, values) {
   for (const [k, v] of Object.entries(values)) u.searchParams.set(k, String(v ?? ''));
   return u.toString();
 }
-async function pushNow({ title, message, tags, priority = 5, actions = null, click = null, alarm = false }) {
+export async function pushNow({ title, message, tags, priority = 5, actions = null, click = null, alarm = false }) {
   const st = getAlertSettings();
   if (!st.pushTopic) throw new Error('No push topic yet - turn push on first.');
   // Only the alarm reminders (take carbs / water, refuel) follow the Sound / Vibrate choice - the vibrate-only
@@ -76,6 +76,21 @@ async function pushNow({ title, message, tags, priority = 5, actions = null, cli
     },
   });
   if (!res.ok) throw new Error(`ntfy answered ${res.status}`);
+}
+
+// Push notifications to Simon's phone via the side dock.
+// Uses the same ntfy push pipeline as route links and run alerts, configuring the
+// tap action and action buttons to deep-link directly into the Android edge dock (ims-dock://open).
+export async function pushPhoneNotification({
+  title = 'IMS Notification',
+  message = '',
+  tags = 'robot,speech_balloon',
+  priority = 4,
+  click = 'ims-dock://open',
+  actions = 'view, Open in Side Dock, ims-dock://open',
+  alarm = false
+} = {}) {
+  return pushNow({ title, message, tags, priority, actions, click, alarm });
 }
 
 // The pre-run "Your route" notification: tapping it (or Open in Komoot) opens the route in the Komoot app,

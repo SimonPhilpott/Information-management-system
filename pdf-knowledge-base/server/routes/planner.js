@@ -7,7 +7,7 @@ import {
 import { estimatePlan, estimateDemand, routeRunHistory, getTargets, saveTargets, personalFit, calculateHydration, SOURCES } from '../services/runPlanService.js';
 import { getCurrentState, getLoopSettings } from '../services/runGlucoseService.js';
 import { getWeather } from '../services/weatherService.js';
-import { sendRunAlerts, clearRunAlerts, alertStatus, suggestedStart, routeGpx, getAlertSettings, saveAlertSettings, testTasker, testPush, armRun, armedRun } from '../services/runAlertsService.js';
+import { sendRunAlerts, clearRunAlerts, alertStatus, suggestedStart, routeGpx, getAlertSettings, saveAlertSettings, testTasker, testPush, armRun, armedRun, pushPhoneNotification } from '../services/runAlertsService.js';
 import { findRoutes, findDuplicateRoutes, deleteAllDuplicates, komootSyncStatus, startKomootSync } from '../services/routeFinderService.js';
 import { evaluateGlucoseReadiness } from '../services/glucoseReadinessService.js';
 import { syncActivities } from '../services/stravaService.js';
@@ -93,6 +93,13 @@ router.get('/alerts', async (req, res) => { try { const a = armedRun(); res.json
 router.put('/alerts/settings', (req, res) => { try { res.json({ success: true, settings: saveAlertSettings(req.body || {}) }); } catch (err) { fail(res, err, 400); } });
 router.post('/alerts/push-test', async (req, res) => { try { res.json({ success: true, ...(await testPush()) }); } catch (err) { fail(res, err, 400); } });
 router.post('/alerts/tasker-test', async (req, res) => { try { res.json({ success: true, ...(await testTasker()) }); } catch (err) { fail(res, err, 400); } });
+router.post('/notify-phone', async (req, res) => {
+  try {
+    const { title, message, priority, tags, alarm } = req.body || {};
+    await pushPhoneNotification({ title, message, priority, tags, alarm });
+    res.json({ success: true, message: 'Notification sent to phone via side dock.' });
+  } catch (err) { fail(res, err, 400); }
+});
 router.post('/alerts', async (req, res) => {
   try {
     const b = req.body || {};

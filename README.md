@@ -10,6 +10,7 @@ IMS is a personal knowledge and home-assistant system built around **Ims**, a Yo
 - a **System Architecture** page (`/ims/architecture`) with a live test box that lights up every part of the system a prompt uses, plus a dedicated **Voice Latency & Tools Telemetry** dashboard with turn-stage waterfalls and 1800ms target budget analysis, backed by a 5-phase **Modernisation & Reliability Plan** (`docs/SYSTEM_ARCHITECTURE_PLAN.md`),
 - a **Direct Ring Doorbell API Service** (`/ims/doorbell`) with persistent 2FA refresh token storage, real-time SIP/WebSocket event streaming (dings and motions), ESP32-S3-BOX-3 chime alerts, and Yorkshire vocal announcements,
 - a **Desk Camera & Vision Subsystem** (Logitech C270 via ESP32-S3-BOX-3 USB Host) delivering real-time multipart MJPEG video (`/api/camera/stream`), on-demand snapshot analysis via Gemini Flash (`/ims/look`), 100% on-device face detection and recognition with YuNet + SFace (`/ims/faces`), and desk presence tracking - Ims's eyes follow you, and he says hello when you sit back down after at least five minutes away.
+- the **Android Edge Dock** (`android-edge-dock/`), a native Android background service (`SYSTEM_ALERT_WINDOW`) that provides an always-available slide-out drawer on the phone's left edge, embedding the IMS mobile panel with hardware-accelerated WebView, camera/microphone WebRTC passthrough, AndroidAPS carb sync, auto-start on phone boot, and instant push notification deep-linking (`ims-dock://open`).
 
 Everything runs on your own machine. Cloud services used: Google (Drive, Calendar, Gemini) plus data sources such as GitHub (Personal & TurnTown repos), Nightscout, Strava, Garmin Connect, Komoot, Ring, BoardGameGeek, MusicBrainz, Open-Meteo, Open Food Facts, Pixabay (homebrew photos), RingsDB, Hall of Beorn, ArkhamDB and the news feeds. The whole of IMS is copied to the home NAS every night (`scripts/nas-backup/`).
 
@@ -80,6 +81,7 @@ The web app talks to the backend through the Vite dev proxy. The device never to
 | Path | What it is |
 |---|---|
 | `src/` | The main React app: dashboard, chat, and all `/ims/*` pages (`src/components/Dashboard/`) |
+| `android-edge-dock/` | Native Android edge overlay drawer (Android Studio / Gradle, Java) with system alert window, WebRTC camera/mic, AAPS integration, auto-boot receiver, and deep link handling |
 | `pdf-knowledge-base/server/` | The backend: `index.js` (Gemini Live proxy + device servers), `routes/`, `services/`, `db/` |
 | `pdf-knowledge-base/server/python/` | Local Python helpers: `ims_scan_service.py` (music scanner engine), `face_tool.py` (YuNet + SFace faces and desk presence) |
 | `pdf-knowledge-base/client-fixed/` | The original standalone PDF Knowledge Base UI (`:5173`) |
@@ -231,9 +233,22 @@ The first time you talk to Ims each day (London date), it offers your morning re
 
 ### Ims tools during a conversation
 
-Ims has 51 tools: camera vision (`lookAtCamera`), biometric face enrolment (`enrolPerson`), library search, weather (home, saved or named places, now or any day up to 16 days ahead - "in a fortnight" - described from graded facts and the weather phrases), calendar (read and add), blood glucose and carbs (Nightscout), food carb look-ups, training (Strava) and run notes, timers/alarms/reminders and their history, lists, memories, instructions (five tools), birthdays, new music, news, the day report and day wrap-up, background tasks, dev ideas, board games, card-game campaigns, brews (read and log), stories, writing practice and drafts, jokes, the doorbell, asking Gemini when his own sources fall short, and recording. Every conversation also starts with a **snapshot of everything saved** - next birthday and reminder, every birthday, alarms and reminders, lists, the next 14 days of calendar, tasks, dev ideas, carbs today, music want list and upcoming releases, memories, board games, campaigns and decks - and Ims treats that snapshot as authoritative when a tool looks less far ahead.
+Ims has 52 tools: phone push notifications (`notifyPhone`), camera vision (`lookAtCamera`), biometric face enrolment (`enrolPerson`), library search, weather (home, saved or named places, now or any day up to 16 days ahead - "in a fortnight" - described from graded facts and the weather phrases), calendar (read and add), blood glucose and carbs (Nightscout), food carb look-ups, training (Strava) and run notes, timers/alarms/reminders and their history, lists, memories, instructions (five tools), birthdays, new music, news, the day report and day wrap-up, background tasks, dev ideas, board games, card-game campaigns, brews (read and log), stories, writing practice and drafts, jokes, the doorbell, asking Gemini when his own sources fall short, and recording. Every conversation also starts with a **snapshot of everything saved** - next birthday and reminder, every birthday, alarms and reminders, lists, the next 14 days of calendar, tasks, dev ideas, carbs today, music want list and upcoming releases, memories, board games, campaigns and decks - and Ims treats that snapshot as authoritative when a tool looks less far ahead.
 
 **Jokes.** Ask for a joke and Ims calls `tellJoke`, which picks from about 80,000 jokes from the [r/Jokes dataset](https://github.com/orionw/rJokesData) (Reddit terms apply; kept in the git-ignored `server/data/jokes`). The Humor slider on IMS Personality is a style axis (Cheerful - Dry - Dark), so the jokes scale with it: clean and wholesome at the low end, short dry one-liners in the middle, dark and twisted towards the top, always preferring better-scored jokes and not repeating one until they are used up. **Core rule: never a racist or sexist joke.** Anything about race, nationality, religion, gender or wives/girlfriends, plus hate, sexual, self-harm and real-tragedy material, is filtered out at import and never stored. Set it up with `node scripts/importJokes.js` (about 90 seconds; downloads the data if it is missing).
+
+## The Android Edge Dock
+
+The **IMS Edge Dock** (`android-edge-dock/`) provides ambient, system-wide access to Ims on your Android phone through a lightweight overlay service (`SYSTEM_ALERT_WINDOW`):
+
+- **Always-Accessible Edge Handle:** A recessed 20dp dark grey pill on the phone's left edge that can be dragged vertically to reposition or swiped/tapped to open.
+- **Full-Width Slide-Out Panel:** Seamlessly slides out over any running Android app (YouTube, Strava, WhatsApp, Maps), displaying the full mobile IMS web client.
+- **Waking Animation:** Opening the drawer triggers Ims's face to smoothly animate from asleep to wide awake, accented by a perimeter glowing pulse around his face frame.
+- **One-Touch Retraction:** Tapping the subtle dark grey bottom/right borders, pressing the phone's hardware Back button, or pressing Home instantly retracts the dock.
+- **Deep-Linked Push Notifications:** Tapping any IMS mobile notification (or its "Open in Side Dock" action button) fires an `ims-dock://open` intent that slides the dock open immediately with Ims awake and ready.
+- **WebRTC & AndroidAPS Passthrough:** Grants camera and microphone access inside the WebView for visual lookups and voice chat, with clipboard sync for AndroidAPS carb logging.
+- **Zero-Notification Silent Foreground Service:** Runs quietly in the background without intrusive ongoing notifications in the status bar or shade (`IMPORTANCE_MIN`).
+- **Auto-Start on Boot:** Registers `RECEIVE_BOOT_COMPLETED` and `QUICKBOOT_POWERON` to automatically start the dock service whenever the phone boots.
 
 ## The voice terminal (ESP32-S3-BOX-3)
 

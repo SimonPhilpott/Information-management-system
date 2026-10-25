@@ -1452,6 +1452,20 @@ export function getHardwareSetupPayload(previewVoice = null, morningReportDirect
                 limit: { type: "NUMBER", description: "Number of recent events to return (default 5)." }
               }
             }
+          },
+          {
+            name: "notifyPhone",
+            description: "Sends a push notification to Simon's phone that opens directly into the IMS Side Dock when tapped (using the same push pipeline as routes and running alerts). Use this when Simon asks to be notified or reminded on his phone, when sending him a message/alert to check on mobile, or when an urgent notification needs his attention.",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                title: { type: "STRING", description: "Short title for the phone notification, e.g. 'IMS Reminder' or 'Side Dock Update'." },
+                message: { type: "STRING", description: "The message body to display on his phone." },
+                priority: { type: "NUMBER", description: "Priority 1-5 (3 is normal, 4 is high, 5 is max/urgent). Defaults to 4." },
+                tag: { type: "STRING", description: "Optional emoji shortcodes for ntfy, e.g. 'bell', 'warning', 'alarm_clock', 'speech_balloon'." }
+              },
+              required: ["title", "message"]
+            }
           }
         ]
       }]

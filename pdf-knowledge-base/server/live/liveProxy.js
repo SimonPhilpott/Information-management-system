@@ -48,6 +48,7 @@ import { isPhraseSession } from '../services/deviceBus.js';
 import { getSetting } from '../db/database.js';
 import { pickClip, pickGreeting } from '../services/holdingClips.js';
 import { pickJoke } from '../services/jokeService.js';
+import { pushPhoneNotification } from '../services/runAlertsService.js';
 import { recordUsage } from '../services/geminiClient.js';
 import { stripMedicalDisclaimers } from '../services/disclaimerSanitizer.js';
 import { transcribeWake } from '../services/wakeGateService.js';
@@ -2387,6 +2388,19 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
                 console.log(`${tag} 🥪 lookUpFood(${call.args?.food}) -> ${d.matches} matches, ${d.typicalCarbsPer100g} g/100g`);
                 respondToToolCall(call, d);
               }).catch((err) => respondToToolCall(call, { error: err.message, fallback: 'Use your own knowledge of typical UK carb values and say it is an estimate.' }));
+            } else if (call.name === 'notifyPhone') {
+              const { title, message, priority, tag: pTag } = call.args || {};
+              console.log(`${tag} 📱 notifyPhone("${title}", priority=${priority || 4})`);
+              pushPhoneNotification({
+                title: title || 'IMS Notification',
+                message: message || '',
+                priority: priority ? Math.max(1, Math.min(5, Number(priority))) : 4,
+                tags: pTag ? String(pTag).replace(/[^\w,-]/g, '') : 'robot,speech_balloon'
+              }).then(() => {
+                respondToToolCall(call, { status: 'sent', recipient: "Simon's phone via Side Dock", instruction: "Confirm briefly that you've sent the notification to his phone." });
+              }).catch((err) => {
+                respondToToolCall(call, { error: err.message, fallback: "Could not deliver push notification to phone." });
+              });
             } else {
               respondToToolCall(call, { status: 'acknowledged' });
             }
