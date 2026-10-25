@@ -3,6 +3,7 @@
  * Bidirectional PCM Streaming Client for Gemini Live via IMS Proxy
  */
 
+#include "tile_icons.h" // the Tiles icon outlines (26 Oct)
 #include "config.h"
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -2596,17 +2597,50 @@ static void applyNightBrightness() {
 static LGFX_Sprite footerSprite(&tft);
 static bool footerSpriteReady = false;
 
-// The icon columns either side of the face (26 Oct): the same icons in the same fixed slots as the old
-// left-hand stack (a type always lands in the same place), counts beside them, and the calendar icons on the
-// right. Each column is drawn off screen and pushed in one go.
+// The icon columns either side of the face (26 Oct; tiles from 26 Oct, Simon: "I really like the tiles icons"):
+// each icon a rounded tile tinted by its status with the outline drawn in the status colour, five a side starting
+// level with the top of the face. Left: alarm, timer, reminder, birthday, new music (counts beside them). Right:
+// sensor, pod, prescription, camera (tap it to wake or sleep the camera) and Nightscout space, its percentage to
+// the left of the tile when there's room. Each column is drawn off screen and pushed in one go.
 static LGFX_Sprite leftColSprite(&tft), rightColSprite(&tft);
 static bool colSpritesTried = false, leftColReady = false, rightColReady = false;
-#define SIDE_TOP (MAIN_TOP_H + 6)
-#define SIDE_PITCH 24
+#define TILE 22
+#define TILE_PITCH 28
+#define TILE_TOP 50 // screen y of the first tile: level with the top of the face
 #define LEFT_COL_W 52
 #define RIGHT_COL_X 268
 #define LEFT_ICON_X 10
-#define RIGHT_ICON_X 286 // screen x of the right-hand icons (10px in from the edge)
+#define RIGHT_ICON_X 288 // screen x of the right-hand tiles (10px in from the edge)
+
+// the status colours of the tiles (the IMS palette)
+#define TC_ORANGE 255, 180, 92
+#define TC_WHITE 239, 231, 220
+#define TC_GREEN 127, 227, 155
+#define TC_YELLOW 242, 212, 107
+#define TC_RED 255, 143, 134
+
+// One tile: a rounded square in a dark tint of the colour, the outline (tile_icons.h) in the colour itself.
+static void drawTileIcon(LovyanGFX &g, const uint8_t *path, size_t len, int x, int y, uint8_t r, uint8_t gr, uint8_t b, bool centreDot = false) {
+  const int bgR = 11, bgG = 14, bgB = 21;
+  g.fillSmoothRoundRect(x, y, TILE, TILE, 6, g.color565(bgR + (r - bgR) * 26 / 100, bgG + (gr - bgG) * 26 / 100, bgB + (b - bgB) * 26 / 100));
+  const uint16_t col = g.color565(r, gr, b);
+  const float gs = TILE * 0.74f;            // the outline's box inside the tile
+  const float ox = x + (TILE - gs) / 2.0f, oy = y + (TILE - gs) / 2.0f, k = gs / 240.0f;
+  const float w = gs / 24.0f * 0.95f;        // half the stroke: a 1.9-unit line, like the canvas
+  int px = -1, py = -1;
+  for (size_t i = 0; i + 1 < len || (i < len && pgm_read_byte(&path[i]) == 255);) {
+    const uint8_t vx = pgm_read_byte(&path[i]);
+    if (vx == 255) { px = py = -1; i++; continue; }
+    const uint8_t vy = pgm_read_byte(&path[i + 1]);
+    const int nx = (int)lroundf(ox + vx * k), ny = (int)lroundf(oy + vy * k);
+    if (px >= 0) g.drawWideLine(px, py, nx, ny, w, col);
+    px = nx; py = ny;
+    i += 2;
+  }
+  if (centreDot) g.fillSmoothCircle(x + TILE / 2, y + TILE / 2, 1, col);
+}
+#define TILE_ICON(g, name, x, y, c, ...) drawTileIcon(g, tile_##name, sizeof(tile_##name), x, y, c, ##__VA_ARGS__)
+
 void drawSideIcons() {
   if (onSettingsScreen || alertCardActive) return;
   const int colH = MAIN_FOOT_Y - MAIN_TOP_H;
@@ -2617,36 +2651,32 @@ void drawSideIcons() {
     leftColReady = leftColSprite.createSprite(LEFT_COL_W, colH) != nullptr;
     rightColReady = rightColSprite.createSprite(320 - RIGHT_COL_X, colH) != nullptr;
   }
-  const uint16_t ORANGE = tft.color565(255, 140, 0), WHITE = tft.color565(255, 255, 255);
   {
     LovyanGFX &g = leftColReady ? (LovyanGFX &)leftColSprite : (LovyanGFX &)tft;
-    const int ox = 0, oy = leftColReady ? 0 : MAIN_TOP_H;
+    const int oy = leftColReady ? 0 : MAIN_TOP_H;
     if (!leftColReady) tft.startWrite();
     const uint16_t bg = g.color565(11, 14, 21);
-    g.fillRect(ox, oy, LEFT_COL_W, colH, bg);
+    g.fillRect(0, oy, LEFT_COL_W, colH, bg);
     g.setTextSize(1);
     g.setFont(&fonts::DejaVu18);
-    g.setTextDatum(baseline_left); // by the baseline: the "middle" datum counts descender space and sits high
-    auto slot = [&](int k) { return oy + 6 + k * SIDE_PITCH; };
+    g.setTextDatum(middle_left);
+    auto slot = [&](int k) { return oy + TILE_TOP - MAIN_TOP_H + k * TILE_PITCH; };
     auto cnt = [&](int y, int n, uint16_t c) {
       if (n <= 1) return;
       g.setTextColor(c, bg);
-      g.drawString(n > 9 ? String("9+") : String(n), LEFT_ICON_X + 24 + 2, y + 19);
+      g.drawString(n > 9 ? String("9+") : String(n), LEFT_ICON_X + TILE + 4, y + TILE / 2 + 1);
     };
-    if (alarmCount > 0) { drawAlarmIcon(g, LEFT_ICON_X, slot(0), ORANGE); cnt(slot(0), alarmCount, ORANGE); }
-    if (timerCount > 0) { drawTimerIcon(g, LEFT_ICON_X, slot(1), ORANGE); cnt(slot(1), timerCount, ORANGE); }
-    if (reminderCount > 0) { drawReminderIcon(g, LEFT_ICON_X, slot(2), ORANGE); cnt(slot(2), reminderCount, ORANGE); }
+    const uint16_t orange = g.color565(TC_ORANGE);
+    if (alarmCount > 0) { TILE_ICON(g, alarm, LEFT_ICON_X, slot(0), TC_ORANGE); cnt(slot(0), alarmCount, orange); }
+    if (timerCount > 0) { TILE_ICON(g, timer, LEFT_ICON_X, slot(1), TC_ORANGE); cnt(slot(1), timerCount, orange); }
+    if (reminderCount > 0) { TILE_ICON(g, reminder, LEFT_ICON_X, slot(2), TC_ORANGE); cnt(slot(2), reminderCount, orange); }
     if (birthdayCount > 0) {
-      const uint16_t cake = birthdayColor == 2 ? g.color565(70, 220, 120) : birthdayColor == 1 ? ORANGE : WHITE;
-      drawBirthdayIcon(g, LEFT_ICON_X, slot(3), cake); cnt(slot(3), birthdayCount, cake);
+      // green on the day, orange within a week, white later on
+      if (birthdayColor == 2) { TILE_ICON(g, birthday, LEFT_ICON_X, slot(3), TC_GREEN); cnt(slot(3), birthdayCount, g.color565(TC_GREEN)); }
+      else if (birthdayColor == 1) { TILE_ICON(g, birthday, LEFT_ICON_X, slot(3), TC_ORANGE); cnt(slot(3), birthdayCount, orange); }
+      else { TILE_ICON(g, birthday, LEFT_ICON_X, slot(3), TC_WHITE); cnt(slot(3), birthdayCount, g.color565(TC_WHITE)); }
     }
-    if (newReleaseCount > 0) { drawMusicIcon(g, LEFT_ICON_X, slot(4), ORANGE); cnt(slot(4), newReleaseCount, ORANGE); }
-    // yellow = camera attached but asleep, green = awake and ready (tap it to wake or sleep the camera)
-    if (cameraAttached || cameraPresent()) {
-      drawCameraIcon(g, LEFT_ICON_X, slot(5), cameraAwake ? g.color565(70, 220, 120) : g.color565(255, 210, 60));
-      camChipX0 = 0; camChipX1 = LEFT_COL_W;
-      camChipY0 = MAIN_TOP_H + 6 + 5 * SIDE_PITCH - 4; camChipY1 = camChipY0 + 32;
-    } else { camChipX0 = camChipX1 = camChipY0 = camChipY1 = -1; }
+    if (newReleaseCount > 0) { TILE_ICON(g, music, LEFT_ICON_X, slot(4), TC_ORANGE); cnt(slot(4), newReleaseCount, orange); }
     g.setFont(&fonts::Font0);
     g.setTextDatum(top_left);
     if (leftColReady) leftColSprite.pushSprite(0, MAIN_TOP_H); else tft.endWrite();
@@ -2659,21 +2689,32 @@ void drawSideIcons() {
     const uint16_t bg = g.color565(11, 14, 21);
     g.fillRect(ox, oy, w, colH, bg);
     const int ix = ox + RIGHT_ICON_X - RIGHT_COL_X;
-    if (calSensor) smoothIcon(g, sensor_icon_24x24, ix, oy + 6, calSensor == 2 ? ORANGE : WHITE);
-    if (calPod) smoothIcon(g, pod_icon_24x24, ix, oy + 6 + SIDE_PITCH, WHITE);
-    if (calRx) smoothIcon(g, rx_icon_24x24, ix, oy + 6 + 2 * SIDE_PITCH, WHITE);
+    auto slot = [&](int k) { return oy + TILE_TOP - MAIN_TOP_H + k * TILE_PITCH; };
+    // sensor: white when it's today, orange the day before
+    if (calSensor == 2) TILE_ICON(g, sensor, ix, slot(0), TC_ORANGE, true);
+    else if (calSensor) TILE_ICON(g, sensor, ix, slot(0), TC_WHITE, true);
+    if (calPod) TILE_ICON(g, pod, ix, slot(1), TC_WHITE);
+    if (calRx) TILE_ICON(g, rx, ix, slot(2), TC_WHITE);
+    // yellow = camera attached but asleep, green = awake and ready (tap it to wake or sleep the camera)
+    if (cameraAttached || cameraPresent()) {
+      if (cameraAwake) TILE_ICON(g, camera, ix, slot(3), TC_GREEN);
+      else TILE_ICON(g, camera, ix, slot(3), TC_YELLOW);
+      camChipX0 = RIGHT_COL_X; camChipX1 = 320;
+      camChipY0 = TILE_TOP + 3 * TILE_PITCH - 4; camChipY1 = camChipY0 + TILE + 8;
+    } else { camChipX0 = camChipX1 = camChipY0 = camChipY1 = -1; }
     if (nsDbPct > 70.0f) { // Nightscout filling up: only shown once it needs attention
-      const uint16_t c = nsDbPct <= 90 ? ORANGE : g.color565(255, 71, 87);
-      g.setTextSize(1);
-      g.setTextDatum(middle_center);
-      g.setFont(&fonts::Font0);
-      g.setTextColor(c, bg);
-      g.drawString("DB", ox + w / 2, oy + 6 + 3 * SIDE_PITCH + 6);
+      const bool red = nsDbPct > 90.0f;
+      if (red) TILE_ICON(g, db, ix, slot(4), TC_RED); else TILE_ICON(g, db, ix, slot(4), TC_ORANGE);
       char dbBuf[8];
       snprintf(dbBuf, sizeof(dbBuf), "%.0f%%", nsDbPct);
-      g.setFont(&fonts::Font2);
-      g.drawString(dbBuf, ox + w / 2, oy + 6 + 3 * SIDE_PITCH + 20);
+      g.setTextSize(1);
       g.setFont(&fonts::Font0);
+      const int tw = g.textWidth(dbBuf);
+      if (ix - 3 - tw >= ox) { // only when it fits between the face and the tile
+        g.setTextDatum(middle_right);
+        g.setTextColor(red ? g.color565(TC_RED) : g.color565(TC_ORANGE), bg);
+        g.drawString(dbBuf, ix - 3, slot(4) + TILE / 2);
+      }
       g.setTextDatum(top_left);
     }
     if (rightColReady) rightColSprite.pushSprite(RIGHT_COL_X, MAIN_TOP_H); else tft.endWrite();
@@ -2806,7 +2847,9 @@ void drawTopStrip() {
   const uint16_t bg = g.color565(11, 14, 21);
   g.fillRect(0, 0, 320, MAIN_TOP_H, bg);
   g.setTextSize(1);
-  g.drawXBitmap(HEADER_ICON_CX - 11, MAIN_TOP_H / 2 - 11, cog_icon_22x22, 22, 22, g.color565(110, 120, 140));
+  // the settings cog on a light grey tile, in the tiles' style (26 Oct)
+  g.fillSmoothRoundRect(HEADER_ICON_CX - 15, MAIN_TOP_H / 2 - 15, 30, 30, 8, g.color565(200, 205, 212));
+  g.drawXBitmap(HEADER_ICON_CX - 11, MAIN_TOP_H / 2 - 11, cog_icon_22x22, 22, 22, g.color565(27, 32, 40));
 
   // right: the glucose pill, in a dark tint of its own colour
   const uint16_t gc = getGlucoseColor(currentGlucoseValue);
