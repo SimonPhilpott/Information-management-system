@@ -1865,6 +1865,7 @@ export default function App() {
       }>
         <ImsHome
           theme={state.theme}
+          onOpenAdmin={() => { setIsAdminOpen(true); actions.setShowAdmin(true); }}
           onThemeToggle={actions.toggleTheme}
           setCurrentPath={setCurrentPath}
           onLogout={actions.handleLogout}

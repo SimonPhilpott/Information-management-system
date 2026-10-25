@@ -1295,3 +1295,7 @@
 .hbb.imsm .imsh-rail button.logo { border: 0; cursor: pointer; }
 @media (max-width: 700px) { .hbb.imsm.withrail { flex-direction: column-reverse; } .hbb.imsm.withrail .imsm-page { flex: 1; min-height: 0; } .hbb.imsm.withrail .imsm-fab { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); } }
 .imsl .chat-empty h2 { font-family: var(--head-font) !important; font-weight: 400 !important; font-size: 38px !important; line-height: 1.15 !important; letter-spacing: 0 !important; color: var(--pri) !important; background: none !important; -webkit-text-fill-color: currentColor !important; }
+.hbb.imsm .imsh-search-btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 8px 0 12px; border-radius: 20px; color: var(--on-surface-var); }
+.hbb.imsm .imsh-search-btn:hover { background: var(--surface-c-high); color: var(--on-surface); }
+.hbb.imsm .imsh-search-btn kbd { font: 600 12px/1 var(--font); padding: 5px 8px; border-radius: 8px; background: var(--surface-c-high); color: var(--on-surface-var); border: 1px solid var(--outline-var); }
+@media (max-width: 700px) { .hbb.imsm .imsh-search-btn kbd { display: none; } .hbb.imsm .imsh-rail .radmin { display: none; } }

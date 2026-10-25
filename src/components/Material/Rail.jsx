@@ -14,7 +14,8 @@ const goTo = (to, setCurrentPath) => { window.history.pushState(null, '', to); i
 // active: 'ims' | 'library' | 'history' | 'dash'; onRoom: on the home screen, switches rooms in place.
 // theme/onThemeToggle/onAccount: the light-dark switch and account button at the foot (the home screen; a service
 // page has them in its own header).
-export default function Rail({ active, onRoom, setCurrentPath, theme, onThemeToggle, onAccount }) {
+// onAdmin: the admin panel (the home screen, where it lives) - a cog at the foot of the rail
+export default function Rail({ active, onRoom, setCurrentPath, theme, onThemeToggle, onAccount, onAdmin }) {
   const { user } = useAuth();
   if (user?.guest) return null;
   const room = (k) => {
@@ -34,6 +35,7 @@ export default function Rail({ active, onRoom, setCurrentPath, theme, onThemeTog
         <i><Icon n="hub" size={22} /></i><span>IMS</span>
       </button>
       <span className="grow" />
+      {onAdmin && <button type="button" className="ri sl radmin" onClick={onAdmin}><i><Icon n="admin" size={22} /></i><span>Admin</span></button>}
       {onThemeToggle && <IconButton className="rtheme" icon={theme === 'dark' ? 'sun' : 'moon'} label={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={onThemeToggle} />}
       {onAccount && <IconButton className="racct" label="Your account" onClick={onAccount} aria-haspopup="menu"><span className="avatar">{initials(user?.name)}</span></IconButton>}
     </nav>

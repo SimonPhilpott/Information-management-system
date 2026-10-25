@@ -109,7 +109,7 @@ function ImsRoom({ dark, onOpenStatus, statusTone }) {
         <h1 className="imsm-title">Ims</h1>
         <button type="button" className={`imsh-dot sl ${statusTone}`} onClick={onOpenStatus} title="Ims and the library: status"><i className={`st-${ims.status}`} /><span>{STATUS_TEXT[ims.status] || ims.status}</span></button>
         <span className="grow" />
-        <IconButton icon="search" label="Search everything (Ctrl K)" onClick={launcher} />
+        <button type="button" className="imsh-search-btn sl" onClick={launcher} aria-label="Search everything (Ctrl K)" title="Search everything"><Icon n="search" size={20} /><kbd>Ctrl K</kbd></button>
       </header>
 
       {/* his face stays docked at the top while the conversation scrolls under it */}
@@ -210,7 +210,7 @@ function HistoryRoom({ sessions, activeSessionId, onLoadSession, onDeleteSession
   );
 }
 
-function Shell({ theme, onThemeToggle, setCurrentPath, onLogout, syncStatus, onSync, history, room, setRoom }) {
+function Shell({ theme, onThemeToggle, setCurrentPath, onLogout, syncStatus, onSync, history, room, setRoom, onOpenAdmin }) {
   const { user } = useAuth();
   const dark = theme === 'dark';
   const account = useMenu();
@@ -224,7 +224,7 @@ function Shell({ theme, onThemeToggle, setCurrentPath, onLogout, syncStatus, onS
 
   return (
     <>
-      <Rail active={room} onRoom={setRoom} setCurrentPath={setCurrentPath} theme={theme} onThemeToggle={onThemeToggle} onAccount={account.show} />
+      <Rail active={room} onRoom={setRoom} setCurrentPath={setCurrentPath} theme={theme} onThemeToggle={onThemeToggle} onAccount={account.show} onAdmin={onOpenAdmin} />
 
       {room === 'ims' && <main className="imsh-main"><ImsRoom dark={dark} statusTone={tone} onOpenStatus={() => setStatusOpen(true)} /></main>}
       {room === 'history' && <main className="imsh-main scroll"><HistoryRoom {...history} onLoadSession={(id) => { history.onLoadSession(id); setRoom('library'); }} onNewChat={() => { history.onNewChat(); setRoom('library'); }} /></main>}
@@ -232,6 +232,7 @@ function Shell({ theme, onThemeToggle, setCurrentPath, onLogout, syncStatus, onS
       <Menu anchor={account.anchor} open={account.open} onClose={account.close} items={[
         { label: dark ? 'Light theme' : 'Dark theme', icon: dark ? 'sun' : 'moon', onClick: onThemeToggle },
         !user?.guest && { label: 'IMS dashboard', icon: 'hub', onClick: () => go('/ims') },
+        onOpenAdmin && { label: 'Admin', icon: 'admin', onClick: onOpenAdmin },
         onLogout && { label: 'Sign out', icon: 'person', onClick: onLogout },
       ].filter(Boolean)} />
       <Sheet open={statusOpen} onClose={() => setStatusOpen(false)} title="Status"
