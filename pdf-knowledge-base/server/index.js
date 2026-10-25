@@ -81,6 +81,7 @@ import { getStandbyOverride } from './services/faceDesignService.js';
 import boardgamesRoutes from './routes/boardgames.js';
 import peopleRoutes from './routes/people.js';
 import lookRoutes from './routes/look.js';
+import { startWarningsWatch, topWarning } from './services/weatherWarningsService.js';
 import { getCameraStatus, setFrame, heartbeat, appendDeviceLog, pauseCamera } from './services/cameraService.js';
 import { startBrewColours } from './services/homebrewColours.js';
 import { startBannerFill } from './services/homebrewPictures.js';
@@ -604,6 +605,8 @@ const refreshDeviceWeather = () => getWeather({}).then((w) => {
 
 // Seed device weather immediately on startup so hardware clients never wait up to 30m for scheduler
 refreshDeviceWeather();
+// Met Office warnings: checked every 15 minutes, and the Box-3 told as soon as one starts or ends
+startWarningsWatch(() => pushScheduleStatus());
 
 
 // Central Job Scheduler Registrations (Dev Idea #44 & Implementation Plan Phase 2)
@@ -860,6 +863,8 @@ function deviceInfo() {
     refreshDeviceWeather().catch(() => {});
   }
   const info = { ...(deviceWeather || {}) };
+  // the Met Office warning in force for home's county, if any (26 Oct): { level, kind, text, until }
+  try { const w = topWarning(); if (w) info.warning = { level: w.level, kind: w.kind }; } catch { /* no warning */ }
   try {
     const items = listScheduledItems();
     const activeTimers = items.filter((i) => i.type === 'timer').sort((a, b) => a.secondsFromNow - b.secondsFromNow);

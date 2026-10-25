@@ -2576,6 +2576,8 @@ void drawStatusIconStack(bool force = false) {
 static int infoTempC = -999;
 static char infoWeather[10] = "";
 static char infoExtreme[8] = ""; // storm / flood / wind / cold / heat, or "" (26 Oct)
+static uint8_t infoWarnLevel = 0; // a Met Office warning in force: 1 yellow, 2 amber, 3 red (26 Oct)
+static char infoWarnKind[8] = "";  // its hazard: wind, rain, storm, snow, ice, heat, fog
 static String infoNext = "";
 static String infoTimerLabel = "";
 static unsigned long infoTimerEndMs = 0;
@@ -2611,18 +2613,45 @@ static void drawWeatherIcon(LovyanGFX &g, int x, int y, const char *kind, int si
 
 // A warning symbol for extreme weather, beside the temperature in the weather pill (26 Oct): lightning for a storm,
 // waves for flooding, wind lines for gales, a blue thermometer for freezing and a red one for heat. 18-unit square.
-static void drawExtremeIcon(LovyanGFX &g, int x, int y, const char *kind, int size, uint16_t bg) {
+static void drawExtremeIcon(LovyanGFX &g, int x, int y, const char *kind, int size, uint16_t bg, uint16_t ink = 0) {
   const float k = size / 18.0f;
   auto X = [&](float u) { return (int)lroundf(x + u * k); };
   auto Y = [&](float u) { return (int)lroundf(y + u * k); };
   auto R = [&](float u) { return max(1, (int)lroundf(u * k)); };
   const float w = max(0.7f, 0.85f * k);
+  auto C = [&](uint8_t r, uint8_t gr, uint8_t b) { return ink ? ink : g.color565(r, gr, b); };
+  if (!strcmp(kind, "rain")) { // three drops
+    const uint16_t c = C(110, 175, 255);
+    for (int i = 0; i < 3; i++) {
+      const float cx = 4.5f + i * 4.5f, cy = 11.5f + (i % 2 ? -2.5f : 1.5f);
+      g.fillTriangle(X(cx), Y(cy - 5), X(cx - 1.8f), Y(cy), X(cx + 1.8f), Y(cy), c);
+      g.fillSmoothCircle(X(cx), Y(cy + 0.4f), R(1.9f), c);
+    }
+    return;
+  }
+  if (!strcmp(kind, "snow") || !strcmp(kind, "ice")) { // a snowflake (ice adds a line of frozen ground)
+    const uint16_t c = C(225, 240, 255);
+    const float cx = 9, cy = !strcmp(kind, "ice") ? 7.5f : 9, r = !strcmp(kind, "ice") ? 6.2f : 7.5f;
+    for (int a = 0; a < 3; a++) { const float t = a * PI / 3; g.drawWideLine(X(cx - cosf(t) * r), Y(cy - sinf(t) * r), X(cx + cosf(t) * r), Y(cy + sinf(t) * r), w, c); }
+    if (!strcmp(kind, "ice")) g.drawWideLine(X(2), Y(16), X(16), Y(16), w, c);
+    return;
+  }
+  if (!strcmp(kind, "fog")) {
+    const uint16_t c = C(205, 212, 225);
+    g.drawWideLine(X(2), Y(5), X(14), Y(5), w, c); g.drawWideLine(X(4), Y(9), X(16), Y(9), w, c); g.drawWideLine(X(2), Y(13), X(13), Y(13), w, c);
+    return;
+  }
+  if (!strcmp(kind, "warn")) {
+    const uint16_t c = C(255, 214, 90);
+    g.drawWideLine(X(9), Y(4), X(9), Y(11), w * 1.2f, c); g.fillSmoothCircle(X(9), Y(14.5f), R(1.4f), c);
+    return;
+  }
   if (!strcmp(kind, "storm")) {
-    const uint16_t c = g.color565(255, 214, 90);
+    const uint16_t c = C(255, 214, 90);
     g.fillTriangle(X(11), Y(1), X(4), Y(10.5f), X(9.5f), Y(10.5f), c);
     g.fillTriangle(X(9.5f), Y(8), X(14), Y(8), X(7), Y(17), c);
   } else if (!strcmp(kind, "flood")) {
-    const uint16_t c = g.color565(110, 175, 255);
+    const uint16_t c = C(110, 175, 255);
     for (int row = 0; row < 3; row++) {
       int px = -1, py = -1;
       for (int i = 0; i <= 16; i++) {
@@ -2633,13 +2662,13 @@ static void drawExtremeIcon(LovyanGFX &g, int x, int y, const char *kind, int si
       }
     }
   } else if (!strcmp(kind, "wind")) {
-    const uint16_t c = g.color565(170, 215, 255);
+    const uint16_t c = C(170, 215, 255);
     g.drawWideLine(X(1), Y(5), X(12), Y(5), w, c); g.fillSmoothCircle(X(13.5f), Y(3.6f), R(1.6f), c); g.fillSmoothCircle(X(13.5f), Y(3.6f), R(0.6f), bg);
     g.drawWideLine(X(1), Y(9.5f), X(16), Y(9.5f), w, c);
     g.drawWideLine(X(3), Y(14), X(11), Y(14), w, c); g.fillSmoothCircle(X(12.5f), Y(15.4f), R(1.6f), c); g.fillSmoothCircle(X(12.5f), Y(15.4f), R(0.6f), bg);
   } else if (!strcmp(kind, "cold") || !strcmp(kind, "heat")) {
     const bool hot = !strcmp(kind, "heat");
-    const uint16_t c = hot ? g.color565(255, 122, 92) : g.color565(120, 185, 255), glass = g.color565(228, 233, 240);
+    const uint16_t c = hot ? C(255, 122, 92) : C(120, 185, 255), glass = ink ? bg : g.color565(228, 233, 240);
     g.fillSmoothRoundRect(X(6.5f), Y(1), X(11.5f) - X(6.5f), Y(13) - Y(1), R(2.5f), glass);
     g.fillSmoothCircle(X(9), Y(14), R(3.6f), glass);
     g.fillSmoothRoundRect(X(7.8f), Y(hot ? 3 : 9), X(10.2f) - X(7.8f), Y(13) - Y(hot ? 3 : 9), R(1.2f), c);
@@ -2837,7 +2866,7 @@ void drawFooterClock() {
     g.setFont(&fonts::DejaVu18);
     const int tw = g.textWidth(tb);
     const uint16_t pill = g.color565(30, 38, 52);
-    const bool extreme = infoExtreme[0] != 0;
+    const bool extreme = infoWarnLevel > 0 || infoExtreme[0] != 0;
     const int pw = 6 + 22 + 6 + tw + 6 + 12 + (extreme ? 22 + 6 : 0), px = 314 - pw, py = oy + (240 - MAIN_FOOT_Y) - 10 - TILE;
     g.fillSmoothRoundRect(px, py, pw, TILE, TILE / 2, pill);
     drawWeatherIcon(g, px + 6, py + (TILE - 22) / 2, infoWeather, 22, pill);
@@ -2845,7 +2874,13 @@ void drawFooterClock() {
     g.setTextColor(g.color565(228, 233, 240), pill);
     g.drawString(tb, px + 6 + 22 + 6, py + TILE / 2 + 1);
     g.drawCircle(px + 6 + 22 + 6 + tw + 4, py + TILE / 2 - 5, 2, g.color565(228, 233, 240));
-    if (extreme) drawExtremeIcon(g, px + 6 + 22 + 6 + tw + 12, py + (TILE - 22) / 2, infoExtreme, 22, pill);
+    if (infoWarnLevel > 0) {
+      // a Met Office warning: a tile in the warning's colour with the hazard in dark (26 Oct)
+      const uint16_t lc = infoWarnLevel == 3 ? g.color565(232, 64, 52) : infoWarnLevel == 2 ? g.color565(255, 150, 40) : g.color565(255, 214, 60);
+      const int wx = px + 6 + 22 + 6 + tw + 12, wy = py + (TILE - 22) / 2;
+      g.fillSmoothRoundRect(wx, wy, 22, 22, 6, lc);
+      drawExtremeIcon(g, wx + 3, wy + 3, infoWarnKind[0] ? infoWarnKind : "warn", 16, lc, g.color565(30, 22, 6));
+    } else if (extreme) drawExtremeIcon(g, px + 6 + 22 + 6 + tw + 12, py + (TILE - 22) / 2, infoExtreme, 22, pill);
     g.setFont(&fonts::DejaVu12);
     notesRight = px - 10;
   }
@@ -4780,6 +4815,8 @@ void handleFrame(uint8_t type, const uint8_t *data, size_t len) {
         infoTempC = inf["tempC"].is<int>() ? inf["tempC"].as<int>() : -999;
         strlcpy(infoWeather, inf["weather"] | "cloud", sizeof(infoWeather));
         strlcpy(infoExtreme, inf["extreme"] | "", sizeof(infoExtreme));
+        { const char *lv = inf["warning"]["level"] | ""; infoWarnLevel = !strcmp(lv, "red") ? 3 : !strcmp(lv, "amber") ? 2 : !strcmp(lv, "yellow") ? 1 : 0; }
+        strlcpy(infoWarnKind, inf["warning"]["kind"] | "", sizeof(infoWarnKind));
         infoNext = inf["next"] | "";
         long secs = inf["timerSec"] | -1L;
         infoTimerEndMs = secs >= 0 ? millis() + (unsigned long)secs * 1000UL : 0;
