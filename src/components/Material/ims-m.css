@@ -1349,3 +1349,51 @@
 .hbb.imsm .imsm-wxwarn .t { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .hbb.imsm .imsm-wxwarn b { font-size: 17px; }
 .hbb.imsm .imsm-wxwarn small { font-size: 14px; opacity: .85; }
+
+/* ---- Admin page (26 Oct, rebuilt): a full-screen IMS page over the home screen ---- */
+.hbb.imsm.imsa-page { z-index: 70000; }
+.hbb.imsm .imsa-h2 { margin: 10px 0 0; font-family: var(--head-font); font-weight: 400; font-size: 26px; line-height: 32px; color: var(--primary); }
+.hbb.imsm .imsa-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.hbb.imsm .tag .imsa-dot { width: 9px; height: 9px; margin-right: 6px; }
+.hbb.imsm .imsa-search { margin: 0; }
+.hbb.imsm .imsa-tree > div { display: flex; flex-direction: column; }
+.hbb.imsm .imsa-br .row { display: flex; align-items: center; gap: 2px; min-height: 40px; }
+.hbb.imsm .imsa-br .tw { width: 36px; height: 36px; flex: none; transition: transform .2s var(--emph); }
+.hbb.imsm .imsa-br .tw.shut { transform: rotate(-90deg); }
+.hbb.imsm .imsa-br .tw-sp { width: 36px; flex: none; }
+.hbb.imsm .imsa-br .nm { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 12px; border-radius: 12px; text-align: left; font-size: 15px; }
+.hbb.imsm .imsa-br .nm:hover { background: var(--surface-c-high); }
+.hbb.imsm .imsa-br .nm i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.hbb.imsm .imsa-br .nm span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hbb.imsm .imsa-br .nm small { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--on-surface-var); background: var(--surface-c-high); border-radius: 10px; padding: 1px 8px; }
+.hbb.imsm .imsa-three { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.hbb.imsm .imsa-pre { margin: 0; padding: 12px 14px; border-radius: 14px; background: var(--surface-c-high); color: var(--on-surface); font: 500 13px/20px ui-monospace, 'JetBrains Mono', Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.hbb.imsm .imsa-cp { display: flex; flex-direction: column; gap: 6px; }
+.hbb.imsm .imsa-log { max-height: 300px; overflow: auto; margin: 0 16px 16px; }
+.hbb.imsm .imsa-url { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 14px; border-radius: 16px; background: var(--primary-c); color: var(--on-primary-c); }
+.hbb.imsm .imsa-url code { flex: 1; min-width: 0; overflow-wrap: anywhere; font: 600 14px ui-monospace, Consolas, monospace; }
+.hbb.imsm .imsa-layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 12px; align-items: start; }
+.hbb.imsm .imsa-preview > svg { width: 100%; max-height: 460px; aspect-ratio: 1; background: radial-gradient(circle, var(--surface-c-low), transparent 70%); border-radius: 18px; }
+.hbb.imsm .imsa-preview .ring { fill: none; stroke: var(--outline-var); stroke-dasharray: 4 4; }
+.hbb.imsm .imsa-preview .ln { fill: none; stroke: var(--primary); stroke-width: 2; stroke-opacity: .55; stroke-dasharray: 4 3; }
+.hbb.imsm .imsa-preview .n.root { fill: var(--primary); }
+.hbb.imsm .imsa-preview .n.l1 { fill: var(--tertiary, #3c6939); stroke: var(--surface); stroke-width: 2; }
+.hbb.imsm .imsa-preview .n.l2 { fill: var(--surface); stroke: var(--primary); stroke-width: 2; }
+.hbb.imsm .imsa-preview .lb { fill: var(--on-surface-var); font: 600 11px var(--font); }
+.hbb.imsm .imsa-maths { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 8px; }
+.hbb.imsm .imsa-maths h4 { margin: 8px 0 0; font-size: 15px; }
+.hbb.imsm .imsa-maths p { margin: 0; color: var(--on-surface-var); }
+.hbb.imsm .imsa-feats { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.hbb.imsm .imsa-ticks { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.hbb.imsm .imsa-ticks li { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; line-height: 20px; }
+.hbb.imsm .imsa-ticks li svg { flex: none; color: var(--primary); margin-top: 1px; }
+.hbb.imsm .imsa-mods { display: flex; flex-direction: column; gap: 10px; }
+.hbb.imsm .imsa-mods > div { display: flex; flex-direction: column; gap: 2px; font-size: 14px; line-height: 20px; }
+.hbb.imsm .imsa-kv { display: flex; flex-direction: column; }
+.hbb.imsm .imsa-kv > div { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid var(--outline-var); font-size: 14px; }
+.hbb.imsm .imsa-kv > div:first-child { border-top: 0; }
+.hbb.imsm .imsa-kv b { text-align: right; overflow-wrap: anywhere; }
+/* the existing tools (Map URLs, Ingest, Rulebooks), recoloured in place */
+.hbb.imsm .imsa.imsa-embed { border: 0; border-radius: 22px; background: var(--surface-c-lowest); outline: 1px solid var(--outline-var); padding: 8px; overflow: hidden; }
+.hbb.imsm.dark .imsa.imsa-embed { background: var(--surface-c-low); }
+@media (max-width: 700px) { .hbb.imsm .imsa-layout { grid-template-columns: 1fr; } .hbb.imsm .imsa-feats { grid-template-columns: 1fr; } }

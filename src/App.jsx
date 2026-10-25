@@ -10,7 +10,7 @@ const Library = React.lazy(() => import('./components/Material/Library')); // th
 const ChatInterface = React.lazy(() => import('./components/Dashboard/ChatInterface'));
 const ImsHome = React.lazy(() => import('./components/Material/Home')); // the home screen in the IMS design (25 Oct)
 const IntelligenceDrawer = React.lazy(() => import('./components/Editor/IntelligenceDrawer').then(m => ({ default: m.IntelligenceDrawer })));
-const AdminPanel = React.lazy(() => import('./components/Admin/AdminPanel').then(m => ({ default: m.AdminPanel })));
+const AdminPanel = React.lazy(() => import('./components/Material/Admin')); // the admin screens in the IMS design (26 Oct); was Admin/AdminPanel
 const CatalogBrowser = React.lazy(() => import('./components/Dashboard/CatalogBrowser'));
 const HnswIndexModal = React.lazy(() => import('./components/Dashboard/HnswIndexModal'));
 import { AnimatePresence, motion, animate } from 'framer-motion';
