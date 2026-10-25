@@ -1303,3 +1303,43 @@
 .hbb.imsm .imsm-head { position: sticky; top: 0; z-index: 6; background: var(--surface); margin-top: -12px; padding-top: 12px; padding-bottom: 4px; box-shadow: 0 0 0 100vmax var(--surface); clip-path: inset(0 -100vmax 0 -100vmax); transition: box-shadow .2s; }
 .hbb.imsm .imsm-head.stuck { border-bottom: 1px solid var(--outline-var); }
 .hbb.imsm .imsm-ptabs { top: var(--imsm-head-h, 0px); }
+
+/* ---- Admin (26 Oct): the admin panel in the IMS design - its own pieces recoloured, IMS chrome around them ---- */
+.imsa {
+  --s: #fdf8f3; --s-lowest: #ffffff; --s-low: #f8f1ea; --s-c: #f2eae2; --s-high: #ece3da; --on-s: #221a13; --on-s-var: #574a40; --line: #ddd0c4;
+  --pri: #2f6b3c; --pri-c: #c4eac0; --on-pri-c: #002110; --sec-c: #d7e8cd; --on-sec-c: #11200f; --grad: linear-gradient(135deg, #3f9a55, #2f7d6a);
+  --font: 'Figtree', 'Noto Emoji', 'Inter', 'Roboto', system-ui, sans-serif; --head-font: 'HB Rustic Delight', 'Noto Emoji', Georgia, serif;
+  --bg-primary: var(--s); --bg-secondary: var(--s); --bg-tertiary: var(--s-c); --bg-elevated: var(--s-high); --bg-overlay: rgba(253, 248, 243, .96);
+  --glass-bg: var(--s-lowest); --glass-bg-light: var(--s-low); --glass-border: var(--line); --glass-border-hover: var(--pri);
+  --text-primary: var(--on-s); --text-secondary: var(--on-s-var); --text-muted: #7a6c61; --text-accent: var(--pri);
+  --accent-indigo: var(--pri); --accent-indigo-light: #4c8a58; --accent-sage: var(--pri); --accent-cyan: var(--pri);
+  --gradient-primary: var(--grad); --gradient-secondary: var(--grad); --font-sans: var(--font);
+  --radius-sm: 10px; --radius-md: 14px; --radius-lg: 20px; --radius-xl: 28px;
+  --shadow-glow: none; --shadow-glow-hover: none; --accent-glow: none;
+  background: var(--s); color: var(--on-s); font-family: var(--font); border-radius: 28px; border: 1px solid var(--line);
+}
+.imsa.dark {
+  --s: #18120d; --s-lowest: #120d09; --s-low: #201a15; --s-c: #251e19; --s-high: #302823; --on-s: #efe0d5; --on-s-var: #d8c3b4; --line: #53453b;
+  --pri: #9fd88a; --pri-c: #1f5129; --on-pri-c: #c4eac0; --sec-c: #354a30; --on-sec-c: #d7e8cd; --grad: linear-gradient(135deg, #a6e07f, #5fc29a);
+  --bg-overlay: rgba(24, 18, 13, .96); --text-muted: #b3a294; --accent-indigo-light: #7fc37a;
+}
+.imsa-head { display: flex; align-items: center; gap: 14px; padding: 18px 20px 14px 24px; border-bottom: 1px solid var(--line); flex: none; flex-wrap: wrap; }
+.imsa-tile { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; color: #fff; background: var(--grad); flex: none; }
+.imsa-head h2 { margin: 0; font-family: var(--head-font); font-weight: 400; font-size: 34px; line-height: 40px; color: var(--pri); }
+.imsa-sub { flex: 1; min-width: 160px; font-size: 14px; color: var(--on-s-var); }
+.imsa-close { width: 44px; height: 44px; border: 0; border-radius: 50%; background: transparent; color: var(--on-s-var); display: grid; place-items: center; cursor: pointer; flex: none; }
+.imsa-close:hover { background: var(--s-high); color: var(--on-s); }
+.imsa-tabs { padding: 12px 20px; border-bottom: 1px solid var(--line); flex: none; }
+.imsa .imsa-tabs .mode-switcher { background: transparent !important; border: 0 !important; padding: 0 !important; gap: 8px !important; }
+.imsa .imsa-tabs .mode-item { flex: none; height: 38px; padding: 0 14px; border-radius: 10px !important; border: 1px solid var(--line) !important; background: transparent !important; color: var(--on-s-var) !important; font: 600 14px var(--font) !important; gap: 8px; box-shadow: none !important; white-space: nowrap; }
+.imsa .imsa-tabs .mode-item:hover { color: var(--on-s) !important; border-color: var(--pri) !important; }
+.imsa .imsa-tabs .mode-item.active { background: var(--sec-c) !important; color: var(--on-sec-c) !important; border-color: transparent !important; }
+.imsa input:not([type=checkbox]):not([type=radio]):not([type=range]), .imsa select, .imsa textarea { border-radius: 12px !important; font-family: var(--font) !important; }
+.imsa button { font-family: var(--font); }
+.imsa h3, .imsa h4 { font-family: var(--font); }
+.imsa .italic { font-style: normal !important; }
+@media (max-width: 700px) {
+  .imsa { width: calc(100vw - 16px) !important; height: calc(100dvh - 16px) !important; border-radius: 22px; }
+  .imsa-head h2 { font-size: 28px; }
+  .imsa-sub { display: none; }
+}

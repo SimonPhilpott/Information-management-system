@@ -8,6 +8,8 @@ import { RulebookScraper } from './RulebookScraper';
 import { IMPORTANCE_TIERS } from '../Editor/IntelligenceDrawer';
 import { Tooltip } from '../Dashboard/CursorHover';
 import { useDraggableScroll } from '../../hooks/useDraggableScroll';
+import '../HomebrewBeta/hbb.css'; // the IMS fonts
+import '../Material/ims-m.css'; // .imsa: the admin panel in the IMS design (26 Oct)
 
 const TreeItem = ({ node, nodes, level = 0, onSelect }) => {
   const [isOpen, setIsOpen] = useState(level < 1);
@@ -212,24 +214,22 @@ export const AdminPanel = ({
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-        className="relative w-[calc(100vw-100px)] h-[calc(100vh-100px)] max-w-none rounded-[var(--radius-xl)] shadow-2xl flex flex-col overflow-hidden border border-[var(--glass-border)] bg-[var(--bg-secondary)] backdrop-blur-[40px] z-10 text-[var(--text-primary)]"
+        className={`imsa ${theme === 'dark' ? 'dark' : ''} relative w-[calc(100vw-100px)] h-[calc(100vh-100px)] max-w-none shadow-2xl flex flex-col overflow-hidden z-10`}
         onMouseDown={e => e.stopPropagation()}
         onPointerDown={e => e.stopPropagation()}
         onClick={e => e.stopPropagation()}
       >
         {/* Header bar */}
-        <div className="p-6 border-b border-[var(--glass-border)] flex justify-between items-center bg-[var(--bg-elevated)]/30">
-            <div className="flex flex-col">
-                <div className="flex items-center gap-3">
-                    <Layers size={16} className="text-[var(--accent-cyan)]" />
-                    <h2 className="text-lg font-bold italic tracking-tight text-[var(--text-primary)]">Admin Panel</h2>
-                </div>
-            </div>
-            <button onClick={onClose} className="p-2 hover:bg-[var(--glass-border)] rounded-full transition-colors text-[var(--text-muted)] hover:text-[var(--text-primary)]"><X size={22} /></button>
+        {/* Header (26 Oct: in the IMS design - the tile, the heading font, a round close button) */}
+        <div className="imsa-head">
+            <span className="imsa-tile"><Layers size={22} /></span>
+            <h2>Admin</h2>
+            <span className="imsa-sub">The library's structure, imports, sharing and checkpoints</span>
+            <button onClick={onClose} className="imsa-close" aria-label="Close admin" title="Close"><X size={22} /></button>
         </div>
 
         {/* Tab Selector Mode Switcher */}
-         <div className="px-6 py-4 border-b border-[var(--glass-border)] bg-[var(--bg-secondary)]/50">
+         <div className="imsa-tabs">
             <div 
                ref={scrollRef}
                {...handlers}
@@ -243,7 +243,6 @@ export const AdminPanel = ({
                <div 
                  onClick={() => !isDragging && setActiveTab('features')}
                  className={`mode-item ${activeTab === 'features' ? 'active' : ''}`}
-                 style={activeTab === 'features' ? { background: 'rgba(168, 85, 247, 0.15)', border: '1px solid rgba(168, 85, 247, 0.35)', color: '#c084fc' } : {}}
                >
                  <Sparkles size={14} />
                  <span>Features</span>
@@ -272,7 +271,6 @@ export const AdminPanel = ({
                <div 
                  onClick={() => !isDragging && setActiveTab('scraper')}
                  className={`mode-item ${activeTab === 'scraper' ? 'active' : ''}`}
-                 style={activeTab === 'scraper' ? { background: 'rgba(6, 182, 212, 0.15)', border: '1px solid rgba(6, 182, 212, 0.25)', color: '#06b6d4' } : {}}
                >
                  <Terminal size={14} />
                  <span>Rulebooks</span>
@@ -294,7 +292,6 @@ export const AdminPanel = ({
                <div 
                  onClick={() => !isDragging && setActiveTab('bin')}
                  className={`mode-item ${activeTab === 'bin' ? 'active' : ''}`}
-                 style={activeTab === 'bin' ? { background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#ef4444' } : {}}
                >
                  <Trash2 size={14} />
                  <span>Deleted</span>
@@ -316,7 +313,6 @@ export const AdminPanel = ({
                <div 
                  onClick={() => !isDragging && setActiveTab('checkpoints')}
                  className={`mode-item ${activeTab === 'checkpoints' ? 'active' : ''}`}
-                 style={activeTab === 'checkpoints' ? { background: 'rgba(6, 182, 212, 0.15)', border: '1px solid rgba(6, 182, 212, 0.25)', color: '#06b6d4' } : {}}
                >
                  <History size={14} />
                  <span>Checkpoints</span>
