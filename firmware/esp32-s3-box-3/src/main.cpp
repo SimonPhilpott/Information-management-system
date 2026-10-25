@@ -2694,7 +2694,7 @@ static bool footerSpriteReady = false;
 // the left of the tile when there's room. Each column is drawn off screen and pushed in one go.
 static LGFX_Sprite leftColSprite(&tft), rightColSprite(&tft);
 static bool colSpritesTried = false, leftColReady = false, rightColReady = false;
-#define TILE 28 // 26 Oct: near the cog's 30px - the most five a side allow between the strips
+#define TILE 27 // 26 Oct: five a side with an even 4px between them and above the weather pill
 #define TILE_PITCH 31 // the last tile ends at 200, where the bottom strip starts
 #define TILE_TOP 48 // screen y of the first tile: right under the top strip, the last ends at the notes
 #define LEFT_COL_W 54
