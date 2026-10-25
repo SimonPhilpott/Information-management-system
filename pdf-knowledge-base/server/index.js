@@ -1149,6 +1149,18 @@ HardwareTcpClient.CLOSED = HardwareTcpClient.prototype.CLOSED = 3;
 // hour and a drop mid-reply cuts the reply off (13 Oct, the day report) - this says which side ended it.
 let linkDrops = []; // times the Box-3's link dropped, for the link watchdog below
 const tcpLog = (line) => { try { writeDebugLog(`[${new Date().toISOString()}] [HardwareTCP] ${line}\n`); } catch (_) { } };
+// A restart (a firmware flash, a power cut) drops the link too, but that isn't a flaky link: the device's boot
+// heartbeat forgets the drop it caused and undoes a pause it led to (26 Oct: three flashes in ten minutes paused
+// the camera for half an hour, and Ims's eyes stopped following Simon).
+let watchdogPausedAt = 0;
+function forgiveRestartDrop() {
+  linkDrops.pop();
+  if (watchdogPausedAt && Date.now() - watchdogPausedAt < 3 * 60000) {
+    watchdogPausedAt = 0;
+    pauseCamera(0);
+    tcpLog('LINK WATCHDOG: that drop was the Box-3 restarting, not a flaky link - camera resumed');
+  }
+}
 
 const hardwareTcpServer = net.createServer((socket) => {
   socket.setNoDelay(true);
@@ -1176,6 +1188,7 @@ const hardwareTcpServer = net.createServer((socket) => {
       while (linkDrops.length && now - linkDrops[0] > 10 * 60000) linkDrops.shift();
       if (linkDrops.length >= 3 && !getCameraStatus().pausedUntil) {
         pauseCamera(30);
+        watchdogPausedAt = now;
         tcpLog(`LINK WATCHDOG: ${linkDrops.length} drops in 10 min - camera paused for 30 min to keep Ims's voice link up`);
         linkDrops = [];
       }
@@ -1476,6 +1489,7 @@ const debugMicServer = http.createServer((req, res) => {
         res.writeHead(200).end('ok');
       } else if (kind === 'heartbeat') {
         heartbeat({ boot: req.url.includes('boot=1') });
+        if (req.url.includes('boot=1')) forgiveRestartDrop();
         pushScheduleStatus();
         res.writeHead(200).end('ok');
       } else if (kind === 'log') {

@@ -2733,9 +2733,9 @@ void drawSideIcons() {
       camChipX0 = RIGHT_COL_X; camChipX1 = 320;
       camChipY0 = TILE_TOP + 3 * TILE_PITCH - 4; camChipY1 = camChipY0 + TILE + 8;
     } else { camChipX0 = camChipX1 = camChipY0 = camChipY1 = -1; }
-    if (nsDbPct > 70.0f) { // Nightscout filling up: only shown once it needs attention
-      const bool red = nsDbPct > 90.0f;
-      if (red) TILE_ICON(g, db, ix, slot(4), TC_RED); else TILE_ICON(g, db, ix, slot(4), TC_ORANGE);
+    if (nsDbPct >= 0.0f) { // Nightscout space, always (26 Oct): green to 70%, orange to 90%, red above
+      const int lvl = nsDbPct > 90.0f ? 2 : nsDbPct > 70.0f ? 1 : 0;
+      if (lvl == 2) TILE_ICON(g, db, ix, slot(4), TC_RED); else if (lvl == 1) TILE_ICON(g, db, ix, slot(4), TC_ORANGE); else TILE_ICON(g, db, ix, slot(4), TC_GREEN);
       char dbBuf[8];
       snprintf(dbBuf, sizeof(dbBuf), "%.0f%%", nsDbPct);
       g.setTextSize(1);
@@ -2743,7 +2743,7 @@ void drawSideIcons() {
       const int tw = g.textWidth(dbBuf);
       if (ix - 2 - tw >= ox - 2) { // only when it fits between the face (it ends at x 266) and the tile
         g.setTextDatum(middle_right);
-        g.setTextColor(red ? g.color565(TC_RED) : g.color565(TC_ORANGE), bg);
+        g.setTextColor(lvl == 2 ? g.color565(TC_RED) : lvl == 1 ? g.color565(TC_ORANGE) : g.color565(TC_GREEN), bg);
         g.drawString(dbBuf, ix - 2, slot(4) + TILE / 2);
       }
       g.setTextDatum(top_left);
