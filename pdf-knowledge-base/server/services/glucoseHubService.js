@@ -245,15 +245,40 @@ export function getSummary(days = 14) {
   };
 }
 
-// Last night, midnight to 6am.
+// When the watch says he got up this morning (Garmin's sleep end), or null
+function garminWokeAt(today) {
+  try {
+    const row = db.prepare('SELECT metrics FROM garmin_daily WHERE date = ?').get(today);
+    const end = Number(JSON.parse(row?.metrics || '{}').sleepEnd);
+    return end && londonDay(end) === today && end <= Date.now() ? end : null;
+  } catch { return null; }
+}
+
+// Last night, midnight to 6am (London time - 6am is found by the clock, so the night the clocks change is right), and
+// the level when he woke. 25 Oct 2026, Simon: "he said my waking glucose, but the value he gave was wrong" - it was the
+// last reading before 6am (8.7, and 5am that night as the clocks went back), when he actually got up at 08:21 on 4.8.
+// Waking now means Garmin's sleep end; without it, the 6am reading is given as that, not as waking.
 export function getOvernight() {
   const today = londonDay(Date.now());
-  const from = dayStart(today), to = from + 6 * 3600000;
-  if (Date.now() < to - 5 * 3600000) return null;
+  const from = dayStart(today);
+  let to = from + 6 * 3600000;
+  for (const off of [0, -3600000, 3600000]) if (londonDay(to + off) === today && londonHour(to + off) === 6) { to += off; break; }
+  if (Date.now() < from + 3600000) return null;
   const rs = readings(from, Math.min(to, Date.now()));
   const s = statsOf(rs, Math.min(to, Date.now()) - from);
   if (!s || s.coveragePct < 40) return null;
-  return { inRangePct: s.inRangePct, mean: s.mean, min: s.min, max: s.max, lows: lowEvents(rs).length, endValue: rs[rs.length - 1].v, thresholds: s.thresholds };
+  const near = (t) => readings(t - 20 * 60000, t + 20 * 60000).sort((a, b) => Math.abs(a.t - t) - Math.abs(b.t - t))[0] || null;
+  const woke = garminWokeAt(today);
+  const wake = woke ? near(woke) : null;
+  const sixAm = Date.now() >= to ? near(to) : null;
+  return {
+    inRangePct: s.inRangePct, mean: s.mean, min: s.min, max: s.max, lows: lowEvents(rs).length, thresholds: s.thresholds,
+    // the waking level (null when there's no wake time from the watch, or no reading near it)
+    endValue: wake ? wake.v : null,
+    wokeAt: wake ? woke : null,
+    wokeAtText: wake ? london(woke, { hour: '2-digit', minute: '2-digit' }) : null,
+    sixAmValue: sixAm ? sixAm.v : rs[rs.length - 1].v,
+  };
 }
 
 export function getDay(day) {

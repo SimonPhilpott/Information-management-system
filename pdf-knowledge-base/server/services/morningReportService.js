@@ -999,9 +999,14 @@ async function buildGlucoseOvernightSection(section, context) {
       if (filters.includeTir !== false) bits.push(`${n.inRangePct}% in range`);
       if (filters.includeMinGlucose !== false) bits.push(`lowest ${n.min}`);
       if (filters.includeHypoCount !== false && n.lows) bits.push(`${n.lows} low spell${n.lows > 1 ? 's' : ''}`);
-      if (filters.includeWakingLevel !== false && n.endValue != null) bits.push(`woke at ${n.endValue} mmol/L`);
+      if (filters.includeWakingLevel !== false) {
+        // the waking level is the reading when the watch says he got up; without that, it's the 6am reading - never call that waking
+        if (n.endValue != null) bits.push(`waking glucose ${n.endValue} mmol/L (when he got up at ${n.wokeAtText})`);
+        else if (n.sixAmValue != null) bits.push(`${n.sixAmValue} mmol/L at 6am (his waking time isn't known - don't call this his waking level)`);
+      }
 
-      let line = `Overnight glucose summary: ${bits.join(', ')}.`;
+      const th = n.thresholds || {};
+      let line = `Overnight glucose summary (midnight to 6am; in range here means his own range, ${th.low ?? 3.9}-${th.high ?? 10} mmol/L): ${bits.join(', ')}.`;
       if (section.customNote?.trim()) line += ` Note: ${section.customNote.trim()}.`;
       return line;
     }

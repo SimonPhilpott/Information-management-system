@@ -366,7 +366,7 @@ function Body({ theme }) {
           {summary?.overnight && (
             <section className="imsm-card">
               <div className="imsm-row" style={{ justifyContent: 'space-between' }}><h3><Icon n="moon" size={20} />Last night</h3><span className={`tag ${summary.overnight.inRangePct >= 70 ? 'good' : 'warn'}`}>{summary.overnight.inRangePct}% in range</span></div>
-              <p style={{ margin: 0 }}>Lowest {summary.overnight.min}, and you woke at {summary.overnight.endValue} mmol/L.</p>
+              <p style={{ margin: 0 }}>Lowest {summary.overnight.min}, and {summary.overnight.endValue != null ? `you woke at ${summary.overnight.wokeAtText} on ${summary.overnight.endValue}` : `${summary.overnight.sixAmValue} at 6am`} mmol/L.</p>
             </section>
           )}
           <section className="imsm-card">

@@ -966,7 +966,7 @@ export default function GlucosePortal({ theme = 'dark', onThemeToggle, setCurren
           {summary?.overnight && (
             <div className="flex items-start gap-2 text-xs"><Moon size={14} className="mt-0.5 text-indigo-400" />
               <div><div className="text-[10px] font-black uppercase tracking-wider text-slate-500">Last night</div>
-                {summary.overnight.inRangePct}% in range · lowest {summary.overnight.min} · woke at {summary.overnight.endValue}</div></div>
+                {summary.overnight.inRangePct}% in range · lowest {summary.overnight.min} · {summary.overnight.endValue != null ? `woke at ${summary.overnight.wokeAtText} on ${summary.overnight.endValue}` : `${summary.overnight.sixAmValue} at 6am`}</div></div>
           )}
         </div>
 
