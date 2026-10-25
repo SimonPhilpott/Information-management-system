@@ -881,7 +881,7 @@ static uint8_t *playbackQueueStorage = nullptr;
 // weather, date, glucose), the status icons down the left (alarm, timer, reminder, birthday, new music, camera)
 // and the calendar icons down the right (sensor, pod, prescription, Nightscout DB) with the face between them
 // (12x8 dots at an 18px pitch, x 54-266, y 50-190), and the notes in a strip along the bottom.
-#define MAIN_TOP_H 36
+#define MAIN_TOP_H 48 // the whole space above the face (it starts at y 50), so the strip's items sit in its middle
 #define MAIN_FOOT_Y 204
 // A fired timer / alarm / reminder fills the screen below the top strip until it's tapped (or 2 minutes pass).
 static bool alertCardActive = false;
@@ -2574,7 +2574,7 @@ static int infoUpcomingCount = 0;
 static void drawWeatherIcon(LovyanGFX &g, int x, int y, const char *kind) {
   const uint16_t sun = g.color565(255, 200, 60), cloud = g.color565(170, 180, 200), rain = g.color565(90, 160, 255),
                  moon = g.color565(210, 215, 235), snow = g.color565(235, 240, 255), bolt = g.color565(255, 220, 80);
-  const uint16_t bg = g.color565(15, 18, 26);
+  const uint16_t bg = g.color565(11, 14, 21);
   if (!strcmp(kind, "sun")) { g.fillCircle(x + 8, y + 8, 4, sun); for (int a = 0; a < 8; a++) { float r = a * PI / 4; g.drawLine(x + 8 + cosf(r) * 6, y + 8 + sinf(r) * 6, x + 8 + cosf(r) * 8, y + 8 + sinf(r) * 8, sun); } return; }
   if (!strcmp(kind, "moon")) { g.fillCircle(x + 8, y + 8, 6, moon); g.fillCircle(x + 11, y + 6, 5, bg); return; }
   if (!strcmp(kind, "partsun")) { g.fillCircle(x + 5, y + 5, 4, sun); }
@@ -2602,7 +2602,7 @@ static bool footerSpriteReady = false;
 static LGFX_Sprite leftColSprite(&tft), rightColSprite(&tft);
 static bool colSpritesTried = false, leftColReady = false, rightColReady = false;
 #define SIDE_TOP (MAIN_TOP_H + 6)
-#define SIDE_PITCH 26
+#define SIDE_PITCH 24
 #define LEFT_COL_W 52
 #define RIGHT_COL_X 268
 #define LEFT_ICON_X 10
@@ -2680,7 +2680,7 @@ void drawSideIcons() {
   }
 }
 
-// The bottom strip (26 Oct): just the notes - the unmute hint, else the rolling notes (3.5 s each), else the
+// The bottom strip (26 Oct): the weather at the right, and the notes - the unmute hint, else the rolling notes (3.5 s each), else the
 // soonest timer counting down, else what's next today - in the same size as the rest. Pushed once a second.
 void drawFooterClock() {
   applyNightBrightness();
@@ -2709,17 +2709,32 @@ void drawFooterClock() {
     mid = (infoTimerLabel.length() ? infoTimerLabel + " " : String("Timer ")) + tb;
     midCol = g.color565(255, 140, 0);
   } else if (infoNext.length()) mid = infoNext;
+  // the weather at the bottom right
+  int notesRight = 312;
+  g.setTextSize(1);
+  g.setFont(&fonts::DejaVu12);
+  if (infoTempC > -100) {
+    char tb[8];
+    snprintf(tb, sizeof(tb), "%d", infoTempC);
+    g.setTextDatum(baseline_right);
+    g.setTextColor(g.color565(170, 180, 200), bg);
+    g.drawString(tb, 306, oy + 22);
+    g.drawCircle(309, oy + 14, 2, g.color565(170, 180, 200));
+    const int iconX = 306 - g.textWidth(tb) - 20;
+    drawWeatherIcon(g, iconX, oy + 9, infoWeather);
+    notesRight = iconX - 10;
+  }
   if (mid.length()) {
     g.setTextSize(1);
     g.setFont(&fonts::DejaVu12);
-    const int maxW = 304;
+    const int maxW = notesRight - 10;
     if (g.textWidth(mid) > maxW) {
       while (mid.length() > 3 && g.textWidth(mid + "...") > maxW) mid = mid.substring(0, mid.length() - 1);
       mid += "...";
     }
-    g.setTextDatum(baseline_center);
+    g.setTextDatum(baseline_left);
     g.setTextColor(midCol, bg);
-    g.drawString(mid, 160, oy + 22);
+    g.drawString(mid, 10, oy + 22);
     g.setFont(&fonts::Font0);
     g.setTextDatum(top_left);
   }
@@ -2772,12 +2787,13 @@ void drawVoiceDaemonIndicator() {
   drawTopStrip();
 }
 
-// The top strip (option A, 25 Oct): the settings gear (same tap zone as before), the time, the weather and the
-// date where they fit, a note only when something needs attention (no Wi-Fi, the voice service down, an update
+// The top strip (option A, 25 Oct; 26 Oct: the full height above the face, items centred in it): the settings
+// gear (same tap zone as before), the time and the date ("Mon 26 Oct '26"), a note only when something needs attention (no Wi-Fi, the voice service down, an update
 // going on), and the glucose as a coloured pill with its arrow.
 static LGFX_Sprite topSprite(&tft);
 static bool topSpriteReady = false, topSpriteTried = false;
 void drawTopStrip() {
+  const int TOP_BASE = MAIN_TOP_H / 2 + 7; // DejaVu18 capitals are ~13px: this baseline centres them on the strip
   if (onSettingsScreen) return;
   if (!topSpriteTried) {
     topSpriteTried = true;
@@ -2790,7 +2806,7 @@ void drawTopStrip() {
   const uint16_t bg = g.color565(11, 14, 21);
   g.fillRect(0, 0, 320, MAIN_TOP_H, bg);
   g.setTextSize(1);
-  g.drawXBitmap(HEADER_ICON_CX - 11, 7, cog_icon_22x22, 22, 22, g.color565(110, 120, 140));
+  g.drawXBitmap(HEADER_ICON_CX - 11, MAIN_TOP_H / 2 - 11, cog_icon_22x22, 22, 22, g.color565(110, 120, 140));
 
   // right: the glucose pill, in a dark tint of its own colour
   const uint16_t gc = getGlucoseColor(currentGlucoseValue);
@@ -2802,11 +2818,11 @@ void drawTopStrip() {
   const int aw = twoArrows ? 26 : 18;
   const int pw = 10 + vw + 6 + aw + 10;
   const int px = 320 - 6 - pw;
-  g.fillRoundRect(px, 6, pw, 24, 12, pill);
+  g.fillRoundRect(px, MAIN_TOP_H / 2 - 12, pw, 24, 12, pill);
   g.setTextDatum(baseline_left); // by the baseline: "middle" counts descender space and sits high
   g.setTextColor(gc, pill);
-  g.drawString(currentGlucoseValue, px + 10, 24);
-  drawGlucoseArrows(g, px + 10 + vw + 6 + aw / 2, 18, currentGlucoseDirection, gc);
+  g.drawString(currentGlucoseValue, px + 10, TOP_BASE);
+  drawGlucoseArrows(g, px + 10 + vw + 6 + aw / 2, MAIN_TOP_H / 2, currentGlucoseDirection, gc);
   int limit = px - 8;
 
   // a note only when something is wrong (or an update is going on)
@@ -2819,37 +2835,25 @@ void drawTopStrip() {
   if (warn) {
     g.setTextDatum(baseline_right);
     g.setTextColor(warnCol, bg);
-    g.drawString(warn, limit, 24);
+    g.drawString(warn, limit, TOP_BASE);
     const int wx = limit - g.textWidth(warn) - 9;
-    g.fillCircle(wx, 18, 4, warnCol);
+    g.fillCircle(wx, MAIN_TOP_H / 2, 4, warnCol);
     limit = wx - 12;
   }
 
   // left: the time, then the weather and the date where they fit
   struct tm t;
-  char hm[8] = "--:--", dd[16] = "";
-  if (getLocalTime(&t, 0)) { strftime(hm, sizeof(hm), "%H:%M", &t); strftime(dd, sizeof(dd), "%a %d %b", &t); }
+  char hm[8] = "--:--", dd[20] = "";
+  if (getLocalTime(&t, 0)) { strftime(hm, sizeof(hm), "%H:%M", &t); strftime(dd, sizeof(dd), "%a %d %b '%y", &t); }
   g.setFont(&fonts::DejaVu18);
   g.setTextDatum(baseline_left);
   g.setTextColor(g.color565(236, 230, 221), bg);
-  g.drawString(hm, 44, 24);
+  g.drawString(hm, 44, TOP_BASE);
   int x = 44 + g.textWidth(hm) + 12;
   g.setFont(&fonts::DejaVu18);
-  if (infoTempC > -100) {
-    char tb[8];
-    snprintf(tb, sizeof(tb), "%d", infoTempC);
-    const int need = 19 + g.textWidth(tb) + 6;
-    if (x + need < limit) {
-      drawWeatherIcon(g, x, 9, infoWeather);
-      g.setTextColor(g.color565(170, 180, 200), bg);
-      g.drawString(tb, x + 19, 24);
-      g.drawCircle(x + 19 + g.textWidth(tb) + 3, 13, 2, g.color565(170, 180, 200));
-      x += need + 8;
-    }
-  }
   if (dd[0] && x + g.textWidth(dd) < limit) {
     g.setTextColor(g.color565(130, 138, 156), bg);
-    g.drawString(dd, x, 24);
+    g.drawString(dd, x, TOP_BASE);
   }
   g.setFont(&fonts::Font0);
   g.setTextDatum(top_left);
