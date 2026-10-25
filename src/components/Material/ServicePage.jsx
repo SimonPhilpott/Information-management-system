@@ -20,6 +20,17 @@ function Frame({ title, icon, accent, theme, onThemeToggle, setCurrentPath, fab,
   const { user } = useAuth();
   const scroller = useRef(null);
   const { down } = useScrollState(scroller);
+  // the header stays in view while the page scrolls (26 Oct); a page's own sticky tab row sits just under it
+  const head = useRef(null);
+  useEffect(() => {
+    const el = head.current, sc = scroller.current;
+    if (!el || !sc || typeof ResizeObserver === 'undefined') return undefined;
+    const set = () => sc.style.setProperty('--imsm-head-h', `${el.offsetHeight}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const account = useMenu();
   const go = (to) => { window.history.pushState(null, '', to); if (setCurrentPath) setCurrentPath(to); else window.dispatchEvent(new PopStateEvent('popstate')); };
   const goHome = () => go('/ims');
@@ -30,7 +41,7 @@ function Frame({ title, icon, accent, theme, onThemeToggle, setCurrentPath, fab,
     <div className="imsm-page">
       <div className="scroll" ref={scroller}>
         <div className={`imsm-body ${wide ? 'wide' : ''} ${full ? 'full' : ''}`}>
-          <header className={`imsm-head ${actions ? 'has-acts' : ''}`}>
+          <header ref={head} className={`imsm-head ${actions ? 'has-acts' : ''} ${down ? 'stuck' : ''}`}>
             {!user?.guest && <IconButton icon="back" label={backLabel} onClick={() => go(backTo)} />}
             <span className={`imsm-tile acc-${accent}`}><Icon n={icon} size={26} /></span>
             <h1 className="imsm-title">{title}</h1>

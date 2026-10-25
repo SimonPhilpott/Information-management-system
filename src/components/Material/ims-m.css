@@ -1299,3 +1299,7 @@
 .hbb.imsm .imsh-search-btn:hover { background: var(--surface-c-high); color: var(--on-surface); }
 .hbb.imsm .imsh-search-btn kbd { font: 600 12px/1 var(--font); padding: 5px 8px; border-radius: 8px; background: var(--surface-c-high); color: var(--on-surface-var); border: 1px solid var(--outline-var); }
 @media (max-width: 700px) { .hbb.imsm .imsh-search-btn kbd { display: none; } .hbb.imsm .imsh-rail .radmin { display: none; } }
+/* the header stays in view while scrolling (26 Oct) */
+.hbb.imsm .imsm-head { position: sticky; top: 0; z-index: 6; background: var(--surface); margin-top: -12px; padding-top: 12px; padding-bottom: 4px; box-shadow: 0 0 0 100vmax var(--surface); clip-path: inset(0 -100vmax 0 -100vmax); transition: box-shadow .2s; }
+.hbb.imsm .imsm-head.stuck { border-bottom: 1px solid var(--outline-var); }
+.hbb.imsm .imsm-ptabs { top: var(--imsm-head-h, 0px); }
