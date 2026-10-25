@@ -11,6 +11,9 @@ import { pickSoundscape } from './dndSoundscapes.js';
 // The books in play in an adventure, and the hero's trackers (momentum, stress, sanity ...) - added 25 Oct 2026
 try { db.exec('ALTER TABLE dnd_campaigns ADD COLUMN books_json TEXT'); } catch { /* already there */ }
 try { db.exec('ALTER TABLE dnd_characters ADD COLUMN trackers_json TEXT'); } catch { /* already there */ }
+// progress tracks (Ironsworn's vows, journeys, fights): [{ name, rank, ticks 0-40, done }]
+try { db.exec('ALTER TABLE dnd_characters ADD COLUMN progress_json TEXT'); } catch { /* already there */ }
+const RANK_TICKS = { troublesome: 12, dangerous: 8, formidable: 4, extreme: 2, epic: 1 };
 // whose adventure it is: NULL for Simon, an invited guest's email for theirs
 try { db.exec('ALTER TABLE dnd_campaigns ADD COLUMN owner TEXT'); } catch { /* already there */ }
 export const campaignOwner = (id) => db.prepare('SELECT owner FROM dnd_campaigns WHERE id = ?').get(id);
@@ -342,6 +345,7 @@ export function getCharacter(id) {
   try { r.inventory = JSON.parse(r.inventory_json || '[]'); } catch { r.inventory = []; }
   try { r.spells_or_skills = JSON.parse(r.spells_or_skills_json || '[]'); } catch { r.spells_or_skills = []; }
   try { r.trackers = JSON.parse(r.trackers_json || '[]'); } catch { r.trackers = []; }
+  try { r.progress = JSON.parse(r.progress_json || '[]'); } catch { r.progress = []; }
   return r;
 }
 
@@ -366,6 +370,10 @@ export function updateCharacter(id, updates = {}) {
   if (Array.isArray(updates.trackers)) {
     const clean = updates.trackers.map((t) => ({ name: String(t.name), min: Number(t.min) || 0, max: Number(t.max) || 10, value: Math.max(Number(t.min) || 0, Math.min(Number(t.max) || 10, Number(t.value) || 0)), about: t.about || '' }));
     db.prepare('UPDATE dnd_characters SET trackers_json = ? WHERE id = ?').run(JSON.stringify(clean), id);
+  }
+  if (Array.isArray(updates.progress)) {
+    const clean = updates.progress.filter((p) => p && p.name).map((p) => ({ name: String(p.name).slice(0, 120), rank: RANK_TICKS[String(p.rank || '').toLowerCase()] ? String(p.rank).toLowerCase() : 'dangerous', ticks: Math.max(0, Math.min(40, Number(p.ticks) || 0)), done: Boolean(p.done) }));
+    db.prepare('UPDATE dnd_characters SET progress_json = ? WHERE id = ?').run(JSON.stringify(clean), id);
   }
   return getCharacter(id);
 }
@@ -493,6 +501,7 @@ const TURN_SCHEMA = {
     atmosphere: { type: 'STRING', enum: ATMOSPHERES },
     rules_used: { type: 'ARRAY', items: { type: 'INTEGER' } },
     tables_rolled: { type: 'ARRAY', items: { type: 'STRING' } },
+    progress_changes: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, rank: { type: 'STRING', enum: ['troublesome', 'dangerous', 'formidable', 'extreme', 'epic'] }, marks: { type: 'INTEGER' }, fulfilled: { type: 'BOOLEAN' } }, required: ['name'] } },
     tracker_changes: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, change: { type: 'INTEGER' } }, required: ['name', 'change'] } },
   },
   required: ['scene_title', 'narrative', 'situation', 'options', 'check', 'hp_change', 'mood', 'atmosphere'],
@@ -500,14 +509,14 @@ const TURN_SCHEMA = {
 
 const model = (temperature = 0.85, schema = TURN_SCHEMA) => new GoogleGenerativeAI(config.geminiApiKey).getGenerativeModel({
   model: getModelFor('campaigns') || 'gemini-2.5-flash',
-  generationConfig: { temperature, maxOutputTokens: 4000, responseMimeType: 'application/json', responseSchema: schema },
+  generationConfig: { temperature, maxOutputTokens: 12000, responseMimeType: 'application/json', responseSchema: schema },
 });
 
 function sheetText(ch) {
   if (!ch) return 'No character sheet.';
   return `Name: ${ch.name} | Class/role: ${ch.role_or_class || 'Adventurer'} | Level ${ch.level} | HP ${ch.hp}/${ch.max_hp} | AC ${ch.ac}
 Attributes: ${Object.entries(ch.attributes || {}).map(([k, v]) => `${k} ${v}`).join(', ')}
-Kit: ${(ch.inventory || []).join('; ') || 'nothing'}${(ch.trackers || []).length ? `\nTrackers: ${ch.trackers.map((t) => `${t.name} ${t.value} (${t.min} to ${t.max})`).join(', ')}` : ''}
+Kit: ${(ch.inventory || []).join('; ') || 'nothing'}${(ch.progress || []).length ? `\nProgress tracks: ${ch.progress.map((p) => `${p.name} (${p.rank}, ${Math.floor(p.ticks / 4)}/10 boxes${p.done ? ', fulfilled' : ''})`).join('; ')}` : ''}${(ch.trackers || []).length ? `\nTrackers: ${ch.trackers.map((t) => `${t.name} ${t.value} (${t.min} to ${t.max})`).join(', ')}` : ''}
 Skills & abilities: ${(ch.spells_or_skills || []).join('; ') || 'none'}${ch.notes ? `\nBackstory: ${ch.notes}` : ''}`;
 }
 
@@ -522,6 +531,8 @@ const RULES = `HOW YOU RUN THE GAME:
 - situation: one sentence on where things stand right now.
 - mood: the feeling of this moment, for the narrator's face. atmosphere: the soundscape that suits the scene.
 - RULES FROM HIS BOOKS (when given) are the real rules of his game: follow them over anything you remember, use their terms, numbers and tables, and list the [n] of the passages you actually relied on in rules_used.
+- progress_changes (only if his game uses progress tracks): when he swears a vow, sets out on a journey or starts a fight, open a track - its name and rank; when the rules say to mark progress, give the track's name and marks (how many times progress is marked); when a vow or journey is fulfilled or a fight won by a progress move, fulfilled true. Name existing tracks exactly as on his sheet.
+- When his game has MOVES, frame every check as the move it triggers: check.label is the move's name and check.attribute the stat it rolls (for a choice of stats, the one that fits what he did). Use the move's outcomes from the rules (strong hit, weak hit, miss) - including momentum and the rest.
 - tracker_changes: changes this turn to his trackers (named exactly as on his sheet), e.g. momentum +2 after a strong hit, supply -1 - by the game's rules. Empty if none.
 - FATE DICE (when given) are real rolls: whenever the book or the moment calls for a random table, encounter, loot or event, read it with these dice (in order) instead of choosing, and say what was rolled in tables_rolled, e.g. "Encounter table (d100 37): a starving ghoul". Never invent a roll.`;
 
@@ -543,7 +554,7 @@ async function generateTurn(campaign, { playerAction, diceRoll, oracleResult, op
   const oracle = oracleResult ? `THE ORACLE: he asked "${oracleResult.question}" (odds ${oracleResult.odds}) and fate answered "${oracleResult.outcome}". That answer is true in the world - weave it in.` : '';
   const prompt = `${RULES}
 
-SYSTEM: ${campaign.ruleset_name || 'Solo RPG'} - ${campaign.genre || 'fantasy'}. Dice: ${campaign.dice_system || 'd20'}.${profile.core_mechanic ? `\nHOW ACTIONS RESOLVE: ${profile.core_mechanic}` : ''}${profile.solo_play ? `\nHOW SOLO PLAY WORKS IN IT: ${profile.solo_play}` : ''}${profile.check_dice ? `\nAn ordinary check rolls ${profile.check_dice}.` : ''}${profile.hp_label ? ` Health is "${profile.hp_label}", defence "${profile.defence_label || 'AC'}".` : ''}
+SYSTEM: ${campaign.ruleset_name || 'Solo RPG'} - ${campaign.genre || 'fantasy'}. Dice: ${campaign.dice_system || 'd20'}.${profile.core_mechanic ? `\nHOW ACTIONS RESOLVE: ${profile.core_mechanic}` : ''}${profile.solo_play ? `\nHOW SOLO PLAY WORKS IN IT: ${profile.solo_play}` : ''}${profile.check_dice ? `\nAn ordinary check rolls ${profile.check_dice}.` : ''}${(profile.moves || []).length ? `\nHIS GAME'S MOVES: ${profile.moves.map((m) => `${m.name}${m.stat ? ` (+${m.stat})` : ''}${m.trigger ? `: ${m.trigger}` : ''}`).join('; ')}.` : ''}${profile.hp_label ? ` Health is "${profile.hp_label}", defence "${profile.defence_label || 'AC'}".` : ''}
 CAMPAIGN: "${campaign.title}". ${campaign.setting ? `Premise: ${campaign.setting}` : ''}${inPlay.length ? `\nBOOKS IN PLAY BEYOND THE CORE RULES (use their content; a SETTING is the world this adventure takes place in): ${inPlay.map((f) => `${f.filename.replace(/\.pdf$/i, '')} [${f.role}]${f.adds ? ` - ${f.adds}` : ''}`).join('; ')}. Books not listed are NOT in play.` : ''}
 
 HIS SHEET:
@@ -552,9 +563,14 @@ ${campaign.notes ? `\nTHE STORY SO FAR:\n${campaign.notes}\n` : ''}
 ${passages.length ? `RULES FROM HIS BOOKS:\n${passagesText(passages)}\n\n` : ''}FATE DICE: d6 ${fate.d6.join(', ')}; d8 ${fate.d8}; d10 ${fate.d10}; d12 ${fate.d12}; d20 ${fate.d20.join(', ')}; d66 ${fate.d66}; d100 ${fate.d100.join(', ')}.
 
 ${opening ? `Write the OPENING SCENE: set the scene and drop him straight into the first moment of the adventure with a hook${campaign.setting ? ' that follows the premise' : ''}. Nothing has happened to him yet (hp_change 0, no items).` : `RECENT TURNS:\n${recent}\n\nWHAT HE DOES NOW: "${playerAction}"\n${roll}\n${oracle}`}`;
-  const res = await model().generateContent(prompt);
+  // a reply now and then comes back cut short or malformed: ask once more before giving up
   let out;
-  try { out = JSON.parse(res.response.text()); } catch { throw new Error('The Dungeon Master lost his thread - try that again.'); }
+  for (let attempt = 1; !out; attempt++) {
+    try { out = JSON.parse((await model().generateContent(prompt)).response.text()); } catch (err) {
+      if (attempt >= 2) throw new Error('The Dungeon Master lost his thread - try that again.');
+      console.warn('[DndSolo] turn reply unreadable, asking again:', err.message);
+    }
+  }
   out.options = (out.options || []).filter(Boolean).slice(0, 3);
   out.mood = MOODS.includes(out.mood) ? out.mood : 'neutral';
   out.atmosphere = ATMOSPHERES.includes(out.atmosphere) ? out.atmosphere : null;
@@ -589,8 +605,26 @@ function applyToSheet(character, out) {
     if (value !== t.value) moved.push({ name: t.name, change: value - t.value });
     return { ...t, value };
   });
-  updateCharacter(character.id, { hp, inventory: inv, trackers });
-  return { before, applied: { hp: hp - character.hp, gained, lost, trackers: moved } };
+  // progress tracks: open, mark by rank, fulfil
+  before.progress = character.progress;
+  const marked = [];
+  let progress = [...(character.progress || [])];
+  for (const pc of out.progress_changes || []) {
+    const i = progress.findIndex((p) => p.name.toLowerCase() === String(pc.name).toLowerCase());
+    if (i < 0) {
+      if (!pc.name) continue;
+      progress.push({ name: String(pc.name), rank: pc.rank || 'dangerous', ticks: 0, done: false });
+      marked.push({ name: pc.name, rank: pc.rank || 'dangerous', made: true, ticks: 0 });
+      continue;
+    }
+    const p = progress[i];
+    const add = Math.max(0, Number(pc.marks) || 0) * (RANK_TICKS[p.rank] || 4);
+    const next = { ...p, ticks: Math.min(40, p.ticks + add), done: p.done || Boolean(pc.fulfilled) };
+    if (add || next.done !== p.done) marked.push({ name: p.name, ticks: next.ticks - p.ticks, done: next.done && !p.done });
+    progress[i] = next;
+  }
+  updateCharacter(character.id, { hp, inventory: inv, trackers, progress });
+  return { before, applied: { hp: hp - character.hp, gained, lost, trackers: moved, progress: marked } };
 }
 
 function saveTurn(campaignId, number, playerAction, out, diceRoll, oracleResult, sheet) {
@@ -674,7 +708,7 @@ export function undoLastTurn(campaignId) {
   const last = c.turns[c.turns.length - 1];
   if (!last || last.turn_number === 0) throw new Error('There is nothing to take back.');
   const before = last.scene_state?.before;
-  if (before && c.character) updateCharacter(c.character.id, { hp: before.hp, inventory: before.inventory, ...(before.trackers ? { trackers: before.trackers } : {}) });
+  if (before && c.character) updateCharacter(c.character.id, { hp: before.hp, inventory: before.inventory, ...(before.trackers ? { trackers: before.trackers } : {}), ...(before.progress ? { progress: before.progress } : {}) });
   db.prepare('DELETE FROM dnd_turns WHERE id = ?').run(last.id);
   const prev = c.turns[c.turns.length - 2];
   db.prepare('UPDATE dnd_campaigns SET turn_count = ?, current_scene = ?, updated_at = ? WHERE id = ?')

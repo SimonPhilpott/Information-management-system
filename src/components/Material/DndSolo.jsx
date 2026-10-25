@@ -116,6 +116,22 @@ function Tracker({ t, onChange, small }) {
   );
 }
 
+const RANKS = { troublesome: 12, dangerous: 8, formidable: 4, extreme: 2, epic: 1 };
+function ProgressTrack({ p, onMark, onRoll }) {
+  return (
+    <div className="imsd-progress">
+      <div className="top"><span className="nm">{p.name}</span>{p.rank && <span className="tag">{p.rank}</span>}{p.done && <span className="tag good">fulfilled</span>}</div>
+      <div className="boxes" aria-label={`${p.name}: ${Math.floor((p.ticks || 0) / 4)} of 10`}>
+        {Array.from({ length: 10 }, (_, i) => { const t = Math.max(0, Math.min(4, (p.ticks || 0) - i * 4)); return <i key={i} className={`t${t}`} />; })}
+      </div>
+      {(onMark || onRoll) && !p.done && <div className="imsm-row">
+        {onMark && <Btn kind="text" icon="add" onClick={() => onMark(p)}>Mark progress</Btn>}
+        {onRoll && <Btn kind="text" icon="dice" onClick={() => onRoll(p)}>Progress roll</Btn>}
+      </div>}
+    </div>
+  );
+}
+
 function RollBadge({ r }) {
   if (!r) return null;
   const dice = [...(r.rolls || []), ...(r.secondRoll != null ? [r.secondRoll] : [])];
@@ -172,6 +188,7 @@ function Turn({ t, hero, profile, first, narrator, onPage }) {
         {(a.gained || []).map((g) => <span key={`g${g}`} className="tag good"><Icon n="add" size={15} />{g}</span>)}
         {(a.lost || []).map((g) => <span key={`l${g}`} className="tag warn"><Icon n="remove" size={15} />{g}</span>)}
         {(a.trackers || []).map((x) => <span key={`t${x.name}`} className={`tag ${x.change > 0 ? 'good' : 'warn'}`}><Icon n="chart" size={15} />{x.name} {sign(x.change)}</span>)}
+        {(a.progress || []).map((x) => <span key={`p${x.name}`} className="tag good"><Icon n="flag" size={15} />{x.made ? `New ${x.rank || ''} track: ${x.name}` : x.done ? `${x.name} - fulfilled` : `${x.name} +${x.ticks / 4 >= 1 ? `${x.ticks / 4} box${x.ticks > 4 ? 'es' : ''}` : `${x.ticks} tick${x.ticks > 1 ? 's' : ''}`}`}</span>)}
         {(s.tables_rolled || []).map((x) => <span key={x} className="tag imsd-table"><Icon n="dice" size={15} />{x}</span>)}
         <Sources list={s.rules} onOpen={onPage} />
         <span className="grow" />
@@ -346,6 +363,37 @@ function Body({ isOwner = false }) {
     const { n, sides } = parseDice(value == null && dice ? dice : how.dice);
     return throwDice({ die: `d${sides}`, count: n, mod: how.mod, label, dc, under: how.under ?? null });
   };
+  // a progress roll (Ironsworn): the progress score - filled boxes - against the two challenge dice, no action die
+  const progressRoll = async (p) => {
+    if (rolling) return null;
+    setRolling(true); setResult(null);
+    const f = await tray.current?.roll(['d10', 'd10']);
+    setRolling(false);
+    if (!f) return null;
+    const score = Math.floor((p.ticks || 0) / 4), c1 = f[0] || 10, c2 = f[1] || 10;
+    const beats = (score > c1 ? 1 : 0) + (score > c2 ? 1 : 0);
+    const r = { label: `Progress: ${p.name}`, formula: 'Progress roll', total: score, challenge: [c1, c2], outcome: `${beats === 2 ? 'Strong hit' : beats === 1 ? 'Weak hit' : 'Miss'}${c1 === c2 ? ' with a match' : ''}`, success: beats === 2 ? true : beats === 0 ? false : null, detail: `progress ${score} vs ${c1} and ${c2}` };
+    setResult(r);
+    dndAudio.playSfx(beats === 2 ? 'critical_hit' : beats === 0 ? 'fumble' : 'shield_block');
+    return r;
+  };
+  const rollProgress = async (p) => { const r = await progressRoll(p); if (r) setTimeout(() => send(`I make a progress roll for ${p.name}`, r), 1100); };
+  const markProgress = (p) => send(`I mark progress on ${p.name}`, null);
+  // one of the game's moves: rolled with the stat it calls for (asked which, if it offers a choice)
+  const [moveAsk, setMoveAsk] = useState(null);
+  const doMove = async (m, statName = null) => {
+    const stats = String(m.stat || '').split(/\s*(?:\||,|\bor\b|\/)\s*/i).map((x) => x.trim()).filter(Boolean);
+    if (/progress/i.test(m.stat || '')) { setMoveAsk({ move: m, progress: true }); return; }
+    // a move with no roll (Pay the Price, Ask the Oracle, Reach a Milestone): just make it
+    if (!stats.length || stats.every((x) => /^none$/i.test(x))) { setMoveAsk(null); send(input.trim() || m.name, null); return; }
+    const pick = statName || (stats.length === 1 ? stats[0] : null);
+    if (stats.length > 1 && !pick) { setMoveAsk({ move: m, stats }); return; }
+    setMoveAsk(null);
+    const all = [...Object.entries(hero?.attributes || {}), ...(hero?.trackers || []).map((t) => [t.name, t.value]), ...(hero ? [[profile.hp_label || 'Health', hero.hp], ['Health', hero.hp]] : [])];
+    const found = pick ? all.find(([k]) => k.toLowerCase() === pick.toLowerCase()) : null;
+    const r = await resolve({ statName: found?.[0] || pick, value: found ? found[1] : 0, label: m.name });
+    if (r) setTimeout(() => send(input.trim() || `${m.name}${found ? ` (+${found[0]})` : ''}`, r), 1100);
+  };
   // the check Rindewind asked for: rolled the game's way with the stat it uses, then sent as the move
   const rollCheck = async (check) => {
     const stat = check.attribute && hero ? [...Object.entries(hero.attributes || {}), ...(hero.trackers || []).map((t) => [t.name, t.value])].find(([k]) => k.toLowerCase() === check.attribute.toLowerCase()) : null;
@@ -450,6 +498,7 @@ function Body({ isOwner = false }) {
           <span className="muted">{hero.role_or_class} · level {hero.level} · {profile.defence_label || 'AC'} {hero.ac}</span>
           <HpBar hp={hero.hp} max={hero.max_hp} label={profile.hp_label || 'HP'} />
           {(hero.trackers || []).map((t) => <Tracker key={t.name} t={t} small />)}
+          {(hero.progress || []).filter((p) => !p.done).map((p) => <ProgressTrack key={p.name} p={p} onMark={markProgress} onRoll={rollProgress} />)}
           <div className="imsm-row"><Btn kind="tonal" icon="remove" onClick={() => setHp(-1)}>Hurt</Btn><Btn kind="tonal" icon="add" onClick={() => setHp(1)}>Heal</Btn></div>
         </section>
       )}
@@ -493,6 +542,28 @@ function Body({ isOwner = false }) {
                   <Btn icon="dice" busy={rolling} onClick={() => rollCheck(state.check)}>Roll it</Btn>
                 </div>
               )}
+              {!!profile.moves?.length && !busy && (
+                <details className="imsd-moves">
+                  <summary><Icon n="bolt" size={18} /><span>Moves</span><small>{profile.moves.length}</small><Icon n="down" size={20} /></summary>
+                  <div className="list">{profile.moves.map((m) => (
+                    <button key={m.name} type="button" className="sl" onClick={() => doMove(m)} title={m.trigger || m.name}>
+                      <b>{m.name}</b><small>{m.stat ? `+${m.stat}` : ''}{m.page ? ` · p.${m.page}` : ''}</small>
+                    </button>
+                  ))}</div>
+                </details>
+              )}
+              {moveAsk && (
+                <div className="imsd-check">
+                  <span className="ic" aria-hidden="true"><Icon n="bolt" size={22} /></span>
+                  <span className="txt"><span className="imsd-kicker">{moveAsk.move.name}</span><b>{moveAsk.progress ? 'Which track?' : 'Roll with which stat?'}</b><small>{moveAsk.move.trigger}</small></span>
+                  <span className="imsm-row">
+                    {moveAsk.progress
+                      ? (hero?.progress || []).filter((p) => !p.done).map((p) => <Btn key={p.name} kind="tonal" onClick={() => { setMoveAsk(null); rollProgress(p); }}>{p.name}</Btn>)
+                      : moveAsk.stats.map((st) => <Btn key={st} kind="tonal" onClick={() => doMove(moveAsk.move, st)}>{st}</Btn>)}
+                    <IconButton icon="close" label="Never mind" onClick={() => setMoveAsk(null)} />
+                  </span>
+                </div>
+              )}
               {!!state.options?.length && !busy && (
                 <div className="imsd-options">{state.options.map((o, i) => <button key={o} type="button" className="sl" onClick={() => send(o)}><span className="n">{['I', 'II', 'III', 'IV'][i]}</span><span className="o">{o}</span></button>)}</div>
               )}
@@ -513,7 +584,7 @@ function Body({ isOwner = false }) {
         </div>
       )}
 
-      {shownRoom === 'hero' && hero && <HeroRoom hero={hero} profile={profile} onRoll={rollStat} onHp={setHp} onSave={saveHero} />}
+      {shownRoom === 'hero' && hero && <HeroRoom hero={hero} profile={profile} onRoll={rollStat} onHp={setHp} onSave={saveHero} onProgressRoll={(p) => { setRoom('play'); rollProgress(p); }} />}
 
       {shownRoom === 'chronicle' && c && (
         <div className="imsd-chron">
@@ -575,7 +646,9 @@ function Body({ isOwner = false }) {
 }
 
 // ---- Hero ---------------------------------------------------------------------------------------------------------------
-function HeroRoom({ hero, profile, onRoll, onHp, onSave }) {
+function HeroRoom({ hero, profile, onRoll, onHp, onSave, onProgressRoll }) {
+  const [newVow, setNewVow] = useState({ name: '', rank: 'dangerous' });
+  const saveProgress = (list) => onSave({ progress: list });
   const setTracker = (name, value) => onSave({ trackers: hero.trackers.map((t) => (t.name === name ? { ...t, value } : t)) });
   const [item, setItem] = useState('');
   const [notes, setNotes] = useState(hero.notes || '');
@@ -605,6 +678,21 @@ function HeroRoom({ hero, profile, onRoll, onHp, onSave }) {
         <section className="imsm-card">
           <h3><Icon n="chart" size={20} />Trackers</h3>
           {hero.trackers.map((t) => <Tracker key={t.name} t={t} onChange={(v) => setTracker(t.name, v)} />)}
+        </section>
+      )}
+      {(profile.resolution === 'ironsworn' || (hero.progress || []).length > 0) && (
+        <section className="imsm-card">
+          <h3><Icon n="flag" size={20} />Vows and progress</h3>
+          {(hero.progress || []).map((p) => (
+            <ProgressTrack key={p.name} p={p}
+              onMark={() => saveProgress(hero.progress.map((x) => (x.name === p.name ? { ...x, ticks: Math.min(40, (x.ticks || 0) + (RANKS[x.rank] || 4)) } : x)))}
+              onRoll={onProgressRoll} />
+          ))}
+          <div className="imsd-say">
+            <TextField label="Swear a new vow (or start a journey)" value={newVow.name} onChange={(v) => setNewVow((n) => ({ ...n, name: v }))} />
+            <SelectField label="Rank" value={newVow.rank} onChange={(v) => setNewVow((n) => ({ ...n, rank: v }))} options={Object.keys(RANKS)} />
+            <Btn kind="tonal" icon="add" disabled={!newVow.name.trim()} onClick={() => { saveProgress([...(hero.progress || []), { name: newVow.name.trim(), rank: newVow.rank, ticks: 0 }]); setNewVow({ name: '', rank: 'dangerous' }); }}>Add</Btn>
+          </div>
         </section>
       )}
       <section className="imsm-card">
@@ -684,6 +772,15 @@ function RulesRoom({ ruleset, rulesets, onPage, onStudied, err, snack, isOwner }
           <section key={k} className="imsm-card"><h3><Icon n={ic} size={20} />{k}</h3><p style={{ margin: 0 }}>{v}</p></section>
         ))}
       </div>
+      {!!p.moves?.length && (
+        <section className="imsm-card"><h3><Icon n="bolt" size={20} />Its moves</h3>
+          <div className="imsd-tables">{p.moves.map((m) => {
+            const core = (p.files || []).find((f) => f.core);
+            const src = core && m.page ? { id: core.id, book: core.filename.replace(/\.pdf$/i, ''), page: m.page } : null;
+            return <button key={m.name} type="button" className="sl" disabled={!src} onClick={() => src && onPage(src)} title={m.trigger}><b>{m.name}</b><small>{m.stat ? `+${m.stat}` : ''}{m.page ? ` · p.${m.page}` : ''}</small></button>;
+          })}</div>
+        </section>
+      )}
       {!!p.tables?.length && (
         <section className="imsm-card"><h3><Icon n="list" size={20} />Its random tables</h3>
           <div className="imsd-tables">{p.tables.map((t) => {

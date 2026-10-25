@@ -98,6 +98,8 @@ const PROFILE_SCHEMA = {
     check_dice: { type: 'STRING' },
     resolution: { type: 'STRING', enum: ['d20', 'd100-under', 'd6-pool', 'ironsworn', 'sum'] },
     pool_success: { type: 'INTEGER' },
+    moves: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, stat: { type: 'STRING' }, trigger: { type: 'STRING' }, page: { type: 'INTEGER' } }, required: ['name'] } },
+    progress_tracks: { type: 'BOOLEAN' },
     trackers: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, min: { type: 'INTEGER' }, max: { type: 'INTEGER' }, start: { type: 'INTEGER' }, about: { type: 'STRING' } }, required: ['name', 'min', 'max', 'start'] } },
     books_notes: { type: 'ARRAY', items: { type: 'OBJECT', properties: { n: { type: 'INTEGER' }, adds: { type: 'STRING' } }, required: ['n', 'adds'] } },
   },
@@ -108,6 +110,8 @@ const job = { active: false, phase: '', done: 0, total: 0, current: '', error: n
 export const discoveryStatus = () => ({ ...job });
 
 const TOPICS = [
+  'moves: the list of moves or basic actions, their triggers and the stat each one rolls',
+  'progress tracks, vows, journeys and combat progress: ranks and marking progress',
   'core rules: how to resolve an action, roll dice, success and failure',
   'solo play: playing alone, the oracle, asking questions, random events',
   'character creation: creating a character, attributes, starting equipment',
@@ -152,6 +156,8 @@ Write the game's profile:
 - premises: three short, distinct adventure hooks in the game's own spirit.
 - atmosphere: the soundscape that suits it best.
 - resolution: how a check is rolled - "d20" (d20 + modifier against a DC), "d100-under" (roll d100 at or under a stat), "d6-pool" (a pool of d6, successes on high faces - give pool_success, e.g. 6), "ironsworn" (an action die d6 + stat against two d10 challenge dice: strong hit / weak hit / miss), or "sum" (a total of dice + modifier against a target, e.g. 2d6).
+- moves: if the game is built on named moves (Ironsworn, Starforged and other Powered by the Apocalypse style games), every core move - name exactly as in the book, the stat(s) it rolls ("edge|heart|iron|shadow|wits" when you choose; "progress" for a progress move), its trigger in a few words, and the page. Otherwise the game's handful of key named actions, or empty.
+- progress_tracks: true if the game tracks vows, journeys, fights or other goals on progress tracks.
 - trackers: the game's resources and meters beyond health that the sheet must track (e.g. momentum -6..10 starting 2, spirit 0..5, supply 0..5, stress 0..10, sanity, oxygen, morale, gold), each with min, max, start and a few words on what it is. Not health or defence. Empty if none.
 ${extraText.length ? `- books_notes: for each numbered extra book below, one line on what it adds to the game (n = its number). A SETTING is a different world to play the system in - say which world.\n\nEXTRA BOOKS:\n${extraText.join('\n\n')}` : '- books_notes: empty.'}`, PROFILE_SCHEMA, 0.5);
   const tpl = profile.character_template || {};
@@ -160,6 +166,7 @@ ${extraText.length ? `- books_notes: for each numbered extra book below, one lin
     ...meta, ...profile, id: row.id, name: profile.name || row.name,
     character_template: { role_or_class: tpl.role_or_class, hp: tpl.hp, max_hp: tpl.hp, ac: tpl.ac, attributes, inventory: tpl.inventory || [], skills: tpl.skills || [] },
     files: (meta.files || []).map((f) => { const k = extras.indexOf(f); const note = k >= 0 ? (profile.books_notes || []).find((b) => b.n === k + 1) : null; return note ? { ...f, adds: note.adds } : f; }),
+    moves: (profile.moves || []).filter((m) => m.name).slice(0, 60),
     trackers: (profile.trackers || []).filter((t) => t.name && !/^(hp|health|hit points|ac|armou?r|defen[cs]e)$/i.test(t.name.trim())).slice(0, 8),
     sources: [...new Map(passages.map((p) => [`${p.id}:${p.page}`, { id: p.id, book: p.book, page: p.page }])).values()].slice(0, 16),
     grounded, studied_at: new Date().toISOString(),
