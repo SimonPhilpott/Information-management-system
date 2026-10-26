@@ -58,7 +58,9 @@ function facesOf(tris) {
     const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a)).normalize();
     const centre = new THREE.Vector3().add(a).add(b).add(c).divideScalar(3);
     if (n.dot(centre) < 0) n.negate(); // outward
-    const k = `${n.x.toFixed(2)},${n.y.toFixed(2)},${n.z.toFixed(2)}`;
+    // Snap near-zero values to 0 to prevent "-0.00" vs "0.00" key splitting on d10 kite faces
+    const snap = (v) => (Math.abs(v) < 1e-4 ? 0 : Number(v.toFixed(3)));
+    const k = `${snap(n.x)},${snap(n.y)},${snap(n.z)}`;
     if (!groups.has(k)) groups.set(k, { normal: n, ids: new Set() });
     [a, b, c].forEach((v) => groups.get(k).ids.add(vid(v)));
   }
@@ -118,9 +120,9 @@ function faceTexture(kind, face, cornerUv, set) {
     });
   } else {
     const text = label(kind, face.value);
-    const px = { d6: 120, d8: 96, d10: 92, d100t: 74, d12: 92, d20: 78 }[kind] || 90;
+    const px = { d6: 120, d8: 96, d10: 88, d100t: 68, d12: 92, d20: 78 }[kind] || 90;
     g.font = font(px);
-    const y = kind === 'd8' || kind === 'd20' ? S * 0.56 : kind === 'd10' || kind === 'd100t' ? S * 0.6 : S / 2;
+    const y = kind === 'd8' || kind === 'd20' ? S * 0.56 : kind === 'd10' || kind === 'd100t' ? S * 0.55 : S / 2;
     g.fillText(text, S / 2, y);
     if (text === '6' || text === '9') g.fillRect(S / 2 - px * 0.22, y + px * 0.44, px * 0.44, Math.max(5, px * 0.06)); // 6 and 9 told apart
   }
@@ -142,12 +144,34 @@ function buildDie(kind) {
   const pos = [], uv = [], groups = [];
   const materials = [];
   faces.forEach((f, fi) => {
-    // the face's own flat coordinates, scaled into the texture square
-    const u = new THREE.Vector3().subVectors(verts[f.ids[0]], f.centre).normalize();
-    const w = new THREE.Vector3().crossVectors(f.normal, u);
-    if (kind !== 'd4') { // stand the number upright: "up" on the face points at its first corner for even shapes, else along w
-      u.applyAxisAngle(f.normal, kind === 'd6' ? Math.PI / 4 : kind === 'd8' || kind === 'd20' ? -Math.PI / 2 : kind === 'd12' ? -Math.PI / 2 : Math.PI / 2);
-      w.crossVectors(f.normal, u);
+    // Determine proper right-handed (u, w) coordinate frame on each face so numbers stand upright
+    let u, w;
+    if (kind === 'd10' || kind === 'd100t') {
+      // Real d10 / percentile dice: the top of the number points directly toward the kite's sharp apex (pole)
+      let apex = verts[f.ids[0]];
+      for (const id of f.ids) {
+        if (Math.abs(verts[id].y) > Math.abs(apex.y)) apex = verts[id];
+      }
+      w = new THREE.Vector3().subVectors(apex, f.centre).projectOnPlane(f.normal).normalize();
+      u = new THREE.Vector3().crossVectors(w, f.normal).normalize();
+    } else if (kind === 'd6') {
+      const upRef = Math.abs(f.normal.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, -Math.sign(f.normal.y));
+      w = upRef.projectOnPlane(f.normal).normalize();
+      u = new THREE.Vector3().crossVectors(w, f.normal).normalize();
+    } else if (kind === 'd8' || kind === 'd20' || kind === 'd12') {
+      const upRef = Math.abs(f.normal.y) < 0.95 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, -1);
+      const projUp = upRef.projectOnPlane(f.normal).normalize();
+      let bestV = verts[f.ids[0]], bestDot = -2;
+      for (const id of f.ids) {
+        const vDir = new THREE.Vector3().subVectors(verts[id], f.centre).normalize();
+        const dot = vDir.dot(projUp);
+        if (dot > bestDot) { bestDot = dot; bestV = verts[id]; }
+      }
+      w = new THREE.Vector3().subVectors(bestV, f.centre).projectOnPlane(f.normal).normalize();
+      u = new THREE.Vector3().crossVectors(w, f.normal).normalize();
+    } else {
+      u = new THREE.Vector3().subVectors(verts[f.ids[0]], f.centre).normalize();
+      w = new THREE.Vector3().crossVectors(f.normal, u);
     }
     const flat = f.ids.map((i) => { const p = new THREE.Vector3().subVectors(verts[i], f.centre); return [p.dot(u), p.dot(w)]; });
     const R = Math.max(...flat.map(([x, y]) => Math.hypot(x, y))) * 1.02;
