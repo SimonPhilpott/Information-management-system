@@ -440,37 +440,88 @@ function Body({ isOwner = false }) {
   const noGames = campaigns && !campaigns.length;
   const shownRoom = noGames && (room === 'play' || room === 'hero' || room === 'chronicle') ? 'games' : room;
 
-  // ---- the side column (Rindewind, the tray, the oracle, the hero) ----
+  // ---- the side column (condensed Rindewind, hero vitals & attributes, 3D dice tray, collapsible oracle) ----
   const side = (
     <aside className="imsd-side">
       <section className="imsm-card imsd-dm">
         <div className="face">
-          <ChroniclerFace face={{ emotion: mood }} status={narrator.playing ? 'speaking' : busy === 'turn' ? 'thinking' : 'idle'} levelRef={narrator.level} width={168} />
+          <ChroniclerFace face={{ emotion: mood }} status={narrator.playing ? 'speaking' : busy === 'turn' ? 'thinking' : 'idle'} levelRef={narrator.level} width={68} />
         </div>
         <div className="who">
-          <span className="imsd-kicker">Chronicler &amp; Dungeon Master</span>
-          <h3>Rindewind</h3>
-          <span className="muted">{busy === 'turn' ? 'Writing your fate into the vellum...' : narrator.waiting ? 'Clearing his throat...' : narrator.playing ? 'Reading aloud' : state.situation || 'Your Dungeon Master'}</span>
-          <div className="imsm-row">
-            <FilterChip on={autoRead} onClick={() => { const v = !autoRead; setAutoRead(v); try { localStorage.setItem('dnd_autoread', v ? '1' : '0'); } catch { /* ignore */ } }} lead={<Icon n="mic" size={16} />}>Reads each turn</FilterChip>
-            <FilterChip on={sounds.on} onClick={toggleSound} lead={<Icon n="music" size={16} />}>{sounds.on && sounds.track ? sounds.track.title : 'Soundscape'}</FilterChip>
+          <div className="imsm-row" style={{ justifyContent: 'space-between', alignItems: 'baseline', width: '100%' }}>
+            <div>
+              <span className="imsd-kicker">Chronicler &amp; DM</span>
+              <h3>Rindewind</h3>
+            </div>
+            <Btn kind="text" icon="chat" onClick={() => setAskOpen(true)}>Ask</Btn>
+          </div>
+          <span className="muted">{busy === 'turn' ? 'Writing your fate into the vellum...' : narrator.waiting ? 'Clearing his throat...' : narrator.playing ? 'Reading aloud...' : state.situation || 'Your Dungeon Master'}</span>
+          <div className="imsm-row" style={{ gap: '4px' }}>
+            <FilterChip on={autoRead} onClick={() => { const v = !autoRead; setAutoRead(v); try { localStorage.setItem('dnd_autoread', v ? '1' : '0'); } catch { /* ignore */ } }} lead={<Icon n="mic" size={14} />}>Reads turn</FilterChip>
+            <FilterChip on={sounds.on} onClick={toggleSound} lead={<Icon n="music" size={14} />}>{sounds.on && sounds.track ? (sounds.track.title.length > 12 ? `${sounds.track.title.slice(0, 11)}…` : sounds.track.title) : 'Soundscape'}</FilterChip>
             <IconButton icon="tune" label="Choose a soundscape" onClick={() => setSoundOpen(true)} />
           </div>
-          <Btn kind="text" icon="chat" onClick={() => setAskOpen(true)}>Ask Rindewind</Btn>
         </div>
       </section>
 
+      {hero && (
+        <section className="imsm-card imsd-mini">
+          <div className="imsm-row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <div style={{ minWidth: 0 }}>
+              <h3><Icon n="person" size={18} />{hero.name}</h3>
+              <span className="muted" style={{ fontSize: '13px' }}>{hero.role_or_class} · Lv.{hero.level} · {profile.defence_label || 'AC'} {hero.ac}</span>
+            </div>
+            <div className="imsm-row" style={{ gap: '4px' }}>
+              <Btn kind="text" onClick={() => setRoom('hero')}>Full sheet</Btn>
+            </div>
+          </div>
+
+          <div className="imsm-row" style={{ alignItems: 'center', gap: '8px' }}>
+            <div style={{ flex: 1 }}>
+              <HpBar hp={hero.hp} max={hero.max_hp} label={profile.hp_label || 'HP'} />
+            </div>
+            <div className="imsm-row" style={{ gap: '2px', flex: 'none' }}>
+              <IconButton icon="remove" label="Take damage" onClick={() => setHp(-1)} />
+              <IconButton icon="add" label="Heal" onClick={() => setHp(1)} />
+            </div>
+          </div>
+
+          {/* Interactive Character Attributes Pills: Tap any attribute to roll a check */}
+          {hero.attributes && Object.keys(hero.attributes).length > 0 && (
+            <div className="imsd-statpills">
+              {Object.entries(hero.attributes).map(([k, v]) => {
+                const chk = checkFor(profile, v);
+                const modStr = chk.mod != null ? (chk.mod >= 0 ? `+${chk.mod}` : `${chk.mod}`) : (chk.under != null ? `<${chk.under}` : '');
+                return (
+                  <button key={k} type="button" className="imsd-statpill sl" onClick={() => rollStat(k, v)} title={`Roll a ${k} check`}>
+                    <span className="k">{k}</span>
+                    <b className="v">{v}</b>
+                    {modStr && <small className="m">{modStr}</small>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {(hero.trackers || []).slice(0, 2).map((t) => <Tracker key={t.name} t={t} small />)}
+          {(hero.progress || []).filter((p) => !p.done).slice(0, 1).map((p) => <ProgressTrack key={p.name} p={p} onMark={markProgress} onRoll={rollProgress} />)}
+        </section>
+      )}
+
       <section className="imsm-card imsd-dice">
-        <div className="imsm-row" style={{ justifyContent: 'space-between' }}><h3><Icon n="dice" size={20} />The dice tray</h3>{result && <Btn kind="text" icon="add" onClick={() => { setRoll(result); snack('That roll goes with your next move.'); }}>Use with my move</Btn>}</div>
+        <div className="imsm-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3><Icon n="dice" size={18} />The dice tray</h3>
+          {result && <Btn kind="text" icon="add" onClick={() => { setRoll(result); snack('That roll goes with your next move.'); }}>Use with move</Btn>}
+        </div>
         <div className="imsd-traywrap">
-          <DiceTray ref={tray} dark={dark} height={250} onKnock={(s) => dndAudio.knock(s)} />
+          <DiceTray ref={tray} dark={dark} height={135} onKnock={(s) => dndAudio.knock(s)} />
           {result && !rolling && (
             <div className={`imsd-result ${result.isCrit ? 'crit' : result.isFumble ? 'fumble' : ''}`}>
               <b className="num">{result.total}</b>
-              {result.outcome ? <span>{result.outcome}{result.label ? ` · ${result.label}` : ''}</span> : <span>{result.label || result.formula}{result.dc ? ` · ${result.under ? 'needs' : 'DC'} ${result.dc}` : ''}{result.success === true ? ' · success' : result.success === false ? ' · failure' : ''}{result.isCrit ? ' · natural 20!' : result.isFumble ? ' · natural 1' : ''}</span>}
+              {result.outcome ? <span>{result.outcome}{result.label ? ` · ${result.label}` : ''}</span> : <span>{result.label || result.formula}{result.dc ? ` · ${result.under ? 'needs' : 'DC'} ${result.dc}` : ''}{result.success === true ? ' · success' : result.success === false ? ' · failure' : ''}{result.isCrit ? ' · nat 20!' : result.isFumble ? ' · nat 1' : ''}</span>}
             </div>
           )}
-          {!result && !rolling && <div className="imsd-hint">Pick your dice and roll</div>}
+          {!result && !rolling && <div className="imsd-hint">Pick dice and roll</div>}
         </div>
         <div className="imsd-diepick">{DICE.map((d) => <button key={d} type="button" className={`sl ${tray_.die === d ? 'on' : ''}`} onClick={() => setTraySpec((t) => ({ ...t, die: d, adv: d === 'd20' ? t.adv : 'none' }))}>{d}</button>)}</div>
         <div className="imsd-diectl">
@@ -478,30 +529,28 @@ function Body({ isOwner = false }) {
           <span className="stepper"><IconButton icon="remove" label="Lower the modifier" onClick={() => setTraySpec((t) => ({ ...t, mod: t.mod - 1 }))} /><b className="num">{sign(tray_.mod) || '±0'}</b><IconButton icon="add" label="Raise the modifier" onClick={() => setTraySpec((t) => ({ ...t, mod: t.mod + 1 }))} /></span>
           {tray_.die === 'd20' && tray_.count === 1 && <Segmented label="Advantage" value={tray_.adv} onChange={(v) => setTraySpec((t) => ({ ...t, adv: v }))} options={[['dis', 'Dis'], ['none', 'Normal'], ['adv', 'Adv']]} />}
         </div>
-        <Btn icon="dice" busy={rolling} wide onClick={() => throwDice(tray_)}>Roll {tray_.count}{tray_.die}{sign(tray_.mod)}{tray_.adv === 'adv' ? ' with advantage' : tray_.adv === 'dis' ? ' with disadvantage' : ''}</Btn>
+        <Btn icon="dice" busy={rolling} wide onClick={() => throwDice(tray_)}>Roll {tray_.count}{tray_.die}{sign(tray_.mod)}{tray_.adv === 'adv' ? ' with adv' : tray_.adv === 'dis' ? ' with dis' : ''}</Btn>
       </section>
 
-      <section className="imsm-card imsd-oraclecard">
-        <h3><Icon n="eye" size={20} />Ask fate</h3>
-        <TextField label="A yes or no question" value={oq} onChange={setOq} onKeyDown={(e) => { if (e.key === 'Enter') ask(); }} />
-        <SelectField label="How likely?" value={odds} onChange={setOdds} options={ODDS} />
-        <div className="imsm-row"><Btn kind="tonal" icon="eye" disabled={!oq.trim()} onClick={ask}>Ask</Btn>{oAns && <Btn kind="text" icon="add" onClick={() => { setOracle(oAns); snack('Fate’s answer goes with your next move.'); }}>Use with my move</Btn>}</div>
-        {oAns && <div className={`imsd-fate ${/^Yes/.test(oAns.outcome) ? 'yes' : 'no'}`}><b>{oAns.outcome}</b><small>d20 rolled {oAns.roll}, needed {oAns.target} · {oAns.odds}</small></div>}
-      </section>
-
-      {hero && (
-        <section className="imsm-card imsd-mini">
-          <div className="imsm-row" style={{ justifyContent: 'space-between' }}>
-            <h3><Icon n="person" size={20} />{hero.name}</h3>
-            <Btn kind="text" onClick={() => setRoom('hero')}>Full sheet</Btn>
+      <details className="imsm-card imsd-oracle-fold">
+        <summary className="imsd-oracle-sum">
+          <div className="imsm-row" style={{ gap: '8px', alignItems: 'center' }}>
+            <Icon n="eye" size={18} />
+            <h3>Ask fate</h3>
+            {oAns && <span className={`tag imsd-fate-tag ${/^Yes/.test(oAns.outcome) ? 'yes' : 'no'}`}>{oAns.outcome}</span>}
           </div>
-          <span className="muted">{hero.role_or_class} · level {hero.level} · {profile.defence_label || 'AC'} {hero.ac}</span>
-          <HpBar hp={hero.hp} max={hero.max_hp} label={profile.hp_label || 'HP'} />
-          {(hero.trackers || []).map((t) => <Tracker key={t.name} t={t} small />)}
-          {(hero.progress || []).filter((p) => !p.done).map((p) => <ProgressTrack key={p.name} p={p} onMark={markProgress} onRoll={rollProgress} />)}
-          <div className="imsm-row"><Btn kind="tonal" icon="remove" onClick={() => setHp(-1)}>Hurt</Btn><Btn kind="tonal" icon="add" onClick={() => setHp(1)}>Heal</Btn></div>
-        </section>
-      )}
+          <Icon n="down" size={18} className="arrow" />
+        </summary>
+        <div className="imsd-oracle-body">
+          <TextField label="A yes or no question" value={oq} onChange={setOq} onKeyDown={(e) => { if (e.key === 'Enter') ask(); }} />
+          <SelectField label="How likely?" value={odds} onChange={setOdds} options={ODDS} />
+          <div className="imsm-row">
+            <Btn kind="tonal" icon="eye" disabled={!oq.trim()} onClick={ask}>Ask</Btn>
+            {oAns && <Btn kind="text" icon="add" onClick={() => { setOracle(oAns); snack('Fate’s answer goes with your next move.'); }}>Use with move</Btn>}
+          </div>
+          {oAns && <div className={`imsd-fate ${/^Yes/.test(oAns.outcome) ? 'yes' : 'no'}`}><b>{oAns.outcome}</b><small>d20 rolled {oAns.roll}, needed {oAns.target} · {oAns.odds}</small></div>}
+        </div>
+      </details>
     </aside>
   );
 
