@@ -124,6 +124,12 @@ export function handleLiveProxyConnection(ws, isHardware = false, opts = {}) {
   };
 
   const remoteInfo = ws.socket ? `${ws.socket.remoteAddress}:${ws.socket.remotePort}` : (ws._socket ? `${ws._socket.remoteAddress}:${ws._socket.remotePort}` : 'unknown');
+  const isLoopback = remoteInfo.includes('127.0.0.1') || remoteInfo.includes('::1');
+  if (isHardware && isLoopback) {
+    console.warn(`${tag} Ignoring loopback connection from ${remoteInfo} - will not displace hardware session`);
+    try { ws.close(); } catch (_) {}
+    return;
+  }
   console.log(`${tag} Client connected from ${remoteInfo}`);
   logCapture(`[${new Date().toISOString()}] ${tag} CLIENT CONNECTED from ${remoteInfo}\n`);
   if (isHardware) {

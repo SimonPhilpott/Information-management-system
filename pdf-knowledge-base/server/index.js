@@ -1203,6 +1203,15 @@ function forgiveRestartDrop() {
 }
 
 const hardwareTcpServer = net.createServer((socket) => {
+  const isLoopback = socket.remoteAddress === '127.0.0.1' || socket.remoteAddress === '::1' || socket.remoteAddress === '::ffff:127.0.0.1';
+  if (isLoopback) {
+    // Port probe or local health check: close cleanly without instantiating
+    // a HardwareTcpClient or displacing the real physical Box-3 hardware session.
+    socket.on('error', () => {});
+    socket.end();
+    return;
+  }
+
   socket.setNoDelay(true);
   socket.setKeepAlive(true, 10000); // 10s TCP keep-alive probe
   socket.setTimeout(60000); // 60s idle timeout
