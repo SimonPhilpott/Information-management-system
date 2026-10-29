@@ -112,6 +112,10 @@ const P = {
   disk: 'M2 20h20v-4H2v4zm2-3h2v2H4v-2zM2 4v4h20V4H2zm4 3H4V5h2v2zm-4 7h20v-4H2v4zm2-3h2v2H4v-2z',
   hub: 'M17 16l-4-4V8.82C14.16 8.4 15 7.3 15 6c0-1.66-1.34-3-3-3S9 4.34 9 6c0 1.3.84 2.4 2 2.82V12l-4 4H3v5h5v-3.05l4-4.2 4 4.2V21h5v-5h-4z',
   lock: 'M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z',
+  unlock: 'M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z',
+  skull: 'M12 2C7.58 2 4 5.58 4 10c0 2.22.9 4.23 2.36 5.68l.64.64V19c0 .55.45 1 1 1h1v2h8v-2h1c.55 0 1-.45 1-1v-2.68l.64-.64C20.1 14.23 21 12.22 21 10c0-4.42-3.58-8-8-8zm-3 10c-.83 0-1.5-.67-1.5-1.5S8.17 9 9 9s1.5.67 1.5 1.5S9.83 12 9 12zm6 0c-.83 0-1.5-.67-1.5-1.5S14.17 9 15 9s1.5.67 1.5 1.5S15.83 12 15 12zm-3 4c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z',
+  torch: 'M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z',
+  camp: 'M12 2L1 21h22L12 2zm0 4.2L18.8 18H14v-4h-4v4H5.2L12 6.2z',
 };
 export function Icon({ n, size, className = '' }) {
   return (
@@ -575,11 +579,35 @@ function useOverlayClose(open, close, { history = true } = {}) {
 
 // Bottom sheet (a centred dialog on a wide screen). Drag it down by the handle to dismiss.
 // titleAfter: something that sits right beside the title (e.g. a copy-the-name button)
-export function Sheet({ open, onClose, title, titleAfter, children, footer, actions, wideWidth }) {
+export function Sheet({ open, onClose, title, titleAfter, children, footer, actions, wideWidth, className = '' }) {
   const [shown, setShown] = useState(open);
   const [leaving, setLeaving] = useState(false);
   const sheet = useRef(null);
-  useEffect(() => { if (open) { setShown(true); setLeaving(false); } else if (shown) setLeaving(true); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (open) {
+      setShown(true);
+      setLeaving(false);
+      if (sheet.current) {
+        sheet.current.style.animation = '';
+        sheet.current.style.transform = '';
+      }
+    } else if (shown) {
+      setLeaving(true);
+      if (sheet.current) {
+        sheet.current.style.animation = '';
+        sheet.current.style.transform = '';
+      }
+    }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (leaving) {
+      const t = setTimeout(() => {
+        setShown(false);
+        setLeaving(false);
+      }, 260);
+      return () => clearTimeout(t);
+    }
+  }, [leaving]);
   useOverlayClose(open, onClose);
   const drag = useRef(null);
   const onDown = (e) => {
@@ -603,18 +631,26 @@ export function Sheet({ open, onClose, title, titleAfter, children, footer, acti
     el.animate([{ transform: `translateY(${d.dy}px)` }, { transform: 'translateY(0)' }], { duration: 250, easing: 'cubic-bezier(.05,.7,.1,1)' }).onfinish = () => { el.style.transform = ''; };
   };
   if (!shown) return null;
-  const finish = () => { if (leaving) { setShown(false); setLeaving(false); } };
+  const finish = () => { setShown(false); setLeaving(false); };
   return (
     <Layer>
-      <div className={`scrim ${leaving ? 'out' : ''}`} onClick={onClose} />
-      <div ref={sheet} className={`sheet ${leaving ? 'out' : ''}`} role="dialog" aria-modal="true" aria-label={title} onAnimationEnd={(e) => { if (e.target === sheet.current) finish(); }}
+      <div className={`scrim ${leaving ? 'out' : ''}`} onClick={(e) => { e.stopPropagation(); onClose?.(e); }} />
+      <div ref={sheet} className={`sheet ${className} ${leaving ? 'out' : ''}`} role="dialog" aria-modal="true" aria-label={title} onAnimationEnd={(e) => { if (leaving && e.target === sheet.current) finish(); }}
         style={wideWidth ? { '--w': wideWidth } : undefined}>
         <div className="handle" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}><i /></div>
         <div className="hd">
           <h2 style={titleAfter ? { display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 } : undefined}>
             {titleAfter ? <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{title}</span> : title}{titleAfter}
           </h2>
-          {actions}<IconButton icon="close" label="Close" onClick={onClose} />
+          {actions}
+          <IconButton
+            icon="close"
+            label="Close"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose?.(e);
+            }}
+          />
         </div>
         <div className="bd">{children}</div>
         {footer && <div className="ft">{footer}</div>}

@@ -15,6 +15,7 @@ import { GoogleGenerativeAI } from './geminiClient.js';
 import { getModelFor } from './modelRegistry.js';
 import { generateQueryEmbedding } from './embeddingService.js';
 import { searchSimilar } from './vectorStore.js';
+import { generateHeroAvatar } from './dndAvatarService.js';
 
 const slug = (s) => String(s || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
 const ATMOSPHERES = ['dungeon', 'campfire', 'tavern', 'scifi', 'storm'];
@@ -248,7 +249,7 @@ Answer in British English, plainly and briefly (under 150 words).`, {
   return { answer: out.answer, sources: (used.length ? used : passages.slice(0, 3)).map(({ id, book, page }) => ({ id, book, page })) };
 }
 
-export async function rollHero(ruleset, { name = '', concept = '' } = {}) {
+export async function rollHero(ruleset, { name = '', concept = '', details = '', premise = '', referenceImage = null } = {}) {
   const passages = await searchRules(ruleset, `${ruleset.name} character creation: generating attributes, starting equipment, choosing a class or background`, 8);
   const roll = (n, s) => Array.from({ length: n }, () => Math.floor(Math.random() * s) + 1);
   const dice = { d6: roll(12, 6), d10: roll(6, 10), d20: roll(4, 20), d100: roll(6, 100) };
@@ -257,6 +258,8 @@ ${passages.length ? `From the player's own rulebook:\n\n${passagesText(passages)
 ${ruleset.metadata?.character_creation ? `The method in brief: ${ruleset.metadata.character_creation}` : ''}
 Where the method rolls dice, use these real rolls in order (don't invent your own): d6 ${dice.d6.join(', ')}; d10 ${dice.d10.join(', ')}; d20 ${dice.d20.join(', ')}; d100 ${dice.d100.join(', ')}.
 ${name ? `Name: ${name}.` : 'Give the hero a fitting name.'} ${concept ? `Concept: ${concept}.` : ''}
+${details ? `Physical Appearance & Details: ${details}. Weave these visual traits, features and equipment into the backstory and character description.` : ''}
+${premise ? `Opening Situation / Hook: ${premise}. Weave this starting ordeal into the character's background.` : ''}
 Use the game's own stat names. hp is their health in the game's terms, ac their defence (10 if the game has none). backstory: 2-3 sentences that hook into the game's world. how: one sentence on how the rolls became the stats.`, {
     type: 'OBJECT',
     properties: {
@@ -267,10 +270,29 @@ Use the game's own stat names. hp is their health in the game's terms, ac their 
     },
     required: ['name', 'role_or_class', 'hp', 'ac', 'attributes', 'inventory', 'skills', 'backstory'],
   }, 0.9);
+
+  let avatarUrl = null;
+  try {
+    const avatarRes = await generateHeroAvatar({
+      name: out.name,
+      roleOrClass: out.role_or_class,
+      ruleset,
+      concept,
+      details,
+      backstory: out.backstory || '',
+      premise,
+      referenceImage
+    });
+    if (avatarRes?.avatarUrl) avatarUrl = avatarRes.avatarUrl;
+  } catch (err) {
+    console.warn('[DndLibrary] Hero avatar generation non-fatal failure:', err.message);
+  }
+
   return {
     name: out.name, roleOrClass: out.role_or_class, maxHp: Math.max(1, out.hp || 1), ac: out.ac || 10,
     attributes: Object.fromEntries((out.attributes || []).map((a) => [a.name, a.value])), inventory: out.inventory || [], skills: out.skills || [],
     backstory: out.backstory || '', how: out.how || '', sources: passages.slice(0, 4).map(({ id, book, page }) => ({ id, book, page })),
+    avatarUrl,
   };
 }
 

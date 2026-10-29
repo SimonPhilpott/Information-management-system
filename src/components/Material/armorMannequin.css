@@ -1,0 +1,503 @@
+/* Armor Mannequin Styles for Character Sheet & Character Summary */
+
+.imsd-mannequin-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 480px) {
+  .imsd-mannequin-layout {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+}
+
+.imsd-mannequin-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: none;
+}
+
+.imsd-mannequin-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  background: rgba(223, 212, 191, 0.28);
+  border: 1px solid var(--imsd-border, #dfd4bf);
+  border-radius: 8px;
+  padding: 4px;
+  box-sizing: border-box;
+  box-shadow: inset 0 1px 3px rgba(60, 40, 20, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.imsd-mannequin-wrap:hover {
+  background: rgba(223, 212, 191, 0.42);
+  border-color: var(--imsd-gilt, #c29f62);
+  box-shadow: inset 0 1px 3px rgba(60, 40, 20, 0.12), 0 3px 8px rgba(0, 0, 0, 0.08);
+}
+
+.imsd-mannequin-wrap.compact {
+  padding: 2px;
+  border-radius: 6px;
+}
+
+.imsd-mannequin-svg {
+  display: block;
+  filter: drop-shadow(0 1px 2px rgba(40, 25, 10, 0.25));
+}
+
+/* Base Mannequin Silhouette in rich dark tan (#7c5c3b) - Strict enforcement */
+.imsd-mannequin-svg .imsd-body-part,
+svg.imsd-mannequin-svg path.imsd-body-part {
+  fill: #7c5c3b !important;
+  opacity: 1 !important;
+  display: inline !important;
+  visibility: visible !important;
+  transition: fill 0.2s ease;
+}
+
+.imsd-mannequin-wrap:hover .imsd-body-part,
+.imsd-mannequin-wrap:hover svg.imsd-mannequin-svg path.imsd-body-part {
+  fill: #6e5030 !important;
+}
+
+/* Black Armor Overlay plates - Strict enforcement */
+.imsd-mannequin-svg .imsd-armor-overlay path,
+svg.imsd-mannequin-svg .imsd-armor-overlay path {
+  fill: #14110e !important;
+  stroke: #2c241d !important;
+  opacity: 1 !important;
+}
+
+.imsd-mannequin-svg .imsd-armor-overlay circle,
+svg.imsd-mannequin-svg .imsd-armor-overlay circle {
+  fill: #c4a56a !important;
+  opacity: 1 !important;
+}
+
+.imsd-armor-overlay {
+  cursor: pointer;
+  outline: none;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.imsd-armor-overlay:hover,
+.imsd-armor-overlay.selected,
+.imsd-armor-overlay:focus {
+  filter: drop-shadow(0 0 3.5px rgba(196, 165, 106, 0.9)) !important;
+}
+
+/* Gender switch button (♂ / ♀) */
+.imsd-mannequin-gender-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: rgba(250, 246, 238, 0.9);
+  color: #5c4428;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  z-index: 2;
+}
+
+.imsd-mannequin-wrap:hover .imsd-mannequin-gender-btn {
+  opacity: 1;
+}
+
+.imsd-mannequin-gender-btn:hover {
+  background: var(--imsd-gilt, #c29f62);
+  color: #fff;
+  transform: scale(1.1);
+}
+
+.imsd-mannequin-wrap.compact .imsd-mannequin-gender-btn {
+  top: 1px;
+  right: 1px;
+  width: 14px;
+  height: 14px;
+  font-size: 10px;
+}
+
+/* ========================================================================== */
+/* INLINE ARMOUR SUMMARY CARD (Toggled on tapping silhouette piece)           */
+/* ========================================================================== */
+
+.imsd-slot-summary-card {
+  background: #181410;
+  color: #f4eee1;
+  border: 1px solid var(--imsd-gilt, #c29f62);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 11.5px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  animation: imsd-pop 0.15s ease-out;
+  box-sizing: border-box;
+}
+
+.imsd-slot-summary-card .summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.imsd-slot-summary-card .summary-head b {
+  color: var(--imsd-gilt, #c29f62);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.imsd-slot-summary-card .prot-badge {
+  background: rgba(194, 159, 98, 0.25);
+  color: #e5cb9b;
+  border: 1px solid rgba(194, 159, 98, 0.45);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.imsd-slot-summary-card .close-btn {
+  background: transparent;
+  border: none;
+  color: #c29f62;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  margin-left: auto;
+  opacity: 0.8;
+  transition: opacity 0.12s;
+}
+
+.imsd-slot-summary-card .close-btn:hover {
+  opacity: 1;
+  color: #fff;
+}
+
+.imsd-slot-summary-card .summary-item {
+  font-weight: 600;
+  font-size: 13px;
+  color: #ffffff;
+}
+
+.imsd-slot-summary-card .summary-extra {
+  font-size: 11px;
+  color: #b5a794;
+}
+
+/* Compact mode popover (strictly clamped to viewport) */
+.imsd-mannequin-tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(260px, 85vw);
+  background: #181410;
+  color: #f4eee1;
+  border: 1px solid var(--imsd-gilt, #c29f62);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  z-index: 100;
+  box-sizing: border-box;
+  animation: imsd-pop 0.15s ease-out;
+}
+
+.imsd-tooltip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.imsd-tooltip-header b {
+  color: var(--imsd-gilt, #c29f62);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.imsd-tooltip-badge {
+  background: rgba(194, 159, 98, 0.2);
+  color: #e5cb9b;
+  border: 1px solid rgba(194, 159, 98, 0.4);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+.imsd-tooltip-name {
+  font-weight: 600;
+  font-size: 12px;
+  color: #ffffff;
+}
+
+.imsd-tooltip-sub {
+  font-size: 10.5px;
+  color: #a89b88;
+}
+
+/* ========================================================================== */
+/* WEAPONS & COMBAT GEAR SECTION (To the right of the mannequin)             */
+/* ========================================================================== */
+
+.imsd-mannequin-gear-col {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.imsd-weapon-card {
+  background: var(--surface-c-low, rgba(235, 227, 212, 0.5));
+  border: 1px solid var(--outline-var, #dfd4bf);
+  border-left: 3.5px solid #b87333;
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+}
+
+.imsd-weapon-card:hover {
+  background: var(--surface-c, rgba(235, 227, 212, 0.85));
+  border-color: var(--imsd-gilt, #c29f62);
+}
+
+.imsd-weapon-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.imsd-weapon-name {
+  font-family: var(--head-font, inherit);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--on-surface, #2c241d);
+  margin: 0;
+}
+
+.imsd-weapon-dmg {
+  font-family: var(--imsd-caps, inherit);
+  font-size: 11px;
+  font-weight: 700;
+  color: #c92a2a;
+  background: rgba(201, 42, 42, 0.12);
+  border: 1px solid rgba(201, 42, 42, 0.3);
+  padding: 1.5px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+
+.hbb.imsm.dark .imsd-weapon-dmg {
+  color: #ffa39e;
+  background: rgba(255, 163, 158, 0.15);
+}
+
+.imsd-weapon-type {
+  font-size: 11.5px;
+  color: var(--on-surface-var, #736754);
+  font-style: italic;
+}
+
+.imsd-weapon-traits {
+  font-size: 11px;
+  color: var(--on-surface-var, #736754);
+  line-height: 1.35;
+}
+
+.imsd-weapon-prof-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 5px;
+  border-top: 1px dotted var(--outline-var, #dfd4bf);
+}
+
+.imsd-weapon-prof-lbl {
+  font-family: var(--imsd-caps, inherit);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #8c6a28;
+  letter-spacing: 0.05em;
+}
+
+.imsd-weapon-prof-val {
+  font-family: var(--head-font, inherit);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--imsd-gilt, #c29f62);
+}
+
+/* ========================================================================== */
+/* WEAPON ADVANCEMENT (Shafted Weapons & Masteries under Mannequin)           */
+/* ========================================================================== */
+
+.imsd-weapon-advancement-section {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--surface-c-low, rgba(223, 212, 191, 0.22));
+  border: 1px solid var(--outline-var, #dfd4bf);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.imsd-advancement-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.imsd-advancement-head .title {
+  font-family: var(--imsd-caps, inherit);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--on-surface, #2c241d);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.imsd-advancement-head .rule-hint {
+  font-size: 10px;
+  color: var(--on-surface-var, #736754);
+  font-style: italic;
+}
+
+.imsd-advancement-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.imsd-advancement-pips {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.imsd-advancement-pip {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid var(--outline-var, #dfd4bf);
+  background: var(--surface-c, #ffffff);
+  color: var(--imsd-gilt, #c29f62);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.imsd-advancement-pip:hover {
+  border-color: var(--imsd-gilt, #c29f62);
+  background: rgba(194, 159, 98, 0.15);
+}
+
+.imsd-advancement-pip.filled {
+  background: var(--imsd-gilt, #c29f62);
+  border-color: var(--imsd-gilt, #c29f62);
+  color: #ffffff;
+  font-weight: bold;
+}
+
+.imsd-advancement-pip.is-locked {
+  cursor: default !important;
+  pointer-events: none;
+}
+.imsd-advancement-pip.is-locked:hover {
+  border-color: var(--outline-var, #dfd4bf);
+  background: var(--surface-c, #ffffff);
+}
+.imsd-advancement-pip.filled.is-locked:hover {
+  background: var(--imsd-gilt, #c29f62);
+  border-color: var(--imsd-gilt, #c29f62);
+}
+
+.imsd-advancement-btns {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.imsd-advancement-btns button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid var(--outline-var, #dfd4bf);
+  background: var(--surface-c, #ffffff);
+  color: var(--on-surface, #2c241d);
+  cursor: pointer;
+  font-weight: bold;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.imsd-advancement-btns button:hover {
+  background: var(--surface-c-high, #e5ddcf);
+  border-color: var(--imsd-gilt, #c29f62);
+}
+
+@keyframes imsd-pop {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

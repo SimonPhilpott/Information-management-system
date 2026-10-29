@@ -2986,14 +2986,15 @@ void drawTopStrip() {
   const int vw = g.textWidth(currentGlucoseValue);
   const bool twoArrows = currentGlucoseDirection.startsWith("Double");
   const int aw = twoArrows ? 26 : 18;
-  const int pw = 12 + vw + 6 + aw + 12; // 26 Oct: as tall as the tiles (28px), with matching padding
+  const int pad = 7; // trimmed padding for glucose value and arrow to leave room for date
+  const int pw = pad + vw + 5 + aw + pad;
   const int px = 320 - 6 - pw;
   g.fillSmoothRoundRect(px, MAIN_TOP_H / 2 - TILE / 2, pw, TILE, TILE * 6 / 22, pill); // the tiles' corners (26 Oct)
   g.setTextDatum(baseline_left); // by the baseline: "middle" counts descender space and sits high
   g.setTextColor(gc, pill);
-  g.drawString(currentGlucoseValue, px + 12, TOP_BASE);
-  drawGlucoseArrows(g, px + 12 + vw + 6 + aw / 2, MAIN_TOP_H / 2, currentGlucoseDirection, gc);
-  int limit = px - 8;
+  g.drawString(currentGlucoseValue, px + pad, TOP_BASE);
+  drawGlucoseArrows(g, px + pad + vw + 5 + aw / 2, MAIN_TOP_H / 2, currentGlucoseDirection, gc);
+  int limit = px - 6;
 
   // a note only when something is wrong (or an update is going on)
   const char *warn = nullptr;
@@ -3024,14 +3025,23 @@ void drawTopStrip() {
   g.setTextDatum(baseline_left);
   // the time starts where his face starts (x 54, 26 Oct); the date beside it in the smaller size. When the date
   // won't fit beside the full-size time (a wide glucose reading), the time drops to the date's size too.
-  const int timeX = FACE_CENTER_X - (int)lroundf(5.5f * FACE_PITCH) - FACE_DOT / 2;
+  int timeX = FACE_CENTER_X - (int)lroundf(5.5f * FACE_PITCH) - FACE_DOT / 2;
+  const int gap = 6;
   g.setFont(&fonts::DejaVu12);
   const int dw = dd[0] ? g.textWidth(dd) : 0;
   g.setFont(&fonts::DejaVu18);
-  if (dd[0] && timeX + g.textWidth(hm) + 10 + dw >= limit) g.setFont(&fonts::DejaVu12);
+  if (dd[0] && timeX + g.textWidth(hm) + gap + dw >= limit) g.setFont(&fonts::DejaVu12);
+  const int effectiveHmW = g.textWidth(hm);
+  int x = timeX + effectiveHmW + gap;
+  if (dd[0] && x + dw >= limit) {
+    const int shift = min(timeX - 42, (x + dw) - limit + 1);
+    if (shift > 0) {
+      timeX -= shift;
+      x = timeX + effectiveHmW + gap;
+    }
+  }
   g.setTextColor(g.color565(236, 230, 221), bg);
   g.drawString(hm, timeX, TOP_BASE);
-  const int x = timeX + g.textWidth(hm) + 10;
   g.setFont(&fonts::DejaVu12);
   if (dd[0] && x + dw < limit) {
     g.setTextColor(g.color565(150, 158, 176), bg);

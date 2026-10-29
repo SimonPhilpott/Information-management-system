@@ -1,8 +1,33 @@
 /**
  * Dynamic Web Audio Ambient Soundscapes & RPG Sound Effects Engine
- * Procedurally generates immersive D&D / Tabletop atmospheres and crisp SFX
- * without requiring external downloads or broken asset links.
+ * Uses authentic, studio-recorded Tabletop Audio sound effects (matching the soundscapes)
+ * with robust local caching and graceful procedural audio fallbacks.
  */
+
+const TABLETOP_SFX = {
+  dice_roll: { url: '/api/dnd/sfx/dm_tools/1D20x3.mp3', sprites: [[0, 2.5], [2.75, 2.5], [5.47, 2.2]], gain: 0.85 },
+  dice_pool: { url: '/api/dnd/sfx/dm_tools/dice_pool_x4.mp3', sprites: [[0, 2.5], [2.61, 2.4], [5.07, 3.3]], gain: 0.85 },
+  critical_hit: { url: '/api/dnd/sfx/dm_tools/critical_hit.mp3', gain: 0.9 },
+  fumble: { url: '/api/dnd/sfx/dm_tools/critical_miss.mp3', gain: 0.85 },
+  critical_miss: { url: '/api/dnd/sfx/dm_tools/critical_miss.mp3', gain: 0.85 },
+  skill_success: { url: '/api/dnd/sfx/dm_tools/skill_success.mp3', gain: 0.8 },
+  skill_failure: { url: '/api/dnd/sfx/dm_tools/skill_failure.mp3', gain: 0.8 },
+  sword_clash: { url: '/api/dnd/sfx/combat2/sword_hit_3x.mp3', sprites: [[0.34, 1.6], [2.05, 1.9], [4.08, 1.7]], gain: 0.85 },
+  shield_block: { url: '/api/dnd/sfx/combat2/shield_bash.mp3', gain: 0.9 },
+  spell_cast: { url: '/api/dnd/sfx/combat2/spell_1.mp3', gain: 0.85 },
+  door_creak: { url: '/api/dnd/sfx/dungeon2/door_open.mp3', gain: 0.85 },
+  door_close: { url: '/api/dnd/sfx/dungeon2/door_close.mp3', gain: 0.85 },
+  oracle_whisper: { url: '/api/dnd/sfx/dm_tools/mystery.mp3', gain: 0.8 },
+  roll_initiative: { url: '/api/dnd/sfx/dm_tools/roll_initiative.mp3', gain: 0.85 },
+  danger_near: { url: '/api/dnd/sfx/dm_tools/danger_near2.mp3', gain: 0.8 },
+  short_rest: { url: '/api/dnd/sfx/dm_tools/short_rest.mp3', gain: 0.8 },
+  long_rest: { url: '/api/dnd/sfx/dm_tools/long_rest.mp3', gain: 0.8 },
+  journey_begins: { url: '/api/dnd/sfx/dm_tools/journey_begins.mp3', gain: 0.85 },
+  read_scroll: { url: '/api/dnd/sfx/dm_tools/read_scroll.mp3', gain: 0.8 },
+  unlock_success: { url: '/api/dnd/sfx/dm_tools/unlock_success.mp3', gain: 0.85 },
+  unlock_fail: { url: '/api/dnd/sfx/dm_tools/unlock_fail.mp3', gain: 0.85 },
+  trade: { url: '/api/dnd/sfx/dm_tools/trade_x3.mp3', gain: 0.85 }
+};
 
 class DndAudioEngine {
   constructor() {
@@ -16,6 +41,9 @@ class DndAudioEngine {
     this.isMuted = false;
     this.dropletTimer = null;
     this.crackleTimer = null;
+    this.bufferCache = new Map();
+    this.preloaded = false;
+    this._lastKnock = 0;
   }
 
   init() {
@@ -33,12 +61,47 @@ class DndAudioEngine {
     this.sfxGain = this.ctx.createGain();
     this.sfxGain.gain.setValueAtTime(this.sfxVolume, this.ctx.currentTime);
     this.sfxGain.connect(this.ctx.destination);
+
+    this.preloadCore();
   }
 
   ensureRunning() {
     this.init();
     if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume();
+    }
+  }
+
+  preloadCore() {
+    if (this.preloaded || !this.ctx) return;
+    this.preloaded = true;
+    const coreUrls = [
+      TABLETOP_SFX.dice_roll.url,
+      TABLETOP_SFX.critical_hit.url,
+      TABLETOP_SFX.fumble.url,
+      TABLETOP_SFX.sword_clash.url,
+      TABLETOP_SFX.shield_block.url,
+      TABLETOP_SFX.spell_cast.url,
+      TABLETOP_SFX.door_creak.url,
+      TABLETOP_SFX.oracle_whisper.url,
+      TABLETOP_SFX.skill_success.url,
+      TABLETOP_SFX.skill_failure.url
+    ];
+    coreUrls.forEach((url) => this._loadBuffer(url).catch(() => {}));
+  }
+
+  async _loadBuffer(url) {
+    if (!this.ctx) return null;
+    if (this.bufferCache.has(url)) return this.bufferCache.get(url);
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const ab = await res.arrayBuffer();
+      const buf = await this.ctx.decodeAudioData(ab);
+      this.bufferCache.set(url, buf);
+      return buf;
+    } catch {
+      return null;
     }
   }
 
@@ -120,14 +183,13 @@ class DndAudioEngine {
   _buildDungeonSoundscape() {
     const t = this.ctx.currentTime;
 
-    // Sub-bass resonant cave drone
     const osc1 = this.ctx.createOscillator();
     osc1.type = 'sine';
     osc1.frequency.setValueAtTime(52, t);
 
     const osc2 = this.ctx.createOscillator();
     osc2.type = 'triangle';
-    osc2.frequency.setValueAtTime(55, t); // Binaural slow beating 3 Hz
+    osc2.frequency.setValueAtTime(55, t);
 
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'lowpass';
@@ -145,7 +207,6 @@ class DndAudioEngine {
     osc2.start();
     this.activeNodes.push(osc1, osc2, filter, gain);
 
-    // Filtered air draft (pink noise)
     const noise = this._createNoiseBufferNode(true);
     if (noise) {
       const airFilter = this.ctx.createBiquadFilter();
@@ -164,7 +225,6 @@ class DndAudioEngine {
       this.activeNodes.push(noise, airFilter, airGain);
     }
 
-    // Occasional cave water droplets
     const scheduleDroplet = () => {
       if (this.currentAtmosphere !== 'dungeon') return;
       const delay = 1800 + Math.random() * 3400;
@@ -200,7 +260,6 @@ class DndAudioEngine {
   _buildCampfireSoundscape() {
     const t = this.ctx.currentTime;
 
-    // Warm nocturnal low breeze
     const noise = this._createNoiseBufferNode(true);
     if (noise) {
       const windFilter = this.ctx.createBiquadFilter();
@@ -218,7 +277,6 @@ class DndAudioEngine {
       this.activeNodes.push(noise, windFilter, windGain);
     }
 
-    // Gentle warm fire hum
     const hum = this.ctx.createOscillator();
     hum.type = 'triangle';
     hum.frequency.setValueAtTime(75, t);
@@ -230,7 +288,6 @@ class DndAudioEngine {
     hum.start();
     this.activeNodes.push(hum, humGain);
 
-    // Random wood ember crackle pops
     const scheduleCrackle = () => {
       if (this.currentAtmosphere !== 'campfire') return;
       const delay = 120 + Math.random() * 450;
@@ -269,7 +326,6 @@ class DndAudioEngine {
 
   _buildTavernSoundscape() {
     const t = this.ctx.currentTime;
-    // Low warm room acoustic body
     const osc = this.ctx.createOscillator();
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(110, t);
@@ -286,7 +342,6 @@ class DndAudioEngine {
     gain.connect(this.ambientGain);
     osc.start();
 
-    // Muffled background crowd / murmur simulation
     const noise = this._createNoiseBufferNode(true);
     if (noise) {
       const murmurFilter = this.ctx.createBiquadFilter();
@@ -309,7 +364,6 @@ class DndAudioEngine {
 
   _buildScifiDerelictSoundscape() {
     const t = this.ctx.currentTime;
-    // Reactor core sub hum with slow modulation (Alien RPG / Across a Thousand Dead Worlds)
     const sub = this.ctx.createOscillator();
     sub.type = 'sawtooth';
     sub.frequency.setValueAtTime(42, t);
@@ -321,7 +375,6 @@ class DndAudioEngine {
     const gain = this.ctx.createGain();
     gain.gain.setValueAtTime(0.3, t);
 
-    // High electrical tension tone
     const buzz = this.ctx.createOscillator();
     buzz.type = 'sine';
     buzz.frequency.setValueAtTime(240, t);
@@ -342,7 +395,6 @@ class DndAudioEngine {
 
   _buildStormSoundscape() {
     const t = this.ctx.currentTime;
-    // Continuous heavy rain
     const noise = this._createNoiseBufferNode(true);
     if (noise) {
       const rainFilter = this.ctx.createBiquadFilter();
@@ -367,7 +419,6 @@ class DndAudioEngine {
     const data = buffer.getChannelData(0);
     let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
 
-    // Pink noise generation
     for (let i = 0; i < bufferSize; i++) {
       const white = Math.random() * 2 - 1;
       b0 = 0.99886 * b0 + white * 0.0555179;
@@ -386,12 +437,105 @@ class DndAudioEngine {
     return node;
   }
 
-  // --- SOUND EFFECTS (SFX) ---
+  // --- STUDIO RPG SOUND EFFECTS (TABLETOP AUDIO API) ---
 
   playSfx(name) {
     this.ensureRunning();
     if (!this.ctx || this.isMuted) return;
 
+    const entry = TABLETOP_SFX[name];
+    if (entry) {
+      this._playTabletopSfx(name, entry);
+      return;
+    }
+
+    this._playFallbackSfx(name);
+  }
+
+  async _playTabletopSfx(name, entry) {
+    let offset = 0;
+    let duration = undefined;
+
+    if (entry.sprites && entry.sprites.length) {
+      const pick = entry.sprites[Math.floor(Math.random() * entry.sprites.length)];
+      offset = pick[0];
+      duration = pick[1];
+    }
+
+    const buffer = await this._loadBuffer(entry.url);
+    if (!buffer) {
+      this._playFallbackSfx(name);
+      return;
+    }
+
+    try {
+      const source = this.ctx.createBufferSource();
+      source.buffer = buffer;
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(this.sfxVolume * (entry.gain || 0.85), this.ctx.currentTime);
+      source.connect(gain);
+      gain.connect(this.sfxGain);
+
+      if (duration != null) {
+        source.start(0, offset, duration);
+      } else if (offset > 0) {
+        source.start(0, offset);
+      } else {
+        source.start(0);
+      }
+    } catch {
+      this._playFallbackSfx(name);
+    }
+  }
+
+  // Die knocking on tray/parchment (called by 3D physics on hard collision; 0-1 strength)
+  knock(strength = 0.5) {
+    this.ensureRunning();
+    if (!this.ctx || this.isMuted) return;
+    const now = this.ctx.currentTime;
+    if (this._lastKnock && now - this._lastKnock < 0.038) return;
+    this._lastKnock = now;
+
+    // Use micro-slice from authentic dice audio buffer if loaded
+    const diceBuf = this.bufferCache.get(TABLETOP_SFX.dice_roll.url);
+    if (diceBuf && diceBuf.duration > 0.6) {
+      try {
+        const src = this.ctx.createBufferSource();
+        src.buffer = diceBuf;
+        src.playbackRate.value = 0.88 + Math.random() * 0.28;
+        const gain = this.ctx.createGain();
+        const vol = Math.min(0.45, 0.25 * Math.max(0.12, strength));
+        gain.gain.setValueAtTime(vol, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+        src.connect(gain);
+        gain.connect(this.sfxGain);
+        const sampleOffset = [0.08, 0.22, 0.38, 0.62][Math.floor(Math.random() * 4)];
+        src.start(now, sampleOffset, 0.048);
+        return;
+      } catch (_) {}
+    }
+
+    // Warm organic felt tap fallback
+    const len = Math.floor(this.ctx.sampleRate * 0.035);
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 10);
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'lowpass';
+    bp.frequency.value = 460 + Math.random() * 240;
+    const g = this.ctx.createGain();
+    g.gain.value = 0.22 * Math.max(0.1, strength);
+    src.connect(bp);
+    bp.connect(g);
+    g.connect(this.sfxGain);
+    src.start(now);
+  }
+
+  // --- PROCEDURAL FALLBACKS ---
+
+  _playFallbackSfx(name) {
     switch (name) {
       case 'dice_roll':
         this._sfxDiceRoll();
@@ -420,36 +564,6 @@ class DndAudioEngine {
       default:
         this._sfxDiceRoll();
     }
-  }
-
-  // One die knocking the felt, the rim or another die (the 3D tray calls this on every hard contact; 0-1 strength)
-  knock(strength = 0.5) {
-    this.ensureRunning();
-    if (!this.ctx || this.isMuted) return;
-    const now = this.ctx.currentTime;
-    if (this._lastKnock && now - this._lastKnock < 0.025) return; // a burst of contacts is one click
-    this._lastKnock = now;
-    const len = Math.floor(this.ctx.sampleRate * 0.05);
-    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 6);
-    const src = this.ctx.createBufferSource();
-    src.buffer = buf;
-    const bp = this.ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = 1800 + Math.random() * 2200;
-    bp.Q.value = 2.5;
-    const body = this.ctx.createOscillator();
-    body.type = 'triangle';
-    body.frequency.value = 520 + Math.random() * 420;
-    const bg = this.ctx.createGain();
-    bg.gain.setValueAtTime(0.18 * strength, now);
-    bg.gain.exponentialRampToValueAtTime(0.0001, now + 0.035);
-    const g = this.ctx.createGain();
-    g.gain.value = 0.55 * Math.max(0.15, strength);
-    src.connect(bp); bp.connect(g); g.connect(this.sfxGain);
-    body.connect(bg); bg.connect(this.sfxGain);
-    src.start(now); body.start(now); body.stop(now + 0.04);
   }
 
   _sfxDiceRoll() {
@@ -483,7 +597,6 @@ class DndAudioEngine {
 
   _sfxSwordClash() {
     const t = this.ctx.currentTime;
-    // Metallic clash high strike
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     const filter = this.ctx.createBiquadFilter();
@@ -527,7 +640,7 @@ class DndAudioEngine {
 
   _sfxSpellCast() {
     const t = this.ctx.currentTime;
-    const notes = [440, 554, 659, 880]; // A Major arpeggio
+    const notes = [440, 554, 659, 880];
     notes.forEach((freq, idx) => {
       const delay = idx * 0.07;
       const osc = this.ctx.createOscillator();
@@ -569,8 +682,7 @@ class DndAudioEngine {
 
   _sfxCriticalHit() {
     const t = this.ctx.currentTime;
-    // Golden chime fanfare
-    const chords = [523.25, 659.25, 783.99, 1046.5]; // C Major
+    const chords = [523.25, 659.25, 783.99, 1046.5];
     chords.forEach((freq) => {
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
@@ -578,43 +690,34 @@ class DndAudioEngine {
       osc.type = 'sine';
       osc.frequency.setValueAtTime(freq, t);
 
-      gain.gain.setValueAtTime(0.15, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.85);
+      gain.gain.setValueAtTime(0.06, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
 
       osc.connect(gain);
       gain.connect(this.sfxGain);
 
       osc.start(t);
-      osc.stop(t + 0.86);
+      osc.stop(t + 0.72);
     });
   }
 
   _sfxFumble() {
     const t = this.ctx.currentTime;
-    // Low ominous dissonance
-    const osc1 = this.ctx.createOscillator();
-    const osc2 = this.ctx.createOscillator();
+    const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
-    osc1.type = 'sawtooth';
-    osc1.frequency.setValueAtTime(110, t);
-    osc1.frequency.exponentialRampToValueAtTime(65, t + 0.6);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(85, t);
+    osc.frequency.exponentialRampToValueAtTime(45, t + 0.45);
 
-    osc2.type = 'sawtooth';
-    osc2.frequency.setValueAtTime(116.54, t); // Minor second dissonance
-    osc2.frequency.exponentialRampToValueAtTime(69, t + 0.6);
+    gain.gain.setValueAtTime(0.12, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
 
-    gain.gain.setValueAtTime(0.25, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.65);
-
-    osc1.connect(gain);
-    osc2.connect(gain);
+    osc.connect(gain);
     gain.connect(this.sfxGain);
 
-    osc1.start(t);
-    osc2.start(t);
-    osc1.stop(t + 0.66);
-    osc2.stop(t + 0.66);
+    osc.start(t);
+    osc.stop(t + 0.52);
   }
 
   _sfxOracleWhisper() {

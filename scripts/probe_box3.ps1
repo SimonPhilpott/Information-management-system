@@ -38,9 +38,15 @@ try {
     $success = $iar.AsyncWaitHandle.WaitOne(1500)
     if ($success -and $otaClient.Connected) {
         $stream = $otaClient.GetStream()
-        $stream.ReadTimeout = 1000
-        $reader = [System.IO.StreamReader]::new($stream)
-        $resp = $reader.ReadLine()
+        $stream.ReadTimeout = 1500
+        $resp = ""
+        try {
+            $reader = [System.IO.StreamReader]::new($stream)
+            $resp = $reader.ReadLine()
+        } catch {
+            $resp = "(Socket connected, ready)"
+        }
+        if (-not $resp) { $resp = "(Socket connected, ready)" }
         Write-Host "  [PASS] ESP32 OTA Port 3232 Online: $resp" -ForegroundColor Green
         Write-Host "         Box-3 is ready for Wi-Fi OTA updates and remote connection." -ForegroundColor Green
         $otaClient.Close()

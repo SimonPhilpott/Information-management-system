@@ -1,0 +1,131 @@
+// How this session runs: the settings in force, the game's procedures as flowcharts with where you are in them,
+// every rule with what the book says and what the Solo DM does with it, the book's tables, and the bestiary.
+import React, { useMemo, useState } from 'react';
+import T from '../kn/bookTables.json';
+import { RULES, RULE_GROUPS } from '../kn/rules';
+import { PROCEDURES, whereNow } from '../kn/procedures';
+import { CREATURES, OVERSEERS, overseerImg } from '../kn/tables';
+import Ico from '../ui/Ico';
+import { Rich, Tip } from '../ui/Tip';
+import { Panel, Seg, Switch, Bar } from '../ui/Bits';
+import { PageChip } from './Journal';
+import { MonsterCard } from './MonsterCard';
+
+const MODE = { auto: ['Done for you', 'ok'], assisted: ['Rolled for you, you settle it', 'warn'], manual: ['You keep track', ''], missing: ['Not in the beta yet', 'bad'] };
+export const coverage = () => { const w = { auto: 1, assisted: 0.6, manual: 0.3, missing: 0 }; return Math.round((RULES.reduce((s, r) => s + w[r.mode], 0) / RULES.length) * 100); };
+
+function liveLine(key, game, settings) {
+  if (!game) return null;
+  const d = game.domain, h = game.hero;
+  switch (key) {
+    case 'rooms': return `${d.rooms} places entered in Domain ${d.n}; ${game.pieces.length} on the map.`;
+    case 'lair': return d.lairFound ? (d.exitFound ? 'Lair found, and the way out.' : `Lair found. Exit Die at D${d.exit}.`) : `Lair Die at D${d.lair}; ${Math.max(0, 15 - d.rooms)} rooms until the lair is certain.`;
+    case 'tension': return `Tension Die at D${d.tension}.`;
+    case 'darkness': return d.darkness.length ? `${d.darkness.length} in play: ${d.darkness.map((x) => x.text.split('.')[0]).join('; ')}.` : 'None in play.';
+    case 'light': return `${h.vit.light} rooms left; ${h.items.torches} spare Torches.`;
+    case 'exh': return `Exhaustion ${h.vit.exh}.`;
+    case 'sanity': return `Sanity ${h.vit.sanity} of ${h.vit.maxSanity}; Resolve ${h.resist.Resolve}.`;
+    case 'narration': return settings.narrate ? 'On: Rindewind writes a line for each new place.' : 'Off: only the book\'s words.';
+    case 'dice': return settings.fast ? 'Quick dice: no 3D throw.' : '3D dice across the scroll.';
+    default: return null;
+  }
+}
+
+function Flow({ proc, now }) {
+  return (
+    <ol className="dbt-flow">
+      {proc.steps.map((s) => (
+        <li key={s.id} className={`k-${s.kind || 'step'} ${now === s.id ? 'now' : ''} mode-${s.mode}`}>
+          <span className="node" aria-hidden="true">{s.kind === 'ask' ? '?' : s.kind === 'end' ? <Ico n="star" size={12} /> : ''}</span>
+          <div className="body">
+            <p><b><Rich text={s.t} /></b>{now === s.id && <em className="dbt-chip gilt sm">You are here</em>}</p>
+            {(s.yes || s.no) && <p className="branch">{s.yes && <span><i>Yes</i> <Rich text={s.yes} /></span>}{s.no && <span><i>No</i> <Rich text={s.no} /></span>}</p>}
+            <p className="meta">{s.roll && <span className="dbt-chip sm"><Ico n="d20" size={12} />{s.roll}</span>}<span className={`dbt-chip sm ${MODE[s.mode][1]}`}>{MODE[s.mode][0]}</span>{s.page && <span className="pg">p. {s.page}</span>}</p>
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+export default function RulesView({ game, onPage, settings, setSettings }) {
+  const [tab, setTab] = useState('flow');
+  const [proc, setProc] = useState('explore');
+  const [tbl, setTbl] = useState('events');
+  const [open, setOpen] = useState(null);
+  const [foe, setFoe] = useState('Flesh Eater');
+  const now = whereNow(game);
+  const cov = coverage();
+  const lastRolls = useMemo(() => { const m = {}; for (const e of game?.log || []) { if (e.kind === 'event') m.events = e.rolls?.[0]?.value; if (e.kind === 'darkness') m.darkness = e.rolls?.[0]?.value; } return m; }, [game?.log]);
+  const tb = T[tbl];
+  return (
+    <div className="dbt-page dbt-rules">
+      <header className="dbt-head"><div><span className="dbt-kick">Ker Nethalas · Gravebound Edition</span><h1>How this session runs</h1></div>
+        <Tip tip={{ title: 'Rules coverage', body: 'Counted from the rules below: done for you counts in full, rolled-for-you 60%, tracked-by-you 30%, missing nothing. It replaces the typed "100% Verified".' }} className="dbt-cov-badge"><b>{cov}%</b><small>of the rules run by the beta</small></Tip></header>
+      <Panel plate="This session" icon="quill" className="dbt-session">
+        <div className="dbt-session-grid">
+          <div><small>Game</small><b>Ker Nethalas: Into the Midnight Throne</b></div>
+          <div><small>Domain</small><b>{game ? `${game.domain.n}, ruled by ${game.domain.overseer.name}` : 'No game open'}</b></div>
+          <div><small>Influence</small><b>{game ? game.domain.overseer.influence : '-'}</b></div>
+          <div><small>Encounter table</small><b>The First Domain's (p. 244), until the full bestiary is in</b></div>
+        </div>
+        <div className="dbt-session-switches">
+          <Switch id="dbt-s-narr" checked={settings.narrate} onChange={(v) => setSettings({ narrate: v })} label="Rindewind narrates" sub="A line or two for each new place; never changes what happened" />
+          <Switch id="dbt-s-fast" checked={settings.fast} onChange={(v) => setSettings({ fast: v })} label="Quick dice" sub="Skip the 3D throw; the same rules, faster" />
+        </div>
+        <Bar value={cov} max={100} tone="gilt" />
+      </Panel>
+      <Seg value={tab} onChange={setTab} label="Sections" options={[['flow', 'Flowcharts', 'compass'], ['rules', 'Rules in force', 'scales'], ['tables', 'Book tables', 'scroll'], ['bestiary', 'Bestiary', 'skull']]} />
+
+      {tab === 'flow' && (
+        <div className="dbt-flows">
+          <div className="dbt-flow-pick">{PROCEDURES.map((p) => <button key={p.id} type="button" className={proc === p.id ? 'on' : ''} onClick={() => setProc(p.id)}><Ico n={p.icon} size={18} />{p.title}{now?.startsWith(p.id) && <i className="dot" aria-label="you are here" />}</button>)}</div>
+          <Panel plate={PROCEDURES.find((p) => p.id === proc).title} icon={PROCEDURES.find((p) => p.id === proc).icon}><Flow proc={PROCEDURES.find((p) => p.id === proc)} now={now} /></Panel>
+          <p className="dbt-note">Adapted from the "Processes" flowcharts (Jono, v0.01) in your Ker Nathalas folder, with page numbers moved to the Gravebound Edition. Each step says whether the beta does it for you.</p>
+        </div>
+      )}
+
+      {tab === 'rules' && RULE_GROUPS.map(([g, title, icon]) => (
+        <Panel key={g} plate={title} icon={icon} className="dbt-rulegroup">
+          {RULES.filter((r) => r.group === g).map((r) => {
+            const isOpen = open === r.id; const live = liveLine(r.live, game, settings);
+            return (
+              <article key={r.id} className={`dbt-rule ${isOpen ? 'open' : ''}`}>
+                <button type="button" className="dbt-rule-head" onClick={() => setOpen(isOpen ? null : r.id)} aria-expanded={isOpen}>
+                  <span className={`mode ${MODE[r.mode][1]}`} aria-hidden="true" /><b>{r.title}</b><em>{MODE[r.mode][0]}</em><Ico n={isOpen ? 'close' : 'next'} size={14} />
+                </button>
+                {live && <p className="dbt-rule-live"><Ico n="eye" size={14} /> {live}</p>}
+                {isOpen && (
+                  <div className="dbt-rule-body">
+                    <div><h5>The book</h5><p><Rich text={r.book} /></p></div>
+                    <div><h5>In this session</h5><p><Rich text={r.session} /></p></div>
+                    {r.page && <button type="button" className="dbt-btn sm ghost" onClick={() => onPage(r.page)}><Ico n="tome" size={16} /> Read page {r.page}</button>}
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </Panel>
+      ))}
+
+      {tab === 'tables' && (
+        <Panel plate="The book's tables" icon="scroll">
+          <div className="dbt-seg wrapseg">{[['room', 'Rooms'], ['corridor', 'Corridors'], ['overseer', 'Overseer Influence'], ['events', 'Events'], ['darkness', 'Growing Darkness']].map(([k, l]) => <button key={k} type="button" className={tbl === k ? 'on' : ''} onClick={() => setTbl(k)}>{l}</button>)}</div>
+          <p className="dbt-note">{tb.die.toUpperCase()} · {tb.rows.length} rows · <PageChip page={tb.page} onPage={onPage} />{lastRolls[tbl] ? ` · last rolled: ${lastRolls[tbl]}` : ''}</p>
+          <div className="dbt-tbl">{tb.rows.map((r) => <div key={`${r.lo}-${r.hi}`} className={lastRolls[tbl] >= r.lo && lastRolls[tbl] <= r.hi ? 'hit' : ''}><b>{r.lo === r.hi ? r.lo : `${r.lo}-${r.hi}`}</b><span><Rich text={r.text} /></span></div>)}</div>
+        </Panel>
+      )}
+
+      {tab === 'bestiary' && (
+        <>
+          <div className="dbt-seg wrapseg">{Object.keys(CREATURES).map((k) => <button key={k} type="button" className={foe === k ? 'on' : ''} onClick={() => setFoe(k)}>{k}</button>)}</div>
+          <Panel plate={foe} icon="skull"><MonsterCard name={foe} /></Panel>
+          <Panel plate="The Overseers" icon="star">
+            <p className="dbt-note">The ten rulers of the Domains, as the book draws them (pp. 180-198). Their stat blocks are not in the beta yet: fight them from the book.</p>
+            <div className="dbt-overseers">{OVERSEERS.map((o) => <figure key={o} className={game?.domain.overseer.name === o ? 'now' : ''}><img src={overseerImg(o)} alt={o} loading="lazy" /><figcaption>{o}{game?.domain.overseer.name === o ? <em> · rules this Domain</em> : null}</figcaption></figure>)}</div>
+          </Panel>
+        </>
+      )}
+    </div>
+  );
+}

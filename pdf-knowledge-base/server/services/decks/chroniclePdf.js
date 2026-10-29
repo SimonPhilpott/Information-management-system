@@ -11,7 +11,8 @@ import { getCardData } from '../decksService.js';
 // chapter actually starts on (Roman, as the Elven font has no digits).
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const FONT = path.resolve(__dirname, '../../../../public/fonts/elvencommonspeak.ttf');
+const FONT_HIGHCREST = path.resolve(__dirname, '../../../../public/fonts/highcrest.ttf');
+const FONT_ELVEN = path.resolve(__dirname, '../../../../public/fonts/elvencommonspeak.ttf');
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 
 function roman(n) {
@@ -22,7 +23,8 @@ function roman(n) {
 }
 
 function bookHtml(c, chron, heroes) {
-  const font = fs.existsSync(FONT) ? `url(data:font/ttf;base64,${fs.readFileSync(FONT).toString('base64')}) format('truetype')` : 'local("Georgia")';
+  const fontHighcrest = fs.existsSync(FONT_HIGHCREST) ? `url(data:font/ttf;base64,${fs.readFileSync(FONT_HIGHCREST).toString('base64')}) format('truetype')` : null;
+  const fontElven = fs.existsSync(FONT_ELVEN) ? `url(data:font/ttf;base64,${fs.readFileSync(FONT_ELVEN).toString('base64')}) format('truetype')` : 'local("Georgia")';
   // a chapter's plate, embedded (the page's /chronicle-art/<key> url names the file)
   const plate = (n) => {
     const key = String(chron.art?.[n] || '').split('/').pop();
@@ -37,7 +39,8 @@ function bookHtml(c, chron, heroes) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&display=block">
 <style>
-  @font-face { font-family: 'Elven Common Speak'; src: ${font}; }
+  ${fontHighcrest ? `@font-face { font-family: 'Highcrest'; src: ${fontHighcrest}; font-display: swap; }` : ''}
+  @font-face { font-family: 'Elven Common Speak'; src: ${fontElven}; font-display: swap; }
   @page { size: 148mm 210mm; margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -55,7 +58,7 @@ function bookHtml(c, chron, heroes) {
   section.page:last-child { break-after: auto; page-break-after: auto; }
   .body { position: absolute; top: 11mm; left: 16mm; right: 16mm; bottom: 20mm; padding-top: 6mm; overflow: hidden; }
   .folio { position: absolute; bottom: 9mm; left: 0; right: 0; text-align: center; font-size: 10pt; opacity: .7; letter-spacing: .2em; }
-  .elven { font-family: 'Elven Common Speak', 'IM Fell English', serif; -webkit-text-stroke: .5px ${INK}; line-height: 1.1; }
+  .elven { font-family: 'Highcrest', 'Elven Common Speak', 'IM Fell English', serif; line-height: 1.1; }
   .label { text-align: center; letter-spacing: .3em; text-transform: uppercase; font-size: 8.5pt; opacity: .7; }
   .ct { font-size: 25pt; text-align: center; margin-top: 2mm; }
   .rule { text-align: center; opacity: .55; letter-spacing: .4em; margin: 2mm 0 4mm; }
@@ -63,7 +66,7 @@ function bookHtml(c, chron, heroes) {
   .sub { text-align: center; font-style: italic; font-size: 13pt; line-height: 1.3; opacity: .55; margin-bottom: 4mm; }
   p { margin: 0 0 .6em; text-align: justify; hyphens: auto; text-indent: 1.3em; orphans: 1; widows: 1; }
   p.first, p.cont { text-indent: 0; }
-  p.first::first-letter { font-family: 'Elven Common Speak', serif; float: left; font-size: 3.3em; line-height: .85; padding: .06em .08em 0 0; color: #6b1d0e; -webkit-text-stroke: .5px #6b1d0e; }
+  p.first::first-letter { font-family: 'Highcrest', 'Elven Common Speak', serif; float: left; font-size: 3.3em; line-height: .85; padding: .06em .08em 0 0; color: #6b1d0e; }
   .title { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; text-align: center; padding: 0 14mm; }
   .idx { display: flex; align-items: baseline; gap: 2mm; margin-bottom: 3mm; font-size: 11pt; }
   .plate { position: absolute; inset: 14mm 12mm 22mm; display: flex; flex-direction: column; align-items: center; justify-content: center; }

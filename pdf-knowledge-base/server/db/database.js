@@ -412,6 +412,9 @@ db.exec(`
     inventory_json TEXT DEFAULT '[]',
     spells_or_skills_json TEXT DEFAULT '[]',
     notes TEXT,
+    avatar_url TEXT,
+    trackers_json TEXT DEFAULT '[]',
+    progress_json TEXT DEFAULT '[]',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -440,6 +443,24 @@ db.exec(`
     scene_state_json TEXT DEFAULT '{}',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  -- Quick-access pre-digested ruleset knowledge engine
+  CREATE TABLE IF NOT EXISTS dnd_rules_digest (
+    id TEXT PRIMARY KEY,
+    ruleset_id TEXT NOT NULL,
+    category TEXT NOT NULL, -- core | combat | exploration | survival | table | condition
+    title TEXT NOT NULL,
+    trigger_when TEXT NOT NULL, -- explicit context: when and why this rule triggers
+    procedure TEXT NOT NULL, -- concrete step-by-step resolution procedure
+    outcomes_json TEXT DEFAULT '{}', -- success/failure/crit outcomes
+    table_data_json TEXT, -- structured table items or ranges if category is 'table'
+    book_title TEXT,
+    page_num INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_rules_digest_ruleset ON dnd_rules_digest(ruleset_id);
+  CREATE INDEX IF NOT EXISTS idx_rules_digest_category ON dnd_rules_digest(ruleset_id, category);
 `);
 
 // Helper functions

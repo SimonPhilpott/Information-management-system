@@ -1,11 +1,15 @@
 import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import {
   DND_BOOKS_ROOT, scanDndLibrary, getRulesets, getRuleset,
-  createCharacter, getCharacter, updateCharacter,
+  createCharacter, getCharacter, getCharacters, updateCharacter, deleteCharacter,
   startCampaign, getCampaigns, getCampaign, deleteCampaign,
-  rollDice, consultOracle, processDmTurn, undoLastTurn, getTurn
+  rollDice, consultOracle, processDmTurn, processDmTurnStream, undoLastTurn, getTurn, updateCampaignAdversary,
+  isChronicleCompactionEnabled, setChronicleCompactionSetting
 } from '../services/dndSoloService.js';
 import { narrate } from '../services/decks/chronicleVoice.js';
 import { startDiscovery, discoveryStatus, studySystem, askRules, rollHero, rulesetFiles, rpgDocuments, askDm } from '../services/dndLibrary.js';
@@ -13,8 +17,20 @@ import { isApprovedSession, isGuestSession } from '../middleware/requireSession.
 import { canonEmail } from '../services/decksService.js';
 import { campaignOwner, characterCampaign, turnCampaign } from '../services/dndSoloService.js';
 import * as chronicle from '../services/dndChronicle.js';
+import { getRulesDigest, getGameSystemConfig } from '../services/rulesDigestService.js';
+import { generateHeroAvatar, getAvatarFilePath } from '../services/dndAvatarService.js';
+import { dressScene, askRindewind, libraryListing, reflectHero, saveCreatureArt, creatureArtFile } from '../services/dndBetaService.js';
 
 const router = Router();
+
+// Serve locally cached avatar portrait image (public static asset for <img> tags)
+router.get('/avatars/:file', (req, res) => {
+  const file = getAvatarFilePath(req.params.file);
+  if (!file) return res.status(404).end();
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  res.type('image/jpeg').sendFile(file);
+});
+
 // Simon, and anyone he's invited (the shared guest list of the deck builder and Homebrew). Guests play their own
 // adventures; reading the library and studying the games is Simon's.
 const viewer = (req) => ({ isOwner: isApprovedSession(req), email: canonEmail(req.session?.user?.email) });
@@ -65,6 +81,14 @@ router.post('/rulesets/:id/study', onlyOwner, async (req, res) => {
 router.get('/rulesets/:id/books', (req, res) => {
   try { res.json({ success: true, books: rulesetFiles(getRuleset(req.params.id)) }); } catch (err) { fail(res, err); }
 });
+// Authoritative quick-reference rules digest cards and system configuration
+router.get('/rulesets/:id/digest', (req, res) => {
+  try {
+    const cards = getRulesDigest(req.params.id);
+    const config = getGameSystemConfig(req.params.id);
+    res.json({ success: true, cards, config });
+  } catch (err) { fail(res, err); }
+});
 // A rules question answered from the game's own books, with the pages
 router.post('/rulesets/:id/ask', async (req, res) => {
   try {
@@ -80,6 +104,21 @@ router.post('/rulesets/:id/hero', async (req, res) => {
     if (!r) return fail(res, new Error('Ruleset not found'), 404);
     res.json({ success: true, hero: await rollHero(r, req.body || {}) });
   } catch (err) { fail(res, err, 500); }
+});
+
+// Generate an avatar portrait on demand for a hero setup or re-roll
+router.post('/hero/avatar', async (req, res) => {
+  try {
+    const { name, roleOrClass, rulesetId, concept, details, backstory, premise, referenceImage } = req.body || {};
+    const ruleset = rulesetId ? getRuleset(rulesetId) : null;
+    const out = await generateHeroAvatar({ name, roleOrClass, ruleset, concept, details, backstory, premise, referenceImage });
+    res.json({ success: true, avatarUrl: out.avatarUrl });
+  } catch (err) { fail(res, err, 500); }
+});
+
+// Characters across all campaigns
+router.get('/characters', (req, res) => {
+  try { res.json({ success: true, characters: getCharacters(ownerOf(req)) }); } catch (err) { fail(res, err); }
 });
 
 // Campaigns
@@ -106,11 +145,48 @@ router.delete('/campaigns/:id', (req, res) => {
 
 router.post('/campaigns/:id/turn', async (req, res) => {
   try {
-    const { playerAction, diceRoll, oracleResult } = req.body || {};
+    const { playerAction, diceRoll, oracleResult, adversary } = req.body || {};
     if (!String(playerAction || '').trim()) return fail(res, new Error('Player action is required'), 400);
-    const campaign = await processDmTurn({ campaignId: req.params.id, playerAction: String(playerAction).trim(), diceRoll, oracleResult });
+    const campaign = await processDmTurn({ campaignId: req.params.id, playerAction: String(playerAction).trim(), diceRoll, oracleResult, adversary });
     res.json({ success: true, campaign });
   } catch (err) { fail(res, err, 500); }
+});
+
+router.post('/campaigns/:id/turn-stream', async (req, res) => {
+  try {
+    const { playerAction, diceRoll, oracleResult, adversary } = req.body || {};
+    if (!String(playerAction || '').trim()) return fail(res, new Error('Player action is required'), 400);
+
+    // Set Server-Sent Events headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+    const campaign = await processDmTurnStream(
+      { campaignId: req.params.id, playerAction: String(playerAction).trim(), diceRoll, oracleResult, adversary },
+      (token) => {
+        res.write(`data: ${JSON.stringify({ type: 'token', token })}\n\n`);
+      }
+    );
+
+    res.write(`data: ${JSON.stringify({ type: 'complete', campaign })}\n\n`);
+    res.end();
+  } catch (err) {
+    if (res.headersSent) {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: err.message || String(err) })}\n\n`);
+      res.end();
+    } else {
+      fail(res, err, 500);
+    }
+  }
+});
+
+router.put('/campaigns/:id/adversary', (req, res) => {
+  try {
+    res.json({ success: true, campaign: updateCampaignAdversary(req.params.id, req.body || {}) });
+  } catch (err) { fail(res, err); }
 });
 
 // Rindewind out of character - recap, rules, advice - for any room of the page
@@ -122,6 +198,29 @@ router.post('/campaigns/:id/ask', async (req, res) => {
     if (!question) return fail(res, new Error('Ask him something'), 400);
     res.json({ success: true, ...(await askDm({ campaign, ruleset: getRuleset(campaign.ruleset_id), question, books: campaign.books?.length ? campaign.books : null })) });
   } catch (err) { fail(res, err, 500); }
+});
+// D&D Solo beta: Rindewind's one or two lines for a scene the rules engine has already settled
+router.post('/beta/dress', async (req, res) => {
+  try { res.json({ success: true, text: await dressScene(req.body || {}) }); } catch (err) { fail(res, err, 500); }
+});
+// D&D Solo beta: the books in the D&D folder (a listing, nothing indexed), and who a survivor has become
+router.get('/beta/library', (req, res) => {
+  try { res.json({ success: true, ...libraryListing() }); } catch (err) { fail(res, err, 500); }
+});
+router.post('/beta/creature-art', (req, res) => {
+  try { res.json({ success: true, ...saveCreatureArt(req.body || {}) }); } catch (err) { fail(res, err, 400); }
+});
+router.get('/beta/creature-art/:slug', (req, res) => {
+  const f = creatureArtFile(req.params.slug);
+  if (!f) return res.status(404).send('No picture');
+  res.setHeader('Cache-Control', 'private, max-age=3600'); res.sendFile(f);
+});
+router.post('/beta/reflect', async (req, res) => {
+  try { res.json({ success: true, ...(await reflectHero(req.body || {})) }); } catch (err) { fail(res, err, 500); }
+});
+// D&D Solo beta: Rindewind out of character - rules from the book (with pages), advice and recaps from the live game
+router.post('/beta/ask', async (req, res) => {
+  try { res.json({ success: true, ...(await askRindewind(req.body || {})) }); } catch (err) { fail(res, err, 500); }
 });
 // Any text read aloud by the Chronicler (his out-of-character answers)
 router.post('/voice', (req, res) => {
@@ -138,7 +237,13 @@ router.post('/voice', (req, res) => {
 const ch = (fn) => async (req, res) => { try { res.json({ success: true, ...(await fn(req)) }); } catch (err) { res.status(err.status || 500).json({ success: false, error: err.message }); } };
 const chap = (req) => String(req.body?.chapter || '');
 router.get('/campaigns/:id/chronicle', ch((req) => chronicle.chronicleStatus(req.params.id)));
-router.post('/campaigns/:id/chronicle', ch((req) => chronicle.writeChronicle(req.params.id)));
+router.post('/campaigns/:id/chronicle', ch((req) => chronicle.writeChronicle(req.params.id, Boolean(req.body?.force))));
+router.get('/campaigns/:id/compaction-settings', (req, res) => {
+  try { res.json({ success: true, enabled: isChronicleCompactionEnabled(req.params.id) }); } catch (err) { fail(res, err); }
+});
+router.post('/campaigns/:id/compaction-settings', (req, res) => {
+  try { res.json({ success: true, ...setChronicleCompactionSetting(req.params.id, Boolean(req.body?.enabled)) }); } catch (err) { fail(res, err); }
+});
 router.put('/campaigns/:id/chronicle/chapter', ch((req) => chronicle.editChapter(req.params.id, chap(req), req.body || {})));
 router.put('/campaigns/:id/chronicle/lock', ch((req) => chronicle.lockChapter(req.params.id, chap(req), Boolean(req.body?.locked))));
 router.post('/campaigns/:id/chronicle/title', ch((req) => chronicle.suggestTitle(req.params.id, chap(req), req.body || {})));
@@ -174,6 +279,50 @@ router.get('/soundscapes', async (req, res) => {
   try { res.json({ success: true, tracks: await (await import('../services/dndSoundscapes.js')).catalogue() }); } catch (err) { fail(res, err, 500); }
 });
 
+// Authentic Tabletop Audio RPG Sound Effects (cached locally on disk)
+router.get('/sfx/:category/:file', async (req, res) => {
+  try {
+    const { category, file } = req.params;
+    const allowed = ['dm_tools', 'combat2', 'dungeon2', 'atlantis'];
+    if (!allowed.includes(category) || !/^[a-zA-Z0-9_\-\.]+\.(mp3|ogg)$/.test(file)) {
+      return res.status(400).json({ error: 'Invalid audio asset request' });
+    }
+
+    const sfxDir = path.join(__dirname, '..', 'data', 'sfx', category);
+    fs.mkdirSync(sfxDir, { recursive: true });
+    const localPath = path.join(sfxDir, file);
+
+    if (fs.existsSync(localPath)) {
+      res.setHeader('Content-Type', file.endsWith('.ogg') ? 'audio/ogg' : 'audio/mpeg');
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      return fs.createReadStream(localPath).pipe(res);
+    }
+
+    // Fetch from Tabletop Audio CDN with required Referer
+    const upstreamUrl = `https://sounds.tabletopaudio.com/${category}/${file}`;
+    const upstream = await fetch(upstreamUrl, {
+      headers: {
+        'Referer': 'https://tabletopaudio.com/',
+        'User-Agent': 'Mozilla/5.0'
+      },
+      signal: AbortSignal.timeout(12000)
+    });
+
+    if (!upstream.ok) {
+      return res.status(upstream.status).json({ error: `Sound unavailable: HTTP ${upstream.status}` });
+    }
+
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    try { fs.writeFileSync(localPath, buffer); } catch { /* ignore write failure */ }
+
+    res.setHeader('Content-Type', file.endsWith('.ogg') ? 'audio/ogg' : 'audio/mpeg');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.end(buffer);
+  } catch (err) {
+    fail(res, err, 500);
+  }
+});
+
 // Characters
 router.post('/characters', onlyOwner, (req, res) => {
   try { res.json({ success: true, character: createCharacter(req.body || {}) }); } catch (err) { fail(res, err); }
@@ -189,6 +338,10 @@ router.get('/characters/:id', (req, res) => {
 
 router.put('/characters/:id', (req, res) => {
   try { res.json({ success: true, character: updateCharacter(req.params.id, req.body || {}) }); } catch (err) { fail(res, err); }
+});
+
+router.delete('/characters/:id', (req, res) => {
+  try { res.json({ success: true, result: deleteCharacter(req.params.id) }); } catch (err) { fail(res, err); }
 });
 
 // Dice Roller & Solo Oracle

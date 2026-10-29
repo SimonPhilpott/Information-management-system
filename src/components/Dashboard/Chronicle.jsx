@@ -62,7 +62,8 @@ const INK = '#3a2410';
 // Every page of every chronicle has the shape of a chapter page as first designed (557 x 855); a chapter
 // too long for its page runs on to the next.
 const PAGE_W = 557, PAGE_H = 855;
-const ELVEN = '"Elven Common Speak", "IM Fell English", Georgia, serif';
+const HIGHCREST = '"Highcrest", "Elven Common Speak", "IM Fell English", Georgia, serif';
+const ELVEN = HIGHCREST;
 const FELL = '"IM Fell English", Georgia, serif';
 
 function useWide() {
@@ -81,6 +82,7 @@ function BookStyles() {
   return (
     <style>{`
       @import url('https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Special+Elite&family=Reenie+Beanie&family=Caveat:wght@500&display=swap');
+      @font-face { font-family: 'Highcrest'; src: url('/fonts/highcrest.ttf') format('truetype'); font-display: swap; }
       @font-face { font-family: 'Elven Common Speak'; src: url('/fonts/elvencommonspeak.ttf') format('truetype'); font-display: swap; }
       .chron-page {
         position: relative; color: ${INK}; font-family: ${FELL}; font-size: 17px; line-height: 1.6;
@@ -102,8 +104,8 @@ function BookStyles() {
       .chron-page p { text-align: justify; hyphens: auto; margin: 0 0 .7em; text-indent: 1.3em; }
       .chron-page p.first, .chron-page p.cont { text-indent: 0; }
       .chron-page p.cut { text-align-last: justify; margin-bottom: 0; }
-      .chron-page p.first::first-letter { font-family: ${ELVEN}; float: left; font-size: 3.4em; line-height: .85; padding: .06em .08em 0 0; color: #6b1d0e; -webkit-text-stroke: .6px #6b1d0e; }
-      .chron-elven { font-family: ${ELVEN}; -webkit-text-stroke: .7px ${INK}; letter-spacing: .01em; line-height: 1.1; font-weight: 700; }
+      .chron-page p.first::first-letter { font-family: ${HIGHCREST}; float: left; font-size: 3.4em; line-height: .85; padding: .06em .08em 0 0; color: #6b1d0e; }
+      .chron-elven { font-family: ${HIGHCREST}; letter-spacing: .02em; line-height: 1.15; font-weight: 400; }
       .chron-folio { position: absolute; bottom: 18px; left: 0; right: 0; text-align: center; font-size: 14px; opacity: .7; letter-spacing: .2em; }
       /* the turning leaf: two faces back to back, hinged on the spine */
       .chron-leaf { position: absolute; top: 0; bottom: 0; transform-style: preserve-3d; z-index: 4; animation-duration: .95s; animation-timing-function: cubic-bezier(.45,.05,.35,1); animation-fill-mode: forwards; }
@@ -155,7 +157,7 @@ function BookStyles() {
       .j-stamp { display: inline-block; border: 3px double #a3261d; color: #a3261d; font-family: 'Special Elite', monospace; letter-spacing: .25em; padding: 4px 12px; text-transform: uppercase; opacity: .72; transform: rotate(-11deg); }
       .j-photo { position: relative; background: #fbf8ef; padding: 10px 10px 34px; box-shadow: 0 8px 18px rgba(0,0,0,.35); }
       .chron-cover.journal { background: radial-gradient(ellipse at 30% 20%, rgba(255,255,255,.05), transparent 50%), repeating-linear-gradient(35deg, rgba(0,0,0,.05) 0 2px, transparent 2px 5px), linear-gradient(135deg, #2c3b33, #1c2822 60%, #141d19); }
-      .chron-gold { color: #e3bd62; -webkit-text-stroke: .9px #e3bd62; text-shadow: 0 1px 0 #6a4a14, 0 0 10px rgba(227,189,98,.35); }
+      .chron-gold { color: #e3bd62; text-shadow: 0 1px 0 #6a4a14, 0 0 12px rgba(227,189,98,.35); letter-spacing: .02em; }
     `}</style>
   );
 }
@@ -691,7 +693,7 @@ export default function Chronicle({ c, chron, byCode = {}, setC, toast = () => {
       return (
         <div className={cls} key={i} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center' }}>
           <div style={{ letterSpacing: '.35em', textTransform: 'uppercase', fontSize: 13, opacity: .7 }}>Here beginneth the Chronicle of</div>
-          <div className="chron-elven" style={{ fontSize: 'clamp(46px, 7vw, 76px)', margin: '22px 0 18px', WebkitTextStroke: `1.6px ${INK}` }}>{c.name}</div>
+          <div className="chron-elven" style={{ fontSize: 'clamp(46px, 7vw, 76px)', margin: '22px 0 18px' }}>{c.name}</div>
           <Rule />
           {kind && <div style={{ fontStyle: 'italic', fontSize: 19 }}>being a tale of {kind}</div>}
           {heroes.length > 0 && <div style={{ fontSize: 15, marginTop: 18, opacity: .85 }}>as it befell {heroes.slice(0, -1).join(', ')}{heroes.length > 1 ? ' and ' : ''}{heroes[heroes.length - 1]}, and those who walked with them</div>}

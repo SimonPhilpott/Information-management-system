@@ -63,7 +63,32 @@ function Body() {
   const [cmd, setCmd] = useState('');
   const [running, setRunning] = useState(false);
   const [confirm, setConfirm] = useState(null);
+  const [portData, setPortData] = useState(null);
+  const [restarting, setRestarting] = useState(null);
   const term = useRef(null);
+
+  const loadPorts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/system/ports');
+      if (res.ok) {
+        const d = await res.json();
+        if (d.success) setPortData(d);
+      }
+    } catch (_) {}
+  }, []);
+
+  const handleRestart = async (target) => {
+    setRestarting(target);
+    try {
+      const res = await fetch(`/api/system/restart/${target}`, { method: 'POST' });
+      const d = await res.json();
+      snack(d.message || `Restart initiated for ${target}`);
+      setTimeout(loadPorts, 3000);
+    } catch (e) {
+      snack(`Failed: ${e.message}`, { error: true });
+    }
+    setRestarting(null);
+  };
 
   const load = useCallback(async () => {
     try {
@@ -75,11 +100,12 @@ function Body() {
   }, []);
   useEffect(() => {
     load();
-    const t = setInterval(load, 10000);
+    loadPorts();
+    const t = setInterval(() => { load(); loadPorts(); }, 10000);
     const es = new EventSource('/api/device-health/stream');
     es.onmessage = (ev) => { try { const it = JSON.parse(ev.data); if (it?.line) setLogs((p) => { const n = [...p, it]; return n.length > 2000 ? n.slice(-2000) : n; }); } catch { /* skip a bad line */ } };
     return () => { clearInterval(t); es.close(); };
-  }, [load]);
+  }, [load, loadPorts]);
   useEffect(() => { if (follow && term.current) term.current.scrollTop = term.current.scrollHeight; }, [logs, follow]);
 
   const send = async (c) => {
@@ -143,6 +169,64 @@ function Body() {
         <div className="imsm-stat"><span className="k"><Icon n="timer" size={16} />Up for</span><b>{uptime(cur.uptimeSec)}</b><span className="s">Start {cur.bootCount || 1}; last restart: {cur.resetReason || 'power on'}</span><Spark data={spark.uptimeSeconds} /></div>
         <div className={`imsm-stat ${cur.reconnectCount ? 'bad' : ''}`}><span className="k"><Icon n="sync" size={16} />Reconnects</span><b>{cur.reconnectCount || 0}</b><span className="s">{cur.audioUnderruns || 0} audio gaps; last error: {cur.lastError || 'none'}</span><Spark data={spark.reconnectCount} tone="bad" /></div>
       </div>
+
+      <section className="imsm-card">
+        <div className="imsm-row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <h3><Icon n="sync" size={20} />IMS Backend Ports & Remote Restarts</h3>
+          <Btn kind="tonal" icon="sync" busy={restarting === 'all'} disabled={Boolean(restarting)} onClick={() => handleRestart('all')}>
+            {restarting === 'all' ? 'Restarting All…' : 'Restart All Services'}
+          </Btn>
+        </div>
+        <p className="muted" style={{ margin: '4px 0 12px' }}>
+          Live status of host background processes. Tapping restart cleanly terminates and rebinds the port on your PC.
+        </p>
+        <div className="imsm-stats" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
+          {(portData?.ports || [
+            { id: '6001', name: 'IMS Main UI', port: 6001, status: 'online' },
+            { id: '3001', name: 'PDF KB API', port: 3001, status: 'online' },
+            { id: '3002', name: 'Hardware Audio', port: 3002, status: 'online' },
+            { id: '3003', name: 'Camera HTTP', port: 3003, status: 'online' },
+            { id: '3232', name: 'ESP32 OTA', port: 3232, status: 'online' }
+          ]).map((p) => (
+            <div key={p.id} className={`imsm-stat ${p.status === 'online' ? '' : 'bad'}`}>
+              <span className="k">{p.name}</span>
+              <b style={{ fontSize: 15 }}>
+                <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: p.status === 'online' ? '#2ed573' : '#ff4757', marginRight: 6 }} />
+                Port {p.port}
+              </b>
+              <span className="s" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                <span>{p.status === 'online' ? 'Listening' : 'Offline'}</span>
+                <button
+                  type="button"
+                  style={{ background: 'none', border: 'none', color: 'var(--imsm-primary, #4a90e2)', cursor: 'pointer', fontSize: 12, padding: '2px 4px', textDecoration: 'underline' }}
+                  disabled={Boolean(restarting)}
+                  onClick={() => handleRestart(p.id)}
+                >
+                  {restarting === p.id ? '…' : '↻ Restart'}
+                </button>
+              </span>
+            </div>
+          ))}
+          <div className={`imsm-stat ${portData?.ngrok?.status === 'online' ? '' : 'bad'}`}>
+            <span className="k">Public Tunnel</span>
+            <b style={{ fontSize: 14 }}>
+              <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: portData?.ngrok?.status === 'online' ? '#2ed573' : '#ff4757', marginRight: 6 }} />
+              simon-ims
+            </b>
+            <span className="s" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+              <span>{portData?.ngrok?.status === 'online' ? 'Tunnel Open' : 'Offline'}</span>
+              <button
+                type="button"
+                style={{ background: 'none', border: 'none', color: 'var(--imsm-primary, #4a90e2)', cursor: 'pointer', fontSize: 12, padding: '2px 4px', textDecoration: 'underline' }}
+                disabled={Boolean(restarting)}
+                onClick={() => handleRestart('ngrok')}
+              >
+                {restarting === 'ngrok' ? '…' : '↻ Restart'}
+              </button>
+            </span>
+          </div>
+        </div>
+      </section>
 
       <section className="imsm-card">
         <div className="imsm-row" style={{ justifyContent: 'space-between' }}>

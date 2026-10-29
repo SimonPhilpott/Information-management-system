@@ -874,6 +874,7 @@
 /* ---- System Architecture: the map as it was, in the IMS frame (option A) ---- */
 .hbb.imsm .imsm-body.full { max-width: 2200px; }
 .hbb.imsm .imsm-arch { font-family: var(--font); color: var(--on-surface); }
+.hbb.imsm div.imsm-arch { isolation: isolate; position: relative; z-index: 1; }
 .hbb.imsm .imsm-arch .arch-card, .hbb.imsm .imsm-arch .arch-panel { border-radius: 22px !important; border-color: var(--outline-var) !important; background: var(--surface-c-lowest) !important; box-shadow: none; }
 .hbb.imsm.dark .imsm-arch .arch-card, .hbb.imsm.dark .imsm-arch .arch-panel { background: var(--surface-c-low) !important; }
 .hbb.imsm .imsm-arch .arch-title { font-family: var(--head-font); font-weight: 400 !important; font-size: 18px !important; }
@@ -1295,17 +1296,24 @@
 .hbb.imsm .imsh-err { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: 16px; background: var(--error-c); color: var(--on-error-c); font-size: 14px; line-height: 20px; margin-top: 6px; }
 @media (max-width: 700px) { .hbb.imsm .imsh-face { width: min(220px, 58vw); } .hbb.imsm .imsh-ims.talking .imsh-face { width: min(130px, 34vw); border-radius: 18px; } }
 .hbb.imsm.withrail { --rail: 84px; }
+.hbb.imsm.norail { --rail: 0px; }
 .hbb.imsm .imsh-rail button.logo { border: 0; cursor: pointer; }
-@media (max-width: 700px) { .hbb.imsm.withrail { flex-direction: column-reverse; } .hbb.imsm.withrail .imsm-page { flex: 1; min-height: 0; } .hbb.imsm.withrail .imsm-fab { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); } }
+@media (max-width: 700px) {
+  .hbb.imsm.withrail { flex-direction: column-reverse; }
+  .hbb.imsm.withrail .imsm-page { flex: 1; min-height: 0; }
+  .hbb.imsm.withrail .imsm-fab { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+  .hbb.imsm.norail { flex-direction: column; }
+  .hbb.imsm.norail .imsm-page { flex: 1; min-height: 0; }
+}
 .imsl .chat-empty h2 { font-family: var(--head-font) !important; font-weight: 400 !important; font-size: 38px !important; line-height: 1.15 !important; letter-spacing: 0 !important; color: var(--pri) !important; background: none !important; -webkit-text-fill-color: currentColor !important; }
 .hbb.imsm .imsh-search-btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 8px 0 12px; border-radius: 20px; color: var(--on-surface-var); }
 .hbb.imsm .imsh-search-btn:hover { background: var(--surface-c-high); color: var(--on-surface); }
 .hbb.imsm .imsh-search-btn kbd { font: 600 12px/1 var(--font); padding: 5px 8px; border-radius: 8px; background: var(--surface-c-high); color: var(--on-surface-var); border: 1px solid var(--outline-var); }
 @media (max-width: 700px) { .hbb.imsm .imsh-search-btn kbd { display: none; } .hbb.imsm .imsh-rail .radmin, .hbb.imsm .imsh-rail .rgraph { display: none; } }
 /* the header stays in view while scrolling (26 Oct) */
-.hbb.imsm .imsm-head { position: sticky; top: 0; z-index: 6; background: var(--surface); margin-top: -12px; padding-top: 12px; padding-bottom: 4px; box-shadow: 0 0 0 100vmax var(--surface); clip-path: inset(0 -100vmax 0 -100vmax); transition: box-shadow .2s; }
+.hbb.imsm .imsm-head { position: sticky; top: 0; z-index: 40; background: var(--surface); margin-top: -12px; padding-top: 12px; padding-bottom: 4px; box-shadow: 0 0 0 100vmax var(--surface); clip-path: inset(0 -100vmax 0 -100vmax); transition: box-shadow .2s; }
 .hbb.imsm .imsm-head.stuck { border-bottom: 1px solid var(--outline-var); }
-.hbb.imsm .imsm-ptabs { top: var(--imsm-head-h, 0px); }
+.hbb.imsm .imsm-ptabs { top: var(--imsm-head-h, 0px); z-index: 39; }
 
 .hbb.imsm .imsm-wxwarn { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 20px; text-decoration: none; color: #2a1e00; background: #ffd83c; }
 .hbb.imsm .imsm-wxwarn.amber { background: #ff9628; color: #2a1200; }

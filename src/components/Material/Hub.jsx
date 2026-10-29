@@ -13,7 +13,7 @@ const LOOK = {
   '/ims/reminders': ['bell', 'green'], '/ims/instructions': ['clipboard', 'indigo'], '/ims/birthday': ['cake', 'pink'], '/ims/calendar': ['calendar', 'blue'],
   '/ims/memories': ['bulb', 'teal'], '/ims/recordings': ['mic', 'red'], '/ims/tasks': ['checklist', 'teal'],
   '/ims/look': ['eye', 'sky'], '/ims/faces': ['face', 'violet'],
-  '/ims/code-repo': ['code', 'indigo'], '/ims/dnd': ['dice', 'brown'], '/ims/dayreport': ['sun', 'orange'], '/ims/musicscan': ['music', 'pink'], '/ims/boardgames': ['dice', 'violet'],
+  '/ims/code-repo': ['code', 'indigo'], '/ims/dnd': ['dice', 'brown'], '/ims/dnd-beta': ['dice', 'brown'], '/ims/dayreport': ['sun', 'orange'], '/ims/musicscan': ['music', 'pink'], '/ims/boardgames': ['dice', 'violet'],
   '/campaigns': ['explore', 'green'], '/ims/homebrew': ['cup', 'orange'], '/ims/news': ['news', 'sky'],
   '/ims/glucose': ['blood', 'red'], '/ims/activities': ['watch', 'orange'], '/ims/runplanner': ['route', 'green'],
   '/ims/device-health': ['monitor', 'teal'], '/ims/storage': ['disk', 'indigo'], '/ims/models': ['sparkle', 'indigo'], '/ims/costs': ['money', 'green'],

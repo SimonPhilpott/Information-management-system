@@ -197,9 +197,9 @@
 
 /* Global Icon Fix - Restore stroke-only behavior for standard icons.
    Charts (svg role="img") are excluded: their bars, labels and shaded areas need their own fills. */
-svg:not(.fill-current):not(.status-indicator):not([role="img"]) path,
-svg:not(.fill-current):not(.status-indicator):not([role="img"]) circle,
-svg:not(.fill-current):not(.status-indicator):not([role="img"]) rect {
+svg:not(.fill-current):not(.status-indicator):not([role="img"]):not(.imsd-mannequin-svg) path,
+svg:not(.fill-current):not(.status-indicator):not([role="img"]):not(.imsd-mannequin-svg) circle,
+svg:not(.fill-current):not(.status-indicator):not([role="img"]):not(.imsd-mannequin-svg) rect {
   fill: transparent !important;
   transition: transform var(--transition-fast), stroke var(--transition-fast), fill var(--transition-fast);
 }

@@ -50,18 +50,19 @@ if exist ".env" (
 where wt.exe >nul 2>&1
 if %ERRORLEVEL% equ 0 (
     echo [System] Launching services in Windows Terminal tabs...
-    powershell -NoProfile -Command "wt -w 0 new-tab --title 'IMS Main App' -d '%~dp0.' cmd /k npm run dev ';' new-tab --title 'PDF KB Server (3001/3002/3003)' -d '%~dp0pdf-knowledge-base' cmd /k npm run dev:server ';' new-tab --title 'IMS Ngrok Tunnel' -d '%~dp0.' cmd /k ngrok http 6001 --url=https://simon-ims.ngrok-free.app ';' new-tab --title 'Hardware & OTA (3002/3232)' -d '%~dp0.' cmd /k powershell -NoProfile -ExecutionPolicy Bypass -File scripts\probe_box3.ps1"
+    powershell -NoProfile -Command "wt -w 0 new-tab --title 'IMS Main App' -d '%~dp0.' cmd /k npm run dev ';' new-tab --title 'PDF KB Server (3001/3002/3003)' -d '%~dp0pdf-knowledge-base' cmd /k npm run dev:server ';' new-tab --title 'IMS Ngrok Tunnel' -d '%~dp0.' cmd /k ngrok http 6001 --url=https://simon-ims.ngrok-free.app ';' new-tab --title 'Watchdog & Cloud Relay' -d '%~dp0.' cmd /k node scripts\ims_watchdog.js ';' new-tab --title 'Hardware & OTA (3002/3232)' -d '%~dp0.' cmd /k powershell -NoProfile -ExecutionPolicy Bypass -File scripts\probe_box3.ps1"
 ) else (
     echo [System] Windows Terminal not found. Falling back to separate windows...
     start "IMS main app (Port 6001)" cmd /k "npm run dev"
     start "PDF KB Server (Port 3001/3002/3003)" cmd /k "cd pdf-knowledge-base && npm run dev:server"
     start "IMS Ngrok Tunnel" cmd /k "ngrok http 6001 --url=https://simon-ims.ngrok-free.app"
+    start "IMS Watchdog & Cloud Relay" cmd /k "node scripts\ims_watchdog.js"
     start "Hardware & OTA Status (Port 3002/3232)" cmd /k powershell -NoProfile -ExecutionPolicy Bypass -File scripts\probe_box3.ps1
 )
 
 echo.
-echo [System] Waiting 3s for services to bind ports...
-timeout /t 3 /nobreak >nul
+echo [System] Waiting 6s for services to bind ports...
+timeout /t 6 /nobreak >nul
 
 echo.
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\probe_box3.ps1

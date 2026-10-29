@@ -106,7 +106,7 @@ function App({ theme, onThemeToggle, setCurrentPath }) {
   const [adding, setAdding] = useState(false); // the Add a route sheet (the green button on Routes; the Komoot button)
   const [addHow, setAddHow] = useState('file');
   const openAdd = (how = 'file') => { setAddHow(how); setAdding(true); };
-  const { down } = useScrollState(listScroll);
+  const { down, lifted } = useScrollState(listScroll);
   const sendToPhone = async () => {
     try {
       const name = await phone.send();
@@ -150,22 +150,24 @@ function App({ theme, onThemeToggle, setCurrentPath }) {
   const listPane = (
     <div className={`pane list ${parkList ? 'parked' : ''}`} key="list" aria-hidden={parkList || undefined} inert={parkList || undefined}>
       <div className="scroll" ref={listScroll}>
-        <div className="gutter brand-bar" style={{ paddingTop: 'max(12px, env(safe-area-inset-top, 0px))' }}>
-          {isOwner && <IconButton icon="back" label="Back to the IMS dashboard" onClick={goHome} className="ims-back" />}
-          <RunBrand />
-          {layout === 'compact' && <div className="corner-acts">{avatar}</div>}
-        </div>
-        <div className="gutter rpb-titlebar">
-          <h1 className="t-tl" style={{ flex: 1 }}>{TITLES[route.dest]}</h1>
-          <button type="button" className={`chip sl rpb-sync ${rp.garmin?.connected ? 'on' : ''}`} onClick={() => setGarminOpen(true)} title={rp.garmin?.connected ? `Garmin synced${rp.garmin.latestDate ? ` (latest day ${rp.garmin.latestDate})` : ''}. Tap to sync or manage.` : 'Connect Garmin for sleep, body battery and readiness'}>
-            <Icon n="watch" size={18} />{rp.garmin?.connected ? 'Garmin synced' : 'Connect Garmin'}{rp.garmin?.connected && <i className="live" />}
-          </button>
-          <button type="button" className={`chip sl rpb-sync ${rp.komoot?.connected ? 'on' : ''}`} onClick={() => openAdd('komoot')} title={rp.komoot?.connected ? `Komoot connected${rp.komoot.email ? ` (${rp.komoot.email})` : ''}. Tap to add a tour.` : 'Connect Komoot for your routes'}>
-            <Icon n="explore" size={18} />{rp.komoot?.connected ? 'Komoot' : 'Connect Komoot'}{rp.komoot?.connected && <i className="live" />}
-          </button>
-          {unitsChip}
-          {layout !== 'compact' && <Btn kind="tonal" icon="print" onClick={print} disabled={!canPrint}>Save as PDF</Btn>}
-        </div>
+        <header className={`rpb-head ${lifted ? 'stuck' : ''}`}>
+          <div className="gutter brand-bar" style={{ paddingTop: 'max(12px, env(safe-area-inset-top, 0px))' }}>
+            {isOwner && <IconButton icon="back" label="Back to the IMS dashboard" onClick={goHome} className="ims-back" />}
+            <RunBrand />
+            {layout === 'compact' && <div className="corner-acts">{avatar}</div>}
+          </div>
+          <div className="gutter rpb-titlebar">
+            <h1 className="t-tl" style={{ flex: 1 }}>{TITLES[route.dest]}</h1>
+            <button type="button" className={`chip sl rpb-sync ${rp.garmin?.connected ? 'on' : ''}`} onClick={() => setGarminOpen(true)} title={rp.garmin?.connected ? `Garmin synced${rp.garmin.latestDate ? ` (latest day ${rp.garmin.latestDate})` : ''}. Tap to sync or manage.` : 'Connect Garmin for sleep, body battery and readiness'}>
+              <Icon n="watch" size={18} />{rp.garmin?.connected ? 'Garmin synced' : 'Connect Garmin'}{rp.garmin?.connected && <i className="live" />}
+            </button>
+            <button type="button" className={`chip sl rpb-sync ${rp.komoot?.connected ? 'on' : ''}`} onClick={() => openAdd('komoot')} title={rp.komoot?.connected ? `Komoot connected${rp.komoot.email ? ` (${rp.komoot.email})` : ''}. Tap to add a tour.` : 'Connect Komoot for your routes'}>
+              <Icon n="explore" size={18} />{rp.komoot?.connected ? 'Komoot' : 'Connect Komoot'}{rp.komoot?.connected && <i className="live" />}
+            </button>
+            {unitsChip}
+            {layout !== 'compact' && <Btn kind="tonal" icon="print" onClick={print} disabled={!canPrint}>Save as PDF</Btn>}
+          </div>
+        </header>
         <div key={route.dest} className="fade-through-in">
           {rp.needsSignIn ? (
             <div className="gutter"><div className="rpb-card rpb-signin">

@@ -1,0 +1,1223 @@
+{
+ "source": "Ker Nethalas: Into the Midnight Throne (Gravebound Edition)",
+ "overseer": {
+  "page": 100,
+  "die": "d10",
+  "rows": [
+   {
+    "lo": 1,
+    "hi": 1,
+    "text": "Tough: Immune to Critical Strikes."
+   },
+   {
+    "lo": 2,
+    "hi": 2,
+    "text": "Vital: +D6 Health per each 5⅃."
+   },
+   {
+    "lo": 3,
+    "hi": 3,
+    "text": "Frenzied: +1 damage."
+   },
+   {
+    "lo": 4,
+    "hi": 4,
+    "text": "Skilled: +10 Combat Skill."
+   },
+   {
+    "lo": 5,
+    "hi": 5,
+    "text": "Magebane: +10 Magic Resistance."
+   },
+   {
+    "lo": 6,
+    "hi": 6,
+    "text": "Resistant: Resistant to 1 random type of damage. Roll on the Damage Type table on page 225."
+   },
+   {
+    "lo": 7,
+    "hi": 7,
+    "text": "Corrupting: Each time the creature deals 5+ damage on a single attack, the target must make a Resolve check or lose 1 Sanity."
+   },
+   {
+    "lo": 8,
+    "hi": 8,
+    "text": "Unstable: Deals 1 Arcane damage when killed."
+   },
+   {
+    "lo": 9,
+    "hi": 9,
+    "text": "Alert: +20 Mind."
+   },
+   {
+    "lo": 10,
+    "hi": 10,
+    "text": "Piercing: Gains the Penetrating (1) Trait. This can stack with other instances of the same Trait."
+   }
+  ]
+ },
+ "corridor": {
+  "page": 100,
+  "die": "d20",
+  "rows": [
+   {
+    "lo": 1,
+    "hi": 1,
+    "text": "The air is heavy with ancient dust, and the walls are lined with cobwebs. The faint echoes of distant footsteps can be heard."
+   },
+   {
+    "lo": 2,
+    "hi": 2,
+    "text": "Flickering torches cast eerie shadows on the stone walls. The air is damp, and the occasional drip of water can be heard."
+   },
+   {
+    "lo": 3,
+    "hi": 3,
+    "text": "The tunnel is barely wide enough for a single person to pass through. The walls are lined with ancient burial niches, some of which have been disturbed. You're not sure if from within or without…"
+   },
+   {
+    "lo": 4,
+    "hi": 4,
+    "text": "Thick moss covers the damp stone walls, giving the corridor an eerie green glow. The sound of water dripping echoes throughout."
+   },
+   {
+    "lo": 5,
+    "hi": 5,
+    "text": "The passage is partially blocked by a cave-in, with rubble and debris scattered across the floor. Dim light filters through cracks in the ceiling."
+   },
+   {
+    "lo": 6,
+    "hi": 6,
+    "text": "The walls are adorned with elaborate tomb reliefs and carved epitaphs. The air feels heavy with the presence of the long-departed."
+   },
+   {
+    "lo": 7,
+    "hi": 7,
+    "text": "The narrow stone hall twists and turns, disappearing into darkness. The hall seems to have a slight downwards inclination, and it feels worn and slippery."
+   },
+   {
+    "lo": 8,
+    "hi": 8,
+    "text": "The air here is stale, and the sound of rats scurrying can be heard in the distance."
+   },
+   {
+    "lo": 9,
+    "hi": 9,
+    "text": "An eerie silence fills this corridor, broken only by the faint whispers of long-dead spirits. The air is heavy with an otherworldly stillness."
+   },
+   {
+    "lo": 10,
+    "hi": 10,
+    "text": "Strange luminescent fungi cover the walls, casting an ethereal glow. The tunnel twists and turns, creating an unsettling sense of disorientation."
+   },
+   {
+    "lo": 11,
+    "hi": 11,
+    "text": "This wide corridor is lined with towering statues and ornate sarcophagi. Faded tapestries hang from the ceiling, telling stories of ancient rulers."
+   },
+   {
+    "lo": 12,
+    "hi": 12,
+    "text": "The tunnel is partially submerged in water, with small ripples disturbing its still surface. The faint odor of decay permeates the air."
+   },
+   {
+    "lo": 13,
+    "hi": 13,
+    "text": "A hidden alcove branches off from the main passage, housing a forgotten altar or a small shrine. Dust-covered offerings lie undisturbed."
+   },
+   {
+    "lo": 14,
+    "hi": 14,
+    "text": "Strange symbols are etched onto the walls of this hall, possibly indicating directions."
+   },
+   {
+    "lo": 15,
+    "hi": 15,
+    "text": "The walls of this tunnel bear scorch marks, evidence of past fire or magical explosions. The air carries a faint smell of burnt wood and stone."
+   },
+   {
+    "lo": 16,
+    "hi": 16,
+    "text": "Time and decay have taken their toll on this corridor, with crumbling walls and ceilings. It feels unstable and prone to collapse."
+   },
+   {
+    "lo": 17,
+    "hi": 17,
+    "text": "Faint whispers and hushed voices fill the air, voices carried through time."
+   },
+   {
+    "lo": 18,
+    "hi": 18,
+    "text": "The stench of decay is overpowering in this tunnel, infested with ravenous vermin that lurk in the shadows."
+   },
+   {
+    "lo": 19,
+    "hi": 19,
+    "text": "Intricate carvings adorn the walls, depicting scenes of ancient rituals and funerary rites. The air is heavy with a sense of solemnity and reverence."
+   },
+   {
+    "lo": 20,
+    "hi": 20,
+    "text": "The corridor seems to shimmer with an otherworldly glow. Transparent figures of long-dead souls can be seen drifting through the walls, oblivious to the living."
+   }
+  ]
+ },
+ "room": {
+  "page": 102,
+  "die": "d100",
+  "rows": [
+   {
+    "lo": 1,
+    "hi": 1,
+    "text": "Rusty iron shackles hang from the walls, and the floor is littered with the remains of those who suffered unspeakable agony."
+   },
+   {
+    "lo": 2,
+    "hi": 2,
+    "text": "This regal hall is filled with shattered marble thrones, a reminder of the empire's fallen rulers and the broken legacy they left behind."
+   },
+   {
+    "lo": 3,
+    "hi": 3,
+    "text": "Eerie whispers fill the air in this dimly lit crypt, and the tormented spirits of the empire's cursed citizens still roam restlessly."
+   },
+   {
+    "lo": 4,
+    "hi": 4,
+    "text": "The stone altar in the center of the room is covered in dried blood, leaving no doubt about what type of dark rituals once took place here."
+   },
+   {
+    "lo": 5,
+    "hi": 5,
+    "text": "A vast network of burial niches houses the remains of countless forgotten souls, their existence erased from history."
+   },
+   {
+    "lo": 6,
+    "hi": 6,
+    "text": "Chains of all sizes hang from the ceiling, the clinking sound echoing like a haunting melody in this hall of imprisonment."
+   },
+   {
+    "lo": 7,
+    "hi": 7,
+    "text": "Sculptures of mournful figures adorn the walls, each seemingly caught in an eternal state of sorrow and despair."
+   },
+   {
+    "lo": 8,
+    "hi": 8,
+    "text": "The room is perpetually shrouded in darkness, and even torches struggle to dispel the oppressive gloom."
+   },
+   {
+    "lo": 9,
+    "hi": 9,
+    "text": "Tombstones and coffins line the walls, bearing the names of lovers separated by death, forever longing for each other's embrace."
+   },
+   {
+    "lo": 10,
+    "hi": 10,
+    "text": "Useless trinkets and baubles lie scattered about, remnants of the once-great Vaelorian Ascendancy now reduced to trash."
+   },
+   {
+    "lo": 11,
+    "hi": 11,
+    "text": "This room seems to have been blasted by a source of water for millenia, since all the surfaces are smooth and slippery."
+   },
+   {
+    "lo": 12,
+    "hi": 12,
+    "text": "An opulent throne sits empty in the center of this otherwise remarkless chamber, surrounded by dust and decay."
+   },
+   {
+    "lo": 13,
+    "hi": 13,
+    "text": "Echoes of anguished cries reverberate through this room, as if the walls themselves are weeping for the tragedies that unfolded within."
+   },
+   {
+    "lo": 14,
+    "hi": 14,
+    "text": "Foul, withered plants and skeletal trees twist and reach for sunlight that will never touch them again."
+   },
+   {
+    "lo": 15,
+    "hi": 15,
+    "text": "A pitch-black room that gives the illusion of extending infinitely downwards, leaving those who enter with an overwhelming sense of dread."
+   },
+   {
+    "lo": 16,
+    "hi": 16,
+    "text": "This crypt room holds the remains of those punished by the Vaelorian Ascendacy, their souls forever trapped in this place."
+   },
+   {
+    "lo": 17,
+    "hi": 17,
+    "text": "A massive, ominous statue looms over the room, depicting a malevolent deity once worshiped by the Ascendancy."
+   },
+   {
+    "lo": 18,
+    "hi": 18,
+    "text": "Ghostly apparitions drift through these halls, their faint whispers offering cryptic warnings and messages."
+   },
+   {
+    "lo": 19,
+    "hi": 19,
+    "text": "An ancient stone altar dominates the room, surrounded by blood- stained grooves where countless offerings met their end."
+   },
+   {
+    "lo": 20,
+    "hi": 20,
+    "text": "This room houses the remains of traitors and turncoats, eternally damned for their betrayal of the empire."
+   },
+   {
+    "lo": 21,
+    "hi": 21,
+    "text": "Dark, arcane symbols cover the walls, hinting at the dark rituals once conducted within these unhallowed grounds."
+   },
+   {
+    "lo": 22,
+    "hi": 22,
+    "text": "The bones of the empire's forgotten citizens are piled high in this macabre display of death's inevitability."
+   },
+   {
+    "lo": 23,
+    "hi": 23,
+    "text": "The eerie sound of water dripping reverberates in this otherwise unremarkable room."
+   },
+   {
+    "lo": 24,
+    "hi": 24,
+    "text": "Any sound uttered within this hall fades into nothingness, as if the room devours all noise."
+   },
+   {
+    "lo": 25,
+    "hi": 25,
+    "text": "Broken vials, shattered beakers, and rotting experiments reveal an alchemist's ill-fated pursuit of forbidden knowledge."
+   },
+   {
+    "lo": 26,
+    "hi": 26,
+    "text": "Ancient scrolls and tomes rest on dust-covered shelves. Touching any of them quickly turns them into piles of dust."
+   },
+   {
+    "lo": 27,
+    "hi": 27,
+    "text": "The stench of death hangs heavy in this room. Judging by some carvings, the Vaelorians disposed of their enemies in mass graves right here."
+   },
+   {
+    "lo": 28,
+    "hi": 28,
+    "text": "A morbid altar stands before a statue of a martyr who endured unimaginable pain in the name of faith."
+   },
+   {
+    "lo": 29,
+    "hi": 29,
+    "text": "The remains of a once-grand spire lie in ruin, a monument to a forgotten hero of the Vaelorian Ascendancy."
+   },
+   {
+    "lo": 30,
+    "hi": 30,
+    "text": "As you enter this room, haunting visions and terrifying illusions assault you. They're gone before you even realize."
+   },
+   {
+    "lo": 31,
+    "hi": 31,
+    "text": "Dark rituals once performed here have left an indelible mark on the walls, perpetually tainted by the essence of necromancy."
+   },
+   {
+    "lo": 32,
+    "hi": 32,
+    "text": "The shadows of tormented souls replay their darkest moments in an eternal loop, forever haunted by their past actions."
+   },
+   {
+    "lo": 33,
+    "hi": 33,
+    "text": "Ancient weapons and armor line the walls, too old and brittle to be of any use to you."
+   },
+   {
+    "lo": 34,
+    "hi": 34,
+    "text": "The walls bear ghostly imprints of anguished faces, as if the room captures the final moments of those who met a tragic end."
+   },
+   {
+    "lo": 35,
+    "hi": 35,
+    "text": "Shadows here move independently from their sources, dancing across the walls like malevolent spirits."
+   },
+   {
+    "lo": 36,
+    "hi": 36,
+    "text": "A still, black pool reflects the darkest aspects of your soul, showing the horrors hidden within."
+   },
+   {
+    "lo": 37,
+    "hi": 37,
+    "text": "Mirrors shattered into jagged pieces create a disorienting effect, distorting reality and reflecting haunting images."
+   },
+   {
+    "lo": 38,
+    "hi": 38,
+    "text": "An eerie aura permeates this room, where the Vaelorians once sought answers from a cryptic oracle."
+   },
+   {
+    "lo": 39,
+    "hi": 39,
+    "text": "Statues of macabre figures surround a central platform. You are unsure about its purpose, but it was clearly ceremonial."
+   },
+   {
+    "lo": 40,
+    "hi": 40,
+    "text": "A large crack in the room's floor reveals a deep, dark abyss."
+   },
+   {
+    "lo": 41,
+    "hi": 41,
+    "text": "This room holds within it an unholy shrine dedicated to forgotten gods."
+   },
+   {
+    "lo": 42,
+    "hi": 42,
+    "text": "No sound can be heard in this room, not even the slightest whisper, creating an unsettling atmosphere of absolute quiet."
+   },
+   {
+    "lo": 43,
+    "hi": 43,
+    "text": "This seems to be the final resting place of an emperor who history has forgotten, his name erased from all records."
+   },
+   {
+    "lo": 44,
+    "hi": 44,
+    "text": "Broken chandeliers hang from the ceiling, and the tattered banners on the walls now lay in ruin."
+   },
+   {
+    "lo": 45,
+    "hi": 45,
+    "text": "Heat emanates from this room, and you can see the glow of lava in a corner, the viscous material dripping from a crack on the wall."
+   },
+   {
+    "lo": 46,
+    "hi": 46,
+    "text": "An eerie, dim light filters through an enchanted glass ceiling, casting an otherworldly twilight over the room that makes you miss the sky."
+   },
+   {
+    "lo": 47,
+    "hi": 47,
+    "text": "Mirrors made from dark, reflective obsidian distort your reflection, your lightsource casting haunting shadows."
+   },
+   {
+    "lo": 48,
+    "hi": 48,
+    "text": "Shrines to deities long abandoned by worshippers now stand in silence. You see a few forgotten prayer tablets discarded around."
+   },
+   {
+    "lo": 49,
+    "hi": 49,
+    "text": "Ancient telescopes and stargazing instruments remain untouched, though the stars they once observed have long changed."
+   },
+   {
+    "lo": 50,
+    "hi": 50,
+    "text": "A once-powerful empress was buried here, her now empty sarcophagus beautifully adorned with gilded glyphs."
+   },
+   {
+    "lo": 51,
+    "hi": 51,
+    "text": "The room is plagued by an unnatural, freezing chill that numbs the bones as soon as you enter."
+   },
+   {
+    "lo": 52,
+    "hi": 52,
+    "text": "Broken vials and failed experiments litter the room as reminders of desperate and deadly alchemical pursuits."
+   },
+   {
+    "lo": 53,
+    "hi": 53,
+    "text": "An overgrown courtyard now serves as a graveyard, with tombstones dotting the otherwise placid location."
+   },
+   {
+    "lo": 54,
+    "hi": 54,
+    "text": "Twisted and grotesque sculptures rest on pedestals, each representing the artist's descent into madness."
+   },
+   {
+    "lo": 55,
+    "hi": 55,
+    "text": "This is a large hallway that probably housed some sort of stables."
+   },
+   {
+    "lo": 56,
+    "hi": 56,
+    "text": "Taxidermy displays of long-extinct creatures and monstrous beasts line the walls, their glass eyes seemingly alive."
+   },
+   {
+    "lo": 57,
+    "hi": 57,
+    "text": "The faint sounds of mournful music fill the air, but you cannot pinpoint its source."
+   },
+   {
+    "lo": 58,
+    "hi": 58,
+    "text": "This chamber once housed the living quarters of a family of servants. Faint children's drawings can be seen on the walls."
+   },
+   {
+    "lo": 59,
+    "hi": 59,
+    "text": "This room houses a shrine dedicated to a lunar deity. Its worshipers once performed heinous acts under the cursed moon's glow."
+   },
+   {
+    "lo": 60,
+    "hi": 60,
+    "text": "A large crypt, where the sound of mourning and weeping echoes endlessly."
+   },
+   {
+    "lo": 61,
+    "hi": 61,
+    "text": "A chamber once dedicated to studying the stars, now abandoned and covered in dust."
+   },
+   {
+    "lo": 62,
+    "hi": 62,
+    "text": "This area appears to once have been some sort of food storage, judging by the piles of petrified vegetables and grain."
+   },
+   {
+    "lo": 63,
+    "hi": 63,
+    "text": "Plans for grand structures, some never built, now rest here with the remains of their creator."
+   },
+   {
+    "lo": 64,
+    "hi": 64,
+    "text": "Statues of once-lovely nymphs are now twisted and grotesque, surrounded by thorns and brambles."
+   },
+   {
+    "lo": 65,
+    "hi": 65,
+    "text": "This once-imposing chamber is now decayed and crumbling, but you can imagine its former glory with little effort."
+   },
+   {
+    "lo": 66,
+    "hi": 66,
+    "text": "A series of arcane symbols that you've never encountered before cover the walls of this chamber."
+   },
+   {
+    "lo": 67,
+    "hi": 67,
+    "text": "Phantom wails fill the air, as the spirits of the dead lament their tragic fates."
+   },
+   {
+    "lo": 68,
+    "hi": 68,
+    "text": "An ancient, corrupted forge where weapons were crafted from the souls of the fallen."
+   },
+   {
+    "lo": 69,
+    "hi": 69,
+    "text": "The statues of weeping angels line this hall. You notice that all their faces are eternally frozen in grief."
+   },
+   {
+    "lo": 70,
+    "hi": 70,
+    "text": "The resting place of an heir to the empire, whose lineage has been lost to history."
+   },
+   {
+    "lo": 71,
+    "hi": 71,
+    "text": "The walls are adorned with eerie petrified faces that seem to whisper secrets to those who listen."
+   },
+   {
+    "lo": 72,
+    "hi": 72,
+    "text": "This chamber is made entirely of black stone, and any light that enters is quickly swallowed by its darkness."
+   },
+   {
+    "lo": 73,
+    "hi": 73,
+    "text": "An ornate stone chalice sits on an altar. It appears to have been fused to it by some extreme heat."
+   },
+   {
+    "lo": 74,
+    "hi": 74,
+    "text": "This room's walls are covered with the tattered remains of ancient heraldic banners."
+   },
+   {
+    "lo": 75,
+    "hi": 75,
+    "text": "At the center of this room, a seemingly bottomless pit drops into the darkness. It's easy to imagine a sinister reason for it, but it was probably just used as a latrine."
+   },
+   {
+    "lo": 76,
+    "hi": 76,
+    "text": "An otherworldly mist fills the room, giving glimpses of fleeting, forgotten scenes from the past."
+   },
+   {
+    "lo": 77,
+    "hi": 77,
+    "text": "A cursed oracle once dwelt here, their prophecies leading to doom and despair for those who sought answers."
+   },
+   {
+    "lo": 78,
+    "hi": 78,
+    "text": "A dark and foreboding courtyard where twisted shadows play tricks on the mind."
+   },
+   {
+    "lo": 79,
+    "hi": 79,
+    "text": "The room is filled with the remains of lovers forever entwined in death, their skeletal hands locked in an eternal embrace."
+   },
+   {
+    "lo": 80,
+    "hi": 80,
+    "text": "An otherworldly chamber where the boundaries between dimensions blur, allowing glimpses into distant realms."
+   },
+   {
+    "lo": 81,
+    "hi": 81,
+    "text": "Horrifying paintings and sculptures depict scenes of unimaginable suffering and torment."
+   },
+   {
+    "lo": 82,
+    "hi": 82,
+    "text": "This room has a well on a corner, but the water within it is clearly tainted with an eerie glow."
+   },
+   {
+    "lo": 83,
+    "hi": 83,
+    "text": "This chamber is completely covered in fungi and mold of all kinds, making every step feel as if you're walking on a thick rug."
+   },
+   {
+    "lo": 84,
+    "hi": 84,
+    "text": "Small, empty cells line the walls of this room."
+   },
+   {
+    "lo": 85,
+    "hi": 85,
+    "text": "The walls are adorned with macabre paintings depicting brutal executions and violent sacrifices."
+   },
+   {
+    "lo": 86,
+    "hi": 86,
+    "text": "Sealed off for centuries, this room contains unspeakable horrors that were best left undisturbed."
+   },
+   {
+    "lo": 87,
+    "hi": 87,
+    "text": "A fountain still trickling water is at the center of the room, a peaceful, almost out of place view."
+   },
+   {
+    "lo": 88,
+    "hi": 88,
+    "text": "Disorienting illusions assault you momentarily as you step into this room, showing you images of your past."
+   },
+   {
+    "lo": 89,
+    "hi": 89,
+    "text": "This room was once a treasure vault filled with riches, but it has long since been ransacked."
+   },
+   {
+    "lo": 90,
+    "hi": 90,
+    "text": "A once-lavish parlor now lies in ruin, its grandeur replaced by decay and the stench of death."
+   },
+   {
+    "lo": 91,
+    "hi": 91,
+    "text": "Rotten piles of furniture and rusted utensils are all you can see in this room."
+   },
+   {
+    "lo": 92,
+    "hi": 92,
+    "text": "The walls are covered in soot and fire marks, clearly indicating that a great fire took place here."
+   },
+   {
+    "lo": 93,
+    "hi": 93,
+    "text": "This room is completely empty, except for a thick layer of dust. A set of human footprints can be seen across the room."
+   },
+   {
+    "lo": 94,
+    "hi": 94,
+    "text": "As you enter this hall you feel an overwhelming sense of hopelessness, as if all optimism is slowly being drained from your heart."
+   },
+   {
+    "lo": 95,
+    "hi": 95,
+    "text": "A chamber adorned with gold and jewels. A closer look reveals them to be just paint and glass."
+   },
+   {
+    "lo": 96,
+    "hi": 96,
+    "text": "A once-revered shrine now stands in darkness, forgotten by all but malevolent entities."
+   },
+   {
+    "lo": 97,
+    "hi": 97,
+    "text": "Statues of ancient warriors stand guard. For some reason, their once-pristine surfaces are now marred by crimson stains."
+   },
+   {
+    "lo": 98,
+    "hi": 98,
+    "text": "Old iron ingots are piled in a corner of this room, each one of them marked with the seal of an ancient house."
+   },
+   {
+    "lo": 99,
+    "hi": 99,
+    "text": "An unnatural wind seems to be constantly coming out of this room, violently flapping your clothes and gear around you."
+   },
+   {
+    "lo": 100,
+    "hi": 100,
+    "text": "An unquenchable, ghostly flame flickers and dances, casting eerie shadows on the walls, forever burning but never consuming."
+   }
+  ]
+ },
+ "events": {
+  "page": 108,
+  "die": "d100",
+  "rows": [
+   {
+    "lo": 1,
+    "hi": 10,
+    "text": "There's a trap in this room. Roll on the Traps table and follow the procedures described on page 117."
+   },
+   {
+    "lo": 11,
+    "hi": 20,
+    "text": "There's something of value here. Roll on the Spoils table (page 213)."
+   },
+   {
+    "lo": 21,
+    "hi": 30,
+    "text": "You've found a Trader. Check page 127 to learn more about them."
+   },
+   {
+    "lo": 31,
+    "hi": 31,
+    "text": "Altar of Sacrifice - Dyxemis. This altar is dedicated to the Vaelorian God of Pain. Sacrifice 1 Health to gain +5 max Toughness for the next D10+2 rooms/corridors."
+   },
+   {
+    "lo": 32,
+    "hi": 32,
+    "text": "Altar of Sacrifice - Voteus. This altar is dedicated to the Vaelorian Goddess of War. Sacrifice 1 Health to gain +10 to all attack checks for the next D10+2 rooms/corridors."
+   },
+   {
+    "lo": 33,
+    "hi": 33,
+    "text": "Altar of Sacrifice - Udall. This altar is dedicated to the Vaelorian Goddess of Fury. Sacrifice 1 Health to add +D4 Fire damage to your Damage Pool for the next D10+2 rooms/corridors."
+   },
+   {
+    "lo": 34,
+    "hi": 34,
+    "text": "Altar of Sacrifice - Koias. This altar is dedicated to the Vaelorian God of Magic. Sacrifice 1 Health to gain +5 max Aether for the next D10+2 rooms/corridors."
+   },
+   {
+    "lo": 35,
+    "hi": 35,
+    "text": "Altar of Sacrifice - Keasis. This altar is dedicated to the Valerian Goddess of Peace. Sacrifice 1 Health to recover D4 Sanity."
+   },
+   {
+    "lo": 36,
+    "hi": 36,
+    "text": "The ground and ceiling above you shake and tremble, and you are showered in dust and pebbles. Make a successful Endurance check to avoid gaining 2 Exhaustion."
+   },
+   {
+    "lo": 37,
+    "hi": 37,
+    "text": "A nagging voice rises within you, making you question why are you bothering carrying all those coins when you have no use for them down here. Make a successful Resolve check or lose D100₵."
+   },
+   {
+    "lo": 38,
+    "hi": 38,
+    "text": "You enter a room completely full of human bones, a veritable wall of femurs and skulls. Make a Resolve check to avoid losing 1 Sanity. Unfortunately, the pile seems to be much more unstable than you initially thought: make a Dodge check. If you pass it, you gain 10 XP and can make a roll on the Spoils table, as you uncover something of value beneath the bones. If you fail, you receive 2D6 Bludgeoning damage."
+   },
+   {
+    "lo": 39,
+    "hi": 39,
+    "text": "You find strange markings on the walls and floors. Make a Reason check: if you pass it you gain 10 XP, as you understand better the nature of this place and its inhabitants. If you fail, you're so distracted by the markings that you fail to realize that you're being attacked. Roll on the Combat Encounter table, the enemy has surprised you!"
+   },
+   {
+    "lo": 40,
+    "hi": 40,
+    "text": "It seems like a massacre took place here very recently, as the mangled remains of several people can be seen spread across the room. Each time you enter this room you must make a Resolve check to avoid losing 2 Sanity, but you can attempt to Scavenge it twice."
+   },
+   {
+    "lo": 41,
+    "hi": 41,
+    "text": "Much to your surprise, you find an old man sitting inside this room. He seems to be a beggar that has probably fallen into Ker Nethalas by accident. Make a Reason check: if you pass it, you manage to give some indications to the man that will hopefully help him, and he thanks you by giving you something of value; roll on the Spoils table. If you fail, you didn't notice his strange behavior and the weird bulge on his chest. The man explodes in front of your eyes as a Necropede bursts out of him and attacks you!"
+   },
+   {
+    "lo": 42,
+    "hi": 42,
+    "text": "This seems to be an old smuggler's hideout, as the room is full of boxes, most of them empty. Make an Athletics check to attempt to open one of the boxes; if you pass it you can make a roll on the Spoils table."
+   },
+   {
+    "lo": 43,
+    "hi": 43,
+    "text": "A mangled body sits against one of the room's walls. Make a Perception check: if you pass it, you find a charm among what's left of the body. The charm allows you to add +D4 Fire damage to your Damage Pool when attached to your weapon, but its effects only last a single room."
+   },
+   {
+    "lo": 44,
+    "hi": 44,
+    "text": "A constant stream of blood pours from one of the walls in this room. As you attempt to learn what's going on, make a Reason check: if you pass it, you don't really understand it any better but you earn 10 XP. If you fail you've managed to accidentally touch the blood, which seems to be extremely acidic. You receive 2D4 Acid damage."
+   },
+   {
+    "lo": 45,
+    "hi": 45,
+    "text": "You find a body that has been clearly drained of blood slumped against the wall. Make a Perception check as you examine the body: you find something of value, roll on the Spoils table. Unfortunately, you must also make a Dodge check, as the body suddenly lurches at you, before darting into the dark. If you fail, you are scratched and are Bleeding (1)."
+   },
+   {
+    "lo": 46,
+    "hi": 46,
+    "text": "You come across a terribly wounded and mutilated man, somehow still alive. If you choose to help him, make a Medicine check and remove 1x Bandage. If you succeed the check you earn 20 XP. If you can't help or simply decide to ignore the man and move on, you lose 1 Sanity."
+   },
+   {
+    "lo": 47,
+    "hi": 47,
+    "text": "A terrible sigil is painted in blood across the room's floor. Your vision swims even by simply glancing at it, but you still feel curious about it. If you insist on deciphering the sigil, make a Reason check: if you pass it you earn 20 XP, but if you fail you automatically lose D4 Sanity, without a Resolve check."
+   },
+   {
+    "lo": 48,
+    "hi": 48,
+    "text": "A dark, ominous pool of water is at the center of this room. You think you see a glimmer at the bottom… If you attempt to reach down and see what you find, make an Acrobatics check, as you carefully balance on the pool's edge. If you pass it, you manage to pull out something of value: roll on the Spoils table. If you fail, you slip and fall inside. Roll on the Growing Darkness table."
+   },
+   {
+    "lo": 49,
+    "hi": 49,
+    "text": "A large hole on one of the room's walls seems to be almost inviting you to take a look inside it… If you choose to do so, make an Athletics check, as you stretch your arm as deep inside as you can. If you pass it, you manage to pull out something interesting: make a roll on the Spoils table. If you fail, something attempts to pull you in! You receive 2D6 Slashing damage before you manage to free yourself."
+   },
+   {
+    "lo": 50,
+    "hi": 50,
+    "text": "The sudden toll of a bell fills the room and your mind. With a scream, you cover your ears and attempt to resist the psychic assault of the bell, which is nowhere to be seen. Make a Resolve check: if you pass, you gain 20 XP, as you manage to control the attack. If you fail choose one: roll on the Growing Darkness table, or roll on the Madness table."
+   },
+   {
+    "lo": 51,
+    "hi": 51,
+    "text": "This room has been recently turned into a makeshift mausoleum. At the center of it, a sarcophagus, covered with melted candles, has clearly been dragged to where it stands now. If you choose to desecrate the tomb, you lose 1 Sanity but can make a roll on the Spoils table. If you choose to take a moment of respite and say a quick prayer for whoever is buried here, you regain D4 Sanity."
+   },
+   {
+    "lo": 52,
+    "hi": 52,
+    "text": "A twisted effigy made from the remains of countless people has been erected here. A dark energy draws you closer to it, but you can try to resist. Make a Resolve check: if successful you earn 10 XP, if you fail you feel the urge to somehow contribute to this monument of death, deeply cutting your arm and pouring blood over it. You receive 3D4 Slashing damage."
+   },
+   {
+    "lo": 53,
+    "hi": 53,
+    "text": "As you enter the room, the smell of death invades your nostrils, making you choke. A trio of recently killed men hang from chains, their faces purple and bloated. If you spend time taking them down and trying to give their bodies the rest they deserve, you gain 2 Exhaustion but recover D4 Sanity. If you ignore the corpses and move on, roll on the Growing Darkness table."
+   },
+   {
+    "lo": 54,
+    "hi": 54,
+    "text": "You hear voices whispering in your ear, ghosts from the Vaelorian Ascendancy sharing forbidden secrets. Make a Reason check: if you pass it, you earn 10 XP, if you fail you lose 1 Sanity, as your mind cannot handle their dark secrets."
+   },
+   {
+    "lo": 55,
+    "hi": 55,
+    "text": "The room is littered with funerary vases. You can Scavenge up to 3 times here."
+   },
+   {
+    "lo": 56,
+    "hi": 56,
+    "text": "As you step into this chamber, you are trapped in reverie. You see your own death, clear as day, and a wave of anguish assaults you. You must pass a Resolve check or lose D6 Sanity, but the next time your Health reaches 0 you can ignore the source of damage instead."
+   },
+   {
+    "lo": 57,
+    "hi": 57,
+    "text": "The moment you enter this room, you feel a terrible cold take a hold of your body. If you pass an Endurance check, you can add D8 Cold damage to your Damage Pool for your next melee attack."
+   },
+   {
+    "lo": 58,
+    "hi": 58,
+    "text": "In front of you a terrible statue depicting what must have been a member of the Vaelorian nobility appears to intensely stare at you, judging your worthiness. You feel repulsed by it instantly. If you accept its judgment, you must pass a Resolve check. If you do so, you are rewarded: roll twice on the Spoils table. If you decide to bash the statue you can remove the effects of a single active Growing Darkness Event."
+   },
+   {
+    "lo": 59,
+    "hi": 59,
+    "text": "A quiet, seemingly out of place fountain still pours water into a stone vase in a corner of this chamber. You sit for a few minutes, and take a moment to refresh yourself. You lose D4 Exhaustion."
+   },
+   {
+    "lo": 60,
+    "hi": 60,
+    "text": "Strange, ghostly flames seem to move randomly across this room. Each time you enter it, you must pass a Dodge check or be struck by the flames, losing 1 Sanity."
+   },
+   {
+    "lo": 61,
+    "hi": 61,
+    "text": "This room has a pile of scrolls that seem to have survived the passage of time. If you sit a while and read them you can make a Reason check. If you pass it, you learn a weakness of this Domain's Overseer, allowing you to Stun them in the first round of combat against them."
+   },
+   {
+    "lo": 62,
+    "hi": 62,
+    "text": "The room is covered in mosaics depicting fencing stances and techniques. Maybe there's something to learn here… Make a Reason check, if you pass it, increase your Bladed Weapons Skill by 1."
+   },
+   {
+    "lo": 63,
+    "hi": 63,
+    "text": "A furious specter appears in front of you, cursing you in the ancient Vaelorian tongue. Make a Resolve check: if you pass, you earn 10 XP, as you learn from the harrowing experience. If you fail, you lose 1 Sanity and gain 1 Exhaustion."
+   },
+   {
+    "lo": 64,
+    "hi": 64,
+    "text": "This room seems to be the remains of a tomb robber's camp. Make a Perception check: if you pass it, you find D4 Torches and D10 Crafting Supplies."
+   },
+   {
+    "lo": 65,
+    "hi": 65,
+    "text": "You come across a terrible altar to a nameless deity. If you choose to defile it, make an Athletics check: if you pass it, you can eliminate the effects of a Growing Darkness event. If you fail, you've made too much noise, attracting trouble! Make a Combat Encounter table roll."
+   },
+   {
+    "lo": 66,
+    "hi": 66,
+    "text": "As you are about to enter the room, you hear the rustling of feet being dragged, growls echoing in the halls: the undead, hundreds of them! There's no way you can defeat this many… Make a Stealth check: if you pass, you hide in the shadows as they move along, and you earn 20 XP. If you fail, you've made some noise and attracted the attention of a few of them. You must discard an item from your Belt and throw it to distract them away. If you have no Belt, you must throw whatever you're carrying in your hand (i.e. weapon, Torch, Lamp, etc.)."
+   },
+   {
+    "lo": 67,
+    "hi": 67,
+    "text": "A feeling of holiness pervades this chamber, emanating from a single sigil embedded on the wall. Reset the Tension Die back to D8."
+   },
+   {
+    "lo": 68,
+    "hi": 68,
+    "text": "This chamber is set up as a meditation spot. If you choose, you can kneel and try to settle your mind. Make a Resolve check: if you pass it, you recover D4 Sanity, if you fail you lose 1 Sanity."
+   },
+   {
+    "lo": 69,
+    "hi": 69,
+    "text": "As you enter the room, you are confronted with an angry spirit. “Give me what you stole from me!”, it hisses at you. Make a Resolve check: if you pass it, you gain 10 XP, as you manage to resist the spirit's demands. If you fail, the spirit passes through you, stealing D100₵."
+   },
+   {
+    "lo": 70,
+    "hi": 70,
+    "text": "The moment you enter this chamber, you are assaulted by a spirit of darkness, trying to possess you. Make a Resolve check: if you succeed, you manage to fend off the entity and you gain 20 XP in the process. If you fail, the spirit corrupts you and you feel overwhelmed by misery. Each time you enter a new room you lose 1 Sanity, unless you sacrifice (i.e. destroy) a magic item in your possession. Once you destroy a magic item the curse disappears."
+   },
+   {
+    "lo": 71,
+    "hi": 71,
+    "text": "Strange devices you don't really understand are firmly planted around this room. Unfortunately, they seem to form some sort of magical circuit, since each time you cross between them you suffer a shock. Perform an Acrobatics check to skip above them to avoid receiving 2D6 Force damage each time you enter this room."
+   },
+   {
+    "lo": 72,
+    "hi": 72,
+    "text": "A pile of refuse covers the corner of the room. There might be something useful there? Make a Perception check, if successful you find something interesting: roll on the Spoils table."
+   },
+   {
+    "lo": 73,
+    "hi": 73,
+    "text": "You have walked into some sort of summoning, as a lone warlock performs a forbidden ritual within a circle. Everything inside of you is screaming at you to interrupt the ritual… Perform a Stealth check to sneak behind the warlock and take them out. If you succeed, you manage to eliminate them before they can even realize what's going on; you recover D4 Sanity. If you fail, the warlock hears you and quickly casts some sort of spell on you. You wake up hours later, alive but confused. Increase your Exhaustion by 2 and roll on the Growing Darkness table."
+   },
+   {
+    "lo": 74,
+    "hi": 74,
+    "text": "The room is full of broken glass vials and flasks containing all sorts of alchemical substances, as well as the tools and equipment usually found in an alchemy lab. Make a Perception check: if you pass it, you find D4 Potions. If you fail, you still find an intact one."
+   },
+   {
+    "lo": 75,
+    "hi": 75,
+    "text": "Sprawled across the room's floor you can see what seems to be the contents of someone's bag. Huddled in a corner, you find the very recent corpse of the bag's owner. Make a Perception check: if you pass it, roll on the Spoils table. If you fail, you don't realize that whatever killed the person in this room has come back! Roll on the Combat Encounters table."
+   },
+   {
+    "lo": 76,
+    "hi": 76,
+    "text": "A section of one of the walls in this room seems to be made of moving pieces. Each piece has a different diagram, and you could swear they form a pattern, but they're not correctly placed… Make a Reason check, if you manage you solve the puzzle, revealing a small section of the wall that contains 2D100₵."
+   },
+   {
+    "lo": 77,
+    "hi": 77,
+    "text": "A hole in the floor's room is completely filled with viscera. You can stick your arm into it and search for something of value. Make a Perception check: if you pass it you can make a roll on the Spoils table. If you fail, you don't find anything and lose 1 Sanity."
+   },
+   {
+    "lo": 78,
+    "hi": 78,
+    "text": "This large room appears to have been some sort of holding cell at some point. A rusty metal gate still blocks a corner of the room, and you can see some remains on the other side. If you attempt to open the gate make an Athletics check: if you succeed you find the desiccated corpse of a forgotten prisoner, and something of value. Make a roll on the Spoils table."
+   },
+   {
+    "lo": 79,
+    "hi": 79,
+    "text": "Some strange herbs grow from the corner of this dilapidated room. Make a Medicine check to determine if they have any medicinal properties: if you pass, you gain a dose of herbs that when consumed heal you 2D6 Wounds."
+   },
+   {
+    "lo": 80,
+    "hi": 80,
+    "text": "The room is covered in thick mud, and you immediately sink down to your knees. You must make an Athletics check to cross it: for each time you fail, you gain 1 Exhaustion."
+   },
+   {
+    "lo": 81,
+    "hi": 81,
+    "text": "A strange set of sigils cover the floor of this room. Convinced of the fact that they must hold some sort of key to understanding this place, you start studying them. Make a Reason check: if you pass, you can ignore the next roll on the Growing Darkness table. If you fail, you trigger some sort of failsafe and suffer 2D6 Arcane damage."
+   },
+   {
+    "lo": 82,
+    "hi": 82,
+    "text": "A swarm of small but ravenous vampire bats rush at you the second you enter this chamber. Make a successful Dodge check to avoid being bitten and scratched. If you fail you receive 2D4 Slashing damage. You must also pass an Endurance check or contract the Rot (see page 87 for more details on the Rot)."
+   },
+   {
+    "lo": 83,
+    "hi": 83,
+    "text": "When you enter this room, you feel the recognizable presence of a deity, forcing you to fall to your knees due to the spiritual pressure. Like a hammer crashing down on you, you hear a voice in your head, saying “You've done well, my son. Be cleansed”. You are sure about it, that was Hesie, Goddess of Purity. You recover D6 Sanity."
+   },
+   {
+    "lo": 84,
+    "hi": 84,
+    "text": "The second you step in this room you are assaulted by an invisible force that slams against you. Make a check with your weapon Skill of choice; if you succeed, you manage to fend off the assault and earn 10 XP. If you fail, you suffer D12 Bludgeoning damage."
+   },
+   {
+    "lo": 85,
+    "hi": 85,
+    "text": "A fountain with the shape of a demonic head pours water into a hole in the ground. If you choose to drink from it, you suffer 2D6 Infernal damage, but recover D6 Sanity."
+   },
+   {
+    "lo": 86,
+    "hi": 86,
+    "text": "This room has two doors, one to the left and one to the right (aside from the one you just entered through), despite what you rolled on the Room & Corridor Shape table. The door to the left leads you towards the Overseer's lair: reduce the Lair Die by one stage. The one on the right leads you to a strange fountain with black waters pouring from it. If you decide to drink from it, you automatically trigger a roll on the Growing Darkness table, but recover D10 Toughness."
+   },
+   {
+    "lo": 87,
+    "hi": 87,
+    "text": "A pond that seems to have formed naturally after centuries of water dripping down from one of the sides fills this room. Inside it, you could swear you see something shining… Make an Athletics check: if you pass it, you manage to stretch enough without falling inside the pond, recovering 3D20₵. If you fail, you suddenly see your own reflection on the dark surface of the water twist into a hideous creature. You lose 1 Sanity."
+   },
+   {
+    "lo": 88,
+    "hi": 88,
+    "text": "A waterfall is furiously roaring in this chamber, water falling from up high in the darkness above. Make a Perception check: if you pass it, you manage to scurry out of the room before a group of enemies sneak up on you under the cover of the waterfall's noise. If you fail, you're attacked by surprise: roll on the Combat Encounters table."
+   },
+   {
+    "lo": 89,
+    "hi": 89,
+    "text": "A strange vine grows between the cracks in this room. Hanging from it are a few dark and plump berries. If you decide to eat them, roll D6: 1-3 you recover 5 Exhaustion, 4-6 you are poisoned, receiving 2D4 Poison damage."
+   },
+   {
+    "lo": 90,
+    "hi": 90,
+    "text": "As you step into this room you feel the crunch of broken bones beneath your feet. The place is completely littered with human remains, piled all around you. Make an Acrobatics check: if you fail, you've slipped on a femur and crashed into a pile of skulls, receiving D10 Bludgeoning damage. If you pass, you uncover something of value: roll on the Spoils table."
+   },
+   {
+    "lo": 91,
+    "hi": 91,
+    "text": "A strange, clearly arcane artifact vibrates and shakes at the center of this room. The size of a cart, it emits heat and light and feels and looks highly unstable, as if it were about to blow up. If you attempt to somehow deactivate it, make a Reason check: if you pass, the artifact stops shaking and emitting heat until it becomes inert; you earn 10 XP. If you fail or ignore the device, the next time a Growing Darkness event is triggered, ignore the result. Instead, the whole necropolis shakes as you can hear a loud explosion and debris falls on you, dealing 5D4 Bludgeoning damage."
+   },
+   {
+    "lo": 92,
+    "hi": 92,
+    "text": "Among the rubble and filth that covers this room, you find what looks like some sort of journal. It appears to belong to someone who was trapped down here as well, many decades ago. Maybe you can learn something about this place by studying it… Make a Reason check: if you succeed, you can ignore the next Growing Darkness event."
+   },
+   {
+    "lo": 93,
+    "hi": 93,
+    "text": "A crude map has been drawn on the wall of this room. Make a Reason check: if you pass, you can fully generate the next three rooms now, without having to directly walk into them."
+   },
+   {
+    "lo": 94,
+    "hi": 94,
+    "text": "A glowing sphere of what looks like aether-infused blood floats atop a pedestal in the center of this chamber. It calmly levitates there, and it doesn't feel dangerous… If you touch it, the blood seeps into you: you gain +D10 temporary Aether, but immediately lose the Initiative in your next combat."
+   },
+   {
+    "lo": 95,
+    "hi": 95,
+    "text": "A large bronze chain hangs from the ceiling of this room. Upon closer inspection, it looks like it disappears into a small orifice, both up in the ceiling and on the floor, making you think that this is some sort of pulling contraption. If you decide to pull the chain, make an Athletics check: if you pass, you gain 20 XP, as you slowly but surely manage to make the chain move. If you fail, cackling laughter is heard booming in the room… The next Combat Encounter has its Combat Skill increased by +20."
+   },
+   {
+    "lo": 96,
+    "hi": 96,
+    "text": "A skeletal figure is slumped against the wall, and seems to have scribbled something on it. Make a Reason check: if you pass it, you manage to decipher the message. It's a warning of what comes ahead, allowing you to start the next Combat Encounter with +20 Initiative."
+   },
+   {
+    "lo": 97,
+    "hi": 97,
+    "text": "As you're crossing this empty room, you feel something grabbing at your ankle. Before you can react violently, you look down and see a human hand sticking out from a slit of the stone floor. There's someone down there… and they want to propose something to you. If you accept their strange deal, you lose D4 maximum Sanity but gain D4 maximum Toughness."
+   },
+   {
+    "lo": 98,
+    "hi": 98,
+    "text": "This narrow chamber is filled with sharp iron pieces that stick from all surfaces, their purpose completely unknown to you. In order to cross the room safely, you must pass an Acrobatics check: if you fail, you are Bleeding (1)."
+   },
+   {
+    "lo": 99,
+    "hi": 99,
+    "text": "The room must be passing near some sort of volcanic chamber, because the heat here is completely unbearable. You gain D6 Exhaustion."
+   },
+   {
+    "lo": 100,
+    "hi": 100,
+    "text": "The ancient spirit of a Vaelorian necrolord appears in front of you, rushing towards you as it grabs your head from both sides. Make a Resolve check: if you pass it, you gain 100 XP, as it fills your mind with forbidden knowledge. If you fail, your mind can't take it, and you must roll on the Madness table."
+   }
+  ]
+ },
+ "darkness": {
+  "page": 120,
+  "die": "d100",
+  "rows": [
+   {
+    "lo": 1,
+    "hi": 2,
+    "text": "A choir of howls fills the air. All Animal opponents receive +10 Combat Skill."
+   },
+   {
+    "lo": 3,
+    "hi": 4,
+    "text": "The shadows grow longer around you. Make a Resolve check. If you fail, you lose 1 Sanity per each active Growing Darkness event."
+   },
+   {
+    "lo": 5,
+    "hi": 6,
+    "text": "The gravity of your wounds resonates within your very being. If you aren't fully healed, you receive D6 Psychic damage."
+   },
+   {
+    "lo": 7,
+    "hi": 8,
+    "text": "You're slowly losing your grip over your own mind. If your Sanity is not at its maximum, you automatically lose 1 Sanity."
+   },
+   {
+    "lo": 9,
+    "hi": 10,
+    "text": "You feel your spirit drained. Reduce your max Aether by D4."
+   },
+   {
+    "lo": 11,
+    "hi": 12,
+    "text": "The very air you breathe is conspiring against your survival. Reduce your max Toughness by D6."
+   },
+   {
+    "lo": 13,
+    "hi": 14,
+    "text": "You hear a distant rumbling and feel a chilling gust of wind. All Elemental opponents receive +10 Combat Skill."
+   },
+   {
+    "lo": 15,
+    "hi": 16,
+    "text": "Did you hear that? They're coming for you. Whenever you Take a Breather you not only reduce the Tension Die by one stage, you must also immediately make a Tension Die check."
+   },
+   {
+    "lo": 17,
+    "hi": 18,
+    "text": "Your hands are shaking too much. Reduce your Camp Check by -1."
+   },
+   {
+    "lo": 19,
+    "hi": 20,
+    "text": "Regardless of how hard you try to concentrate, you just can't. You can no longer Attune at Camp."
+   },
+   {
+    "lo": 21,
+    "hi": 22,
+    "text": "Your spirit feels weaker. Reduce your Spellward by 5."
+   },
+   {
+    "lo": 23,
+    "hi": 24,
+    "text": "There's a shift in the astral currents. All Astral opponents receive +10 Combat Skill."
+   },
+   {
+    "lo": 25,
+    "hi": 26,
+    "text": "You turned too suddenly and smashed your hip against a corner. Make a Belt check."
+   },
+   {
+    "lo": 27,
+    "hi": 28,
+    "text": "This place… it knows, and it watches you. Make a Resolve check. If you fail, you lose D4 Sanity."
+   },
+   {
+    "lo": 29,
+    "hi": 30,
+    "text": "You need a break. You can barely keep your eyes open. The next time you are attacked, your opponent surprises you."
+   },
+   {
+    "lo": 31,
+    "hi": 32,
+    "text": "An oppressive, dark will sets its sights upon your party. Roll D6 for each Companion or Minion you have. A result of 1 means they are destroyed. If you have no Companions or Minions you suffer D8 Psychic damage."
+   },
+   {
+    "lo": 33,
+    "hi": 34,
+    "text": "A crescendo of cries and screams suddenly fills the halls. Dismiss all other effects in play caused by Growing Darkness. For each effect dismissed this way you lose 1 Sanity and 1 Health."
+   },
+   {
+    "lo": 35,
+    "hi": 36,
+    "text": "Vines and roots seem to suddenly grow all around you. All Plant opponents receive +10 Combat Skill."
+   },
+   {
+    "lo": 37,
+    "hi": 50,
+    "text": "You are ambushed! Roll on the Combat Encounter table. Your opponents surprise you."
+   },
+   {
+    "lo": 51,
+    "hi": 52,
+    "text": "All Demon opponents receive +10 Combat Skill."
+   },
+   {
+    "lo": 53,
+    "hi": 54,
+    "text": "A suffocating mist surrounds you. Make an Endurance check to avoid receiving 3D4 Poison damage."
+   },
+   {
+    "lo": 55,
+    "hi": 56,
+    "text": "A weakness seems to seep into your very bones. Whenever you receive damage from any source, you receive +1 damage."
+   },
+   {
+    "lo": 57,
+    "hi": 58,
+    "text": "Confusion suddenly fills your mind, and you have trouble remembering your actions these last few days. Reduce a Skill of your choosing by 10."
+   },
+   {
+    "lo": 59,
+    "hi": 60,
+    "text": "The ever-present chill of the grave becomes even more tangible. All Undead opponents receive +10 Combat Skill."
+   },
+   {
+    "lo": 61,
+    "hi": 62,
+    "text": "Your mental wounds are starting to leave physical marks. Anytime you lose Sanity, make an Endurance check. If you fail, you suffer D6 Psychic damage."
+   },
+   {
+    "lo": 63,
+    "hi": 64,
+    "text": "A swarm of Hellbats surrounds you. Make a successful check with your weapon Skill of choice; if you pass it you receive 10 XP, but if you fail you suffer D10 Slashing damage."
+   },
+   {
+    "lo": 65,
+    "hi": 66,
+    "text": "You hear the faint sound of orders being shouted in the distance. All Humanoid opponents receive +10 Combat Skill."
+   },
+   {
+    "lo": 67,
+    "hi": 68,
+    "text": "You blink a few times, snapping out of it; how long have you been staring at nothing? Reduce your lightsource by D4."
+   },
+   {
+    "lo": 69,
+    "hi": 70,
+    "text": "The darkness seems to grow thicker and denser. Reduce your lightsource by 2 instead of 1 each time you enter a room."
+   },
+   {
+    "lo": 71,
+    "hi": 72,
+    "text": "You are swarmed by the spirits of the angry dead. Make a Resolve check, if you pass it you earn 20 XP. If you fail you lose D4 Sanity."
+   },
+   {
+    "lo": 73,
+    "hi": 74,
+    "text": "Your mind becomes dull and you have problems recalling things. All non-combat Skill checks increase their Difficulty and are considered Demanding (-10)."
+   },
+   {
+    "lo": 75,
+    "hi": 76,
+    "text": "Your mind is suddenly assaulted from within. You suffer D6 Psychic damage per each Madness you have."
+   },
+   {
+    "lo": 77,
+    "hi": 78,
+    "text": "The ground trembles, and it feels like each step you take is heavier. All Construct opponents receive +10 Combat Skill."
+   },
+   {
+    "lo": 79,
+    "hi": 80,
+    "text": "The ground shakes and debris falls from above. Make a successful Dodge check or receive 3D6 Bludgeoning damage."
+   },
+   {
+    "lo": 81,
+    "hi": 100,
+    "text": "An inhuman voice screams, whispers and yells; somehow, you know that's an Overseer. Roll on the Overseer Influence table. All opponents from this Domain benefit from the result, but they also grant an extra +10 XP when defeated."
+   }
+  ]
+ }
+}

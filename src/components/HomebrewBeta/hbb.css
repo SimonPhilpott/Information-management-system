@@ -625,6 +625,8 @@ html.hbb-vt.hbb-back::view-transition-group(*) { animation-duration: .35s; }
   html.hbb-vt::view-transition-group(*), html.hbb-vt::view-transition-old(*), html.hbb-vt::view-transition-new(*) { animation-duration: .01ms !important; }
 }
 
+/* ---- Highcrest: ornate gothic blackletter for chronicle titles and epic headings ---- */
+@font-face { font-family: 'Highcrest'; src: url('./fonts/highcrest.ttf') format('truetype'); font-display: swap; }
 /* ---- Rustic Delight (22 Oct, Simon's choice): the Homebrew header and every heading. A display face with a small
    x-height, so headings are set a little larger than the Material sizes they replace ---- */
 @font-face { font-family: 'HB Rustic Delight'; src: url('./fonts/rustic-delight.ttf') format('truetype'); font-display: swap; }

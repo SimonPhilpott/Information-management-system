@@ -125,6 +125,7 @@ import meshBackupsRoutes, { backupArchiveHandler } from './routes/meshBackups.js
 import tunnelRoutes from './routes/tunnel.js';
 import sharepointRoutes from './routes/sharepoint.js';
 import portStatusRoutes from './routes/portStatus.js';
+import systemRoutes from './routes/system.js';
 import narrativeGraphRoutes from './routes/narrativeGraph.js';
 import systemShadowRoutes from './routes/systemShadow.js';
 import dndRoutes from './routes/dnd.js';
@@ -204,6 +205,7 @@ app.use(cors({
 app.use('/api/pdf', express.json({ limit: '50mb' }), express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/api/glucose-hub/carbs/photo', express.json({ limit: '50mb' }), express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/api/planner', express.json({ limit: '50mb' }), express.urlencoded({ limit: '50mb', extended: true }));
+app.use('/api/dnd', express.json({ limit: '50mb' }), express.urlencoded({ limit: '50mb', extended: true }));
 
 // Standard global 1MB limit for all other routes to protect against oversized payload crashes
 app.use(express.json({ limit: '1mb' }));
@@ -351,6 +353,7 @@ app.use('/api/tunnel', tunnelRoutes);
 app.use('/api/sharepoint-nav', sharepointRoutes);
 app.use('/api/port-status', portStatusRoutes);
 app.use('/ims/port-status', portStatusRoutes);
+app.use('/api/system', systemRoutes);
 
 // Live figures for the System Architecture page (/ims/architecture).
 app.get('/api/system/architecture', async (req, res) => {
@@ -1448,6 +1451,29 @@ doorbellService.on('doorbellEvent', (alert) => {
     } catch (err) {
       console.error('[DoorbellAlert] Failed to trigger Gemini spoken announcement:', err.message);
     }
+  }
+
+  // 3. Push real-time notification to Simon's phone via ntfy & edge dock
+  try {
+    const isDing = alert.event === 'ding';
+    const tagEmoji = isDing ? 'bell,door' : 'walking,eyes';
+    const snapUrl = alert.cameraId ? `https://simon-ims.ngrok-free.app/api/doorbell/snapshot/${alert.cameraId}?t=${Date.now()}` : null;
+    const actions = [
+      'view, Open Side Dock, ims-dock://open',
+      snapUrl ? `view, View Snapshot, ${snapUrl}` : null
+    ].filter(Boolean).join('; ');
+
+    pushPhoneNotification({
+      title: isDing ? `🔔 Doorbell Ring: ${alert.cameraName}` : `🚶 Motion: ${alert.cameraName}`,
+      message: alert.phrase || (isDing ? 'Someone is ringing the doorbell!' : 'Motion detected at front door.'),
+      tags: tagEmoji,
+      priority: isDing ? 5 : 3,
+      click: 'ims-dock://open',
+      actions,
+      alarm: isDing
+    }).catch((e) => console.error('[DoorbellAlert] Phone push error:', e.message));
+  } catch (err) {
+    console.error('[DoorbellAlert] Error preparing phone push:', err.message);
   }
 });
 

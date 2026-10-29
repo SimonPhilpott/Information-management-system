@@ -9,7 +9,7 @@ import db from '../db/database.js';
 import config from '../config.js';
 import { GoogleGenerativeAI } from './geminiClient.js';
 import { getModelFor } from './modelRegistry.js';
-import { getCampaign, getRuleset } from './dndSoloService.js';
+import { getCampaign, getRuleset, isChronicleCompactionEnabled } from './dndSoloService.js';
 
 db.exec(`CREATE TABLE IF NOT EXISTS dnd_chapters (
   campaign_id TEXT NOT NULL, name TEXT NOT NULL, title TEXT, summary TEXT, paragraphs_json TEXT, key TEXT,
@@ -101,9 +101,12 @@ ${told}`);
 }
 
 // Write the missing and changed chapters (in the background), then their plates and readings
-export async function writeChronicle(id) {
+export async function writeChronicle(id, force = false) {
   const s = await chronicleStatus(id);
   if (!s) throw new Error('Campaign not found');
+  if (!force && !isChronicleCompactionEnabled(id)) {
+    return { ...s, writing: false, disabled: true };
+  }
   if (!writing.has(id) && s.stale.length) {
     writing.add(id);
     (async () => {

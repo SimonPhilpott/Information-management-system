@@ -74,7 +74,7 @@ export default function ServicePage(props) {
   useRipples(root);
   const dark = props.theme === 'dark';
   return (
-    <div className={`hbb imsm withrail acc-${props.accent || 'green'} ${dark ? 'dark' : ''}`} ref={(el) => { root.current = el; if (el && el !== node) setNode(el); }}>
+    <div className={`hbb imsm ${props.rail === false ? 'norail' : 'withrail'} acc-${props.accent || 'green'} ${dark ? 'dark' : ''}`} ref={(el) => { root.current = el; if (el && el !== node) setNode(el); }}>
       <DarkCtx.Provider value={dark}>
         <LayerProvider root={node}>
           <SnackHost>

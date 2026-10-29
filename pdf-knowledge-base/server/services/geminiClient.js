@@ -90,6 +90,21 @@ export class GoogleGenerativeAI {
         recordUsage(model, r.usageMetadata, service || (file || 'unknown').replace(/\.m?js$/, ''));
         return wrapResponse(r);
       },
+      async *generateContentStream(req) {
+        const { model, service } = pick();
+        const { contents, config } = toRequest(req);
+        const responseStream = await ai.models.generateContentStream({ model, contents, config: { ...base, ...config } });
+        for await (const chunk of responseStream) {
+          if (chunk.usageMetadata) {
+            recordUsage(model, chunk.usageMetadata, service || (file || 'unknown').replace(/\.m?js$/, ''));
+          }
+          yield {
+            text: () => chunk.text ?? '',
+            candidates: chunk.candidates,
+            usageMetadata: chunk.usageMetadata,
+          };
+        }
+      },
       // { content: { parts }, taskType, title, outputDimensionality } -> { embedding: { values } }
       async embedContent(req) {
         const { model } = pick();

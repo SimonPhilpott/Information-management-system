@@ -25,6 +25,61 @@ let cachedGlucose = {
 
 let pollTimer = null;
 const listeners = new Set();
+let lastT1DAlertTime = 0;
+let lastAlertLevel = null;
+
+async function checkT1DPhoneAlert(g) {
+  if (!g || g.numericValue == null || isNaN(g.numericValue)) return;
+  const now = Date.now();
+  const val = g.numericValue;
+  const dir = g.direction || 'Flat';
+
+  // 1. Hypo alert (< 4.0 mmol/L)
+  if (val < 4.0) {
+    if (now - lastT1DAlertTime > 15 * 60 * 1000 || lastAlertLevel !== 'low') {
+      lastT1DAlertTime = now;
+      lastAlertLevel = 'low';
+      try {
+        const { pushPhoneNotification } = await import('./runAlertsService.js');
+        await pushPhoneNotification({
+          title: `🩸 Hypo Warning: ${val.toFixed(1)} mmol/L (${dir})`,
+          message: `Blood glucose is below 4.0 mmol/L. Fast-acting carbs recommended.`,
+          tags: 'candy,warning',
+          priority: 5,
+          alarm: true,
+          click: 'ims-dock://open',
+          actions: 'view, Open Side Dock, ims-dock://open'
+        });
+      } catch (_) {}
+    }
+    return;
+  }
+
+  // 2. Rapid drop alert (e.g. SingleDown, DoubleDown with val < 6.0)
+  const isRapidDrop = (dir === 'SingleDown' || dir === 'DoubleDown' || dir === 'FortyFiveDown') && val < 6.0;
+  if (isRapidDrop) {
+    if (now - lastT1DAlertTime > 20 * 60 * 1000) {
+      lastT1DAlertTime = now;
+      lastAlertLevel = 'dropping';
+      try {
+        const { pushPhoneNotification } = await import('./runAlertsService.js');
+        await pushPhoneNotification({
+          title: `🩸 Glucose Falling: ${val.toFixed(1)} mmol/L (${dir})`,
+          message: `Glucose is descending rapidly below 6.0 mmol/L. Check trend or take pre-emptive carbs.`,
+          tags: 'candy,chart_with_downwards_trend',
+          priority: 4,
+          click: 'ims-dock://open',
+          actions: 'view, Open Side Dock, ims-dock://open'
+        });
+      } catch (_) {}
+    }
+    return;
+  }
+
+  if (val >= 4.5 && (dir === 'Flat' || dir === 'FortyFiveUp' || dir === 'SingleUp')) {
+    lastAlertLevel = 'nominal';
+  }
+}
 
 /**
  * Determine range classification and colour based on mmol/L value
@@ -132,6 +187,9 @@ export async function fetchGlucose() {
     try {
       eventBus.broadcast('glucose:update', cachedGlucose);
     } catch (_) {}
+
+    // Evaluate Type 1 Diabetes phone alerts for hypos or downward trends
+    checkT1DPhoneAlert(cachedGlucose).catch(() => {});
 
     // Notify all registered listeners (e.g. WebSocket pusher)
     for (const listener of listeners) {
