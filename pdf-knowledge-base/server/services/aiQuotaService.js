@@ -61,11 +61,44 @@ export function computeCountdown(resetIso) {
 }
 
 /**
+ * Helper to refresh Anthropic OAuth token and rotate credentials
+ */
+async function refreshAnthropicToken(creds, credPath) {
+  const refreshToken = creds.claudeAiOauth?.refreshToken;
+  if (!refreshToken) return null;
+  try {
+    const refreshRes = await fetch('https://platform.claude.com/v1/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: '9d1c250a-e61b-44d9-88ed-5944d1962f5e'
+      })
+    });
+    if (refreshRes.ok) {
+      const data = await refreshRes.json();
+      creds.claudeAiOauth.accessToken = data.access_token;
+      if (data.refresh_token) creds.claudeAiOauth.refreshToken = data.refresh_token;
+      creds.claudeAiOauth.expiresAt = Date.now() + (data.expires_in || 28800) * 1000;
+      fs.writeFileSync(credPath, JSON.stringify(creds, null, 2), 'utf8');
+      console.log('[Claude Quota] Successfully refreshed Anthropic OAuth access token and rotated refresh token.');
+      return data.access_token;
+    } else {
+      console.warn('[Claude Quota] Token refresh returned status:', refreshRes.status);
+    }
+  } catch (err) {
+    console.warn('[Claude Quota] Token refresh error:', err.message);
+  }
+  return null;
+}
+
+/**
  * Fetch live Claude Code subscription usage from Anthropic's OAuth usage endpoint
  */
-export async function getClaudeSubscriptionQuotas() {
+export async function getClaudeSubscriptionQuotas(forceRefresh = false) {
   const now = Date.now();
-  if (claudeCache.data && now - claudeCache.timestamp < CLAUDE_CACHE_TTL_MS) {
+  if (!forceRefresh && claudeCache.data && now - claudeCache.timestamp < CLAUDE_CACHE_TTL_MS) {
     return claudeCache.data;
   }
 
@@ -91,40 +124,35 @@ export async function getClaudeSubscriptionQuotas() {
       const refreshToken = creds.claudeAiOauth?.refreshToken;
       const expiresAt = creds.claudeAiOauth?.expiresAt;
 
-      // Refresh if within 60s of expiration
+      // Refresh proactively if within 60s of expiration
       if (expiresAt && now >= expiresAt - 60000 && refreshToken) {
-        try {
-          const refreshRes = await fetch('https://platform.claude.com/v1/oauth/token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              grant_type: 'refresh_token',
-              refresh_token: refreshToken,
-              client_id: '9d1c250a-e61b-44d9-88ed-5944d1962f5e'
-            })
-          });
-          if (refreshRes.ok) {
-            const data = await refreshRes.json();
-            token = data.access_token;
-            creds.claudeAiOauth.accessToken = token;
-            if (data.refresh_token) creds.claudeAiOauth.refreshToken = data.refresh_token;
-            creds.claudeAiOauth.expiresAt = Date.now() + data.expires_in * 1000;
-            fs.writeFileSync(credPath, JSON.stringify(creds, null, 2));
-          }
-        } catch (rfErr) {
-          console.warn('[Claude Quota] Token refresh failed:', rfErr.message);
-        }
+        const refreshedToken = await refreshAnthropicToken(creds, credPath);
+        if (refreshedToken) token = refreshedToken;
       }
 
       if (token) {
-        const res = await fetch('https://api.anthropic.com/api/oauth/usage?starry_waterfall=ide_banner&skip_spend=1', {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'anthropic-client-version': 'claude-code/2.1.312',
-            'User-Agent': 'Claude-Code/2.1.312'
+        const fetchUsage = async (tok) => {
+          return await fetch('https://api.anthropic.com/api/oauth/usage?starry_waterfall=ide_banner&skip_spend=1', {
+            headers: {
+              Authorization: `Bearer ${tok}`,
+              'Content-Type': 'application/json',
+              'anthropic-client-version': 'claude-code/2.1.312',
+              'User-Agent': 'Claude-Code/2.1.312'
+            }
+          });
+        };
+
+        let res = await fetchUsage(token);
+
+        // If rejected (401 Unauthorized or 429 Rate limited with stale token), attempt token refresh and retry
+        if (!res.ok && (res.status === 401 || res.status === 429)) {
+          console.log(`[Claude Quota] Live fetch returned status ${res.status}. Attempting token refresh...`);
+          const refreshedToken = await refreshAnthropicToken(creds, credPath);
+          if (refreshedToken) {
+            token = refreshedToken;
+            res = await fetchUsage(token);
           }
-        });
+        }
 
         if (res.ok) {
           const usage = await res.json();
@@ -141,6 +169,20 @@ export async function getClaudeSubscriptionQuotas() {
             }
           };
           claudeCache = { data: result, timestamp: now };
+
+          // Sync updated usage to ~/.claude.json so offline fallbacks stay accurate
+          try {
+            if (fs.existsSync(claudeJsonPath)) {
+              const cj = JSON.parse(fs.readFileSync(claudeJsonPath, 'utf8'));
+              cj.cachedUsageUtilization = {
+                fetchedAtMs: Date.now(),
+                accountUuid: cj.oauthAccount?.accountUuid || null,
+                utilization: usage
+              };
+              fs.writeFileSync(claudeJsonPath, JSON.stringify(cj, null, 2), 'utf8');
+            }
+          } catch (_) {}
+
           return result;
         }
       }
@@ -155,16 +197,23 @@ export async function getClaudeSubscriptionQuotas() {
       const cj = JSON.parse(fs.readFileSync(claudeJsonPath, 'utf8'));
       const cached = cj.cachedUsageUtilization?.utilization;
       if (cached) {
+        // If the reset timestamp has already expired in the past, utilization has rolled over
+        const fiveHourResetExpired = cached.five_hour?.resets_at && new Date(cached.five_hour.resets_at).getTime() <= now;
+        const sevenDayResetExpired = cached.seven_day?.resets_at && new Date(cached.seven_day.resets_at).getTime() <= now;
+
+        const fiveHourUtil = fiveHourResetExpired ? 0 : (cached.five_hour?.utilization !== undefined ? cached.five_hour.utilization : 0);
+        const sevenDayUtil = sevenDayResetExpired ? 0 : (cached.seven_day?.utilization !== undefined ? cached.seven_day.utilization : 0);
+
         const result = {
           success: true,
           account: email,
           isCachedFallback: true,
           five_hour: {
-            utilization: cached.five_hour?.utilization !== undefined ? cached.five_hour.utilization : 0,
+            utilization: fiveHourUtil,
             resets_at: cached.five_hour?.resets_at || null
           },
           seven_day: {
-            utilization: cached.seven_day?.utilization !== undefined ? cached.seven_day.utilization : 0,
+            utilization: sevenDayUtil,
             resets_at: cached.seven_day?.resets_at || null
           }
         };
@@ -186,7 +235,7 @@ export async function getClaudeSubscriptionQuotas() {
 /**
  * Retrieve combined AI Quotas: Claude Code Subscription + Google Gemini
  */
-export async function getAntigravityQuotas() {
+export async function getAntigravityQuotas({ forceRefresh = false } = {}) {
   const appData = process.env.APPDATA || (process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'AppData', 'Roaming') : '');
   const vscdbPath = path.join(appData, 'Antigravity IDE', 'User', 'globalStorage', 'state.vscdb');
 
@@ -261,7 +310,7 @@ export async function getAntigravityQuotas() {
   }
 
   // Fetch real Claude Code subscription quota
-  const claudeSub = await getClaudeSubscriptionQuotas();
+  const claudeSub = await getClaudeSubscriptionQuotas(forceRefresh);
 
   const claudeDailyUtil = claudeSub?.five_hour?.utilization !== undefined ? claudeSub.five_hour.utilization : 0;
   const claudeDailyReset = claudeSub?.five_hour?.resets_at || null;

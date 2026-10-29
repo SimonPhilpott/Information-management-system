@@ -40,7 +40,8 @@ const router = express.Router();
  */
 router.get('/ai-quotas', async (req, res) => {
   try {
-    const result = await getAntigravityQuotas();
+    const forceRefresh = req.query.refresh === 'true' || req.query.refresh === '1';
+    const result = await getAntigravityQuotas({ forceRefresh });
     res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

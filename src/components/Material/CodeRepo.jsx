@@ -210,7 +210,7 @@ function AiQuotasPanel({ quotas, loading, onRefresh }) {
             <small>Live usage and exact countdowns with optional reset alarms</small>
           </div>
         </div>
-        <Btn kind="text" icon="sync" busy={loading} onClick={onRefresh}>Refresh Quotas</Btn>
+        <Btn kind="text" icon="sync" busy={loading} onClick={() => onRefresh(true)}>Refresh Quotas</Btn>
       </div>
 
       <div className="imsm-cc-panels">
@@ -453,10 +453,11 @@ function Body({ go }) {
   const [quotas, setQuotas] = useState(null);
   const [quotasLoading, setQuotasLoading] = useState(false);
 
-  const loadQuotas = useCallback(async () => {
+  const loadQuotas = useCallback(async (isRefresh = false) => {
     setQuotasLoading(true);
     try {
-      const res = await fetch('/api/code-repo/ai-quotas');
+      const url = isRefresh ? '/api/code-repo/ai-quotas?refresh=true' : '/api/code-repo/ai-quotas';
+      const res = await fetch(url);
       const d = await res.json();
       if (d.success) setQuotas(d);
     } catch (_) {}

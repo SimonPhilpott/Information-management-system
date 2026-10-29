@@ -13,8 +13,13 @@ const CONFIG_FILE = path.join(PROJECT_ROOT, 'scripts', 'watchdog_config.json');
 
 const router = Router();
 
-router.get('/ai-quotas', (req, res) => {
-  res.json(getAntigravityQuotas());
+router.get('/ai-quotas', async (req, res) => {
+  try {
+    const forceRefresh = req.query.refresh === 'true' || req.query.refresh === '1';
+    res.json(await getAntigravityQuotas({ forceRefresh }));
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 /**
