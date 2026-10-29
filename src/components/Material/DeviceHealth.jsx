@@ -65,6 +65,8 @@ function Body() {
   const [confirm, setConfirm] = useState(null);
   const [portData, setPortData] = useState(null);
   const [restarting, setRestarting] = useState(null);
+  const [offlineAlerts, setOfflineAlerts] = useState(false);
+  const [updatingAlerts, setUpdatingAlerts] = useState(false);
   const term = useRef(null);
 
   const loadPorts = useCallback(async () => {
@@ -76,6 +78,36 @@ function Body() {
       }
     } catch (_) {}
   }, []);
+
+  const loadWatchdog = useCallback(async () => {
+    try {
+      const res = await fetch('/api/system/watchdog-settings');
+      if (res.ok) {
+        const d = await res.json();
+        if (d.success) setOfflineAlerts(Boolean(d.offlineAlerts));
+      }
+    } catch (_) {}
+  }, []);
+
+  const toggleOfflineAlerts = async () => {
+    setUpdatingAlerts(true);
+    const nextVal = !offlineAlerts;
+    try {
+      const res = await fetch('/api/system/watchdog-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ offlineAlerts: nextVal })
+      });
+      const d = await res.json();
+      if (d.success) {
+        setOfflineAlerts(d.offlineAlerts);
+        snack(d.offlineAlerts ? 'Offline & self-healing alerts enabled.' : 'Offline & self-healing alerts muted (development mode).');
+      }
+    } catch (err) {
+      snack(`Failed to update setting: ${err.message}`, { error: true });
+    }
+    setUpdatingAlerts(false);
+  };
 
   const handleRestart = async (target) => {
     setRestarting(target);
@@ -101,11 +133,12 @@ function Body() {
   useEffect(() => {
     load();
     loadPorts();
-    const t = setInterval(() => { load(); loadPorts(); }, 10000);
+    loadWatchdog();
+    const t = setInterval(() => { load(); loadPorts(); loadWatchdog(); }, 10000);
     const es = new EventSource('/api/device-health/stream');
     es.onmessage = (ev) => { try { const it = JSON.parse(ev.data); if (it?.line) setLogs((p) => { const n = [...p, it]; return n.length > 2000 ? n.slice(-2000) : n; }); } catch { /* skip a bad line */ } };
     return () => { clearInterval(t); es.close(); };
-  }, [load, loadPorts]);
+  }, [load, loadPorts, loadWatchdog]);
   useEffect(() => { if (follow && term.current) term.current.scrollTop = term.current.scrollHeight; }, [logs, follow]);
 
   const send = async (c) => {
@@ -225,6 +258,56 @@ function Body() {
               </button>
             </span>
           </div>
+        </div>
+
+        <div style={{
+          marginTop: 14,
+          padding: '12px 14px',
+          background: 'var(--imsm-surface-variant, rgba(255,255,255,0.04))',
+          borderRadius: 8,
+          border: '1px solid var(--imsm-outline, rgba(255,255,255,0.08))',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 12
+        }}>
+          <div style={{ flex: '1 1 240px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 13 }}>
+              <Icon n="bell" size={16} />
+              <span>Offline & Self-Healing Notifications</span>
+              <span className={`tag ${offlineAlerts ? 'warn' : 'good'}`} style={{ fontSize: 11, padding: '2px 8px' }}>
+                {offlineAlerts ? 'Active' : 'Muted (Dev Mode)'}
+              </span>
+            </div>
+            <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
+              {offlineAlerts
+                ? 'Watchdog will alert Simon\'s phone and auto-restart if ports or Ngrok go down.'
+                : 'Muted by default so brief drops while developing won\'t spam notifications or kill processes.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={updatingAlerts}
+            onClick={toggleOfflineAlerts}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 14px',
+              borderRadius: 20,
+              border: 'none',
+              cursor: updatingAlerts ? 'not-allowed' : 'pointer',
+              background: offlineAlerts ? 'var(--imsm-warn, #ffb300)' : 'var(--imsm-primary, #4a90e2)',
+              color: '#000',
+              fontWeight: 600,
+              fontSize: 12,
+              transition: 'opacity 0.2s'
+            }}
+          >
+            <Icon n={offlineAlerts ? 'volumeOff' : 'volumeUp'} size={16} />
+            <span>{updatingAlerts ? 'Saving…' : offlineAlerts ? 'Mute Notifications' : 'Enable Alerts'}</span>
+          </button>
         </div>
       </section>
 

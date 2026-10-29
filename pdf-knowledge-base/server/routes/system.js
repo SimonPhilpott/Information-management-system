@@ -3,16 +3,60 @@ import net from 'net';
 import { exec, spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 import { pushPhoneNotification } from '../services/runAlertsService.js';
 import { getAntigravityQuotas } from '../services/aiQuotaService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../../..');
+const CONFIG_FILE = path.join(PROJECT_ROOT, 'scripts', 'watchdog_config.json');
 
 const router = Router();
 
 router.get('/ai-quotas', (req, res) => {
   res.json(getAntigravityQuotas());
+});
+
+/**
+ * GET /api/system/watchdog-settings
+ * Returns the watchdog offline notifications and auto-recovery toggle state
+ */
+router.get('/watchdog-settings', (req, res) => {
+  try {
+    let offlineAlerts = false;
+    if (fs.existsSync(CONFIG_FILE)) {
+      const cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+      if (typeof cfg.offlineAlerts === 'boolean') {
+        offlineAlerts = cfg.offlineAlerts;
+      }
+    }
+    res.json({ success: true, offlineAlerts });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message, offlineAlerts: false });
+  }
+});
+
+/**
+ * PUT /api/system/watchdog-settings
+ * Updates watchdog offline notifications and auto-recovery toggle
+ */
+router.put('/watchdog-settings', (req, res) => {
+  try {
+    const { offlineAlerts } = req.body;
+    const enabled = Boolean(offlineAlerts);
+    let cfg = {};
+    if (fs.existsSync(CONFIG_FILE)) {
+      try {
+        cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+      } catch (_) {}
+    }
+    cfg.offlineAlerts = enabled;
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf8');
+    console.log(`[Watchdog] Offline alerts updated to: ${enabled}`);
+    res.json({ success: true, offlineAlerts: enabled });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 const PORTS = [

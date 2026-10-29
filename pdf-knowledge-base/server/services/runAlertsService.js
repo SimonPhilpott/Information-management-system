@@ -61,6 +61,19 @@ function fillUrl(template, values) {
   for (const [k, v] of Object.entries(values)) u.searchParams.set(k, String(v ?? ''));
   return u.toString();
 }
+
+function formatNtfyTitle(rawTitle) {
+  if (!rawTitle) return 'IMS Notification';
+  // Strip emojis and non-ASCII / problematic header characters so ntfy never sees percent-encoded garble
+  const cleaned = String(rawTitle)
+    .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F1E6}-\u{1F1FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/[^\x20-\x7E]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned || 'IMS Notification';
+}
+
 export async function pushNow({ title, message, tags, priority = 5, actions = null, click = null, alarm = false }) {
   const st = getAlertSettings();
   if (!st.pushTopic) throw new Error('No push topic yet - turn push on first.');
@@ -71,7 +84,7 @@ export async function pushNow({ title, message, tags, priority = 5, actions = nu
     method: 'POST', body: message || title, signal: AbortSignal.timeout(15000),
     // Title, urgent priority (sound, long vibration, shown on the watch), tags become emoji in ntfy
     headers: {
-      Title: Buffer.from(title).toString('latin1') === title ? title : encodeURIComponent(title), Priority: String(priority), Tags: tags || 'running',
+      Title: formatNtfyTitle(title), Priority: String(priority), Tags: tags || 'running',
       ...(actions ? { Actions: actions } : {}), ...(click ? { Click: click } : {}),
     },
   });

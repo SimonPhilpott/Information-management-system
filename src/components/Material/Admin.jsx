@@ -115,6 +115,38 @@ function Body(props) {
     const t = setInterval(tick, 3000);
     return () => { live = false; clearInterval(t); };
   }, [room]);
+
+  const [watchdogAlerts, setWatchdogAlerts] = useState(false);
+  const [updatingWatchdog, setUpdatingWatchdog] = useState(false);
+
+  useEffect(() => {
+    if (room !== 'sharing') return;
+    fetch('/api/system/watchdog-settings')
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setWatchdogAlerts(Boolean(d.offlineAlerts)); })
+      .catch(() => {});
+  }, [room]);
+
+  const toggleWatchdogAlerts = async () => {
+    setUpdatingWatchdog(true);
+    const nextVal = !watchdogAlerts;
+    try {
+      const res = await fetch('/api/system/watchdog-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ offlineAlerts: nextVal })
+      });
+      const d = await res.json();
+      if (d.success) {
+        setWatchdogAlerts(d.offlineAlerts);
+        snack(d.offlineAlerts ? 'Offline & self-healing alerts enabled.' : 'Offline & self-healing alerts muted (development mode).');
+      }
+    } catch (e) {
+      snack(`Failed: ${e.message}`, { error: true });
+    }
+    setUpdatingWatchdog(false);
+  };
+
   const toggleTunnel = async () => {
     setBusy('tunnel');
     const running = tunnel.status === 'connected' || tunnel.status === 'connecting';
@@ -366,6 +398,28 @@ function Body(props) {
                 <summary><Icon n="doc" size={20} /><span>The tunnel's log</span><Icon n="down" size={22} /></summary>
                 <pre className="imsa-pre imsa-log">{tunnel.logs?.length ? tunnel.logs.join('\n') : 'Waiting for the tunnel to start...'}</pre>
               </details>
+
+              <section className="imsm-card" style={{ marginTop: 16 }}>
+                <div className="imsm-row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                  <h3><Icon n="bell" size={20} />Watchdog & Remote Notifications</h3>
+                  <span className={`tag ${watchdogAlerts ? 'warn' : 'good'}`}>
+                    {watchdogAlerts ? 'Active' : 'Muted (Dev Mode)'}
+                  </span>
+                </div>
+                <p className="muted" style={{ margin: 0 }}>
+                  Control whether background port and Ngrok dropouts automatically push alerts to Simon's phone or trigger auto-restarts. Set to OFF during development to avoid notification spam.
+                </p>
+                <div className="imsm-row" style={{ marginTop: 12 }}>
+                  <Btn
+                    icon={watchdogAlerts ? 'volumeOff' : 'volumeUp'}
+                    kind={watchdogAlerts ? 'tonal' : 'filled'}
+                    busy={updatingWatchdog}
+                    onClick={toggleWatchdogAlerts}
+                  >
+                    {watchdogAlerts ? 'Mute Offline Alerts' : 'Enable Offline Alerts'}
+                  </Btn>
+                </div>
+              </section>
             </>
           )}
 
