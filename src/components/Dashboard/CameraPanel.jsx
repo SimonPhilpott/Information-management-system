@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Camera, Monitor, Upload, RotateCw, Video, Zap, Activity, Info, RefreshCw } from 'lucide-react';
+import { Camera, Monitor, Upload, RotateCw, Video, Zap, Activity, Info, RefreshCw, SwitchCamera } from 'lucide-react';
+
+const isMobile = typeof window !== 'undefined' && (
+  /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+  (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches)
+);
 
 // Shared live view + snapshot button for /ims/look and /ims/faces. Three
 // frame sources, all feeding the same server-side "latest frame":
@@ -10,12 +15,13 @@ import { Camera, Monitor, Upload, RotateCw, Video, Zap, Activity, Info, RefreshC
 // source behaves identically from there on.
 const SOURCES = [
   { key: 'device', label: 'IMS camera', icon: Video },
-  { key: 'browser', label: 'This computer', icon: Monitor },
+  { key: 'browser', label: isMobile ? 'This phone' : 'This computer', icon: Monitor },
   { key: 'upload', label: 'Upload photo', icon: Upload }
 ];
 
 export default function CameraPanel({ isDark, onSnapshot, onError, snapshotLabel = 'Take snapshot' }) {
-  const [source, setSource] = useState('device');
+  const [source, setSource] = useState(isMobile ? 'browser' : 'device');
+  const [facingMode, setFacingMode] = useState('environment'); // 'environment' = back camera, 'user' = front camera
   const [frameSrc, setFrameSrc] = useState(null);
   const [noFrame, setNoFrame] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -27,6 +33,8 @@ export default function CameraPanel({ isDark, onSnapshot, onError, snapshotLabel
   const fileRef = useRef(null);
   const hasFrameRef = useRef(false);
   const errorCountRef = useRef(0);
+
+  const toggleFacingMode = () => setFacingMode((m) => (m === 'environment' ? 'user' : 'environment'));
 
   // Opening a camera page wakes the camera for another 10 minutes; the server
   // puts it back to sleep after that with no further use. Status is polled so
@@ -77,12 +85,19 @@ export default function CameraPanel({ isDark, onSnapshot, onError, snapshotLabel
       .catch(() => {});
   }, [source]);
 
-  // Browser webcam: show it locally and push a frame to the server ~1/sec.
+  // Browser or phone camera: show it locally and push a frame to the server ~1/sec.
   useEffect(() => {
     if (source !== 'browser') return;
     let stream = null, timer = null, stopped = false, posting = false;
     setCamError(null);
-    navigator.mediaDevices?.getUserMedia({ video: { width: 640, height: 480 }, audio: false })
+    navigator.mediaDevices?.getUserMedia({
+      video: {
+        facingMode: { ideal: facingMode },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    })
       .then((s) => {
         if (stopped) { s.getTracks().forEach((t) => t.stop()); return; }
         stream = s;
@@ -101,13 +116,13 @@ export default function CameraPanel({ isDark, onSnapshot, onError, snapshotLabel
           }, 'image/jpeg', 0.85);
         }, 1000);
       })
-      .catch((err) => setCamError(err.message || 'Could not open the webcam.'));
+      .catch((err) => setCamError(err.message || 'Could not open the camera. Check site permissions.'));
     return () => {
       stopped = true;
       clearInterval(timer);
       if (stream) stream.getTracks().forEach((t) => t.stop());
     };
-  }, [source]);
+  }, [source, facingMode]);
 
   const onFile = async (e) => {
     const file = e.target.files?.[0];
@@ -241,7 +256,28 @@ export default function CameraPanel({ isDark, onSnapshot, onError, snapshotLabel
 
       {/* Video / Snapshot Display Viewport */}
       <div className={`relative w-full aspect-[4/3] rounded-xl overflow-hidden border flex items-center justify-center ${isDark ? 'bg-black border-white/10' : 'bg-slate-900 border-[#2E2B27]/10'}`}>
-        {source === 'browser' && !camError && <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-contain" />}
+        {source === 'browser' && !camError && (
+          <>
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-contain"
+              style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
+            />
+            <button
+              type="button"
+              onClick={toggleFacingMode}
+              title={`Switch to ${facingMode === 'environment' ? 'front (selfie)' : 'back'} camera`}
+              aria-label="Switch camera"
+              className="absolute top-2.5 right-2.5 z-10 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/65 backdrop-blur-md text-white border border-white/20 text-xs font-semibold shadow-lg hover:bg-black/80 transition-all select-none"
+            >
+              <SwitchCamera size={14} />
+              <span>{facingMode === 'environment' ? 'Back' : 'Front'}</span>
+            </button>
+          </>
+        )}
         {source === 'browser' && camError && <p className="text-xs text-red-300 p-4 text-center">{camError}</p>}
         {source === 'device' && (
           <img
@@ -286,7 +322,7 @@ export default function CameraPanel({ isDark, onSnapshot, onError, snapshotLabel
                 className="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-white/10 text-slate-200 hover:bg-white/15 flex items-center gap-1.5"
               >
                 <Monitor size={12} />
-                Use Computer Webcam
+                {isMobile ? "Use This Phone's Camera" : "Use Computer Webcam"}
               </button>
             </div>
           </div>
@@ -306,11 +342,26 @@ export default function CameraPanel({ isDark, onSnapshot, onError, snapshotLabel
         </>
       )}
 
-      {/* Snapshot Button */}
-      <button onClick={snapshot} disabled={busy || (source !== 'browser' && noFrame)}
-        className="px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gradient-to-r from-cyan-500 to-indigo-600 text-white active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
-        {busy ? <RotateCw size={14} className="animate-spin" /> : <Camera size={14} />}{snapshotLabel}
-      </button>
+      {/* Snapshot & Camera Switch Controls */}
+      <div className="flex items-center gap-2">
+        <button onClick={snapshot} disabled={busy || (source !== 'browser' && noFrame)}
+          className="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-gradient-to-r from-cyan-500 to-indigo-600 text-white active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+          {busy ? <RotateCw size={14} className="animate-spin" /> : <Camera size={14} />}{snapshotLabel}
+        </button>
+        {source === 'browser' && (
+          <button
+            type="button"
+            onClick={toggleFacingMode}
+            className={`px-3 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all active:scale-95 ${
+              isDark ? 'bg-slate-800 border-white/10 text-slate-200 hover:bg-slate-700' : 'bg-slate-100 border-slate-300 text-slate-700 hover:bg-slate-200'
+            }`}
+            title="Switch between back and front camera"
+          >
+            <SwitchCamera size={14} />
+            <span>{facingMode === 'environment' ? 'Front' : 'Back'}</span>
+          </button>
+        )}
+      </div>
     </div>
   );
 }

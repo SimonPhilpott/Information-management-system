@@ -2,12 +2,23 @@
 // Dashboard/CameraPanel.jsx (the IMS dock camera, this computer's webcam, an uploaded photo), all feeding the server's
 // latest frame, so a snapshot is taken the same way whichever you use. Opening it wakes the camera for 10 minutes.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { SwitchCamera } from 'lucide-react';
 import { Icon, Btn, Segmented } from '../HomebrewBeta/ui';
 
-const SOURCES = [['device', 'IMS camera'], ['browser', 'This computer'], ['upload', 'A photo']];
+const isMobile = typeof window !== 'undefined' && (
+  /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+  (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches)
+);
+
+const SOURCES = [
+  ['device', 'IMS camera'],
+  ['browser', isMobile ? 'This phone' : 'This computer'],
+  ['upload', 'A photo']
+];
 
 export default function CameraView({ onSnapshot, onError, snapshotLabel = 'Take a snapshot', snapshotIcon = 'camera' }) {
-  const [source, setSource] = useState('device');
+  const [source, setSource] = useState(isMobile ? 'browser' : 'device');
+  const [facingMode, setFacingMode] = useState('environment'); // 'environment' = back camera, 'user' = front camera
   const [frameSrc, setFrameSrc] = useState(null);
   const [noFrame, setNoFrame] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -18,6 +29,8 @@ export default function CameraView({ onSnapshot, onError, snapshotLabel = 'Take 
   const videoRef = useRef(null);
   const fileRef = useRef(null);
   const hasFrame = useRef(false);
+
+  const toggleFacingMode = () => setFacingMode((m) => (m === 'environment' ? 'user' : 'environment'));
 
   const loadStatus = useCallback(() => fetch('/api/camera/status').then((r) => r.json()).then((d) => { if (d.success) setSt(d); }).catch(() => {}), []);
   useEffect(() => {
@@ -38,12 +51,19 @@ export default function CameraView({ onSnapshot, onError, snapshotLabel = 'Take 
     fetch('/api/camera/status').then((r) => r.json()).then((d) => { if (d.attached) { hasFrame.current = true; setNoFrame(false); } }).catch(() => {});
   }, [source]);
 
-  // this computer's webcam: shown here, and a frame sent to the server about once a second
+  // this computer or phone's camera: shown here, and a frame sent to the server about once a second
   useEffect(() => {
     if (source !== 'browser') return undefined;
     let stream = null, timer = null, stopped = false, posting = false;
     setCamError(null);
-    navigator.mediaDevices?.getUserMedia({ video: { width: 640, height: 480 }, audio: false })
+    navigator.mediaDevices?.getUserMedia({
+      video: {
+        facingMode: { ideal: facingMode },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    })
       .then((s) => {
         if (stopped) { s.getTracks().forEach((t) => t.stop()); return; }
         stream = s;
@@ -61,9 +81,9 @@ export default function CameraView({ onSnapshot, onError, snapshotLabel = 'Take 
           }, 'image/jpeg', 0.85);
         }, 1000);
       })
-      .catch((e) => setCamError(e.message || 'The webcam couldn\'t be opened.'));
+      .catch((e) => setCamError(e.message || 'The camera couldn\'t be opened. Check permissions.'));
     return () => { stopped = true; clearInterval(timer); if (stream) stream.getTracks().forEach((t) => t.stop()); };
-  }, [source]);
+  }, [source, facingMode]);
 
   const onFile = async (e) => {
     const file = e.target.files?.[0];
@@ -108,7 +128,46 @@ export default function CameraView({ onSnapshot, onError, snapshotLabel = 'Take 
         {state !== 'on' && state !== 'off' && <Btn kind="tonal" icon="bolt" busy={waking} onClick={wake}>Wake it</Btn>}
       </div>
       <div className="view">
-        {source === 'browser' && !camError && <video ref={videoRef} autoPlay playsInline muted />}
+        {source === 'browser' && !camError && (
+          <>
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
+            />
+            <button
+              type="button"
+              onClick={toggleFacingMode}
+              title={`Switch to ${facingMode === 'environment' ? 'front (selfie)' : 'back'} camera`}
+              aria-label="Switch camera"
+              style={{
+                position: 'absolute',
+                top: 10,
+                right: 10,
+                zIndex: 5,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                borderRadius: 20,
+                background: 'rgba(0, 0, 0, 0.65)',
+                backdropFilter: 'blur(8px)',
+                color: '#fff',
+                border: '1px solid rgba(255, 255, 255, 0.25)',
+                cursor: 'pointer',
+                fontSize: 12,
+                fontWeight: 600,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                userSelect: 'none'
+              }}
+            >
+              <SwitchCamera size={15} />
+              <span>{facingMode === 'environment' ? 'Back camera' : 'Front camera'}</span>
+            </button>
+          </>
+        )}
         {source === 'browser' && camError && <p className="msg">{camError}</p>}
         {source === 'device' && (
           <img key={streamKey} src={`/api/camera/stream?k=${streamKey}`} alt="What the IMS camera sees" style={{ display: noFrame ? 'none' : 'block' }}
@@ -123,7 +182,7 @@ export default function CameraView({ onSnapshot, onError, snapshotLabel = 'Take 
             <span>Check the Box-3 is on its dock, the dock's USB-C has power, and the webcam is plugged in.</span>
             <div className="imsm-row" style={{ justifyContent: 'center' }}>
               <Btn kind="tonal" icon="bolt" busy={waking} onClick={wake}>Wake it</Btn>
-              <Btn kind="text" icon="monitor" onClick={() => pick('browser')}>Use this computer's webcam</Btn>
+              <Btn kind="text" icon="monitor" onClick={() => pick('browser')}>{isMobile ? "Use this phone's camera" : "Use this computer's webcam"}</Btn>
             </div>
           </div>
         )}
@@ -132,6 +191,16 @@ export default function CameraView({ onSnapshot, onError, snapshotLabel = 'Take 
       {source === 'upload' && <input ref={fileRef} type="file" accept="image/jpeg" hidden onChange={onFile} />}
       <div className="imsm-row">
         <Btn icon={snapshotIcon} busy={busy} disabled={busy || (source !== 'browser' && noFrame)} onClick={snapshot}>{snapshotLabel}</Btn>
+        {source === 'browser' && (
+          <Btn
+            kind="tonal"
+            icon="sync"
+            onClick={toggleFacingMode}
+            title="Switch between back and front camera"
+          >
+            {facingMode === 'environment' ? 'Switch to front' : 'Switch to back'}
+          </Btn>
+        )}
         {source === 'upload' && !noFrame && <Btn kind="text" icon="upload" onClick={() => fileRef.current?.click()}>A different photo</Btn>}
       </div>
       {log && <details className="camlog"><summary>What the desk's USB is doing</summary><code>{log}</code><span>The camera needs 5 V, 2 A or more into the dock base's USB-C.</span></details>}
