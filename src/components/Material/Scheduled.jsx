@@ -24,6 +24,100 @@ const when = (iso) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Europe/
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '–');
 const json = async (url, opts) => { const r = await fetch(url, { credentials: 'same-origin', ...opts }); const d = await r.json().catch(() => ({})); if (!r.ok || d.success === false) { const e = new Error(d.error || 'That didn\'t work. Try again.'); e.status = r.status; throw e; } return d; };
 
+function QuietHoursCard() {
+  const snack = useSnack();
+  const [config, setConfig] = useState({ enabled: true, start: '22:00', end: '08:30' });
+  const [isQuietNow, setIsQuietNow] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/reminders/quiet-hours');
+      const d = await res.json();
+      if (d.success && d.config) {
+        setConfig(d.config);
+        setIsQuietNow(Boolean(d.isQuietNow));
+      }
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const update = async (changes) => {
+    const next = { ...config, ...changes };
+    setConfig(next);
+    setSaving(true);
+    try {
+      const res = await fetch('/api/reminders/quiet-hours', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next)
+      });
+      const d = await res.json();
+      if (d.success && d.config) {
+        setConfig(d.config);
+        setIsQuietNow(Boolean(d.isQuietNow));
+        snack('Quiet hours saved.');
+      }
+    } catch (err) {
+      snack('Could not update quiet hours: ' + err.message, { error: true });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="imsm-quiet-hours-card">
+      <div className="imsm-quiet-hours-hd">
+        <div className="imsm-quiet-hours-title">
+          <span className="ico"><Icon n="alarm" size={20} /></span>
+          <div>
+            <b>Quiet Hours (Repress Voice)</b>
+            <small>When enabled, Ims will not speak reminders aloud during these hours.</small>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className={`tag ${isQuietNow ? 'good' : 'quiet'}`}>
+            {isQuietNow ? 'Active now (Silenced)' : 'Quiet 10pm – 8:30am'}
+          </span>
+          <Btn
+            kind={config.enabled ? 'filled' : 'tonal'}
+            size="small"
+            icon={config.enabled ? 'check' : 'close'}
+            busy={saving}
+            onClick={() => update({ enabled: !config.enabled })}
+          >
+            {config.enabled ? 'Repress on' : 'Repress off'}
+          </Btn>
+        </div>
+      </div>
+      <div className="imsm-quiet-hours-controls">
+        <label className="imsm-quiet-hours-time">
+          <span>Quiet from:</span>
+          <input
+            type="time"
+            value={config.start || '22:00'}
+            onChange={(e) => update({ start: e.target.value })}
+          />
+        </label>
+        <label className="imsm-quiet-hours-time">
+          <span>Until:</span>
+          <input
+            type="time"
+            value={config.end || '08:30'}
+            onChange={(e) => update({ end: e.target.value })}
+          />
+        </label>
+        <span style={{ fontSize: 11, color: 'var(--on-surface-var)', marginLeft: 'auto' }}>
+          {config.enabled ? 'Gentle chimes and phone pushes only' : 'Normal voice reminders'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function Body({ type }) {
   const m = META[type];
   const snack = useSnack();
@@ -78,6 +172,7 @@ function Body({ type }) {
   return (
     <>
       <Tabs value={tab} onChange={setTab} tabs={[['active', items ? `Coming up (${items.length})` : 'Coming up', m.icon], ['archive', 'Archive', 'archive']]} />
+      {type === 'reminder' && tab === 'active' && <QuietHoursCard />}
       {tab === 'active' && (
         items == null ? <div className="imsm-empty"><Spinner /></div>
           : !items.length ? <Empty icon={m.icon} title={`No ${m.plural.toLowerCase()} set`}>Set one with the button in the corner, or just ask Ims.</Empty>

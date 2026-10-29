@@ -498,3 +498,57 @@ export function getHistorySummary({ type = null, period = 'yesterday' } = {}) {
     })),
   };
 }
+
+/**
+ * Quiet Hours for reminders: represses speaking reminders out loud.
+ * Configured in London wall-clock time (default: 22:00 to 08:30).
+ */
+export function getQuietHoursConfig() {
+  try {
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('reminders_quiet_hours');
+    if (row && row.value) {
+      const parsed = JSON.parse(row.value);
+      return {
+        enabled: parsed.enabled !== undefined ? Boolean(parsed.enabled) : true,
+        start: parsed.start || '22:00',
+        end: parsed.end || '08:30'
+      };
+    }
+  } catch (err) {
+    console.error('[Reminders] getQuietHoursConfig error:', err.message);
+  }
+  return { enabled: true, start: '22:00', end: '08:30' };
+}
+
+export function setQuietHoursConfig(config) {
+  const current = getQuietHoursConfig();
+  const next = {
+    enabled: config.enabled !== undefined ? Boolean(config.enabled) : current.enabled,
+    start: typeof config.start === 'string' && config.start ? config.start.trim() : current.start,
+    end: typeof config.end === 'string' && config.end ? config.end.trim() : current.end
+  };
+  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
+    .run('reminders_quiet_hours', JSON.stringify(next));
+  return next;
+}
+
+export function isQuietHoursNow(config = null) {
+  const cfg = config || getQuietHoursConfig();
+  if (!cfg.enabled) return false;
+
+  const now = londonParts(new Date());
+  const nowMinutes = now.hour * 60 + now.minute;
+
+  const [startH, startM] = (cfg.start || '22:00').split(':').map(Number);
+  const [endH, endM] = (cfg.end || '08:30').split(':').map(Number);
+  const startMinutes = (startH || 0) * 60 + (startM || 0);
+  const endMinutes = (endH || 0) * 60 + (endM || 0);
+
+  if (startMinutes > endMinutes) {
+    // Overnight window (e.g. 22:00 to 08:30)
+    return nowMinutes >= startMinutes || nowMinutes < endMinutes;
+  } else {
+    // Same-day window
+    return nowMinutes >= startMinutes && nowMinutes < endMinutes;
+  }
+}

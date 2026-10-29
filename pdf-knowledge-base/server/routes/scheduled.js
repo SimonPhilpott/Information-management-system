@@ -1,5 +1,15 @@
 import { Router } from 'express';
-import { scheduleItem, listScheduledItems, cancelScheduledItem, updateScheduledItem, getArchivedItems, getScheduleEvents } from '../services/remindersService.js';
+import {
+  scheduleItem,
+  listScheduledItems,
+  cancelScheduledItem,
+  updateScheduledItem,
+  getArchivedItems,
+  getScheduleEvents,
+  getQuietHoursConfig,
+  setQuietHoursConfig,
+  isQuietHoursNow
+} from '../services/remindersService.js';
 
 // One shared router mounted three times (/api/alarms, /api/timers,
 // /api/reminders) rather than three near-identical files - alarms, timers
@@ -8,6 +18,26 @@ import { scheduleItem, listScheduledItems, cancelScheduledItem, updateScheduledI
 // from how it was mounted rather than trusting the request body.
 export default function scheduledRouter(type) {
   const router = Router();
+
+  if (type === 'reminder') {
+    router.get('/quiet-hours', (req, res) => {
+      try {
+        const config = getQuietHoursConfig();
+        res.json({ success: true, config, isQuietNow: isQuietHoursNow(config) });
+      } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+      }
+    });
+
+    router.put('/quiet-hours', (req, res) => {
+      try {
+        const config = setQuietHoursConfig(req.body || {});
+        res.json({ success: true, config, isQuietNow: isQuietHoursNow(config) });
+      } catch (err) {
+        res.status(400).json({ success: false, error: err.message });
+      }
+    });
+  }
 
   router.get('/', (req, res) => {
     try {

@@ -103,7 +103,8 @@ import { ensureClips, ensureAllClips } from './services/holdingClips.js';
 import { onTaskDone } from './services/tasksService.js';
 import { getPersonality, setPersonality, getCaptureLogging, setCaptureLogging } from './services/hardwareClientService.js';
 import { inYourVoice, onPersonaChange } from './services/personaService.js';
-import { listScheduledItems, checkDueScheduledItems, getActiveScheduledStatus } from './services/remindersService.js';
+import { listScheduledItems, checkDueScheduledItems, getActiveScheduledStatus, isQuietHoursNow } from './services/remindersService.js';
+import { syncQuotaReminders } from './services/aiQuotaService.js';
 import { getBirthdayFooterStatus, listBirthdays } from './services/birthdayService.js';
 import { getTodayReleases } from './services/musicScanService.js';
 import { prewarmDayReportCache } from './services/morningReportService.js';
@@ -1269,12 +1270,18 @@ function pollDueReminders() {
     console.log(`[Reminders] ${fired.length} item(s) went off during a recording - kept silent`);
     return;
   }
+  const quiet = isQuietHoursNow();
   for (const item of fired) {
-    console.log(`[Reminders] Fired: ${item.type} "${item.label || ''}" (id=${item.id})`);
+    console.log(`[Reminders] Fired: ${item.type} "${item.label || ''}" (id=${item.id})${quiet ? ' [QUIET HOURS - vocal repressed]' : ''}`);
+    let alertMode = item.alertMode || 'both';
+    if (quiet && item.type === 'reminder') {
+      // Repress speech during quiet hours: downgrade to chimes only
+      alertMode = 'chimes';
+    }
     if (live.hardwareSession?.clientWs?.readyState === WebSocket.OPEN) {
       try {
         live.hardwareSession.clientWs.send(JSON.stringify({
-          reminderFired: { type: item.type, label: item.label || '', alertMode: item.alertMode || 'both' }
+          reminderFired: { type: item.type, label: item.label || '', alertMode }
         }));
       } catch (err) {
         console.error('[Reminders] Failed to notify device:', err.message);
@@ -1299,6 +1306,7 @@ schedulerService.registerJob({
 // (Someone just sitting down is handled by the hello - the 'greet' prompt carries their instructions.)
 function pollImsInstructions() {
   if (isRecordingActive()) return;
+  if (isQuietHoursNow()) return; // Keep desk quiet during quiet hours
   let due = [];
   try { due = instructionsDue(); } catch (err) { console.error('[Instructions] due check failed:', err.message); return; }
   try {
@@ -1339,6 +1347,16 @@ schedulerService.registerJob({
   category: 'maintenance',
   intervalMs: 60000,
   action: () => { checkAndTriggerNightlyScan(); }
+});
+
+schedulerService.registerJob({
+  name: 'ai_quota_reminders_sync',
+  description: 'Synchronise AI quota reset reminders with rolling usage limits',
+  category: 'background',
+  intervalMs: 60000,
+  action: () => {
+    syncQuotaReminders().catch((err) => console.error('[AI Quota Reminders Sync]', err.message));
+  }
 });
 
 // Launch central background scheduler

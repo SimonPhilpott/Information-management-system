@@ -86,45 +86,119 @@ function useLiveCountdown(resetIso) {
   };
 }
 
-function QuotaCell({ title, badge, icon, pct = 100, resetIso, isExhausted, className = '' }) {
-  const countdown = useLiveCountdown(resetIso);
-  const tone = pct > 40 ? 'good' : pct > 15 ? 'mid' : 'warn';
-  const localReset = resetIso ? new Date(resetIso).toLocaleString('en-GB', {
-    weekday: 'short',
+function formatResetDateTime(resetIso) {
+  if (!resetIso) return '–';
+  const d = new Date(resetIso);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  const timeStr = d.toLocaleTimeString('en-GB', {
+    timeZone: 'Europe/London',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+  if (isToday) {
+    return `Today ${timeStr}`;
+  }
+  return d.toLocaleDateString('en-GB', {
+    timeZone: 'Europe/London',
     day: 'numeric',
     month: 'short',
     hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  }) : '–';
+    minute: '2-digit'
+  });
+}
+
+function ClaudeStyleUsageBar({
+  label,
+  utilization = 0,
+  resetIso,
+  color = 'coral',
+  reminderKey,
+  isReminded,
+  onToggleReminder
+}) {
+  const countdown = useLiveCountdown(resetIso);
+  const isFull = utilization >= 100;
+  const displayVal = isFull
+    ? formatResetDateTime(resetIso)
+    : `${Number(utilization).toFixed(utilization % 1 === 0 ? 0 : 1)}%`;
 
   return (
-    <div className={`imsm-quota-cell ${className}`}>
-      <div className="imsm-quota-cell-hd">
-        <span className="pool-name"><Icon n={icon} size={18} /> {title}</span>
-        <span className="badge">{badge}</span>
+    <div className="imsm-cc-usage-item">
+      <div className="imsm-cc-usage-header">
+        <span className="imsm-cc-usage-label">{label}</span>
+        <span className={`imsm-cc-usage-val ${isFull ? 'date' : ''}`}>{displayVal}</span>
       </div>
-      <div className="imsm-quota-pct">
-        <span className={`val ${tone}`}>{pct}%</span>
-        <span className={`status-text ${tone}`}>{isExhausted ? 'Exhausted' : `${pct}% remaining`}</span>
+      <div className="imsm-cc-usage-track">
+        <div
+          className={`imsm-cc-usage-fill ${color}`}
+          style={{ width: `${Math.min(100, Math.max(0, utilization))}%` }}
+        />
       </div>
-      <div className="imsm-quota-bar">
-        <div className={`imsm-quota-bar-fill ${tone}`} style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
-      </div>
-      <div className="imsm-quota-timer">
-        <span className="countdown">
-          <Icon n="timer" size={14} />
-          {countdown?.text || '–'}
+      <div className="imsm-cc-usage-footer">
+        <span className="imsm-cc-usage-countdown">
+          {countdown?.expired ? 'Resetting now…' : `Resets in ${countdown?.text || '–'}`}
         </span>
-        <span className="exact-date">Resets {localReset}</span>
+        {reminderKey && (
+          <button
+            type="button"
+            className={`imsm-cc-reminder-btn ${isReminded ? 'active' : ''}`}
+            onClick={() => onToggleReminder(reminderKey)}
+            title={isReminded ? 'Automatic reset reminder set. Click to turn off.' : 'Click to set automatic reset reminder.'}
+          >
+            <Icon n={isReminded ? 'alarm' : 'bell'} size={13} />
+            <span>{isReminded ? 'Reminder set' : 'Remind on reset'}</span>
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
 function AiQuotasPanel({ quotas, loading, onRefresh }) {
+  const snack = useSnack();
+  const [reminders, setReminders] = useState({
+    claude_daily: false,
+    claude_weekly: false,
+    gemini_daily: false,
+    gemini_weekly: false
+  });
+
+  const loadReminders = useCallback(async () => {
+    try {
+      const res = await fetch('/api/code-repo/ai-quotas/reminders');
+      const d = await res.json();
+      if (d.success && d.config) setReminders(d.config);
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => {
+    loadReminders();
+  }, [loadReminders]);
+
+  const toggleReminder = async (key) => {
+    const nextVal = !reminders[key];
+    const nextConfig = { ...reminders, [key]: nextVal };
+    setReminders(nextConfig);
+    try {
+      const res = await fetch('/api/code-repo/ai-quotas/reminders', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nextConfig)
+      });
+      const d = await res.json();
+      if (d.success && d.config) {
+        setReminders(d.config);
+        snack(nextVal ? 'Automatic reminder set for quota reset.' : 'Quota reset reminder cancelled.');
+      }
+    } catch (err) {
+      setReminders(reminders);
+      snack('Could not update reminder: ' + err.message, { error: true });
+    }
+  };
+
   if (!quotas) return null;
-  const { claude, gemini, userInfo, tokenUsage } = quotas;
+  const { claude, gemini, tokenUsage } = quotas;
 
   return (
     <section className="imsm-quota-card">
@@ -132,57 +206,79 @@ function AiQuotasPanel({ quotas, loading, onRefresh }) {
         <div className="imsm-quota-title">
           <span className="ico"><Icon n="sparkle" size={24} /></span>
           <div>
-            <b>Antigravity AI Model Quotas & Exact Reset Timers</b>
-            <small>Active Tier: <b>{userInfo?.tier || 'Google AI Pro'}</b> · {userInfo?.email || 'sideburnt@gmail.com'}</small>
+            <b>AI Quotas & Automatic Reset Reminders</b>
+            <small>Live usage and exact countdowns with optional reset alarms</small>
           </div>
         </div>
         <Btn kind="text" icon="sync" busy={loading} onClick={onRefresh}>Refresh Quotas</Btn>
       </div>
 
-      <div className="imsm-quota-grid">
-        {/* Claude Daily (5h Window) */}
-        <QuotaCell
-          className="claude"
-          title="Claude Code Daily"
-          badge="5-Hour Window"
-          icon="sparkle"
-          pct={claude?.daily?.remainingPercentage ?? 100}
-          resetIso={claude?.daily?.countdown?.resetIso}
-          isExhausted={claude?.daily?.isExhausted}
-        />
+      <div className="imsm-cc-panels">
+        {/* Claude Code Panel (matching screenshot) */}
+        <div className="imsm-cc-panel">
+          <div className="imsm-cc-header">
+            <h4><Icon n="sparkle" size={16} /> Claude Code</h4>
+            <span className="badge">Subscription</span>
+          </div>
+          <div className="imsm-cc-account">
+            <span className="imsm-cc-subhead">ACCOUNT</span>
+            <span className="email">{claude?.account || 'sideburnt@gmail.com'}</span>
+          </div>
+          <div className="imsm-cc-usage-list">
+            <span className="imsm-cc-subhead">USAGE</span>
+            <ClaudeStyleUsageBar
+              label="Session (5hr)"
+              utilization={claude?.daily?.utilization ?? 0}
+              resetIso={claude?.daily?.countdown?.resetIso}
+              color="coral"
+              reminderKey="claude_daily"
+              isReminded={reminders.claude_daily}
+              onToggleReminder={toggleReminder}
+            />
+            <ClaudeStyleUsageBar
+              label="Weekly (7 day)"
+              utilization={claude?.weekly?.utilization ?? 0}
+              resetIso={claude?.weekly?.countdown?.resetIso}
+              color="cyan"
+              reminderKey="claude_weekly"
+              isReminded={reminders.claude_weekly}
+              onToggleReminder={toggleReminder}
+            />
+          </div>
+        </div>
 
-        {/* Claude Weekly Pool */}
-        <QuotaCell
-          className="claude"
-          title="Claude Weekly Pool"
-          badge="7-Day Limit"
-          icon="calendar"
-          pct={claude?.weekly?.remainingPercentage ?? 100}
-          resetIso={claude?.weekly?.countdown?.resetIso}
-          isExhausted={false}
-        />
-
-        {/* Gemini Daily (Flash) */}
-        <QuotaCell
-          className="gemini"
-          title="Gemini Flash Daily"
-          badge="5-Hour Window"
-          icon="bolt"
-          pct={gemini?.daily?.remainingPercentage ?? 100}
-          resetIso={gemini?.daily?.countdown?.resetIso}
-          isExhausted={gemini?.daily?.isExhausted}
-        />
-
-        {/* Gemini Weekly Pool */}
-        <QuotaCell
-          className="gemini"
-          title="Gemini Weekly Pool"
-          badge="7-Day Limit"
-          icon="calendar"
-          pct={gemini?.weekly?.remainingPercentage ?? 100}
-          resetIso={gemini?.weekly?.countdown?.resetIso}
-          isExhausted={false}
-        />
+        {/* Google Gemini Panel */}
+        <div className="imsm-cc-panel">
+          <div className="imsm-cc-header">
+            <h4><Icon n="bolt" size={16} /> Google Gemini</h4>
+            <span className="badge">{gemini?.account || 'Google AI Pro'}</span>
+          </div>
+          <div className="imsm-cc-account">
+            <span className="imsm-cc-subhead">ACCOUNT</span>
+            <span className="email">{gemini?.account || 'Google AI Pro'} (Antigravity IDE)</span>
+          </div>
+          <div className="imsm-cc-usage-list">
+            <span className="imsm-cc-subhead">USAGE</span>
+            <ClaudeStyleUsageBar
+              label="Daily (Flash)"
+              utilization={gemini?.daily?.utilization ?? 0}
+              resetIso={gemini?.daily?.countdown?.resetIso}
+              color="coral"
+              reminderKey="gemini_daily"
+              isReminded={reminders.gemini_daily}
+              onToggleReminder={toggleReminder}
+            />
+            <ClaudeStyleUsageBar
+              label="Weekly Pool"
+              utilization={gemini?.weekly?.utilization ?? 0}
+              resetIso={gemini?.weekly?.countdown?.resetIso}
+              color="cyan"
+              reminderKey="gemini_weekly"
+              isReminded={reminders.gemini_weekly}
+              onToggleReminder={toggleReminder}
+            />
+          </div>
+        </div>
       </div>
 
       <div className="imsm-quota-footer">
@@ -191,7 +287,7 @@ function AiQuotasPanel({ quotas, loading, onRefresh }) {
           <span>Flow Credits: <b>{tokenUsage?.flowCredits?.available ?? 100} / {tokenUsage?.flowCredits?.monthly ?? '150k'}</b></span>
           <span>Google One AI Credits: <b>{tokenUsage?.userCredits?.[0]?.creditAmount ?? 26}</b></span>
         </div>
-        <span>High-precision millisecond timestamps from Antigravity IDE</span>
+        <span>Exact millisecond timestamps from Anthropic OAuth & Antigravity IDE</span>
       </div>
     </section>
   );

@@ -26,7 +26,11 @@ import {
   snippetStackCounts
 } from '../services/codeRepoService.js';
 import { getOptions, suggestSetup, findCode, planProject, promptFor, createProject, tidyLibrary } from '../services/projectBuilderService.js';
-import { getAntigravityQuotas } from '../services/aiQuotaService.js';
+import {
+  getAntigravityQuotas,
+  getQuotaReminderConfig,
+  setQuotaReminderConfig
+} from '../services/aiQuotaService.js';
 
 const router = express.Router();
 
@@ -34,9 +38,39 @@ const router = express.Router();
  * GET /api/code-repo/ai-quotas
  * High-precision Antigravity Claude Code and Gemini quota tracking with exact countdowns
  */
-router.get('/ai-quotas', (req, res) => {
-  const result = getAntigravityQuotas();
-  res.json(result);
+router.get('/ai-quotas', async (req, res) => {
+  try {
+    const result = await getAntigravityQuotas();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/code-repo/ai-quotas/reminders
+ * Get quota reminder toggle configurations
+ */
+router.get('/ai-quotas/reminders', (req, res) => {
+  try {
+    const config = getQuotaReminderConfig();
+    res.json({ success: true, config });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * PUT /api/code-repo/ai-quotas/reminders
+ * Update quota reminder toggle configurations and sync scheduled items
+ */
+router.put('/ai-quotas/reminders', async (req, res) => {
+  try {
+    const config = await setQuotaReminderConfig(req.body || {});
+    res.json({ success: true, config });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
 });
 
 /**

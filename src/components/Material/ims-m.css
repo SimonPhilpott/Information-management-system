@@ -1478,3 +1478,215 @@
 .hbb.imsm .imsm-quota-footer .credits-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .hbb.imsm .imsm-quota-footer .credits-strip span b { color: var(--on-surface); }
 
+/* Claude Code & Gemini Screenshot Quota Panels */
+.hbb.imsm .imsm-cc-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  margin-top: 10px;
+  margin-bottom: 8px;
+}
+.hbb.imsm .imsm-cc-panel {
+  background: #111a22;
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.hbb.imsm .imsm-cc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 8px;
+}
+.hbb.imsm .imsm-cc-header h4 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hbb.imsm .imsm-cc-header .badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+}
+.hbb.imsm .imsm-cc-subhead {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  margin: 0;
+}
+.hbb.imsm .imsm-cc-account {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hbb.imsm .imsm-cc-account .email {
+  font-size: 13px;
+  color: #cbd5e1;
+  font-family: monospace;
+}
+.hbb.imsm .imsm-cc-usage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.hbb.imsm .imsm-cc-usage-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hbb.imsm .imsm-cc-usage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
+}
+.hbb.imsm .imsm-cc-usage-label {
+  font-weight: 600;
+  color: #cbd5e1;
+}
+.hbb.imsm .imsm-cc-usage-val {
+  font-weight: 700;
+  color: #f1f5f9;
+  font-family: monospace;
+}
+.hbb.imsm .imsm-cc-usage-val.date {
+  font-size: 12px;
+  color: #fca5a5;
+  font-family: inherit;
+  font-weight: 600;
+}
+.hbb.imsm .imsm-cc-usage-track {
+  width: 100%;
+  height: 6px;
+  background: #1e293b;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.hbb.imsm .imsm-cc-usage-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+.hbb.imsm .imsm-cc-usage-fill.coral {
+  background: #f26a54;
+}
+.hbb.imsm .imsm-cc-usage-fill.cyan {
+  background: #38bdf8;
+}
+.hbb.imsm .imsm-cc-usage-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+.hbb.imsm .imsm-cc-usage-countdown {
+  color: #94a3b8;
+  font-family: monospace;
+}
+.hbb.imsm .imsm-cc-reminder-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.hbb.imsm .imsm-cc-reminder-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f1f5f9;
+}
+.hbb.imsm .imsm-cc-reminder-btn.active {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}
+
+/* Reminders Quiet Hours Card */
+.hbb.imsm .imsm-quiet-hours-card {
+  background: var(--surface-c-low);
+  border: 1px solid var(--outline-var);
+  border-radius: 20px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: var(--shadow-1);
+}
+.hbb.imsm .imsm-quiet-hours-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.hbb.imsm .imsm-quiet-hours-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hbb.imsm .imsm-quiet-hours-title .ico {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: rgba(14, 165, 233, 0.15);
+  color: #0284c7;
+}
+.hbb.imsm .imsm-quiet-hours-title b {
+  font-size: 15px;
+  display: block;
+}
+.hbb.imsm .imsm-quiet-hours-title small {
+  font-size: 12px;
+  color: var(--on-surface-var);
+}
+.hbb.imsm .imsm-quiet-hours-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--outline-var);
+}
+.hbb.imsm .imsm-quiet-hours-time {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--on-surface-var);
+}
+.hbb.imsm .imsm-quiet-hours-time input[type="time"] {
+  background: var(--surface-c);
+  color: var(--on-surface);
+  border: 1px solid var(--outline-var);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 13px;
+}
+
