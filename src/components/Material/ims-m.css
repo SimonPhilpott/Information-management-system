@@ -1447,3 +1447,34 @@
 .hbb.imsm .imsa-set .tx b { font-size: 16px; }
 .hbb.imsm .imsa-set .tx small { font-size: 14px; line-height: 20px; color: var(--on-surface-var); }
 .imsl-chip.tog { padding: 0 12px 0 10px; }
+
+/* ---- Antigravity AI Model Quotas & Reset Timers ---- */
+.hbb.imsm .imsm-quota-card { display: flex; flex-direction: column; gap: 14px; padding: 16px 18px; border-radius: 24px; background: var(--surface-c-low); border: 1px solid var(--outline-var); margin-bottom: 16px; box-shadow: var(--shadow-1); }
+.hbb.imsm .imsm-quota-hd { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.hbb.imsm .imsm-quota-title { display: flex; align-items: center; gap: 12px; }
+.hbb.imsm .imsm-quota-title .ico { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: linear-gradient(135deg, #7c3aed, #4f46e5); color: #fff; flex: none; box-shadow: 0 4px 12px rgba(124, 58, 237, 0.25); }
+.hbb.imsm .imsm-quota-title b { font-size: 16px; font-weight: 700; display: block; line-height: 20px; }
+.hbb.imsm .imsm-quota-title small { font-size: 12px; color: var(--on-surface-var); }
+.hbb.imsm .imsm-quota-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.hbb.imsm .imsm-quota-cell { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 18px; background: var(--surface-c); border: 1px solid rgba(124, 58, 237, 0.12); position: relative; overflow: hidden; }
+.hbb.imsm.dark .imsm-quota-cell { background: var(--surface-c-high); border-color: rgba(167, 139, 250, 0.2); }
+.hbb.imsm .imsm-quota-cell.claude { border-left: 4px solid #d97706; }
+.hbb.imsm .imsm-quota-cell.gemini { border-left: 4px solid #3b82f6; }
+.hbb.imsm .imsm-quota-cell-hd { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.hbb.imsm .imsm-quota-cell-hd .pool-name { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.hbb.imsm .imsm-quota-cell-hd .badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 7px; border-radius: 8px; background: var(--surface-c-highest); color: var(--on-surface-var); }
+.hbb.imsm .imsm-quota-pct { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.hbb.imsm .imsm-quota-pct .val { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; font-family: monospace; }
+.hbb.imsm .imsm-quota-pct .status-text { font-size: 12px; font-weight: 600; }
+.hbb.imsm .imsm-quota-bar { width: 100%; height: 6px; border-radius: 3px; background: var(--surface-c-highest); overflow: hidden; }
+.hbb.imsm .imsm-quota-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s ease; }
+.hbb.imsm .imsm-quota-bar-fill.good { background: #10b981; }
+.hbb.imsm .imsm-quota-bar-fill.mid { background: #f59e0b; }
+.hbb.imsm .imsm-quota-bar-fill.warn { background: #ef4444; }
+.hbb.imsm .imsm-quota-timer { display: flex; flex-direction: column; gap: 2px; padding-top: 6px; border-top: 1px dashed var(--outline-var); }
+.hbb.imsm .imsm-quota-timer .countdown { font-size: 15px; font-weight: 700; font-family: monospace, monospace; color: var(--primary); display: flex; align-items: center; gap: 5px; }
+.hbb.imsm .imsm-quota-timer .exact-date { font-size: 11px; color: var(--on-surface-var); }
+.hbb.imsm .imsm-quota-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--on-surface-var); padding-top: 8px; border-top: 1px solid var(--outline-var); }
+.hbb.imsm .imsm-quota-footer .credits-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.hbb.imsm .imsm-quota-footer .credits-strip span b { color: var(--on-surface); }
+

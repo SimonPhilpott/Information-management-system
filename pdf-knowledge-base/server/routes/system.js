@@ -4,11 +4,16 @@ import { exec, spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { pushPhoneNotification } from '../services/runAlertsService.js';
+import { getAntigravityQuotas } from '../services/aiQuotaService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../../..');
 
 const router = Router();
+
+router.get('/ai-quotas', (req, res) => {
+  res.json(getAntigravityQuotas());
+});
 
 const PORTS = [
   { id: '6001', name: 'IMS Main UI', port: 6001, host: '127.0.0.1' },

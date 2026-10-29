@@ -26,8 +26,18 @@ import {
   snippetStackCounts
 } from '../services/codeRepoService.js';
 import { getOptions, suggestSetup, findCode, planProject, promptFor, createProject, tidyLibrary } from '../services/projectBuilderService.js';
+import { getAntigravityQuotas } from '../services/aiQuotaService.js';
 
 const router = express.Router();
+
+/**
+ * GET /api/code-repo/ai-quotas
+ * High-precision Antigravity Claude Code and Gemini quota tracking with exact countdowns
+ */
+router.get('/ai-quotas', (req, res) => {
+  const result = getAntigravityQuotas();
+  res.json(result);
+});
 
 /**
  * POST /api/code-repo/audit

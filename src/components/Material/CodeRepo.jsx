@@ -50,6 +50,153 @@ function Gauge({ score, title, sub }) {
   );
 }
 
+// Live calculation of accurate days, hours, minutes, and seconds
+function useLiveCountdown(resetIso) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!resetIso) return undefined;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [resetIso]);
+
+  if (!resetIso) return null;
+  const target = new Date(resetIso).getTime();
+  const diff = Math.max(0, target - now);
+  if (diff === 0) return { expired: true, text: 'Resetting now…' };
+
+  const totalSec = Math.floor(diff / 1000);
+  const days = Math.floor(totalSec / 86400);
+  const hours = Math.floor((totalSec % 86400) / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
+
+  let parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0 || days > 0) parts.push(`${hours}h`);
+  parts.push(`${minutes}m`);
+  parts.push(`${String(seconds).padStart(2, '0')}s`);
+
+  return {
+    expired: false,
+    text: parts.join(' '),
+    days,
+    hours,
+    minutes,
+    seconds
+  };
+}
+
+function QuotaCell({ title, badge, icon, pct = 100, resetIso, isExhausted, className = '' }) {
+  const countdown = useLiveCountdown(resetIso);
+  const tone = pct > 40 ? 'good' : pct > 15 ? 'mid' : 'warn';
+  const localReset = resetIso ? new Date(resetIso).toLocaleString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  }) : '–';
+
+  return (
+    <div className={`imsm-quota-cell ${className}`}>
+      <div className="imsm-quota-cell-hd">
+        <span className="pool-name"><Icon n={icon} size={18} /> {title}</span>
+        <span className="badge">{badge}</span>
+      </div>
+      <div className="imsm-quota-pct">
+        <span className={`val ${tone}`}>{pct}%</span>
+        <span className={`status-text ${tone}`}>{isExhausted ? 'Exhausted' : `${pct}% remaining`}</span>
+      </div>
+      <div className="imsm-quota-bar">
+        <div className={`imsm-quota-bar-fill ${tone}`} style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
+      </div>
+      <div className="imsm-quota-timer">
+        <span className="countdown">
+          <Icon n="timer" size={14} />
+          {countdown?.text || '–'}
+        </span>
+        <span className="exact-date">Resets {localReset}</span>
+      </div>
+    </div>
+  );
+}
+
+function AiQuotasPanel({ quotas, loading, onRefresh }) {
+  if (!quotas) return null;
+  const { claude, gemini, userInfo, tokenUsage } = quotas;
+
+  return (
+    <section className="imsm-quota-card">
+      <div className="imsm-quota-hd">
+        <div className="imsm-quota-title">
+          <span className="ico"><Icon n="sparkle" size={24} /></span>
+          <div>
+            <b>Antigravity AI Model Quotas & Exact Reset Timers</b>
+            <small>Active Tier: <b>{userInfo?.tier || 'Google AI Pro'}</b> · {userInfo?.email || 'sideburnt@gmail.com'}</small>
+          </div>
+        </div>
+        <Btn kind="text" icon="sync" busy={loading} onClick={onRefresh}>Refresh Quotas</Btn>
+      </div>
+
+      <div className="imsm-quota-grid">
+        {/* Claude Daily (5h Window) */}
+        <QuotaCell
+          className="claude"
+          title="Claude Code Daily"
+          badge="5-Hour Window"
+          icon="sparkle"
+          pct={claude?.daily?.remainingPercentage ?? 100}
+          resetIso={claude?.daily?.countdown?.resetIso}
+          isExhausted={claude?.daily?.isExhausted}
+        />
+
+        {/* Claude Weekly Pool */}
+        <QuotaCell
+          className="claude"
+          title="Claude Weekly Pool"
+          badge="7-Day Limit"
+          icon="calendar"
+          pct={claude?.weekly?.remainingPercentage ?? 100}
+          resetIso={claude?.weekly?.countdown?.resetIso}
+          isExhausted={false}
+        />
+
+        {/* Gemini Daily (Flash) */}
+        <QuotaCell
+          className="gemini"
+          title="Gemini Flash Daily"
+          badge="5-Hour Window"
+          icon="bolt"
+          pct={gemini?.daily?.remainingPercentage ?? 100}
+          resetIso={gemini?.daily?.countdown?.resetIso}
+          isExhausted={gemini?.daily?.isExhausted}
+        />
+
+        {/* Gemini Weekly Pool */}
+        <QuotaCell
+          className="gemini"
+          title="Gemini Weekly Pool"
+          badge="7-Day Limit"
+          icon="calendar"
+          pct={gemini?.weekly?.remainingPercentage ?? 100}
+          resetIso={gemini?.weekly?.countdown?.resetIso}
+          isExhausted={false}
+        />
+      </div>
+
+      <div className="imsm-quota-footer">
+        <div className="credits-strip">
+          <span>Prompt Credits: <b>{tokenUsage?.promptCredits?.available ?? 500} / {tokenUsage?.promptCredits?.monthly ?? '50k'}</b> ({tokenUsage?.promptCredits?.remainingPercentage ?? 1}%)</span>
+          <span>Flow Credits: <b>{tokenUsage?.flowCredits?.available ?? 100} / {tokenUsage?.flowCredits?.monthly ?? '150k'}</b></span>
+          <span>Google One AI Credits: <b>{tokenUsage?.userCredits?.[0]?.creditAmount ?? 26}</b></span>
+        </div>
+        <span>High-precision millisecond timestamps from Antigravity IDE</span>
+      </div>
+    </section>
+  );
+}
+
 function Account({ title, sub, icon, token, repos, scanning, scanTarget, progress, lastLog, onScanAll, onScanOne, onToggle, onToggleAll, onRemove, onTokens, mismatch }) {
   const [open, setOpen] = useState(true);
   const all = repos.length > 0 && repos.every((r) => r.is_selected);
@@ -207,6 +354,18 @@ function Body({ go }) {
   const [auditFilter, setAuditFilter] = useState('all');
   const [logged, setLogged] = useState(new Set());
   const [depWatch, reloadDeps] = useDependencyWatch();
+  const [quotas, setQuotas] = useState(null);
+  const [quotasLoading, setQuotasLoading] = useState(false);
+
+  const loadQuotas = useCallback(async () => {
+    setQuotasLoading(true);
+    try {
+      const res = await fetch('/api/code-repo/ai-quotas');
+      const d = await res.json();
+      if (d.success) setQuotas(d);
+    } catch (_) {}
+    setQuotasLoading(false);
+  }, []);
 
   const loadTok = useCallback(async () => { try { const d = await (await fetch('/api/code-repo/tokens')).json(); if (d.success) setTok(d); } catch { /* keep */ } }, []);
   const loadRepos = useCallback(async () => { try { const d = await (await fetch('/api/code-repo/repositories')).json(); if (d.success) setRepos(d.repositories || []); } catch { /* keep */ } }, []);
@@ -220,7 +379,7 @@ function Body({ go }) {
       if (d.success) { setSnips(d.snippets || []); if (Array.isArray(d.stacks)) setStacks(d.stacks); }
     } catch (e) { setSnips((s) => s || []); err(`The patterns couldn't be loaded: ${e.message}`); }
   }, [repoId, stack, q, err]);
-  useEffect(() => { loadTok(); loadRepos(); }, [loadTok, loadRepos]);
+  useEffect(() => { loadTok(); loadRepos(); loadQuotas(); }, [loadTok, loadRepos, loadQuotas]);
   useEffect(() => { const t = setTimeout(loadSnips, q ? 300 : 0); return () => clearTimeout(t); }, [loadSnips, q]);
 
   const runAudit = useCallback(async () => {
@@ -310,6 +469,8 @@ function Body({ go }) {
         })}>Tidy and re-index</Btn>
         <Btn kind="text" icon="admin" onClick={() => setTokForm({ personal: '', work: '' })}>GitHub tokens</Btn>
       </div>
+
+      <AiQuotasPanel quotas={quotas} loading={quotasLoading} onRefresh={loadQuotas} />
 
       <div className="imsm-two">
         <Account title="Personal" sub="github.com/simonphilpott · your own tools and projects" icon="person" repos={personal} token={{ ok: tok.personalConfigured, text: tok.personalConfigured ? `Token ${tok.personalMasked}` : 'Public access only' }} onScanAll={() => scanAccount('personal')} onToggleAll={(on) => toggleAll('personal', on)} {...accountProps} />
