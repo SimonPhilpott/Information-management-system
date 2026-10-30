@@ -31,7 +31,7 @@ export function deleteGame(owner, id) {
 // what anyone may see of everyone else's adventures: who, which survivor, how far, and the latest few entries
 export function othersGames(owner, nameOf) {
   return db.prepare('SELECT * FROM dnd_beta_games WHERE owner != ? ORDER BY updated DESC').all(owner).map((row) => {
-    const s = parse(row); if (!s) return null;
+    const s = parse(row); if (!s || s.test) return null; // the owner's test lab is never shown round the table
     const h = s.hero || {}, v = h.vit || {}, d = s.domain || {};
     return {
       id: row.id, ownerName: nameOf(row.owner), title: s.title, updated: row.updated, created: row.created,

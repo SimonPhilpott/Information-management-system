@@ -31,7 +31,7 @@ export function marksOf(game) {
     ['door', 'Places walked', `${game.pieces.length} in Domain ${game.domain.n}${game.source?.turns ? `, after ${game.source.turns} turns of the earlier tale` : ''}`],
     ['swords', 'Fights won', fights ? `${fights}${foes.length ? `, against ${foes.join(', ')}` : ''}` : foes.length ? `None yet; faced ${foes.join(', ')}` : 'None yet'],
     ['drop', 'Hurts since the last camp', (h.wounds || []).length ? `${h.wounds.length}, the worst ${worst.dmg} to the ${worst.loc.toLowerCase()}` : 'None'],
-    ['heart', 'Body', `${word(v.health, v.maxHealth, ['Whole', 'Hurt', 'Badly hurt', 'Near death'])}: Health ${v.health}/${v.maxHealth}, Toughness ${v.tough}/${v.maxTough}`],
+    ['heart', 'Body', game.over === 'dead' ? `Dead: fell in ${E.placeName(E.here(game))}` : game.over === 'mad' ? 'Lost to madness' : game.over === 'rot' ? 'Taken by the Rot' : `${word(v.health, v.maxHealth, ['Whole', 'Hurt', 'Badly hurt', 'Near death'])}: Health ${v.health}/${v.maxHealth}, Toughness ${v.tough}/${v.maxTough}`],
     ['brain', 'Mind', `${word(v.sanity, v.maxSanity, ['Steady', 'Shaken', 'Haunted', 'Breaking'])}: Sanity ${v.sanity}/${v.maxSanity}${h.madness?.length ? `; carries ${h.madness.length} madness${h.madness.length > 1 ? 'es' : ''}` : ''}`],
     ['hourglass', 'Weariness', ['Rested enough', 'Worn: healing comes slowly', 'Exhausted: every check is harder', 'Spent'][E.exhTier(h)]],
     ['torch', 'Light', `${v.light} room${v.light === 1 ? '' : 's'} of torchlight, ${h.items.torches} spare`],

@@ -10,7 +10,7 @@ import { Orn } from '../ui/Bits';
 import { Entry, FILTERS } from './Journal';
 
 // the length and style of a written chapter; raising it rewrites the chapters written before
-const TALE_V = 2;
+const TALE_V = 3;
 export default function ChronicleView({ game, onPage, voice, commit }) {
   const [mode, setMode] = useState('tale');
   const [q, setQ] = useState('');
@@ -22,12 +22,19 @@ export default function ChronicleView({ game, onPage, voice, commit }) {
   const chapters = useMemo(() => {
     const out = []; let cur = null;
     for (const e of game.log) {
-      if (e.kind === 'room' || (e.kind === 'move' && e.place)) { cur = { id: e.id, title: pieces[e.place] ? placeName(pieces[e.place]) : e.title, entries: [], fights: 0, rolls: 0 }; out.push(cur); }
+      const opening = e.title === 'Room & Corridor Shape' || (e.kind === 'move' && e.place);
+      if (opening || (e.kind === 'room' && !(cur && cur.opening))) { cur = { id: e.id, title: e.place && pieces[e.place] ? placeName(pieces[e.place]) : e.title, entries: [], fights: 0, rolls: 0, opening: e.title === 'Room & Corridor Shape' }; out.push(cur); }
+      else if (e.kind === 'room' && cur?.opening) { cur.opening = false; cur.title = pieces[e.place] ? placeName(pieces[e.place]) : e.title; }
       if (!cur) { cur = { id: 'start', title: 'Before the first door', entries: [], fights: 0, rolls: 0 }; out.push(cur); }
       cur.entries.push(e); if (e.kind === 'combat') cur.fights += 1; if (e.kind === 'roll') cur.rolls += 1;
     }
+    // when the hero dies (or is lost to madness or the Rot), the tale closes with a last page
+    if (game.over && out.length) {
+      const last = out[out.length - 1];
+      out.push({ id: `end-${game.over}`, title: 'The Last Page', ending: game.over, place: last.title, entries: last.entries.slice(-4), fights: 0, rolls: 0 });
+    }
     return out;
-  }, [game.log, pieces]);
+  }, [game.log, pieces, game.over]);
   const term = q.trim().toLowerCase();
   const show = (e) => (filter === 'all' || (filter === 'place' && ['room', 'move', 'event'].includes(e.kind)) || (filter === 'combat' && e.kind === 'combat') || (filter === 'roll' && ['roll', 'darkness'].includes(e.kind)) || (filter === 'note' && ['note', 'camp'].includes(e.kind)))
     && (!term || `${e.title} ${e.text} ${e.dress || ''}`.toLowerCase().includes(term));
@@ -35,9 +42,11 @@ export default function ChronicleView({ game, onPage, voice, commit }) {
   // the tale: written chapter by chapter, in order, one at a time; kept on the game (game.tales[chapter] = { n, text })
   const [local, setLocal] = useState({}); const writing = useRef(false); const [busyId, setBusyId] = useState(null);
   const tales = { ...(game.tales || {}), ...local };
-  const factsOf = (c) => c.entries.flatMap((e) => {
-    const done = (e.asks || []).filter((a) => a.done && !a.done.skipped).map((a) => `${a.done.pass ? 'Succeeded at' : 'Failed at'} what was asked (${a.skill}): ${a.done.text}${a.dress ? ` ${a.dress}` : ''}`);
-    return [`${e.title}: ${String(e.text || '').replace(/\s*\(p\. \d+\)/g, '')}${e.dress ? ` (as told then: ${e.dress})` : ''}`, ...done];
+  const BOOKKEEPING = /Tier \d opens|Personal Goal|^Gear$|^Belt$|Over your slots|Room & Corridor Shape|Lair Check|Domain Exit|^Tension Die$|Is there a door|^Light$|Hold on to your wits/;
+  const factsOf = (c) => c.entries.filter((e) => !BOOKKEEPING.test(e.title || '') && !/Tier \d opens/.test(e.text || '')).flatMap((e) => {
+    const done = (e.asks || []).filter((a) => a.done && !a.done.skipped).map((a) => `${a.done.pass ? 'Succeeded at' : 'Failed at'} what was asked (${a.skill}): ${a.done.text}`);
+    const told = e.dress && (e.kind === 'room' || e.kind === 'event') ? ` (as told then: ${e.dress})` : '';
+    return [`${e.title}: ${String(e.text || '').replace(/\s*\(p\. \d+\)/g, '')}${told}`, ...done];
   });
   useEffect(() => {
     if (mode !== 'tale' || writing.current) return;
@@ -45,7 +54,7 @@ export default function ChronicleView({ game, onPage, voice, commit }) {
     if (!todo) return;
     writing.current = true; setBusyId(todo.id);
     const i = chapters.indexOf(todo); const before = i > 0 ? tales[chapters[i - 1].id]?.text || '' : '';
-    fetch('/api/dnd/beta/tale', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hero: game.hero.name, place: todo.title, facts: factsOf(todo), before }) })
+    fetch('/api/dnd/beta/tale', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hero: game.hero.name, place: todo.place || todo.title, facts: factsOf(todo), before, ending: todo.ending || null }) })
       .then((r) => r.json()).then((d) => {
         if (!d.text) throw new Error('no tale');
         const t = { n: todo.entries.length, text: d.text, v: TALE_V };
@@ -66,7 +75,7 @@ export default function ChronicleView({ game, onPage, voice, commit }) {
           {game.imported?.length > 0 && <button type="button" className={`ix classic ${showClassic ? 'on' : ''}`} onClick={() => setShowClassic((v) => !v)}><Ico n="tome" size={16} /><span><b>The earlier tale</b><small>{game.imported.length} turns before this map</small></span></button>}
           {chapters.map((c, i) => (
             <button key={c.id} type="button" className="ix" onClick={() => refs.current[c.id]?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-              <i>{i + 1}</i><span><b>{c.title}</b><small>{c.entries.length} entries{c.fights ? ` · ${c.fights} fight${c.fights > 1 ? 's' : ''}` : ''}</small></span>
+              <i>{i + 1}</i><span><b>{c.title}</b><small>{c.ending ? (c.ending === 'dead' ? 'how it ended' : c.ending === 'mad' ? 'lost to madness' : 'taken by the Rot') : `${c.entries.length} entries`}{c.fights ? ` · ${c.fights} fight${c.fights > 1 ? 's' : ''}` : ''}</small></span>
             </button>
           ))}
         </nav>
@@ -82,7 +91,7 @@ export default function ChronicleView({ game, onPage, voice, commit }) {
             )}
             {mode === 'tale' && chapters.filter((c) => c.id !== 'start' && (!term || `${c.title} ${tales[c.id]?.text || ''}`.toLowerCase().includes(term))).map((c, i) => (
               <article key={c.id} ref={(el) => { refs.current[c.id] = el; }} className="dbt-tale-chapter">
-                <header><span className="dbt-kick">Chapter {i + 1}</span><h3>{c.title}</h3></header>
+                <header><span className="dbt-kick">{c.ending ? 'The end' : `Chapter ${i + 1}`}</span><h3>{c.title}</h3></header>
                 {tales[c.id]?.text ? tales[c.id].text.split(/\n\s*\n/).map((para, k) => <p key={k} className={`dbt-tale ${k === 0 ? 'first' : ''}`}>{para}</p>)
                   : busyId === c.id ? <p className="dbt-note"><Ico n="quill" size={14} /> Rindewind is writing this chapter…</p>
                     : tales[c.id]?.failed ? <p className="dbt-note">This chapter could not be written just now. The record has every moment of it.</p>
@@ -92,7 +101,7 @@ export default function ChronicleView({ game, onPage, voice, commit }) {
               </article>
             ))}
             {mode === 'record' && total === 0 && <p className="dbt-tale">Nothing matches.</p>}
-            {mode === 'record' && chapters.map((c) => {
+            {mode === 'record' && chapters.filter((c) => !c.ending).map((c) => {
               const list = c.entries.filter(show); if (!list.length) return null;
               return <div key={c.id} ref={(el) => { refs.current[c.id] = el; }}>{list.map((e) => <Entry key={e.id} e={e} piece={pieces[e.place]} onPage={onPage} voice={voice} />)}</div>;
             })}

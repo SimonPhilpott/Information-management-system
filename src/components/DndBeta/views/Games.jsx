@@ -1,4 +1,4 @@
-// Games: your adventure up front, heroes to bring across from the classic service, and every game in the library with
+// Games: your adventure up front, and every game in the library with
 // how ready it is to be run by the Solo DM. New: rolling a survivor by the book (chapter II).
 import React, { useEffect, useState } from 'react';
 import * as E from '../kn/engine';
@@ -13,7 +13,20 @@ import { coverage } from './Rules';
 import { GAMES, KINDS, sortBooks } from '../library';
 import { WEAPONS } from '../kn/loot';
 
-function Banner({ g, onOpen }) {
+const ENDED = { dead: 'Deceased', mad: 'Lost to madness', rot: 'Taken by the Rot' };
+function Portrait({ g, size }) {
+  const end = ENDED[g.over];
+  return (
+    <span className={`dbt-gportrait ${end ? 'ended' : ''}`} title={end || undefined}>
+      <Medallion src={g.hero.avatar} name={g.hero.name} size={size} />
+      {end && <span className="skull" aria-hidden="true"><Ico n="skull" size={Math.max(14, Math.round(size / 4))} /></span>}
+    </span>
+  );
+}
+const EndTag = ({ g }) => (ENDED[g.over] ? <span className="dbt-endtag"><Ico n="skull" size={12} /> {ENDED[g.over]}</span> : null);
+function Banner({ g, onOpen, onRead, onDelete }) {
+  const [sure, setSure] = useState(false);
+  const dead = g.over === 'dead' || g.over === 'mad' || g.over === 'rot';
   const v = g.hero.vit; const last = [...g.log].reverse().find((e) => e.kind === 'room' || e.kind === 'combat' || e.kind === 'event');
   const here = E.here(g);
   return (
@@ -21,18 +34,27 @@ function Banner({ g, onOpen }) {
       <img className="bg" src={overseerImg(g.domain.overseer.name)} alt="" aria-hidden="true" />
       <div className="veil" />
       <div className="in">
-        <Medallion src={g.hero.avatar} name={g.hero.name} size={96} />
+        <Portrait g={g} size={96} />
         <div className="t">
           <span className="dbt-kick">Your adventure · Domain {g.domain.n} · {g.domain.overseer.name}</span>
           <h2>{g.title}</h2>
-          <p className="where"><Ico n="door" size={16} /> {here?.title || 'Somewhere below'}{g.over ? ' · the tale has ended' : g.combat ? ' · in a fight' : ''}</p>
+          <p className="where"><Ico n="door" size={16} /> {here ? E.placeName(here) : 'Somewhere below'}{g.over ? '' : g.combat ? ' · in a fight' : ''}</p>
+          {dead && <p className="dbt-dead"><Ico n="skull" size={16} /> {g.over === 'mad' ? 'Lost to madness' : g.over === 'rot' ? 'Taken by the Rot' : 'Died'} in {here ? E.placeName(here) : 'the dark'}. The tale has ended; the Chronicle is still yours to read.</p>}
           {last && <p className="last">{last.text.length > 180 ? `${last.text.slice(0, 180)}...` : last.text}</p>}
           <div className="dbt-mini">
             {[['Health', v.health, v.maxHealth, 'heart'], ['Toughness', v.tough, v.maxTough, 'shield'], ['Sanity', v.sanity, v.maxSanity, 'brain'], ['Light', v.light, 20, 'torch']].map(([k, n, m, ic]) => <Tip key={k} tip={{ title: k, icon: ic, ...GLOSSARY[k] }} className="m"><Ico n={ic} size={14} />{n}<small>/{m}</small></Tip>)}
           </div>
-          <button type="button" className="dbt-btn primary lg" onClick={() => onOpen(g.id)}><Ico n="scroll" size={18} /> {g.over ? 'Read the tale' : 'Return to the dark'}</button>
+          <div className="dbt-row">
+            {!dead && <button type="button" className="dbt-btn primary lg" onClick={() => onOpen(g.id)}><Ico n="door" size={18} /> Return to the dark</button>}
+            <button type="button" className={`dbt-btn lg ${dead ? 'primary' : ''}`} onClick={() => onRead(g.id)}><Ico n="scroll" size={18} /> Read the tale</button>
+            {sure ? (
+              <span className="dbt-sure" role="alert">Delete {g.title} for good?
+                <button type="button" className="dbt-btn sm danger" onClick={() => { setSure(false); onDelete(g.id); }}>Delete for good</button>
+                <button type="button" className="dbt-btn sm ghost" onClick={() => setSure(false)}>Keep it</button></span>
+            ) : <button type="button" className="dbt-btn lg ghost dbt-del" onClick={() => setSure(true)} aria-label={`Delete ${g.title}`}><Ico n="close" size={16} /> Delete</button>}
+          </div>
         </div>
-        <div className="map"><MapView game={g} compact onOpen={() => onOpen(g.id)} height={180} /></div>
+        <div className="map"><MapView game={g} compact onOpen={() => (dead ? onRead(g.id) : onOpen(g.id))} height={180} /></div>
       </div>
     </article>
   );
@@ -71,20 +93,15 @@ function GameCard({ g, listing, rulesets, cov, open, onToggle }) {
   );
 }
 
-export default function GamesView({ games, curId, onOpen, onNew, onDelete, onImport, table = [], onWatch, me, synced }) {
+export default function GamesView({ games, curId, onOpen, onRead, onNew, onDelete, table = [], onWatch, me, synced }) {
   const [sure, setSure] = useState(null);
-  const [classic, setClassic] = useState([]);
   const [rulesets, setRulesets] = useState([]);
   const [listing, setListing] = useState(null);
-  const [importing, setImporting] = useState(null);
-  const [importErr, setImportErr] = useState('');
   const [openRs, setOpenRs] = useState(null);
   useEffect(() => {
-    fetch('/api/dnd/campaigns').then((r) => r.json()).then((d) => setClassic((d.campaigns || []).filter((c) => c.ruleset_id === 'ker-nethalas'))).catch(() => {});
     fetch('/api/dnd/rulesets').then((r) => r.json()).then((d) => setRulesets(d.rulesets || [])).catch(() => {});
     fetch('/api/dnd/beta/library').then((r) => r.json()).then((d) => setListing(d.folders ? d : { folders: [], files: [] })).catch(() => setListing({ folders: [], files: [] }));
   }, []);
-  const doImport = async (id) => { setImporting(id); setImportErr(''); try { await onImport(id); } catch (e) { setImportErr(e.message); } finally { setImporting(null); } };
   const cur = games.find((g) => g.id === curId) || games[0];
   const others = games.filter((g) => g !== cur);
   const cov = coverage();
@@ -92,17 +109,17 @@ export default function GamesView({ games, curId, onOpen, onNew, onDelete, onImp
     <div className="dbt-page dbt-games">
       <header className="dbt-head"><div><span className="dbt-kick">D&amp;D Solo DM{me ? ` · ${me}` : ''}{synced === 'offline' ? ' · not saved to the server' : ''}</span><h1>Rindewind&apos;s Table</h1></div>
         <button type="button" className="dbt-btn primary" onClick={onNew}><Ico n="d6" size={18} /> New survivor</button></header>
-      {cur ? <Banner g={cur} onOpen={onOpen} /> : (
-        <Panel plate="No adventure yet" icon="door" className="dbt-empty-panel"><p className="dbt-fell">Thrown down to die beneath Veldonia, you did not. Roll a survivor, or bring one across from the old D&D Solo.</p>
+      {cur ? <Banner key={cur.id} g={cur} onOpen={onOpen} onRead={onRead} onDelete={onDelete} /> : (
+        <Panel plate="No adventure yet" icon="door" className="dbt-empty-panel"><p className="dbt-fell">Thrown down to die beneath Veldonia, you did not. Roll a survivor.</p>
           <button type="button" className="dbt-btn primary" onClick={onNew}><Ico n="d6" size={18} /> Roll a survivor</button></Panel>
       )}
       {others.length > 0 && (
         <Panel plate="Other adventures" icon="scroll">
           <div className="dbt-gamegrid">{others.map((g) => (
-            <article key={g.id} className="dbt-gamecard">
-              <Medallion src={g.hero.avatar} name={g.hero.name} size={48} />
-              <div className="t"><b>{g.title}</b><small>{g.hero.name} · Domain {g.domain.n} · {g.pieces.length} places{g.over ? ' · ended' : ''}</small></div>
-              <div className="dbt-row"><button type="button" className="dbt-btn sm" onClick={() => onOpen(g.id)}>Open</button>
+            <article key={g.id} className={`dbt-gamecard ${g.over ? 'ended' : ''}`}>
+              <Portrait g={g} size={48} />
+              <div className="t"><b>{g.title}</b><small>{g.hero.name} · Domain {g.domain.n} · {g.pieces.length} places</small><EndTag g={g} /></div>
+              <div className="dbt-row">{!g.over && <button type="button" className="dbt-btn sm" onClick={() => onOpen(g.id)}>Continue</button>}<button type="button" className="dbt-btn sm ghost" onClick={() => onRead(g.id)}>Read the tale</button>
                 {sure === g.id ? <><button type="button" className="dbt-btn sm danger" onClick={() => { onDelete(g.id); setSure(null); }}>Delete for good</button><button type="button" className="dbt-btn sm ghost" onClick={() => setSure(null)}>Keep</button></>
                   : <button type="button" className="dbt-btn sm ghost" onClick={() => setSure(g.id)}>Delete</button>}</div>
             </article>
@@ -113,33 +130,14 @@ export default function GamesView({ games, curId, onOpen, onNew, onDelete, onImp
         <Panel plate="Round the table" icon="eye" className="dbt-table">
           <p className="dbt-note">Everyone else's adventures, as they stand. Watch any of them; only their owner can play them.</p>
           <div className="dbt-gamegrid">{table.map((g) => (
-            <article key={g.id} className="dbt-gamecard watch">
-              <Medallion src={g.hero.avatar} name={g.hero.name} size={48} />
+            <article key={g.id} className={`dbt-gamecard watch ${g.over ? 'ended' : ''}`}>
+              <Portrait g={g} size={48} />
               <div className="t"><b>{g.hero.name}</b><small>{g.ownerName}&apos;s · level {g.hero.level} · Domain {g.domain.n}{g.domain.overseer ? `, ${g.domain.overseer}${g.domain.overseerSlain ? ' (slain)' : ''}` : ''} · {g.places} places{g.over ? ` · ${g.over === 'dead' ? 'died' : 'ended'}` : g.fighting ? ` · fighting ${g.fighting === true ? '' : g.fighting}` : ''}</small>
                 {g.hero.maxHealth ? <small>Health {g.hero.health}/{g.hero.maxHealth} · Sanity {g.hero.sanity}/{g.hero.maxSanity} · {g.hero.xp} XP · {new Date(g.updated).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</small> : null}
                 {g.latest?.[g.latest.length - 1] && <small className="dbt-fell">{g.latest[g.latest.length - 1].title}: {g.latest[g.latest.length - 1].text}</small>}</div>
               <div className="dbt-row"><button type="button" className="dbt-btn sm" onClick={() => onWatch?.(g.id)}><Ico n="eye" size={14} /> Watch</button></div>
             </article>
           ))}</div>
-        </Panel>
-      )}
-      {cur && others.length === 0 && (
-        <p className="dbt-note dbt-delnote">{sure === cur.id ? <>Delete {cur.title}? <button type="button" className="dbt-link" onClick={() => { onDelete(cur.id); setSure(null); }}>Delete for good</button> <button type="button" className="dbt-link" onClick={() => setSure(null)}>Keep it</button></> : <button type="button" className="dbt-link" onClick={() => setSure(cur.id)}>Delete this adventure</button>}</p>
-      )}
-      {classic.length > 0 && (
-        <Panel plate="Heroes from the old D&D Solo" icon="helm" className="dbt-classic">
-          {classic.map((c) => {
-            const done = games.some((g) => g.source?.classic === c.id);
-            return (
-              <div key={c.id} className="dbt-classic-row">
-                <Medallion src={c.character_avatar} name={c.character_name} size={56} />
-                <div><b>{c.character_name || 'Hero'}</b><p className="dbt-mut">{c.character_class} · {c.turn_count} turns · {c.title}</p></div>
-                <button type="button" className="dbt-btn" disabled={importing === c.id} onClick={() => doImport(c.id)}><Ico n="back" size={16} /> {importing === c.id ? 'Bringing across' : done ? 'Bring across again' : 'Bring across'}</button>
-              </div>
-            );
-          })}
-          <p className="dbt-note">Brings the hero as he stands (vitals, kit, skills, masteries) and the places his story passed through, as cleared rooms on the map. The classic copy is not changed.</p>
-          {importErr && <p className="dbt-err" role="alert">{importErr}</p>}
         </Panel>
       )}
       <Panel plate="The library" icon="tome" className="dbt-library">

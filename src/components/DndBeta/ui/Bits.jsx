@@ -25,11 +25,22 @@ export function Orn({ className = '' }) {
 }
 
 // a die-shaped chip for a rolled number
-const SHAPES = { d4: 'M12 3l9 16H3z', d6: 'M5 5h14v14H5z', d8: 'M12 2l9 10-9 10-9-10z', d10: 'M12 2l8 8-8 12-8-12z', d12: 'M12 2l8 5.5-3 9.5H7L4 7.5z', d20: 'M12 2l9 5v10l-9 5-9-5V7z', d100: 'M12 2l8 8-8 12-8-12z' };
+// a badge per die, shaped like the die: D4 a triangle, D6 a square, D8 a diamond, D10 a kite, D12 a pentagon,
+// D20 a hexagon, and the D100 (two D10s) a wide kite
+const SHAPES = {
+  d4: 'M12 2.5l10 18H2z',
+  d6: 'M3.5 3.5h17v17h-17z',
+  d8: 'M12 1.5l10 10.5-10 10.5L2 12z',
+  d10: 'M12 1.5l10 7.5-10 13.5L2 9z',
+  d12: 'M12 1.8l10 7.2-3.8 11.6H5.8L2 9z',
+  d20: 'M12 1.5l9.5 5.3v10.4L12 22.5l-9.5-5.3V6.8z',
+  d100: 'M12 1.5L23.5 9 12 22.5 0.5 9z',
+};
 export function DieChip({ label, value, die, tone = '' }) {
   const d = die || (/d\s?(\d+)/i.exec(label || '')?.[0]?.replace(/\s/g, '').toLowerCase()) || (Number(value) > 20 ? 'd100' : 'd20');
+  const len = String(value ?? '').length;
   return (
-    <span className={`dbt-die ${tone}`}>
+    <span className={`dbt-die ${tone} s-${d} n${Math.min(4, len)}`}>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d={SHAPES[d] || SHAPES.d20} /></svg>
       <b>{value}</b>{label && <small>{label}</small>}
     </span>

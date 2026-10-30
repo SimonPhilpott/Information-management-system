@@ -128,12 +128,27 @@ function Needed({ e }) {
   return <div className="dbt-needed"><b><Ico n="d20" size={13} /> You needed</b><ul>{e.need.map((n, i) => <li key={i}>{n}</li>)}</ul></div>;
 }
 // the roll about to be made: the dice, what each decides, the result you need
+// the throw in progress: each step in turn, what it is for, what you need, and what it gave
+export function RollLadder({ ladder }) {
+  return (
+    <div className="dbt-prompt dbt-ladder" role="status" aria-live="polite" aria-label={`Rolling: ${ladder.title || 'the dice'}`}>
+      <header><span className="dbt-roundel sm"><Ico n="d20" size={18} /></span><div><span className="dbt-kick">Rolling</span><h4>{ladder.title || 'The dice'}</h4></div></header>
+      <ol className="dbt-ladder-steps">{ladder.lines.map((l, i) => (
+        <li key={i} className={`${(ladder.cur || []).includes(i) ? 'now' : ''} ${l.value != null ? 'done' : ''}`}>
+          <i className={`dot r-${l.role}`} aria-hidden="true" />
+          <span className="t"><b>{l.what}</b>{l.need && <small>{l.need}</small>}{l.outcome && <em className={`res ${l.outcome.tone || ''}`}>{l.outcome.t}</em>}</span>
+          <span className="v">{l.value != null ? <DieChip value={l.value} die={l.die} /> : (ladder.cur || []).includes(i) ? <em>rolling…</em> : <em>next</em>}</span>
+        </li>
+      ))}</ol>
+    </div>
+  );
+}
 export function RollPrompt({ pending, onThrow, onCancel, busy }) {
   const { info, plan } = pending;
   return (
     <div className="dbt-prompt" role="region" aria-label={`Roll: ${info.title}`}>
       <header><span className="dbt-roundel sm"><Ico n="d20" size={18} /></span><div><span className="dbt-kick">Ready to roll</span><h4>{info.title}</h4>{info.why && <small>{info.why}</small>}</div></header>
-      <ul className="dbt-prompt-lines">{info.lines.map((l, i) => <li key={i}><DieChip value={l.die.toUpperCase()} die={l.die} /><span><b>{l.what}</b>{l.need && <small>{l.need}</small>}</span></li>)}</ul>
+      <ul className="dbt-prompt-lines">{info.lines.map((l, i) => <li key={i}><DieChip value={l.die.toUpperCase()} die={l.die} /><span><b><i className={`dot r-${l.role}`} aria-hidden="true" />{l.what}</b>{l.need && <small>{l.need}</small>}</span></li>)}</ul>
       <div className="dbt-row"><button type="button" className="dbt-btn primary lg" disabled={busy} onClick={onThrow} autoFocus><Ico n="d20" size={18} /> Throw {plan.kinds.length > 1 ? `the ${plan.kinds.length} dice` : 'the die'}</button><button type="button" className="dbt-btn ghost" onClick={onCancel}>Not now</button></div>
     </div>
   );
@@ -143,7 +158,7 @@ export function PageChip({ page, onPage }) {
 }
 
 // the scroll in the play screen: scrolls through everything, with filters and a way back to the newest line
-export default function Journal({ game, onPage, voice, trayNode, header, pending, onThrow, onCancel, busy, onAsk, onQueued, ask, onFlag }) {
+export default function Journal({ game, onPage, voice, trayNode, header, pending, ladder, onThrow, onCancel, busy, onAsk, onQueued, ask, onFlag }) {
   const [filter, setFilter] = useState('all');
   const [away, setAway] = useState(false);
   const body = useRef(null);
@@ -152,7 +167,7 @@ export default function Journal({ game, onPage, voice, trayNode, header, pending
   const list = game.log.filter((e) => matches(e, filter));
   const freshFrom = seen.current;
   useEffect(() => { seen.current = game.log.length; }, [game.log.length]);
-  useEffect(() => { const el = body.current; if (el && !away) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }, [game.log.length, game.log[game.log.length - 1]?.dress, filter, pending]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const el = body.current; if (el && !away) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }, [game.log.length, game.log[game.log.length - 1]?.dress, filter, pending, ladder?.lines?.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const onScroll = () => { const el = body.current; if (el) setAway(el.scrollHeight - el.scrollTop - el.clientHeight > 160); };
   return (
     <section className="dbt-scroll" aria-label="The scroll"><span className="dbt-paperbg" aria-hidden="true" />
@@ -169,7 +184,8 @@ export default function Journal({ game, onPage, voice, trayNode, header, pending
           const idx = game.log.indexOf(e);
           return <Entry key={e.id} e={e} piece={pieces[e.place]} onPage={onPage} voice={voice} fresh={idx >= freshFrom} onAsk={e.queued ? ((game.checks || []).some((q) => q.id === e.queued) ? () => onQueued?.(e.queued) : null) : e.asks && pieces[e.place]?.event?.entryId === e.id ? onAsk : null} ask={ask} busy={busy} onFlag={onFlag} />;
         })}
-        {pending && <RollPrompt pending={pending} onThrow={onThrow} onCancel={onCancel} busy={busy} />}
+        {pending && !ladder && <RollPrompt pending={pending} onThrow={onThrow} onCancel={onCancel} busy={busy} />}
+        {ladder && <RollLadder ladder={ladder} />}
       </div>
       {away && <button type="button" className="dbt-latest" onClick={() => { body.current?.scrollTo({ top: body.current.scrollHeight, behavior: 'smooth' }); setAway(false); }}><Ico n="next" size={14} /> Latest</button>}
       {trayNode}

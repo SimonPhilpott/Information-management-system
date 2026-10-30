@@ -108,7 +108,7 @@ export function libraryListing() {
 // Who the survivor is now: Rindewind's account of how the campaign has marked them, and a line in their own voice
 export async function reflectHero({ context = {} } = {}) {
   const facts = [
-    context.hero ? `THE SURVIVOR: ${context.hero}` : '', context.backstory ? `WHO THEY WERE: ${context.backstory}` : '', context.goals ? `WHAT THEY WANT: ${context.goals}` : '',
+    context.ended ? `THE END: ${context.ended}` : '', context.hero ? `THE SURVIVOR: ${context.hero}` : '', context.backstory ? `WHO THEY WERE: ${context.backstory}` : '', context.goals ? `WHAT THEY WANT: ${context.goals}` : '',
     context.marks ? `MARKS OF THE ROAD:\n${context.marks}` : '', context.place ? `WHERE THEY ARE: ${context.place}` : '', context.recent ? `LATELY:\n${String(context.recent).slice(0, 2500)}` : '',
   ].filter(Boolean).join('\n');
   const model = new GoogleGenerativeAI(config.geminiApiKey).getGenerativeModel({
@@ -117,7 +117,8 @@ export async function reflectHero({ context = {} } = {}) {
 Use only the facts given: their wounds, their mind, what they have faced, who they were. Never invent events, items or people. British English, wholly in the world, no game terms or numbers.
 "portrait": two short paragraphs (at most 120 words in all), present tense, third person: how they look now and how the road has changed them inside.
 "feeling": one or two sentences in their own voice and manner, about how they feel right now.
-"mood": one word for their state of mind.`,
+"mood": one word for their state of mind.
+If THE END is given, the survivor is dead (or lost): say so plainly. Write the portrait as they lie now, at the place and by the hand that ended them, and how the road brought them there; "feeling" is their last thought before the end, in their own voice; "mood" is a word for that ending.`,
     generationConfig: { temperature: 0.8, maxOutputTokens: 500, thinkingConfig: quick(ASK_NOW()), responseMimeType: 'application/json',
       responseSchema: { type: 'OBJECT', properties: { portrait: { type: 'STRING' }, feeling: { type: 'STRING' }, mood: { type: 'STRING' } }, required: ['portrait', 'feeling', 'mood'] } },
   });
@@ -151,15 +152,22 @@ export function creatureArtFile(slug) {
 // than a literal summary of rolls"): one place at a time, from what happened there, wholly in-world (no game terms,
 // no real names), past tense, as the chronicler of the necropolis would write it in his book.
 const TALE = `You are Rindewind, chronicler of the drowned necropolis of Ker Nethalas beneath Veldonia, writing in your great book the tale of one survivor's descent.
-Write in rich, dark British English, in the past tense and the third person, as a chapter of a told tale: what the place was like, what befell the survivor there, and how they bore it, in the order it happened.
-Turn every outcome into story: a fight becomes blows struck and taken, a failed attempt becomes a slip or a fright, gold found becomes coin glinting in the muck, wounds become pain and blood. Keep every fact (who fought, who won, what was found or lost, hurt taken) but never name dice, rolls, checks, tables, numbers of points, levels, experience or any game term, and never a real-world name or date.
-Two to four paragraphs, 250 to 450 words: expand richly on every moment, the place itself, the survivor's body and nerve, and what the place remembers. No headings, no lists, no quotation marks.`;
-export async function tellChapter({ hero = '', place = '', facts = [], before = '' } = {}) {
+Write in dark, measured British English, in the past tense and always the third person: never address the survivor as "you". Tell what the place was like, what befell the survivor there, and how they bore it, in the order it happened.
+Turn every outcome into story: a fight becomes blows struck and taken, a failed attempt becomes a slip or a fright, coin found glints in the muck, wounds become pain and blood. Never name dice, rolls, checks, tables, points, levels, experience, abilities or any game term, and never a real-world name.
+Keep strictly to the facts given. Never invent an outcome: a fight that has not ended in these facts has not ended, and a creature is dead only if the facts say it was destroyed or slain. Do not add events, foes or finds that are not in the facts.
+Prefer clear, concrete sentences to piled adjectives: one sharp image is worth three. Vary your words: use any striking phrase (weeping, drowned, timeless dark and the like) at most once in a chapter, and never repeat the chapter before's phrasing. Write possessives properly (George's, not George his). Never use the words critical, initiative, misstep, doubled, rally or parry: show the thing instead (a blow that lands true, the first to move, a foot slipping on wet stone).
+Two or three paragraphs, 180 to 350 words. No headings, no lists, no quotation marks.`;
+// ending: 'dead', 'mad' or 'rot' when this is the tale's last page (30 Oct 2026: the Chronicle closes with the hero's end)
+const ENDINGS = { dead: 'died there, struck down', mad: 'was lost there to madness', rot: 'was taken there by the Rot and became one more horror of the halls' };
+export async function tellChapter({ hero = '', place = '', facts = [], before = '', ending = null } = {}) {
   const model = new GoogleGenerativeAI(config.geminiApiKey).getGenerativeModel({
     model: MODEL_NOW(), systemInstruction: TALE,
     generationConfig: { temperature: 0.85, maxOutputTokens: 2400, thinkingConfig: quick(MODEL_NOW()) },
   });
   const lines = (Array.isArray(facts) ? facts : []).slice(0, 40).map((f) => `- ${String(f).slice(0, 320)}`).join('\n');
-  const res = await model.generateContent(`The survivor: ${String(hero).slice(0, 60)}.\nThe place: ${String(place).slice(0, 80)}.\n${before ? `The chapter before ended: ${String(before).slice(-300)}\n` : ''}What happened there, in order:\n${lines}\n\nWrite this chapter.`);
-  return String(res.response.text() || '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  const res = await model.generateContent(`The survivor: ${String(hero).slice(0, 60)}.\nThe place: ${String(place).slice(0, 80)}.\n${before ? `The chapter before ended: ${String(before).slice(-300)}\n` : ''}What happened there, in order:\n${lines}\n\n${ENDINGS[ending] ? `This is the last page of the tale: the survivor ${ENDINGS[ending]}. The chapter before has already told the fight; do not retell it. Begin where it ended and write only the final moments, 120 to 200 words: how the end came, in the same voice, and a last line that closes the tale for good. Do not soften it, and do not promise a return.` : 'Write this chapter.'}`);
+  const first = String(hero).trim().split(/\s+/)[0].replace(/[^A-Za-z'-]/g, '');
+  let text = String(res.response.text() || '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  if (first) text = text.replace(new RegExp(`\\b(${first}(?: the \\w+)?) his\\b`, 'g'), "$1's"); // the small model's "George his leg"
+  return text;
 }

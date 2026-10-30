@@ -17,6 +17,14 @@ const SETS = {
   ivory: { body: '#efe6d2', ink: '#2a2118', edge: '#cbbd9f' },
   teal: { body: '#15524f', ink: '#f2e7c9', edge: '#0b3331' },
   obsidian: { body: '#1d1b22', ink: '#e9c46a', edge: '#0c0b0f' },
+  // what a die is for, by colour (30 Oct 2026). Every pair has a contrast of at least 6.5:1, and each number has a
+  // thin outline (halo) so the resin's shine never washes it out.
+  you: { body: '#efe6d2', ink: '#1f1710', edge: '#b8a882', halo: 'rgba(255,252,240,0.9)' }, // your checks
+  them: { body: '#17151b', ink: '#f0c75e', edge: '#000000', halo: 'rgba(0,0,0,0.85)' }, // the creature's rolls
+  dmg: { body: '#8e1b1b', ink: '#fff3e0', edge: '#4d0c0c', halo: 'rgba(60,6,6,0.85)' }, // damage
+  loc: { body: '#ece4d0', ink: '#8f1414', edge: '#b9ab8c', halo: 'rgba(255,250,236,0.9)' }, // hit location
+  world: { body: '#7a4e22', ink: '#fff4dc', edge: '#3f2710', halo: 'rgba(48,28,8,0.85)' }, // the world being made
+  dark: { body: '#3b2457', ink: '#f6e7b8', edge: '#1d0f2d', halo: 'rgba(22,10,36,0.85)' }, // Tension and the Darkness
 };
 const SET_FOR = { d4: 'teal', d6: 'ivory', d8: 'teal', d10: 'obsidian', d100t: 'obsidian', d12: 'ivory', d20: 'garnet' };
 
@@ -116,13 +124,14 @@ function faceTexture(kind, face, cornerUv, set) {
       const [u, w] = cornerUv[i];
       const x = (0.5 + (u - 0.5) * 0.58) * S, y = (1 - (0.5 + (w - 0.5) * 0.58)) * S;
       g.save(); g.translate(x, y); g.rotate(Math.atan2(x - S / 2, -(y - S / 2)));
-      g.font = font(64); g.fillText(String(v), 0, 0); g.restore();
+      g.font = font(64); if (set.halo) { g.strokeStyle = set.halo; g.lineWidth = 6; g.lineJoin = 'round'; g.strokeText(String(v), 0, 0); } g.fillText(String(v), 0, 0); g.restore();
     });
   } else {
     const text = label(kind, face.value);
     const px = { d6: 120, d8: 96, d10: 88, d100t: 68, d12: 92, d20: 78 }[kind] || 90;
     g.font = font(px);
     const y = kind === 'd8' || kind === 'd20' ? S * 0.56 : kind === 'd10' || kind === 'd100t' ? S * 0.55 : S / 2;
+    if (set.halo) { g.strokeStyle = set.halo; g.lineWidth = Math.max(5, px * 0.08); g.lineJoin = 'round'; g.strokeText(text, S / 2, y); }
     g.fillText(text, S / 2, y);
     if (text === '6' || text === '9') g.fillRect(S / 2 - px * 0.22, y + px * 0.44, px * 0.44, Math.max(5, px * 0.06)); // 6 and 9 told apart
   }
@@ -134,10 +143,10 @@ function faceTexture(kind, face, cornerUv, set) {
 
 const RADIUS = { d4: 1.2, d6: 1.1, d8: 1.12, d10: 1.1, d100t: 1.1, d12: 1.12, d20: 1.2 };
 
-function buildDie(kind) {
+function buildDie(kind, setName = null) {
   const r = RADIUS[kind] || 0.9;
   const { verts, faces } = facesOf(trianglesOf(kind, r));
-  const set = SETS[SET_FOR[kind] || 'ivory'];
+  const set = SETS[setName] || SETS[SET_FOR[kind] || 'ivory'];
   if (kind === 'd4') verts.forEach((v, i) => { v.value = i + 1; });
   else numberFaces(kind, faces);
 
@@ -377,7 +386,7 @@ const DiceTray = forwardRef(function DiceTray({ dark = false, height = 300, onKn
         quiet = still ? quiet + 1 : 0;
         const age = performance.now() - started;
         // still tumbling after 6 seconds: brake them hard so they come to rest rather than being read mid-roll
-        if (!still && age > 4500 && !slowed) { slowed = true; dice.forEach((d) => { d.body.linearDamping = 0.9; d.body.angularDamping = 0.9; }); }
+        if (!still && age > (brisk ? 1600 : 4500) && !slowed) { slowed = true; dice.forEach((d) => { d.body.linearDamping = 0.9; d.body.angularDamping = 0.9; }); }
         if (quiet > 24 || age > 9000) {
           const read = dice.map((d) => readDie(d, d.body.quaternion));
           const cocked = read.map((r, i) => (r.flat < 0.94 ? i : -1)).filter((i) => i >= 0);
@@ -398,14 +407,15 @@ const DiceTray = forwardRef(function DiceTray({ dark = false, height = 300, onKn
       } else if (glow <= 0 && !idleFrames--) { cancelAnimationFrame(frame); frame = 0; last = 0; draw(); return; }
       draw();
     };
-    let idleFrames = 0;
+    let idleFrames = 0; let brisk = false;
     const kick = (n = 2) => { idleFrames = Math.max(idleFrames, n); if (!frame) { last = 0; frame = requestAnimationFrame(loop); } };
 
-    const roll = (kinds) => new Promise((resolve) => {
+    const roll = (kinds, opts = {}) => new Promise((resolve) => {
       clear();
       if (settle) settle(null);
+      brisk = Boolean(opts.brisk);
       dice = kinds.map((kind, i) => {
-        const d = buildDie(kind);
+        const d = buildDie(kind, opts.sets?.[i] || null);
         const body = new CANNON.Body({ mass: 1, material: diceMat, shape: d.shape, linearDamping: 0.12, angularDamping: 0.12, allowSleep: true, sleepSpeedLimit: 0.12, sleepTimeLimit: 0.35 });
         if (onPaper) {
           // Drop directly over the center of the scroll text with a natural tumbling roll
@@ -414,6 +424,7 @@ const DiceTray = forwardRef(function DiceTray({ dark = false, height = 300, onKn
           body.quaternion.setFromEuler(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
           body.velocity.set((Math.random() - 0.5) * 3, -4 - Math.random() * 2, (Math.random() - 0.5) * 2.5);
           body.angularVelocity.set((Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30);
+          if (opts.brisk) { body.position.y -= 1.6; body.angularVelocity.scale(0.7, body.angularVelocity); body.linearDamping = 0.3; body.angularDamping = 0.3; }
         } else {
           const spread = Math.min(W * 0.3, 1.4 * kinds.length);
           body.position.set(-W / 2 + 1.2 + Math.random() * 0.8, 2.5 + Math.random() * 1.2 + i * 0.4, D / 2 - 1.3 - (kinds.length > 1 ? (i / (kinds.length - 1)) * Math.min(D - 2.6, spread) : 0) - Math.random() * 0.4);
@@ -454,7 +465,7 @@ const DiceTray = forwardRef(function DiceTray({ dark = false, height = 300, onKn
   onReportRef.current = onReport;
 
   useImperativeHandle(ref, () => ({
-    roll: (kinds) => (api.current ? api.current.roll(kinds) : Promise.resolve(null)),
+    roll: (kinds, opts) => (api.current ? api.current.roll(kinds, opts) : Promise.resolve(null)),
     clear: () => api.current?.clear(),
   }), []);
 

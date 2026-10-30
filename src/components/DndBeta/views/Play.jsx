@@ -393,7 +393,7 @@ function ExploreDock({ game, busy, act, commit, openChecks, openCamp, onDoor, on
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-export default function PlayView({ game, busy, act, commit, trayNode, toast, onPage, voice, onHero, rindewind, pending, onThrow, onCancelRoll, narrateAsk, openFirst, clearOpenFirst, onGoSheet, onFlagSend }) {
+export default function PlayView({ game, busy, act, commit, trayNode, toast, onPage, voice, onHero, rindewind, pending, ladder, onThrow, onCancelRoll, narrateAsk, openFirst, clearOpenFirst, onGoSheet, onFlagSend }) {
   const [flagging, setFlagging] = useState(null); // { entry } while the "that's not right" note is open
   const h = game.hero, here = E.here(game), cb = game.combat;
   const [adjust, setAdjust] = useState(null);
@@ -443,7 +443,7 @@ export default function PlayView({ game, busy, act, commit, trayNode, toast, onP
     <div className={`dbt-play ${cb ? 'fighting' : ''} ${wide ? 'wide' : ''}`}>
       <Hud game={game} onAdjust={setAdjust} onHero={onHero} onMap={() => setSheet('map')} onHere={() => setSheet('here')} onGo={goTo} />
       <div className="dbt-stage">
-        <Journal game={game} onPage={onPage} voice={voice} trayNode={trayNode} pending={pending} onThrow={onThrow} onCancel={onCancelRoll} busy={busy} onAsk={onAsk} onQueued={onQueued} ask={askInfo} onFlag={onFlagSend ? (e) => setFlagging({ entry: e }) : null}
+        <Journal game={game} onPage={onPage} voice={voice} trayNode={trayNode} pending={pending} ladder={ladder} onThrow={onThrow} onCancel={onCancelRoll} busy={busy} onAsk={onAsk} onQueued={onQueued} ask={askInfo} onFlag={onFlagSend ? (e) => setFlagging({ entry: e }) : null}
           header={<div className="dbt-scroll-title">{onFlagSend && <button type="button" className="dbt-flagbtn top" onClick={() => setFlagging({ entry: null })} title="Something here is not as the rules say? Tell Claude"><Ico n="flag" size={14} /> That's not right</button>}<b>{E.placeName(here)}</b><span>{cb ? `Round ${cb.round}` : here.lair ? 'The lair' : here.cleared ? 'Quiet' : ''}</span></div>} />
         {wide && (
           <aside className="dbt-side">

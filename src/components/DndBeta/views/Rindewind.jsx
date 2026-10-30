@@ -38,7 +38,12 @@ export function contextOf(game) {
   if (!game) return {};
   const h = game.hero, v = h.vit, p = E.here(game), cb = game.combat;
   const doors = p.doors.filter((d) => !d.blocked).map((d) => (d.to ? `back to ${E.pieceById(game, d.to)?.title}` : `the ${['north', 'east', 'south', 'west'][d.dir]} way (${d.kind ? `${d.kind}${d.locked ? ', locked' : ''}${d.spotted ? ', trapped' : ''}` : 'unexplored'})`));
+  const foe = [...game.log].reverse().find((e) => e.creature)?.creature;
+  const ended = game.over === 'dead' ? `${h.name} is dead: killed in ${E.placeName(p)}${foe ? ` by the ${foe}` : ''}. The tale has ended.`
+    : game.over === 'mad' ? `${h.name} is lost: their mind broke in ${E.placeName(p)}. The tale has ended.`
+      : game.over === 'rot' ? `${h.name} is lost: the Rot took them in ${E.placeName(p)}, and they are one more horror of the halls now. The tale has ended.` : '';
   return {
+    ended,
     hero: `${h.name}: Health ${v.health}/${v.maxHealth}, Toughness ${v.tough}/${v.maxTough}, Sanity ${v.sanity}/${v.maxSanity}, Aether ${v.aether}, Light ${v.light} rooms, Exhaustion ${v.exh}, XP ${v.xp}. Resolve ${h.resist.Resolve}, Endurance ${h.resist.Endurance}, Spellward ${h.resist.Spellward}. Skills: ${Object.entries(h.skills).map(([k, n]) => `${k} ${n}`).join(', ')}. Weapon: ${h.weapons[h.wield].name}. Pack: ${h.items.rations} rations, ${h.items.bandages} bandages, ${h.items.torches} torches. Conditions: ${h.effects.map((e) => e.name).join(', ') || 'none'}.`,
     place: `${p.title}: ${p.desc?.text || ''} ${p.enc ? `${p.enc.name} are here.` : p.cleared ? 'It is quiet.' : ''} ${p.searched ? 'Searched.' : 'Not searched.'}`,
     state: `Domain ${game.domain.n} ruled by ${game.domain.overseer.name} (${game.domain.overseer.influence}). Tension Die D${game.domain.tension}. ${game.domain.lairFound ? 'Lair found.' : `Lair Die D${game.domain.lair}.`}${cb ? ` In combat, round ${cb.round}.` : ''}${p.event?.roll && !p.event.done ? ` An event: ${p.event.text}` : ''}`,

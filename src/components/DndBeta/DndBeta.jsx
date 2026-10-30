@@ -17,8 +17,7 @@ import { dndAudio } from '../DndSolo/dndAudioEngine';
 import '../Material/dnd.css';
 import './dndbeta.css';
 import * as E from './kn/engine';
-import { fromClassic } from './importClassic';
-import { brief } from './kn/brief';
+import { brief, roleOf, stepsOf, outcomes } from './kn/brief';
 import Ico from './ui/Ico';
 import { TipHost } from './ui/Tip';
 import { Sheet } from './ui/Bits';
@@ -27,10 +26,11 @@ import { FONT_LINK } from './library';
 import SheetView from './views/Sheet';
 import ChronicleView from './views/Chronicle';
 import RulesView from './views/Rules';
+import LabView from './views/Lab';
 import GamesView, { NewView } from './views/Games';
 import Rindewind, { RindewindButton, useVoice } from './views/Rindewind';
 
-const STORE = 'imsd-beta-games', LAST = 'imsd-beta-last', NARR = 'imsd-beta-narrate', FAST = 'imsd-beta-fast';
+const STORE = 'imsd-beta-games', LAST = 'imsd-beta-last', NARR = 'imsd-beta-narrate', FAST = 'imsd-beta-fast', STEPS = 'imsd-beta-steps';
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage may be blocked */ } };
 const NAV = [['play', 'Play', 'scroll'], ['sheet', 'Sheet', 'helm'], ['chronicle', 'Chronicle', 'tome'], ['rules', 'Rules', 'compass'], ['games', 'Games', 'door']];
@@ -127,6 +127,8 @@ function Body() {
   const busyRef = useRef(false);
   const [narrate, setNarrateS] = useState(() => lsGet(NARR, true));
   const [fast, setFastS] = useState(() => lsGet(FAST, false));
+  const [stepwise, setStepwiseS] = useState(() => lsGet(STEPS, true));
+  const [ladder, setLadder] = useState(null);
   const [toast, setToast] = useState('');
   const [rw, setRw] = useState(false);
   const [page, setPage] = useState(null);
@@ -138,6 +140,7 @@ function Body() {
   const voice = useVoice(toastMsg);
   const setNarrate = (v) => { setNarrateS(v); lsSet(NARR, v); };
   const setFast = (v) => { setFastS(v); lsSet(FAST, v); };
+  const setStepwise = (v) => { setStepwiseS(v); lsSet(STEPS, v); };
 
   // the rulebook's file in the library, for opening pages
   useEffect(() => {
@@ -158,11 +161,11 @@ function Body() {
   }, []);
   const commit = useCallback((g) => { gameRef.current = g; push(g); setGames((prev) => save(prev.some((x) => x.id === g.id) ? prev.map((x) => (x.id === g.id ? g : x)) : [g, ...prev])); }, [save, push]);
   // on arrival: the server's games, newer of the two copies wins; games only in this browser are sent up
-  const [table, setTable] = useState([]); const [me, setMe] = useState('');
+  const [table, setTable] = useState([]); const [me, setMe] = useState(''); const [owner, setOwner] = useState(false);
   useEffect(() => {
     let live = true;
     api('GET', '/beta/games').then((d) => {
-      if (!live) return; setMe(d.me || '');
+      if (!live) return; setMe(d.me || ''); setOwner(Boolean(d.isOwner));
       const server = d.games || []; const local = lsGet(STORE, []);
       const byId = new Map(server.map((g) => [g.id, g]));
       for (const g of local) { const sv = byId.get(g.id); if (!sv || (g.updated || 0) > (sv.updated || 0)) { byId.set(g.id, g); api('PUT', `/beta/games/${encodeURIComponent(g.id)}`, { state: g }).catch(() => {}); } }
@@ -178,7 +181,7 @@ function Body() {
   useEffect(() => {
     const sc = rootRef.current?.closest('.scroll'); if (!sc) return undefined;
     const q = window.matchMedia('(min-width: 1000px)');
-    const apply = () => { const lock = view === 'play' && q.matches; sc.style.overflow = lock ? 'hidden' : ''; if (lock) sc.scrollTop = 0; };
+    const apply = () => { const lock = (view === 'play' || view === 'chronicle') && q.matches; sc.style.overflow = lock ? 'hidden' : ''; if (lock) sc.scrollTop = 0; };
     apply(); q.addEventListener?.('change', apply);
     return () => { q.removeEventListener?.('change', apply); sc.style.overflow = ''; };
   }, [view]);
@@ -188,16 +191,41 @@ function Body() {
   const hudGo = (t) => { if (!t) return; if (t.startsWith('sheet')) goSheet(t.split(':')[1]); else { setOpenFirst(t); setView('play'); } };
   const watch = async (id) => { try { const d = await api('GET', `/beta/others/${encodeURIComponent(id)}`); setWatching(d.game); setView('watch'); } catch (e) { toastMsg(e.message); } };
   const select = (id) => { setCurId(id); lsSet(LAST, id); setView('play'); };
+  const readTale = (id) => { setCurId(id); lsSet(LAST, id); setView('chronicle'); };
 
-  const throwDice = useCallback(async (plan) => {
+  // the throw: one step at a time (each die coloured for what it decides, its line on the scroll filled in as it lands),
+  // or all at once for the creatures' own turns and when you choose it; Quick dice skips the 3D throw altogether
+  const throwDice = useCallback(async (plan, info = null) => {
     if (fast || !tray.current) return E.fakeFaces(plan);
-    setPaper(true); dndAudio.ensureRunning?.(); dndAudio.playSfx?.(plan.kinds.length > 1 ? 'dice_pool' : 'dice_roll');
-    let faces = null;
-    try { faces = await tray.current.roll(plan.kinds); } catch { faces = null; }
+    const keys = plan.defs.map(([k]) => k); const roles = keys.map((k) => roleOf(k, keys));
+    const pos = []; let at = 0; for (const [, d] of plan.defs) { pos.push(d === 'd100' ? [at, at + 1] : [at]); at += d === 'd100' ? 2 : 1; }
+    const steps = stepsOf(plan, !info || !stepwise);
+    const faces = new Array(plan.kinds.length).fill(null);
+    const valueOf = (i) => { const [d] = [plan.defs[i][1]]; const f = pos[i].map((j) => faces[j]); if (d === 'd100') { const v = (f[0] || 0) + (f[1] || 0); return v === 0 ? 100 : v; } return d === 'd10' && f[0] === 0 ? 10 : f[0]; };
+    const lines = (info?.lines || plan.defs.map(([k, d]) => ({ what: k, die: d }))).map((l, i) => ({ ...l, role: roles[i], value: null }));
     clearTimeout(fadeTimer.current);
+    setPaper(true); dndAudio.ensureRunning?.();
+    if (info) setLadder({ title: info.title, lines, cur: steps[0] });
+    for (const step of steps) {
+      if (info) setLadder((L) => (L ? { ...L, cur: step } : L));
+      const kinds = step.flatMap((i) => pos[i].map((j) => plan.kinds[j])); const sets = step.flatMap((i) => pos[i].map(() => roles[i]));
+      dndAudio.playSfx?.(kinds.length > 1 ? 'dice_pool' : 'dice_roll');
+      let f = null;
+      try { f = await tray.current.roll(kinds, { sets, brisk: steps.length > 1 && step.every((i) => roles[i] === 'world' || roles[i] === 'dark') }); } catch { f = null; }
+      if (!f || f.length !== kinds.length) f = E.fakeFaces({ kinds });
+      let c = 0; for (const i of step) for (const j of pos[i]) faces[j] = f[c++];
+      if (info) {
+        const vals = {}; plan.defs.forEach(([k], i) => { if (pos[i].every((j) => faces[j] != null)) vals[k] = valueOf(i); });
+        let said = []; try { said = outcomes(plan, vals, gameRef.current, info.hint || {}, info.lines); } catch { said = []; }
+        setLadder((L) => (L ? { ...L, lines: L.lines.map((l, i) => ({ ...l, value: step.includes(i) ? valueOf(i) : l.value, outcome: said[i] || l.outcome || null })) } : L));
+      }
+      if (steps.length > 1) await new Promise((r) => setTimeout(r, 420));
+    }
+    if (info) setLadder((L) => (L ? { ...L, cur: [] } : L));
     fadeTimer.current = setTimeout(() => { setPaper(false); setTimeout(() => tray.current?.clear?.(), 800); }, 2200);
-    return faces && faces.length === plan.kinds.length ? faces : E.fakeFaces(plan);
-  }, [fast]);
+    setTimeout(() => setLadder(null), 900);
+    return faces.map((x, j) => (x == null ? E.fakeFaces({ kinds: [plan.kinds[j]] })[0] : x));
+  }, [fast, stepwise]);
 
   // how the survivor is, in words, so his telling fits (hurt, frightened, in the dark)
   const heroState = (h) => { const v = h.vit; const bits = []; if (v.health <= Math.ceil(v.maxHealth / 3)) bits.push('badly hurt'); else if (v.tough < v.maxTough / 2) bits.push('bruised and tiring'); if (v.sanity <= 4) bits.push('close to breaking'); if (v.light <= 2) bits.push('the light failing'); if (E.exhTier(h) > 0) bits.push('exhausted'); (h.effects || []).slice(0, 2).forEach((e) => bits.push(e.name.toLowerCase())); return bits.join(', '); };
@@ -245,7 +273,7 @@ function Body() {
     if (busyRef.current || !gameRef.current) return;
     busyRef.current = true; setBusy(true);
     try {
-      const faces = plan ? await throwDice(plan) : [];
+      const faces = plan ? await throwDice(plan, info) : [];
       let res = apply(faces);
       if (info && res.out?.length) { const main = res.out.find((o) => o.rolls?.length) || res.out[0]; main.need = info.lines.filter((l) => l.need).map((l) => `${l.what}: ${l.need}`); main.needTitle = info.title; }
       if (res.combat) res = { ...res, state: E.startCombat(res.state, Boolean(res.combat.surprised)).state };
@@ -267,12 +295,6 @@ function Body() {
   const throwPending = () => { const p = pending; if (!p) return; setPending(null); run(p.plan, p.apply, p.then, p.info); };
   const cancelPending = () => { const p = pending; setPending(null); p?.onCancel?.(); };
 
-  const importFrom = async (id) => {
-    const r = await fetch(`/api/dnd/campaigns/${id}`); const d = await r.json().catch(() => ({}));
-    if (!r.ok || !d.campaign) throw new Error(d.error || 'The classic campaign could not be read.');
-    const g = fromClassic(d.campaign); commit(g); select(g.id);
-    toastMsg(`${g.hero.name} has crossed over, with ${g.pieces.length} places on the map.`);
-  };
 
   const trayNode = <PaperTray tray={tray} paper={paper} dark={dark} />;
   const needGame = (node) => (game ? node : (
@@ -282,11 +304,11 @@ function Body() {
     <div ref={rootRef} className={`dbt ${dark ? 'dark' : ''}`} data-view={view}>
       <TipHost onPage={(n) => openPage(n)}>
         <main className="dbt-views">
-          {view === 'games' && <GamesView games={games} curId={curId} onOpen={select} onNew={() => setView('new')} onImport={importFrom}
+          {view === 'games' && <GamesView games={games} curId={curId} onOpen={select} onRead={readTale} onNew={() => setView('new')}
             onDelete={(id) => { const next = save(games.filter((g) => g.id !== id)); setGames(next); api('DELETE', `/beta/games/${encodeURIComponent(id)}`).catch(() => {}); if (curId === id) { setCurId(null); lsSet(LAST, null); } }}
             table={table} onWatch={watch} me={me} synced={synced} />}
           {view === 'new' && <NewView throwDice={throwDice} busy={busy} setBusy={setBusy} trayNode={trayNode} onBack={() => setView('games')} onCreate={(g) => { commit(g); select(g.id); toastMsg('Your survivor wakes among the dead.'); }} />}
-          {view === 'play' && needGame(<PlayView onFlagSend={(note, entry) => api('POST', '/beta/flags', { gameId: game.id, note, entry, context: { place: E.placeName(E.here(game)), log: game.log.slice(-25), hero: { name: game.hero.name, level: game.hero.level, vit: game.hero.vit, effects: game.hero.effects, weapons: game.hero.weapons, wield: game.hero.wield, shield: game.hero.shield, masteries: game.hero.masteries }, combat: game.combat, domain: game.domain, checks: game.checks || [] } })} narrateAsk={narrateAsk} openFirst={openFirst} clearOpenFirst={() => setOpenFirst(null)} onGoSheet={goSheet} game={game} busy={busy} act={act} pending={pending} onThrow={throwPending} onCancelRoll={cancelPending} commit={commit} trayNode={trayNode} toast={toastMsg} onPage={openPage} voice={voice} onHero={() => setView('sheet')} />)}
+          {view === 'play' && needGame(<PlayView onFlagSend={(note, entry) => api('POST', '/beta/flags', { gameId: game.id, note, entry, context: { place: E.placeName(E.here(game)), log: game.log.slice(-25), hero: { name: game.hero.name, level: game.hero.level, vit: game.hero.vit, effects: game.hero.effects, weapons: game.hero.weapons, wield: game.hero.wield, shield: game.hero.shield, masteries: game.hero.masteries }, combat: game.combat, domain: game.domain, checks: game.checks || [] } })} narrateAsk={narrateAsk} openFirst={openFirst} clearOpenFirst={() => setOpenFirst(null)} onGoSheet={goSheet} game={game} busy={busy} act={act} pending={pending} ladder={ladder} onThrow={throwPending} onCancelRoll={cancelPending} commit={commit} trayNode={trayNode} toast={toastMsg} onPage={openPage} voice={voice} onHero={() => setView('sheet')} />)}
           {(view === 'sheet' || view === 'chronicle') && game && <Hud game={game} onAdjust={() => setView('play')} onHero={() => setView('sheet')} onMap={() => setView('play')} onHere={() => setView('play')} onGo={hudGo} />}
           {view === 'sheet' && needGame(<SheetView startPage={sheetPage} game={game} commit={commit} act={(...a) => { setView('play'); act(...a); }} />)}
           {view === 'chronicle' && needGame(<ChronicleView game={game} onPage={openPage} voice={voice} commit={commit} />)}
@@ -299,7 +321,8 @@ function Body() {
               <SheetView game={watching} commit={() => toastMsg(`This is ${watching.watching?.ownerName || 'someone else'}'s adventure: you can only watch.`)} act={() => {}} />
             </div>
           )}
-          {view === 'rules' && <RulesView game={game} onPage={openPage} settings={{ narrate, fast }} setSettings={(s) => { if ('narrate' in s) setNarrate(s.narrate); if ('fast' in s) setFast(s.fast); }} />}
+          {view === 'lab' && owner && <LabView games={games} curId={curId} commit={commit} select={select} act={act} toast={toastMsg} />}
+          {view === 'rules' && <RulesView game={game} onPage={openPage} settings={{ narrate, fast, stepwise }} setSettings={(s) => { if ('narrate' in s) setNarrate(s.narrate); if ('fast' in s) setFast(s.fast); if ('stepwise' in s) setStepwise(s.stepwise); }} />}
         </main>
         {<RindewindButton onClick={() => setRw(true)} voice={voice} />}
         <Rindewind game={game} open={rw} onClose={() => setRw(false)} narrate={narrate} setNarrate={setNarrate} voice={voice} onPage={openPage} />
@@ -307,7 +330,7 @@ function Body() {
         {toast && <div className="dbt-toast" role="status">{toast}</div>}
         <nav className="dbt-nav" aria-label="Sections">
           <div className="in">
-            {NAV.map(([k, label, ic]) => (
+            {[...NAV, ...(owner ? [['lab', 'Lab', 'cog']] : [])].map(([k, label, ic]) => (
               <button key={k} type="button" className={view === k || (view === 'new' && k === 'games') ? 'on' : ''} aria-current={view === k ? 'page' : undefined} onClick={() => setView(k)}><Ico n={ic} size={22} /><span>{label}</span></button>
             ))}
           </div>

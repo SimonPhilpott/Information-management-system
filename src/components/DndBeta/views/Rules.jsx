@@ -78,6 +78,7 @@ export default function RulesView({ game, onPage, settings, setSettings }) {
         <div className="dbt-session-switches">
           <Switch id="dbt-s-narr" checked={settings.narrate} onChange={(v) => setSettings({ narrate: v })} label="Rindewind narrates" sub="A line or two for each new place; never changes what happened" />
           <Switch id="dbt-s-fast" checked={settings.fast} onChange={(v) => setSettings({ fast: v })} label="Quick dice" sub="Skip the 3D throw; the same rules, faster" />
+          <Switch id="dbt-s-steps" checked={settings.stepwise !== false} onChange={(v) => setSettings({ stepwise: v })} label="Roll step by step" sub="Each roll in turn, with what it is for; off throws them all at once" />
         </div>
         <Bar value={cov} max={100} tone="gilt" />
       </Panel>

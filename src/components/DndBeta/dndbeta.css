@@ -1086,3 +1086,71 @@ button.has-tip, [role='button'].has-tip { cursor: pointer; }
 
 /* the HUD shows current and maximum: 16/16, 23/35 */
 .dbt .dbt-vit b em.of { font-style: normal; font-weight: 600; font-size: .72em; opacity: .7; margin-left: 1px; }
+
+/* the Chronicle on a wide screen: the hero bar, the title, the search and the chapter list stay put; only the text on the scroll moves */
+@media (min-width: 1000px) {
+  .dbt[data-view="chronicle"] .dbt-views { display: flex; flex-direction: column; gap: 10px; height: calc(100dvh - var(--imsm-head-h, 64px) - var(--nav-h, 0px) - 4px); min-height: 560px; }
+  .dbt[data-view="chronicle"] .dbt-chron-grid > .dbt-scroll { margin-bottom: 0; }
+  .dbt[data-view="chronicle"] .dbt-hud { position: static; flex: none; }
+  .dbt[data-view="chronicle"] .dbt-chron { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding-bottom: 0; }
+  .dbt[data-view="chronicle"] .dbt-chron > .dbt-head, .dbt[data-view="chronicle"] .dbt-chron-tools { flex: none; }
+  .dbt[data-view="chronicle"] .dbt-chron-grid { flex: 1; min-height: 0; align-items: stretch; }
+  .dbt[data-view="chronicle"] .dbt-chron-index { position: static; max-height: 100%; align-self: start; overflow: auto; }
+  .dbt[data-view="chronicle"] .dbt-chron-grid > .dbt-scroll { min-height: 0; height: 100%; display: flex; flex-direction: column; }
+  .dbt[data-view="chronicle"] .dbt-chron-grid > .dbt-scroll .dbt-scroll-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+}
+/* the adventure card: how the tale ended */
+.dbt .dbt-banner .dbt-dead { display: flex; gap: 8px; align-items: center; margin: 4px 0 8px; padding: 6px 10px; border-radius: 10px; background: rgba(140, 22, 14, .35); border: 1px solid rgba(214, 120, 100, .5); color: #f6dccf; font: italic .95rem var(--fell); }
+.dbt .dbt-banner .dbt-row { gap: 10px; flex-wrap: wrap; }
+
+/* dice colours: one per purpose, the same on the dice, the roll prompt and the ladder */
+.dbt .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; border: 1.5px solid rgba(0, 0, 0, .35); flex: none; }
+.dbt .dot.r-you { background: #efe6d2; } .dbt .dot.r-them { background: #17151b; border-color: #f0c75e; } .dbt .dot.r-dmg { background: #8e1b1b; }
+.dbt .dot.r-loc { background: #ece4d0; box-shadow: inset 0 0 0 2px #8f1414; } .dbt .dot.r-world { background: #7a4e22; } .dbt .dot.r-dark { background: #3b2457; }
+/* the throw, step by step */
+.dbt .dbt-ladder-steps { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.dbt .dbt-ladder-steps li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 10px; border-radius: 10px; border: 1px solid transparent; opacity: .55; transition: opacity .25s, background .25s, border-color .25s; }
+.dbt .dbt-ladder-steps li.done { opacity: 1; }
+.dbt .dbt-ladder-steps li.now { opacity: 1; background: rgba(255, 246, 222, .8); border-color: var(--gilt); box-shadow: 0 2px 8px rgba(122, 78, 30, .15); }
+.dbt .dbt-ladder-steps .t b { display: block; font: 700 .78rem var(--caps); letter-spacing: .04em; }
+.dbt .dbt-ladder-steps .t small { display: block; font: .95rem/1.3 var(--fell); color: var(--ink2); }
+.dbt .dbt-ladder-steps .v em { font: italic .85rem var(--fell); color: var(--ink2); }
+.dbt .dbt-ladder-steps .dot { width: 14px; height: 14px; margin: 0; }
+
+/* the owner's test lab */
+.dbt .dbt-lab .dbt-panel, .dbt .dbt-lab .dbt-panel-in { display: flex; flex-direction: column; gap: 10px; }
+.dbt .dbt-lab-row { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 10px; align-items: center; margin-bottom: 8px; }
+.dbt .dbt-lab-row .l { font: 700 .76rem var(--caps); letter-spacing: .04em; color: var(--ink2); }
+.dbt .dbt-lab-row .c { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.dbt .dbt-lab .dbt-num { width: 76px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--gilt); background: var(--card); color: inherit; font: inherit; }
+.dbt .dbt-lab-peek { margin: -2px 0 10px 180px; font-size: .9rem; }
+.dbt .dbt-lab .dbt-row.wrap { flex-wrap: wrap; gap: 8px; }
+@media (max-width: 640px) { .dbt .dbt-lab-row { grid-template-columns: 1fr; } .dbt .dbt-lab-peek { margin-left: 0; } }
+
+/* the portrait's name and title sit clear of the picture and of each other */
+.dbt .dbt-pt-frame figcaption { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.dbt .dbt-pt-frame figcaption b { line-height: 1.25; padding-top: 4px; }
+.dbt .dbt-pt-frame figcaption span { display: block; }
+
+/* die badges: the number sized to fit its shape, and sat where the shape is widest */
+.dbt .dbt-die.n2 b { font-size: .64rem; } .dbt .dbt-die.n3 b { font-size: .54rem; letter-spacing: -.02em; } .dbt .dbt-die.n4 b { font-size: .46rem; }
+.dbt .dbt-die.s-d4 b { top: 3px; } .dbt .dbt-die.s-d10 b { top: -1px; }
+.dbt .dbt-die.s-d100 svg path { fill-rule: nonzero; }
+.dbt .dbt-ladder-steps .dbt-die svg { width: 34px; height: 34px; } .dbt .dbt-ladder-steps .dbt-die b { margin-left: -37px; width: 34px; font-size: .78rem; }
+.dbt .dbt-ladder-steps .dbt-die.n2 b { font-size: .7rem; } .dbt .dbt-ladder-steps .dbt-die.n3 b { font-size: .6rem; }
+/* the result of a step, in words */
+.dbt .dbt-ladder-steps .res { display: block; margin-top: 2px; font: italic 600 .95rem/1.3 var(--fell); color: var(--ink); }
+.dbt .dbt-ladder-steps .res.good { color: #2f6b3a; } .dbt .dbt-ladder-steps .res.bad { color: #a3261f; } .dbt .dbt-ladder-steps .res.warn { color: #9a6b28; }
+
+/* a hero whose tale has ended: the portrait greyed, a skull on it, and a ribbon that says so */
+.dbt .dbt-gportrait { position: relative; display: inline-flex; flex: none; }
+.dbt .dbt-gportrait.ended img, .dbt .dbt-gportrait.ended .dbt-medallion { filter: grayscale(1) brightness(.78) contrast(1.05); }
+.dbt .dbt-gportrait .skull { position: absolute; right: -4px; bottom: -4px; display: grid; place-items: center; padding: 3px; border-radius: 50%; background: #5e0f0b; color: #f6dccf; border: 2px solid var(--card); box-shadow: 0 1px 3px rgba(0, 0, 0, .35); }
+.dbt .dbt-endtag { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; padding: 2px 8px; border-radius: 999px; background: rgba(140, 22, 14, .1); border: 1px solid rgba(140, 22, 14, .45); color: #8c160e; font: 700 .66rem var(--caps); letter-spacing: .05em; text-transform: uppercase; width: fit-content; }
+.dbt .dbt-gamecard.ended { background: linear-gradient(180deg, rgba(120, 100, 90, .06), transparent); }
+.dbt .dbt-gamecard.ended .t b { color: var(--ink2); }
+
+/* deleting the adventure on the banner: asked first */
+.dbt .dbt-banner .dbt-del { background: rgba(0, 0, 0, .25); color: #f3e2c4; border-color: rgba(243, 226, 196, .45); }
+.dbt .dbt-banner .dbt-del:hover { background: rgba(140, 22, 14, .55); border-color: #e7a08f; }
+.dbt .dbt-banner .dbt-sure { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; background: rgba(60, 8, 6, .65); color: #f6dccf; font: italic .95rem var(--fell); }
