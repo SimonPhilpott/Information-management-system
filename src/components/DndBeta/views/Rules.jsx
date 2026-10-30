@@ -4,7 +4,10 @@ import React, { useMemo, useState } from 'react';
 import T from '../kn/bookTables.json';
 import { RULES, RULE_GROUPS } from '../kn/rules';
 import { PROCEDURES, whereNow } from '../kn/procedures';
-import { CREATURES, OVERSEERS, overseerImg } from '../kn/tables';
+import { OVERSEERS, overseerImg } from '../kn/tables';
+import { TABLE_A, TABLE_B, FIRST_DOMAIN, statOf } from '../kn/creatures';
+import { TABLES as LOOT } from '../kn/loot';
+import { MASTERY_NAMES, MASTERIES } from '../kn/progress';
 import Ico from '../ui/Ico';
 import { Rich, Tip } from '../ui/Tip';
 import { Panel, Seg, Switch, Bar } from '../ui/Bits';
@@ -57,17 +60,20 @@ export default function RulesView({ game, onPage, settings, setSettings }) {
   const now = whereNow(game);
   const cov = coverage();
   const lastRolls = useMemo(() => { const m = {}; for (const e of game?.log || []) { if (e.kind === 'event') m.events = e.rolls?.[0]?.value; if (e.kind === 'darkness') m.darkness = e.rolls?.[0]?.value; } return m; }, [game?.log]);
-  const tb = T[tbl];
+  const tb = tbl.startsWith('loot:') ? (() => { const x = LOOT[tbl.slice(5)]; return { die: `d${x.die}`, page: x.page, rows: x.rows }; })() : T[tbl];
+  const [mast, setMast] = useState(MASTERY_NAMES[0]);
+  const lv = game?.hero.level || 1; const inf = game && !game.domain.overseerSlain ? { roll: game.domain.overseer.roll, seed: game.domain.seed } : null;
   return (
     <div className="dbt-page dbt-rules">
       <header className="dbt-head"><div><span className="dbt-kick">Ker Nethalas · Gravebound Edition</span><h1>How this session runs</h1></div>
-        <Tip tip={{ title: 'Rules coverage', body: 'Counted from the rules below: done for you counts in full, rolled-for-you 60%, tracked-by-you 30%, missing nothing. It replaces the typed "100% Verified".' }} className="dbt-cov-badge"><b>{cov}%</b><small>of the rules run by the beta</small></Tip></header>
+        <Tip tip={{ title: 'How much of the book the beta runs', body: `Every rule and procedure of the book has a card below. One done for you counts in full, one rolled for you but settled by you counts 60%, one you track yourself 30%, one not built yet nothing. ${RULES.filter((x) => x.mode === 'missing').length} of the ${RULES.length} are not built yet, which is why this is not 100%.` }} className="dbt-cov-badge"><b>{cov}%</b><small>of the book run by the beta</small><em>{RULES.filter((x) => x.mode === 'auto').length} done · {RULES.filter((x) => x.mode === 'assisted' || x.mode === 'manual').length} partly · {RULES.filter((x) => x.mode === 'missing').length} to build</em></Tip></header>
       <Panel plate="This session" icon="quill" className="dbt-session">
         <div className="dbt-session-grid">
           <div><small>Game</small><b>Ker Nethalas: Into the Midnight Throne</b></div>
           <div><small>Domain</small><b>{game ? `${game.domain.n}, ruled by ${game.domain.overseer.name}` : 'No game open'}</b></div>
           <div><small>Influence</small><b>{game ? game.domain.overseer.influence : '-'}</b></div>
-          <div><small>Encounter table</small><b>The First Domain's (p. 244), until the full bestiary is in</b></div>
+          <div><small>Encounter table</small><b>{!game || game.domain.n <= 1 ? "The First Domain's (p. 244)" : 'D6: Table A or B, then D20 (pp. 133-134)'}</b></div>
+          <div><small>Creatures</small><b>{game ? `Adapted to level ${game.hero.level || 1}${game.domain.overseerSlain ? '' : `, ${game.domain.overseer.influence.split('.')[0]}`}` : 'At level 1'}</b></div>
         </div>
         <div className="dbt-session-switches">
           <Switch id="dbt-s-narr" checked={settings.narrate} onChange={(v) => setSettings({ narrate: v })} label="Rindewind narrates" sub="A line or two for each new place; never changes what happened" />
@@ -75,7 +81,7 @@ export default function RulesView({ game, onPage, settings, setSettings }) {
         </div>
         <Bar value={cov} max={100} tone="gilt" />
       </Panel>
-      <Seg value={tab} onChange={setTab} label="Sections" options={[['flow', 'Flowcharts', 'compass'], ['rules', 'Rules in force', 'scales'], ['tables', 'Book tables', 'scroll'], ['bestiary', 'Bestiary', 'skull']]} />
+      <Seg value={tab} onChange={setTab} label="Sections" options={[['flow', 'Flowcharts', 'compass'], ['rules', 'Rules in force', 'scales'], ['tables', 'Book tables', 'scroll'], ['bestiary', 'Bestiary', 'skull'], ['masteries', 'Masteries', 'spark']]} />
 
       {tab === 'flow' && (
         <div className="dbt-flows">
@@ -110,19 +116,34 @@ export default function RulesView({ game, onPage, settings, setSettings }) {
 
       {tab === 'tables' && (
         <Panel plate="The book's tables" icon="scroll">
-          <div className="dbt-seg wrapseg">{[['room', 'Rooms'], ['corridor', 'Corridors'], ['overseer', 'Overseer Influence'], ['events', 'Events'], ['darkness', 'Growing Darkness']].map(([k, l]) => <button key={k} type="button" className={tbl === k ? 'on' : ''} onClick={() => setTbl(k)}>{l}</button>)}</div>
+          <div className="dbt-seg wrapseg">{[['room', 'Rooms'], ['corridor', 'Corridors'], ['overseer', 'Overseer Influence'], ['events', 'Events'], ['darkness', 'Growing Darkness'], ...Object.keys(LOOT).map((k) => [`loot:${k}`, k[0] + k.slice(1).toLowerCase().replace(/ \(pages? [\d-]+\)/, '')])].map(([k, l]) => <button key={k} type="button" className={tbl === k ? 'on' : ''} onClick={() => setTbl(k)}>{l}</button>)}</div>
           <p className="dbt-note">{tb.die.toUpperCase()} · {tb.rows.length} rows · <PageChip page={tb.page} onPage={onPage} />{lastRolls[tbl] ? ` · last rolled: ${lastRolls[tbl]}` : ''}</p>
-          <div className="dbt-tbl">{tb.rows.map((r) => <div key={`${r.lo}-${r.hi}`} className={lastRolls[tbl] >= r.lo && lastRolls[tbl] <= r.hi ? 'hit' : ''}><b>{r.lo === r.hi ? r.lo : `${r.lo}-${r.hi}`}</b><span><Rich text={r.text} /></span></div>)}</div>
+          <div className="dbt-tbl">{tb.rows.map((r) => <div key={`${r.lo}-${r.hi}`} className={lastRolls[tbl] >= r.lo && lastRolls[tbl] <= r.hi ? 'hit' : ''}><b>{r.lo === r.hi ? r.lo : `${r.lo}-${r.hi}`}</b><span><Rich text={r.text ?? r.t} /></span></div>)}</div>
         </Panel>
+      )}
+
+      {tab === 'masteries' && (
+        <>
+          <div className="dbt-seg wrapseg">{MASTERY_NAMES.map((k) => <button key={k} type="button" className={mast === k ? 'on' : ''} onClick={() => setMast(k)}>{k}</button>)}</div>
+          <Panel plate={mast} icon="spark" className="dbt-mastery-full">
+            <p className="dbt-fell">{MASTERIES[mast].blurb}</p>
+            {MASTERIES[mast].feature && <p><b>Mastery Feature: {MASTERIES[mast].feature.name}.</b> {MASTERIES[mast].feature.text}</p>}
+            {MASTERIES[mast].tiers.map((t) => <div key={t.tier} className="dbt-tierrow"><b>Tier {t.tier}: {t.name}</b><small>{t.action}{t.cost ? ` · ${t.cost}` : ''}</small><p><Rich text={t.text} /></p></div>)}
+            {MASTERIES[mast].training?.length > 0 && <><h4 className="dbt-sub">Where did you train? (D6)</h4>{MASTERIES[mast].training.map((e) => <p key={e.n} className="dbt-note"><b>{e.n}. {e.name}.</b> {e.text}</p>)}</>}
+            <button type="button" className="dbt-btn sm ghost" onClick={() => onPage(MASTERIES[mast].page)}><Ico n="tome" size={16} /> Read page {MASTERIES[mast].page}</button>
+          </Panel>
+        </>
       )}
 
       {tab === 'bestiary' && (
         <>
-          <div className="dbt-seg wrapseg">{Object.keys(CREATURES).map((k) => <button key={k} type="button" className={foe === k ? 'on' : ''} onClick={() => setFoe(k)}>{k}</button>)}</div>
-          <Panel plate={foe} icon="skull"><MonsterCard name={foe} /></Panel>
+          {[['The First Domain (p. 244)', FIRST_DOMAIN.map(([, n]) => n)], ['Combat Encounters, Table A (D6 1-3, p. 133)', TABLE_A], ['Combat Encounters, Table B (D6 4-6, p. 134)', TABLE_B], ['Summoned', ['Lesser Demon']]].map(([title, names]) => (
+            <div key={title} className="dbt-bgroup"><h4 className="dbt-sub">{title}</h4><div className="dbt-seg wrapseg">{names.map((k, i) => <button key={k} type="button" className={foe === k ? 'on' : ''} onClick={() => setFoe(k)}>{names.length === 20 ? <i>{i + 1}</i> : null}{k}</button>)}</div></div>
+          ))}
+          <Panel plate={foe} icon="skull"><MonsterCard name={foe} stat={statOf(foe, lv, OVERSEERS.includes(foe) ? null : inf)} /></Panel>
           <Panel plate="The Overseers" icon="star">
-            <p className="dbt-note">The ten rulers of the Domains, as the book draws them (pp. 180-198). Their stat blocks are not in the beta yet: fight them from the book.</p>
-            <div className="dbt-overseers">{OVERSEERS.map((o) => <figure key={o} className={game?.domain.overseer.name === o ? 'now' : ''}><img src={overseerImg(o)} alt={o} loading="lazy" /><figcaption>{o}{game?.domain.overseer.name === o ? <em> · rules this Domain</em> : null}</figcaption></figure>)}</div>
+            <p className="dbt-note">The ten rulers of the Domains, as the book draws them (pp. 180-198). Each waits in its Domain's lair; tap one for its stat block.</p>
+            <div className="dbt-overseers">{OVERSEERS.map((o) => <figure key={o} className={`${game?.domain.overseer.name === o ? 'now' : ''} ${foe === o ? 'on' : ''}`} onClick={() => setFoe(o)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') setFoe(o); }}><img src={overseerImg(o)} alt={o} loading="lazy" /><figcaption>{o}{game?.domain.overseer.name === o ? <em> · rules this Domain</em> : null}</figcaption></figure>)}</div>
           </Panel>
         </>
       )}

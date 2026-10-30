@@ -5,11 +5,13 @@ import * as E from '../kn/engine';
 import { overseerImg } from '../kn/tables';
 import { GLOSSARY } from '../kn/glossary';
 import Ico from '../ui/Ico';
+import { Parchment, Roll } from '../ui/Parchment';
 import { Tip, Term } from '../ui/Tip';
 import { Bar, Medallion, Panel, Orn } from '../ui/Bits';
 import MapView from './MapView';
 import { coverage } from './Rules';
 import { GAMES, KINDS, sortBooks } from '../library';
+import { WEAPONS } from '../kn/loot';
 
 function Banner({ g, onOpen }) {
   const v = g.hero.vit; const last = [...g.log].reverse().find((e) => e.kind === 'room' || e.kind === 'combat' || e.kind === 'event');
@@ -69,7 +71,7 @@ function GameCard({ g, listing, rulesets, cov, open, onToggle }) {
   );
 }
 
-export default function GamesView({ games, curId, onOpen, onNew, onDelete, onImport }) {
+export default function GamesView({ games, curId, onOpen, onNew, onDelete, onImport, table = [], onWatch, me, synced }) {
   const [sure, setSure] = useState(null);
   const [classic, setClassic] = useState([]);
   const [rulesets, setRulesets] = useState([]);
@@ -88,10 +90,10 @@ export default function GamesView({ games, curId, onOpen, onNew, onDelete, onImp
   const cov = coverage();
   return (
     <div className="dbt-page dbt-games">
-      <header className="dbt-head"><div><span className="dbt-kick">D&amp;D Solo · beta</span><h1>Rindewind&apos;s Table</h1></div>
+      <header className="dbt-head"><div><span className="dbt-kick">D&amp;D Solo DM{me ? ` · ${me}` : ''}{synced === 'offline' ? ' · not saved to the server' : ''}</span><h1>Rindewind&apos;s Table</h1></div>
         <button type="button" className="dbt-btn primary" onClick={onNew}><Ico n="d6" size={18} /> New survivor</button></header>
       {cur ? <Banner g={cur} onOpen={onOpen} /> : (
-        <Panel plate="No adventure yet" icon="door" className="dbt-empty-panel"><p className="dbt-fell">Thrown down to die beneath Veldonia, you did not. Roll a survivor, or bring one across from the classic service.</p>
+        <Panel plate="No adventure yet" icon="door" className="dbt-empty-panel"><p className="dbt-fell">Thrown down to die beneath Veldonia, you did not. Roll a survivor, or bring one across from the old D&D Solo.</p>
           <button type="button" className="dbt-btn primary" onClick={onNew}><Ico n="d6" size={18} /> Roll a survivor</button></Panel>
       )}
       {others.length > 0 && (
@@ -107,11 +109,25 @@ export default function GamesView({ games, curId, onOpen, onNew, onDelete, onImp
           ))}</div>
         </Panel>
       )}
+      {table.length > 0 && (
+        <Panel plate="Round the table" icon="eye" className="dbt-table">
+          <p className="dbt-note">Everyone else's adventures, as they stand. Watch any of them; only their owner can play them.</p>
+          <div className="dbt-gamegrid">{table.map((g) => (
+            <article key={g.id} className="dbt-gamecard watch">
+              <Medallion src={g.hero.avatar} name={g.hero.name} size={48} />
+              <div className="t"><b>{g.hero.name}</b><small>{g.ownerName}&apos;s · level {g.hero.level} · Domain {g.domain.n}{g.domain.overseer ? `, ${g.domain.overseer}${g.domain.overseerSlain ? ' (slain)' : ''}` : ''} · {g.places} places{g.over ? ` · ${g.over === 'dead' ? 'died' : 'ended'}` : g.fighting ? ` · fighting ${g.fighting === true ? '' : g.fighting}` : ''}</small>
+                {g.hero.maxHealth ? <small>Health {g.hero.health}/{g.hero.maxHealth} · Sanity {g.hero.sanity}/{g.hero.maxSanity} · {g.hero.xp} XP · {new Date(g.updated).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</small> : null}
+                {g.latest?.[g.latest.length - 1] && <small className="dbt-fell">{g.latest[g.latest.length - 1].title}: {g.latest[g.latest.length - 1].text}</small>}</div>
+              <div className="dbt-row"><button type="button" className="dbt-btn sm" onClick={() => onWatch?.(g.id)}><Ico n="eye" size={14} /> Watch</button></div>
+            </article>
+          ))}</div>
+        </Panel>
+      )}
       {cur && others.length === 0 && (
         <p className="dbt-note dbt-delnote">{sure === cur.id ? <>Delete {cur.title}? <button type="button" className="dbt-link" onClick={() => { onDelete(cur.id); setSure(null); }}>Delete for good</button> <button type="button" className="dbt-link" onClick={() => setSure(null)}>Keep it</button></> : <button type="button" className="dbt-link" onClick={() => setSure(cur.id)}>Delete this adventure</button>}</p>
       )}
       {classic.length > 0 && (
-        <Panel plate="Heroes in the classic service" icon="helm" className="dbt-classic">
+        <Panel plate="Heroes from the old D&D Solo" icon="helm" className="dbt-classic">
           {classic.map((c) => {
             const done = games.some((g) => g.source?.classic === c.id);
             return (
@@ -143,6 +159,7 @@ export function NewView({ throwDice, busy, setBusy, onCreate, onBack, trayNode }
   const [r40, setR40] = useState('Endurance');
   const [allot, setAllot] = useState({}); // skill -> value
   const [goals, setGoals] = useState('');
+  const [start, setStart] = useState('first'); const [kitWeapon, setKitWeapon] = useState('Shortsword');
   const roll = async () => {
     if (busy) return; setBusy(true);
     try { setFaces(await throwDice(E.makePlan([['a', 'd6'], ['b', 'd6'], ['c', 'd6'], ['h', 'd6'], ['ae', 'd6'], ['s', 'd6'], ['hb6', 'd6'], ['hb4', 'd4']]))); } finally { setBusy(false); }
@@ -160,8 +177,8 @@ export function NewView({ throwDice, busy, setBusy, onCreate, onBack, trayNode }
   return (
     <div className="dbt-page dbt-new">
       <header className="dbt-head"><div><span className="dbt-kick">Chapter II · Creating your survivor</span><h1>Roll your survivor</h1></div><button type="button" className="dbt-btn ghost" onClick={onBack}><Ico n="back" size={16} /> Back</button></header>
-      <section className="dbt-scroll dbt-static dbt-scroll-new">
-        <div className="dbt-scroll-rod top" aria-hidden="true" />
+      <section className="dbt-scroll dbt-static dbt-scroll-new"><span className="dbt-paperbg" aria-hidden="true" />
+        <Roll which="top" />
         <div className="dbt-scroll-body full">
           <p className="dbt-tale"><span className="dbt-cap" aria-hidden="true">Y</span><span className="sr">Y</span>ou were thrown down here to die, and did not. Throw the dice for body and mind, then decide what your old life taught you.</p>
           <label className="dbt-field" htmlFor="dbt-name"><span>Name</span><input id="dbt-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="The Condemned" maxLength={40} /></label>
@@ -185,15 +202,22 @@ export function NewView({ throwDice, busy, setBusy, onCreate, onBack, trayNode }
                   <option value="">-</option>{options(k).map((n) => <option key={n} value={n}>+{n}</option>)}</select>
                 <b>{skills[k]}</b></div>
             ))}</div></>}
+          {hero && <><Orn /><h3 className="dbt-sub">Where you begin</h3>
+            <div className="dbt-seg">
+              <Tip as="button" type="button" className={start === 'first' ? 'on' : ''} onClick={() => setStart('first')} tip={{ title: 'The First Domain', body: 'Wake in rags among the dead, with a half-spent Torch. The first Domain has set rooms: a Guard Room with weapons and armour, a dead survivor’s supplies, an altar of candles, Attunement Crystals, a singing choir, the Overseer and the Exit.', page: 243 }}>The First Domain</Tip>
+              <Tip as="button" type="button" className={start === 'further' ? 'on' : ''} onClick={() => setStart('further')} tip={{ title: 'Further runs', body: 'Start in the ordinary exploration rules with a weapon of your choosing, a random armour, a Torch, D10 Cooking Ingredients, D10+5 Crafting Supplies and D20 coins.', page: 67 }}>Further runs</Tip>
+            </div>
+            {start === 'further' && <label className="dbt-field" htmlFor="dbt-kitw"><span>Your weapon</span><select id="dbt-kitw" className="dbt-select" value={kitWeapon} onChange={(e) => setKitWeapon(e.target.value)}>{WEAPONS.filter((w) => !/Improvised/.test(w.name)).map((w) => <option key={w.name} value={w.name}>{w.name} ({w.skill}, {w.dtype})</option>)}</select></label>}
+          </>}
           {hero && <><Orn /><label className="dbt-field" htmlFor="dbt-goal"><span>A personal goal (p. 64)</span><input id="dbt-goal" value={goals} onChange={(e) => setGoals(e.target.value)} placeholder="Find the one who condemned you" maxLength={120} /></label></>}
         </div>
         {trayNode}
-        <div className="dbt-scroll-rod bottom" aria-hidden="true" />
+        <Roll which="bottom" />
       </section>
       <div className="dbt-row">
-        {hero && <button type="button" className="dbt-btn primary lg" disabled={busy || !complete} onClick={() => onCreate(E.newGame(hero, `${hero.name} in Ker Nethalas`))}><Ico n="door" size={18} /> {complete ? 'Wake among the dead' : 'Assign every Skill allotment first'}</button>}
+        {hero && <button type="button" className="dbt-btn primary lg" disabled={busy || !complete} onClick={() => onCreate(E.newGame(hero, `${hero.name} in Ker Nethalas`, { start, weapon: kitWeapon }))}><Ico n="door" size={18} /> {complete ? 'Wake among the dead' : 'Assign every Skill allotment first'}</button>}
       </div>
-      <p className="dbt-note">Starting kit for now: a Rusty Cleaver, a Bone Dagger, rags, two Torches and a Ration. Masteries are not in the beta yet.</p>
+      <p className="dbt-note">{start === 'first' ? 'You begin with rags, a Ration and a half-spent Torch (10 rooms). Weapons wait in the Guard Room (p. 244).' : 'Your kit is rolled when you begin (p. 67).'}</p>
     </div>
   );
 }

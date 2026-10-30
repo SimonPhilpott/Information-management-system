@@ -59,8 +59,7 @@ const DeviceHealthPortal = React.lazy(() => import('./components/Material/Device
 const StoragePortal = React.lazy(() => import('./components/Material/Storage'));
 const ModelSwitcherPortal = React.lazy(() => import('./components/Material/Models'));
 const CostsPortal = React.lazy(() => import('./components/Material/Costs'));
-const DndBetaPortal = React.lazy(() => import('./components/DndBeta/DndBeta')); // the D&D Solo beta beside the classic (29 Oct)
-const DndSoloPortal = React.lazy(() => import('./components/Material/DndSolo')); // the D&D Solo DM in the IMS design (25 Oct)
+const DndBetaPortal = React.lazy(() => import('./components/DndBeta/DndBeta')); // the D&D Solo DM (the beta, main since 29 Oct)
 const ImsHub = React.lazy(() => import('./components/Material/Hub'));
 const CommandPalette = React.lazy(() => import('./components/Dashboard/CommandPalette'));
 
@@ -1697,19 +1696,10 @@ export default function App() {
     );
   }
 
-  if (currentPath === '/ims/dnd-beta' || currentPath.startsWith('/ims/dnd-beta')) {
-    return (
-      <DndBetaPortal
-        theme={state.theme}
-        onThemeToggle={actions.toggleTheme}
-        setCurrentPath={setCurrentPath}
-      />
-    );
-  }
-
+  // the D&D Solo DM (the beta became the service on 29 Oct 2026; the classic is retired). /ims/dnd-beta still lands here.
   if (currentPath === '/ims/dnd' || currentPath.startsWith('/ims/dnd')) {
     return (
-      <DndSoloPortal
+      <DndBetaPortal
         theme={state.theme}
         onThemeToggle={actions.toggleTheme}
         setCurrentPath={setCurrentPath}

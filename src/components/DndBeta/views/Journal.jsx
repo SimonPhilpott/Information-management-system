@@ -3,9 +3,11 @@
 // hovered or tapped, every page cited opens the book, and Rindewind's lines sit in the margin with a read-aloud button.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../ui/Ico';
+import { Parchment, Roll } from '../ui/Parchment';
 import { Rich, Tip } from '../ui/Tip';
 import { DieChip, Orn } from '../ui/Bits';
 import { drawFeatureIcon } from '../dyson';
+import { placeName } from '../kn/engine';
 
 const KIND = {
   room: ['door', 'Place'], move: ['back', 'Movement'], roll: ['d20', 'Roll'], combat: ['swords', 'Combat'], event: ['scroll', 'Event'],
@@ -28,7 +30,8 @@ function DropCap({ text }) {
   return <p className="dbt-tale"><span className="dbt-cap" aria-hidden="true">{first}</span><span className="sr">{first}</span><Rich text={rest} /></p>;
 }
 
-export function Entry({ e, piece, onPage, voice, fresh }) {
+const FlagBtn = ({ e, onFlag }) => (onFlag ? <button type="button" className="dbt-flagbtn" onClick={() => onFlag(e)} aria-label="That's not right" title="That's not right: tell Claude"><Ico n="flag" size={13} /></button> : null);
+export function Entry({ e, piece, onPage, voice, fresh, onAsk, ask, busy, onFlag }) {
   const [ic] = KIND[e.kind] || KIND.note;
   const playing = voice?.playing === e.id, waiting = voice?.waiting === e.id;
   if (e.kind === 'room') {
@@ -38,17 +41,23 @@ export function Entry({ e, piece, onPage, voice, fresh }) {
           <span className="dbt-roundel lg"><Ico n={e.lair ? 'star' : piece?.kind === 'corridor' ? 'run' : 'door'} size={26} /></span>
           <div className="t">
             <span className="dbt-kick">{piece?.kind === 'corridor' ? 'Corridor' : piece?.start ? 'Where it began' : 'Chamber'}{piece?.family && !['corridor', 'chamber'].includes(piece.family) ? ` · ${piece.family}` : ''}</span>
-            <h3>{e.title}</h3>
+            <h3>{piece ? placeName(piece) : e.title}</h3>
           </div>
           <div className="feats">{(e.tags || []).map((t) => <FeatureIcon key={t} tag={t} />)}</div>
         </header>
         {e.overseer && <p className="dbt-ov"><Ico n="star" size={16} /> <b>{e.overseer.name}</b> rules this Domain. <Rich text={e.overseer.influence} /></p>}
-        <DropCap text={e.text} />
-        {e.dress && <Margin e={e} voice={voice} playing={playing} waiting={waiting} />}
+        {e.dress ? (
+          <>
+            <DropCap text={e.dress} />
+            <p className="dbt-booksays"><Ico n="tome" size={13} /> <span>The book: <Rich text={e.text} /></span>
+              {voice && <button type="button" className="dbt-speak sm" onClick={() => (playing ? voice.stop() : voice.play(e.id, e.dress))} aria-label={playing ? 'Stop reading' : 'Read aloud'}><Ico n={playing ? 'stop' : waiting ? 'hourglass' : 'speaker'} size={14} />{playing ? 'Stop' : waiting ? '…' : 'Read aloud'}</button>}</p>
+          </>
+        ) : <DropCap text={e.text} />}
         <footer className="dbt-entry-foot">
           {(e.rolls || []).map((r, i) => <DieChip key={i} label={r.label} value={r.value} />)}
           {e.creature && <span className="dbt-chip ox"><Ico n="swords" size={14} /> {e.creature}</span>}
           {e.page && <PageChip page={e.page} onPage={onPage} />}
+          <FlagBtn e={e} onFlag={onFlag} />
         </footer>
         <Needed e={e} />
         <Orn />
@@ -60,15 +69,47 @@ export function Entry({ e, piece, onPage, voice, fresh }) {
     <article className={`dbt-entry k-${e.kind} ${e.result ? `r-${e.result}` : ''} ${fresh ? 'fresh' : ''}`}>
       <span className="dbt-entry-ico" aria-hidden="true"><Ico n={rIc || ic} size={18} /></span>
       <div className="dbt-entry-body">
-        <h4>{e.title}{e.page && <PageChip page={e.page} onPage={onPage} />}</h4>
+        <h4>{e.title}{e.page && <PageChip page={e.page} onPage={onPage} />}<FlagBtn e={e} onFlag={onFlag} /></h4>
         <p><Rich text={e.text} /></p>
         {e.auto?.length > 0 && <p className="dbt-auto">{e.auto.join(' · ')}</p>}
         {e.hit && <p className="dbt-hitline"><Ico n="drop" size={14} /> {e.hit.loc}: {e.hit.dmg} damage{e.hit.crit ? ', critical' : ''}</p>}
         {e.dress && <Margin e={e} voice={voice} playing={playing} waiting={waiting} />}
         {e.rolls?.length > 0 && <div className="dbt-entry-foot">{e.rolls.map((r, i) => <DieChip key={i} label={r.label} value={r.value} />)}</div>}
         <Needed e={e} />
+        {e.asks?.map((a) => <Ask key={a.i} a={a} onAsk={onAsk} ask={ask} busy={busy} voice={voice} entryId={e.id} />)}
       </div>
     </article>
+  );
+}
+// a check the event asks for: first a prompt (what to roll, what for, what you need), then, in its place, the result
+// and Rindewind's line for it
+function Ask({ a, onAsk, ask, busy, voice, entryId }) {
+  // a choice you turned down simply goes from the scroll (any cost of declining is in its own note)
+  if (a.done?.skipped) return a.done.text && a.done.text !== 'You leave it be.' ? <p className="dbt-askskip">{a.done.text}</p> : null;
+  if (a.done) {
+    const tone = a.done.skipped ? '' : a.done.pass ? 'pass' : 'fail';
+    const id = `${entryId}-${a.i}`; const playing = voice?.playing === id;
+    return (
+      <div className={`dbt-askres ${tone}`}>
+        <b><Ico n={a.done.skipped ? 'back' : a.done.pass ? 'check' : 'close'} size={14} /> {a.done.skipped ? 'Left alone' : `${a.done.skill} check: ${a.done.pass ? 'passed' : 'failed'}`}</b>
+        {!a.done.skipped && <span className="roll"><DieChip label={a.done.skill} value={a.done.value} /> <small>needed {a.done.target} or less</small></span>}
+        <p><Rich text={a.done.text} /></p>
+        {a.dress && <p className="dress"><Ico n="quill" size={13} /> {a.dress}{voice && <button type="button" className="dbt-speak sm" onClick={() => (playing ? voice.stop() : voice.play(id, a.dress))} aria-label={playing ? 'Stop reading' : 'Read aloud'}><Ico n={playing ? 'stop' : 'speaker'} size={14} /></button>}</p>}
+      </div>
+    );
+  }
+  const info = ask?.(a);
+  return (
+    <div className="dbt-prompt dbt-askprompt" role="region" aria-label={`Roll ${a.skill}`}>
+      <header><span className="dbt-roundel sm"><Ico n="d20" size={18} /></span><div><span className="dbt-kick">{a.optional ? 'If you choose to' : 'Roll to check'}</span><h4>{a.skill} check</h4><small>{a.purpose}</small></div></header>
+      <ul className="dbt-prompt-lines">
+        <li><DieChip value="D100" die="d100" /><span><b>{a.skill}</b><small>{info ? `${info.target} or less${info.adv ? ' (with Advantage)' : ''}${info.dis ? ' (with Disadvantage)' : ''}${info.target === 0 ? ': it cannot succeed' : ''}` : 'your score or less'}</small></span></li>
+        {(a.passText || a.failText) && <li className="out"><span><b>Pass</b><small>{a.passText || 'nothing more happens'}</small></span><span><b>Fail</b><small>{a.failText || 'nothing more happens'}</small></span></li>}
+        {a.cost?.bandages ? <li className="out"><span><b>Costs</b><small>{a.cost.bandages} Bandage</small></span></li> : null}
+      </ul>
+      <div className="dbt-row"><button type="button" className="dbt-btn primary" disabled={busy || !onAsk} onClick={() => onAsk?.(a.i, false)}><Ico n="d20" size={16} /> Roll {a.skill}</button>
+        {a.optional && <button type="button" className="dbt-btn ghost" disabled={busy || !onAsk} onClick={() => onAsk?.(a.i, true)}>Leave it{a.skipText ? ` (${a.skipText.replace(/\.$/, '')})` : ''}</button>}</div>
+    </div>
   );
 }
 function Margin({ e, voice, playing, waiting }) {
@@ -102,7 +143,7 @@ export function PageChip({ page, onPage }) {
 }
 
 // the scroll in the play screen: scrolls through everything, with filters and a way back to the newest line
-export default function Journal({ game, onPage, voice, trayNode, header, pending, onThrow, onCancel, busy }) {
+export default function Journal({ game, onPage, voice, trayNode, header, pending, onThrow, onCancel, busy, onAsk, onQueued, ask, onFlag }) {
   const [filter, setFilter] = useState('all');
   const [away, setAway] = useState(false);
   const body = useRef(null);
@@ -114,8 +155,8 @@ export default function Journal({ game, onPage, voice, trayNode, header, pending
   useEffect(() => { const el = body.current; if (el && !away) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }, [game.log.length, game.log[game.log.length - 1]?.dress, filter, pending]); // eslint-disable-line react-hooks/exhaustive-deps
   const onScroll = () => { const el = body.current; if (el) setAway(el.scrollHeight - el.scrollTop - el.clientHeight > 160); };
   return (
-    <section className="dbt-scroll" aria-label="The scroll">
-      <div className="dbt-scroll-rod top" aria-hidden="true" />
+    <section className="dbt-scroll" aria-label="The scroll"><span className="dbt-paperbg" aria-hidden="true" />
+      <Roll which="top" />
       <header className="dbt-scroll-head">
         {header}
         <div className="dbt-filters" role="tablist" aria-label="Show">
@@ -126,13 +167,13 @@ export default function Journal({ game, onPage, voice, trayNode, header, pending
         {list.length === 0 && <p className="dbt-tale">Nothing written here yet.</p>}
         {list.map((e) => {
           const idx = game.log.indexOf(e);
-          return <Entry key={e.id} e={e} piece={pieces[e.place]} onPage={onPage} voice={voice} fresh={idx >= freshFrom} />;
+          return <Entry key={e.id} e={e} piece={pieces[e.place]} onPage={onPage} voice={voice} fresh={idx >= freshFrom} onAsk={e.queued ? ((game.checks || []).some((q) => q.id === e.queued) ? () => onQueued?.(e.queued) : null) : e.asks && pieces[e.place]?.event?.entryId === e.id ? onAsk : null} ask={ask} busy={busy} onFlag={onFlag} />;
         })}
         {pending && <RollPrompt pending={pending} onThrow={onThrow} onCancel={onCancel} busy={busy} />}
       </div>
       {away && <button type="button" className="dbt-latest" onClick={() => { body.current?.scrollTo({ top: body.current.scrollHeight, behavior: 'smooth' }); setAway(false); }}><Ico n="next" size={14} /> Latest</button>}
       {trayNode}
-      <div className="dbt-scroll-rod bottom" aria-hidden="true" />
+      <Roll which="bottom" />
     </section>
   );
 }

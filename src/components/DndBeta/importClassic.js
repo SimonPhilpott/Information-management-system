@@ -85,8 +85,8 @@ export function fromClassic(c) {
   const tension = (ch.trackers || []).find((t) => t.name === 'Tension Die'); if (tension) st.domain.tension = Number(tension.value) || 8;
   st.pieces[0].title = 'Where you woke';
   st = E.appendImported(st, chambersOf(c.turns || []));
-  st.log.push({ id: `imp-${c.id}`, kind: 'room', title: 'From the classic service', text: sentences(c.story_so_far || c.notes || '', 900) || 'The story so far was not kept.', rolls: [], tags: [] });
-  if (c.current_scene) st.log.push({ id: `imp-${c.id}-now`, kind: 'note', title: 'Where the classic left off', text: `${c.current_scene} The beta does not carry a fight in progress, so you stand in a quiet moment.`, rolls: [] });
+  st.log.push({ id: `imp-${c.id}`, kind: 'room', title: 'The story so far', text: sentences(c.story_so_far || c.notes || '', 900) || 'The story so far was not kept.', rolls: [], tags: [] });
+  if (c.current_scene) st.log.push({ id: `imp-${c.id}-now`, kind: 'note', title: 'Where the tale stands', text: `${c.current_scene}`, rolls: [] });
   st.imported = (c.turns || []).map((t) => ({ n: t.turn_number, action: t.player_action, text: t.dm_narrative }));
   st.updated = Date.now();
   return st;

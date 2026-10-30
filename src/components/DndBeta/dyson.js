@@ -34,6 +34,7 @@ const ICONS = {
   brazier(c, cx, cy, u) { c.beginPath(); c.arc(cx, cy, u * .2, 0, 7); c.stroke(); c.beginPath(); c.moveTo(cx, cy - u * .1); c.quadraticCurveTo(cx + u * .12, cy - u * .02, cx, cy + u * .12); c.quadraticCurveTo(cx - u * .12, cy - u * .02, cx, cy - u * .1); c.stroke(); },
 };
 
+const TOKEN = '#e3170a'; // you: bright red
 // small ink badges for what the game knows about a room
 const BADGES = {
   camp(c, x, y, r) { c.beginPath(); c.moveTo(x, y - r * .62); c.lineTo(x + r * .66, y + r * .5); c.lineTo(x - r * .66, y + r * .5); c.closePath(); c.fill(); c.fillStyle = INK; c.beginPath(); c.moveTo(x, y - r * .05); c.lineTo(x + r * .18, y + r * .5); c.lineTo(x - r * .18, y + r * .5); c.closePath(); c.fill(); },
@@ -43,7 +44,8 @@ const BADGES = {
   lair(c, x, y, r) { c.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * .28 : r * .68; c.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); } c.closePath(); c.fill(); },
   exit(c, x, y, r) { c.lineWidth = r * .16; c.beginPath(); for (let i = 0; i < 4; i++) { const yy = y - r * .5 + i * r * .33; c.moveTo(x - r * .5 + i * r * .1, yy); c.lineTo(x + r * .5, yy); } c.stroke(); },
   chest(c, x, y, r) { c.fillRect(x - r * .5, y - r * .12, r, r * .5); c.beginPath(); c.arc(x, y - r * .12, r * .5, Math.PI, 0); c.fill(); },
-  start(c, x, y, r) { c.beginPath(); c.arc(x, y, r * .3, 0, 7); c.fill(); },
+  // where the campaign began: a little flag on a pole
+  start(c, x, y, r) { c.save(); c.lineWidth = Math.max(1.2, r * .14); c.strokeStyle = c.fillStyle; c.beginPath(); c.moveTo(x - r * .32, y + r * .5); c.lineTo(x - r * .32, y - r * .52); c.stroke(); c.beginPath(); c.moveTo(x - r * .3, y - r * .52); c.lineTo(x + r * .48, y - r * .3); c.lineTo(x - r * .3, y - r * .06); c.closePath(); c.fill(); c.restore(); },
   q(c, x, y, r) { c.font = `700 ${r * 1.5}px "IM Fell English", serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('?', x, y + r * .06); },
 };
 function badge(c, kind, x, y, r, fill = INK, glyph = PAPER) {
@@ -194,6 +196,7 @@ export function drawMap(canvas, state, opts) {
       const ox = mx + dx * CELL * .62, oy = my + dy * CELL * .62;
       badge(c, 'q', ox, oy, CELL * .34, '#b8904f', INK);
       hits.doors.push({ id: d.id, x: ox, y: oy, r: CELL * .6, piece: p.id });
+      (hits.marks = hits.marks || []).push({ kind: 'q', x: ox, y: oy, piece: p.id });
     }
   }
 
@@ -201,6 +204,7 @@ export function drawMap(canvas, state, opts) {
   if (showIcons) for (const p of pieces) {
     const m = roomCentre(p); const X = px(m[0]) + CELL / 2, Y = py(m[1]) + CELL / 2;
     hits.rooms.push({ id: p.id, x: X, y: Y });
+    if (p.n && p.cells?.length) { const top = Math.min(...p.cells.map((q) => q[1])); const left = Math.min(...p.cells.filter((q) => q[1] === top).map((q) => q[0])); const tx = px(left) + CELL * .12, ty = py(top) + CELL * .1; c.save(); c.font = `700 ${CELL * .42}px "Cinzel", serif`; c.textAlign = 'left'; c.textBaseline = 'top'; c.lineWidth = 3.5; c.strokeStyle = PAPER; c.strokeText(String(p.n), tx, ty); c.fillStyle = INK; c.fillText(String(p.n), tx, ty); c.restore(); }
     const list = [];
     if (p.start) list.push(['start']);
     if (p.lair) list.push(['lair']);
@@ -212,9 +216,9 @@ export function drawMap(canvas, state, opts) {
     const r = CELL * .36, gap = r * 2.5;
     list.forEach(([kind, rating], i) => {
       const bx = X + (i - (list.length - 1) / 2) * gap, by = Y + (p.id === hereId ? CELL * .9 : 0);
+      (hits.marks = hits.marks || []).push({ kind, x: bx, y: by, piece: p.id });
       if (kind === 'camp') { c.save(); c.setLineDash([3, 3]); c.strokeStyle = INK; c.lineWidth = 1.6; c.fillStyle = PAPER; c.beginPath(); c.arc(bx, by, r * 1.15, 0, 7); c.fill(); c.stroke(); c.setLineDash([]); c.fillStyle = INK; BADGES.camp(c, bx, by, r * 1.15); if (rating === 2) { c.fillStyle = '#b8904f'; c.beginPath(); c.arc(bx + r * 1.0, by - r * 1.0, r * .35, 0, 7); c.fill(); c.stroke(); } c.restore(); }
       else if (kind === 'fight') badge(c, 'fight', bx, by, r * 1.1, '#6e2418', '#fff5e6');
-      else if (kind === 'start' && p.id === hereId) { /* the token covers it */ }
       else if (kind === 'chest') { c.save(); c.fillStyle = INK; c.strokeStyle = PAPER; c.lineWidth = 1.2; BADGES.chest(c, bx, by, r * .9); c.restore(); }
       else badge(c, kind, bx, by, r * 1.05, kind === 'lair' ? '#6e2418' : INK, '#fff5e6');
     });
@@ -222,7 +226,7 @@ export function drawMap(canvas, state, opts) {
 
   // 8. the player token
   const hp = pieces.find((p) => p.id === hereId);
-  if (hp) { const m = roomCentre(hp); const X = px(m[0]) + CELL / 2, Y = py(m[1]) + CELL / 2; c.save(); c.shadowColor = 'rgba(0,0,0,.4)'; c.shadowBlur = 6; c.fillStyle = '#d9b04f'; c.strokeStyle = INK; c.lineWidth = 3; c.beginPath(); c.arc(X, Y, CELL * .4, 0, 7); c.fill(); c.stroke(); c.restore(); c.fillStyle = INK; c.font = `700 ${CELL * .5}px "Cinzel", serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('✦', X, Y + 1); hits.here = { x: X, y: Y }; }
+  if (hp) { const m = roomCentre(hp); const X = px(m[0]) + CELL / 2, Y = py(m[1]) + CELL / 2; c.save(); c.shadowColor = 'rgba(0,0,0,.4)'; c.shadowBlur = 6; c.fillStyle = TOKEN; c.strokeStyle = INK; c.lineWidth = 3; c.beginPath(); c.arc(X, Y, CELL * .4, 0, 7); c.fill(); c.stroke(); c.restore(); c.fillStyle = '#fff'; c.font = `700 ${CELL * .5}px "Cinzel", serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('✦', X, Y + 1); hits.here = { x: X, y: Y }; }
   hits.W = W; hits.H = H;
   return hits;
 }
@@ -232,7 +236,7 @@ export function drawBadgeIcon(canvas, kind) {
   const c = canvas.getContext('2d'), s = canvas.width; c.clearRect(0, 0, s, s);
   if (kind === 'door') { c.fillStyle = '#e8d9b0'; c.strokeStyle = INK; c.lineWidth = 2; c.fillRect(s * .3, s * .12, s * .4, s * .76); c.strokeRect(s * .3, s * .12, s * .4, s * .76); return; }
   if (kind === 'camp') { c.fillStyle = PAPER; c.strokeStyle = INK; c.lineWidth = 1.6; c.setLineDash([3, 3]); c.beginPath(); c.arc(s / 2, s / 2, s * .42, 0, 7); c.fill(); c.stroke(); c.setLineDash([]); c.fillStyle = INK; BADGES.camp(c, s / 2, s / 2, s * .4); return; }
-  if (kind === 'token') { c.fillStyle = '#d9b04f'; c.strokeStyle = INK; c.lineWidth = 3; c.beginPath(); c.arc(s / 2, s / 2, s * .36, 0, 7); c.fill(); c.stroke(); return; }
+  if (kind === 'token') { c.fillStyle = TOKEN; c.strokeStyle = INK; c.lineWidth = 3; c.beginPath(); c.arc(s / 2, s / 2, s * .36, 0, 7); c.fill(); c.stroke(); return; }
   const fill = kind === 'q' ? '#b8904f' : kind === 'fight' || kind === 'lair' ? '#6e2418' : INK;
   badge(c, kind, s / 2, s / 2, s * .42, fill, kind === 'q' ? INK : '#fff5e6');
 }

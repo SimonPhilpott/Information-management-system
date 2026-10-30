@@ -1,4 +1,4 @@
-import db from '../db/database.js';
+import db, { getSetting, setSetting } from '../db/database.js';
 import eventBus from './eventBus.js';
 import logger from './loggerService.js';
 /**
@@ -26,6 +26,18 @@ let cachedGlucose = {
 let pollTimer = null;
 const listeners = new Set();
 let lastT1DAlertTime = 0;
+// Simon can switch each glucose phone alert off (30 Oct 2026); both stay on until he does
+const ALERT_KEY = 'glucose_phone_alerts';
+export function getGlucoseAlertSettings() {
+  let s = {}; try { s = JSON.parse(getSetting(ALERT_KEY) || '{}'); } catch (_) { /* default */ }
+  return { hypo: s.hypo !== false, falling: s.falling !== false };
+}
+export function setGlucoseAlertSettings(next = {}) {
+  const cur = getGlucoseAlertSettings();
+  const s = { hypo: typeof next.hypo === 'boolean' ? next.hypo : cur.hypo, falling: typeof next.falling === 'boolean' ? next.falling : cur.falling };
+  setSetting(ALERT_KEY, JSON.stringify(s)); logger.info('Glucose', `Phone alerts: hypo ${s.hypo ? 'on' : 'off'}, falling ${s.falling ? 'on' : 'off'}`);
+  return s;
+}
 let lastAlertLevel = null;
 
 async function checkT1DPhoneAlert(g) {
@@ -35,8 +47,9 @@ async function checkT1DPhoneAlert(g) {
   const dir = g.direction || 'Flat';
 
   // 1. Hypo alert (< 4.0 mmol/L)
+  const alerts = getGlucoseAlertSettings();
   if (val < 4.0) {
-    if (now - lastT1DAlertTime > 15 * 60 * 1000 || lastAlertLevel !== 'low') {
+    if (alerts.hypo && (now - lastT1DAlertTime > 15 * 60 * 1000 || lastAlertLevel !== 'low')) {
       lastT1DAlertTime = now;
       lastAlertLevel = 'low';
       try {
@@ -58,7 +71,7 @@ async function checkT1DPhoneAlert(g) {
   // 2. Rapid drop alert (e.g. SingleDown, DoubleDown with val < 6.0)
   const isRapidDrop = (dir === 'SingleDown' || dir === 'DoubleDown' || dir === 'FortyFiveDown') && val < 6.0;
   if (isRapidDrop) {
-    if (now - lastT1DAlertTime > 20 * 60 * 1000) {
+    if (alerts.falling && now - lastT1DAlertTime > 20 * 60 * 1000) {
       lastT1DAlertTime = now;
       lastAlertLevel = 'dropping';
       try {

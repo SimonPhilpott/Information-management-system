@@ -26,7 +26,7 @@ export const GLOSSARY = {
   Speed: { body: 'A weapon\'s Speed is taken off the target\'s Combat Skill when you attack with it.', page: 79 },
   'Damage Pool': { body: 'All the damage dice of an attack, rolled together. You pick one die (creatures take the highest) and add fixed bonuses to it.', page: 81 },
   'Critical Strike': { body: 'Doubles below your Skill in combat: a brutal strike that only another Critical Success can stop. Its damage, and any fixed bonus, is doubled.', page: 84 },
-  'Critical Success': { body: 'Rolling doubles (11, 22, 33...) or 01 at or under your Skill. Outside combat it marks the Skill for improvement at Camp.', page: 71 },
+  'Critical Success': { body: 'Rolling doubles (11, 22, 33...) at or under your Skill. A 01 is not doubles, so it is an ordinary success. Outside combat it marks the Skill for improvement at Camp.', page: 71 },
   Fumble: { body: 'Rolling doubles above your Skill, or 100. In combat you roll on the Fumbles table.', page: 84 },
   'Weak Spot': { body: 'Every creature has one; yours is your head. Striking it is an automatic Critical Strike.', page: 80 },
   'Hit Location': { body: 'Where a melee hit lands, rolled on a D20 against the target\'s anatomy table. Armor only protects the location it covers.', page: 80 },

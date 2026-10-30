@@ -5,7 +5,7 @@
 export const PROCEDURES = [
   { id: 'turn', title: 'A turn in the dark', icon: 'hourglass', steps: [
     { id: 'turn.cond', t: 'Lasting conditions tick: Bleeding, Poisoned and Burning cost 1 Health per room', page: 84, mode: 'auto' },
-    { id: 'turn.goals', t: 'Check for a new level and your Personal Goals', page: 62, mode: 'manual' },
+    { id: 'turn.goals', t: 'Check for a new level and your Personal Goals', page: 62, mode: 'auto' },
     { id: 'turn.choose', kind: 'ask', t: 'Explore, rest, heal or retrace?', mode: 'auto', yes: 'Pick from the actions at the foot of the screen' },
   ] },
   { id: 'explore', title: 'Entering a new place', icon: 'door', steps: [
@@ -30,20 +30,20 @@ export const PROCEDURES = [
   ] },
   { id: 'combat', title: 'A fight', icon: 'swords', steps: [
     { id: 'combat.sanity', t: 'Frightening or Horrifying: a Resolve check or lose 2 or 4 Sanity', page: 92, roll: 'D100', mode: 'auto' },
-    { id: 'combat.surprise', kind: 'ask', t: 'Surprise? Stealth against their Perception: +20 to your first attack', page: 76, mode: 'missing' },
+    { id: 'combat.surprise', kind: 'ask', t: 'Surprise? Stealth against their Mind: +20 to your first attack', page: 76, mode: 'auto' },
     { id: 'combat.init', t: 'Initiative: your Perception against their Mind', page: 76, roll: 'D100 each', mode: 'auto' },
     { id: 'combat.round', t: 'Each round: one Standard Action, one Free Action, Reactions at -20 after the first', page: 76, mode: 'auto' },
     { id: 'combat.attack', t: 'Attack: opposed checks, +10 to the attacker, Speed off the defender', page: 75, roll: 'D100 each', mode: 'auto' },
     { id: 'combat.hit', kind: 'ask', t: 'Who won?', yes: 'Attacker: Hit Location (D20), Damage Pool, Armor; Critical Strikes doubled', no: 'Defender: a Defensive Move (D10). Both failed: 1 damage to the defender', page: 80, mode: 'auto' },
     { id: 'combat.magic', t: 'A magical action: no attack roll, resist it with Spellward', page: 79, mode: 'auto' },
     { id: 'combat.flee', t: 'Flee: a Standard Action and a Dodge check', page: 77, roll: 'D100', mode: 'auto' },
-    { id: 'combat.win', kind: 'end', t: 'Victory: +50 XP (+200 and D4 Sanity for an Overseer), D4 Toughness, Spoils, and an Integrity roll for used armour', page: 83, mode: 'assisted' },
+    { id: 'combat.win', kind: 'end', t: 'Victory: +50 XP (+200 and D4 Sanity for an Overseer), D4 Toughness, Spoils, and an Integrity roll for used armour', page: 83, mode: 'auto' },
   ] },
   { id: 'rest', title: 'Resting', icon: 'tent', steps: [
     { id: 'rest.breather', t: 'A Breather: D10+2 Toughness, 1 Health, -2 Exhaustion; -5 Light and the Tension Die steps down', page: 123, mode: 'auto' },
-    { id: 'rest.camp', t: 'Camp: one Ration, then activities (Barricade, Sleep, cook, craft, heal, repair, attune, swap)', page: 124, mode: 'assisted' },
+    { id: 'rest.camp', t: 'Camp: one Ration, then activities (Barricade, Sleep, cook, craft, heal, repair, attune, swap)', page: 124, mode: 'auto' },
     { id: 'rest.check', kind: 'ask', t: 'Camp Check: 12+?', no: 'An encounter, and every benefit is halved', page: 124, roll: 'D20', mode: 'auto' },
-    { id: 'rest.benefits', t: 'All Toughness, 1 Health, D4 Sanity, -10 Exhaustion; improve marked Skills; the Rot\'s Endurance check', page: 125, mode: 'assisted' },
+    { id: 'rest.benefits', t: 'All Toughness, 1 Health, D4 Sanity, -10 Exhaustion; improve marked Skills; the Rot\'s Endurance check', page: 125, mode: 'auto' },
     { id: 'rest.heal', t: 'Between rests: a Bandage and a Medicine check heal D4 Toughness once per room, or stop Bleeding or Poison', page: 19, mode: 'auto' },
   ] },
 ];

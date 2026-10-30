@@ -213,6 +213,16 @@ function Body({ theme }) {
     try { const d = await post('/api/glucose-hub/nightscout', { secret }, 'PUT'); setNs((n) => ({ ...n, write: d.configured })); setNsSecret(''); snack(d.configured ? 'Nightscout accepted it: carbs will be sent there.' : 'Disconnected: carbs stay in IMS only.'); } catch (e) { err(e.message); }
     setBusy('');
   };
+  // the glucose alerts pushed to Simon's phone (30 Oct 2026): rapid fall (below 6.0 and dropping) and hypo (below 4.0)
+  const [phoneAlerts, setPhoneAlerts] = useState(null);
+  useEffect(() => { fetch('/api/system/glucose-alerts').then((r) => r.json()).then((d) => { if (d.success) setPhoneAlerts({ hypo: d.hypo, falling: d.falling }); }).catch(() => {}); }, []);
+  const togglePhoneAlert = async (which, on) => {
+    try {
+      const d = await post('/api/system/glucose-alerts', { [which]: on }, 'PUT');
+      setPhoneAlerts({ hypo: d.hypo, falling: d.falling });
+      snack(which === 'falling' ? `Rapid-fall alerts ${on ? 'on' : 'off'}.` : on ? 'Hypo warnings on.' : 'Hypo warnings off: your phone will not warn you when you go low.');
+    } catch (e) { err(e.message); }
+  };
   const toggleAutoClear = async (enabled) => { try { const d = await post('/api/glucose-hub/nightscout/auto-clear', { enabled }, 'PUT'); setNs((n) => ({ ...n, autoClear: d.autoClear })); snack(enabled ? 'Auto-clear on: at 95% full, records older than 3 months are cleared.' : 'Auto-clear off.'); } catch (e) { err(e.message); } };
   const clearOld = () => setConfirm({ title: 'Clear Nightscout records over 3 months old?', body: 'Glucose readings, treatments and AAPS device status older than 3 months are deleted from Nightscout, and that can\'t be undone there. IMS keeps its own copy, so the charts here aren\'t affected.', okLabel: 'Clear them', danger: true, onOk: async () => {
     setBusy('cleanup');
@@ -363,6 +373,14 @@ function Body({ theme }) {
 
       {room === 'now' && (
         <>
+          {phoneAlerts && (
+            <section className="imsm-card">
+              <div className="imsm-row" style={{ justifyContent: 'space-between' }}><h3><Icon n="bell" size={20} />Phone alerts</h3><span className={`tag ${phoneAlerts.hypo && phoneAlerts.falling ? 'good' : 'warn'}`}>{phoneAlerts.hypo && phoneAlerts.falling ? 'Both on' : !phoneAlerts.hypo && !phoneAlerts.falling ? 'Both off' : 'One off'}</span></div>
+              <label className="imsm-row" style={{ cursor: 'pointer' }} title="At most every 20 minutes"><span className="imsm-switch"><input type="checkbox" checked={phoneAlerts.falling} onChange={(e) => togglePhoneAlert('falling', e.target.checked)} /><i /></span>Rapid fall: below 6.0 and dropping</label>
+              <label className="imsm-row" style={{ cursor: 'pointer' }} title="With an alarm"><span className="imsm-switch"><input type="checkbox" checked={phoneAlerts.hypo} onChange={(e) => togglePhoneAlert('hypo', e.target.checked)} /><i /></span>Hypo warning: below 4.0</label>
+              {!phoneAlerts.hypo && <p className="muted" style={{ margin: 0 }}>Hypo warnings are off: your phone will not warn you when you go low.</p>}
+            </section>
+          )}
           {summary?.overnight && (
             <section className="imsm-card">
               <div className="imsm-row" style={{ justifyContent: 'space-between' }}><h3><Icon n="moon" size={20} />Last night</h3><span className={`tag ${summary.overnight.inRangePct >= 70 ? 'good' : 'warn'}`}>{summary.overnight.inRangePct}% in range</span></div>

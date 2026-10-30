@@ -26,7 +26,7 @@ export default function DoorSheet({ game, doorId, onClose, act, commit, go, reop
     status.push(d.locked ? ['bad', 'lock', 'Locked'] : ['ok', 'lock', 'Not locked']);
   }
   return (
-    <Sheet open onClose={onClose} title={`The ${dir} way`} icon="door">
+    <Sheet open onClose={onClose} title={d.container ? 'A hidden container' : `The ${dir} way`} icon={d.container ? 'chest' : 'door'}>
       {status.length > 0 && <div className="dbt-chiprow">{status.map(([tone, ic, t]) => <span key={t} className={`dbt-chip ${tone}`}><Ico n={ic} size={14} />{t}</span>)}</div>}
       {!d.kind && (
         <>
@@ -45,12 +45,13 @@ export default function DoorSheet({ game, doorId, onClose, act, commit, go, reop
           {!d.spotted && d.locked && <Action icon="lock" title="Pick the lock" sub={`Lockpick · Thievery ${thv}%`} disabled={!(h.items.lockpicks > 0) || thv === 0} why={!(h.items.lockpicks > 0) ? 'You need a Lockpick: craft one at Camp from Crafting Supplies.' : 'Your Thievery is 0: the check cannot succeed.'}
             onClick={() => (hidden ? spring(false) : step(E.thieveryPlan(), (f) => E.pickLock(game, d.id, f), { title: 'Pick the lock', skill: 'Thievery' }))} tip={{ title: 'Pick the lock', body: 'A failure snaps the Lockpick, but the next attempt is a step easier.', page: 118 }} />}
           {!d.spotted && d.locked && <Action icon="fist" title="Force it" sub={`Athletics ${ath + 20 * (d.forceTries || 0)}% · noisy: a Tension Check`} onClick={() => (hidden ? spring(false) : step(E.forcePlan(game), (f) => E.forceDoor(game, d.id, f), { title: 'Force the door', skill: 'Athletics', bonus: 20 * (d.forceTries || 0) }))} tip={{ title: 'Brute force', body: 'Each attempt after the first gets +20, and every attempt makes enough noise for a Tension Check.', page: 118 }} />}
-          {!d.spotted && !d.locked && !d.open && <Action icon="door" title="Open it" sub={hidden ? 'Whatever is set on it will go off' : 'And see what lies beyond'} tone="primary" onClick={() => (hidden ? spring(false) : commit(E.openDoor(game, d.id)))} />}
-          {d.open && <Action icon="next" title="Go through" sub="The room beyond: shape, Lair, Tension and encounter" tone="primary" onClick={() => { onClose(); go(d.id); }} />}
+          {!d.spotted && !d.locked && !d.open && !d.opened && <Action icon={d.container ? 'chest' : 'door'} title="Open it" sub={hidden ? 'Whatever is set on it will go off' : d.container ? 'D10: 1-5 empty, 6-10 the Container Loot table' : 'And see what lies beyond'} tone="primary" onClick={() => (hidden ? spring(false) : d.container ? (commit(E.openContainer(game).state), onClose()) : commit(E.openDoor(game, d.id)))} />}
+          {d.opened && <p className="dbt-note">You have emptied it.</p>}
+          {d.open && !d.container && <Action icon="next" title="Go through" sub="The room beyond: shape, Lair, Tension and encounter" tone="primary" onClick={() => { onClose(); go(d.id); }} />}
           <Action icon="back" title="Leave it" sub="Try another way" onClick={onClose} />
         </div>
       )}
-      <p className="dbt-note">Unlocking a door or disarming its trap earns 10 XP. You carry {h.items.tools || 0} Thieves&apos; Tools and {h.items.lockpicks || 0} Lockpick{h.items.lockpicks === 1 ? '' : 's'}.</p>
+      <p className="dbt-note">Unlocking a {d.container ? 'container' : 'door'} or disarming its trap earns 10 XP. You carry {h.items.tools || 0} Thieves&apos; Tools and {h.items.lockpicks || 0} Lockpick{h.items.lockpicks === 1 ? '' : 's'}.</p>
     </Sheet>
   );
 }

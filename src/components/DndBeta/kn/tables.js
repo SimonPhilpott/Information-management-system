@@ -27,15 +27,8 @@ export function featuresFor(text) {
   return out.slice(0, 2);
 }
 
-// ---- Combat (pp. 75-84) --------------------------------------------------------------------------------------------
-export const HIT_TABLES = {
-  Humanoid: [[3, 'Right Leg'], [6, 'Left Leg'], [9, 'Abdomen'], [12, 'Chest'], [15, 'Left Arm'], [18, 'Right Arm'], [20, 'Head']],
-  Quadruped: [[3, 'Right Hind Leg'], [6, 'Left Hind Leg'], [9, 'Hindquarters'], [12, 'Forequarters'], [15, 'Right Front Leg'], [18, 'Left Front Leg'], [20, 'Head']],
-};
-export const hitLocation = (anatomy, d20) => {
-  const row = (HIT_TABLES[anatomy] || HIT_TABLES.Humanoid).find(([max]) => d20 <= max);
-  return { name: row[1], weak: row[1] === 'Head' };
-};
+// ---- Combat (pp. 75-84): hit locations live with the creatures (creatures.js) ----
+export { HIT_TABLES, hitLocation } from './creatures';
 
 // p. 78
 export const PLAYER_DEFENSIVE = [
@@ -84,37 +77,7 @@ export const NPC_FUMBLE = [
   { t: 'The creature falls, becoming Prone and receiving 2D6 Bludgeoning damage. It must use its next turn to get up.', self: '2d6', skip: 1 },
 ];
 
-// ---- Creatures (First Domain encounter table, p. 244; stat blocks pp. 142, 152, 167) --------------------------------
-export const FIRST_DOMAIN_ENCOUNTERS = [
-  { lo: 1, hi: 7, name: 'Blightfang Rats' }, { lo: 8, hi: 14, name: 'Skeletal Horrors' }, { lo: 15, hi: 20, name: 'Flesh Eater' },
-];
-export const CREATURES = {
-  'Blightfang Rats': {
-    page: 142, number: 3, type: 'Animal, Undead', blurb: 'Grotesque blends of rotting flesh and shadow, sinewy bodies under mangy, mottled fur. Left unchecked they spread havoc fast, and beneath Veldonia their numbers only grow, waiting for the day they pour up into the streets.', mind: 60, endurance: 30, body: 40, health: 6, anatomy: 'Quadruped', armor: {}, combat: 30, magicRes: 20, traits: ['Pack'],
-    actions: [
-      { rolls: [1, 2], name: 'Bite', magic: false, dmg: 'd6', type: 'Piercing' },
-      { rolls: [3, 4, 5], name: 'Scratch', magic: false, dmg: 'd4', type: 'Slashing' },
-      { rolls: [6], name: 'Rally', rally: true, text: 'The rat screeches, raising the Combat Skill of all Blightfang Rats by +10 until the next round.' },
-    ],
-  },
-  'Skeletal Horrors': {
-    page: 167, number: 2, type: 'Undead', blurb: 'The remains of fallen warriors cursed to wander for ever, wrapped in the tatters of once-proud armour, their bones blackened and charred by the fires of the afterlife. They wield spectral weapons with uncanny skill and hunt every living trespasser without rest.', mind: 20, endurance: 20, body: 25, health: 8, anatomy: 'Humanoid', armor: { Chest: 1 }, combat: 40, magicRes: 20, traits: ['Frightening'],
-    actions: [
-      { rolls: [1, 2], name: 'Cursed Slash', magic: false, dmg: 'd6', type: 'Slashing' },
-      { rolls: [3, 4], name: 'Ethereal Grasp', magic: true, dmg: 'd6', type: 'Necrotic', text: 'Endurance check or take D6 Necrotic damage; success halves it.', halfOnSave: true },
-      { rolls: [5], name: 'Haunting Wail', magic: true, wail: true, text: 'Everyone must pass a Resolve check or be Stunned (1).' },
-      { rolls: [6], name: 'Vengeful Onslaught', magic: false, dmg: 'd4', type: 'Piercing', text: 'On a hit it uses Ethereal Grasp as a free action.' },
-    ],
-  },
-  'Flesh Eater': {
-    page: 152, number: 1, type: 'Humanoid, Undead', blurb: 'A bloated, rotting thing, pallid skin stretched over jutting bones and weeping sores, jagged teeth bared in a permanent grin. It reeks of the grave, yet it moves with unsettling speed and stealth through the darkest corners, rending its quarry with festering claws.', mind: 30, endurance: 30, body: 65, health: 12, anatomy: 'Humanoid', armor: {}, combat: 40, magicRes: 10, traits: ['Frightening'],
-    actions: [
-      { rolls: [1, 2], name: 'Rancid Claw', magic: false, dmg: 'd6', type: 'Slashing', text: 'Endurance check or a festering wound: 1 extra Necrotic damage each turn until healed.', festers: true },
-      { rolls: [3, 4], name: 'Grasp', magic: false, grasp: true, dmg: '1', type: 'Bludgeoning', text: 'Athletics check against its Body or you are Restrained, taking 1 damage that ignores Armor each turn.' },
-      { rolls: [5, 6], name: 'Slam', magic: false, dmg: 'd8', type: 'Bludgeoning' },
-    ],
-  },
-};
+// ---- Creatures: every stat block of the bestiary is in creatures.js (read from the book into bestiary.json) ----
 
 // ---- Smaller tables ------------------------------------------------------------------------------------------------
 export const SCAVENGE = [ // p. 116
@@ -125,7 +88,7 @@ export const SCAVENGE = [ // p. 116
   { lo: 12, hi: 12, t: 'You discover 2D20 coins.', coins: '2d20' },
   { lo: 13, hi: 18, t: 'You find D4 Cooking Ingredients.', cooking: '1d4' },
   { lo: 19, hi: 19, t: 'You discover D100 coins.', coins: '1d100' },
-  { lo: 20, hi: 20, t: 'Roll on the Spoils table (p. 213, not imported yet).' },
+  { lo: 20, hi: 20, t: 'Roll on the Spoils table.', spoils: true },
 ];
 // p. 120: the rows the engine applies on its own. Everything else is shown as a card and kept in the Domain's list.
 // portraits from the rulebook (pp. 180-198), in public/kn/overseers

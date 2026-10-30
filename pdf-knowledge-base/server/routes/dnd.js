@@ -14,12 +14,13 @@ import {
 import { narrate } from '../services/decks/chronicleVoice.js';
 import { startDiscovery, discoveryStatus, studySystem, askRules, rollHero, rulesetFiles, rpgDocuments, askDm } from '../services/dndLibrary.js';
 import { isApprovedSession, isGuestSession } from '../middleware/requireSession.js';
-import { canonEmail } from '../services/decksService.js';
+import { canonEmail, OWNER, personName } from '../services/decksService.js';
+import { myGames, saveGame, deleteGame, othersGames, watchGame, addFlag, listFlags } from '../services/dndBetaGames.js';
 import { campaignOwner, characterCampaign, turnCampaign } from '../services/dndSoloService.js';
 import * as chronicle from '../services/dndChronicle.js';
 import { getRulesDigest, getGameSystemConfig } from '../services/rulesDigestService.js';
 import { generateHeroAvatar, getAvatarFilePath } from '../services/dndAvatarService.js';
-import { dressScene, askRindewind, libraryListing, reflectHero, saveCreatureArt, creatureArtFile } from '../services/dndBetaService.js';
+import { dressScene, askRindewind, libraryListing, reflectHero, saveCreatureArt, creatureArtFile, tellChapter } from '../services/dndBetaService.js';
 
 const router = Router();
 
@@ -199,9 +200,37 @@ router.post('/campaigns/:id/ask', async (req, res) => {
     res.json({ success: true, ...(await askDm({ campaign, ruleset: getRuleset(campaign.ruleset_id), question, books: campaign.books?.length ? campaign.books : null })) });
   } catch (err) { fail(res, err, 500); }
 });
+// The D&D Solo DM's adventures, on the server: each player's own to play; everyone else's to watch, never to play
+const me = (req) => (viewer(req).isOwner ? OWNER : viewer(req).email);
+const nameOf = (e) => (e === OWNER ? 'Simon' : personName(e));
+router.get('/beta/games', (req, res) => {
+  try { res.json({ success: true, me: nameOf(me(req)), isOwner: viewer(req).isOwner, games: myGames(me(req)) }); } catch (err) { fail(res, err, 500); }
+});
+router.put('/beta/games/:gid', (req, res) => {
+  try { const st = req.body?.state; if (st?.id !== req.params.gid) throw new Error('The game and its id do not match.'); saveGame(me(req), st); res.json({ success: true }); } catch (err) { fail(res, err, err.code || 400); }
+});
+router.delete('/beta/games/:gid', (req, res) => {
+  try { res.json({ success: true, deleted: deleteGame(me(req), req.params.gid) }); } catch (err) { fail(res, err, 500); }
+});
+router.post('/beta/flags', (req, res) => {
+  try { res.json({ success: true, id: addFlag(me(req), req.body || {}) }); } catch (err) { fail(res, err, 400); }
+});
+router.get('/beta/flags', (req, res) => {
+  try { res.json({ success: true, flags: listFlags(viewer(req).isOwner ? null : me(req)) }); } catch (err) { fail(res, err, 500); }
+});
+router.get('/beta/others', (req, res) => {
+  try { res.json({ success: true, games: othersGames(me(req), nameOf) }); } catch (err) { fail(res, err, 500); }
+});
+router.get('/beta/others/:gid', (req, res) => {
+  try { const g = watchGame(me(req), req.params.gid, nameOf); if (!g) return fail(res, new Error('Adventure not found'), 404); res.json({ success: true, game: g }); } catch (err) { fail(res, err, 500); }
+});
 // D&D Solo beta: Rindewind's one or two lines for a scene the rules engine has already settled
 router.post('/beta/dress', async (req, res) => {
   try { res.json({ success: true, text: await dressScene(req.body || {}) }); } catch (err) { fail(res, err, 500); }
+});
+// D&D Solo: a chapter of the Chronicle told as a story, from what happened in one place
+router.post('/beta/tale', async (req, res) => {
+  try { res.json({ success: true, text: await tellChapter(req.body || {}) }); } catch (err) { fail(res, err, 500); }
 });
 // D&D Solo beta: the books in the D&D folder (a listing, nothing indexed), and who a survivor has become
 router.get('/beta/library', (req, res) => {

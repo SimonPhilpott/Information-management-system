@@ -1,0 +1,2285 @@
+{
+ "source": "Ker Nethalas: Into the Midnight Throne, Gravebound Edition (March 2026), pp. 213-241",
+ "tables": {
+  "SPOILS": {
+   "die": 6,
+   "page": 213,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 3,
+     "t": "Roll on the Mundane Items table"
+    },
+    {
+     "lo": 4,
+     "hi": 5,
+     "t": "Roll on the Valuable Items table"
+    },
+    {
+     "lo": 6,
+     "hi": 6,
+     "t": "Roll on the Precious Items table"
+    }
+   ]
+  },
+  "VALUABLE ITEMS": {
+   "die": 20,
+   "page": 213,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 5,
+     "t": "Random Potion"
+    },
+    {
+     "lo": 6,
+     "hi": 12,
+     "t": "Attunement Crystal"
+    },
+    {
+     "lo": 13,
+     "hi": 16,
+     "t": "Fragment"
+    },
+    {
+     "lo": 17,
+     "hi": 20,
+     "t": "Magic Item"
+    }
+   ]
+  },
+  "PRECIOUS ITEMS": {
+   "die": 20,
+   "page": 213,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 15,
+     "t": "Magic Item"
+    },
+    {
+     "lo": 16,
+     "hi": 20,
+     "t": "Relic"
+    }
+   ]
+  },
+  "MUNDANE ITEMS": {
+   "die": 100,
+   "page": 213,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 5,
+     "t": ""
+    },
+    {
+     "lo": 6,
+     "hi": 10,
+     "t": ""
+    },
+    {
+     "lo": 11,
+     "hi": 15,
+     "t": "Backpack"
+    },
+    {
+     "lo": 16,
+     "hi": 20,
+     "t": "1x Bandage"
+    },
+    {
+     "lo": 21,
+     "hi": 25,
+     "t": "Bedroll"
+    },
+    {
+     "lo": 26,
+     "hi": 30,
+     "t": "Belt"
+    },
+    {
+     "lo": 31,
+     "hi": 35,
+     "t": "Belt Lamp"
+    },
+    {
+     "lo": 36,
+     "hi": 40,
+     "t": "1x Candle"
+    },
+    {
+     "lo": 41,
+     "hi": 45,
+     "t": "Lore Book"
+    },
+    {
+     "lo": 46,
+     "hi": 50,
+     "t": "Crowbar"
+    },
+    {
+     "lo": 51,
+     "hi": 55,
+     "t": "Flare"
+    },
+    {
+     "lo": 56,
+     "hi": 60,
+     "t": "Gems & Jewelry (roll on the table on page 215)"
+    },
+    {
+     "lo": 61,
+     "hi": 65,
+     "t": "Lamp"
+    },
+    {
+     "lo": 66,
+     "hi": 70,
+     "t": "1x Lamp Oil"
+    },
+    {
+     "lo": 71,
+     "hi": 75,
+     "t": "1x Lockpick"
+    },
+    {
+     "lo": 76,
+     "hi": 80,
+     "t": "Pouch"
+    },
+    {
+     "lo": 81,
+     "hi": 85,
+     "t": "Random Armor"
+    },
+    {
+     "lo": 86,
+     "hi": 90,
+     "t": "Random Weapon"
+    },
+    {
+     "lo": 91,
+     "hi": 100,
+     "t": ""
+    }
+   ]
+  },
+  "FRAGMENTS": {
+   "die": 20,
+   "page": 214,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 1,
+     "t": "A twisted dagger with a thorn-covered blade. When used to deal the fatal strike against an enemy (i.e. reducing them to 0 Health), the creature rises as a Skeleton (page 202) under your control."
+    },
+    {
+     "lo": 2,
+     "hi": 2,
+     "t": "A tattered cloak that, when worn, shrouds the wearer in darkness. Grants invisibility for 5 rooms, or until you make an attack. You can ignore all Combat Encounters until then."
+    },
+    {
+     "lo": 3,
+     "hi": 3,
+     "t": "A jagged mirror fragment that, when shattered, creates illusory duplicates of the user to distract enemies. +30 to Dodge for the next"
+    },
+    {
+     "lo": 4,
+     "hi": 4,
+     "t": "rounds."
+    },
+    {
+     "lo": 5,
+     "hi": 5,
+     "t": "A black heart-shaped amulet. When crushed (Free Action), it allows you to absorb damage meant for an ally, but the amulet crumbles to dust, leaving you unable to feel empathy for a week."
+    },
+    {
+     "lo": 6,
+     "hi": 6,
+     "t": "A cracked monocle that, when worn, allows the user to inflict psychic pain on a target by locking eyes. As a Standard Action, make a Resolve check: if successful your target suffers 3D10 Psychic damage."
+    },
+    {
+     "lo": 7,
+     "hi": 7,
+     "t": "A vial filled with sickly green liquid. When thrown, it bursts into corrosive flames that deal 3D6 Acid damage to all targets."
+    },
+    {
+     "lo": 8,
+     "hi": 8,
+     "t": "A small, enchanted skull that grants the user the ability to see what's ahead. Roll the contents of the next 3 rooms."
+    },
+    {
+     "lo": 9,
+     "hi": 9,
+     "t": "Tattered bandages that, when wrapped around a wound, accelerate healing but carry a curse that causes the wounds to fester if not removed in time. Heal 2 Toughness/room. If kept for more than D6 rooms, you lose 1 Health/room."
+    },
+    {
+     "lo": 10,
+     "hi": 10,
+     "t": "A blood-red potion that grants the user immense strength for a short time. Increase your next Athletics check by +50."
+    },
+    {
+     "lo": 11,
+     "hi": 11,
+     "t": "A pendant adorned with a single raven's feather. When worn, it grants you +1 Standard Action during the next 4 rounds."
+    },
+    {
+     "lo": 12,
+     "hi": 12,
+     "t": "A spiked gauntlet that, when worn, enhances your melee attacks with searing pain. For as long as you remain in this room your Unarmed Combat & Fist Weapons Skill is increased by 50 and you deal 2D6 Fire damage. Once you exit the room you receive 2D6 Fire damage."
+    },
+    {
+     "lo": 13,
+     "hi": 13,
+     "t": "A vial of thick, black liquid that, when consumed, grants you immunity to Sanity loss for the next 4 rooms, but leaves you emotionally detached afterward."
+    },
+    {
+     "lo": 14,
+     "hi": 14,
+     "t": "A delicate locket that, when opened, releases a swarm of spectral spiders that ensnare a target. A target of your choice becomes Restrained."
+    },
+    {
+     "lo": 15,
+     "hi": 15,
+     "t": "A small, obsidian whistle that, when blown, summons a vengeful spirit to seek out and attack a designated target, immediately dealing 3D10 Psychic damage to it."
+    },
+    {
+     "lo": 16,
+     "hi": 16,
+     "t": "A flask containing a swirling miasma. When opened, it releases a cloud of disease that afflicts enemies, dealing 3D4 Poison damage to all enemies."
+    },
+    {
+     "lo": 17,
+     "hi": 17,
+     "t": "A broken harp that, when played, creates haunting melodies that charm enemies. A single target will no longer be hostile towards you."
+    },
+    {
+     "lo": 18,
+     "hi": 18,
+     "t": "A tattered spellbook that allows you to use any Mastery Ability once. Roll on the Random Mastery table (page 222) to find out which Mastery it has access to, and pick one Ability."
+    },
+    {
+     "lo": 19,
+     "hi": 19,
+     "t": "A Ring with a gorgeous amethyst that grants you 2D10 Temporary Toughness."
+    },
+    {
+     "lo": 20,
+     "hi": 20,
+     "t": "A sinister hourglass that, when turned over, temporarily slows time for everyone except you. All enemies become Dazed (3)."
+    }
+   ]
+  },
+  "GEMS & JEWELRY": {
+   "die": 20,
+   "page": 215,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 2,
+     "t": "Ornamental - D100 coins"
+    },
+    {
+     "lo": 3,
+     "hi": 6,
+     "t": "Semi-precious - 2D100 coins"
+    },
+    {
+     "lo": 7,
+     "hi": 11,
+     "t": "Precious - 3D100 coins"
+    },
+    {
+     "lo": 12,
+     "hi": 15,
+     "t": "Lavish - 4D100 coins"
+    },
+    {
+     "lo": 16,
+     "hi": 18,
+     "t": "Sumptuous - 5D100 coins"
+    },
+    {
+     "lo": 19,
+     "hi": 20,
+     "t": "Extravagant - 6D100 coins"
+    }
+   ]
+  },
+  "LORE BOOKS": {
+   "die": 10,
+   "page": 216,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 1,
+     "t": "Shadows of Devotion: The Vaelorian Rites of Necromantic Worship. “Through a potent blend of religion and dark sorcery, the Vaelorians worship the realm of death itself, embracing the forbidden arts that bind them to the eternal cycle of life and decay. Shadow-clad priests, adorned in somber vestments, conduct solemn ceremonies to commune with the departed souls in their hallowed temples. They seek divine favor through rituals shrouded in macabre mystique, harnessing the power of necromancy to unlock secrets hidden in the realms beyond mortal comprehension. The Vaelorian Ascendancy's complete devotion to necromantic practices and their self-imposed isolation have forged an empire where faith and the manipulation of death intertwine, forming the very core of their society.”"
+    },
+    {
+     "lo": 2,
+     "hi": 2,
+     "t": "Aetheric Tailoring. “Our creations are more than mere garments; they are conduits of enigmatic magic. The fabrics we produce possess an intrinsic essence, an uncanny enchantment that cloaks the wearer in an aura of mystique. We weave secrets into the very fabric of our society with each stitch, concealing even the darkest intentions beneath layers of artistry and illusion. Our work grants those who don our creations an enigmatic allure, transforming them into figures of fascination and reverence in any social circle.”"
+    },
+    {
+     "lo": 3,
+     "hi": 3,
+     "t": "Mysteries of Death. “Kalatha, the Sovereign of Shadows, is revered as the eternal orchestrator of the cosmic cycle, her skeletal hand guiding souls from the mortal realm to the veiled mysteries beyond. The Temple of Ebon Rites stands as a monument to her dominion, its towering spires piercing the heavens as a firm declaration of our reverence. There, cloaked acolytes perform their rituals under the dim glow of obsidian candles, invoking Kalatha's name with whispered prayers and offerings of bone and ash. The goddess's presence is felt keenly in the rituals of necromancy, where death is both a path to power and a sacrament of devotion. Yet, Kalatha's blessings are never given freely; they must be earned through loyalty and sacrifice. Her worshipers navigate the delicate balance between life and death, embracing the inevitability of their mortality while wielding the potency of necromantic arts. As the Vaelorian Ascendancy's guiding light, Kalatha bestows a chilling solace upon her devoted, a promise of unity with the shadows that shroud our world in an absolute embrace.”"
+    },
+    {
+     "lo": 4,
+     "hi": 4,
+     "t": "Contemplations on the Tapestry of Realms. “Dear minds curious enough to delve into the labyrinthine corridors of thought, I present to you the heart of my contemplations in this humble tome you hold in your hands. In its pages, I dare to explore the intricate origins of the diverse planes of existence, those realms veiled from our senses yet profoundly interwoven with our reality. Imagine, if you will, a celestial loom, where primordial weavers spin the threads of existence. Each plane, distinct and evocative, is its own micro-universe: a realm of fire, another of water, one of shadow, and countless others. These parallel domains intersect with our world, like ethereal echoes casting intricate patterns upon our reality. My musings, though bold and met with skepticism, invite you to transcend the ordinary and embrace the enigma that our reality weaves. Let us embark together on this voyage of understanding, peering beyond the veil to fathom the cosmic loom that shapes the very essence of our being.”"
+    },
+    {
+     "lo": 5,
+     "hi": 5,
+     "t": "The Battle of Curum. “The Battle of Curum, a chapter seared into the living memory of the Vaelorian Ascendancy, unfolds in my mind like a visceral painting of heroism and strife. There, on the rain-soaked battleground, our shadowsteel-clad warriors clashed with the invading Ashthreni horde, an unwavering bulwark against encroaching chaos. The Obsidian Veil, like spectral wraiths, cut through enemy ranks, their blades weaving a symphony of death. The Inquisitors' incantations shook the very ground in that tempest of combat, their necromantic might turning the tide. Victory was earned through blood and valor, proving once again our empire's unyielding spirit and the triumph of the Vaelorian Ascendancy against the relentless storm.”"
+    },
+    {
+     "lo": 6,
+     "hi": 6,
+     "t": "The Midnight Throne. “In the heart of the Vaelorian Ascendancy stands Ker Nethalas, the Midnight Throne, a city unrivaled in its grandeur and mystique. To wander through its labyrinthine alleys is to traverse the crossroads of divine devotion and architectural marvel. The obsidian spires, etched with arcane symbols, reach skyward as if seeking the touch of the gods. The very stones beneath one's feet whisper the secrets of generations, and the air is alive with a palpable energy, embodying our history and unyielding faith. The Midnight Throne is more than just a capital, it's a living testament to our empire's soul, a manifestation of the shadows that cradle us, and a sentinel guarding the holiness of the Vaelorian Ascendancy.”"
+    },
+    {
+     "lo": 7,
+     "hi": 7,
+     "t": "A Thousand Years of Glory. “In the annals of the Vaelorian Ascendancy's saga, one name emerges as a symbol of authority and enigma: Emperor Aurelius the Undying. Like a figure conjured from the depths of our collective consciousness, Aurelius ruled with an iron fist sheathed in velvet gloves, his every decree reverberating across our history like the whispers of fate itself. It is said that he possessed an aura that bridged the mortal and the divine, embodying the power of the Ascendancy's theocratic might. Yet, it was not just his dominion that earned him the epithet 'the Undying'. Rather, it was his absolute connection to the necromantic arts, a mastery that stirred both awe and trepidation. In all of our extensive history, Emperor Aurelius emerges as a pivotal figure that served as a mortal conduit to the gods' divine will, cementing and guarding the secrets of the Vaelorian Ascendancy's legacy.”"
+    },
+    {
+     "lo": 8,
+     "hi": 8,
+     "t": "Rising Shadows: A History of House Tesir. “As if ordained by the very weavers of destiny, this once-obscure lineage ascended the rungs of power with a grace that belied their origins. From the shadows of the common quarters, House Tesir's ascent mirrored the empire's own journey, proof of the validity of the meritocratic ideals embedded in Vaelorian society. Yet, their climb was not bereft of critique; whispers of clandestine alliances and esoteric bargains linger still in the air. Under the leadership of Lord Valerius Tesir, the family's influence expanded like ripples in a pond. It is said that their mastery over the arts of assassination became the foundation of their dominion, intertwining their name with both reverence and fear.”"
+    },
+    {
+     "lo": 9,
+     "hi": 9,
+     "t": "The Third Path. “The convergence of necromancy and demonology, like the crossing of two shadowy rivers, invokes a dichotomy that both intrigues and unsettles. But the marriage of necromancy's communion with the departed and demonology's conjuration of infernal entities creates a well of forbidden potential; what secrets are whispered by the abyssal entities drawn from the nether realms? The fusion of these magics has sparked both fascination and condemnation, blurring the lines between mastery and recklessness. It is true that our work on these dark arts, a reflection of our ceaseless ambition, serves often as a cautionary tale of the relentless pursuit of dominion over the arcane, but I dare to claim that any risks are insignificant, compared to the power offered by this Third Path.”"
+    },
+    {
+     "lo": 10,
+     "hi": 10,
+     "t": "The Ganeus Rebellion. “In the intricate mosaic of the Vaelorian Ascendancy's history, the treacherous saga of House Ganeus is one that, to this day, still casts a shadow that lingers as a reminder of the precarious nature of power and loyalty. Once esteemed pillars of the empire, their name now resonates as a byword for betrayal. The web of deceit they wove, concealed beneath a veneer of allegiance, speaks to the abyss that can form between kin and empire. It is said that House Ganeus courted forbidden pacts with entities beyond mortal ken, seeking power that transcended the very bounds of our world. Their duplicity unfurled like a venomous serpent, poisoning the very heart of our Ascendancy. The Ganeus Rebellion, an event etched in sorrow and shame, saw the empire's own children raising arms against it, their actions seared with the stain of perfidy. The tale of House Ganeus is an everlasting reminder that shadows can be cast from within as much as from without, and that we must always be wary of our own hubris and desire for power.”"
+    }
+   ]
+  },
+  "CONTAINER LOOT": {
+   "die": 20,
+   "page": 220,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 2,
+     "t": "Rotten foodstuff and clothing"
+    },
+    {
+     "lo": 3,
+     "hi": 3,
+     "t": ""
+    },
+    {
+     "lo": 4,
+     "hi": 4,
+     "t": ""
+    },
+    {
+     "lo": 5,
+     "hi": 5,
+     "t": "Lore Book"
+    },
+    {
+     "lo": 6,
+     "hi": 7,
+     "t": "Gems & Jewelry"
+    },
+    {
+     "lo": 8,
+     "hi": 8,
+     "t": "Pouch"
+    },
+    {
+     "lo": 9,
+     "hi": 9,
+     "t": ""
+    },
+    {
+     "lo": 10,
+     "hi": 10,
+     "t": ""
+    },
+    {
+     "lo": 11,
+     "hi": 11,
+     "t": "Blank Diary"
+    },
+    {
+     "lo": 12,
+     "hi": 12,
+     "t": "Borestian Stone"
+    },
+    {
+     "lo": 13,
+     "hi": 13,
+     "t": "Heart Fragment of Amal-Tul"
+    },
+    {
+     "lo": 14,
+     "hi": 14,
+     "t": "Mace of Obliteration"
+    },
+    {
+     "lo": 15,
+     "hi": 15,
+     "t": "Ring of Mental Peace"
+    },
+    {
+     "lo": 16,
+     "hi": 16,
+     "t": "Vial of Potency - Aether"
+    },
+    {
+     "lo": 17,
+     "hi": 17,
+     "t": "Vial of Potency - Endurance"
+    },
+    {
+     "lo": 18,
+     "hi": 18,
+     "t": "Vial of Potency - Health"
+    },
+    {
+     "lo": 19,
+     "hi": 19,
+     "t": "Vial of Potency - Spellward"
+    },
+    {
+     "lo": 20,
+     "hi": 20,
+     "t": "Vial of Potency - Sanity"
+    }
+   ]
+  },
+  "POTIONS": {
+   "die": 20,
+   "page": 221,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 1,
+     "t": "Aether. You immediately recover 5 Aether."
+    },
+    {
+     "lo": 2,
+     "hi": 2,
+     "t": "Antidote. Immediately removes the Poisoned condition."
+    },
+    {
+     "lo": 3,
+     "hi": 3,
+     "t": "Coagulate. Immediately removes the Bleeding condition."
+    },
+    {
+     "lo": 4,
+     "hi": 4,
+     "t": "Courage. Immediately removes the Frightened condition."
+    },
+    {
+     "lo": 5,
+     "hi": 5,
+     "t": "Flaming. When applied to a weapon, increase your Damage Pool by +D4 Fire damage during 5 rounds."
+    },
+    {
+     "lo": 6,
+     "hi": 6,
+     "t": "Frenzy. For the next D6 rounds you deal +2D6 damage, but you're unable to defend in any way."
+    },
+    {
+     "lo": 7,
+     "hi": 8,
+     "t": "Heal. You immediately heal D6+2 Wounds."
+    },
+    {
+     "lo": 9,
+     "hi": 9,
+     "t": "Regeneration. Heal D10+5 Wounds, at a rate of 1 Wound/round."
+    },
+    {
+     "lo": 10,
+     "hi": 10,
+     "t": "Poison. When applied to a weapon, the next successful attack applies the Poisoned (1) condition."
+    },
+    {
+     "lo": 11,
+     "hi": 11,
+     "t": "Purge. Immediately removes the Cursed and Sickened conditions."
+    },
+    {
+     "lo": 12,
+     "hi": 13,
+     "t": "Rest. Reduce your Exhaustion by D4."
+    },
+    {
+     "lo": 14,
+     "hi": 14,
+     "t": "Satiation. Counts as a Ration."
+    },
+    {
+     "lo": 15,
+     "hi": 15,
+     "t": "Mindfulness. Heal 1 Sanity."
+    },
+    {
+     "lo": 16,
+     "hi": 17,
+     "t": "Speed. Grants 1 free Standard Action."
+    },
+    {
+     "lo": 18,
+     "hi": 18,
+     "t": "Stoneskin. For the next D10 rooms you have +1 Armor, but your Dodge and Acrobatics Skills are reduced by 10."
+    },
+    {
+     "lo": 19,
+     "hi": 19,
+     "t": "Strength. Increase your Endurance and Athletics by +10 for the next"
+    },
+    {
+     "lo": 20,
+     "hi": 20,
+     "t": "Vitality. Grants D10 Temporary Toughness. Taking more than one of these while still under the effects of a previous one causes D10 Acid damage."
+    }
+   ]
+  },
+  "RANDOM MASTERY": {
+   "die": 20,
+   "page": 222,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 1,
+     "t": "Abyssal Reaver"
+    },
+    {
+     "lo": 2,
+     "hi": 2,
+     "t": "Arcanist"
+    },
+    {
+     "lo": 3,
+     "hi": 3,
+     "t": "Brawler"
+    },
+    {
+     "lo": 4,
+     "hi": 4,
+     "t": "Bulwark"
+    },
+    {
+     "lo": 5,
+     "hi": 5,
+     "t": "Duskblade"
+    },
+    {
+     "lo": 6,
+     "hi": 6,
+     "t": "Emissary"
+    },
+    {
+     "lo": 7,
+     "hi": 7,
+     "t": "Flamecaster"
+    },
+    {
+     "lo": 8,
+     "hi": 8,
+     "t": "Frostweaver"
+    },
+    {
+     "lo": 9,
+     "hi": 9,
+     "t": "Gravecaller"
+    },
+    {
+     "lo": 10,
+     "hi": 10,
+     "t": "Hexmancer"
+    },
+    {
+     "lo": 11,
+     "hi": 11,
+     "t": "Icon Caller"
+    },
+    {
+     "lo": 12,
+     "hi": 12,
+     "t": "Mindbinder"
+    },
+    {
+     "lo": 13,
+     "hi": 13,
+     "t": "Ritualist"
+    },
+    {
+     "lo": 14,
+     "hi": 14,
+     "t": "Stormbrand"
+    },
+    {
+     "lo": 15,
+     "hi": 15,
+     "t": "Tracker"
+    },
+    {
+     "lo": 16,
+     "hi": 16,
+     "t": "Umbra Phantom"
+    },
+    {
+     "lo": 17,
+     "hi": 17,
+     "t": "Weapon Master"
+    },
+    {
+     "lo": 18,
+     "hi": 18,
+     "t": "Wraith"
+    },
+    {
+     "lo": 19,
+     "hi": 19,
+     "t": "Wrathspawn"
+    },
+    {
+     "lo": 20,
+     "hi": 20,
+     "t": "Zealot"
+    }
+   ]
+  },
+  "RANDOM WEAPON": {
+   "die": 100,
+   "page": 222,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 4,
+     "t": "Bardiche"
+    },
+    {
+     "lo": 5,
+     "hi": 8,
+     "t": "Bastard Sword"
+    },
+    {
+     "lo": 9,
+     "hi": 12,
+     "t": "Billhook"
+    },
+    {
+     "lo": 13,
+     "hi": 16,
+     "t": "Cestus"
+    },
+    {
+     "lo": 17,
+     "hi": 20,
+     "t": "Claw"
+    },
+    {
+     "lo": 21,
+     "hi": 24,
+     "t": "Club"
+    },
+    {
+     "lo": 25,
+     "hi": 28,
+     "t": "Dagger"
+    },
+    {
+     "lo": 29,
+     "hi": 31,
+     "t": "Flail"
+    },
+    {
+     "lo": 32,
+     "hi": 34,
+     "t": "Glaive"
+    },
+    {
+     "lo": 35,
+     "hi": 37,
+     "t": "Great Axe"
+    },
+    {
+     "lo": 38,
+     "hi": 40,
+     "t": "Greatclub"
+    },
+    {
+     "lo": 41,
+     "hi": 43,
+     "t": "Great Sword"
+    },
+    {
+     "lo": 44,
+     "hi": 46,
+     "t": "Halberd"
+    },
+    {
+     "lo": 47,
+     "hi": 49,
+     "t": "Hatchet"
+    },
+    {
+     "lo": 50,
+     "hi": 52,
+     "t": "Improvised Weapon"
+    },
+    {
+     "lo": 53,
+     "hi": 55,
+     "t": "Knuckles"
+    },
+    {
+     "lo": 56,
+     "hi": 58,
+     "t": "Light Hammer"
+    },
+    {
+     "lo": 59,
+     "hi": 61,
+     "t": "Longsword"
+    },
+    {
+     "lo": 62,
+     "hi": 64,
+     "t": "Mace"
+    },
+    {
+     "lo": 65,
+     "hi": 67,
+     "t": "Maul"
+    },
+    {
+     "lo": 68,
+     "hi": 70,
+     "t": "Morningstar"
+    },
+    {
+     "lo": 71,
+     "hi": 73,
+     "t": "Pike"
+    },
+    {
+     "lo": 74,
+     "hi": 76,
+     "t": "Quarterstaff"
+    },
+    {
+     "lo": 77,
+     "hi": 79,
+     "t": "Rapier"
+    },
+    {
+     "lo": 80,
+     "hi": 82,
+     "t": "Saber"
+    },
+    {
+     "lo": 83,
+     "hi": 85,
+     "t": "Shortsword"
+    },
+    {
+     "lo": 86,
+     "hi": 88,
+     "t": "Spear"
+    },
+    {
+     "lo": 89,
+     "hi": 91,
+     "t": "Sword Gauntlet"
+    },
+    {
+     "lo": 92,
+     "hi": 94,
+     "t": "Warhammer"
+    },
+    {
+     "lo": 95,
+     "hi": 97,
+     "t": "War Pick"
+    },
+    {
+     "lo": 98,
+     "hi": 100,
+     "t": "Magic weapon (re-roll if not applicable)"
+    }
+   ]
+  },
+  "RESOURCES": {
+   "die": 10,
+   "page": 222,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 2,
+     "t": "You find nothing of value"
+    },
+    {
+     "lo": 3,
+     "hi": 6,
+     "t": "You find 1x Cooking Ingredients"
+    },
+    {
+     "lo": 7,
+     "hi": 10,
+     "t": "You find 1x Crafting Supplies"
+    }
+   ]
+  },
+  "TORSO ARMOR (PAGE 211)": {
+   "die": 100,
+   "page": 223,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 10,
+     "t": "Heavy Cloth"
+    },
+    {
+     "lo": 11,
+     "hi": 20,
+     "t": "Soft Leather"
+    },
+    {
+     "lo": 21,
+     "hi": 30,
+     "t": "Hide Scale"
+    },
+    {
+     "lo": 31,
+     "hi": 40,
+     "t": "Laminar"
+    },
+    {
+     "lo": 41,
+     "hi": 50,
+     "t": "Rigid Leather"
+    },
+    {
+     "lo": 51,
+     "hi": 60,
+     "t": "Metal Scale"
+    },
+    {
+     "lo": 61,
+     "hi": 70,
+     "t": "Mail"
+    },
+    {
+     "lo": 71,
+     "hi": 80,
+     "t": "Brigandine"
+    },
+    {
+     "lo": 81,
+     "hi": 90,
+     "t": "Plate"
+    },
+    {
+     "lo": 91,
+     "hi": 100,
+     "t": "Magic Armor (re-roll if not applicable)"
+    }
+   ]
+  },
+  "RANDOM ARMOR": {
+   "die": 10,
+   "page": 223,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 2,
+     "t": "Torso"
+    },
+    {
+     "lo": 3,
+     "hi": 4,
+     "t": "Vambraces"
+    },
+    {
+     "lo": 5,
+     "hi": 6,
+     "t": "Greaves"
+    },
+    {
+     "lo": 7,
+     "hi": 8,
+     "t": "Helmet"
+    },
+    {
+     "lo": 9,
+     "hi": 10,
+     "t": "Shield"
+    }
+   ]
+  },
+  "VAMBRACES, GREAVES & HELMETS (PAGES 210-211)": {
+   "die": 100,
+   "page": 223,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 33,
+     "t": "Light"
+    },
+    {
+     "lo": 34,
+     "hi": 66,
+     "t": "Medium"
+    },
+    {
+     "lo": 67,
+     "hi": 100,
+     "t": "Heavy"
+    }
+   ]
+  },
+  "SHIELDS (PAGE 210)": {
+   "die": 100,
+   "page": 223,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 25,
+     "t": "Target"
+    },
+    {
+     "lo": 26,
+     "hi": 50,
+     "t": "Normal"
+    },
+    {
+     "lo": 51,
+     "hi": 75,
+     "t": "Full"
+    },
+    {
+     "lo": 76,
+     "hi": 100,
+     "t": "Wall"
+    }
+   ]
+  },
+  "ITEM": {
+   "die": 8,
+   "page": 224,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 1,
+     "t": "Weapon (roll on the Random Weapon table, page 222)"
+    },
+    {
+     "lo": 2,
+     "hi": 2,
+     "t": "Armor (roll on the Random Armor table, page 223)"
+    },
+    {
+     "lo": 3,
+     "hi": 3,
+     "t": "Belt"
+    },
+    {
+     "lo": 4,
+     "hi": 4,
+     "t": "Boots"
+    },
+    {
+     "lo": 5,
+     "hi": 5,
+     "t": "Gloves"
+    },
+    {
+     "lo": 6,
+     "hi": 6,
+     "t": "Amulet"
+    },
+    {
+     "lo": 7,
+     "hi": 8,
+     "t": "Ring"
+    }
+   ]
+  },
+  "ITEM RARITY": {
+   "die": 10,
+   "page": 224,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 5,
+     "t": "Uncommon: 1 Magic Property"
+    },
+    {
+     "lo": 6,
+     "hi": 8,
+     "t": "Rare: 2 Magic Properties"
+    },
+    {
+     "lo": 9,
+     "hi": 10,
+     "t": "Epic: 3 Magic Properties"
+    }
+   ]
+  },
+  "ENEMY TYPE": {
+   "die": 8,
+   "page": 225,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 1,
+     "t": "Animal"
+    },
+    {
+     "lo": 2,
+     "hi": 2,
+     "t": "Astral"
+    },
+    {
+     "lo": 3,
+     "hi": 3,
+     "t": "Plant"
+    },
+    {
+     "lo": 4,
+     "hi": 4,
+     "t": "Demon"
+    },
+    {
+     "lo": 5,
+     "hi": 5,
+     "t": "Elemental"
+    },
+    {
+     "lo": 6,
+     "hi": 6,
+     "t": "Undead"
+    },
+    {
+     "lo": 7,
+     "hi": 7,
+     "t": "Humanoid"
+    },
+    {
+     "lo": 8,
+     "hi": 8,
+     "t": "Construct"
+    }
+   ]
+  },
+  "DAMAGE TYPE": {
+   "die": 20,
+   "page": 225,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 1,
+     "t": "Acid"
+    },
+    {
+     "lo": 2,
+     "hi": 3,
+     "t": "Arcane"
+    },
+    {
+     "lo": 4,
+     "hi": 5,
+     "t": "Bludgeoning"
+    },
+    {
+     "lo": 6,
+     "hi": 6,
+     "t": "Cold"
+    },
+    {
+     "lo": 7,
+     "hi": 8,
+     "t": "Force"
+    },
+    {
+     "lo": 9,
+     "hi": 9,
+     "t": "Fire"
+    },
+    {
+     "lo": 10,
+     "hi": 10,
+     "t": "Holy"
+    },
+    {
+     "lo": 11,
+     "hi": 11,
+     "t": "Infernal"
+    },
+    {
+     "lo": 12,
+     "hi": 12,
+     "t": "Lightning"
+    },
+    {
+     "lo": 13,
+     "hi": 14,
+     "t": "Necrotic"
+    },
+    {
+     "lo": 15,
+     "hi": 16,
+     "t": "Piercing"
+    },
+    {
+     "lo": 17,
+     "hi": 17,
+     "t": "Poison"
+    },
+    {
+     "lo": 18,
+     "hi": 18,
+     "t": "Psychic"
+    },
+    {
+     "lo": 19,
+     "hi": 20,
+     "t": "Slashing"
+    }
+   ]
+  },
+  "ARMOR MAGIC PROPERTIES": {
+   "die": 20,
+   "page": 226,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 2,
+     "t": "Increase your Endurance by an amount based on this item's rarity: +5 Uncommon, +10 Rare, +15 Epic."
+    },
+    {
+     "lo": 3,
+     "hi": 4,
+     "t": "Increase your Resolve by an amount based on this item's rarity: +5 Uncommon, +10 Rare, +15 Epic."
+    },
+    {
+     "lo": 5,
+     "hi": 6,
+     "t": "Increase your Spellward by an amount based on this item's rarity: +5 Uncommon, +10 Rare, +15 Epic."
+    },
+    {
+     "lo": 7,
+     "hi": 7,
+     "t": "Reduce your max Aether by 5, but increase your max Toughness by 10."
+    },
+    {
+     "lo": 8,
+     "hi": 8,
+     "t": "Reduce your max Toughness by 5, but increase your max Aether by 10."
+    },
+    {
+     "lo": 9,
+     "hi": 9,
+     "t": "Roll on the Damage Type table. You are Resistant to that damage type."
+    },
+    {
+     "lo": 10,
+     "hi": 10,
+     "t": "Increase your Dodge by 20."
+    },
+    {
+     "lo": 11,
+     "hi": 11,
+     "t": "Opponents have their Combat Skill reduced by 10 when attacking you."
+    },
+    {
+     "lo": 12,
+     "hi": 12,
+     "t": "Enemies that damage you suffer 1 Piercing damage that cannot be avoided in any way."
+    },
+    {
+     "lo": 13,
+     "hi": 13,
+     "t": "This Armor works as a lightsource."
+    },
+    {
+     "lo": 14,
+     "hi": 14,
+     "t": "Increase your carrying capacity by 10."
+    },
+    {
+     "lo": 15,
+     "hi": 15,
+     "t": "Reroll any check once per Camp Rest."
+    },
+    {
+     "lo": 16,
+     "hi": 16,
+     "t": "Heal one target once per Camp Rest. The amount of Wounds healed depends on this item's rarity: D10+2 Uncommon, D10+3 Rare, D10+4 Epic. This is a Standard Action."
+    },
+    {
+     "lo": 17,
+     "hi": 17,
+     "t": "After defeating a Combat Encounter, roll D6: a result of 1-3 means that you immediately recover D4 Toughness."
+    },
+    {
+     "lo": 18,
+     "hi": 18,
+     "t": "You're Immune to Stunned."
+    },
+    {
+     "lo": 19,
+     "hi": 19,
+     "t": "Once per Camp Rest you can make vines sprout out of the Armor, leaving a target Restrained."
+    },
+    {
+     "lo": 20,
+     "hi": 20,
+     "t": "Once per Domain you can become your own shadow for D6+1 rounds. You can only be damaged by Arcane damage while in your shadow form."
+    }
+   ]
+  },
+  "BELT MAGIC PROPERTIES": {
+   "die": 20,
+   "page": 227,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 2,
+     "t": "Increase your Endurance by an amount based on this item's rarity: +5 Uncommon, +10 Rare, +15 Epic."
+    },
+    {
+     "lo": 3,
+     "hi": 4,
+     "t": "Increase your Resolve by an amount based on this item's rarity: +5 Uncommon, +10 Rare, +15 Epic."
+    },
+    {
+     "lo": 5,
+     "hi": 6,
+     "t": "Increase your Spellward by an amount based on this item's rarity: +5 Uncommon, +10 Rare, +15 Epic."
+    },
+    {
+     "lo": 7,
+     "hi": 7,
+     "t": "Roll on the Damage Type table. This item grants you damage reduction for that damage type based on its rarity: +1 Uncommon, +2 Rare, +3 Epic."
+    },
+    {
+     "lo": 8,
+     "hi": 8,
+     "t": "Roll on the Damage Type table. You are Resistant to that damage type."
+    },
+    {
+     "lo": 9,
+     "hi": 9,
+     "t": "Increase your carrying capacity by 10."
+    },
+    {
+     "lo": 10,
+     "hi": 10,
+     "t": "Reroll any check once per Camp Rest."
+    },
+    {
+     "lo": 11,
+     "hi": 11,
+     "t": "Items stored in this Belt are Immune to damage caused by Belt checks."
+    },
+    {
+     "lo": 12,
+     "hi": 12,
+     "t": "After defeating a Combat Encounter, roll D6: a result of 1-3 means that you immediately recover D4 Toughness."
+    },
+    {
+     "lo": 13,
+     "hi": 13,
+     "t": "Increase a Skill of your choosing by 20 while wearing this Belt."
+    },
+    {
+     "lo": 14,
+     "hi": 14,
+     "t": "Increase the amount of Health you recover after Setting Camp by D4."
+    },
+    {
+     "lo": 15,
+     "hi": 15,
+     "t": "Increase the amount of Sanity you recover after Setting Camp by D4."
+    },
+    {
+     "lo": 16,
+     "hi": 16,
+     "t": "Ignore the effects of a single Madness you're currently affected by."
+    },
+    {
+     "lo": 17,
+     "hi": 17,
+     "t": "Reroll any failed Thievery checks while attempting to open a lock."
+    },
+    {
+     "lo": 18,
+     "hi": 18,
+     "t": "Reroll any failed Thievery checks while attempting to dismantle a trap."
+    },
+    {
+     "lo": 19,
+     "hi": 19,
+     "t": "This Belt works as a lightsource."
+    },
+    {
+     "lo": 20,
+     "hi": 20,
+     "t": "Once per Rest you can recover D10 Wounds."
+    }
+   ]
+  },
+  "BOOTS MAGIC PROPERTIES": {
+   "die": 20,
+   "page": 228,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 2,
+     "t": "Increase your Endurance by an amount based on this item's rarity: +5 Uncommon, +10 Rare, +15 Epic."
+    },
+    {
+     "lo": 3,
+     "hi": 4,
+     "t": "Increase your Resolve by an amount based on this item's rarity: +5 Uncommon, +10 Rare, +15 Epic."
+    },
+    {
+     "lo": 5,
+     "hi": 6,
+     "t": "Increase your Spellward by an amount based on this item's rarity: +5 Uncommon, +10 Rare, +15 Epic."
+    },
+    {
+     "lo": 7,
+     "hi": 7,
+     "t": "You're Immune to Stunned."
+    },
+    {
+     "lo": 8,
+     "hi": 8,
+     "t": "You're Immune to Restrained."
+    },
+    {
+     "lo": 9,
+     "hi": 9,
+     "t": "Increase a Skill of your choosing by 20."
+    },
+    {
+     "lo": 10,
+     "hi": 10,
+     "t": "Roll on the Damage Type table. This item grants you damage reduction based on its rarity: +1 Uncommon, +2 Rare, +3 Epic."
+    },
+    {
+     "lo": 11,
+     "hi": 11,
+     "t": "Reroll any failed Thievery checks while attempting to open a lock."
+    },
+    {
+     "lo": 12,
+     "hi": 12,
+     "t": "Reroll any failed Thievery checks while attempting to dismantle a trap."
+    },
+    {
+     "lo": 13,
+     "hi": 13,
+     "t": "You have Advantage on Acrobatics checks."
+    },
+    {
+     "lo": 14,
+     "hi": 14,
+     "t": "You have Advantage on Stealth checks."
+    },
+    {
+     "lo": 15,
+     "hi": 15,
+     "t": "Ignore the effects of a Fumble once per Camp Rest."
+    },
+    {
+     "lo": 16,
+     "hi": 16,
+     "t": "After rolling on the Scavenging table (page 116), you can choose to adjust the die roll by up to D4."
+    },
+    {
+     "lo": 17,
+     "hi": 17,
+     "t": "Increase the amount of Armor provided by greaves you wear by +1."
+    },
+    {
+     "lo": 18,
+     "hi": 18,
+     "t": "Once per room you can reroll a failed Dodge check."
+    },
+    {
+     "lo": 19,
+     "hi": 19,
+     "t": "Once per Encounter, you can make a special kick attack that deals 2D6+2 Bludgeoning damage. This is a Free Action that requires an Unarmed Combat & Fist Weapons check."
+    },
+    {
+     "lo": 20,
+     "hi": 20,
+     "t": "You gain a free Reaction per round."
+    }
+   ]
+  },
+  "GLOVES MAGIC PROPERTIES": {
+   "die": 20,
+   "page": 229,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 1,
+     "t": "Roll on the Damage Type table. This item grants you damage reduction based on its rarity: +1 Uncommon, +2 Rare, +3 Epic."
+    },
+    {
+     "lo": 2,
+     "hi": 2,
+     "t": "This item grants you Spellward based on its rarity: +10 Uncommon, +20 Rare, +30 Epic."
+    },
+    {
+     "lo": 3,
+     "hi": 3,
+     "t": "This Armor grants you Resolve based on the Glove's rarity: +10 Uncommon, +20 Rare, +30 Epic."
+    },
+    {
+     "lo": 4,
+     "hi": 4,
+     "t": "Increase a Skill of your choosing by 20."
+    },
+    {
+     "lo": 5,
+     "hi": 5,
+     "t": "Every time you were to gain Exhaustion, reduce the amount gained by 1, to a minimum of 1."
+    },
+    {
+     "lo": 6,
+     "hi": 6,
+     "t": "You have Advantage on Athletics checks."
+    },
+    {
+     "lo": 7,
+     "hi": 7,
+     "t": "Increase your Unarmed Combat & Fist Weapons Skill by 30."
+    },
+    {
+     "lo": 8,
+     "hi": 8,
+     "t": "Reroll any failed Thievery checks while attempting to open a lock. This can be done once per door."
+    },
+    {
+     "lo": 9,
+     "hi": 9,
+     "t": "Reroll any failed Thievery checks while attempting to dismantle a trap. This can be done once per trap."
+    },
+    {
+     "lo": 10,
+     "hi": 10,
+     "t": "Once per Encounter, you can make a special punch attack that deals 2D6+2 Bludgeoning damage. This is a Free Action that requires an Unarmed Combat & Fist Weapons check."
+    },
+    {
+     "lo": 11,
+     "hi": 11,
+     "t": "You have Advantage on Scavenge checks."
+    },
+    {
+     "lo": 12,
+     "hi": 12,
+     "t": "After rolling on the Scavenging table (page 116), you can choose to adjust the die roll by up to D4."
+    },
+    {
+     "lo": 13,
+     "hi": 13,
+     "t": "Increase the amount of Armor provided by vambraces you wear by 1."
+    },
+    {
+     "lo": 14,
+     "hi": 14,
+     "t": "Increase your attack Skill by 10 when attempting to Parry an attack."
+    },
+    {
+     "lo": 15,
+     "hi": 15,
+     "t": "Increase your max Aether by D10."
+    },
+    {
+     "lo": 16,
+     "hi": 16,
+     "t": "Once per Encounter you can use an Ability that has an Aether cost without spending any Aether."
+    },
+    {
+     "lo": 17,
+     "hi": 17,
+     "t": "Your weapon attacks deal +1 damage."
+    },
+    {
+     "lo": 18,
+     "hi": 18,
+     "t": "Roll on the Damage Type table. You can choose to deal that damage type with your weapon attacks."
+    },
+    {
+     "lo": 19,
+     "hi": 19,
+     "t": "Heal 1 Wound each time you defeat an opponent."
+    },
+    {
+     "lo": 20,
+     "hi": 20,
+     "t": "Increase your max Toughness by D10."
+    }
+   ]
+  },
+  "RING MAGIC PROPERTIES": {
+   "die": 20,
+   "page": 230,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 1,
+     "t": "Roll on the Damage Type table. This item grants you damage reduction based on its rarity: +1 Uncommon, +2 Rare, +3 Epic."
+    },
+    {
+     "lo": 2,
+     "hi": 2,
+     "t": "Increase your Resistances by an amount based on this item's rarity: +5 Uncommon, +10 Rare, +15 Epic."
+    },
+    {
+     "lo": 3,
+     "hi": 3,
+     "t": "Reroll any check once per Camp Rest."
+    },
+    {
+     "lo": 4,
+     "hi": 4,
+     "t": "Increase a Skill of your choosing by 10."
+    },
+    {
+     "lo": 5,
+     "hi": 5,
+     "t": "When you attempt to break down a door, you gain +20 Athletics."
+    },
+    {
+     "lo": 6,
+     "hi": 6,
+     "t": "When Taking a Breather, you don't reduce the Tension Die."
+    },
+    {
+     "lo": 7,
+     "hi": 7,
+     "t": "Increase your maximum Sanity by 5."
+    },
+    {
+     "lo": 8,
+     "hi": 8,
+     "t": "Reroll any failed Thievery checks while attempting to open a lock. This can be done once per door."
+    },
+    {
+     "lo": 9,
+     "hi": 9,
+     "t": "Reroll any failed Thievery checks while attempting to dismantle a trap. This can be done once per trap."
+    },
+    {
+     "lo": 10,
+     "hi": 10,
+     "t": "Increase your maximum Health by 5."
+    },
+    {
+     "lo": 11,
+     "hi": 11,
+     "t": "Once per Rest you can heal D10 Wounds."
+    },
+    {
+     "lo": 12,
+     "hi": 12,
+     "t": "After rolling on the Scavenging table (page 116), you can choose to adjust the die roll by up to D4."
+    },
+    {
+     "lo": 13,
+     "hi": 13,
+     "t": "Increase the amount of Health you recover after Setting Camp by D4."
+    },
+    {
+     "lo": 14,
+     "hi": 14,
+     "t": "Increase the amount of Sanity you recover after Setting Camp by D4."
+    },
+    {
+     "lo": 15,
+     "hi": 15,
+     "t": "Ignore the effects of a single Madness you're currently affected by."
+    },
+    {
+     "lo": 16,
+     "hi": 16,
+     "t": "Increase your maximum Toughness by 5."
+    },
+    {
+     "lo": 17,
+     "hi": 17,
+     "t": "Once per Encounter you can use an Ability that has an Aether cost without spending any Aether."
+    },
+    {
+     "lo": 18,
+     "hi": 18,
+     "t": "You have Advantage on Scavenge checks."
+    },
+    {
+     "lo": 19,
+     "hi": 19,
+     "t": "You can reroll your Growing Darkness rolls. The second roll is final."
+    },
+    {
+     "lo": 20,
+     "hi": 20,
+     "t": "Ignore the effects of a Fumble once per Camp Rest."
+    }
+   ]
+  },
+  "WEAPON MAGIC PROPERTIES": {
+   "die": 20,
+   "page": 231,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 1,
+     "t": "Roll on the Damage Type table. You add +D4 damage of that Type to your Damage Pool when attacking with this weapon."
+    },
+    {
+     "lo": 2,
+     "hi": 2,
+     "t": "+10 to Initiative checks."
+    },
+    {
+     "lo": 3,
+     "hi": 3,
+     "t": "Add +D6 damage to your Damage Pool when you deal a Critical Strike."
+    },
+    {
+     "lo": 4,
+     "hi": 4,
+     "t": "+1 damage of the same type the weapon deals."
+    },
+    {
+     "lo": 5,
+     "hi": 5,
+     "t": "When dropped, the weapon instantly returns to your hand."
+    },
+    {
+     "lo": 6,
+     "hi": 6,
+     "t": "Target gains Bleeding (1) each time you deal damage to them."
+    },
+    {
+     "lo": 7,
+     "hi": 7,
+     "t": "Target gains Poisoned (1) each time you deal damage to them."
+    },
+    {
+     "lo": 8,
+     "hi": 8,
+     "t": "Roll on the Random Enemy Type table. This weapon deals bonus damage against that type of enemy, depending on this weapon's rarity: +1 Uncommon, +2 Rare, +3 Epic."
+    },
+    {
+     "lo": 9,
+     "hi": 9,
+     "t": "Once per room you can add a number of dice to your Damage Pool when attacking with your weapon, depending on the weapon's rarity: +D6 Uncommon, +2D6 Rare, +3D6 Epic."
+    },
+    {
+     "lo": 10,
+     "hi": 10,
+     "t": "When you hit with this weapon and reduce the target to 0 Health, you gain D6 Temporary Toughness."
+    },
+    {
+     "lo": 11,
+     "hi": 11,
+     "t": "Once per room, you can unleash a burst of destructive Arcane energy from the weapon. Every enemy creature must pass a Magic Resistance check or take damage depending on the weapon's rarity:"
+    },
+    {
+     "lo": 12,
+     "hi": 12,
+     "t": "When you hit with this weapon and reduce the target to 0 Health, you gain D6 Temporary Aether."
+    },
+    {
+     "lo": 13,
+     "hi": 13,
+     "t": "During the next D4 rounds, all non-Critical Strike damage dealt with this weapon is doubled. All incoming damage is doubled as well. Activating this Property is a Free Action."
+    },
+    {
+     "lo": 14,
+     "hi": 14,
+     "t": "You add +D6 to your Damage Pool for your first attack in a room while wielding this weapon."
+    },
+    {
+     "lo": 15,
+     "hi": 15,
+     "t": "When you deal a Critical Strike with this weapon, you recover D10 Wounds."
+    },
+    {
+     "lo": 16,
+     "hi": 16,
+     "t": "When wielding this weapon, you deal a Critical Strike when rolling 66, regardless of your Skill score."
+    },
+    {
+     "lo": 17,
+     "hi": 17,
+     "t": "Deals +1 damage on your next attack if you received damage during this same turn."
+    },
+    {
+     "lo": 18,
+     "hi": 18,
+     "t": "You can choose to add D8 damage to your Damage Pool each time you deal damage with this weapon. If you do so, you receive the same amount of damage."
+    },
+    {
+     "lo": 19,
+     "hi": 19,
+     "t": "When you deal damage with this weapon, gain +10 Dodge until your next turn."
+    },
+    {
+     "lo": 20,
+     "hi": 20,
+     "t": "This weapon has +10 Speed."
+    }
+   ]
+  },
+  "MAGIC ITEM PECULIARITY": {
+   "die": 100,
+   "page": 232,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 2,
+     "t": "It feels wet to the touch."
+    },
+    {
+     "lo": 3,
+     "hi": 4,
+     "t": "It feels heavier than it looks."
+    },
+    {
+     "lo": 5,
+     "hi": 6,
+     "t": "Tiny scales cover its surface."
+    },
+    {
+     "lo": 7,
+     "hi": 8,
+     "t": "You hear whispers when you're holding it, but can't make out the words."
+    },
+    {
+     "lo": 9,
+     "hi": 10,
+     "t": "It appears to be completely made of glass. It doesn't make it more fragile than it should be though."
+    },
+    {
+     "lo": 11,
+     "hi": 12,
+     "t": "It levitates slightly."
+    },
+    {
+     "lo": 13,
+     "hi": 14,
+     "t": "When left on soil, grass grows under it."
+    },
+    {
+     "lo": 15,
+     "hi": 16,
+     "t": "You feel a constant chill while holding this item."
+    },
+    {
+     "lo": 17,
+     "hi": 18,
+     "t": "Turns completely black under direct light."
+    },
+    {
+     "lo": 19,
+     "hi": 20,
+     "t": "An eye opens on it when you're not directly looking at it."
+    },
+    {
+     "lo": 21,
+     "hi": 22,
+     "t": "Small, ferrous items adhere to it."
+    },
+    {
+     "lo": 23,
+     "hi": 24,
+     "t": "It's always warm to the touch."
+    },
+    {
+     "lo": 25,
+     "hi": 26,
+     "t": "It's always covered in a layer of filth."
+    },
+    {
+     "lo": 27,
+     "hi": 28,
+     "t": "Smells like freshly baked bread."
+    },
+    {
+     "lo": 29,
+     "hi": 30,
+     "t": "Appears to be made of stone."
+    },
+    {
+     "lo": 31,
+     "hi": 32,
+     "t": "Smells like rotten flesh."
+    },
+    {
+     "lo": 33,
+     "hi": 34,
+     "t": "Secretes small droplets of water."
+    },
+    {
+     "lo": 35,
+     "hi": 36,
+     "t": "It's always covered in a layer of mucus."
+    },
+    {
+     "lo": 37,
+     "hi": 38,
+     "t": "It sparkles."
+    },
+    {
+     "lo": 39,
+     "hi": 40,
+     "t": "Light seems to dim around it."
+    },
+    {
+     "lo": 41,
+     "hi": 42,
+     "t": "Your eyes change color frequently."
+    },
+    {
+     "lo": 43,
+     "hi": 44,
+     "t": "It's always pristine."
+    },
+    {
+     "lo": 45,
+     "hi": 46,
+     "t": "Harmless insects swarm around it at all times. OPTIONAL STEP: MAGIC ITEM PECULIARITIES No two magic item are alike. Each one is a delicate work of art created by a combination of craft and aetheric energy unique to each craftsmith. If you want to know what sets apart the item you just found from others, each time you acquire a new magic item you can roll on the Magic Item Peculiarity table."
+    },
+    {
+     "lo": 47,
+     "hi": 48,
+     "t": "Appears to be made of metal."
+    },
+    {
+     "lo": 49,
+     "hi": 50,
+     "t": "It bounces when dropped."
+    },
+    {
+     "lo": 51,
+     "hi": 52,
+     "t": "Seems to be covered in fur."
+    },
+    {
+     "lo": 53,
+     "hi": 54,
+     "t": "Completely outlandishly colored."
+    },
+    {
+     "lo": 55,
+     "hi": 56,
+     "t": "Arcs of energy jump across it."
+    },
+    {
+     "lo": 57,
+     "hi": 58,
+     "t": "Your voice's pitch drops an octave."
+    },
+    {
+     "lo": 59,
+     "hi": 60,
+     "t": "Constantly thrums."
+    },
+    {
+     "lo": 61,
+     "hi": 62,
+     "t": "Sticks to any surface."
+    },
+    {
+     "lo": 63,
+     "hi": 64,
+     "t": "Becomes highly reflective, like a mirror."
+    },
+    {
+     "lo": 65,
+     "hi": 66,
+     "t": "Constantly changes and shifts color."
+    },
+    {
+     "lo": 67,
+     "hi": 68,
+     "t": "Stars seem to drift within it."
+    },
+    {
+     "lo": 69,
+     "hi": 70,
+     "t": "Appears to be made of precious gems."
+    },
+    {
+     "lo": 71,
+     "hi": 72,
+     "t": "Covered in chitin."
+    },
+    {
+     "lo": 73,
+     "hi": 74,
+     "t": "Possesses a distinct heartbeat."
+    },
+    {
+     "lo": 75,
+     "hi": 76,
+     "t": "Surrounded by a constant, gentle breeze."
+    },
+    {
+     "lo": 77,
+     "hi": 78,
+     "t": "Tendrils of mist appear occasionally."
+    },
+    {
+     "lo": 79,
+     "hi": 80,
+     "t": "Drips sand."
+    },
+    {
+     "lo": 81,
+     "hi": 82,
+     "t": "Always giving off smoke."
+    },
+    {
+     "lo": 83,
+     "hi": 84,
+     "t": "Tiny crystals grow from it."
+    },
+    {
+     "lo": 85,
+     "hi": 86,
+     "t": "Appears to be made of flesh."
+    },
+    {
+     "lo": 87,
+     "hi": 88,
+     "t": "Smells of burning charcoal."
+    },
+    {
+     "lo": 89,
+     "hi": 90,
+     "t": "Covered in intricate runes."
+    },
+    {
+     "lo": 91,
+     "hi": 92,
+     "t": "Chiming bells can be heard in the distance when touched."
+    },
+    {
+     "lo": 93,
+     "hi": 94,
+     "t": "Smells strongly of incense."
+    },
+    {
+     "lo": 95,
+     "hi": 96,
+     "t": "Screams randomly."
+    },
+    {
+     "lo": 97,
+     "hi": 98,
+     "t": "Your desires imprint on the object when you touch it for the first time. Choose one peculiarity from this list."
+    },
+    {
+     "lo": 99,
+     "hi": 100,
+     "t": "Roll twice on this table and apply both results."
+    }
+   ]
+  },
+  "RELICS": {
+   "die": 20,
+   "page": 234,
+   "rows": [
+    {
+     "lo": 1,
+     "hi": 1,
+     "t": "Aegis of the Eternal Sentinel"
+    },
+    {
+     "lo": 2,
+     "hi": 2,
+     "t": "Band of Knowledge"
+    },
+    {
+     "lo": 3,
+     "hi": 3,
+     "t": "Diadem of Aetheric Power"
+    },
+    {
+     "lo": 4,
+     "hi": 4,
+     "t": "Draught of Vitality"
+    },
+    {
+     "lo": 5,
+     "hi": 5,
+     "t": "Echo of Resurgence"
+    },
+    {
+     "lo": 6,
+     "hi": 6,
+     "t": "Elixir of Arcane Ascendance"
+    },
+    {
+     "lo": 7,
+     "hi": 7,
+     "t": "Ethereal Requiem Blade"
+    },
+    {
+     "lo": 8,
+     "hi": 8,
+     "t": "Gloomheart Seed"
+    },
+    {
+     "lo": 9,
+     "hi": 9,
+     "t": "Gloves of the Blazing Phoenix"
+    },
+    {
+     "lo": 10,
+     "hi": 10,
+     "t": "Inferno Plate"
+    },
+    {
+     "lo": 11,
+     "hi": 11,
+     "t": "Mace of Eclipse"
+    },
+    {
+     "lo": 12,
+     "hi": 12,
+     "t": "Mindward Elixir"
+    },
+    {
+     "lo": 13,
+     "hi": 13,
+     "t": "Potion of Forgotten Fate"
+    },
+    {
+     "lo": 14,
+     "hi": 14,
+     "t": "Ring of Arcane Tempest"
+    },
+    {
+     "lo": 15,
+     "hi": 15,
+     "t": "Ring of Ethereal Grasp"
+    },
+    {
+     "lo": 16,
+     "hi": 16,
+     "t": "Ring of Subjugated Servitude"
+    },
+    {
+     "lo": 17,
+     "hi": 17,
+     "t": "Third Eye of Emaricus"
+    },
+    {
+     "lo": 18,
+     "hi": 18,
+     "t": "Vitalbane Cinch"
+    },
+    {
+     "lo": 19,
+     "hi": 19,
+     "t": "Voidclasp Gauntlets"
+    },
+    {
+     "lo": 20,
+     "hi": 20,
+     "t": "Wyrmfang"
+    }
+   ]
+  }
+ },
+ "relics": [
+  {
+   "name": "Aegis of the Eternal Sentinel",
+   "type": "Shield (Full)",
+   "powers": [
+    "Increases your Parry by +20",
+    "Once per room you can ignore all damage from a single source"
+   ],
+   "desc": "The Aegis of the Eternal Sentinel absorbs and disperses incoming attacks with remarkable efficiency, offering a stalwart defense against both mundane and magical assaults. The shield's surface is etched with intricate patterns that evoke the image of a vigilant sentinel, and is hewn from sturdy ironwood inlaid with veins of luminous crystal. As it is raised, an invisible barrier forms, embodying the spirit of its namesake."
+  },
+  {
+   "name": "Band of Knowledge",
+   "type": "Ring",
+   "powers": [
+    "After a Camp Rest, choose a Skill: it gains +50 until your next Camp Rest. These points may not be reallocated until your next Camp Rest"
+   ],
+   "desc": "Forged in the heart of the lost library of Kizanu and infused with the essence of countless tomes, this ring serves as a conduit to unparalleled knowledge. When slipped onto the finger, it ignites a profound awakening within the wearer's mind, expanding their intellect and awareness."
+  },
+  {
+   "name": "Diadem of Aetheric Power",
+   "type": "Head Piece",
+   "powers": [
+    "+10 max Aether",
+    "All Abilities that deal damage deal an additional +D4 damage"
+   ],
+   "desc": "When donned, this delicately crafted diadem made of a single piece of unidentified crystal enhances the caster's connection to the arcane, intensifying the power and efficacy of their spells. Each incantation resonates with the wearer's intent and amplifies their magical resonance."
+  },
+  {
+   "name": "Draught of Vitality",
+   "type": "Consumable",
+   "powers": [
+    "Permanently increases your Health by +D4"
+   ],
+   "desc": "Contained within a murky glass vial is a liquid blend of rare herbs, gemstone fragments, and distilled essence of vitality itself. When consumed, the potion surges through the consumer's veins, bolstering their constitution and fortitude to new levels. As the elixir infuses their being, it mends wounds, strengthens sinew, and breathes newfound vigor into the very core of their existence."
+  },
+  {
+   "name": "Echo of Resurgence",
+   "type": "Trinket",
+   "powers": [
+    "If one blow were to kill you, ignore all damage and heal D10 Health instead. The Echo of Resurgence shatters afterwards"
+   ],
+   "desc": "A product of intricate enchantments woven into a fragile crystal, this trinket hangs from a slender chain, resting gently against the wearer's heart. A single, precious irreplaceable gift is bestowed upon the bearer: a second chance at life. When faced with imminent demise, the trinket's magic awakens, casting a protective cocoon around the wearer and absorbing the fatal blow."
+  },
+  {
+   "name": "Elixir of Arcane Ascendance",
+   "type": "Consumable",
+   "powers": [
+    "Permanently increases your Aether by D4"
+   ],
+   "desc": "This vial of shimmering luminescence radiates an aura of magical empowerment. When imbibed, the Elixir of Arcane Ascendance awakens a dormant wellspring of arcane potential within the consumer, elevating their casting abilities to new heights. As the elixir courses through their veins, the bearer's body becomes more in tune with the aetheric planes, allowing them to tap into arcane energies with ease."
+  },
+  {
+   "name": "Ethereal Requiem Blade",
+   "type": "Scimitar",
+   "powers": [
+    "Attacks with this weapon ignore Armor",
+    "You can never drop this weapon unwillingly",
+    "Recover 1 Sanity after a successful Combat Encounter"
+   ],
+   "desc": "Forged from an alloy of silvered steel and infused with fragments of star metal, the sword's blade curves with an ethereal grace. Intricate runes intertwine across its hilt, and when unsheathed, the blade hums with a melancholic resonance, its touch exuding an aura of spectral cold. With each swing, the sword sings a silent lament, its strikes capable of bypassing both armor and flesh to wound the very essence of a foe."
+  },
+  {
+   "name": "Gloomheart Seed",
+   "type": "Consumable",
+   "powers": [
+    "+1 Ability Point"
+   ],
+   "desc": "When ingested, this ebony-hued seed merges seamlessly with the essence of the consumer, awakening an innate potential within. As tendrils of shadow curl through their veins, a surge of newfound strength courses through their body, bestowing an increase in power."
+  },
+  {
+   "name": "Gloves of the Blazing Phoenix",
+   "type": "Gloves",
+   "powers": [
+    "You're Resistant to Fire damage",
+    "Once per Camp Rest you can use the Flamecaster's Tier 4 Summon Fire Elemental Ability. The elemental disappears when you exit the room"
+   ],
+   "desc": "These gloves woven from enchanted crimson silk and adorned with intricate patterns resembling dancing flames fit snugly against the wearer's hands, imbuing them with the power to command fire. Upon activating their magic, the wearer can summon a fiery elemental ally, a creature born of the very flames they seek to control."
+  },
+  {
+   "name": "Inferno Plate",
+   "type": "Plate (Torso)",
+   "powers": [
+    "This piece of armor bursts into flames when you engage in combat, dealing 1 Fire damage per round to all opponents"
+   ],
+   "desc": "Crafted from enchanted obsidian and etched with intricate flame motifs by the enslaved Orneka blacksmiths, this plate rests upon the wearer's shoulders like a mantle of infernal power. Upon entering combat, the armor awakens, erupting into majestic flames that dance along its surface, warding off assailants with an aura of searing heat. As the wearer wades into battle, their enemies are confronted with the choice of engaging in close combat and facing the blistering flames or keeping a cautious distance."
+  },
+  {
+   "name": "Mace of Eclipse",
+   "type": "Mace",
+   "powers": [
+    "+2 Force damage",
+    "Any creature struck by this mace must pass an Endurance check or be Dazed (1)"
+   ],
+   "desc": "Bound with leather straps and accented by blackened steel, the mace's head is sculpted into a wickedly spiked orb, etched with intricate lunar motifs. When swung, the Mace of Eclipse radiates an aura of palpable darkness, its strikes carrying an otherworldly chill that engulfs enemies in an umbra of dread, weakening their resolve and sapping their strength."
+  },
+  {
+   "name": "Mindward Elixir",
+   "type": "Consumable",
+   "powers": [
+    "Permanently increases your Sanity by D4"
+   ],
+   "desc": "Comprising a harmonious blend of rare herbs, moonlit dew, and crystalline extracts, this elixir embodies the essence of serenity and mental resilience. When imbibed, the Mindward Elixir envelops the consumer's psyche in a soothing embrace, fortifying their mental defenses against psychic assaults and providing solace against inner turmoils."
+  },
+  {
+   "name": "Potion of Forgotten Fate",
+   "type": "Consumable",
+   "powers": [
+    "Upon drinking this Potion, you automatically lose access to one of your two starting Masteries. You are free to pick a new one, assigning the same number of Ability Points that were assigned to the forgotten Mastery."
+   ],
+   "desc": "This swirling black liquid slushes and bubbles as if it has a mind of its own. A person drinking this mysterious liquid feels the brew eagerly sliding into their throat, choking them. After a minute of pure agony and being unable to breathe, they vomit a black crystal containing all their old power and experiences, and feel an empty space in their soul eager to be filled with new power."
+  },
+  {
+   "name": "Ring of Arcane Tempest",
+   "type": "Ring",
+   "powers": [
+    "Allows the character to blast a wave of aetheric energies that deal 2D10 Arcane damage to all opponents in the room. This effect can be activated once per Camp Rest"
+   ],
+   "desc": "Fashioned from a lustrous blend of obsidian and sapphire, the ring's surface is etched with intricate glyphs that pulse in rhythm with the surrounding arcane currents. When worn, it grants the wearer the ability to unleash a devastating wave of raw arcane power against their adversaries."
+  },
+  {
+   "name": "Ring of Ethereal Grasp",
+   "type": "Ring",
+   "powers": [
+    "Grants the character 5 Aether that can only be spent on summoning Minions."
+   ],
+   "desc": "Crafted from a rare fusion of argent metal and a crystalline core, the ring pulsates with energy that resonates with the wearer's desire for dominion. Once worn, it unlocks the capacity to command an increased number of minions, forging an unbreakable psychic link that amplifies their reach and influence. As the wearer's will extends over the augmented horde, a fraction of their consciousness melds with their minions, bridging the chasm between individuality and collective purpose."
+  },
+  {
+   "name": "Ring of Subjugated Servitude",
+   "type": "Ring",
+   "powers": [
+    "Increases the Health of Tier 1 Minions by ⅃/2"
+   ],
+   "desc": "This twisted emblem of dominion exudes an aura of enigmatic control. When worn by its master, this obsidian ring surges with dark energy, resonating with the dark pact it embodies. It empowers the wearer's minions, elevating their potency and loyalty."
+  },
+  {
+   "name": "Third Eye of Emaricus",
+   "type": "Trinket",
+   "powers": [
+    "You have Advantage on all Perception and Scavenging checks",
+    "You can never be surprised"
+   ],
+   "desc": "Hewn from a rare onyx infused with a glimmering sapphire pupil, this jewel is fashioned in the shape of a vigilant eye, its gaze eternal and all-encompassing. When held, the Third Eye of Emaricus allows the bearer an unparalleled level of awareness, becoming virtually impossible to surprise. Their gaze sees it all and everyone, even in the almost absolute darkness of Ker Nethalas."
+  },
+  {
+   "name": "Vitalbane Cinch",
+   "type": "Belt",
+   "powers": [
+    "Increase your Health by 5",
+    "You gain access to the Hexmancer's Tier 4 Ability Drain Lifeforce"
+   ],
+   "desc": "Fashioned from supple leather and woven with threads of life-affirming magic, this belt encircles the waist with a reassuring weight. Upon donning it, a surge of newfound stamina courses through the wearer's veins, bolstering their constitution and fortitude. In times of dire need, the belt's latent power can be harnessed, enabling the wearer to siphon the life force of foes through a touch, replenishing their own health while sapping the vitality of their adversaries."
+  },
+  {
+   "name": "Voidclasp Gauntlets",
+   "type": "Fist weapon",
+   "powers": [
+    "Target receives a minimum of 1 damage every time you successfully strike them, regardless of Armor or resistances",
+    "Once per Combat Encounter you may spend a Reaction to turn your opponent's attack against them, leaving you unharmed"
+   ],
+   "desc": "Engraved sigils shimmer with a faint iridescence across these black, supple gauntlets, invoking the power of the void. The Voidclasp Gauntlets channel the power of the void into the wearer's strikes, infusing them with a dark energy that rends both armor and flesh alike."
+  },
+  {
+   "name": "Wyrmfang",
+   "type": "Spear",
+   "powers": [
+    "+D6 Lightning damage",
+    "Reduce the opponent's Attack Skill by 5 each time you deal damage to them"
+   ],
+   "desc": "Forged from a fusion of mithril and wyrm's fang, the spear's blade gleams with uncontained luminosity, evoking the power of both heaven and dragonkind, and etched along its shaft are intricate runes that pulse with radiant energy. As it is wielded, Wyrmfang burns with an inner fire, channeling the bearer's strength into piercing strikes that carry the fervor of celestial wrath."
+  }
+ ]
+}

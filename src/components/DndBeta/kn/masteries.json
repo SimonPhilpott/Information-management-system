@@ -1,0 +1,1562 @@
+[
+ {
+  "name": "Abyssal Reaver",
+  "page": 22,
+  "blurb": "You are a fearsome warrior who taps into the dark powers of the abyss, channeling demonic energy into your melee attacks to strike fear into the hearts of your foes.",
+  "feature": {
+   "name": "Conqueror's Vitality",
+   "text": "You gain 1 Temporary Toughness for each Combat Encounter you defeat. This Temporary Toughness remains until spent or until you take a rest, and can go above your usual maximum."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Infernal Flame",
+    "action": "1 Standard Action (Magical)",
+    "cost": "4 Aether",
+    "text": "Your fist bursts into green-red flames, as you send a burst of fire to your target, dealing D6+D4 Infernal damage."
+   },
+   {
+    "tier": 2,
+    "name": "Hellish Weapon",
+    "action": "1 Standard Action",
+    "cost": "5 Aether (Sustained)",
+    "text": "Flames from the pits of hell cover your weapon. Add D6 Infernal damage to your Damage Pool."
+   },
+   {
+    "tier": 3,
+    "name": "Demonic Pact",
+    "action": "Passive",
+    "cost": "",
+    "text": "You've made a pact with a demon, reducing your maximum Sanity by 5 but becoming Immune to the Frightened and Poisoned conditions."
+   },
+   {
+    "tier": 4,
+    "name": "Demon Shroud",
+    "action": "1 Standard Action",
+    "cost": "5 Aether",
+    "text": "You are covered in flames, making it impossible for your opponents to attack you without suffering dire consequences. When an opponent damages you after attacking, they suffer 1 Infernal damage. This lasts until combat is over."
+   },
+   {
+    "tier": 5,
+    "name": "Soul Harvest",
+    "action": "1 Standard Action (Magical)",
+    "cost": "6 Aether",
+    "text": "You consume the souls of your enemies, dealing 2D6 Infernal damage to all opponents in the room and recovering 2 Sanity for each opponent damaged in this way."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "The Infernal Bloodline",
+    "text": "Those born with the Infernal Bloodline possess a natural affinity for demonic energies. They learn to harness the power of the infernal realms, channeling demonic training and self-discipline, individuals with this bloodline can tap into the raw, chaotic power of demons, infusing their attacks with dark flames, shadowy tendrils, and other demonic manifestations."
+   },
+   {
+    "n": 2,
+    "name": "The Order of the Abyssal Pact",
+    "text": "The Order of the Abyssal Pact is a secretive organization that seeks to harness and control demonic energies. Members of the Order study ancient grimoires, learning to make pacts with demonic entities. They willingly embrace the dark powers bestowed upon them, using demonic energies to enhance their own combat skills and magical abilities."
+   },
+   {
+    "n": 3,
+    "name": "The Hellforge",
+    "text": "The Hellforge is a renowned training ground for those who seek to tap into demonic energies. Simply reaching this cursed location is a feat unto itself, and survival is never guaranteed. Once there, they learn to draw upon demonic energies, channeling them into their attacks and abilities, transforming themselves into vessels of dark power."
+   },
+   {
+    "n": 4,
+    "name": "The Soulbrand",
+    "text": "The Soulbrand are practitioners who delve into the forbidden arts of summoning and binding demons. Through their rigorous training, they learn to forge a connection with demonic abilities. These conjurers can manifest ethereal blades, imbue their strikes with demonic flames, and call upon infernal forces to augment their powers."
+   },
+   {
+    "n": 5,
+    "name": "The Black Gate",
+    "text": "The Black Gate is the only known point of access from the physical world into one of the demonic realms. Since most mortals would immediately die if attempting to cross it, aspiring Abyssal Reavers train outside, letting the demonic energies permeate their whole beings while they train and develop new demon-infused techniques and spells."
+   },
+   {
+    "n": 6,
+    "name": "The Demonsong Cult",
+    "text": "The Demonsong Cult worships and embraces the powers of the demonic realms. Its members undergo dark rituals and intense training, willingly becoming vessels for demonic energies. Through their connection with demons, they gain heightened strength, speed, and arcane abilities. The Demonsong Cultists blend their own martial skills with the unholy might of demons, using their dark empowerment to unleash devastating attacks and terrifying displays of demonic power."
+   }
+  ]
+ },
+ {
+  "name": "Arcanist",
+  "page": 24,
+  "blurb": "You have studied everything there is to know about the aetheric realm and how it manifests in the physical world, granting you superb knowledge and control over the arcane.",
+  "feature": {
+   "name": "Arcane Feedback",
+   "text": "Each time a creature receives Arcane damage as a result of your Abilities, increase your Arcane damage by +1 against that specific creature."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Arcane Missiles",
+    "action": "1 Standard Action (Magical)",
+    "cost": "4 Aether",
+    "text": "A shower of magic darts shoot from your fingertips, homing in your targets. Up to ⅃/2 enemies receive D4 Arcane damage."
+   },
+   {
+    "tier": 2,
+    "name": "Magic Shell",
+    "action": "1 Reaction",
+    "cost": "Special",
+    "text": "Summon a shield that protects your whole body, soaking 1 damage per each 2 points of Aether spent."
+   },
+   {
+    "tier": 3,
+    "name": "Create Light",
+    "action": "1 Standard Action",
+    "cost": "4 Aether (Sustained)",
+    "text": "A ball of pure light floats around you. You no longer need a lightsource."
+   },
+   {
+    "tier": 4,
+    "name": "Summon Arcane Companion",
+    "action": "2 Standard Actions",
+    "cost": "4 Aether (Sustained)",
+    "text": "You create a being of pure Aether to serve you. The Arcane Companion will last until destroyed. Check page 200 to learn more about the Arcane Companion's stats."
+   },
+   {
+    "tier": 5,
+    "name": "Arcane Bolt",
+    "action": "1 Standard Action (Magical)",
+    "cost": "7 Aether",
+    "text": "You cast a ray of aetheric energy at your target, dealing 3D10 Arcane damage."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "Archmage Alaris",
+    "text": "Archmage Alaris is a renowned sorcerer who has spent a lifetime delving into the mysteries of arcane magic. As a master of the arcane arts, he accepts only the most dedicated and talented students into his tutelage. Under his guidance, aspiring mages study ancient tomes, learn intricate spells, and unravel the secrets of arcane power. Through rigorous training, disciples develop their understanding and command of the arcane, unlocking the hidden depths of magic."
+   },
+   {
+    "n": 2,
+    "name": "The Arcane Enclave",
+    "text": "The Arcane Enclave is a gathering place for those who seek to unravel the secrets of arcane magic. Within its hallowed halls, mages from various backgrounds converge to share of magical theory, practice complex rituals, and experiment with new spellcasting techniques. The Enclave serves as a hub for arcane research, fostering an environment of discovery and innovation."
+   },
+   {
+    "n": 3,
+    "name": "The College of Arcane Lore",
+    "text": "Situated in Veldonia's High district, the College of Arcane Lore is a prestigious institution dedicated to the study and mastery of arcane magic. Students in this esteemed college immerse themselves in the study of ancient texts, honing their spellcasting abilities, and unraveling the mysteries of arcane arts. Mages-in-training explore various schools of magic, from elemental manipulation to divination, seeking to harness the arcane forces that shape the world."
+   },
+   {
+    "n": 4,
+    "name": "The Coven of Secrets",
+    "text": "A secretive society of arcane practitioners, the Coven of Secrets operates from hidden sanctuaries scattered throughout the Alderworth Kingdom. Its members, skilled in the beyond the grasp of ordinary mages. Initiates undergo rigorous tests and trials, delving into esoteric texts, mastering complex rituals, and unlocking the hidden potential of their own magical abilities."
+   },
+   {
+    "n": 5,
+    "name": "The Tower of Astral Veils",
+    "text": "The Tower of Astral Veils is a revered sanctuary where arcane scholars and practitioners immerse themselves in the study of ancient arcane secrets. Students traverse aetheric realms, harness astral energies, and explore the depths of cosmic knowledge. The tower's library houses what most consider the largest collection of arcane texts, grimoires, and artifacts, providing a rich resource for mages seeking to push the boundaries of their magical prowess."
+   },
+   {
+    "n": 6,
+    "name": "The Order of Aether",
+    "text": "A mystical order dedicated to the pursuit of arcane enlightenment, the Order of Aether trains mages who seek to tap into the deepest wells of arcane power. Members of this revered Order study ancient rituals, master complex spellcasting techniques, and strive to forge a connection with the primordial forces that shape reality. Under the guidance of seasoned masters, they delve into forgotten arcane knowledge, unraveling the secrets of the universe and harnessing the raw power of magic."
+   }
+  ]
+ },
+ {
+  "name": "Brawler",
+  "page": 26,
+  "blurb": "You revel in face to face combat, just your fists and your bravado against everyone. Countless hours training have turned your body into the ultimate weapon, and not even the horrors of Ker Nethalas can withstand your might.",
+  "feature": {
+   "name": "Stonefists",
+   "text": "Increase the damage dealt while Unarmed to D6, and add +D4 Bludgeoning damage to your Damage Pool when using fist weapons."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Feint",
+    "action": "1 Reaction. Requires a Dodge check",
+    "cost": "",
+    "text": "After being attacked by Physical Action, you feint a block, leveraging your position. If your Dodge check is successful, your next attack receives +20, instead of the standard +10."
+   },
+   {
+    "tier": 2,
+    "name": "Uppercut",
+    "action": "1 Standard Action. Requires an Unarmed Combat & Fist Weapons check",
+    "cost": "",
+    "text": "You launch a brutal uppercut against your opponent, dealing 2D8 Bludgeoning damage on a hit. Your next defensive check receives -20."
+   },
+   {
+    "tier": 3,
+    "name": "Overwhelm",
+    "action": "1 Free Action. Requires an Unarmed Combat & Fist Weapons check",
+    "cost": "",
+    "text": "You launch a savage strike at your opponent, overwhelming their defenses and adding D8 Bludgeoning damage to your Damage Pool. Your opponent cannot defend from this attack in any way. This Ability can only be used once per combat."
+   },
+   {
+    "tier": 4,
+    "name": "Kidney Shot",
+    "action": "1 Standard Action. Requires an Unarmed Combat & Fist Weapons check",
+    "cost": "",
+    "text": "You launch a calculated punch against one of the target's vital areas. The target is Stunned (2)."
+   },
+   {
+    "tier": 5,
+    "name": "Perfect Blocking Stance",
+    "action": "Passive",
+    "cost": "",
+    "text": "Your Reaction penalty is reduced to -10 per each consecutive one after the first one, instead of the usual -20."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "Master Remos, the Steel Fist",
+    "text": "Master Remos is a legendary martial arts instructor known for his mastery of unarmed combat. Students who seek to excel in hand-to-hand combat train under his expert techniques, Master Remos instills in his disciples the power and precision of the Steel Fist style, enabling them to deliver devastating strikes and grapple with exceptional skill."
+   },
+   {
+    "n": 2,
+    "name": "The Whispering Pines Academy",
+    "text": "The Whispering Pines Academy is a sanctuary where martial artists dedicate themselves to the mastery of unarmed combat. Within the tranquil setting, students backgrounds. They learn a wide range of martial arts techniques and principles, developing agility, balance, and the ability to adapt their fighting style to any situation."
+   },
+   {
+    "n": 3,
+    "name": "Mara, the Resolute Guardian",
+    "text": "Mara is a renowned martial arts master who has dedicated her life to the pursuit of excellence in unarmed combat. Students flock to her training center to learn the efficient defensive maneuvers. Mara's teachings emphasize discipline, mental fortitude, and the integration of mind, body, and spirit in combat."
+   },
+   {
+    "n": 4,
+    "name": "The Temple of Serene Harmony",
+    "text": "Nestled in a tranquil valley in the Havencrest Peninsula, the Temple of Serene Harmony is a revered institution where warriors train in the art of unarmed combat. Students undergo rigorous physical conditioning, practicing a variety of martial arts techniques and forms. The temple's experienced masters guide disciples in cultivating inner peace, mastering self-control, and harnessing their energy to deliver powerful strikes and flawless defensive maneuvers."
+   },
+   {
+    "n": 5,
+    "name": "The Order of the Silent Wind",
+    "text": "The Order of the Silent Wind is a secret society of martial artists dedicated to the pursuit of unarmed combat mastery. Students who join the Order undergo intense striking, grappling, and evasion techniques. Guided by skilled mentors, members of the Order develop the ability to move silently and neutralize opponents with efficient and precise techniques."
+   },
+   {
+    "n": 6,
+    "name": "The Zenatu Clan",
+    "text": "The Zenatu Clan is a close-knit community of warriors who specialize in unarmed combat. Training within the Clan emphasizes physical strength, agility, and mastering a unique style that combines powerful strikes with evasive footwork and fluid movements. Each member of the Clan is assigned a personal mentor, an experienced warrior who imparts their knowledge and expertise, ensuring the traditions and techniques of the Mountain Peak style are passed down through generations."
+   }
+  ]
+ },
+ {
+  "name": "Bulwark",
+  "page": 28,
+  "blurb": "You march into combat as a walking fortress, impervious to your enemies' futile attempts at bringing you down.",
+  "feature": {
+   "name": "Hard Training",
+   "text": "Ignore all Maneuverability penalties from Armor. +10 Endurance."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Brace",
+    "action": "1 Reaction",
+    "cost": "2 Exhaustion",
+    "text": "You see the enemy strike coming, and you're ready for it. Reduce any incoming damage by D4. You must declare the use of this Ability before your opponent's attack roll."
+   },
+   {
+    "tier": 2,
+    "name": "Shield Bash",
+    "action": "1 Standard Action. Requires a melee attack check and an equipped shield",
+    "cost": "",
+    "text": "You slam your opponent with your shield, Dazing them for 2 rounds."
+   },
+   {
+    "tier": 3,
+    "name": "Sword & Board",
+    "action": "1 Standard Action. Requires a melee attack check and an equipped shield",
+    "cost": "",
+    "text": "You overwhelm your opponent, first with your weapon and then your shield. If your weapon strike hits, you can immediately make a free attack that deals D4 Bludgeoning damage."
+   },
+   {
+    "tier": 4,
+    "name": "Battle Form",
+    "action": "Passive",
+    "cost": "",
+    "text": "Increase your Toughness by ⅃ permanently. Each time your level is increased you must increase your Toughness by +2."
+   },
+   {
+    "tier": 5,
+    "name": "Bastion",
+    "action": "Passive",
+    "cost": "",
+    "text": "You are Immune to Bludgeoning damage and Resistant to Piercing damage."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "The Ironheart Guild",
+    "text": "Located in the heart of Veldonia, the Ironheart Guild is a renowned organization of master armorers and warriors. They offer comprehensive training in heavy armor and defensive abilities, focusing on techniques such as shield-bashing, parrying, and advanced weapon techniques suited for heavily armored fighters."
+   },
+   {
+    "n": 2,
+    "name": "The Eshakon Bastion",
+    "text": "A massive fortress perched atop a craggy mountain, the Eshakon Bastion serves as a training ground for knights and defenders. Its ancient walls echo with the clashing of steel as seasoned warriors teach aspiring fighters the art of heavy armor combat. Trainees learn to maneuver in cumbersome armor, endure punishing blows, and develop impeccable defensive skills."
+   },
+   {
+    "n": 3,
+    "name": "The Temple of the Shielded Path",
+    "text": "Hidden deep within the dense forest of Honopeia, the Temple of the Shielded Path is a secluded sanctuary dedicated to the preservation of ancient martial heavy armor, emphasizing a harmonious blend of physical and spiritual strength. Techniques include meditation, balance training, and the development of impeccable reflexes."
+   },
+   {
+    "n": 4,
+    "name": "The Blacksteel Citadel",
+    "text": "Located in the volcanic regions of northern Breccia, the Blacksteel Citadel is a stronghold carved out of obsidian rock. This ancient order of warriors focuses on the art of forging and wield it effectively. Trainees undergo grueling physical conditioning, learn the secrets of metallurgy, and study defensive tactics tailored for heavy armor users."
+   },
+   {
+    "n": 5,
+    "name": "The Valley of the Stalwart",
+    "text": "A remote valley nestled between towering mountain ranges, this hidden locale serves as a refuge for warriors seeking to master the art of heavy armor. Inhabitants of the for honing defensive skills. Trainees learn to withstand harsh weather conditions, navigate treacherous terrains, and engage in combat against formidable adversaries."
+   },
+   {
+    "n": 6,
+    "name": "The Order of the Bronze Shields",
+    "text": "Founded centuries ago by Thelia the Wall, this knightly order is renowned for its unwavering dedication to protecting the realm. Housed within a grand fortress, the Order of the Bronze Shields specializes in teaching defensive strategies and techniques tailored specifically for heavy armor users. Trainees undergo rigorous physical training, engage in mock battles, and learn to coordinate with fellow knights for effective defensive formations."
+   }
+  ]
+ },
+ {
+  "name": "Duskblade",
+  "page": 30,
+  "blurb": "You are a master of the art of assassination, appearing swiftly and unexpectedly and executing your opponents with superb finesse and terrifying precision.",
+  "feature": {
+   "name": "Sudden Strike",
+   "text": "You can target a specific Hit Location without Disavantage when attacking a target unaware of you."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Poisoned Blade",
+    "action": "1 Standard Action (Magical)",
+    "cost": "3 Aether",
+    "text": "You summon a blade of pure venom and throw it at your opponent. Target becomes Poisoned (1)."
+   },
+   {
+    "tier": 2,
+    "name": "Weaken",
+    "action": "1 Standard Action (Magical)",
+    "cost": "5 Aether",
+    "text": "You push your will into the target's mind, enfeebling them. Reduce the target's Combat Skill by -20 when defending for D4+1 rounds."
+   },
+   {
+    "tier": 3,
+    "name": "Sap",
+    "action": "1 Standard Action. Requires a Hard (-20) melee attack check",
+    "cost": "",
+    "text": "You strike your target with the blunt side of your weapon, Stunning them for 2 rounds."
+   },
+   {
+    "tier": 4,
+    "name": "Ruthless Strike",
+    "action": "1 Standard Action. Requires a melee attack check",
+    "cost": "",
+    "text": "You strike your opponent with cold precision, automatically scoring a Critical Strike. This Ability may only be used once per room."
+   },
+   {
+    "tier": 5,
+    "name": "Invisibility",
+    "action": "1 Standard Action",
+    "cost": "6 Aether",
+    "text": "You disappear from sight completely, blending with the shadows. Enemies cannot target you directly. The effect disappears after you exit the current room, or you make an attack. Enemies receive -40 to their Combat Skill when attempting to defend from you while invisible."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "The Shadowsong Guild",
+    "text": "Operating from Veldonia's slums district, the Shadowsong Guild is a renowned organization that trains individuals in the arts of stealth, subterfuge, and assassination. infiltration, lock-picking, trap detection, and silent takedowns. They learn to blend seamlessly with their surroundings, strike with precision, and vanish without a trace."
+   },
+   {
+    "n": 2,
+    "name": "The Whispering Blades Academy",
+    "text": "Located in a secluded mountain retreat at Ashbright Peaks, the Whispering Blades Academy is a prestigious institution dedicated to training elite assassins and stealthy rogues. Students receive comprehensive instruction in a variety of skills, including silent movement, disguise, poison crafting, and the art of surprise attacks."
+   },
+   {
+    "n": 3,
+    "name": "The Brotherhood of the Night's Veil",
+    "text": "A clandestine order that operates in the depths of the Ravenscroft wilderness, the Brotherhood of the Night's Veil specializes in training rogue operatives skilled in espionage, sabotage, and assassination. information gathering, and combat techniques tailored for covert operations. The brotherhood's secretive network and extensive resources make them a formidable force in the realm of espionage and subterfuge."
+   },
+   {
+    "n": 4,
+    "name": "The School of Silent Shadows",
+    "text": "The School of Silent Shadows is a secret training ground for rogues and stalkers who specialize in silent takedowns and swift, deadly strikes. Students learn the art of stealthy movement, camouflage, evasion, and the use of a wide range of specialized tools and gadgets. The school's serene environment and natural surroundings provide the perfect backdrop for honing their skills in patience, observation, and precision."
+   },
+   {
+    "n": 5,
+    "name": "The Black Fist",
+    "text": "Operating from the dark underbelly of Wyverngate, the Black Fist is an underground organization renowned for training expert rogues and assassins. Members undergo extensive training in learn to exploit their surroundings, employing poisons, magic and any tool available to dispatch targets swiftly and silently, leaving behind only whispers of their presence."
+   },
+   {
+    "n": 6,
+    "name": "The Temple of the Shrouded Serpent",
+    "text": "Hidden within a remote desert canyon in the western Shimmerlands, the Temple of the Shrouded Serpent is a secretive sanctuary where rogue disciples learn the art of deception, subterfuge, and lethal strikes. Here, students acquire skills in disguise, misdirection, lock-picking, and the use of concealed weapons."
+   }
+  ]
+ },
+ {
+  "name": "Emissary",
+  "page": 32,
+  "blurb": "You are the voice of your deity on the mortal plane, and as such you have the authority to deliver punishment against their enemies and blessings to their children.",
+  "feature": {
+   "name": "Spiritual Healing",
+   "text": "You gain a new Camp Activity: Pray. Heal D4 Sanity. You gain 2 Exhaustion. Reduce the Camp Check roll by 1."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Heal Wounds",
+    "action": "1 Standard Action",
+    "cost": "4 Aether, +2 Exhaustion",
+    "text": "You channel your deity's power through your body, restoring it and healing D4 Wounds."
+   },
+   {
+    "tier": 2,
+    "name": "Unbreakable Faith",
+    "action": "Free Action",
+    "cost": "4 Aether",
+    "text": "Your certainty on your path allows you to perform combat feats that a normal mortal wouldn't be able to. Increase your next attack roll by 40."
+   },
+   {
+    "tier": 3,
+    "name": "Remove Condition",
+    "action": "1 Standard Action",
+    "cost": "4 Aether",
+    "text": "Your deity's authority restores your body to its original form, removing 1 condition of your choosing."
+   },
+   {
+    "tier": 4,
+    "name": "Divine Justice",
+    "action": "Free Action (Magical)",
+    "cost": "2 Aether",
+    "text": "Your deity has deemed your opponent unworthy, negating their Armor for 1 round."
+   },
+   {
+    "tier": 5,
+    "name": "Holy Flames",
+    "action": "1 Standard Action (Magical)",
+    "cost": "10 Aether",
+    "text": "A bolt of divine flames strikes your target, dealing 3D10 Holy damage."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "The Sanctum of Justicar's Grace",
+    "text": "The Sanctum of Justicar's Grace is a revered place of training for those aspiring to become priests of Ekoineme, the God of Justice. Here, students immerse themselves in moral principles and the pursuit of fairness. Under the guidance of wise mentors, they learn the art of conflict resolution, advocate for justice, and uphold the divine tenets of Ekoineme."
+   },
+   {
+    "n": 2,
+    "name": "The Flameforge Temple",
+    "text": "Located amidst volcanic mountains, the Flameforge Temple serves as a sacred training ground for those seeking to become priests of Sonlios, the God of Fire. Within the learning to channel the transformative power of fire. They undergo rituals of purification, mastering the art of fire-based ceremonies, and cultivating a deep connection with the divine essence of Sonlios."
+   },
+   {
+    "n": 3,
+    "name": "The Halls of Resolve",
+    "text": "The Halls of Resolve is a revered institution where individuals train to become priests of Auna, the Goddess of Duty. Here, students dedicate themselves to the study of duty, guidance of experienced mentors, they learn to fulfill their obligations with honor, develop a strong sense of discipline, and embrace their divine duty as emissaries of Auna."
+   },
+   {
+    "n": 4,
+    "name": "Temple of Victory",
+    "text": "Situated on the grounds once belonging to an ancient battlefield, the Temple of Victory is a renowned training ground for those seeking to become priests of Vuntune, the Goddess of Victory. Within the temple's storied halls, students immerse themselves in the art of strategic planning, leadership, and the pursuit of triumph. They study Vuntune's teachings on tactics, analyze historic battles, and learn to inspire others towards glorious victories in the name of the goddess."
+   },
+   {
+    "n": 5,
+    "name": "The Shrine of Retribution",
+    "text": "The Shrine of Retribution is a sacred place where individuals train to become priests of Hythos, the God of Vengeance. Here, students delve into the mysteries of divine retribution, studying the intricacies of justice and the balance between vengeance and mercy. Under the tutelage of experienced priests (popularly known as “avengers”), they learn the art of tracking down wrongdoers, interpreting omens, and invoking the power of Hythos to mete out righteous punishment."
+   },
+   {
+    "n": 6,
+    "name": "The Shadow's Embrace Cloister",
+    "text": "Located in a secluded forest shrouded in perpetual darkness, the Shadow's Embrace Cloister is a mystical sanctuary where individuals train to become priests of Kevona, the Goddess of the Night. Within the cloister's hallowed halls, students delve into the depths of the night, embracing its mysteries and studying the balance between light and darkness. They learn to navigate the shadows, commune with nocturnal creatures, and unlock the secrets of Kevona's divine realm."
+   }
+  ]
+ },
+ {
+  "name": "Flamecaster",
+  "page": 34,
+  "blurb": "You are a master of incendiary arts, harnessing the blazing forces of flame to scorch enemies, leaving a trail of smoldering destruction in your wake.",
+  "feature": {
+   "name": "Fireheart",
+   "text": "You are Restored by Fire damage."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Fire Bolt",
+    "action": "1 Standard Action (Magical)",
+    "cost": "4 Aether",
+    "text": "You fire a burst of flames from your hand at your opponent, dealing D6 Fire damage."
+   },
+   {
+    "tier": 2,
+    "name": "Flame Spray",
+    "action": "1 Standard Action (Magical)",
+    "cost": "4 Aether",
+    "text": "A cone of flames shoots from the palm of your hand, spraying all enemies in front of you. Up to ⅃/2 enemies receive D4 Fire damage."
+   },
+   {
+    "tier": 3,
+    "name": "Fire Cage",
+    "action": "1 Standard Action (Magical)",
+    "cost": "6 Aether",
+    "text": "Flames rise from the ground, surrounding and trapping one of your opponents. The target becomes Restrained, but as a Free Action can attempt a Magic Resistance check every round to break free. Every failed attempt causes them to suffer 1 Fire damage that cannot be avoided in any way."
+   },
+   {
+    "tier": 4,
+    "name": "Summon Fire Elemental",
+    "action": "2 Standard Actions",
+    "cost": "4 Aether (Sustained)",
+    "text": "You summon an elemental from the plane of fire to serve you. The Fire Elemental will last until destroyed. Check page 201 to learn more about the Fire Elemental's stats."
+   },
+   {
+    "tier": 5,
+    "name": "Fireball",
+    "action": "1 Standard Action (Magical)",
+    "cost": "10 Aether",
+    "text": "A ball of flames appears above your head, crashing into your enemies. All opponents in the room receive 3D6 Fire damage."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "Flamecaster Juute",
+    "text": "Pyromancer Juute is a renowned master of fire magic, revered for their ability to command and control the destructive power of flames. Students who aspire to become fire shape fire with precision. Under their tutelage, disciples study the intricacies of fire spells, practice fire manipulation techniques, and understand the elemental nature of flames."
+   },
+   {
+    "n": 2,
+    "name": "The Ember Sanctum",
+    "text": "Tucked away in a secluded volcanic region too inhospitable for life, the Ember Sanctum is a sacred place where fire mages gather to refine their skills in flamecasting. Within the sanctum's scorching halls, students are exposed to intense fire rituals, honing their control over flames and mastering the art of fire-based spellcasting."
+   },
+   {
+    "n": 3,
+    "name": "The Flamebrand Guild",
+    "text": "The Flamebrand Guild is an esteemed organization that trains individuals in the art of fire magic. From adept spellcasters to ambitious flamecasters, members of the guild receive comprehensive training in controlling and wielding flames. They learn to conjure fireballs, create walls of fire, and unleash devastating infernos. The guild provides a platform for collaboration and knowledge-sharing among fire mages, fostering growth and innovation in fire-based spellcasting."
+   },
+   {
+    "n": 4,
+    "name": "The Seventh Circle",
+    "text": "Situated amidst the desolate Azari desert, the Seventh Circle is a renowned institution dedicated to the study and mastery of fire magic. Students learn to conjure and manipulate fire proficiency in fire-based spells, and understanding the essence of heat and combustion through a strong foundation of natural philosophy."
+   },
+   {
+    "n": 5,
+    "name": "The Order of the Blazing Phoenix",
+    "text": "The Order of the Blazing Phoenix is a sacred order that embraces the power of fire as a force of transformation and purification; as such, they work closely with the cult of Sonlios, God of Fire. Initiated fire mages undergo rigorous harnessing its might. They study ancient fire magic techniques, learning to summon firestorms, breathe streams of fire, and manipulate flames to their will. The Order emphasizes discipline, control, and the responsible use of fire magic."
+   },
+   {
+    "n": 6,
+    "name": "The Burning Citadel",
+    "text": "The Burning Citadel serves as a training ground for fire mages seeking to master the art of flamecasting. Students endure the intense heat and volatile environment of the Guided by experienced fire mages, they learn to conjure flames, shape them into devastating projectiles, and forge a deep connection with the element of fire."
+   }
+  ]
+ },
+ {
+  "name": "Frostweaver",
+  "page": 36,
+  "blurb": "Your mastery over ice, cold, and all that is frozen grants you a power that few can hope to match. You are a living blizzard, an ice storm that falls upon your enemies with the chill of death.",
+  "feature": {
+   "name": "Relentless Winter",
+   "text": "Targets damaged by your Frostweaver spells are Freezing."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Frost Bolt",
+    "action": "1 Standard Action (Magical)",
+    "cost": "4 Aether",
+    "text": "A shard of ice emerges from your hands and strikes your opponent in a cascade of ice, dealing D6 Cold damage."
+   },
+   {
+    "tier": 2,
+    "name": "Ice Shield",
+    "action": "Reaction",
+    "cost": "3 Aether",
+    "text": "You summon a block of ice that covers your arm, shielding you from the incoming attack. +30 Parry against an incoming attack."
+   },
+   {
+    "tier": 3,
+    "name": "Ice Nova",
+    "action": "1 Standard Action (Magical)",
+    "cost": "5 Aether",
+    "text": "A burst of ice emerges from you as the epicenter, blasting away all surrounding enemies. Up to ⅃/2 enemies receive D6 Cold damage."
+   },
+   {
+    "tier": 4,
+    "name": "Summon Frost Elemental",
+    "action": "2 Standard Actions",
+    "cost": "4 Aether (Sustained)",
+    "text": "You summon a creature of pure elemental ice to serve you. The Frost Elemental will last until destroyed. Check page 201 to learn more about the Frost Elemental's stats."
+   },
+   {
+    "tier": 5,
+    "name": "Frost Weapon",
+    "action": "1 Standard Action",
+    "cost": "4 Aether (Sustained)",
+    "text": "You weave a weapon made of pure ice threads that reforms even after breaking, as long as you pay the Sustained cost. The weapon can take any shape you want (and as such having all the usual Traits from its mundane counterpart), and deals D8+1 Cold damage that bypasses Armor. Additional damage bonuses applied to this weapon do not bypass Armor."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "Frostweaver Elara",
+    "text": "Frostweaver Elara is a renowned master of frost magic, known for her ability to conjure and control the chilling powers of ice and frost. Students aspiring to become frost mages precision. Under her guidance, disciples study the intricacies of frost spells, practice ice manipulation techniques, and understand the elemental nature of cold."
+   },
+   {
+    "n": 2,
+    "name": "The Frostborne Citadel",
+    "text": "Located in the frozen island of Iceshard, the Frostborne Citadel serves as a bastion for those who seek to under experienced frost mages, honing their control over cold and frost, and studying the principles of frost-based spellcasting."
+   },
+   {
+    "n": 3,
+    "name": "The Iceheart Sect",
+    "text": "The Iceheart Sect is a prestigious organization dedicated to the study and mastery of frost magic. Students immerse themselves in the study of frost spells, learning to harness the power of freezing temperatures under the guidance of experienced mentors, while practicing ice manipulation, and understanding the art of frost-based enchantments."
+   },
+   {
+    "n": 4,
+    "name": "The Frostfall Coven",
+    "text": "The members of this secretive society of frost mages study ancient texts and delve into the mysteries of developing their command over frost spells, learning to create frost shields, and summoning icy allies."
+   },
+   {
+    "n": 5,
+    "name": "The Nexus",
+    "text": "The Nexus is a revered training ground for frostweavers who seek to channel the raw power of ice and cold. Within its frigid spellcasting, ice manipulation, and the creation of frozen constructs, all under the watchful eye of seasoned mentors."
+   },
+   {
+    "n": 6,
+    "name": "The Icetrap Monastery",
+    "text": "Hidden amidst icy caverns, the Icetrap Monastery is a sanctuary where frost mages study and refine their skills in manipulating cold and frost. Students practice intricate frost spells, learning to shape and control ice with precision. The Icetrap Monastery offers a serene environment for frost mages to deepen their connection to the essence of frost and embrace the power of icy magic, immersing themselves in meditation and seeking harmony with the frozen elements."
+   }
+  ]
+ },
+ {
+  "name": "Gravecaller",
+  "page": 38,
+  "blurb": "Everything dies eventually, and your dominion over death means that, with time, everything will serve you. And if they somehow refuse your call, they will be used as tools to fuel your path.",
+  "feature": {
+   "name": "Necrotic Vitality",
+   "text": "Spend a Standard Action to sacrifice one of your Undead minions, recovering D4 Wounds or 1 Sanity."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Raise Skeleton",
+    "action": "2 Standard Actions",
+    "cost": "2 Aether (Sustained). Requires a Humanoid or",
+    "text": "Animal corpse You animate the bones of a nearby corpse (a recently defeated Humanoid or Animal opponent would do), raising a Skeleton that will fight for you. The Skeleton lasts until destroyed. Check page 202 to learn more about the Skeleton's stats."
+   },
+   {
+    "tier": 2,
+    "name": "Corpse Explosion",
+    "action": "1 Standard Action",
+    "cost": "2 Aether. Requires a Humanoid or Animal corpse",
+    "text": "Causes a nearby corpse to explode, dealing 2D4 Necrotic damage to all opponents in the room."
+   },
+   {
+    "tier": 3,
+    "name": "Bloodskin",
+    "action": "1 Standard Action",
+    "cost": "2 Health, 4 Aether",
+    "text": "Blood pours from your eyes and ears, forming a thin membrane that covers your body as a second skin. +1 Armor across all your body until end of combat. Can only be used once per combat."
+   },
+   {
+    "tier": 4,
+    "name": "Raise Wight",
+    "action": "2 Standard Actions",
+    "cost": "4 Aether (Sustained)",
+    "text": "You trap a nearby soul, binding it to your service. The Wight will last until destroyed. Check page 203 to learn more about the Wight's stats."
+   },
+   {
+    "tier": 5,
+    "name": "Necrolord",
+    "action": "Passive",
+    "cost": "",
+    "text": "You are Restored by Necrotic damage. Your Undead minions deal +D6 Necrotic damage and have their Health increased by 2."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "The Crypt of the Ekhan Thuul",
+    "text": "Hidden beneath a decrepit cemetery, the Crypt of Ekhan Thuul is a forbidden enclave where training study the intricacies of raising and controlling the dead, learning from forbidden tomes and ancient rituals."
+   },
+   {
+    "n": 2,
+    "name": "The Tower of Shadowed Knowledge",
+    "text": "Rising tall in the wasteland of Jara, the Tower of Shadowed Knowledge is a renowned institution dedicated to the study of dark magic. Within its ominous halls, necromancy and the manipulation of life force, conducting experiments, and refining their ability to command and control undead creatures."
+   },
+   {
+    "n": 3,
+    "name": "The Coven of the Whispering Graves",
+    "text": "The Coven of the Whispering Graves is a secretive society of necromancers where practitioners of the dark arts convene to share knowledge and delve into the secrets of raising the dead. Apprentices learn to commune with spirits, harness dark energies, and master the art of necromantic spells and rituals."
+   },
+   {
+    "n": 4,
+    "name": "The Silent",
+    "text": "The Silent are a strange group of wandering necromancers that travel the land, searching for something they call the Kerazi. For a price, aspiring necromancers can receive comprehensive training in the manipulation of life and death, including the art of raising and controlling the undead, before the group moves on to new lands."
+   },
+   {
+    "n": 5,
+    "name": "The Necropolis of the Fallen",
+    "text": "Built upon an ancient battlefield, the Necropolis of the Fallen is a haunting necromantic site where practitioners of dark arts gather to perfect their craft. Amongst the forgotten mass graves and bleached, ancient bones, necromancers refine their abilities to commune with the dead, raise skeletal warriors, and bend death itself to their will."
+   },
+   {
+    "n": 6,
+    "name": "Bahatu Island",
+    "text": "Shrouded in perpetual mist, Bahatu Island is a desolate place where necromancers seeking mastery over the undead converge. With its cursed atmosphere and haunted ruins, the isle offers an ideal training ground for the study of necromancy. Students delve into forbidden texts, learn the secrets of soul manipulation, and practice raising and controlling various types of undead creatures under the guidance of the enigmatic mentors who call the place home."
+   }
+  ]
+ },
+ {
+  "name": "Hexmancer",
+  "page": 40,
+  "blurb": "You harness the dark arts to afflict your enemies with debilitating curses and manipulate their life force, sowing despair and weakening your adversaries with every insidious touch of your powers.",
+  "feature": {
+   "name": "Unescapable Curse",
+   "text": "You deal an additional +1 damage when attacking a target suffering from the Cursed condition."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Sap Vitality",
+    "action": "1 Standard Action (Magical)",
+    "cost": "5 Aether",
+    "text": "The target is Cursed, losing 5 Combat Skill every round, up to a maximum of -20."
+   },
+   {
+    "tier": 2,
+    "name": "Enfeeble",
+    "action": "1 Standard Action (Magical)",
+    "cost": "3 Aether",
+    "text": "You curse your opponent with devastating weakness. The target is Cursed and receives +1 damage from all sources until the end of battle. This can only be used once per target."
+   },
+   {
+    "tier": 3,
+    "name": "Curse Mind",
+    "action": "1 Standard Action (Magical)",
+    "cost": "5 Aether",
+    "text": "A malediction takes a hold of your target's mind. The target is Stunned (2) if they fail the Magic Resistance check, or Dazed (2) if they pass it."
+   },
+   {
+    "tier": 4,
+    "name": "Drain Lifeforce",
+    "action": "1 Standard Action (Magical)",
+    "cost": "6 Aether",
+    "text": "Your target's vitality becomes your own, as you steal their lifeforce. Target suffers 3D6 Necrotic damage, and you heal the same amount of Wounds. This Ability does not work if the target is Restored by Necrotic damage."
+   },
+   {
+    "tier": 5,
+    "name": "Putrefy Armor",
+    "action": "1 Standard Action (Magical)",
+    "cost": "6 Aether",
+    "text": "You unleash your most devastating hex upon your target. Choose one of the target's Hit Location: that Location loses 1 Armor every round, until it reaches 0. Once it reaches 0, the target must make a new Magic Resistance check, or Putrefy Armor will jump to a different Hit Location of your choosing."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "The Coven of Shadows",
+    "text": "The Coven of Shadows is a secretive group of skilled practitioners who specialize in hexes, curses, and dark magic. Members of the coven study ancient texts and rituals, delving into the darker aspects of magic, and learn to weave potent hexes and curses, inflicting misfortune, debilitating effects, and psychological torment upon their targets."
+   },
+   {
+    "n": 2,
+    "name": "The Hexbane",
+    "text": "The Hexbane is an organization dedicated to countering and understanding hexes and curses. Members of the society train in the arts of hex detection, curse removal, and the study of dark magic. They develop an intimate knowledge of various hexes and curses, learning to dismantle their effects and protect others from their malevolent influence."
+   },
+   {
+    "n": 3,
+    "name": "The Root & Petal",
+    "text": "The Root & Petal is a renowned institution where individuals train in the dark arts of hexes and curses. Initially created by Queen Alesia three hundred years ago after the death of her husband as the result of being cursed, students within the school delve into forbidden knowledge, learning to manipulate and unleash hexes with devastating effects."
+   },
+   {
+    "n": 4,
+    "name": "The Order of the Bitter Hand",
+    "text": "The Order of the Bitter Hand is a secret sect of individuals who specialize in hexes, curses, and dark magic. Members learn to weave intricate curses that afflict their Order of the Bitter Hand is known for their relentless pursuit of vengeance and their ability to unleash devastating hexes upon their enemies."
+   },
+   {
+    "n": 5,
+    "name": "The Evening Star",
+    "text": "The Evening Star is a clandestine gathering of practitioners who specialize in hexes and curses. Within their hidden sanctuaries, members of the enclaves study the dark arts, learning to tap into the dark energies that fuel hexes and curses. They understand the intricate mechanics of affliction, channeling their dark magic to sow chaos and misery."
+   },
+   {
+    "n": 6,
+    "name": "The Withering Circle",
+    "text": "The Withering Circle is a revered order of hexmasters who have dedicated their lives to studying and perfecting the art of hexes and curses. Through years of rigorous training, members learn to tap into the darker realms of magic, manipulating the threads of fate to bring suffering and decay to their targets. They are often hired by unscrupulous noblemen searching to swiftly eliminate their opposition, while at the same time making a point."
+   }
+  ]
+ },
+ {
+  "name": "Icon Caller",
+  "page": 42,
+  "blurb": "As an Icon Caller, you channel the potent power of the Icons to unleash a myriad of effects and weave formidable spells, both offensive and defensive.",
+  "feature": {
+   "name": "Summon",
+   "text": "As a Standard Action, you can place one of your Icons. A maximum of two Icons can be placed at once; if you already have two placed and are summoning a third, you must destroy one of the existing ones. Icons cannot be targeted directly by enemies, but any enemy action that has an area effect will destroy them. Only one Icon of each type can be placed at once, and only during combat."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Restoring Icon",
+    "action": "1 Standard Action",
+    "cost": "6 Aether",
+    "text": "Place a powerful Icon that heals all friendly creatures 1 Toughness/round."
+   },
+   {
+    "tier": 2,
+    "name": "Vine Icon",
+    "action": "1 Standard Action",
+    "cost": "2 Aether",
+    "text": "Place an Icon that bursts into vines, Restraining a target if they fail a Body check. Once the target frees themselves the Icon is destroyed."
+   },
+   {
+    "tier": 3,
+    "name": "Firebomb Icon",
+    "action": "1 Standard Action",
+    "cost": "8 Aether",
+    "text": "Place a powerful Icon that explodes at the start of the next round, dealing 2D10 Fire damage to all enemies in the room if they fail a Magic Resistance check."
+   },
+   {
+    "tier": 4,
+    "name": "Razorwind Icon",
+    "action": "1 Standard Action",
+    "cost": "10 Aether",
+    "text": "Place an Icon that lashes violently with sharp winds against your enemies, dealing 1 Slashing damage every round to all opponents in the room."
+   },
+   {
+    "tier": 5,
+    "name": "Strength Icon",
+    "action": "1 Standard Action",
+    "cost": "10 Aether",
+    "text": "Place a powerful Icon that grants all friendly characters +5 Temporary Toughness and adds +2D4 Bludgeoning damage to their Damage Pools."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "The Wardens",
+    "text": "The Wardens are a secretive order of skilled individuals trained in the use of powerful Icons, studying the ancient art of iconography, and learning to imbue symbols with magical the Icons, harnessing the energy of their symbols to create protective barriers, summon elemental forces, or unleash devastating spells upon their foes."
+   },
+   {
+    "n": 2,
+    "name": "The Sanctum of Sacred Glyphs",
+    "text": "The Sanctum of Sacred Glyphs is a revered institution where individuals train in the use of potent Icons. Students within the sanctum study the intricate art of glyph creation and activation, and learn to channel their magical energies into carefully crafted symbols, unleashing various effects when the Icons are placed and activated."
+   },
+   {
+    "n": 3,
+    "name": "The Order of Elemental Sigils",
+    "text": "The Order of Elemental Sigils is a distinguished organization that focuses on the use of Icons to harness the power of the elements. Members of the Order study the art of elemental magic, learning to infuse Icons with the essence of fire, water, earth, or air. These Icons, when placed and activated, evoke elemental forces, unleashing destructive spells, creating protective barriers, or manipulating the environment to their advantage."
+   },
+   {
+    "n": 4,
+    "name": "The Glyphbound",
+    "text": "The Glyphbound is a clandestine group of skilled practitioners who utilize powerful Icons to manipulate reality. Members of the society undergo rigorous training in the creation, magical energies into these Icons, unleashing a myriad of effects when triggered, from healing and restoration to offensive spells and illusions."
+   },
+   {
+    "n": 5,
+    "name": "The Ghena",
+    "text": "The Ghena are a tribe that inhabits the many islands of the Azari Archipelago, and are famous for their ability to infuse the powers of their ancestors into their Icons. This allows them to disrupting magical forces. The Ghena rarely teach outsiders their secrets, but a blood debt will usually allow a non-native to study among them."
+   },
+   {
+    "n": 6,
+    "name": "The Celestial Scribes",
+    "text": "The Celestial Scribes are revered scholars and practitioners who delve into mysteries only found in ancient texts and symbols, studying the intricate art of iconography, and celestial Icons invokes the power of the stars and celestial bodies, enabling them to manipulate time, summon celestial allies, or tap into the cosmic forces."
+   }
+  ]
+ },
+ {
+  "name": "Mindbinder",
+  "page": 44,
+  "blurb": "You have learned to worm your magic into your target's mind, subtly influencing their actions to your favor, or directly taking complete control over them.",
+  "feature": {
+   "name": "Mind Blur",
+   "text": "Enemies attacking you always suffer -10 to their Combat Skill."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Suppress Mind",
+    "action": "Free Action (Magical)",
+    "cost": "3 Aether",
+    "text": "The target cannot use any Magical actions until your next turn."
+   },
+   {
+    "tier": 2,
+    "name": "Heal Mind",
+    "action": "1 Standard Action",
+    "cost": "",
+    "text": "Your mind is forever malleable, and there's no harm that cannot be undone. Recover D4 Sanity. This Ability can only be used once per Camp Rest."
+   },
+   {
+    "tier": 3,
+    "name": "Calm",
+    "action": "1 Standard Action",
+    "cost": "10 Aether",
+    "text": "All enemy targets in the room stop attacking you, allowing you to move on. You must immediately leave the room and cannot scavenge or loot it. Calm does not work on Overseers."
+   },
+   {
+    "tier": 4,
+    "name": "Astral Projection",
+    "action": "Passive",
+    "cost": "",
+    "text": "Once per Camp Rest, you can project your mind forwards, exploring what lies ahead. Generate up to 5 rooms, and learn everything about them, without having to move from your current location."
+   },
+   {
+    "tier": 5,
+    "name": "Dominate",
+    "action": "1 Standard Action (Magical)",
+    "cost": "4 Aether (Sustained)",
+    "text": "You force your mind upon your target, forever destroying their will. The target becomes your Minion. This spell doesn't work on Overseers."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "The Unchained",
+    "text": "Located within the remains of an ancient citadel, the Unchained is a group of Mindbinders dedicated to the study and refinement of mind control magic. Members delve into the depths of and perceptions. Under the guidance of skilled mentors, they learn to exert influence over others' minds, practicing techniques of telepathy, illusion, and subtle manipulation."
+   },
+   {
+    "n": 2,
+    "name": "The Guild of Minds",
+    "text": "The Guild of Minds is an elusive organization that specializes in training individuals in the arts of mind control and psychic manipulation. Members of the Guild study a range of learn to probe the depths of consciousness, exert control over thoughts and actions, and unleash the power of their minds with precision."
+   },
+   {
+    "n": 3,
+    "name": "The Sanctum of Psionic Insight",
+    "text": "The Sanctum of Psionic Insight serves as a sanctuary for those who seek to master mind control magic. Its members usually arrive at the institution after having suffered persecution due to their inability to control their power. vast majority being burned at the stake as heretics or witches. Once safe, students within the Sanctum immerse themselves in the study of psionics, developing their mental prowess and sharpening their abilities to manipulate minds."
+   },
+   {
+    "n": 4,
+    "name": "The Order of Serenity",
+    "text": "The Order of Serenity is a revered order that trains individuals in the art of mind control and hypnotic suggestion. Members of the Order undergo rigorous mental conditioning, studying the techniques of inducing trance, implanting suggestions, and exerting control over the thoughts and actions of others."
+   },
+   {
+    "n": 5,
+    "name": "The Closed Fist",
+    "text": "Housed within an imposing fortress in the Duchy of Tyrros, the Closed Fist is a controversial organization that delves into the darkest aspects of mind control magic. Students within the institute explore forbidden arts, studying techniques such as mental compulsion, thought alteration, and psychic domination, pursuing the absolute submission of their victims' minds."
+   },
+   {
+    "n": 6,
+    "name": "The Sovereign",
+    "text": "The Sovereign is a revered sanctuary where individuals train in the art of mind control magic while emphasizing the importance of ethical conduct and personal responsibility. telepathy, empathy, and mental shielding, learning to channel their abilities with restraint, respecting the boundaries of free will while honing their skills in mental influence and persuasion."
+   }
+  ]
+ },
+ {
+  "name": "Ritualist",
+  "page": 46,
+  "blurb": "You've studied the ancient words and symbols of power, granting you control over the turning of the spheres and their dominion over the material world.",
+  "feature": {
+   "name": "Ritual Components",
+   "text": "You gain a new Camp Activity: Prepare Components. Spend 1x Crafting Supplies to create 1x Ritual Component. You can do this as many times as you want as a single Camp Activity. Reduce your Camp Check by 4."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Astral Punishment",
+    "action": "1 Standard Action (Magical)",
+    "cost": "5 Aether",
+    "text": "You bring the spheres' punishment upon your target, dealing D6 Arcane damage per 1x Ritual Component spent."
+   },
+   {
+    "tier": 2,
+    "name": "Aetheric Blessing",
+    "action": "1 Standard Action",
+    "cost": "10 Aether",
+    "text": "A gust of astral winds blows around you, knitting your wounds. Recover D6 Wounds per 3x Ritual Components spent."
+   },
+   {
+    "tier": 3,
+    "name": "Cleanse Mind",
+    "action": "1 Standard Action",
+    "cost": "5 Aether",
+    "text": "A torrent of universal truth pours into your mind, washing all corruption away. Recover 1 Sanity per 3x Ritual Components spent."
+   },
+   {
+    "tier": 4,
+    "name": "Sigil of Power",
+    "action": "1 Standard Action",
+    "cost": "5x Ritual Components",
+    "text": "You carve a sigil on your weapon, making it deal an additional D10 Arcane damage permanently. This can only be done once per weapon."
+   },
+   {
+    "tier": 5,
+    "name": "Arcane Torrent",
+    "action": "1 Standard Action (Magical)",
+    "cost": "5 Aether",
+    "text": "You open a tear in the fabric of reality, pouring raw arcane energies over your targets. Deal 2D10 Arcane damage to a single target, but you can add additional targets at the cost of 4x Ritual Ingredient per target. Each additional target also suffers 2D10 Arcane damage."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "The Arcane Circle",
+    "text": "The Arcane Circle is a renowned institution where individuals train in the intricate art of ritual magic. There, students study the ancient texts and esoteric knowledge surrounding rituals, symbols, and incantations, learning to harness the latent power of sacred rites, and conducting intricate ceremonies that tap into the aetheric energies of the world."
+   },
+   {
+    "n": 2,
+    "name": "The Silent Enigma",
+    "text": "Hidden within a remote mountain range, the Silent Enigma is a prestigious school that specializes in the study and practice of ritual magic. Students delve deep into the symbols, gestures, and the manipulation of magical energies. They learn to decipher ancient scripts, perform sacred rites, and unlock the secrets of conducting powerful rituals."
+   },
+   {
+    "n": 3,
+    "name": "The Temple of Mystical Convergence",
+    "text": "Located in a serene valley not far from Veldonia, the Temple of Mystical Convergence is a revered sanctuary dedicated to the mastery of ritual magic and the worship of Jherenos, God of Magic. Within the temple's tranquil the manipulation of arcane forces through complex ceremonies, always guided by the Temple's priests, who teach them how to harmonize elements, commune with spirits, and manifest the desired effects through the art of ritual magic."
+   },
+   {
+    "n": 4,
+    "name": "The Coven of Sacred Mysteries",
+    "text": "A clandestine gathering of Ritualists, the Coven of Sacred Mysteries is a secretive society that delves into the depths of ancient rituals and forbidden knowledge. Aspiring practitioners of ritual magic seek initiation into the Coven, where they explore the intricate connections between symbols, chants, and gestures."
+   },
+   {
+    "n": 5,
+    "name": "The Shrine of Rites",
+    "text": "Housed within a remote sanctuary in the depths of Harw Canyon, the Shrine of Rites is a revered place of training for those seeking to master the art of ritual magic. Students precise timing, gestures, and invocations necessary to invoke the desired effects, and explore the interplay of symbolism and mysticism."
+   },
+   {
+    "n": 6,
+    "name": "The Order of the Spheres",
+    "text": "The Order of Spheres is a revered organization dedicated to the preservation and mastery of ritual magic. Within the Order's sanctuaries, individuals train to become sacred ceremonies. They study the interweaving of symbols, elemental correspondences, and the harmonization of energies through precise rituals."
+   }
+  ]
+ },
+ {
+  "name": "Stormbrand",
+  "page": 48,
+  "blurb": "Wielding two weapons and harnessing the power of storms, you fall upon your enemies as a hurricane, your technique and mastery of magic combined into a single force of destruction.",
+  "feature": {
+   "name": "Dual Wielder",
+   "text": "You don't suffer the negative consequences of wielding two One-Handed weapons."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Infuse Weapon",
+    "action": "1 Standard Action",
+    "cost": "4 Aether (Sustained)",
+    "text": "You imbue your weapon with the power of the storm. You add +D4 Lightning damage to your Damage Pool when wielding it."
+   },
+   {
+    "tier": 2,
+    "name": "Countershock",
+    "action": "Reaction",
+    "cost": "4 Aether",
+    "text": "If you successfully Parry an attack, you send a shockwave through your weapon, dealing D6 Force damage to your opponent."
+   },
+   {
+    "tier": 3,
+    "name": "Tempest",
+    "action": "1 Standard Action (Magical)",
+    "cost": "5 Aether",
+    "text": "You rain an unending storm of blows upon all enemies in the room, dealing 3D4 Lightning damage to all of them."
+   },
+   {
+    "tier": 4,
+    "name": "Thunderous Slice",
+    "action": "1 Standard Action. Requires a melee attack check",
+    "cost": "4 Aether",
+    "text": "You unleash a charged attack with one of your weapons, obliterating your opponent's defenses. You deal no damage, but the target's loses all Armor in the Hit Location of your choice."
+   },
+   {
+    "tier": 5,
+    "name": "Tempestuous Rage",
+    "action": "1 Standard Action",
+    "cost": "4 Aether",
+    "text": "You enter a state of pure cataclysmic rage, granting you 1 additional Standard Action per round for the next 3 rounds. Once the effect ends you become Dazed for 1 round."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "Stormblade Sentinel",
+    "text": "The Stormblade Sentinels are an ancient order of warriors who specialize in dual wielding one-handed weapons and harnessing storm-related magic. Masters of lightning Initiated warriors undergo rigorous training in lightning manipulation, learning to channel the raw power of storms into their weapons."
+   },
+   {
+    "n": 2,
+    "name": "The Thunderstrike Brotherhood",
+    "text": "This secretive organization trains individuals in the art of dual wielding and storm magic. Through intense training regimens, members of the Brotherhood study the intricate connection between storm energy and combat techniques and learn to manipulate thunder, conjure gusts of wind, and imbue their dual weapons with electrifying power."
+   },
+   {
+    "n": 3,
+    "name": "The Tempest Enclave",
+    "text": "Situated within The Eye, a tempest-torn region in the Katarian Sea, the Tempest Enclave is a revered sanctuary where warriors and spellcasters alike come to specialize in dual wielding and storm-related magic. Students within the manipulation, mastering the elemental forces of wind, lightning, and rain. They hone their dual wielding skills, seamlessly blending weapon strikes with powerful storm-infused spells to create a devastating combination on the battlefield."
+   },
+   {
+    "n": 4,
+    "name": "The Order of the Cyclone",
+    "text": "The Order of the Cyclone is a legendary sect of dual-wielding warriors and storm mages who have dedicated their lives to mastering the fusion of martial combat and storm energy into their weapon strikes, creating whirlwinds of destruction and wielding the power of thunder and lightning with lethal precision."
+   },
+   {
+    "n": 5,
+    "name": "The Galeblade Guild",
+    "text": "This is a renowned organization that specializes in training individuals in the art of dual wielding and storm-related magic. Guild members study the intricacies of wind become adept at seamlessly combining their lightning-fast dual weapon strikes with elemental bursts of wind and lightning, unleashing devastating whirlwinds of destruction upon their foes."
+   },
+   {
+    "n": 6,
+    "name": "The Thunderstorm Citadel",
+    "text": "Situated atop a mountaintop shrouded in perpetual storm clouds, the Thunderstorm Citadel is a legendary training ground for those seeking mastery in dual wielding and storm magic. Graduates of the Citadel become formidable dual- wielding warriors, capable of harnessing the fury of storms to decimate their adversaries."
+   }
+  ]
+ },
+ {
+  "name": "Tracker",
+  "page": 50,
+  "blurb": "As a Tracker you are a master of stealth, survival, and trap detection, using your keen senses and knowledge of the wilderness to navigate treacherous terrains of the necropolis and hunt down elusive targets.",
+  "feature": {
+   "name": "Survivor",
+   "text": "You have Advantage on all Scavenge and Perception checks."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Cave Foraging",
+    "action": "Passive",
+    "cost": "",
+    "text": "You are adept at finding foodstuffs, even underground. Each time you make a successful Scavenging check you find 1x Cooking Ingredient."
+   },
+   {
+    "tier": 2,
+    "name": "Set Trap",
+    "action": "1 Standard Action",
+    "cost": "",
+    "text": "If you win the Surprise check before combat starts, you can set up a trap as your first combat action. The trap triggers as soon as one of your opponents makes an attack unless they pass a Mind check. The trap deals 3D4 Piercing damage."
+   },
+   {
+    "tier": 3,
+    "name": "Conceal Camp",
+    "action": "Passive",
+    "cost": "",
+    "text": "You know how to set up your camp in a way that makes it difficult to spot. Increase your Camp Check rolls by 2."
+   },
+   {
+    "tier": 4,
+    "name": "Will to Survive",
+    "action": "Passive",
+    "cost": "",
+    "text": "Your determination and tenacity allow you to endure even the most gruesome wounds. If an attack would drop your Health to 0 or less, it drops to 1 instead. This effect can only happen once per Camp Rest."
+   },
+   {
+    "tier": 5,
+    "name": "Avoid Danger",
+    "action": "Passive",
+    "cost": "",
+    "text": "You are absolutely aware of the danger around you, and can avoid it or delay it for a while. The Tension Die starts at D10, instead of D8."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "The Shadowstalkers",
+    "text": "The Shadowstalkers are a clandestine group of skilled trackers and trap setters, experts in stealth, camouflage, excel at evading detection, gaining the upper hand in engagements, and remaining unseen as they navigate through hostile territories."
+   },
+   {
+    "n": 2,
+    "name": "The Tracker's Guild",
+    "text": "The Tracker's Guild is a renowned organization with presence in several countries dedicated to training individuals in the art of tracking, trap setting, and evasion. Members of the Guild undergo rigorous training in wilderness survival, developing keen senses and an acute understanding of animal behavior, and master the art of tracking, deciphering footprints, signs, and clues left behind by both human and creature alike."
+   },
+   {
+    "n": 3,
+    "name": "The Forest Sentinels",
+    "text": "The Forest Sentinels are a group of skilled scouts and hunters trained in the arts of tracking, trap setting, and stealthy evasion. Operating primarily in dense woodlands, they the creatures that inhabit it, and thanks to their training they learn to move silently, set intricate snares and pitfalls, and read the subtle signs of their surroundings."
+   },
+   {
+    "n": 4,
+    "name": "The Trailblazers",
+    "text": "The Trailblazers are a renowned group of explorers and survivalists known for their expertise in tracking, setting traps, and evading enemies. They possess keen observational skills, enabling them to decipher subtle clues, identify potential dangers, and set effective traps to safeguard their expeditions into uncharted territories. The Trailblazers are adept at staying one step ahead, using their knowledge of the environment and resourcefulness to avoid or outwit adversaries."
+   },
+   {
+    "n": 5,
+    "name": "The Royal Hunters",
+    "text": "The Royal Hunters are a specialized order of skilled hunters and trappers who employ their knowledge of tracking and evasion at the service of the Silvercrest family. They undergo rigorous training in stealth techniques, learning to move silently, conceal their presence, and read the signs left by their targets, using their understanding of animal behavior and tactical expertise to outmaneuver both human adversaries and dangerous creatures."
+   },
+   {
+    "n": 6,
+    "name": "The Pathfinders",
+    "text": "The Pathfinders are an elite group of scouts and adventurers trained in the arts of tracking, trap setting, and avoiding enemies. These skilled individuals possess a deep connection with terrains without leaving a trace. They employ a combination of stealth, camouflage, and intricate trap systems to remain unseen and secure their surroundings."
+   }
+  ]
+ },
+ {
+  "name": "Umbra Phantom",
+  "page": 52,
+  "blurb": "You are one with the shadows, and darkness is your domain. The necropolis might be daunting and full of terrors for others, but you feel at home, the perennial darkness wrapped as a mantle around your shoulders.",
+  "feature": {
+   "name": "One With Darkness",
+   "text": "+10 Spellward, +5 Sanity."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Darksight",
+    "action": "1 Standard Action",
+    "cost": "5 Aether (Sustained)",
+    "text": "You can see in the most absolute darkness as if it were broad daylight. You no longer need a lightsource."
+   },
+   {
+    "tier": 2,
+    "name": "Shadow Madness",
+    "action": "1 Standard Action",
+    "cost": "Special",
+    "text": "You plunge your soul into the realm of shadows, your mind breaking as you pull the dark energy and wield it against your target. Deal D4 Psychic damage for each point of Sanity spent."
+   },
+   {
+    "tier": 3,
+    "name": "Vanish",
+    "action": "1 Standard Action",
+    "cost": "4 Aether",
+    "text": "Your shadow appears to envelop you, leaving nothing behind. You immediately disengage from combat and can exit the room you're in without any consequences. This Ability may only be used once per Rest."
+   },
+   {
+    "tier": 4,
+    "name": "Reaper",
+    "action": "1 Standard Action. Requires a melee attack check",
+    "cost": "",
+    "text": "You consume your target's soul to strengthen yours. If your attack kills your opponent, recover D6 Sanity."
+   },
+   {
+    "tier": 5,
+    "name": "Shadow Clone",
+    "action": "1 Standard Action",
+    "cost": "10 Aether",
+    "text": "Your shadow steps away from you, gaining tridimensionality and joining you in your fight. An exact copy of you, with your same capabilities and powers is now under your control. The Shadow Clone lasts for D4+1 rounds, and all its effects and summoned Abilities dispel with it once the duration runs out. A Shadow Clone cannot create another Shadow Clone."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "The Twilight Brotherhood",
+    "text": "An ancient and enigmatic order, the Twilight Brotherhood specializes in training rogues and assassins who harness the power of darkness and shadows. Initiates the art of concealment. They learn to blend seamlessly with the darkness, becoming one with it, and striking their targets from the shadows."
+   },
+   {
+    "n": 2,
+    "name": "The Veil",
+    "text": "Operating from the labyrinthine alleys and hidden hideouts of Westhumbria, the Veil is a clandestine organization that trains individuals in the art of shadow-based combat and infiltration. Members study shadow magic, enhancing their abilities to move undetected, manipulate shadows, and strike with precision. The organization's intricate network of informants and covert operatives provides a wealth of resources for those seeking to embrace the path of shadows."
+   },
+   {
+    "n": 3,
+    "name": "The Great Temple of Kevona",
+    "text": ", Goddess of the Night, is a renowned training ground for shadow masters, rogue operatives, and assassins. Here, acolytes immerse darkness, create illusions, and move with unmatched stealth. They train in the arts of silent takedowns, trap detection, and the utilization of shadow-infused weaponry."
+   },
+   {
+    "n": 4,
+    "name": "The Hall of Whispers",
+    "text": "Located in a hidden mountain retreat, the Hall of Whispers is a sanctuary for those seeking mastery over darkness and the shadows. Within its ancient halls, shadow masters, movement, and shadowy combat techniques. They learn to call upon the powers of shadow, obscuring their presence, and manipulating the darkness to their advantage."
+   },
+   {
+    "n": 5,
+    "name": "The Order of Nightfall",
+    "text": "Embracing the mystique of the night, the Order of Nightfall trains individuals in the arts of shadow manipulation and assassination. Aspiring shadow masters receive disappearing into the shadows. They learn to tap into the dark energies, melding with the night, and employing shadowy techniques to strike swiftly and decisively."
+   },
+   {
+    "n": 6,
+    "name": "The Temple of Eternal Shadows",
+    "text": "Shrouded in perpetual darkness, the Temple of Eternal Shadows is a revered shrine dedicated to the Unnamed, God of Shadows. Students undergo rigorous training in weapons. Guided by the Temple's mysterious masters, they learn to harness the secrets of darkness, becoming ethereal predators that strike fear into the hearts of their enemies."
+   }
+  ]
+ },
+ {
+  "name": "Weapon Master",
+  "page": 54,
+  "blurb": "A lifetime of dedication to your weapon of choice has granted you a level of technique and mastery unrivaled by lesser warriors, granting you an undeniable advantage in combat.",
+  "feature": {
+   "name": "Dedication",
+   "text": "Choose a weapon: your weapon Skill is increased by 10 and you add D4 damage to your Damage Pool when wielding it. This choice can only be made once."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Evasive Strike",
+    "action": "1 Standard Action. Requires a melee attack check",
+    "cost": "",
+    "text": "You strike at your opponent, while at the same time sidestepping their attack. If you score a hit, your next defensive check receives +10."
+   },
+   {
+    "tier": 2,
+    "name": "Sure Blow",
+    "action": "1 Standard Action. Requires a melee attack check",
+    "cost": "4 Aether",
+    "text": "You see through your enemy's weaknesses and exploit them with ease. As long as you pass your weapon Skill check, your opponent cannot defend from this attack in any way."
+   },
+   {
+    "tier": 3,
+    "name": "Overwhelming Technique",
+    "action": "Free Action (Magical)",
+    "cost": "6 Aether",
+    "text": "Your mastery over your weapon leaves your opponent confused and overwhelmed. Reduce the target's Combat Skill by -20 until the end of combat. This Ability can only be used once against the same opponent."
+   },
+   {
+    "tier": 4,
+    "name": "Thousand Strikes",
+    "action": "1 Standard Action. Requires a melee attack check",
+    "cost": "4 Aether",
+    "text": "Your weapon becomes a blur, as you strike all opponents near you. Perform an attack against all opponents you're currently engaged with. If struck, you deal the normal damage and they become Dazed (1)."
+   },
+   {
+    "tier": 5,
+    "name": "One With Your Weapon",
+    "action": "Passive",
+    "cost": "",
+    "text": "Your weapon can never break, and all damage you make with it is considered Psychic damage, thus bypassing all Armor. Additionally, You can reduce your weapon Skill by -30 to gain 10 Temporary Toughness until the end of combat."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "The Grand Colosseum",
+    "text": "A magnificent arena located in the heart of Karonia (the Alderworth Kingdom's second largest city and main commercial hub), the Grand Colosseum attracts warriors from all corners of the realm seeking to master the art of melee combat. Here, renowned masters and seasoned fighters gather to train aspiring warriors in a variety of melee weapons."
+   },
+   {
+    "n": 2,
+    "name": "The Isle of the Enlightened Blades",
+    "text": "A secluded island shrouded in mystery, the Isle of the Enlightened Blades is home to Oko, the legendary master of melee combat. Students from far and wide seek the guidance of this revered master, who imparts timeless wisdom and trains them in the way of the sword, axe, spear, or any other weapon of their choosing. The serene environment and rigorous training allow individuals to delve deep into the essence of melee combat."
+   },
+   {
+    "n": 3,
+    "name": "The Great Library of Martial Arts",
+    "text": "Housed within the grand library of Akropoia, this prestigious institution serves as a repository of knowledge on various martial arts and melee weapons. Students have access to an extensive collection of ancient texts, scrolls, and treatises on the subject, allowing them to study the history, techniques, and philosophies associated with a wide array of melee weapons, which enables them to develop a comprehensive understanding of the art."
+   },
+   {
+    "n": 4,
+    "name": "The Valley of the Master Smiths",
+    "text": "The Valley of the Master Smiths is renowned for its guild of revered weapon artisans. Apprentices journey here to learn the art of crafting and wielding melee construction, and maintenance of diverse weapons, while also receiving hands-on training in their usage. This immersive experience enhances their understanding of melee combat."
+   },
+   {
+    "n": 5,
+    "name": "Peak Galha",
+    "text": "Peak Galha is a revered training ground for warriors seeking to master the art of melee combat. The school is led by a master who possesses unparalleled skill in a wide range of weapons. practitioners, and receive personalized instruction on weapon techniques. The serene atmosphere and breathtaking vistas inspire a deep connection between the warriors and their chosen weapons."
+   },
+   {
+    "n": 6,
+    "name": "The Wandering Sage",
+    "text": "Legend speaks of a wandering sage, a nomadic warrior who travels the land, imparting wisdom and training in the art of melee combat. Those fortunate enough to encounter this enigmatic figure are blessed with the opportunity to learn from their vast experience and expertise. The Sage teaches the foundations of melee combat, encouraging students to explore the intricacies of different weapons and develop their own unique fighting style through observation, practice, and guidance."
+   }
+  ]
+ },
+ {
+  "name": "Wraith",
+  "page": 56,
+  "blurb": "You twist, slip and turn, your complete control over your body allowing you to perform superhuman feats of evasion and to seemingly be everywhere at once.",
+  "feature": {
+   "name": "Hard to Hit",
+   "text": "You can use your Acrobatics Skill instead of Dodge to avoid attacks or dodge traps."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Combat Awareness",
+    "action": "1 Standard Action",
+    "cost": "5 Aether",
+    "text": "You expand your awareness beyond what's usually possible, increasing your Acrobatics Skill by 20 for the rest of combat."
+   },
+   {
+    "tier": 2,
+    "name": "Spatial Awareness",
+    "action": "Passive",
+    "cost": "",
+    "text": "You are always paying attention to your surroundings. Increase any Acrobatics check done to avoid traps by 20."
+   },
+   {
+    "tier": 3,
+    "name": "Create Opening",
+    "action": "1 Standard Action",
+    "cost": "3 Exhaustion",
+    "text": "You feint and twist around your target, creating an opening for your allies to strike. All allies receive +30 to their next attack check."
+   },
+   {
+    "tier": 4,
+    "name": "Exploit Weakness",
+    "action": "1 Standard Action",
+    "cost": "",
+    "text": "Your fight against your opponent has revealed a weakness in their defenses. All your future attacks against this same target receive +10 to the attack check and deal +1 damage. This only works once per opponent."
+   },
+   {
+    "tier": 5,
+    "name": "Fast Strike",
+    "action": "1 Standard Action. Requires a melee attack check",
+    "cost": "",
+    "text": "Your speed and accuracy are without equal. Perform an attack; if it strikes, perform a second, free attack immediately against the same target."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "The Whirling Shadows",
+    "text": "The Whirling Shadows are a legendary group of acrobatic warriors known for their mastery of acrobatic combat and deceptive tactics. Through years of intense training, Their combat style focuses on intricate feints, swift dodges, and disorienting maneuvers that leave opponents bewildered and vulnerable."
+   },
+   {
+    "n": 2,
+    "name": "The Tumbling Blades",
+    "text": "The Tumbling Blades is an esteemed organization that specializes in training individuals in acrobatic combat and the art of deceptive maneuvers. Members of the guild and intricate footwork. They learn to deceive their opponents through clever feints, misdirection, and sudden changes in attack angles."
+   },
+   {
+    "n": 3,
+    "name": "The Serpent's Grace",
+    "text": "The Serpent's Grace is a secretive group of acrobatic warriors who blend graceful movements with deceptive combat techniques. Their training focuses on developing unparalleled flexibility, cat-like reflexes, and swift aerial maneuvers. into vulnerable positions and striking with precision. The Serpent's Grace combines acrobatics with a variety of weapons, executing daring leaps and spins that leave their foes disoriented and open to devastating attacks."
+   },
+   {
+    "n": 4,
+    "name": "The Dance of Shadows",
+    "text": "This renowned acrobat troop travels the kingdom, performing for the most prestigious merchants and nobles who are always eager to witness their ability to combine acrobatic feats with combat. Even though their acts are purely just that, acts, there are plenty of warriors that spend months or even years training with them to learn their secrets."
+   },
+   {
+    "n": 5,
+    "name": "The Aerial Vanguard",
+    "text": "The Aerial Vanguard is a specialized group of warriors trained in acrobatic combat and aerial maneuvers that are part of the king's personal guard. Their training focuses on Aerial Vanguard utilize their aerial agility to confuse opponents, executing mid-air flips, spins, and evasive maneuvers, distracting their opponents until heavier troops can intervene."
+   },
+   {
+    "n": 6,
+    "name": "The Edge of the World",
+    "text": "The Edge of the World is a school specialized in the training of acrobats and infiltration experts. Their methods are considered brutal and extreme by most, and the rate of original number of students, but the results speak for themselves, and those who survive their rigorous training methods are among the best acrobats in the world."
+   }
+  ]
+ },
+ {
+  "name": "Wrathspawn",
+  "page": 58,
+  "blurb": "Like the infamous Azari warriors, you let your fury and anger fuel your combat style, launching head first into every fight.",
+  "feature": {
+   "name": "Savage Will",
+   "text": "Once per Rest, you can spend Aether to enhance the damage of any of your attacks at a rate of 1 Aether for +1 damage. This can be declared after striking an opponent, but this additional damage isn't doubled in case of a Critical Strike."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Bash",
+    "action": "1 Standard Action. Requires a melee attack check",
+    "cost": "",
+    "text": "You strike suddenly and violently at your opponent, adding +D4 Bludgeoning damage to your Damage Pool for this attack."
+   },
+   {
+    "tier": 2,
+    "name": "Sweeping Blow",
+    "action": "1 Standard Action. Requires a melee attack check",
+    "cost": "2 Exhaustion",
+    "text": "You strike all enemies with a single swipe of your weapon."
+   },
+   {
+    "tier": 3,
+    "name": "Reckless Attack",
+    "action": "1 Standard Action. Requires a melee attack check",
+    "cost": "",
+    "text": "You sacrifice defense for offense, adding +2D6 Bludgeoning damage to your Damage Pool for this attack, but leaving you unable to defend at all until your next turn."
+   },
+   {
+    "tier": 4,
+    "name": "Charge",
+    "action": "1 Standard Action",
+    "cost": "2 Exhaustion",
+    "text": "Before combat starts, you immediately win the Initiative and rush towards the chosen target, dealing 2D6 Bludgeoning damage. This can only be done at the start of combat."
+   },
+   {
+    "tier": 5,
+    "name": "Vicious Warrior",
+    "action": "Passive",
+    "cost": "",
+    "text": "You are Resistant to Slashing damage. Heal 1 Wound each time you deal damage."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "The Bloodthorn Clan",
+    "text": "Hailing from the rugged highlands in the Oxze Empire, the Bloodthorn Clan is a fearsome warrior society that embraces the power of rage in combat. The clan's rugged stronghold inner rage and tap into their primal instincts. Their members undergo intense physical training, honing their strength, endurance, and battle prowess."
+   },
+   {
+    "n": 2,
+    "name": "The Rageforge Arena",
+    "text": "The Rageforge Arena is a renowned fighting pit where berserker fighters gather to showcase their unbridled fury. Instructors at the arena provide specialized training in the art their physical abilities and tap into a state of unstoppable aggression. The arena's brutal battles and fierce competitions serve as a proving ground for aspiring berserkers."
+   },
+   {
+    "n": 3,
+    "name": "The Azari Tribes",
+    "text": "The Azari Tribes are known for their savage fighting style that channels raw fury. Warriors of the many different tribes that inhabit the Azari Archipelago embrace their inner rage, amidst the scorching sands that conform most of the islands. The tribes' rich heritage and connection to their ancestral spirits further amplify their ferocity in combat."
+   },
+   {
+    "n": 4,
+    "name": "The Temple of Wrathful Fury",
+    "text": "Hidden deep within treacherous mountains, the Temple of Wrathful Fury is a secluded sanctuary where warriors seek enlightenment in their martial pursuits. Here, masters teach disciples to embrace their anger as a source of control and focus. Students endure grueling physical conditioning, engage in intense combat training, and delve into meditative practices to achieve a harmonious balance between fury and discipline."
+   },
+   {
+    "n": 5,
+    "name": "The Warhalls of Rend",
+    "text": "Located within the war-torn region of Southern Elkshire, the Warhalls of Rend are renowned for producing some of the fiercest fighters in the land. Within these ancient halls, devastating force on the battlefield, and undergo brutal training regimens, learning techniques that amplify their aggression and empower their strikes."
+   },
+   {
+    "n": 6,
+    "name": "The Caverns of Wildfire",
+    "text": "Deep beneath an active volcanic region lie the treacherous Caverns of Wildfire, a crucible where fighters endure harsh trials to refine their combat style. Fueled by the the brink, forcing them to channel their anger into explosive power. Trainees learn to embrace the chaos, weaponizing their inner fire to overcome any adversary."
+   }
+  ]
+ },
+ {
+  "name": "Zealot",
+  "page": 60,
+  "blurb": "Only faith can give true meaning to your life, and you have long decided to dedicate it to your deity's cause. The heretic will burn, and everyone will eventually accept the glory of your cause.",
+  "feature": {
+   "name": "Divine Guidance",
+   "text": "Your are a holy warrior and your faith guides you, always. You have Advantage on Resolve checks, and once per Rest you can re-roll an Event."
+  },
+  "tiers": [
+   {
+    "tier": 1,
+    "name": "Holy Weapon",
+    "action": "1 Standard Action",
+    "cost": "5 Aether (Sustained)",
+    "text": "You channel your faith into your weapon, marking it as a divine instrument. Add +D4 Holy damage to your Damage Pool when attacking with this weapon."
+   },
+   {
+    "tier": 2,
+    "name": "Purifying Flames",
+    "action": "1 Standard Action (Magical)",
+    "cost": "6 Aether",
+    "text": "A bolt of pure fire falls upon your target, dealing 2D6 Holy damage."
+   },
+   {
+    "tier": 3,
+    "name": "Absolution",
+    "action": "Passive",
+    "cost": "",
+    "text": "You forgive yourself for the sins you've committed, for all earthly creatures are impure. Once per Camp Rest, you can recover 2 Health and 2 Sanity."
+   },
+   {
+    "tier": 4,
+    "name": "God's Will",
+    "action": "1 Standard Action (Magical)",
+    "cost": "6 Aether",
+    "text": "Your conviction is so pure that those standing against you cannot withstand its strength. A target suffers D4+1 Psychic damage, and you recover as much Sanity."
+   },
+   {
+    "tier": 5,
+    "name": "Sanctuary",
+    "action": "1 Standard Action",
+    "cost": "2 Aether (Sustained)",
+    "text": "Your aura gains a holy component, protecting those around you. You and your allies receive +20 Spellward/Magic Resistance."
+   }
+  ],
+  "training": [
+   {
+    "n": 1,
+    "name": "The Order of the Sacred Flame",
+    "text": "A devout and zealous order, the Order of the Sacred Flame trains individuals in the ways of religious warfare and spiritual fervor towards Sonlios, God of Fire. Zealots, theological studies, and the art of exorcism. They wield divine magic, harnessing their faith to smite enemies of their religion and protect the faithful."
+   },
+   {
+    "n": 2,
+    "name": "The Sanctuary of Divine Justice",
+    "text": "Situated within the grand cathedral of Veldonia, the Sanctuary of Divine Justice is a revered institution that educates and trains followers of Ekoineme, God of Justice. Here, acolytes study holy texts, receive teachings on religious doctrine, and learn the art of interrogation and investigation. The sanctuary's halls echo with prayers and the sound of weapons clashing as students hone their combat skills in preparation for their divine duties."
+   },
+   {
+    "n": 3,
+    "name": "The Holy Citadel",
+    "text": "The Holy Citadel serves as a bastion for devout warriors, inquisitors, and priests who devote their lives to protecting their faith in honor of Auna, Goddess of Duty. The Citadel provides comprehensive training in martial combat, scripture, and divine magic. Zealots and inquisitors learn to wield their faith as a weapon, purging heresy, and defending the tenets of their religion."
+   },
+   {
+    "n": 4,
+    "name": "The Monastery of Devoted Vigilance",
+    "text": "The Monastery of Devoted Vigilance is a religious order that trains priests and inquisitors in the service of Vuntune, Goddess of Victory. Within the monastery's divine, administer sacred rites, and invoke miracles. Inquisitors receive training in investigation, discerning truth from deception, and purging darkness from within their religious community."
+   },
+   {
+    "n": 5,
+    "name": "The Covenant of Righteous Fury",
+    "text": "A secretive sect, the Covenant of Righteous Fury trains religious zealots and inquisitors to be relentless champions of Aos, God of Truth. Worship of Aos is forbidden across the Alderworth Kingdom, due to its priesthood's physical and spiritual training, mastering various weapons and divine spells. They are taught to unleash their zeal with righteous fury, hunting down heretics, and defending the sanctity of their religious beliefs."
+   },
+   {
+    "n": 6,
+    "name": "The Temple of Sacred Retribution",
+    "text": "Situated at the heart of Karonia, the Temple of Sacred Retribution is a revered institution that trains priests, inquisitors, and religious zealots in matters of faith and revenge, all according to the tenets of their god Hythos, God of Vengeance. Students receive extensive teachings on religious doctrine, moral principles, and the application of divine justice. They learn to wield divine magic, dispense judgment upon transgressors, and guide the faithful in times of spiritual crisis."
+   }
+  ]
+ }
+]

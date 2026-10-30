@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { pushPhoneNotification } from '../services/runAlertsService.js';
 import { getAntigravityQuotas } from '../services/aiQuotaService.js';
+import { getGlucoseAlertSettings, setGlucoseAlertSettings } from '../services/glucoseService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../../..');
@@ -45,6 +46,13 @@ router.get('/watchdog-settings', (req, res) => {
  * PUT /api/system/watchdog-settings
  * Updates watchdog offline notifications and auto-recovery toggle
  */
+// the blood glucose phone alerts: the hypo warning (below 4.0) and the rapid fall (below 6.0 and dropping)
+router.get('/glucose-alerts', (req, res) => {
+  try { res.json({ success: true, ...getGlucoseAlertSettings() }); } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+router.put('/glucose-alerts', (req, res) => {
+  try { res.json({ success: true, ...setGlucoseAlertSettings(req.body || {}) }); } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
 router.put('/watchdog-settings', (req, res) => {
   try {
     const { offlineAlerts } = req.body;

@@ -28,7 +28,7 @@ export function marksOf(game) {
   const foes = [...new Set(log.filter((e) => e.creature).map((e) => e.creature))];
   const worst = (h.wounds || []).reduce((m, w) => (w.dmg > (m?.dmg || 0) ? w : m), null);
   return [
-    ['door', 'Places walked', `${game.pieces.length} in Domain ${game.domain.n}${game.source?.turns ? `, after ${game.source.turns} turns in the classic` : ''}`],
+    ['door', 'Places walked', `${game.pieces.length} in Domain ${game.domain.n}${game.source?.turns ? `, after ${game.source.turns} turns of the earlier tale` : ''}`],
     ['swords', 'Fights won', fights ? `${fights}${foes.length ? `, against ${foes.join(', ')}` : ''}` : foes.length ? `None yet; faced ${foes.join(', ')}` : 'None yet'],
     ['drop', 'Hurts since the last camp', (h.wounds || []).length ? `${h.wounds.length}, the worst ${worst.dmg} to the ${worst.loc.toLowerCase()}` : 'None'],
     ['heart', 'Body', `${word(v.health, v.maxHealth, ['Whole', 'Hurt', 'Badly hurt', 'Near death'])}: Health ${v.health}/${v.maxHealth}, Toughness ${v.tough}/${v.maxTough}`],

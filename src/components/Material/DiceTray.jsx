@@ -200,6 +200,18 @@ function buildDie(kind) {
 }
 
 // which number is showing: the face pointing up (a d4: the corner pointing up)
+function settleFlat(die, body) {
+  const q = new THREE.Quaternion(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
+  if (die.kind === 'd4') return;
+  let best = null, dot = -2;
+  for (const f of die.faces) { const n = f.normal.clone().applyQuaternion(q); if (n.y > dot) { dot = n.y; best = n; } }
+  if (!best) return;
+  const turn = new THREE.Quaternion().setFromUnitVectors(best.normalize(), new THREE.Vector3(0, 1, 0));
+  const nq = turn.multiply(q);
+  body.quaternion.set(nq.x, nq.y, nq.z, nq.w);
+  body.velocity.set(0, 0, 0); body.angularVelocity.set(0, 0, 0);
+  body.position.y += 0.05;
+}
 function readDie(die, quat) {
   const q = new THREE.Quaternion(quat.x, quat.y, quat.z, quat.w);
   if (die.kind === 'd4') {
@@ -247,7 +259,7 @@ function woodTexture() {
   return t;
 }
 
-const DiceTray = forwardRef(function DiceTray({ dark = false, height = 300, onKnock, className = '', onPaper = false }, ref) {
+const DiceTray = forwardRef(function DiceTray({ dark = false, height = 300, onKnock, className = '', onPaper = false, onReport }, ref) {
   const host = useRef(null);
   const api = useRef(null);
 
@@ -336,7 +348,7 @@ const DiceTray = forwardRef(function DiceTray({ dark = false, height = 300, onKn
     };
 
     let dice = [];
-    let running = false, frame = 0, last = 0, quiet = 0, started = 0, nudges = 0, settle = null, glow = 0;
+    let running = false, frame = 0, last = 0, quiet = 0, started = 0, nudges = 0, settle = null, glow = 0, slowed = false, flattened = 0;
     const clear = () => {
       dice.forEach((d) => {
         world.removeBody(d.body); scene.remove(d.mesh);
@@ -359,18 +371,28 @@ const DiceTray = forwardRef(function DiceTray({ dark = false, height = 300, onKn
       last = t;
       if (running) {
         world.step(1 / 120, dt, 8);
+        // a die that has landed but keeps spinning on its point (a d10 likes to) is slowed, so it settles in a moment
+        dice.forEach((d) => { const b = d.body; if (b.velocity.length() < 0.35 && b.angularVelocity.length() > 0.4 && b.position.y < 1.6) b.angularVelocity.scale(0.86, b.angularVelocity); });
         const still = dice.every((d) => d.body.sleepState === CANNON.Body.SLEEPING || (d.body.velocity.length() < 0.08 && d.body.angularVelocity.length() < 0.12));
         quiet = still ? quiet + 1 : 0;
-        if (quiet > 24 || performance.now() - started > 7000) {
+        const age = performance.now() - started;
+        // still tumbling after 6 seconds: brake them hard so they come to rest rather than being read mid-roll
+        if (!still && age > 4500 && !slowed) { slowed = true; dice.forEach((d) => { d.body.linearDamping = 0.9; d.body.angularDamping = 0.9; }); }
+        if (quiet > 24 || age > 9000) {
           const read = dice.map((d) => readDie(d, d.body.quaternion));
           const cocked = read.map((r, i) => (r.flat < 0.94 ? i : -1)).filter((i) => i >= 0);
-          if (cocked.length && nudges < 3) {
+          if (cocked.length && nudges < 3 && age < 7000) {
             nudges++; quiet = 0;
             cocked.forEach((i) => { const b = dice[i].body; b.wakeUp(); b.applyImpulse(new CANNON.Vec3((Math.random() - 0.5) * 3, 4, (Math.random() - 0.5) * 3)); b.angularVelocity.set(Math.random() * 6, Math.random() * 6, Math.random() * 6); });
+          } else if (cocked.length && flattened < 2) {
+            // leaning on an edge or a neighbour: lay it on its nearest face, let it settle a moment, read again
+            flattened++; quiet = 0; cocked.forEach((i) => settleFlat(dice[i], dice[i].body));
           } else {
             running = false; glow = 1;
             const done = settle; settle = null;
-            done?.(read.map((r) => r.value));
+            const values = read.map((r) => r.value);
+            onReportRef.current?.({ ms: Math.round(age), nudges, flattened, cocked: cocked.length, slowed, kinds: dice.map((d) => d.kind), values, flat: read.map((r) => +r.flat.toFixed(3)) });
+            done?.(values);
           }
         }
       } else if (glow <= 0 && !idleFrames--) { cancelAnimationFrame(frame); frame = 0; last = 0; draw(); return; }
@@ -407,7 +429,7 @@ const DiceTray = forwardRef(function DiceTray({ dark = false, height = 300, onKn
         return { ...d, body };
       });
       dice.forEach((d) => d.mesh.material.forEach((m) => m.emissive?.setRGB(0, 0, 0)));
-      settle = resolve; running = true; quiet = 0; nudges = 0; started = performance.now(); glow = 0;
+      settle = resolve; running = true; quiet = 0; nudges = 0; started = performance.now(); glow = 0; slowed = false; flattened = 0;
       kick();
     });
 
@@ -428,6 +450,8 @@ const DiceTray = forwardRef(function DiceTray({ dark = false, height = 300, onKn
 
   const onKnockRef = useRef(onKnock);
   onKnockRef.current = onKnock;
+  const onReportRef = useRef(onReport);
+  onReportRef.current = onReport;
 
   useImperativeHandle(ref, () => ({
     roll: (kinds) => (api.current ? api.current.roll(kinds) : Promise.resolve(null)),
